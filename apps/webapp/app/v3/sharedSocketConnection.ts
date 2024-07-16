@@ -96,6 +96,7 @@ export class SharedSocketConnection {
 
     this._messageHandler = new ZodMessageHandler({
       schema: clientWebsocketMessages,
+      logger,
       messages: {
         READY_FOR_TASKS: async (payload) => {
           this._sharedQueueConsumerPool.start();

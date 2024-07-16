@@ -379,20 +379,32 @@ export class BackgroundWorker {
       child.on("message", async (msg: any) => {
         const message = this._handler.parseMessage(msg);
 
-        if (message.type === "TASKS_READY" && !resolved) {
+        if (!message.success) {
           clearTimeout(timeout);
           resolved = true;
-          resolve(message.payload.tasks);
+          reject(new Error(`Failed to parse message: ${message.error}`));
           child.kill();
-        } else if (message.type === "UNCAUGHT_EXCEPTION") {
+          return;
+        }
+
+        if (message.data.type === "TASKS_READY" && !resolved) {
           clearTimeout(timeout);
           resolved = true;
-          reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
+          resolve(message.data.payload.tasks);
           child.kill();
-        } else if (message.type === "TASKS_FAILED_TO_PARSE") {
+        } else if (message.data.type === "UNCAUGHT_EXCEPTION") {
           clearTimeout(timeout);
           resolved = true;
-          reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
+          reject(
+            new UncaughtExceptionError(message.data.payload.error, message.data.payload.origin)
+          );
+          child.kill();
+        } else if (message.data.type === "TASKS_FAILED_TO_PARSE") {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(
+            new TaskMetadataParseError(message.data.payload.zodIssues, message.data.payload.tasks)
+          );
           child.kill();
         }
       });
@@ -942,9 +954,14 @@ class TaskRunProcess {
   async #handleMessage(msg: any) {
     const message = this._handler.parseMessage(msg);
 
-    switch (message.type) {
+    if (!message.success) {
+      logger.error(`Dropping message: ${message.error}`, { message });
+      return;
+    }
+
+    switch (message.data.type) {
       case "TASK_RUN_COMPLETED": {
-        const { result, execution } = message.payload;
+        const { result, execution } = message.data.payload;
 
         logger.debug(`[${this.runId}] task run completed`, {
           result,
@@ -981,7 +998,7 @@ class TaskRunProcess {
         if (this.messageId) {
           this.onTaskRunHeartbeat.post(this.messageId);
         } else {
-          this.onTaskHeartbeat.post(message.payload.id);
+          this.onTaskHeartbeat.post(message.data.payload.id);
         }
 
         break;

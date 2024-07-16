@@ -52,6 +52,7 @@ export class AuthenticatedSocketConnection {
 
     this._messageHandler = new ZodMessageHandler({
       schema: clientWebsocketMessages,
+      logger,
       messages: {
         READY_FOR_TASKS: async (payload) => {
           await this._consumer.registerBackgroundWorker(
@@ -99,9 +100,22 @@ export class AuthenticatedSocketConnection {
   }
 
   async #handleMessage(ev: MessageEvent) {
-    const data = JSON.parse(ev.data.toString());
+    try {
+      const data = JSON.parse(ev.data.toString());
 
-    await this._messageHandler.handleMessage(data);
+      await this._messageHandler.handleMessage(data);
+    } catch (error) {
+      logger.error("[AuthenticatedSocketConnection] Failed to handle message", {
+        error:
+          error instanceof Error
+            ? {
+                message: error.message,
+                stack: error.stack,
+              }
+            : error,
+        message: ev.data.toString(),
+      });
+    }
   }
 
   async #handleClose(ev: CloseEvent) {
