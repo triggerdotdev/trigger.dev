@@ -293,9 +293,65 @@ function useDev({
       `${dashboardUrl}/projects/v3/${config.project}`
     );
 
-    websocket.addEventListener("open", async (event) => {});
-    websocket.addEventListener("close", (event) => {});
-    websocket.addEventListener("error", (event) => {});
+    const messageHandler = new ZodMessageHandler({
+      schema: serverWebsocketMessages,
+      messages: {
+        SERVER_READY: async (payload) => {
+          for (const worker of backgroundWorkerCoordinator.currentWorkers) {
+            await sender.send("READY_FOR_TASKS", {
+              backgroundWorkerId: worker.id,
+              inProgressRuns: worker.worker.inProgressRuns,
+            });
+          }
+        },
+        BACKGROUND_WORKER_MESSAGE: async (payload) => {
+          await backgroundWorkerCoordinator.handleMessage(payload.backgroundWorkerId, payload.data);
+        },
+        PONG: async () => {
+          logger.debug("Received pong", { timestamp: Date.now() });
+        },
+      },
+    });
+
+    websocket.addEventListener("message", async (event) => {
+      const data = JSON.parse(
+        typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
+      );
+
+      await messageHandler.handleMessage(data);
+    });
+
+    const ping = new WebsocketPing({
+      callback: async () => {
+        if (websocket.readyState !== WebSocket.OPEN) {
+          logger.debug("Websocket not open, skipping ping");
+          return;
+        }
+
+        logger.debug("Sending ping", { timestamp: Date.now() });
+
+        await sender.send("PING", {});
+      },
+    });
+
+    websocket.addEventListener("open", async (event) => {
+      logger.debug("Websocket opened", { event });
+
+      ping.start();
+    });
+
+    websocket.addEventListener("close", (event) => {
+      logger.debug("Websocket closed", { event });
+
+      ping.stop();
+    });
+
+    websocket.addEventListener("error", (event) => {
+      logger.log(`${chalkError("Websocket Error:")} ${event.error.message}`);
+      logger.debug("Websocket error", { event, rawError: event.error });
+
+      ping.stop();
+    });
 
     // This is the deprecated task heart beat that uses the friendly attempt ID
     // It will only be used if the worker does not support lazy attempts
@@ -359,34 +415,6 @@ function useDev({
       await sender.send("BACKGROUND_WORKER_DEPRECATED", {
         backgroundWorkerId: id,
       });
-    });
-
-    websocket.addEventListener("message", async (event) => {
-      const data = JSON.parse(
-        typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
-      );
-
-      const messageHandler = new ZodMessageHandler({
-        schema: serverWebsocketMessages,
-        messages: {
-          SERVER_READY: async (payload) => {
-            for (const worker of backgroundWorkerCoordinator.currentWorkers) {
-              await sender.send("READY_FOR_TASKS", {
-                backgroundWorkerId: worker.id,
-                inProgressRuns: worker.worker.inProgressRuns,
-              });
-            }
-          },
-          BACKGROUND_WORKER_MESSAGE: async (payload) => {
-            await backgroundWorkerCoordinator.handleMessage(
-              payload.backgroundWorkerId,
-              payload.data
-            );
-          },
-        },
-      });
-
-      await messageHandler.handleMessage(data);
     });
 
     let ctx: BuildContext | undefined;
@@ -970,5 +998,36 @@ function createResolveEnvironmentVariablesFunction(configModule?: any) {
     }
 
     return resolvedEnvVars;
+  };
+}
+
+type WebsocketPingOptions = {
+  callback: () => Promise<void>;
+  pingIntervalInMs?: number;
+};
+
+class WebsocketPing {
+  private _callback: () => Promise<void>;
+  private _pingIntervalInMs: number;
+  private _nextPingIteration: NodeJS.Timeout | undefined;
+
+  constructor(opts: WebsocketPingOptions) {
+    this._callback = opts.callback;
+    this._pingIntervalInMs = opts.pingIntervalInMs ?? 45_000;
+    this._nextPingIteration = undefined;
+  }
+
+  start() {
+    this.#sendPing();
+  }
+
+  stop() {
+    clearTimeout(this._nextPingIteration);
+  }
+
+  #sendPing = async () => {
+    await this._callback();
+
+    this._nextPingIteration = setTimeout(this.#sendPing, this._pingIntervalInMs);
   };
 }
