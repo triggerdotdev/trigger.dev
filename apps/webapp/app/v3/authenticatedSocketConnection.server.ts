@@ -126,13 +126,6 @@ export class AuthenticatedSocketConnection {
             }
           }
         },
-        PING: async () => {
-          logger.debug("[AuthenticatedSocketConnection] Received ping", {
-            id: this.id,
-            envId: this.authenticatedEnv.id,
-          });
-          await this._sender.send("PONG", {});
-        },
       },
     });
   }

@@ -57,9 +57,6 @@ export const serverWebsocketMessages = {
     backgroundWorkerId: z.string(),
     data: BackgroundWorkerServerMessages,
   }),
-  PONG: z.object({
-    version: z.literal("v1").default("v1"),
-  }),
 };
 
 export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
@@ -110,9 +107,6 @@ export const clientWebsocketMessages = {
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
     data: BackgroundWorkerClientMessages,
-  }),
-  PING: z.object({
-    version: z.literal("v1").default("v1"),
   }),
 };
 
