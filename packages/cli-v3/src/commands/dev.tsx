@@ -293,9 +293,18 @@ function useDev({
       `${dashboardUrl}/projects/v3/${config.project}`
     );
 
-    websocket.addEventListener("open", async (event) => {});
-    websocket.addEventListener("close", (event) => {});
-    websocket.addEventListener("error", (event) => {});
+    websocket.addEventListener("open", async (event) => {
+      logger.debug("WebSocket opened", { event });
+    });
+
+    websocket.addEventListener("close", (event) => {
+      logger.debug("WebSocket closed", { event });
+    });
+
+    websocket.addEventListener("error", (event) => {
+      logger.log(`${chalkError("WebSocketError:")} ${event.error.message}`);
+      logger.debug("WebSocket error", { event, rawError: event.error });
+    });
 
     // This is the deprecated task heart beat that uses the friendly attempt ID
     // It will only be used if the worker does not support lazy attempts
