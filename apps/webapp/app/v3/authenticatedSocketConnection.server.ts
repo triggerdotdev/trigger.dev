@@ -84,6 +84,7 @@ export class AuthenticatedSocketConnection {
         ws.ping();
       },
     });
+    this._pingService.start();
 
     this._messageHandler = new ZodMessageHandler({
       schema: clientWebsocketMessages,
