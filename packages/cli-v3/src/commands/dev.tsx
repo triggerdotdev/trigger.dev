@@ -371,31 +371,42 @@ function useDev({
     });
 
     websocket.addEventListener("message", async (event) => {
-      const data = JSON.parse(
-        typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
-      );
+      try {
+        const data = JSON.parse(
+          typeof event.data === "string" ? event.data : new TextDecoder("utf-8").decode(event.data)
+        );
 
-      const messageHandler = new ZodMessageHandler({
-        schema: serverWebsocketMessages,
-        messages: {
-          SERVER_READY: async (payload) => {
-            for (const worker of backgroundWorkerCoordinator.currentWorkers) {
-              await sender.send("READY_FOR_TASKS", {
-                backgroundWorkerId: worker.id,
-                inProgressRuns: worker.worker.inProgressRuns,
-              });
-            }
+        const messageHandler = new ZodMessageHandler({
+          schema: serverWebsocketMessages,
+          messages: {
+            SERVER_READY: async (payload) => {
+              for (const worker of backgroundWorkerCoordinator.currentWorkers) {
+                await sender.send("READY_FOR_TASKS", {
+                  backgroundWorkerId: worker.id,
+                  inProgressRuns: worker.worker.inProgressRuns,
+                });
+              }
+            },
+            BACKGROUND_WORKER_MESSAGE: async (payload) => {
+              await backgroundWorkerCoordinator.handleMessage(
+                payload.backgroundWorkerId,
+                payload.data
+              );
+            },
           },
-          BACKGROUND_WORKER_MESSAGE: async (payload) => {
-            await backgroundWorkerCoordinator.handleMessage(
-              payload.backgroundWorkerId,
-              payload.data
-            );
-          },
-        },
-      });
+        });
 
-      await messageHandler.handleMessage(data);
+        await messageHandler.handleMessage(data);
+      } catch (error) {
+        if (error instanceof Error) {
+          logger.error("Error while handling websocket message", { error: error.message });
+        } else {
+          logger.error(
+            "Unkown error while handling websocket message, use `-l debug` for additional output"
+          );
+          logger.debug("Error while handling websocket message", { error });
+        }
+      }
     });
 
     let ctx: BuildContext | undefined;
