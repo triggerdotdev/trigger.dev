@@ -386,7 +386,7 @@ class PNPMCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
@@ -401,7 +401,7 @@ class PNPMCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
@@ -484,7 +484,7 @@ class NPMCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
@@ -499,7 +499,7 @@ class NPMCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
@@ -625,7 +625,7 @@ class YarnCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
@@ -640,7 +640,7 @@ class YarnCommands implements PackageManagerCommands {
 
     if (childProcess.failed) {
       logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess.stderr,
+        error: childProcess,
       });
     }
 
