@@ -39,7 +39,7 @@ function initializeTracing(): NodeTracerProvider | undefined {
     resource,
     spanLimits: {
       attributeCountLimit: 1000,
-      attributeValueLengthLimit: 1000,
+      attributeValueLengthLimit: 2048,
       eventCountLimit: 100,
       attributePerEventCountLimit: 100,
       linkCountLimit: 10,
