@@ -640,6 +640,13 @@ function checkLogsForErrors(logs: string) {
       )}`,
     },
     {
+      regex: /@prisma\/client did not initialize yet/,
+      message: `Prisma client not initialized yet.\nDid you forget to add the postinstall script? ${cliLink(
+        "Config docs",
+        docs.config.prisma
+      )}`,
+    },
+    {
       regex: /sh: 1: (?<packageOrBinary>.*): not found/,
       message: `$packageOrBinary not found\n\nIf it's a package: Include it in ${cliLink(
         "config.additionalPackages",
