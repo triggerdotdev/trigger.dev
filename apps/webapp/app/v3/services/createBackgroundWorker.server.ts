@@ -8,6 +8,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
+import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -68,6 +69,7 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      await syncStaticSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma);
 
       try {
         //send a notification that a new worker has been created
@@ -218,5 +220,106 @@ export async function createBackgroundTasks(
         });
       }
     }
+  }
+}
+
+//todo syncStaticSchedules
+//1. update
+//2. create
+//delete
+// - get all static ones and see if any are missing
+export async function syncStaticSchedules(
+  tasks: TaskResource[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const tasksWithStaticSchedules = tasks.filter((task) => task.schedule);
+  logger.info("Syncing static schedules", {
+    tasksWithStaticSchedules,
+    environment,
+  });
+
+  const existingStaticSchedules = await prisma.taskSchedule.findMany({
+    where: {
+      type: "STATIC",
+      projectId: environment.projectId,
+    },
+    include: {
+      instances: true,
+    },
+  });
+
+  const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
+
+  //start out by assuming they're all missing
+  const missingSchedules = new Set<string>(existingStaticSchedules.map((schedule) => schedule.id));
+
+  //create/update schedules (+ instances)
+  for (const task of tasksWithStaticSchedules) {
+    const existingSchedule = existingStaticSchedules.find(
+      (schedule) => schedule.taskIdentifier === task.id
+    );
+
+    if (task.schedule?.cron == null) continue;
+
+    if (existingSchedule) {
+      const schedule = await prisma.taskSchedule.update({
+        where: {
+          id: existingSchedule.id,
+        },
+        data: {
+          generatorExpression: task.schedule.cron,
+          timezone: task.schedule.timezone,
+        },
+        include: {
+          instances: true,
+        },
+      });
+      missingSchedules.delete(existingSchedule.id);
+      await registerNextService.call(schedule.instances[0].id);
+    } else {
+      const newSchedule = await prisma.taskSchedule.create({
+        data: {
+          friendlyId: generateFriendlyId("schedule"),
+          projectId: environment.projectId,
+          taskIdentifier: task.id,
+          generatorExpression: task.schedule.cron,
+          timezone: task.schedule.timezone,
+          type: "STATIC",
+          instances: {
+            create: [
+              {
+                environmentId: environment.id,
+              },
+            ],
+          },
+        },
+        include: {
+          instances: true,
+        },
+      });
+
+      await registerNextService.call(newSchedule.instances[0].id);
+    }
+  }
+
+  //Delete instances for this environment
+  //Delete schedules that have no instances left
+  const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
+    where: {
+      id: {
+        in: Array.from(missingSchedules),
+      },
+    },
+    include: {
+      instances: true,
+    },
+  });
+
+  for (const schedule of potentiallyDeletableSchedules) {
+    const canDelete =
+      schedule.instances.length === 0 ||
+      schedule.instances.every((instance) => instance.environmentId === environment.id);
   }
 }
