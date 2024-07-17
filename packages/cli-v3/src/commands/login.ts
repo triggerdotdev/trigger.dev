@@ -204,7 +204,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         `Please visit the following URL to login:\n${chalkLink(authorizationCodeResult.url)}`
       );
 
-      await open(authorizationCodeResult.url);
+      try {
+        //this can throw an error on Ubuntu
+        await open(authorizationCodeResult.url);
+      } catch (e) {}
 
       //poll for personal access token (we need to poll for it)
       const getPersonalAccessTokenSpinner = spinner();
