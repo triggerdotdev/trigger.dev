@@ -621,11 +621,6 @@ export const ClientToSharedQueueMessages = {
       data: BackgroundWorkerClientMessages,
     }),
   },
-  PING: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-    }),
-  },
 };
 
 export const SharedQueueToClientMessages = {
