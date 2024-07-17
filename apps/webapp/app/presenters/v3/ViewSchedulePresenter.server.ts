@@ -21,6 +21,7 @@ export class ViewSchedulePresenter {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
+        type: true,
         friendlyId: true,
         generatorExpression: true,
         generatorDescription: true,

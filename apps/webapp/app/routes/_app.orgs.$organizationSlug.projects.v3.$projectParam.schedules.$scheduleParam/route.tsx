@@ -1,15 +1,21 @@
 import { parse } from "@conform-to/zod";
-import { BoltIcon, BoltSlashIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BoltIcon,
+  BoltSlashIcon,
+  BookOpenIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { DialogDescription } from "@radix-ui/react-dialog";
 import { Form, useLocation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { token } from "morgan";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
@@ -19,6 +25,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
 import {
@@ -31,11 +38,11 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
+import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
@@ -197,8 +204,15 @@ export default function Page() {
 
   const isUtc = schedule.timezone === "UTC";
 
+  const isDynamic = schedule.type === "DYNAMIC";
+
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        isDynamic ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
@@ -214,6 +228,9 @@ export default function Page() {
             <PropertyTable>
               <Property label="Schedule ID">{schedule.friendlyId}</Property>
               <Property label="Task ID">{schedule.taskIdentifier}</Property>
+              <Property label="Type">
+                <ScheduleTypeCombo type={schedule.type} className="text-sm" />
+              </Property>
               <Property label="CRON (UTC)" labelClassName="self-start">
                 <div className="space-y-2">
                   <InlineCode variant="extra-small">{schedule.cron}</InlineCode>
@@ -224,15 +241,19 @@ export default function Page() {
               <Property label="Environments">
                 <EnvironmentLabels size="small" environments={schedule.environments} />
               </Property>
-              <Property label="External ID">
-                {schedule.externalId ? schedule.externalId : "–"}
-              </Property>
-              <Property label="Deduplication key">
-                {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
-              </Property>
-              <Property label="Status">
-                <EnabledStatus enabled={schedule.active} />
-              </Property>
+              {isDynamic && (
+                <>
+                  <Property label="External ID">
+                    {schedule.externalId ? schedule.externalId : "–"}
+                  </Property>
+                  <Property label="Deduplication key">
+                    {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
+                  </Property>
+                  <Property label="Status">
+                    <EnabledStatus enabled={schedule.active} />
+                  </Property>
+                </>
+              )}
             </PropertyTable>
             <div className="flex flex-col gap-1">
               <Header3>Last 5 runs</Header3>
@@ -288,68 +309,84 @@ export default function Page() {
                 </TableBody>
               </Table>
             </div>
+            {!isDynamic && (
+              <InfoPanel
+                title="Editing static schedules"
+                icon={BookOpenIcon}
+                iconClassName="text-indigo-500"
+                variant="info"
+                buttonLabel="Docs"
+                to="https://trigger.dev/docs/v3/tasks-scheduled"
+                panelClassName="max-w-full"
+              >
+                You can only edit a static schedule by updating your schedules.task and then running
+                the CLI dev and deploy commands.
+              </InfoPanel>
+            )}
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-        <div className="flex items-center gap-4">
-          <Form method="post">
-            <Button
-              type="submit"
-              variant="minimal/medium"
-              LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
-              leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
-              name="action"
-              value={schedule.active ? "disable" : "enable"}
-            >
-              {schedule.active ? "Disable" : "Enable"}
-            </Button>
-          </Form>
-          <Dialog>
-            <DialogTrigger asChild>
+      {isDynamic && (
+        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+          <div className="flex items-center gap-4">
+            <Form method="post">
               <Button
                 type="submit"
                 variant="minimal/medium"
-                LeadingIcon={TrashIcon}
-                leadingIconClassName="text-error"
-                className="text-error"
+                LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
+                leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
                 name="action"
-                value="delete"
+                value={schedule.active ? "disable" : "enable"}
               >
-                Delete
+                {schedule.active ? "Disable" : "Enable"}
               </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>Delete schedule</DialogHeader>
-              <DialogDescription>
-                Are you sure you want to delete this schedule? This can't be reversed.
-              </DialogDescription>
-              <DialogFooter>
-                <Form method="post">
-                  <Button
-                    type="submit"
-                    variant="danger/small"
-                    LeadingIcon={TrashIcon}
-                    name="action"
-                    value="delete"
-                  >
-                    Delete
-                  </Button>
-                </Form>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </Form>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  type="submit"
+                  variant="minimal/medium"
+                  LeadingIcon={TrashIcon}
+                  leadingIconClassName="text-error"
+                  className="text-error"
+                  name="action"
+                  value="delete"
+                >
+                  Delete
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>Delete schedule</DialogHeader>
+                <DialogDescription>
+                  Are you sure you want to delete this schedule? This can't be reversed.
+                </DialogDescription>
+                <DialogFooter>
+                  <Form method="post">
+                    <Button
+                      type="submit"
+                      variant="danger/small"
+                      LeadingIcon={TrashIcon}
+                      name="action"
+                      value="delete"
+                    >
+                      Delete
+                    </Button>
+                  </Form>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="flex items-center gap-4">
+            <LinkButton
+              variant="tertiary/medium"
+              to={`${v3EditSchedulePath(organization, project, schedule)}${location.search}`}
+              LeadingIcon={PencilSquareIcon}
+            >
+              Edit schedule
+            </LinkButton>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <LinkButton
-            variant="tertiary/medium"
-            to={`${v3EditSchedulePath(organization, project, schedule)}${location.search}`}
-            LeadingIcon={PencilSquareIcon}
-          >
-            Edit schedule
-          </LinkButton>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

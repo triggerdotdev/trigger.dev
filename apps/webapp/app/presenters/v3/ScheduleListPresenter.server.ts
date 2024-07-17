@@ -1,4 +1,4 @@
-import { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { Prisma, RuntimeEnvironmentType, ScheduleType } from "@trigger.dev/database";
 import { ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -16,6 +16,7 @@ const DEFAULT_PAGE_SIZE = 20;
 
 export type ScheduleListItem = {
   id: string;
+  type: ScheduleType;
   friendlyId: string;
   taskIdentifier: string;
   deduplicationKey: string | null;
@@ -141,6 +142,7 @@ export class ScheduleListPresenter extends BasePresenter {
     const rawSchedules = await this._replica.taskSchedule.findMany({
       select: {
         id: true,
+        type: true,
         friendlyId: true,
         taskIdentifier: true,
         deduplicationKey: true,
@@ -215,11 +217,12 @@ export class ScheduleListPresenter extends BasePresenter {
     ON t."scheduleId" = r."scheduleId" AND t."createdAt" = r."LatestRun";`
         : [];
 
-    const schedules = rawSchedules.map((schedule) => {
+    const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
       const latestRun = latestRuns.find((r) => r.scheduleId === schedule.id);
 
       return {
         id: schedule.id,
+        type: schedule.type,
         friendlyId: schedule.friendlyId,
         taskIdentifier: schedule.taskIdentifier,
         deduplicationKey: schedule.deduplicationKey,

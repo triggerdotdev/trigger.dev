@@ -107,6 +107,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return {
     data: result.schedules.map((schedule) => ({
       id: schedule.friendlyId,
+      type: schedule.type,
       task: schedule.taskIdentifier,
       generator: {
         type: "CRON",
