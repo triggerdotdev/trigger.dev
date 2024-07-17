@@ -18,7 +18,7 @@ import { createDeployHash } from "./createDeployHash";
 import { handleDependencies } from "./handleDependencies";
 import { E2EOptions, E2EOptionsSchema } from "./schemas";
 import { fixturesConfig, TestCase } from "./fixtures.config";
-import { Metafile, OutputFile } from "esbuild";
+import { OutputFile } from "esbuild";
 import { findUpMultiple } from "find-up";
 import { DependencyMeta } from "../src/utilities/javascriptProject";
 
@@ -165,9 +165,7 @@ if (testCases.length > 0) {
           }
 
           let directDependenciesMeta: Record<string, DependencyMeta>;
-          let entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
           let entryPointOutputFile: OutputFile;
-          let workerMetaOutput: Metafile["outputs"]["out/stdin.js"];
           let workerOutputFile: OutputFile;
 
           const compileExpect = expect(
@@ -178,9 +176,7 @@ if (testCases.length > 0) {
                 tempDir,
               });
               directDependenciesMeta = compilationResult.directDependenciesMeta;
-              entryPointMetaOutput = compilationResult.entryPointMetaOutput;
               entryPointOutputFile = compilationResult.entryPointOutputFile;
-              workerMetaOutput = compilationResult.workerMetaOutput;
               workerOutputFile = compilationResult.workerOutputFile;
             })(),
             wantCompilationError ? "does not compile" : "compiles"
@@ -205,8 +201,6 @@ if (testCases.length > 0) {
             (async () => {
               dependencies = await handleDependencies({
                 directDependenciesMeta: directDependenciesMeta!,
-                entryPointMetaOutput: entryPointMetaOutput!,
-                metaOutput: workerMetaOutput!,
                 resolvedConfig: resolvedConfig!,
                 tempDir,
                 packageManager,

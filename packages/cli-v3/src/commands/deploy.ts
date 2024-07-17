@@ -1153,6 +1153,8 @@ async function compileProject(
       const javascriptProject = new JavascriptProject(config.projectDir);
       const directDependenciesMeta = await javascriptProject.extractDirectDependenciesMeta();
 
+      logger.debug("Direct dependencies metadata", directDependenciesMeta);
+
       const result = await build({
         stdin: {
           contents: workerContents,
@@ -1268,17 +1270,6 @@ async function compileProject(
 
       logger.debug(`Writing compiled files to ${tempDir}`);
 
-      // Get the metaOutput for the result build
-      const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
-
-      invariant(metaOutput, "Meta output for the result build is missing");
-
-      // Get the metaOutput for the entryPoint build
-      const entryPointMetaOutput =
-        entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
-
-      invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
-
       // Get the outputFile and the sourceMapFile for the result build
       const workerOutputFile = result.outputFiles.find(
         (file) => file.path === join(config.projectDir, "out", "stdin.js")
@@ -1309,11 +1300,6 @@ async function compileProject(
       await writeFile(join(tempDir, "worker.js.map"), workerSourcemapFile.text);
       // Save the entryPoint outputFile to /tmp/dir/index.js
       await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
-
-      logger.debug("Imports for the worker and entryPoint builds", {
-        workerImports: metaOutput.imports,
-        entryPointImports: entryPointMetaOutput.imports,
-      });
 
       const dependencies = await resolveRequiredDependencies(directDependenciesMeta, config);
 
