@@ -224,11 +224,6 @@ export async function createBackgroundTasks(
   }
 }
 
-//todo syncStaticSchedules
-//1. update
-//2. create
-//delete
-// - get all static ones and see if any are missing
 export async function syncStaticSchedules(
   tasks: TaskResource[],
   worker: BackgroundWorker,
