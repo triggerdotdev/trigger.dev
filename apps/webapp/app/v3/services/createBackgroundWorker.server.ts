@@ -254,10 +254,12 @@ export async function syncStaticSchedules(
   //create/update schedules (+ instances)
   for (const task of tasksWithStaticSchedules) {
     const existingSchedule = existingStaticSchedules.find(
-      (schedule) => schedule.taskIdentifier === task.id
+      (schedule) =>
+        schedule.taskIdentifier === task.id &&
+        schedule.instances.some((instance) => instance.environmentId === environment.id)
     );
 
-    if (task.schedule?.cron == null) continue;
+    if (task.schedule === undefined) continue;
 
     if (existingSchedule) {
       const schedule = await prisma.taskSchedule.update({
@@ -269,25 +271,13 @@ export async function syncStaticSchedules(
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
         },
-      });
-
-      //upsert an instance for this environment
-      const instance = await prisma.taskScheduleInstance.upsert({
-        where: {
-          taskScheduleId_environmentId: {
-            taskScheduleId: schedule.id,
-            environmentId: environment.id,
-          },
+        include: {
+          instances: true,
         },
-        create: {
-          taskScheduleId: schedule.id,
-          environmentId: environment.id,
-        },
-        update: {},
       });
 
       missingSchedules.delete(existingSchedule.id);
-      await registerNextService.call(instance.id);
+      await registerNextService.call(schedule.instances[0].id);
     } else {
       const newSchedule = await prisma.taskSchedule.create({
         data: {
