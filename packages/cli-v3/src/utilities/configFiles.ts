@@ -247,6 +247,15 @@ export async function resolveConfig(path: string, config: Config): Promise<Resol
     config.tsconfigPath = await findFilePath(path, "tsconfig.json");
   }
 
+  if (!config.additionalFiles) {
+    config.additionalFiles = [];
+  }
+
+  if (config.extraCACerts) {
+    config.additionalFiles.push(config.extraCACerts);
+    config.extraCACerts = config.extraCACerts.replace(/^(\.[.]?\/)+/, "");
+  }
+
   return config as ResolvedConfig;
 }
 
