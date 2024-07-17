@@ -318,8 +318,25 @@ export async function syncStaticSchedules(
   });
 
   for (const schedule of potentiallyDeletableSchedules) {
-    const canDelete =
+    const canDeleteSchedule =
       schedule.instances.length === 0 ||
       schedule.instances.every((instance) => instance.environmentId === environment.id);
+
+    if (canDeleteSchedule) {
+      //we can delete schedules with no instances other than ones for the current environment
+      await prisma.taskSchedule.delete({
+        where: {
+          id: schedule.id,
+        },
+      });
+    } else {
+      //otherwise we delete the instance (other environments remain untouched)
+      await prisma.taskScheduleInstance.deleteMany({
+        where: {
+          taskScheduleId: schedule.id,
+          environmentId: environment.id,
+        },
+      });
+    }
   }
 }
