@@ -9,6 +9,7 @@ import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
+import cronstrue from "cronstrue";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -270,21 +271,36 @@ export async function syncStaticSchedules(
         },
         data: {
           generatorExpression: task.schedule.cron,
+          generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
         },
-        include: {
-          instances: true,
-        },
       });
+
+      //upsert an instance for this environment
+      const instance = await prisma.taskScheduleInstance.upsert({
+        where: {
+          taskScheduleId_environmentId: {
+            taskScheduleId: schedule.id,
+            environmentId: environment.id,
+          },
+        },
+        create: {
+          taskScheduleId: schedule.id,
+          environmentId: environment.id,
+        },
+        update: {},
+      });
+
       missingSchedules.delete(existingSchedule.id);
-      await registerNextService.call(schedule.instances[0].id);
+      await registerNextService.call(instance.id);
     } else {
       const newSchedule = await prisma.taskSchedule.create({
         data: {
-          friendlyId: generateFriendlyId("schedule"),
+          friendlyId: generateFriendlyId("sched"),
           projectId: environment.projectId,
           taskIdentifier: task.id,
           generatorExpression: task.schedule.cron,
+          generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
           type: "STATIC",
           instances: {
