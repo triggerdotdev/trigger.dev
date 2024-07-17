@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { log } from "@clack/prompts";
-import { Metafile } from "esbuild";
 import { join } from "node:path";
 
 import { SkipLoggingError } from "../src/cli/common.js";
@@ -20,8 +19,6 @@ import { DependencyMeta } from "../src/utilities/javascriptProject.js";
 
 type HandleDependenciesOptions = {
   directDependenciesMeta: Record<string, DependencyMeta>;
-  entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
-  metaOutput: Metafile["outputs"]["out/stdin.js"];
   packageManager: PackageManager;
   resolvedConfig: ReadConfigResult;
   tempDir: string;
@@ -33,17 +30,10 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   }
   const {
     directDependenciesMeta,
-    entryPointMetaOutput,
-    metaOutput,
     packageManager,
     resolvedConfig: { config },
     tempDir,
   } = options;
-
-  logger.debug("Imports for the worker and entryPoint builds", {
-    workerImports: metaOutput.imports,
-    entryPointImports: entryPointMetaOutput.imports,
-  });
 
   const javascriptProject = new E2EJavascriptProject(config.projectDir, packageManager);
 

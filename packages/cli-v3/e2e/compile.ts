@@ -2,7 +2,7 @@ import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { basename, join, posix, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import invariant from "tiny-invariant";
 
 import {
@@ -67,6 +67,8 @@ export async function compile(options: CompileOptions) {
 
   const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
   const directDependenciesMeta = await e2eJsProject.extractDirectDependenciesMeta();
+
+  logger.debug("Direct dependencies metadata", directDependenciesMeta);
 
   const result = await build({
     stdin: {
@@ -161,27 +163,6 @@ export async function compile(options: CompileOptions) {
 
   logger.debug(`Writing compiled files to ${tempDir}`);
 
-  // Get the metaOutput for the result build
-  const pathsToProjectDir = relative(
-    join(process.cwd(), "e2e", "fixtures"),
-    config.projectDir
-  ).split(sep);
-
-  const metaOutput =
-    result.metafile!.outputs[
-      posix.join("e2e", "fixtures", ...pathsToProjectDir, "out", "stdin.js")
-    ];
-
-  invariant(metaOutput, "Meta output for the result build is missing");
-
-  // Get the metaOutput for the entryPoint build
-  const entryPointMetaOutput =
-    entryPointResult.metafile!.outputs[
-      posix.join("e2e", "fixtures", ...pathsToProjectDir, "out", "stdin.js")
-    ];
-
-  invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
-
   // Get the outputFile and the sourceMapFile for the result build
   const workerOutputFile = result.outputFiles.find(
     (file) => file.path === join(config.projectDir, "out", "stdin.js")
@@ -215,9 +196,7 @@ export async function compile(options: CompileOptions) {
 
   return {
     directDependenciesMeta,
-    workerMetaOutput: metaOutput,
     workerOutputFile,
-    entryPointMetaOutput,
     entryPointOutputFile,
   };
 }
