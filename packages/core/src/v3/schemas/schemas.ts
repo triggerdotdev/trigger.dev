@@ -206,6 +206,7 @@ export const Config = z.object({
   logLevel: z.string().optional(),
   enableConsoleLogging: z.boolean().optional(),
   postInstall: z.string().optional(),
+  extraCACerts: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Config>;

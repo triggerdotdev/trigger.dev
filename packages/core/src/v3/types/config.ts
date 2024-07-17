@@ -82,4 +82,13 @@ export interface ProjectConfig {
    * @example "prisma generate"
    */
   postInstall?: string;
+
+  /**
+   * CA Cert file to be added to NODE_EXTRA_CA_CERT environment variable in, useful in use with self signed cert in the trigger.dev environment.
+   *
+   * @example "./certs/ca.crt"
+   * Note: must start with "./" and be relative to the project root.
+   *   
+   */
+  extraCACerts?: string;
 }

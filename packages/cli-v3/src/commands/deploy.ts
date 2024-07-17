@@ -304,6 +304,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         pushImage: options.push,
         selfHostedRegistry: !!options.registry,
         noCache: options.noCache,
+        extraCACerts: resolvedConfig.config.extraCACerts,
       });
     }
 
@@ -330,6 +331,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         loadImage: options.loadImage,
         buildPlatform: options.buildPlatform,
         noCache: options.noCache,
+        extraCACerts: resolvedConfig.config.extraCACerts,
       },
       deploymentSpinner
     );
@@ -779,6 +781,7 @@ type BuildAndPushImageOptions = {
   loadImage: boolean;
   buildPlatform: string;
   noCache: boolean;
+  extraCACerts?: string;
 };
 
 type BuildAndPushImageResults =
@@ -837,6 +840,9 @@ async function buildAndPushImage(
       `TRIGGER_CONTENT_HASH=${options.contentHash}`,
       "--build-arg",
       `TRIGGER_PROJECT_REF=${options.projectRef}`,
+      ...(options.extraCACerts
+        ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`]
+        : []),
       "-t",
       `${options.registryHost}/${options.imageTag}`,
       ".",
@@ -961,6 +967,9 @@ async function buildAndPushSelfHostedImage(
       `TRIGGER_CONTENT_HASH=${options.contentHash}`,
       "--build-arg",
       `TRIGGER_PROJECT_REF=${options.projectRef}`,
+      ...(options.extraCACerts
+        ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`]
+        : []),
       "-t",
       imageRef,
       ".", // The build context

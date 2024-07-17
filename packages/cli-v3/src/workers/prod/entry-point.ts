@@ -1485,6 +1485,7 @@ function gatherProcessEnv() {
     TERM: process.env.TERM,
     NODE_PATH: process.env.NODE_PATH,
     HOME: process.env.HOME,
+    NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS,
   };
 
   // Filter out undefined values
