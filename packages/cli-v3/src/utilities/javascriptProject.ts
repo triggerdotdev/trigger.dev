@@ -112,13 +112,14 @@ export class JavascriptProject {
           });
         } catch (error) {
           recordSpanException(span, error);
-          span.end();
 
           logger.debug(`Failed to resolve internal dependencies using ${command.name}`, {
             error,
           });
 
           throw error;
+        } finally {
+          span.end();
         }
       }
     );
