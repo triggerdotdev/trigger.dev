@@ -1,5 +1,14 @@
 # internal-platform
 
+## 3.0.0-beta.49
+
+### Patch Changes
+
+- dbda820a7: - Prevent uncaught exceptions when handling WebSocket messages
+  - Improve CLI dev command WebSocket debug and error logging
+- e417aca87: Added config option extraCACerts to ProjectConfig type. This copies the ca file along with additionalFiles and sets NODE_EXTRA_CA_CERTS environment variable in built image as well as running the task.
+- d934feb02: Add more package exports that can be used from the web app
+
 ## 3.0.0-beta.48
 
 ## 3.0.0-beta.47
