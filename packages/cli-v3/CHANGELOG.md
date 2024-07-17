@@ -1,5 +1,20 @@
 # trigger.dev
 
+## 3.0.0-beta.49
+
+### Patch Changes
+
+- 9971de6a1: Increase span attribute value length limit to 2048
+- dbda820a7: - Prevent uncaught exceptions when handling WebSocket messages
+  - Improve CLI dev command WebSocket debug and error logging
+- c2707800a: Improve prisma errors for missing postinstall
+- d6c6dc993: try/catch opening the login URL
+- e417aca87: Added config option extraCACerts to ProjectConfig type. This copies the ca file along with additionalFiles and sets NODE_EXTRA_CA_CERTS environment variable in built image as well as running the task.
+- Updated dependencies [dbda820a7]
+- Updated dependencies [e417aca87]
+- Updated dependencies [d934feb02]
+  - @trigger.dev/core@3.0.0-beta.49
+
 ## 3.0.0-beta.48
 
 ### Patch Changes

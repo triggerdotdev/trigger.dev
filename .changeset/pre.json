@@ -46,6 +46,7 @@
   "changesets": [
     "afraid-sheep-joke",
     "angry-eagles-trade",
+    "angry-trees-drop",
     "beige-pears-explode",
     "beige-pens-dance",
     "big-tomatoes-deliver",
@@ -60,6 +61,7 @@
     "cool-comics-burn",
     "cool-glasses-bake",
     "cuddly-feet-approve",
+    "curly-monkeys-tell",
     "dry-walls-check",
     "dull-mangos-press",
     "eight-pumas-float",
@@ -67,9 +69,11 @@
     "famous-boats-tease",
     "fast-colts-relax",
     "few-students-share",
+    "fifty-lions-think",
     "five-toes-destroy",
     "friendly-walls-repair",
     "funny-swans-destroy",
+    "gorgeous-cycles-guess",
     "gorgeous-gorillas-compete",
     "green-bags-wink",
     "hot-buckets-behave",
@@ -97,6 +101,7 @@
     "mighty-parrots-sin",
     "modern-stingrays-end",
     "nasty-jars-pump",
+    "nervous-baboons-sin",
     "nervous-planets-sparkle",
     "nervous-seas-shave",
     "new-pants-beg",
@@ -176,6 +181,7 @@
     "violet-clocks-notice",
     "warm-olives-provide",
     "warm-planes-taste",
+    "yellow-roses-arrive",
     "young-snails-sell"
   ]
 }
