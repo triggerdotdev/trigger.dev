@@ -45,6 +45,14 @@ export class IndexDeploymentService extends BaseService {
 
     // just broadcast for now - there should only ever be one provider connected
     try {
+      // timeout the deployment if 180 seconds have passed and the deployment is still not indexed
+      await TimeoutDeploymentService.enqueue(
+        deployment.id,
+        "DEPLOYING",
+        "Could not index deployment in time",
+        new Date(Date.now() + 180_000)
+      );
+
       const responses = await socketIo.providerNamespace.timeout(30_000).emitWithAck("INDEX", {
         version: "v1",
         shortCode: deployment.shortCode,
@@ -61,15 +69,7 @@ export class IndexDeploymentService extends BaseService {
 
       logger.debug("Index ACK received", { responses });
 
-      if (responses.length === 0) {
-        // timeout the deployment if 180 seconds have passed and the deployment is still not indexed
-        await TimeoutDeploymentService.enqueue(
-          deployment.id,
-          "DEPLOYING",
-          "Could not index deployment in time",
-          new Date(Date.now() + 180_000)
-        );
-      } else {
+      if (responses.length > 0) {
         const indexFailed = new DeploymentIndexFailed();
 
         for (const response of responses) {
@@ -83,12 +83,20 @@ export class IndexDeploymentService extends BaseService {
 
       const indexFailed = new DeploymentIndexFailed();
 
-      await indexFailed.call(
-        deployment.friendlyId,
-        error instanceof Error
-          ? { message: error.message, name: error.name }
-          : { message: "Could not index deployment in time", name: "TimeoutError" }
-      );
+      let indexError = {
+        message: `Could not index deployment: ${error}`,
+        name: "IndexError",
+      };
+
+      if (error instanceof Error) {
+        if (error.message === "operation has timed out") {
+          indexError = { message: "Provider failed to respond in time", name: "TimeoutError" };
+        } else {
+          indexError = { message: error.message, name: error.name };
+        }
+      }
+
+      await indexFailed.call(deployment.friendlyId, indexError);
     }
   }
 

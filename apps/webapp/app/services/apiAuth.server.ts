@@ -153,6 +153,10 @@ export async function authenticatedEnvironmentForAuthentication(
   projectRef: string,
   slug: string
 ): Promise<AuthenticatedEnvironment> {
+  if (slug === "staging") {
+    slug = "stg";
+  }
+
   switch (auth.type) {
     case "apiKey": {
       if (auth.result.environment.project.externalRef !== projectRef) {

@@ -301,6 +301,8 @@ function EditEnvironmentVariablePanel({
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
+  const hiddenValues = Object.values(variable.values).filter((value) => !environments.map(e => e.id).includes(value.environment.id));
+
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
@@ -336,6 +338,12 @@ function EditEnvironmentVariablePanel({
           <input type="hidden" name="action" value="edit" />
           <input type="hidden" name="id" value={variable.id} />
           <input type="hidden" name="key" value={variable.key} />
+          {hiddenValues.map((value, index) => (
+            <Fragment key={index}>
+              <input type="hidden" name={`values[${index}].environmentId`} value={value.environment.id} />
+              <input type="hidden" name={`values[${index}].value`} value={value.value} />
+            </Fragment>
+          ))}
           <FormError id={id.errorId}>{id.error}</FormError>
           <Fieldset>
             <InputGroup fullWidth className="mb-5 mt-2">
@@ -351,6 +359,7 @@ function EditEnvironmentVariablePanel({
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
                 {environments.map((environment, index) => {
                   const value = variable.values[environment.id]?.value;
+                  index += hiddenValues.length;
                   return (
                     <Fragment key={environment.id}>
                       <input
