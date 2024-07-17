@@ -62,11 +62,11 @@ export class AuthenticatedSocketConnection {
     });
 
     ws.on("pong", (data) => {
-      logger.debug("[AuthenticatedSocketConnection] Received pong", {
-        id: this.id,
-        envId: this.authenticatedEnv.id,
-        data,
-      });
+      // logger.debug("[AuthenticatedSocketConnection] Received pong", {
+      //   id: this.id,
+      //   envId: this.authenticatedEnv.id,
+      //   data,
+      // });
     });
 
     this._pingService = new HeartbeatService({
@@ -76,10 +76,10 @@ export class AuthenticatedSocketConnection {
           return;
         }
 
-        logger.debug("[AuthenticatedSocketConnection] Sending ping", {
-          id: this.id,
-          envId: this.authenticatedEnv.id,
-        });
+        // logger.debug("[AuthenticatedSocketConnection] Sending ping", {
+        //   id: this.id,
+        //   envId: this.authenticatedEnv.id,
+        // });
 
         ws.ping();
       },
