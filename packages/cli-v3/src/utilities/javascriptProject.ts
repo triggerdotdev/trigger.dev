@@ -106,6 +106,7 @@ export class JavascriptProject {
         });
 
         try {
+          span.end();
           return await command.extractDirectDependenciesMeta({
             cwd: this.projectPath,
           });
