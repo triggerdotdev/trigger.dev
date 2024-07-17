@@ -126,6 +126,10 @@ export class UpsertTaskScheduleService extends BaseService {
           });
 
       if (existingSchedule) {
+        if (existingSchedule.type === "STATIC") {
+          throw new ServiceValidationError("Cannot update a static schedule");
+        }
+
         return await this.#updateExistingSchedule(tx, existingSchedule, schedule, projectId);
       } else {
         return await this.#createNewSchedule(tx, schedule, projectId, deduplicationKey);

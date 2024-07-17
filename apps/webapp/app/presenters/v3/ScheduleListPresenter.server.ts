@@ -45,10 +45,16 @@ export class ScheduleListPresenter extends BasePresenter {
     environments,
     search,
     page,
+    type,
     pageSize = DEFAULT_PAGE_SIZE,
   }: ScheduleListOptions) {
     const hasFilters =
-      tasks !== undefined || environments !== undefined || (search !== undefined && search !== "");
+      type !== undefined ||
+      tasks !== undefined ||
+      environments !== undefined ||
+      (search !== undefined && search !== "");
+
+    const filterType = type === "static" ? "STATIC" : type === "dynamic" ? "DYNAMIC" : undefined;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -106,6 +112,7 @@ export class ScheduleListPresenter extends BasePresenter {
             environmentId: environments ? { in: environments } : undefined,
           },
         },
+        type: filterType,
         AND: search
           ? {
               OR: [
@@ -168,6 +175,7 @@ export class ScheduleListPresenter extends BasePresenter {
               },
             }
           : undefined,
+        type: filterType,
         AND: search
           ? {
               OR: [
