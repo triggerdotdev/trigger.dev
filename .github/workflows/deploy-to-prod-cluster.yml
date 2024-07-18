@@ -54,7 +54,7 @@ jobs:
 
       - name: Create orchestration namespace
         run: |
-          kubectl create namespace orchestration --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace trigger --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Build Helm dependencies
         working-directory: ${{env.working-directory}}
@@ -70,19 +70,24 @@ jobs:
             --set ingress.ingressClassName=nginx \
             --set ingress.nginx.enabled=false \
             --set ingress.enabled=false \
-            --namespace orchestration \
+            --set trigger.env.LOGIN_ORIGIN="${{ secrets.PROD_TRIGGER_LOGIN_ORIGIN }}" \
+            --set trigger.env.APP_ORIGIN="${{ secrets.PROD_TRIGGER_LOGIN_ORIGIN }}" \
+            --set trigger.env.RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            --set trigger.env.AUTH_GITHUB_CLIENT_ID="${{ secrets.AUTH_GITHUB_CLIENT_ID }}" \
+            --set trigger.env.AUTH_GITHUB_CLIENT_SECRET="${{ secrets.AUTH_GITHUB_CLIENT_SECRET }}" \
+            --namespace trigger \
             --create-namespace \
             --debug
 
       - name: Verify deployment
         run: |
-          kubectl get pods -n orchestration
-          kubectl get ingress -n orchestration
-          kubectl get services -n orchestration
+          kubectl get pods -n trigger
+          kubectl get ingress -n orchestriggertration
+          kubectl get services -n orchestriggertriggertration
 
       - name: Display Ingress details
         run: |
-          kubectl get ingress -n orchestration -o yaml
+          kubectl get ingress -n trigger -o yaml
 
       - name: Temporarily disable webhook (if all else fails)
         if: failure()
@@ -96,6 +101,6 @@ jobs:
             --set ingress.ingressClassName=nginx \
             --set ingress.nginx.enabled=false \
             --set ingress.enabled=false \
-            --namespace orchestration \
+            --namespace trigger \
             --create-namespace \
             --debug
