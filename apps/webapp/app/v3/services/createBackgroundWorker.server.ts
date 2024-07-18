@@ -8,6 +8,9 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
+import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
+import cronstrue from "cronstrue";
+import { CheckScheduleService } from "./checkSchedule.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -68,6 +71,12 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      await syncDeclarativeSchedules(
+        body.metadata.tasks,
+        backgroundWorker,
+        environment,
+        this._prisma
+      );
 
       try {
         //send a notification that a new worker has been created
@@ -217,6 +226,158 @@ export async function createBackgroundTasks(
           worker,
         });
       }
+    }
+  }
+}
+
+//CreateDeclarativeScheduleError with a message
+export class CreateDeclarativeScheduleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CreateDeclarativeScheduleError";
+  }
+}
+
+export async function syncDeclarativeSchedules(
+  tasks: TaskResource[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const tasksWithDeclarativeSchedules = tasks.filter((task) => task.schedule);
+  logger.info("Syncing declarative schedules", {
+    tasksWithDeclarativeSchedules,
+    environment,
+  });
+
+  const existingDeclarativeSchedules = await prisma.taskSchedule.findMany({
+    where: {
+      type: "DECLARATIVE",
+      projectId: environment.projectId,
+    },
+    include: {
+      instances: true,
+    },
+  });
+
+  const checkSchedule = new CheckScheduleService(prisma);
+  const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
+
+  //start out by assuming they're all missing
+  const missingSchedules = new Set<string>(
+    existingDeclarativeSchedules.map((schedule) => schedule.id)
+  );
+
+  //create/update schedules (+ instances)
+  for (const task of tasksWithDeclarativeSchedules) {
+    if (task.schedule === undefined) continue;
+
+    const existingSchedule = existingDeclarativeSchedules.find(
+      (schedule) =>
+        schedule.taskIdentifier === task.id &&
+        schedule.instances.some((instance) => instance.environmentId === environment.id)
+    );
+
+    //this throws errors if the schedule is invalid
+    await checkSchedule.call(environment.projectId, {
+      cron: task.schedule.cron,
+      timezone: task.schedule.timezone,
+      taskIdentifier: task.id,
+      friendlyId: existingSchedule?.friendlyId,
+    });
+
+    if (existingSchedule) {
+      const schedule = await prisma.taskSchedule.update({
+        where: {
+          id: existingSchedule.id,
+        },
+        data: {
+          generatorExpression: task.schedule.cron,
+          generatorDescription: cronstrue.toString(task.schedule.cron),
+          timezone: task.schedule.timezone,
+        },
+        include: {
+          instances: true,
+        },
+      });
+
+      missingSchedules.delete(existingSchedule.id);
+      const instance = schedule.instances.at(0);
+      if (instance) {
+        await registerNextService.call(instance.id);
+      } else {
+        throw new CreateDeclarativeScheduleError(
+          `Missing instance for declarative schedule ${schedule.id}`
+        );
+      }
+    } else {
+      const newSchedule = await prisma.taskSchedule.create({
+        data: {
+          friendlyId: generateFriendlyId("sched"),
+          projectId: environment.projectId,
+          taskIdentifier: task.id,
+          generatorExpression: task.schedule.cron,
+          generatorDescription: cronstrue.toString(task.schedule.cron),
+          timezone: task.schedule.timezone,
+          type: "DECLARATIVE",
+          instances: {
+            create: [
+              {
+                environmentId: environment.id,
+              },
+            ],
+          },
+        },
+        include: {
+          instances: true,
+        },
+      });
+
+      const instance = newSchedule.instances.at(0);
+
+      if (instance) {
+        await registerNextService.call(instance.id);
+      } else {
+        throw new CreateDeclarativeScheduleError(
+          `Missing instance for declarative schedule ${newSchedule.id}`
+        );
+      }
+    }
+  }
+
+  //Delete instances for this environment
+  //Delete schedules that have no instances left
+  const potentiallyDeletableSchedules = await prisma.taskSchedule.findMany({
+    where: {
+      id: {
+        in: Array.from(missingSchedules),
+      },
+    },
+    include: {
+      instances: true,
+    },
+  });
+
+  for (const schedule of potentiallyDeletableSchedules) {
+    const canDeleteSchedule =
+      schedule.instances.length === 0 ||
+      schedule.instances.every((instance) => instance.environmentId === environment.id);
+
+    if (canDeleteSchedule) {
+      //we can delete schedules with no instances other than ones for the current environment
+      await prisma.taskSchedule.delete({
+        where: {
+          id: schedule.id,
+        },
+      });
+    } else {
+      //otherwise we delete the instance (other environments remain untouched)
+      await prisma.taskScheduleInstance.deleteMany({
+        where: {
+          taskScheduleId: schedule.id,
+          environmentId: environment.id,
+        },
+      });
     }
   }
 }

@@ -226,10 +226,19 @@ export const CanceledRunResponse = z.object({
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
 
+export const ScheduleType = z.union([z.literal("DECLARATIVE"), z.literal("IMPERATIVE")]);
+
 export const ScheduledTaskPayload = z.object({
   /** The schedule id associated with this run (you can have many schedules for the same task).
     You can use this to remove the schedule, update it, etc */
   scheduleId: z.string(),
+  /** The type of schedule – `"DECLARATIVE"` or `"IMPERATIVE"`.
+   *
+   * **DECLARATIVE** – defined inline on your `schedules.task` using the `cron` property. They can only be created, updated or deleted by modifying the `cron` property on your task.
+   *
+   * **IMPERATIVE** – created using the `schedules.create` functions or in the dashboard.
+   */
+  type: ScheduleType,
   /** When the task was scheduled to run.
    * Note this will be slightly different from `new Date()` because it takes a few ms to run the task.
    * 
@@ -315,6 +324,7 @@ export type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
 
 export const ScheduleObject = z.object({
   id: z.string(),
+  type: ScheduleType,
   task: z.string(),
   active: z.boolean(),
   deduplicationKey: z.string().nullish(),

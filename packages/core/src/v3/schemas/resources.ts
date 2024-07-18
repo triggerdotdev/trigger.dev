@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QueueOptions, RetryOptions } from "./schemas";
+import { QueueOptions, RetryOptions, ScheduleMetadata } from "./schemas";
 import { MachineConfig } from "./common";
 
 export const TaskResource = z.object({
@@ -10,6 +10,7 @@ export const TaskResource = z.object({
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
+  schedule: ScheduleMetadata.optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

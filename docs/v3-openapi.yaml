@@ -16,7 +16,7 @@ paths:
     post:
       operationId: create_schedule_v1
       summary: Create a schedule
-      description: Create a new schedule based on the specified options.
+      description: Create a new `IMPERATIVE` schedule based on the specified options.
       requestBody:
         required: true
         content:
@@ -127,7 +127,7 @@ paths:
     put:
       operationId: update_schedule_v1
       summary: Update Schedule
-      description: Update a schedule by its ID.
+      description: Update a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
       parameters:
         - in: path
           name: schedule_id
@@ -173,7 +173,7 @@ paths:
     delete:
       operationId: delete_schedule_v1
       summary: Delete Schedule
-      description: Delete a schedule by its ID.
+      description: Delete a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
       parameters:
         - in: path
           name: schedule_id
@@ -203,7 +203,7 @@ paths:
     post:
       operationId: deactivate_schedule_v1
       summary: Deactivate Schedule.
-      description: Deactivate a schedule by its ID.
+      description: Deactivate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
       parameters:
         - in: path
           name: schedule_id
@@ -237,7 +237,7 @@ paths:
     post:
       operationId: activate_schedule_v1
       summary: Activate Schedule
-      description: Activate a schedule by its ID.
+      description: Activate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.
       parameters:
         - in: path
           name: schedule_id
@@ -1971,6 +1971,10 @@ components:
           example: my-scheduled-task
           description: The id of the scheduled task that will be triggered by this
             schedule
+        "type":
+          type: string
+          example: IMPERATIVE
+          description: The type of schedule, `DECLARATIVE` or `IMPERATIVE`. Declarative schedules are declared in your code by setting the `cron` property on a `schedules.task`. Imperative schedules are created in the dashboard or by using the imperative SDK functions like `schedules.create()`.
         active:
           type: boolean
           example: true

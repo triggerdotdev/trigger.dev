@@ -1,6 +1,6 @@
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { RuntimeEnvironment } from "@trigger.dev/database";
+import { type RuntimeEnvironment } from "@trigger.dev/database";
 import { useCallback } from "react";
 import { z } from "zod";
 import { Input } from "~/components/primitives/Input";
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../primitives/SimpleSelect";
+import { ScheduleTypeCombo } from "./ScheduleType";
 
 export const ScheduleListFilters = z.object({
   page: z.coerce.number().default(1),
@@ -28,6 +29,7 @@ export const ScheduleListFilters = z.object({
     .string()
     .optional()
     .transform((value) => (value ? value.split(",") : undefined)),
+  type: z.union([z.literal("declarative"), z.literal("imperative")]).optional(),
   search: z.string().optional(),
 });
 
@@ -48,7 +50,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { environments, tasks, page, search } = ScheduleListFilters.parse(
+  const { environments, tasks, page, search, type } = ScheduleListFilters.parse(
     Object.fromEntries(searchParams.entries())
   );
 
@@ -71,6 +73,10 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
 
   const handleEnvironmentChange = useCallback((value: string | typeof All) => {
     handleFilterChange("environments", value === "ALL" ? undefined : value);
+  }, []);
+
+  const handleTypeChange = useCallback((value: string | typeof All) => {
+    handleFilterChange("type", value === "ALL" ? undefined : value);
   }, []);
 
   const handleSearchChange = useThrottle((value: string) => {
@@ -97,6 +103,30 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
         defaultValue={search}
         onChange={(e) => handleSearchChange(e.target.value)}
       />
+      <SelectGroup>
+        <Select name="type" value={type ?? "ALL"} onValueChange={handleTypeChange}>
+          <SelectTrigger size="minimal" width="full">
+            <SelectValue placeholder={"Select type"} className="ml-2 whitespace-nowrap p-0" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={"ALL"}>
+              <Paragraph
+                variant="extra-small"
+                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
+              >
+                All types
+              </Paragraph>
+            </SelectItem>
+            <SelectItem value={"declarative"}>
+              <ScheduleTypeCombo type="DECLARATIVE" className="text-xs text-text-dimmed" />
+            </SelectItem>
+            <SelectItem value={"imperative"}>
+              <ScheduleTypeCombo type="IMPERATIVE" className="text-xs text-text-dimmed" />
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </SelectGroup>
+
       <SelectGroup>
         <Select
           name="environment"

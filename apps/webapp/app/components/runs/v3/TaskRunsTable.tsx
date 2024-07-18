@@ -230,8 +230,12 @@ export function TaskRunsTable({
                       formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
                         style: "short",
                       })
-                    ) : (
+                    ) : run.isCancellable ? (
                       <LiveTimer startTime={new Date(run.createdAt)} />
+                    ) : (
+                      formatDuration(new Date(run.createdAt), new Date(run.updatedAt), {
+                        style: "short",
+                      })
                     )}
                   </div>
                 </TableCell>

@@ -3,7 +3,11 @@ import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { CreateBackgroundWorkerService } from "~/v3/services/createBackgroundWorker.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import {
+  CreateBackgroundWorkerService,
+  CreateDeclarativeScheduleError,
+} from "~/v3/services/createBackgroundWorker.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -42,14 +46,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const service = new CreateBackgroundWorkerService();
 
-  const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
+  try {
+    const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
 
-  return json(
-    {
-      id: backgroundWorker.friendlyId,
-      version: backgroundWorker.version,
-      contentHash: backgroundWorker.contentHash,
-    },
-    { status: 200 }
-  );
+    return json(
+      {
+        id: backgroundWorker.friendlyId,
+        version: backgroundWorker.version,
+        contentHash: backgroundWorker.contentHash,
+      },
+      { status: 200 }
+    );
+  } catch (e) {
+    logger.error("Failed to create background worker", { error: e });
+
+    if (e instanceof ServiceValidationError) {
+      return json({ error: e.message }, { status: 400 });
+    } else if (e instanceof CreateDeclarativeScheduleError) {
+      return json({ error: e.message }, { status: 400 });
+    }
+
+    return json({ error: "Failed to create background worker" }, { status: 500 });
+  }
 }
