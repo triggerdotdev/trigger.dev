@@ -311,7 +311,7 @@ export default function Page() {
             </div>
             {!isImperative && (
               <InfoPanel
-                title="Editing static schedules"
+                title="Editing declarative schedules"
                 icon={BookOpenIcon}
                 iconClassName="text-indigo-500"
                 variant="info"
@@ -319,8 +319,8 @@ export default function Page() {
                 to="https://trigger.dev/docs/v3/tasks-scheduled"
                 panelClassName="max-w-full"
               >
-                You can only edit a static schedule by updating your schedules.task and then running
-                the CLI dev and deploy commands.
+                You can only edit a declarative schedule by updating your schedules.task and then
+                running the CLI dev and deploy commands.
               </InfoPanel>
             )}
           </div>
