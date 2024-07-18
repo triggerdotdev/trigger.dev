@@ -50,13 +50,33 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
         },
       });
 
-      await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
-      await syncDeclarativeSchedules(
-        body.metadata.tasks,
-        backgroundWorker,
-        environment,
-        this._prisma
-      );
+      try {
+        await createBackgroundTasks(
+          body.metadata.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma
+        );
+        await syncDeclarativeSchedules(
+          body.metadata.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma
+        );
+      } catch (error) {
+        await this._prisma.workerDeployment.update({
+          where: {
+            id: deployment.id,
+          },
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            errorData: error instanceof Error ? error.message : JSON.stringify(error),
+          },
+        });
+
+        throw error;
+      }
 
       // Link the deployment with the background worker
       await this._prisma.workerDeployment.update({
