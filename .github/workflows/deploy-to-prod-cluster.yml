@@ -72,9 +72,9 @@ jobs:
             --set ingress.enabled=false \
             --set trigger.env.LOGIN_ORIGIN="${{ secrets.PROD_TRIGGER_LOGIN_ORIGIN }}" \
             --set trigger.env.APP_ORIGIN="${{ secrets.PROD_TRIGGER_LOGIN_ORIGIN }}" \
-            --set trigger.env.RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
-            --set trigger.env.AUTH_GITHUB_CLIENT_ID="${{ secrets.AUTH_GITHUB_CLIENT_ID }}" \
-            --set trigger.env.AUTH_GITHUB_CLIENT_SECRET="${{ secrets.AUTH_GITHUB_CLIENT_SECRET }}" \
+            --set trigger.env.RESEND_API_KEY="${{ secrets.RESEND_KEY }}" \
+            --set trigger.env.AUTH_GITHUB_CLIENT_ID="${{ secrets.PROD_AUTH_GITHUB_CLIENT_ID }}" \
+            --set trigger.env.AUTH_GITHUB_CLIENT_SECRET="${{ secrets.PROD_AUTH_GITHUB_CLIENT_SECRET }}" \
             --namespace trigger \
             --create-namespace \
             --debug
