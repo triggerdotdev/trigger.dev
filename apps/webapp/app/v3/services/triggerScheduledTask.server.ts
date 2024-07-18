@@ -94,6 +94,7 @@ export class TriggerScheduledTaskService extends BaseService {
 
         const payload = {
           scheduleId: instance.taskSchedule.friendlyId,
+          type: instance.taskSchedule.type,
           timestamp: instance.nextScheduledTimestamp,
           lastTimestamp: instance.lastScheduledTimestamp ?? undefined,
           externalId: instance.taskSchedule.externalId ?? undefined,
