@@ -85,7 +85,7 @@ export class CheckScheduleService extends BaseService {
 
       if (schedulesCount >= limit) {
         throw new ServiceValidationError(
-          `You have created ${schedulesCount}/${limit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
+          `You have created ${schedulesCount}/${limit} schedules so you'll need to increase your limits or delete some schedules.`
         );
       }
     }
