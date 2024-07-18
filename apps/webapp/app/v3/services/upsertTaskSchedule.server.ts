@@ -1,16 +1,13 @@
 import { Prisma, TaskSchedule } from "@trigger.dev/database";
+import cronstrue from "cronstrue";
 import { nanoid } from "nanoid";
-import { ZodError } from "zod";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { CronPattern, UpsertSchedule } from "../schedules";
-import { BaseService, ServiceValidationError } from "./baseService.server";
-import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
-import cronstrue from "cronstrue";
+import { UpsertSchedule } from "../schedules";
 import { calculateNextScheduledTimestamp } from "../utils/calculateNextSchedule.server";
-import { getTimezones } from "~/utils/timezones.server";
-import { env } from "~/env.server";
-import { getLimit } from "~/services/platform.v3.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
+import { CheckScheduleService } from "./checkSchedule.server";
+import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -30,79 +27,9 @@ type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
 
 export class UpsertTaskScheduleService extends BaseService {
   public async call(projectId: string, schedule: UpsertTaskScheduleServiceOptions) {
-    //validate the cron expression
-    try {
-      CronPattern.parse(schedule.cron);
-    } catch (e) {
-      if (e instanceof ZodError) {
-        throw new ServiceValidationError(`Invalid cron expression: ${e.issues[0].message}`);
-      }
-
-      throw new ServiceValidationError(
-        `Invalid cron expression: ${e instanceof Error ? e.message : JSON.stringify(e)}`
-      );
-    }
-
-    const task = await this._prisma.backgroundWorkerTask.findFirst({
-      where: {
-        slug: schedule.taskIdentifier,
-        projectId: projectId,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    if (!task) {
-      throw new ServiceValidationError(
-        `Task with identifier ${schedule.taskIdentifier} not found in project.`
-      );
-    }
-
-    if (task.triggerSource !== "SCHEDULED") {
-      throw new ServiceValidationError(
-        `Task with identifier ${schedule.taskIdentifier} is not a scheduled task.`
-      );
-    }
-
-    //if creating a schedule, check they're under the limits
-    if (!schedule.friendlyId) {
-      //check they're within their limit
-      const project = await this._prisma.project.findFirst({
-        where: {
-          id: projectId,
-        },
-        select: {
-          organizationId: true,
-        },
-      });
-
-      if (!project) {
-        throw new ServiceValidationError("Project not found");
-      }
-
-      const limit = await getLimit(project.organizationId, "schedules", 500);
-      const schedulesCount = await this._prisma.taskSchedule.count({
-        where: {
-          projectId,
-        },
-      });
-
-      if (schedulesCount >= limit) {
-        throw new ServiceValidationError(
-          `You have created ${schedulesCount}/${limit} schedules so you'll need to increase your limits or delete some schedules. Increase your limits by contacting support.`
-        );
-      }
-    }
-
-    if (schedule.timezone) {
-      const possibleTimezones = getTimezones();
-      if (!possibleTimezones.includes(schedule.timezone)) {
-        throw new ServiceValidationError(
-          `Invalid IANA timezone: "${schedule.timezone}". View the list of valid timezones at ${env.APP_ORIGIN}/timezones`
-        );
-      }
-    }
+    //this throws errors if the schedule is invalid
+    const checkSchedule = new CheckScheduleService(this._prisma);
+    await checkSchedule.call(projectId, schedule);
 
     const result = await $transaction(this._prisma, async (tx) => {
       const deduplicationKey =

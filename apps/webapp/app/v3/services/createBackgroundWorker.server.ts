@@ -10,6 +10,7 @@ import { BaseService } from "./baseService.server";
 import { projectPubSub } from "./projectPubSub.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";
+import { CheckScheduleService } from "./checkSchedule.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -229,6 +230,14 @@ export async function createBackgroundTasks(
   }
 }
 
+//CreateDeclarativeScheduleError with a message
+export class CreateDeclarativeScheduleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CreateDeclarativeScheduleError";
+  }
+}
+
 export async function syncDeclarativeSchedules(
   tasks: TaskResource[],
   worker: BackgroundWorker,
@@ -251,6 +260,7 @@ export async function syncDeclarativeSchedules(
     },
   });
 
+  const checkSchedule = new CheckScheduleService(prisma);
   const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
 
   //start out by assuming they're all missing
@@ -260,13 +270,21 @@ export async function syncDeclarativeSchedules(
 
   //create/update schedules (+ instances)
   for (const task of tasksWithDeclarativeSchedules) {
+    if (task.schedule === undefined) continue;
+
     const existingSchedule = existingDeclarativeSchedules.find(
       (schedule) =>
         schedule.taskIdentifier === task.id &&
         schedule.instances.some((instance) => instance.environmentId === environment.id)
     );
 
-    if (task.schedule === undefined) continue;
+    //this throws errors if the schedule is invalid
+    await checkSchedule.call(environment.projectId, {
+      cron: task.schedule.cron,
+      timezone: task.schedule.timezone,
+      taskIdentifier: task.id,
+      friendlyId: existingSchedule?.friendlyId,
+    });
 
     if (existingSchedule) {
       const schedule = await prisma.taskSchedule.update({
@@ -288,9 +306,9 @@ export async function syncDeclarativeSchedules(
       if (instance) {
         await registerNextService.call(instance.id);
       } else {
-        logger.error("Missing instance for declarative schedule", {
-          schedule,
-        });
+        throw new CreateDeclarativeScheduleError(
+          `Missing instance for declarative schedule ${schedule.id}`
+        );
       }
     } else {
       const newSchedule = await prisma.taskSchedule.create({
@@ -315,7 +333,15 @@ export async function syncDeclarativeSchedules(
         },
       });
 
-      await registerNextService.call(newSchedule.instances[0].id);
+      const instance = newSchedule.instances.at(0);
+
+      if (instance) {
+        await registerNextService.call(instance.id);
+      } else {
+        throw new CreateDeclarativeScheduleError(
+          `Missing instance for declarative schedule ${newSchedule.id}`
+        );
+      }
     }
   }
 
