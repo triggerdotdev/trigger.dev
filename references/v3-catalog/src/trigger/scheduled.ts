@@ -22,7 +22,10 @@ export const firstScheduledTask = schedules.task({
 
 export const secondScheduledTask = schedules.task({
   id: "second-scheduled-task",
-  cron: "0 */3 * * *",
+  cron: {
+    pattern: "0 5 * * *",
+    timezone: "Asia/Tokyo",
+  },
   run: async (payload) => {},
 });
 
