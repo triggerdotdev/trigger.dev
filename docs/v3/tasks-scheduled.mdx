@@ -3,21 +3,13 @@ title: "Scheduled tasks"
 description: "A task that is triggered on a recurring schedule using CRON syntax."
 ---
 
-To use scheduled tasks you need to do two things:
-
-1. Define a task in your code using `schedules.task()`.
-2. Attach a schedule to the task either using the dashboard or the SDK.
-
-<Info>A task can have multiple schedules attached to it.</Info>
-
-Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/v3/trigger-folder), and you [can configure them](/v3/tasks-overview#defining-a-task).
-
 ## Defining a scheduled task
+
+This task will run when any of the attached schedules trigger. They have a predefined payload with some useful properties:
 
 ```ts
 import { schedules } from "@trigger.dev/sdk/v3";
 
-//this task will run when any of the attached schedules trigger
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
   run: async (payload) => {
@@ -67,6 +59,66 @@ You can see from the comments that the payload has several useful properties:
   This task will NOT get triggered on a schedule until you attach a schedule to it. Read on for how
   to do that.
 </Note>
+
+Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/v3/trigger-folder), and you [can configure them](/v3/tasks-overview#defining-a-task).
+
+## How to attach a schedule
+
+Now that we've defined a scheduled task, we need to define when it will actually run. To do this we need to attach one or more schedules.
+
+There are two ways of doing this:
+
+- **Declarative:** defined on your `schedules.task`. They sync when you run the dev command or deploy.
+- **Imperative:** created from the dashboard or by using the imperative SDK functions like `schedules.create()`.
+
+<Info>
+  A scheduled task can have multiple schedules attached to it, including a declarative schedule
+  and/or many imperative schedules.
+</Info>
+
+### Declarative schedules
+
+These sync when you run the [dev](/v3/cli-dev) or [deploy](/v3/cli-deploy) commands.
+
+To create them you add the `cron` property to your `schedules.task()`. This property is optional and is only used if you want to add a declarative schedule to your task:
+
+```ts
+export const firstScheduledTask = schedules.task({
+  id: "first-scheduled-task",
+  //every two hours (UTC timezone)
+  cron: "0 */2 * * *",
+  run: async (payload, { ctx }) => {
+    //do something
+  },
+});
+```
+
+If you use a string it will be in UTC. Alternatively, you can specify a timezone like this:
+
+```ts
+export const secondScheduledTask = schedules.task({
+  id: "second-scheduled-task",
+  cron: {
+    //5am every day Tokyo time
+    pattern: "0 5 * * *",
+    timezone: "Asia/Tokyo",
+  },
+  run: async (payload) => {},
+});
+```
+
+When you run the [dev](/v3/cli-dev) or [deploy](/v3/cli-deploy) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
+
+### Imperative schedules
+
+Alternatively you can explicitly attach schedules to a `schedules.task`. You can do this in the Schedules page in the dashboard by just pressing the "New schedule" button, or you can use the SDK to create schedules.
+
+The advantage of imperative schedules is that they can be created dynamically, for example, you could create a schedule for each user in your database. They can also be activated, disabled, edited, and deleted without deploying new code by using the SDK or dashboard.
+
+To use imperative schedules you need to do two things:
+
+1. Define a task in your code using `schedules.task()`.
+2. Attach 1+ schedules to the task either using the dashboard or the SDK.
 
 ## Supported CRON syntax
 
