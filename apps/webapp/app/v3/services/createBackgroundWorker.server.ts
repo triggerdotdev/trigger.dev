@@ -284,7 +284,14 @@ export async function syncDeclarativeSchedules(
       });
 
       missingSchedules.delete(existingSchedule.id);
-      await registerNextService.call(schedule.instances[0].id);
+      const instance = schedule.instances.at(0);
+      if (instance) {
+        await registerNextService.call(instance.id);
+      } else {
+        logger.error("Missing instance for declarative schedule", {
+          schedule,
+        });
+      }
     } else {
       const newSchedule = await prisma.taskSchedule.create({
         data: {
