@@ -87,7 +87,7 @@ trigger:
 postgresql:
   ## @param postgresql.enabled Enable Postgres
   ##
-  enabled: true
+  enabled: false
   ## @param postgresql.name Name used to build variables (deprecated)
   ##
   name: "postgresql"
