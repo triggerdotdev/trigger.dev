@@ -204,13 +204,13 @@ export default function Page() {
 
   const isUtc = schedule.timezone === "UTC";
 
-  const isDynamic = schedule.type === "DYNAMIC";
+  const isImperative = schedule.type === "IMPERATIVE";
 
   return (
     <div
       className={cn(
         "grid h-full max-h-full overflow-hidden bg-background-bright",
-        isDynamic ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
+        isImperative ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -241,7 +241,7 @@ export default function Page() {
               <Property label="Environments">
                 <EnvironmentLabels size="small" environments={schedule.environments} />
               </Property>
-              {isDynamic && (
+              {isImperative && (
                 <>
                   <Property label="External ID">
                     {schedule.externalId ? schedule.externalId : "–"}
@@ -309,7 +309,7 @@ export default function Page() {
                 </TableBody>
               </Table>
             </div>
-            {!isDynamic && (
+            {!isImperative && (
               <InfoPanel
                 title="Editing static schedules"
                 icon={BookOpenIcon}
@@ -326,7 +326,7 @@ export default function Page() {
           </div>
         </div>
       </div>
-      {isDynamic && (
+      {isImperative && (
         <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
           <div className="flex items-center gap-4">
             <Form method="post">

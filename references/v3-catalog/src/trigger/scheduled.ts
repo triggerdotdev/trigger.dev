@@ -3,8 +3,8 @@ import { logger, schedules, task } from "@trigger.dev/sdk/v3";
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
   //every other minute
-  cron: "*/6 * * * *",
-  run: async (payload) => {
+  cron: "0 */2 * * *",
+  run: async (payload, { ctx }) => {
     const distanceInMs =
       payload.timestamp.getTime() - (payload.lastTimestamp ?? new Date()).getTime();
 

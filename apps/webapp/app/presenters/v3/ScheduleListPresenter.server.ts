@@ -54,7 +54,8 @@ export class ScheduleListPresenter extends BasePresenter {
       environments !== undefined ||
       (search !== undefined && search !== "");
 
-    const filterType = type === "static" ? "STATIC" : type === "dynamic" ? "DYNAMIC" : undefined;
+    const filterType =
+      type === "declarative" ? "DECLARATIVE" : type === "imperative" ? "IMPERATIVE" : undefined;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({

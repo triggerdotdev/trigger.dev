@@ -126,8 +126,8 @@ export class UpsertTaskScheduleService extends BaseService {
           });
 
       if (existingSchedule) {
-        if (existingSchedule.type === "STATIC") {
-          throw new ServiceValidationError("Cannot update a static schedule");
+        if (existingSchedule.type === "DECLARATIVE") {
+          throw new ServiceValidationError("Cannot update a declarative schedule");
         }
 
         return await this.#updateExistingSchedule(tx, existingSchedule, schedule, projectId);
@@ -321,6 +321,7 @@ export class UpsertTaskScheduleService extends BaseService {
   #createReturnObject(taskSchedule: TaskSchedule, instances: InstanceWithEnvironment[]) {
     return {
       id: taskSchedule.friendlyId,
+      type: taskSchedule.type,
       task: taskSchedule.taskIdentifier,
       active: taskSchedule.active,
       externalId: taskSchedule.externalId,

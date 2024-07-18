@@ -37,14 +37,13 @@ export class DeleteTaskScheduleService extends BaseService {
         throw new Error("Schedule not found");
       }
 
-      if (schedule.type === "STATIC") {
-        throw new Error("Cannot delete static schedules");
+      if (schedule.type === "DECLARATIVE") {
+        throw new Error("Cannot delete declarative schedules");
       }
 
       await this._prisma.taskSchedule.delete({
         where: {
           friendlyId,
-          type: "DYNAMIC",
         },
       });
     } catch (e) {

@@ -38,8 +38,8 @@ export class SetActiveOnTaskScheduleService extends BaseService {
         throw new Error("Schedule not found");
       }
 
-      if (schedule.type === "STATIC") {
-        throw new Error("Cannot enable/disable static schedules");
+      if (schedule.type === "DECLARATIVE") {
+        throw new Error("Cannot enable/disable declarative schedules");
       }
 
       await this._prisma.taskSchedule.update({

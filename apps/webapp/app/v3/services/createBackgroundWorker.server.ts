@@ -70,7 +70,12 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
-      await syncStaticSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      await syncDeclarativeSchedules(
+        body.metadata.tasks,
+        backgroundWorker,
+        environment,
+        this._prisma
+      );
 
       try {
         //send a notification that a new worker has been created
@@ -224,21 +229,21 @@ export async function createBackgroundTasks(
   }
 }
 
-export async function syncStaticSchedules(
+export async function syncDeclarativeSchedules(
   tasks: TaskResource[],
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction
 ) {
-  const tasksWithStaticSchedules = tasks.filter((task) => task.schedule);
-  logger.info("Syncing static schedules", {
-    tasksWithStaticSchedules,
+  const tasksWithDeclarativeSchedules = tasks.filter((task) => task.schedule);
+  logger.info("Syncing declarative schedules", {
+    tasksWithDeclarativeSchedules,
     environment,
   });
 
-  const existingStaticSchedules = await prisma.taskSchedule.findMany({
+  const existingDeclarativeSchedules = await prisma.taskSchedule.findMany({
     where: {
-      type: "STATIC",
+      type: "DECLARATIVE",
       projectId: environment.projectId,
     },
     include: {
@@ -249,11 +254,13 @@ export async function syncStaticSchedules(
   const registerNextService = new RegisterNextTaskScheduleInstanceService(prisma);
 
   //start out by assuming they're all missing
-  const missingSchedules = new Set<string>(existingStaticSchedules.map((schedule) => schedule.id));
+  const missingSchedules = new Set<string>(
+    existingDeclarativeSchedules.map((schedule) => schedule.id)
+  );
 
   //create/update schedules (+ instances)
-  for (const task of tasksWithStaticSchedules) {
-    const existingSchedule = existingStaticSchedules.find(
+  for (const task of tasksWithDeclarativeSchedules) {
+    const existingSchedule = existingDeclarativeSchedules.find(
       (schedule) =>
         schedule.taskIdentifier === task.id &&
         schedule.instances.some((instance) => instance.environmentId === environment.id)
@@ -287,7 +294,7 @@ export async function syncStaticSchedules(
           generatorExpression: task.schedule.cron,
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
-          type: "STATIC",
+          type: "DECLARATIVE",
           instances: {
             create: [
               {

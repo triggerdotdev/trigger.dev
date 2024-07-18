@@ -29,7 +29,7 @@ export const ScheduleListFilters = z.object({
     .string()
     .optional()
     .transform((value) => (value ? value.split(",") : undefined)),
-  type: z.union([z.literal("static"), z.literal("dynamic")]).optional(),
+  type: z.union([z.literal("declarative"), z.literal("imperative")]).optional(),
   search: z.string().optional(),
 });
 
@@ -117,11 +117,11 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
                 All types
               </Paragraph>
             </SelectItem>
-            <SelectItem value={"static"}>
-              <ScheduleTypeCombo type="STATIC" className="text-xs text-text-dimmed" />
+            <SelectItem value={"declarative"}>
+              <ScheduleTypeCombo type="DECLARATIVE" className="text-xs text-text-dimmed" />
             </SelectItem>
-            <SelectItem value={"dynamic"}>
-              <ScheduleTypeCombo type="DYNAMIC" className="text-xs text-text-dimmed" />
+            <SelectItem value={"imperative"}>
+              <ScheduleTypeCombo type="IMPERATIVE" className="text-xs text-text-dimmed" />
             </SelectItem>
           </SelectContent>
         </Select>

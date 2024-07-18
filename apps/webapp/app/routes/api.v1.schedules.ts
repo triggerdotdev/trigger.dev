@@ -50,6 +50,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const responseObject: ScheduleObject = {
       id: schedule.id,
+      type: schedule.type,
       task: schedule.task,
       active: schedule.active,
       generator: {

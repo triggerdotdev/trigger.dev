@@ -3,7 +3,7 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
-import { createBackgroundTasks, syncStaticSchedules } from "./createBackgroundWorker.server";
+import { createBackgroundTasks, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { projectPubSub } from "./projectPubSub.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -51,7 +51,12 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       });
 
       await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
-      await syncStaticSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      await syncDeclarativeSchedules(
+        body.metadata.tasks,
+        backgroundWorker,
+        environment,
+        this._prisma
+      );
 
       // Link the deployment with the background worker
       await this._prisma.workerDeployment.update({

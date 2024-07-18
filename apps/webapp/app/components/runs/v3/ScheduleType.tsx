@@ -13,17 +13,17 @@ export function ScheduleTypeCombo({ type, className }: { type: ScheduleType; cla
 
 export function ScheduleTypeIcon({ type }: { type: ScheduleType }) {
   switch (type) {
-    case "DYNAMIC":
+    case "IMPERATIVE":
       return <ArrowsRightLeftIcon className="size-4" />;
-    case "STATIC":
+    case "DECLARATIVE":
       return <ArchiveBoxIcon className="size-4" />;
   }
 }
 export function scheduleTypeName(type: ScheduleType) {
   switch (type) {
-    case "DYNAMIC":
-      return "Dynamic";
-    case "STATIC":
-      return "Static";
+    case "IMPERATIVE":
+      return "Imperative";
+    case "DECLARATIVE":
+      return "Declarative";
   }
 }

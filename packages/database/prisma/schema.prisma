@@ -2231,7 +2231,7 @@ model WorkerDeploymentPromotion {
 model TaskSchedule {
   id String @id @default(cuid())
 
-  type ScheduleType @default(DYNAMIC)
+  type ScheduleType @default(IMPERATIVE)
 
   ///users see this as `id`. They start with schedule_
   friendlyId     String @unique
@@ -2270,8 +2270,10 @@ model TaskSchedule {
 }
 
 enum ScheduleType {
-  STATIC
-  DYNAMIC
+  /// defined on your task using the `cron` property
+  DECLARATIVE
+  /// explicit calls to the SDK are used to create, or using the dashboard
+  IMPERATIVE
 }
 
 enum ScheduleGeneratorType {

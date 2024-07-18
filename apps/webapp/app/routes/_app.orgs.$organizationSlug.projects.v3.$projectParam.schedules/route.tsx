@@ -340,10 +340,10 @@ function SchedulesTable({
               <div className="flex max-w-xs flex-col gap-4 p-1">
                 <div>
                   <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <ScheduleTypeCombo type="STATIC" />
+                    <ScheduleTypeCombo type="DECLARATIVE" />
                   </div>
                   <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                    Static schedules are defined in a{" "}
+                    Declarative schedules are defined in a{" "}
                     <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
                     <InlineCode variant="extra-small">cron</InlineCode>
                     property.
@@ -356,10 +356,10 @@ function SchedulesTable({
                 </div>
                 <div>
                   <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <ScheduleTypeCombo type="DYNAMIC" />
+                    <ScheduleTypeCombo type="IMPERATIVE" />
                   </div>
                   <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                    Dynamic schedules are defined here in the dashboard or by using the SDK
+                    Imperative schedules are defined here in the dashboard or by using the SDK
                     functions to create or delete them.
                   </Paragraph>
                   <Paragraph variant="small" className="!text-wrap text-text-dimmed">
@@ -411,7 +411,7 @@ function SchedulesTable({
                   <ScheduleTypeCombo type={schedule.type} />
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.type === "DYNAMIC"
+                  {schedule.type === "IMPERATIVE"
                     ? schedule.externalId
                       ? schedule.externalId
                       : "–"
@@ -437,7 +437,7 @@ function SchedulesTable({
                   )}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.type === "DYNAMIC"
+                  {schedule.type === "IMPERATIVE"
                     ? schedule.userProvidedDeduplicationKey
                       ? schedule.deduplicationKey
                       : "–"
@@ -447,7 +447,7 @@ function SchedulesTable({
                   <EnvironmentLabels environments={schedule.environments} size="small" />
                 </TableCell>
                 <TableCell to={path}>
-                  {schedule.type === "DYNAMIC" ? (
+                  {schedule.type === "IMPERATIVE" ? (
                     <EnabledStatus enabled={schedule.active} />
                   ) : (
                     "N/A"

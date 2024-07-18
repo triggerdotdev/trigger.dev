@@ -17,7 +17,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     friendlyId: scheduleParam,
   });
 
-  if (result.schedule?.type === "STATIC") {
+  if (result.schedule?.type === "DECLARATIVE") {
     throw redirect(v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }));
   }
 
