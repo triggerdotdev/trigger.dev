@@ -64,6 +64,9 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           this._prisma
         );
       } catch (error) {
+        const name = error instanceof Error ? error.name : "UnknownError";
+        const message = error instanceof Error ? error.message : JSON.stringify(error);
+
         await this._prisma.workerDeployment.update({
           where: {
             id: deployment.id,
@@ -71,7 +74,10 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
           data: {
             status: "FAILED",
             failedAt: new Date(),
-            errorData: error instanceof Error ? error.message : JSON.stringify(error),
+            errorData: {
+              name,
+              message,
+            },
           },
         });
 
