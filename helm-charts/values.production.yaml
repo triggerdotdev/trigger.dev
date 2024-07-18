@@ -61,10 +61,10 @@ trigger:
     annotations: {}
     ## @param trigger.service.type trigger service type
     ##
-    type: ClusterIP
+    type: NodePort
     ## @param trigger.service.nodePort trigger service nodePort (used if above type is `NodePort`)
     ##
-    nodePort: ""
+    nodePort: "32099"
   ## @skip trigger.env
   ##
   env:

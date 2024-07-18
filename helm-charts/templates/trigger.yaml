@@ -85,8 +85,8 @@ stringData:
   {{- $requiredVars := dict "MAGIC_LINK_SECRET" (randAlphaNum 32 | lower)
                             "SESSION_SECRET" (randAlphaNum 32 | lower)
                             "ENCRYPTION_KEY" (randAlphaNum 32 | lower)
-                            "DIRECT_URL" (include "trigger.postgresql.connectionString" .) 
-                            "DATABASE_URL" (include "trigger.postgresql.connectionString" .) }}
+                            "DIRECT_URL" (include "trigger.postgresql.databaseUrl" .) 
+                            "DATABASE_URL" (include "trigger.postgresql.databaseUrl" .) }}
   {{- $secretObj := (lookup "v1" "Secret" .Release.Namespace (include "trigger.name" .)) | default dict }}
   {{- $secretData := (get $secretObj "data") | default dict }}
   {{ range $key, $value := .Values.trigger.env }}

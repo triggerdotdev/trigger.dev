@@ -26,7 +26,7 @@ trigger:
   deploymentAnnotations: {}
   ## @param trigger.replicaCount trigger replica count
   ##
-  replicaCount: 2
+  replicaCount: 1
   ## trigger image parameters
   ##
   image:
@@ -61,10 +61,10 @@ trigger:
     annotations: {}
     ## @param trigger.service.type trigger service type
     ##
-    type: ClusterIP
+    type: NodePort
     ## @param trigger.service.nodePort trigger service nodePort (used if above type is `NodePort`)
     ##
-    nodePort: ""
+    nodePort: "32099"
   ## @skip trigger.env
   ##
   env:
@@ -87,7 +87,7 @@ trigger:
 postgresql:
   ## @param postgresql.enabled Enable Postgres
   ##
-  enabled: true
+  enabled: false
   ## @param postgresql.name Name used to build variables (deprecated)
   ##
   name: "postgresql"

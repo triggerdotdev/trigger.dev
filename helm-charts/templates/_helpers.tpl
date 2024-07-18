@@ -69,3 +69,11 @@ Create the postgresql connection string.
 {{- $connectionString := printf "postgresql://%s:%s@%s:%d/%s" $username $password $host $port $database -}}
 {{- printf "%s" $connectionString -}}
 {{- end -}}
+
+{{- define "trigger.postgresql.databaseUrl" -}}
+{{- if .Values.solomon.database.url -}}
+{{- .Values.solomon.database.url -}}
+{{- else -}}
+{{- include "trigger.postgresql.connectionString" . -}}
+{{- end -}}
+{{- end -}}
