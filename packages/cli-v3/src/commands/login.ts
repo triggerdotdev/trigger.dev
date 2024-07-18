@@ -21,6 +21,7 @@ import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
+import { isLinuxServer } from "../utilities/operatingSystem.js";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -204,10 +205,8 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         `Please visit the following URL to login:\n${chalkLink(authorizationCodeResult.url)}`
       );
 
-      try {
-        //this can throw an error on Ubuntu
+      if(!(await isLinuxServer()))
         await open(authorizationCodeResult.url);
-      } catch (e) {}
 
       //poll for personal access token (we need to poll for it)
       const getPersonalAccessTokenSpinner = spinner();
