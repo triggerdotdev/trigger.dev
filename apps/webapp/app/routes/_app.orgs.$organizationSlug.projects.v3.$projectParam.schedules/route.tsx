@@ -10,7 +10,11 @@ import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
+import {
+  ScheduleTypeCombo,
+  ScheduleTypeIcon,
+  scheduleTypeName,
+} from "~/components/runs/v3/ScheduleType";
 import {
   Dialog,
   DialogContent,
@@ -340,31 +344,31 @@ function SchedulesTable({
               <div className="flex max-w-xs flex-col gap-4 p-1">
                 <div>
                   <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <ScheduleTypeCombo type="DECLARATIVE" />
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"DECLARATIVE"} className="text-sky-500" />
+                      <span className="font-medium">{scheduleTypeName("DECLARATIVE")}</span>
+                    </div>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
                     Declarative schedules are defined in a{" "}
                     <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
                     <InlineCode variant="extra-small">cron</InlineCode>
-                    property.
-                  </Paragraph>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                    They sync when you update your{" "}
+                    property. They sync when you update your{" "}
                     <InlineCode variant="extra-small">schedules.task</InlineCode> definition and run
                     the CLI dev or deploy commands.
                   </Paragraph>
                 </div>
                 <div>
                   <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <ScheduleTypeCombo type="IMPERATIVE" />
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"IMPERATIVE"} className="text-teal-500" />
+                      <span className="font-medium">{scheduleTypeName("IMPERATIVE")}</span>
+                    </div>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                    Imperative schedules are defined here in the dashboard or by using the SDK
-                    functions to create or delete them.
-                  </Paragraph>
                   <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                    They can be created, updated, disabled, and deleted from the dashboard or using
-                    the SDK.
+                    Imperative schedules are defined here in the dashboard or by using the SDK
+                    functions to create or delete them. They can be created, updated, disabled, and
+                    deleted from the dashboard or using the SDK.
                   </Paragraph>
                 </div>
                 <div>

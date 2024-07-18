@@ -11,12 +11,12 @@ export function ScheduleTypeCombo({ type, className }: { type: ScheduleType; cla
   );
 }
 
-export function ScheduleTypeIcon({ type }: { type: ScheduleType }) {
+export function ScheduleTypeIcon({ type, className }: { type: ScheduleType; className?: string }) {
   switch (type) {
     case "IMPERATIVE":
-      return <ArrowsRightLeftIcon className="size-4" />;
+      return <ArrowsRightLeftIcon className={cn("size-4", className)} />;
     case "DECLARATIVE":
-      return <ArchiveBoxIcon className="size-4" />;
+      return <ArchiveBoxIcon className={cn("size-4", className)} />;
   }
 }
 export function scheduleTypeName(type: ScheduleType) {
