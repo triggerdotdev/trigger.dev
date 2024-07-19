@@ -34,7 +34,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: { slug: organizationSlug, members: { some: { userId } } },
     select: {
       id: true,

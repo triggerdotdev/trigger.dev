@@ -25,7 +25,7 @@ export class ApiRunPresenter {
   }: ApiRunOptions) {
     const take = Math.min(maxTasks, 50);
 
-    return await prisma.jobRun.findUnique({
+    return await prisma.jobRun.findFirst({
       where: {
         id: runId,
       },

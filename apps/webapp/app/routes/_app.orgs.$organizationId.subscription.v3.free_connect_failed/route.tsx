@@ -11,7 +11,7 @@ const ParamsSchema = z.object({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationId } = ParamsSchema.parse(params);
 
-  const org = await prisma.organization.findUnique({
+  const org = await prisma.organization.findFirst({
     select: {
       slug: true,
       _count: {
