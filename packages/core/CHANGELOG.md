@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- 8ba998794: Added declarative cron schedules
+
 ## 3.0.0-beta.49
 
 ### Patch Changes

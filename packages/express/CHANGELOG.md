@@ -1,5 +1,12 @@
 # @trigger.dev/express
 
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- Updated dependencies [8ba998794]
+  - @trigger.dev/sdk@3.0.0-beta.50
+
 ## 3.0.0-beta.49
 
 ### Patch Changes

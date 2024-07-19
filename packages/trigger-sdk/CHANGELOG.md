@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- 8ba998794: Added declarative cron schedules
+- Updated dependencies [8ba998794]
+  - @trigger.dev/core@3.0.0-beta.50
+  - @trigger.dev/core-backend@3.0.0-beta.50
+
 ## 3.0.0-beta.49
 
 ### Patch Changes
