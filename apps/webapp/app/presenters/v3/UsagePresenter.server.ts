@@ -3,7 +3,7 @@ import { env } from "~/env.server";
 import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
 import { BasePresenter } from "./basePresenter.server";
-import { start } from "@popperjs/core";
+import { DataPoint, linear } from "regression";
 
 type Options = {
   organizationId: string;
@@ -43,12 +43,41 @@ export class UsagePresenter extends BasePresenter {
     );
 
     //usage data from the platform
-    const past30Days = getUsageSeries(organizationId, {
+    const usage = getUsageSeries(organizationId, {
       from: startOfMonth,
       to: endOfMonth,
       window: "DAY",
     }).then((data) => {
-      return createTimeSeriesData({
+      //we want to sum it to get the total usage
+      const current = (data?.data.reduce((acc, period) => acc + period.value, 0) ?? 0) / 100;
+
+      // Get the start day (the day the customer started using the product) or the first day of the month
+      const startDay = new Date(data?.data.at(0)?.windowStart ?? startOfMonth).getDate();
+
+      // We want to project so we convert the data into an array of tuples [dayNumber, value]
+      const projectionData =
+        data?.data.map((period, index) => {
+          // Each value should be the sum of the previous values + the current value
+          // Adjust the day number to start from 1 when the customer started using the product
+          return [
+            new Date(period.windowStart).getDate() - startDay + 1,
+            data.data.slice(0, index + 1).reduce((acc, period) => acc + period.value, 0) / 100,
+          ] as DataPoint;
+        }) ?? ([] as DataPoint[]);
+
+      const result = linear(projectionData);
+      const [a, b] = result.equation;
+
+      // Adjust the total days in the month based on when the customer started
+      const totalDaysInMonth = endOfMonth.getDate() - startDay + 1;
+      const projected = a * totalDaysInMonth + b;
+      const overall = {
+        current,
+        projected,
+      };
+
+      //and create daily data for the graph
+      const timeSeries = createTimeSeriesData({
         startDate: startOfMonth,
         endDate: endOfMonth,
         window: "DAY",
@@ -62,6 +91,11 @@ export class UsagePresenter extends BasePresenter {
         date: period.date.toISOString(),
         dollars: (period.value ?? 0) / 100,
       }));
+
+      return {
+        overall,
+        timeSeries,
+      };
     });
 
     //usage by task
@@ -99,17 +133,7 @@ export class UsagePresenter extends BasePresenter {
         .sort((a, b) => b.totalCost - a.totalCost);
     });
 
-    const usage = getUsage(organizationId, { from: startOfMonth, to: endOfMonth }).then((data) => {
-      const current = (data?.cents ?? 0) / 100;
-      const percentageThroughMonth = new Date().getDate() / endOfMonth.getDate();
-      return {
-        current: current,
-        projected: current / percentageThroughMonth,
-      };
-    });
-
     return {
-      usageOverTime: past30Days,
       usage,
       tasks,
     };
