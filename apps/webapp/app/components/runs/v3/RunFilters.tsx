@@ -678,7 +678,11 @@ function TagsDropdown({
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
-    replace({ tags: values, cursor: undefined, direction: undefined });
+    replace({
+      tags: values,
+      cursor: undefined,
+      direction: undefined,
+    });
   };
 
   const fetcher = useFetcher<typeof loader>();
@@ -763,7 +767,7 @@ function AppliedTagsFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer" />}>
               <AppliedFilter
                 label="Tags"
-                value={appliedSummary(values("tags").map((t) => decodeURIComponent(t)))}
+                value={appliedSummary(values("tags"))}
                 onRemove={() => del(["tags", "cursor", "direction"])}
               />
             </Ariakit.Select>
