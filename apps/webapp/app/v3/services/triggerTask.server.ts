@@ -210,6 +210,30 @@ export class TriggerTaskService extends BaseService {
               event.setAttribute("queueName", queueName);
               span.setAttribute("queueName", queueName);
 
+              //upsert tags
+              let tagIds: string[] = [];
+              if (body.options?.tags && body.options?.tags.length > 0) {
+                for (const tag of body.options.tags) {
+                  if (tag.trim().length === 0) continue;
+                  const tagRecord = await tx.taskRunTag.upsert({
+                    where: {
+                      projectId_name: {
+                        projectId: environment.projectId,
+                        name: tag,
+                      },
+                    },
+                    create: {
+                      name: tag,
+                      friendlyId: generateFriendlyId("runtag"),
+                      projectId: environment.projectId,
+                    },
+                    update: {},
+                  });
+
+                  tagIds.push(tagRecord.id);
+                }
+              }
+
               const taskRun = await tx.taskRun.create({
                 data: {
                   status: delayUntil ? "DELAYED" : "PENDING",
@@ -233,6 +257,12 @@ export class TriggerTaskService extends BaseService {
                   queuedAt: delayUntil ? undefined : new Date(),
                   maxAttempts: body.options?.maxAttempts,
                   ttl,
+                  tags:
+                    tagIds.length === 0
+                      ? undefined
+                      : {
+                          connect: tagIds.map((id) => ({ id })),
+                        },
                 },
               });
 
