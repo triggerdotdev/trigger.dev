@@ -1,6 +1,6 @@
-import { logger, runs, schedules, task } from "@trigger.dev/sdk/v3";
-import { simpleChildTask } from "./subtasks";
 import { RunTags } from "@trigger.dev/core/v3";
+import { logger, runs, task } from "@trigger.dev/sdk/v3";
+import { simpleChildTask } from "./subtasks";
 
 type Payload = {
   tags: RunTags;
