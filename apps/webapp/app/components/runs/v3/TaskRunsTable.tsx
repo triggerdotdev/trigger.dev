@@ -69,8 +69,6 @@ export function TaskRunsTable({
 
   const showCompute = user.admin && isManagedCloud;
 
-  console.log(runs);
-
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
       //indexes are out by one because of the header row
@@ -281,7 +279,7 @@ export function TaskRunsTable({
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <div className="flex gap-1">
-                    {run.tags.map((tag) => <RunTag key={tag.id} tag={tag} />) || "–"}
+                    {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                   </div>
                 </TableCell>
                 <RunActionsCell run={run} path={path} />

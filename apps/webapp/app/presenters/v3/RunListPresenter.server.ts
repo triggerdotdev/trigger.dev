@@ -15,6 +15,7 @@ export type RunListOptions = {
   versions?: string[];
   statuses?: TaskRunStatus[];
   environments?: string[];
+  tags?: string[];
   scheduleId?: string;
   period?: string;
   bulkId?: string;
@@ -41,6 +42,7 @@ export class RunListPresenter extends BasePresenter {
     versions,
     statuses,
     environments,
+    tags,
     scheduleId,
     period,
     bulkId,
@@ -63,6 +65,7 @@ export class RunListPresenter extends BasePresenter {
       from !== undefined ||
       to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
+      (tags !== undefined && tags.length > 0) ||
       typeof isTest === "boolean";
 
     // Find the project scoped to the organization
@@ -171,7 +174,6 @@ export class RunListPresenter extends BasePresenter {
         expiredAt: Date | null;
         costInCents: number;
         usageDurationMs: BigInt;
-        tagId: string | null;
         tagName: string | null;
       }[]
     >`
@@ -195,7 +197,6 @@ export class RunListPresenter extends BasePresenter {
     tr."expiredAt" AS "expiredAt",
     tr."costInCents" AS "costInCents",
     tr."usageDurationMs" AS "usageDurationMs",
-    tag.id AS "tagId",
     tag.name AS "tagName"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
@@ -239,6 +240,7 @@ export class RunListPresenter extends BasePresenter {
           ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
           : Prisma.empty
       }
+      ${tags && tags.length > 0 ? Prisma.sql`AND tag.name IN (${Prisma.join(tags)})` : Prisma.empty}
       ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
       ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
       ${
@@ -264,28 +266,17 @@ export class RunListPresenter extends BasePresenter {
     const runs = runsWithTags.reduce((acc, run) => {
       const existingRun = acc.find((r) => r.id === run.id);
       if (existingRun) {
-        if (run.tagId && run.tagName) {
-          existingRun.tags.push({
-            id: run.tagId,
-            name: run.tagName,
-          });
+        if (run.tagName) {
+          existingRun.tags.push(run.tagName);
         }
       } else {
         acc.push({
           ...run,
-          tags:
-            run.tagId && run.tagName
-              ? [
-                  {
-                    id: run.tagId,
-                    name: run.tagName,
-                  },
-                ]
-              : [],
+          tags: run.tagName ? [run.tagName] : [],
         });
       }
       return acc;
-    }, [] as (Omit<(typeof runsWithTags)[number], "tagId" | "tagName"> & { tags: { id: string; name: string }[] })[]);
+    }, [] as (Omit<(typeof runsWithTags)[number], "tagId" | "tagName"> & { tags: string[] })[]);
 
     const hasMore = runs.length > pageSize;
 
