@@ -534,6 +534,13 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
       searchParams.append("filter[bulkAction]", query.bulkAction);
     }
 
+    if (query.tag) {
+      searchParams.append(
+        "filter[tag]",
+        Array.isArray(query.tag) ? query.tag.join(",") : query.tag
+      );
+    }
+
     if (query.schedule) {
       searchParams.append("filter[schedule]", query.schedule);
     }

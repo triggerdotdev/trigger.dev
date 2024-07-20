@@ -463,6 +463,7 @@ const CommonRunFields = {
   delayedUntil: z.coerce.date().optional(),
   ttl: z.string().optional(),
   expiredAt: z.coerce.date().optional(),
+  tags: z.string().array(),
 };
 
 export const RetrieveRunResponse = z.object({

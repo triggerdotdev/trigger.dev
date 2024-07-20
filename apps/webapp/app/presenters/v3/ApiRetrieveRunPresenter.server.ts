@@ -35,6 +35,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           },
           lockedToVersion: true,
           schedule: true,
+          tags: true,
         },
       });
 
@@ -119,6 +120,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         isTest: taskRun.isTest,
         ttl: taskRun.ttl ?? undefined,
         expiredAt: taskRun.expiredAt ?? undefined,
+        tags: taskRun.tags.map((t) => t.name),
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -127,7 +129,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
                 ? taskRun.schedule.deduplicationKey
                 : undefined,
               generator: {
-                type: "CRON",
+                type: "CRON" as const,
                 expression: taskRun.schedule.generatorExpression,
                 description: taskRun.schedule.generatorDescription,
               },
