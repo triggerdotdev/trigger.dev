@@ -453,7 +453,7 @@ model Project {
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
-  taskTags               TaskTag[]
+  runTags                TaskRunTag[]
   taskQueues             TaskQueue[]
   environmentVariables   EnvironmentVariable[]
   checkpoints            Checkpoint[]
@@ -1641,8 +1641,9 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts    TaskRunAttempt[] @relation("attempts")
-  tags        TaskTag[]
+  attempts TaskRunAttempt[] @relation("attempts")
+  tags     TaskRunTag[]
+
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
@@ -1735,6 +1736,22 @@ enum TaskRunStatus {
   EXPIRED
 }
 
+model TaskRunTag {
+  id   String @id @default(cuid())
+  name String
+
+  friendlyId String @unique
+
+  runs TaskRun[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+}
+
 model TaskRunDependency {
   id String @id @default(cuid())
 
@@ -1773,22 +1790,6 @@ model TaskRunNumberCounter {
   lastNumber Int @default(0)
 
   @@unique([taskIdentifier, environmentId])
-}
-
-model TaskTag {
-  id   String @id @default(cuid())
-  name String
-
-  friendlyId String @unique
-
-  runs TaskRun[]
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-
-  @@unique([projectId, name])
 }
 
 model TaskRunAttempt {
