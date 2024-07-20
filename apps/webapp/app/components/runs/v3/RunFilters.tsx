@@ -730,7 +730,6 @@ function TagsDropdown({
           )}
         />
         <SelectList>
-          {searchValue === "" && <SelectItem value={""}>None</SelectItem>}
           {filtered.length > 0
             ? filtered.map((tag, index) => (
                 <SelectItem key={tag} value={tag}>
