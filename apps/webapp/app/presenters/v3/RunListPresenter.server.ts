@@ -198,69 +198,82 @@ export class RunListPresenter extends BasePresenter {
     tr."costInCents" AS "costInCents",
     tr."usageDurationMs" AS "usageDurationMs",
     tag.name AS "tagName"
-  FROM
+FROM
     ${sqlDatabaseSchema}."TaskRun" tr
-  LEFT JOIN
+LEFT JOIN
     ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
-  LEFT JOIN
+LEFT JOIN
     ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg ON tr.id = trtg."A"
-  LEFT JOIN
+LEFT JOIN
     ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
-  WHERE
-      -- project
-      tr."projectId" = ${project.id}
-      -- cursor
-      ${
-        cursor
-          ? direction === "forward"
-            ? Prisma.sql`AND tr.id < ${cursor}`
-            : Prisma.sql`AND tr.id > ${cursor}`
-          : Prisma.empty
-      }
-      -- filters
-      ${
-        restrictToRunIds
-          ? restrictToRunIds.length === 0
-            ? Prisma.sql`AND tr.id = ''`
-            : Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
-          : Prisma.empty
-      }
-      ${
-        tasks && tasks.length > 0
-          ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
-          : Prisma.empty
-      }
-      ${
-        statuses && statuses.length > 0
-          ? Prisma.sql`AND tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
-          : Prisma.empty
-      }
-      ${
-        environments && environments.length > 0
-          ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
-          : Prisma.empty
-      }
-      ${tags && tags.length > 0 ? Prisma.sql`AND tag.name IN (${Prisma.join(tags)})` : Prisma.empty}
-      ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
-      ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
-      ${
-        periodMs
-          ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
-          : Prisma.empty
-      }
-      ${
-        from
-          ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
-          : Prisma.empty
-      } 
-      ${
-        to
-          ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp`
-          : Prisma.empty
-      } 
-  ORDER BY
-    ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
-  LIMIT ${pageSize + 1}`;
+WHERE
+    -- project
+    tr."projectId" = ${project.id}
+    -- cursor
+    ${
+      cursor
+        ? direction === "forward"
+          ? Prisma.sql`AND tr.id < ${cursor}`
+          : Prisma.sql`AND tr.id > ${cursor}`
+        : Prisma.empty
+    }
+    -- filters
+    ${
+      restrictToRunIds
+        ? restrictToRunIds.length === 0
+          ? Prisma.sql`AND tr.id = ''`
+          : Prisma.sql`AND tr.id IN (${Prisma.join(restrictToRunIds)})`
+        : Prisma.empty
+    }
+    ${
+      tasks && tasks.length > 0
+        ? Prisma.sql`AND tr."taskIdentifier" IN (${Prisma.join(tasks)})`
+        : Prisma.empty
+    }
+    ${
+      statuses && statuses.length > 0
+        ? Prisma.sql`AND tr.status = ANY(ARRAY[${Prisma.join(statuses)}]::"TaskRunStatus"[])`
+        : Prisma.empty
+    }
+    ${
+      environments && environments.length > 0
+        ? Prisma.sql`AND tr."runtimeEnvironmentId" IN (${Prisma.join(environments)})`
+        : Prisma.empty
+    }
+    ${scheduleId ? Prisma.sql`AND tr."scheduleId" = ${scheduleId}` : Prisma.empty}
+    ${typeof isTest === "boolean" ? Prisma.sql`AND tr."isTest" = ${isTest}` : Prisma.empty}
+    ${
+      periodMs
+        ? Prisma.sql`AND tr."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
+        : Prisma.empty
+    }
+    ${
+      from
+        ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
+        : Prisma.empty
+    } 
+    ${
+      to ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty
+    } 
+        ${
+          tags && tags.length > 0
+            ? Prisma.sql`AND (
+              tr.id IN (
+                SELECT 
+                    trtg."A" 
+                FROM 
+                    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg
+                JOIN 
+                    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
+                WHERE 
+                    tag.name IN (${Prisma.join(tags)})
+              )
+            )`
+            : Prisma.empty
+        }
+    ORDER BY
+        ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
+    LIMIT ${pageSize + 1}`;
 
     //flatten the tags into a single row per run. Needs to be an array and keep the order
     const runs = runsWithTags.reduce((acc, run) => {
