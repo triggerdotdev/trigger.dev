@@ -1,3 +1,4 @@
+import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export type TagListOptions = {
@@ -31,11 +32,11 @@ export class RunTagListPresenter extends BasePresenter {
 
     const tags = await this._replica.taskRunTag.findMany({
       where: {
-        projectId: projectId,
+        projectId,
         OR:
           names && names.length > 0
             ? names.map((name) => ({ name: { contains: name, mode: "insensitive" } }))
-            : [],
+            : undefined,
         project: environments
           ? {
               environments: {
@@ -53,6 +54,13 @@ export class RunTagListPresenter extends BasePresenter {
       },
       take: pageSize + 1,
       skip: (page - 1) * pageSize,
+    });
+
+    logger.log("tags", {
+      tags,
+      projectId,
+      names,
+      environments,
     });
 
     return {
