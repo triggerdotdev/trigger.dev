@@ -5,16 +5,22 @@ import {
   RectangleStackIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { useCallback, useRef } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
+import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { useEnvironments } from "~/hooks/useEnvironments";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
@@ -31,18 +37,10 @@ import {
   TableRow,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
+import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
-import { LiveTimer } from "./LiveTimer";
-import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
-import { Checkbox } from "~/components/primitives/Checkbox";
-import { useCallback, useRef } from "react";
-import { run } from "@remix-run/dev/dist/cli/run";
-import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { useFeatures } from "~/hooks/useFeatures";
-import { useUser } from "~/hooks/useUser";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { Header3 } from "~/components/primitives/Headers";
+import { RunTag } from "./RunTag";
 
 type RunsTableProps = {
   total: number;
@@ -70,6 +68,8 @@ export function TaskRunsTable({
   const { isManagedCloud } = useFeatures();
 
   const showCompute = user.admin && isManagedCloud;
+
+  console.log(runs);
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -175,6 +175,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell>Delayed until</TableHeaderCell>
           <TableHeaderCell>TTL</TableHeaderCell>
+          <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
@@ -278,6 +279,11 @@ export function TaskRunsTable({
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
+                <TableCell to={path}>
+                  <div className="flex gap-1">
+                    {run.tags.map((tag) => <RunTag key={tag.id} tag={tag} />) || "–"}
+                  </div>
+                </TableCell>
                 <RunActionsCell run={run} path={path} />
               </TableRow>
             );

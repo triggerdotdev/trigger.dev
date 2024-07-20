@@ -1,11 +1,11 @@
-import { Prisma, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
+import { Prisma, type TaskRunStatus, type TaskTriggerSource } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { Direction } from "~/components/runs/RunStatuses";
+import { type Direction } from "~/components/runs/RunStatuses";
 import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { BasePresenter } from "./basePresenter.server";
 import { isCancellableRunStatus } from "~/v3/taskStatus";
+import { BasePresenter } from "./basePresenter.server";
 
 export type RunListOptions = {
   userId?: string;
@@ -95,10 +95,10 @@ export class RunListPresenter extends BasePresenter {
 
     //get all possible tasks
     const possibleTasksAsync = this._replica.$queryRaw<
-    {
-      slug: string;
-      triggerSource: TaskTriggerSource
-    }[]
+      {
+        slug: string;
+        triggerSource: TaskTriggerSource;
+      }[]
     >`
     SELECT DISTINCT(slug), "triggerSource"
     FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
@@ -149,8 +149,8 @@ export class RunListPresenter extends BasePresenter {
 
     const periodMs = period ? parse(period) : undefined;
 
-    //get the runs
-    let runs = await this._replica.$queryRaw<
+    //get the runs with tags, there will be multiple rows for each run if it has multiple tags
+    const runsWithTags = await this._replica.$queryRaw<
       {
         id: string;
         number: BigInt;
@@ -171,6 +171,8 @@ export class RunListPresenter extends BasePresenter {
         expiredAt: Date | null;
         costInCents: number;
         usageDurationMs: BigInt;
+        tagId: string | null;
+        tagName: string | null;
       }[]
     >`
     SELECT
@@ -192,11 +194,17 @@ export class RunListPresenter extends BasePresenter {
     tr."ttl" AS "ttl",
     tr."expiredAt" AS "expiredAt",
     tr."costInCents" AS "costInCents",
-    tr."usageDurationMs" AS "usageDurationMs"
+    tr."usageDurationMs" AS "usageDurationMs",
+    tag.id AS "tagId",
+    tag.name AS "tagName"
   FROM
     ${sqlDatabaseSchema}."TaskRun" tr
   LEFT JOIN
     ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
+  LEFT JOIN
+    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg ON tr.id = trtg."A"
+  LEFT JOIN
+    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
   WHERE
       -- project
       tr."projectId" = ${project.id}
@@ -251,6 +259,33 @@ export class RunListPresenter extends BasePresenter {
   ORDER BY
     ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
   LIMIT ${pageSize + 1}`;
+
+    //flatten the tags into a single row per run. Needs to be an array and keep the order
+    const runs = runsWithTags.reduce((acc, run) => {
+      const existingRun = acc.find((r) => r.id === run.id);
+      if (existingRun) {
+        if (run.tagId && run.tagName) {
+          existingRun.tags.push({
+            id: run.tagId,
+            name: run.tagName,
+          });
+        }
+      } else {
+        acc.push({
+          ...run,
+          tags:
+            run.tagId && run.tagName
+              ? [
+                  {
+                    id: run.tagId,
+                    name: run.tagName,
+                  },
+                ]
+              : [],
+        });
+      }
+      return acc;
+    }, [] as (Omit<(typeof runsWithTags)[number], "tagId" | "tagName"> & { tags: { id: string; name: string }[] })[]);
 
     const hasMore = runs.length > pageSize;
 
@@ -313,6 +348,7 @@ export class RunListPresenter extends BasePresenter {
           expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
           costInCents: run.costInCents,
           usageDurationMs: Number(run.usageDurationMs),
+          tags: run.tags,
         };
       }),
       pagination: {
