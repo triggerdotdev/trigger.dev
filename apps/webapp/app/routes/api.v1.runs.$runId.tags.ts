@@ -45,7 +45,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       })) ?? [];
 
     //remove duplicate tags from the new tags
-    const newTags = body.data.tags.filter((tag) => !existingTags.map((t) => t.name).includes(tag));
+    const bodyTags = typeof body.data.tags === "string" ? [body.data.tags] : body.data.tags;
+    const newTags = bodyTags.filter((tag) => !existingTags.map((t) => t.name).includes(tag));
 
     if (existingTags.length + newTags.length > 3) {
       return json(

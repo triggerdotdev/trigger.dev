@@ -38,7 +38,7 @@ async function addTags(tags: RunTags, requestOptions?: ApiRequestOptions) {
         ...accessoryAttributes({
           items: [
             {
-              text: tags.join(", "),
+              text: typeof tags === "string" ? tags : tags.join(", "),
               variant: "normal",
             },
           ],

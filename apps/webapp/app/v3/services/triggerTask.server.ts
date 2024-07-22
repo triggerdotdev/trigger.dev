@@ -213,8 +213,10 @@ export class TriggerTaskService extends BaseService {
 
               //upsert tags
               let tagIds: string[] = [];
-              if (body.options?.tags && body.options?.tags.length > 0) {
-                for (const tag of body.options.tags) {
+              const bodyTags =
+                typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
+              if (bodyTags && bodyTags.length > 0) {
+                for (const tag of bodyTags) {
                   const tagRecord = await createTag({
                     tag,
                     projectId: environment.projectId,

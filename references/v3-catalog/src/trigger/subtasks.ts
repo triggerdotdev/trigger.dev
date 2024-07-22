@@ -28,7 +28,7 @@ export const simpleChildTask = task({
     logger.log("Simple child task payload", { payload, ctx });
 
     logger.log("Context tags", { tags: ctx.run.tags });
-    await tags.add(["product:1"]);
+    await tags.add("product:1");
 
     await wait.for({ seconds: 10 });
   },

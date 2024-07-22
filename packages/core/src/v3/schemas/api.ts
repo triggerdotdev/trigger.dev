@@ -58,6 +58,7 @@ export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWork
 //an array of 1, 2, or 3 strings
 const RunTag = z.string().max(64, "Tags must be less than 64 characters");
 export const RunTags = z.union([
+  RunTag,
   z.tuple([RunTag]),
   z.tuple([RunTag, RunTag]),
   z.tuple([RunTag, RunTag, RunTag]),
