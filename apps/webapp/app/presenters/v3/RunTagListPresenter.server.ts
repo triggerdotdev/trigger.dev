@@ -50,7 +50,7 @@ export class RunTagListPresenter extends BasePresenter {
           : undefined,
       },
       orderBy: {
-        createdAt: "desc",
+        id: "desc",
       },
       take: pageSize + 1,
       skip: (page - 1) * pageSize,
