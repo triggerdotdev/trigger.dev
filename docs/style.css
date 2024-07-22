@@ -1,0 +1,5 @@
+/* Overrides the default tooltip style on the code block */
+div[class="absolute top-11 left-1/2 transform -translate-x-1/2 -translate-y-1/2 hidden group-hover:block text-white rounded-lg px-1.5 py-0.5 text-xs bg-primary-dark"] {
+    color:#1A1B1F;
+    border-radius: 0.25rem;
+  }
