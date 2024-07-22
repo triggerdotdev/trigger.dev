@@ -49,8 +49,8 @@ logger.loggerLevel = options.logLevel;
 
 if (testCases.length > 0) {
   describe.concurrent("bundling", async () => {
-    beforeEach<E2EFixtureTest>(async ({ dir, packageManager }) => {
-      await rimraf(join(dir, "**/node_modules"), {
+    beforeEach<E2EFixtureTest>(async ({ dir, packageManager, skip }) => {
+      await rimraf(join(dir, "**/node_modules/**"), {
         glob: true,
       });
       await rimraf(join(dir, ".yarn"), { glob: true });
@@ -65,6 +65,10 @@ if (testCases.length > 0) {
         } catch (e) {
           await rename(resolve(join(dir, "yarn.lock.copy")), resolve(join(dir, "yarn.lock")));
         }
+      }
+
+      if (options.packageManager && !existsSync(resolve(dir, LOCKFILES[options.packageManager]))) {
+        skip();
       }
 
       await installFixtureDeps(dir, packageManager);
@@ -100,7 +104,6 @@ if (testCases.length > 0) {
           dir,
           packageManager,
           resolveEnv,
-          skip,
           skipTypecheck,
           tempDir,
           wantCompilationError,
@@ -110,13 +113,6 @@ if (testCases.length > 0) {
           wantInstallationError,
           wantWorkerError,
         }) => {
-          if (
-            options.packageManager &&
-            !existsSync(resolve(dir, LOCKFILES[options.packageManager]))
-          ) {
-            skip();
-          }
-
           let resolvedConfig: ReadConfigResult;
           const configExpect = expect(
             (async () => {
