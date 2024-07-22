@@ -46,7 +46,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     //remove duplicate tags from the new tags
     const bodyTags = typeof body.data.tags === "string" ? [body.data.tags] : body.data.tags;
-    const newTags = bodyTags.filter((tag) => !existingTags.map((t) => t.name).includes(tag));
+    const newTags = bodyTags.filter((tag) => {
+      if (tag.trim().length === 0) return false;
+      return !existingTags.map((t) => t.name).includes(tag);
+    });
 
     if (existingTags.length + newTags.length > 3) {
       return json(
@@ -67,7 +70,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     let tagIds: string[] = existingTags.map((t) => t.id);
     if (newTags.length > 0) {
       for (const tag of newTags) {
-        if (tag.trim().length === 0) continue;
         const tagRecord = await createTag({
           tag,
           projectId: authenticationResult.environment.projectId,
