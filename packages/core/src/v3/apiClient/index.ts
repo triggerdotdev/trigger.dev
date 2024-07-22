@@ -17,7 +17,9 @@ import {
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveRunResponse,
+  RunTags,
   ScheduleObject,
+  SetTagsRequestBody,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
@@ -42,6 +44,7 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types";
+import { z } from "zod";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -280,6 +283,19 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/reschedule`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  setTags(runId: string, body: SetTagsRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.object({ message: z.string() }),
+      `${this.baseUrl}/api/v1/runs/${runId}/tags`,
       {
         method: "POST",
         headers: this.#getHeaders(false),

@@ -1,4 +1,4 @@
-import { logger, task, wait, tasks } from "@trigger.dev/sdk/v3";
+import { logger, task, wait, tasks, tags } from "@trigger.dev/sdk/v3";
 import { taskWithRetries } from "./retries";
 
 export const simpleParentTask = task({
@@ -26,6 +26,9 @@ export const simpleChildTask = task({
   id: "simple-child-task",
   run: async (payload: { message: string }, { ctx }) => {
     logger.log("Simple child task payload", { payload, ctx });
+
+    logger.log("Context tags", { tags: ctx.run.tags });
+    await tags.add(["product:1", "1", "@"]);
 
     await wait.for({ seconds: 10 });
   },

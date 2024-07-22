@@ -121,6 +121,12 @@ export const GetBatchResponseBody = z.object({
 
 export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
 
+export const SetTagsRequestBody = z.object({
+  tags: RunTags,
+});
+
+export type SetTagsRequestBody = z.infer<typeof SetTagsRequestBody>;
+
 export const RescheduleRunRequestBody = z.object({
   delay: z.string().or(z.coerce.date()),
 });

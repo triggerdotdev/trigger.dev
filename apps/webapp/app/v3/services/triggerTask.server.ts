@@ -17,6 +17,7 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { createTag } from "~/models/taskRunTag.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -214,23 +215,13 @@ export class TriggerTaskService extends BaseService {
               let tagIds: string[] = [];
               if (body.options?.tags && body.options?.tags.length > 0) {
                 for (const tag of body.options.tags) {
-                  if (tag.trim().length === 0) continue;
-                  const tagRecord = await tx.taskRunTag.upsert({
-                    where: {
-                      projectId_name: {
-                        projectId: environment.projectId,
-                        name: tag,
-                      },
-                    },
-                    create: {
-                      name: tag,
-                      friendlyId: generateFriendlyId("runtag"),
-                      projectId: environment.projectId,
-                    },
-                    update: {},
+                  const tagRecord = await createTag({
+                    tag,
+                    projectId: environment.projectId,
                   });
-
-                  tagIds.push(tagRecord.id);
+                  if (tagRecord) {
+                    tagIds.push(tagRecord.id);
+                  }
                 }
               }
 
