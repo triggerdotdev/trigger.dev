@@ -50,7 +50,7 @@ async function addTags(tags: RunTags, requestOptions?: ApiRequestOptions) {
   );
 
   try {
-    await apiClient.setTags(run.id, { tags }, $requestOptions);
+    await apiClient.addTags(run.id, { tags }, $requestOptions);
   } catch (error) {
     if (error instanceof UnprocessableEntityError) {
       logger.error(error.message, {

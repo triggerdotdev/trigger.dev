@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { SetTagsRequestBody } from "@trigger.dev/core/v3";
+import { AddTagsRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createTag, getTagsForRunId } from "~/models/taskRunTag.server";
@@ -33,7 +33,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const anyBody = await request.json();
 
-    const body = SetTagsRequestBody.safeParse(anyBody);
+    const body = AddTagsRequestBody.safeParse(anyBody);
     if (!body.success) {
       return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
     }

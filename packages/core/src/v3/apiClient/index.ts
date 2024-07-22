@@ -1,6 +1,8 @@
 import { context, propagation } from "@opentelemetry/api";
+import { z } from "zod";
 import { version } from "../../../package.json";
 import {
+  AddTagsRequestBody,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
@@ -17,9 +19,7 @@ import {
   ReplayRunResponse,
   RescheduleRunRequestBody,
   RetrieveRunResponse,
-  RunTags,
   ScheduleObject,
-  SetTagsRequestBody,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
@@ -44,7 +44,6 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types";
-import { z } from "zod";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -66,8 +65,8 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   },
 };
 
-export type { ApiRequestOptions };
 export { isRequestOptions };
+export type { ApiRequestOptions };
 
 /**
  * Trigger.dev v3 API client
@@ -292,7 +291,7 @@ export class ApiClient {
     );
   }
 
-  setTags(runId: string, body: SetTagsRequestBody, requestOptions?: ZodFetchOptions) {
+  addTags(runId: string, body: AddTagsRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       z.object({ message: z.string() }),
       `${this.baseUrl}/api/v1/runs/${runId}/tags`,
