@@ -1170,9 +1170,6 @@ async function compileProject(
         );
       }
 
-      const jsProject = new JavascriptProject(config.projectDir);
-      const directDependenciesMeta = await jsProject.extractDirectDependenciesMeta();
-
       const result = await build({
         stdin: {
           contents: workerContents,
@@ -1200,7 +1197,7 @@ async function compileProject(
           mockServerOnlyPlugin(),
           bundleDependenciesPlugin(
             "workerFacade",
-            directDependenciesMeta,
+            {},
             config.dependenciesToBundle,
             config.tsconfigPath
           ),
@@ -1257,7 +1254,7 @@ async function compileProject(
         plugins: [
           bundleDependenciesPlugin(
             "entryPoint.ts",
-            directDependenciesMeta,
+            {},
             config.dependenciesToBundle,
             config.tsconfigPath
           ),
