@@ -1750,6 +1750,8 @@ model TaskRunTag {
   createdAt DateTime @default(now())
 
   @@unique([projectId, name])
+  //Makes run filtering by tag faster
+  @@index([name, id])
 }
 
 model TaskRunDependency {
