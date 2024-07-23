@@ -46,6 +46,11 @@ export const triggerRunsWithTags = task({
       { message: "tasks.trigger from triggerRunsWithTags" },
       { tags: payload.tags }
     );
+    await tasks.triggerAndWait<typeof simpleChildTask>(
+      "simple-child-task",
+      { message: "tasks.triggerAndWait from triggerRunsWithTags" },
+      { tags: payload.tags }
+    );
     await tasks.batchTrigger<typeof simpleChildTask>("simple-child-task", [
       {
         payload: { message: "tasks.batchTrigger 1 from triggerRunsWithTags" },
