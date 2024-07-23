@@ -341,7 +341,7 @@ export function TaskRunsTable({
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} actionClassName="py-1">
                   <div className="flex gap-1">
                     {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                   </div>
