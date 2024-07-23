@@ -12,7 +12,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { projectParam } = Params.parse(params);
 
-  const project = await $replica.project.findUnique({
+  const project = await $replica.project.findFirst({
     where: { slug: projectParam, deletedAt: null, organization: { members: { some: { userId } } } },
   });
 
