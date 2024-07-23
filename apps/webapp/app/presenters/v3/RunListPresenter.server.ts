@@ -152,7 +152,7 @@ export class RunListPresenter extends BasePresenter {
 
     const periodMs = period ? parse(period) : undefined;
 
-    //get the runs with tags, there will be multiple rows for each run if it has multiple tags
+    //get the runs
     const runs = await this._replica.$queryRaw<
       {
         id: string;
