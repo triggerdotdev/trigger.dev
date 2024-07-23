@@ -447,7 +447,7 @@ export type TaskRunOptions = {
    *
    * You can set up to 3 tags per run, they must be less than 64 characters each.
    *
-   * We recommend prefixing tags with a namespace, like `user:1234567` or `org:9876543`.
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
    *
    * @example
    *
