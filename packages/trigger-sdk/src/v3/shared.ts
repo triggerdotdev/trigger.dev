@@ -337,7 +337,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
 
-type AnyTask = Task<string, any, any>;
+export type AnyTask = Task<string, any, any>;
 
 export type TaskPayload<TTask extends AnyTask> = TTask extends Task<string, infer TInput, any>
   ? TInput
@@ -678,7 +678,7 @@ export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
   requestOptions?: ApiRequestOptions
-): Promise<BatchRunHandle<TTask>> {
+): Promise<BatchRunHandle<TaskOutput<TTask>>> {
   return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.batchTrigger()",
     id,

@@ -21,6 +21,7 @@ import type {
   TaskOutput,
   TaskIdentifier,
   TaskRunOptions,
+  AnyTask,
 } from "./shared";
 
 export type {
@@ -36,6 +37,7 @@ export type {
   TaskOutput,
   TaskIdentifier,
   TaskRunOptions,
+  AnyTask,
 };
 
 /** Creates a task that can be triggered
