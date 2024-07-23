@@ -1,0 +1,41 @@
+---
+title: "Next.js setup guide"
+sidebarTitle: "Next.js"
+description: "This guide will show you how to setup Trigger.dev in your existing Next.js project, test the example task, and deploy it."
+icon: "N"
+---
+
+<Note>The following guide should work for both App and Pages router</Note>
+
+<Snippet file="v3/requires-existing-project.mdx" />
+
+## Initial setup
+
+<Steps>
+    <Snippet file="v3/step-cli-init.mdx" />
+    <Step title="Install the Hello World example task when prompted">
+        We'll use this task to test the setup.
+    </Step>
+    <Snippet file="v3/step-cli-dev.mdx" />
+    <Snippet file="v3/step-run-test.mdx" />
+    <Snippet file="v3/step-view-run.mdx" />
+</Steps>
+
+## Writing tasks 
+Link to Creating tasks
+
+## Deployment
+<CardGroup cols={2}>
+  <Card title="Deployment guide" icon="square-1" href="v3/deploy-environment-variables">
+    Learn how to deploy your Trigger.dev task
+  </Card>
+  <Card title="Deploy using the CLI" icon="square-2" href="v3/cli-deploy">
+    Learn how to deploy your Trigger.dev task manually using the CLI
+  </Card>
+   <Card title="Deploy using GitHub actions" icon="square-2" href="v3/github-actions">
+    Learn how to deploy your Trigger.dev task using GitHub actions
+  </Card>
+   <Card title="Environment variables" icon="square-2" href="v3/deploy-environment-variables">
+    Add your environment variables so your deployed code can access them
+  </Card>
+</CardGroup>
