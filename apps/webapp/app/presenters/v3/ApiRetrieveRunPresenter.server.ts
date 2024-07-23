@@ -120,7 +120,10 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         isTest: taskRun.isTest,
         ttl: taskRun.ttl ?? undefined,
         expiredAt: taskRun.expiredAt ?? undefined,
-        tags: taskRun.tags.map((t) => t.name),
+        tags: taskRun.tags.map((t) => t.name).sort((a, b) => a.localeCompare(b)),
+        costInCents: taskRun.costInCents,
+        baseCostInCents: taskRun.baseCostInCents,
+        durationMs: taskRun.usageDurationMs,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,

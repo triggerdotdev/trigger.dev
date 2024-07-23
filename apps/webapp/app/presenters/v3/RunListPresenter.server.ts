@@ -173,6 +173,7 @@ export class RunListPresenter extends BasePresenter {
         ttl: string | null;
         expiredAt: Date | null;
         costInCents: number;
+        baseCostInCents: number;
         usageDurationMs: BigInt;
         tags: string[];
       }[]
@@ -195,6 +196,7 @@ export class RunListPresenter extends BasePresenter {
     tr."idempotencyKey" AS "idempotencyKey",
     tr."ttl" AS "ttl",
     tr."expiredAt" AS "expiredAt",
+    tr."baseCostInCents" AS "baseCostInCents",
     tr."costInCents" AS "costInCents",
     tr."usageDurationMs" AS "usageDurationMs",
     array_remove(array_agg(tag.name), NULL) AS "tags"
@@ -337,6 +339,7 @@ WHERE
           ttl: run.ttl ? run.ttl : undefined,
           expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
           costInCents: run.costInCents,
+          baseCostInCents: run.baseCostInCents,
           usageDurationMs: Number(run.usageDurationMs),
           tags: run.tags.sort((a, b) => a.localeCompare(b)),
         };

@@ -59,8 +59,18 @@ export const triggerRunsWithTags = task({
 
     const run = await runs.retrieve(id);
     logger.log("run", run);
+    logger.log("run usage", {
+      costInCents: run.costInCents,
+      baseCostInCents: run.baseCostInCents,
+      durationMs: run.durationMs,
+    });
 
     const result2 = await runs.list({ tag: payload.tags });
     logger.log("trigger runs ", { length: result2.data.length, data: result2.data });
+    logger.log("run usage", {
+      costInCents: result2.data[0].costInCents,
+      baseCostInCents: result2.data[0].baseCostInCents,
+      durationMs: result2.data[0].durationMs,
+    });
   },
 });

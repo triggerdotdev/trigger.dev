@@ -229,6 +229,9 @@ export class ApiRunListPresenter extends BasePresenter {
             user: run.environment.userName,
           },
           tags: run.tags,
+          costInCents: run.costInCents,
+          baseCostInCents: run.baseCostInCents,
+          durationMs: run.usageDurationMs,
           ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
             ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
           ),

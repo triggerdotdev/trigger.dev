@@ -471,6 +471,9 @@ const CommonRunFields = {
   ttl: z.string().optional(),
   expiredAt: z.coerce.date().optional(),
   tags: z.string().array(),
+  costInCents: z.number(),
+  baseCostInCents: z.number(),
+  durationMs: z.number(),
 };
 
 export const RetrieveRunResponse = z.object({
