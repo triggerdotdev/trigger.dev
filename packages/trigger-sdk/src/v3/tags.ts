@@ -1,6 +1,5 @@
 import type { ApiRequestOptions, RunTags } from "@trigger.dev/core/v3";
 import {
-  ApiPromise,
   UnprocessableEntityError,
   accessoryAttributes,
   apiClientManager,
