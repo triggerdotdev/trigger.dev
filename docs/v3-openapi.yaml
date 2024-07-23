@@ -1507,6 +1507,7 @@ components:
         - string
         - number
       description: "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a string in this format: `1h`, `1m`, `1h42m` or a number of seconds (min. 1)."
+      example: "1h42m"
     Delay:
       type: string
       description: |
@@ -1569,13 +1570,12 @@ components:
           type: array
           items:
             type: string
-            description: The identifier of the task that was run
+          description: The identifier of the task that was run
         version:
           type: array
           items:
             type: string
-            description: The version of the worker that executed the run
-
+          description: The version of the worker that executed the run
         bulkAction:
           type: string
           description: The bulk action ID to filter the runs by
@@ -1588,6 +1588,11 @@ components:
           type: boolean
           description: Whether the run is a test run or not
           example: false
+        tag:
+          type: array
+          items:
+            type: string
+          description: The tags that are attached to the run
     ListRunsResult:
       type: object
       properties:
@@ -1685,6 +1690,36 @@ components:
           type: string
           format: date-time
           description: The time the run finished
+        delayedUntil:
+          type: string
+          format: date-time
+          description: If the run was triggered with a delay, this will be the time the run will be enqueued to execute
+        ttl:
+          $ref: "#/components/schemas/TTL"
+        expiredAt:
+          type: string
+          format: date-time
+          description: If the run had a TTL and that time has passed, when the run "expired".
+        tags:
+          type: array
+          description: Tags can be attached to a run to make it easy to find runs (in the dashboard or using SDK functions like `runs.list`)
+          example: ["user_5df987al13", "org_c6b7dycmxw"]
+          items:
+            type: string
+            description: A tag must be between 1 and 64 characters, a run can have up to 3 tags attached to it.
+        costInCents:
+          type: number
+          example: 0.00292
+          description: The compute cost of the run (so far) in cents. This cost does not apply to DEV runs.
+        baseCostInCents:
+          type: number
+          example: 0.0025
+          description: The invocation cost of the run in cents. This cost does not apply to DEV runs.
+        durationMs:
+          type: number
+          example: 491
+          description: The duration of compute (so far) in milliseconds. This does not include waits.
+
     InvalidEnvVarsRequestResponse:
       type: object
       properties:
@@ -1853,6 +1888,31 @@ components:
           type: string
           format: date-time
           description: If the run was triggered with a delay, this will be the time the run will be enqueued to execute
+        ttl:
+          $ref: "#/components/schemas/TTL"
+        expiredAt:
+          type: string
+          format: date-time
+          description: If the run had a TTL and that time has passed, when the run "expired".
+        tags:
+          type: array
+          description: Tags can be attached to a run to make it easy to find runs (in the dashboard or using SDK functions like `runs.list`)
+          example: ["user_5df987al13", "org_c6b7dycmxw"]
+          items:
+            type: string
+            description: A tag must be between 1 and 64 characters, a run can have up to 3 tags attached to it.
+        costInCents:
+          type: number
+          example: 0.00292
+          description: The compute cost of the run (so far) in cents. This cost does not apply to DEV runs.
+        baseCostInCents:
+          type: number
+          example: 0.0025
+          description: The invocation cost of the run in cents. This cost does not apply to DEV runs.
+        durationMs:
+          type: number
+          example: 491
+          description: The duration of compute (so far) in milliseconds. This does not include waits.
         schedule:
           type: object
           description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
