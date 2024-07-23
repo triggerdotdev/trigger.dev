@@ -171,9 +171,73 @@ export function TaskRunsTable({
           )}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
-          <TableHeaderCell>Delayed until</TableHeaderCell>
-          <TableHeaderCell>TTL</TableHeaderCell>
-          <TableHeaderCell>Tags</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  When you want to trigger a task now, but have it run at a later time, you can use
+                  the delay option.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  Runs that are delayed and have not been enqueued yet will display in the dashboard
+                  with a “Delayed” status.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            Delayed until
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can set a TTL (time to live) when triggering a task, which will automatically
+                  expire the run if it hasn’t started within the specified time.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  All runs in development have a default ttl of 10 minutes. You can disable this by
+                  setting the ttl option.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            TTL
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags to a run and then filter runs using them.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags when triggering a run or inside the run function.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/tags")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            Tags
+          </TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
