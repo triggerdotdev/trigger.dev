@@ -20,8 +20,8 @@
     "light": "#A8FF53",
     "dark": "#A8FF53",
     "anchors": {
-      "from": "#fff",
-      "to": "#eee"
+      "from": "#252630",
+      "to": "#252630"
     },
     "background": {
       "light": "#fff",
@@ -66,16 +66,20 @@
       "destination": "/documentation/guides/writing-jobs-step-by-step"
     }
   ],
-  "navigation": [
+
+  "anchors": [
     {
-      "group": "",
-      "version": "v3",
-      "pages": ["v3/introduction"]
-    },
+      "name": "Guides",
+      "icon": "pencil",
+      "url": "guides"
+    }
+  ],
+  "navigation": [
     {
       "group": "Getting Started",
       "version": "v3",
       "pages": [
+        "v3/introduction",
         "v3/quick-start",
         "v3/upgrading-from-v2",
         "v3/changelog",
@@ -212,6 +216,11 @@
       "group": "Help",
       "version": "v3",
       "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
+    },
+    {
+      "group": "Frameworks",
+      "version": "v3",
+      "pages": ["guides/nextjs", "guides/nodejs"]
     },
     {
       "group": "Getting Started",
