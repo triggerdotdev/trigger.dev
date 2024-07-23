@@ -58,6 +58,30 @@ export const heavyTask = task({
   towards the compute cost or duration.
 </Note>
 
+## Getting the run cost and duration from your backend
+
+You can use [runs.retrieve()](/v3/management/runs/retrieve) to get a single run or [runs.list()](/v3/management/runs/list) to get a list of runs. The response will include `costInCents` `baseCostInCents` and `durationMs` fields.
+
+```ts single run
+import { runs } from "@trigger-dev/sdk";
+
+const run = await runs.retrieve("run-id");
+console.log(run.costInCents, run.baseCostInCents, run.durationMs);
+const totalCost = run.costInCents + run.baseCostInCents;
+```
+
+```ts multiple runs
+import { runs } from "@trigger-dev/sdk";
+
+let totalCost = 0;
+for await (const run of runs.list({ tag: "user_123456" })) {
+  totalCost += run.costInCents + run.baseCostInCents;
+  console.log(run.costInCents, run.baseCostInCents, run.durationMs);
+}
+
+console.log("Total cost", totalCost);
+```
+
 ## Getting the cost and duration of a block of code
 
 You can also wrap code with `usage.measure` to get the cost and duration of that block of code:
