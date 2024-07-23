@@ -2,7 +2,7 @@ import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { basename, join, posix, resolve } from "node:path";
+import { basename, join, posix, relative, resolve, sep } from "node:path";
 import invariant from "tiny-invariant";
 
 import {
@@ -15,9 +15,12 @@ import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { logger } from "../src/utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../src/utilities/taskFiles.js";
 import { escapeImportPath } from "../src/utilities/windows.js";
+import { E2EJavascriptProject } from "./javascriptProject.js";
+import { PackageManager } from "../src/utilities/getUserPackageManager.js";
 
 type CompileOptions = {
   outputMetafile?: string;
+  packageManager: PackageManager;
   resolvedConfig: ReadConfigResult;
   tempDir: string;
 };
@@ -28,6 +31,7 @@ export async function compile(options: CompileOptions) {
   }
 
   const {
+    packageManager,
     tempDir,
     resolvedConfig: { config },
   } = options;
@@ -61,6 +65,9 @@ export async function compile(options: CompileOptions) {
     );
   }
 
+  const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
+  const directDependenciesMeta = await e2eJsProject.extractDirectDependenciesMeta();
+
   const result = await build({
     stdin: {
       contents: workerContents,
@@ -86,7 +93,12 @@ export async function compile(options: CompileOptions) {
     },
     plugins: [
       mockServerOnlyPlugin(),
-      bundleDependenciesPlugin("workerFacade", config.dependenciesToBundle, config.tsconfigPath),
+      bundleDependenciesPlugin(
+        "workerFacade",
+        directDependenciesMeta,
+        config.dependenciesToBundle,
+        config.tsconfigPath
+      ),
       workerSetupImportConfigPlugin(configPath),
       esbuildDecorators({
         tsconfig: config.tsconfigPath,
@@ -127,7 +139,12 @@ export async function compile(options: CompileOptions) {
       __PROJECT_CONFIG__: JSON.stringify(config),
     },
     plugins: [
-      bundleDependenciesPlugin("entryPoint.ts", config.dependenciesToBundle, config.tsconfigPath),
+      bundleDependenciesPlugin(
+        "entryPoint.ts",
+        directDependenciesMeta,
+        config.dependenciesToBundle,
+        config.tsconfigPath
+      ),
     ],
   });
 
@@ -145,9 +162,14 @@ export async function compile(options: CompileOptions) {
   logger.debug(`Writing compiled files to ${tempDir}`);
 
   // Get the metaOutput for the result build
+  const pathsToProjectDir = relative(
+    join(process.cwd(), "e2e", "fixtures"),
+    config.projectDir
+  ).split(sep);
+
   const metaOutput =
     result.metafile!.outputs[
-      posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")
+      posix.join("e2e", "fixtures", ...pathsToProjectDir, "out", "stdin.js")
     ];
 
   invariant(metaOutput, "Meta output for the result build is missing");
@@ -155,7 +177,7 @@ export async function compile(options: CompileOptions) {
   // Get the metaOutput for the entryPoint build
   const entryPointMetaOutput =
     entryPointResult.metafile!.outputs[
-      posix.join("e2e", "fixtures", basename(config.projectDir), "out", "stdin.js")
+      posix.join("e2e", "fixtures", ...pathsToProjectDir, "out", "stdin.js")
     ];
 
   invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");

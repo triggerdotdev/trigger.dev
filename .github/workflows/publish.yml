@@ -49,11 +49,11 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     secrets: inherit
 
-  # e2e:
-  #   uses: ./.github/workflows/e2e.yml
-  #   with:
-  #     package: cli-v3
-  #   secrets: inherit
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    with:
+      package: cli-v3
+    secrets: inherit
 
   publish:
     needs: [typecheck, units]

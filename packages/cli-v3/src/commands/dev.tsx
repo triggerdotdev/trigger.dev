@@ -484,6 +484,7 @@ function useDev({
           bundleTriggerDevCore("workerFacade", config.tsconfigPath),
           bundleDependenciesPlugin(
             "workerFacade",
+            {},
             (config.dependenciesToBundle ?? []).concat([/^@trigger.dev/]),
             config.tsconfigPath
           ),

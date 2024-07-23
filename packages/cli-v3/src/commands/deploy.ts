@@ -1197,6 +1197,7 @@ async function compileProject(
           mockServerOnlyPlugin(),
           bundleDependenciesPlugin(
             "workerFacade",
+            {},
             config.dependenciesToBundle,
             config.tsconfigPath
           ),
@@ -1253,6 +1254,7 @@ async function compileProject(
         plugins: [
           bundleDependenciesPlugin(
             "entryPoint.ts",
+            {},
             config.dependenciesToBundle,
             config.tsconfigPath
           ),
