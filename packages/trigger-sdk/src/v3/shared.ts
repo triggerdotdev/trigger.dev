@@ -1073,6 +1073,7 @@ export async function batchTrigger<TTask extends AnyTask>(
               idempotencyKey: await makeKey(item.options?.idempotencyKey),
               delay: item.options?.delay,
               ttl: item.options?.ttl,
+              tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
             },
           };
