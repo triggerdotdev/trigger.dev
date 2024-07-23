@@ -42,6 +42,9 @@ jobs:
       - name: 🔧 Build worker template files
         run: pnpm --filter trigger.dev run build:workers
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Run E2E Tests
         run: |
           PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e

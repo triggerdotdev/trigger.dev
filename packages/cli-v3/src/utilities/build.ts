@@ -5,6 +5,7 @@ import { extname, isAbsolute } from "node:path";
 import tsConfigPaths from "tsconfig-paths";
 import { logger } from "./logger";
 import { escapeImportPath } from "./windows";
+import { DependencyMeta } from "./javascriptProject";
 
 export function mockServerOnlyPlugin(): Plugin {
   return {
@@ -106,6 +107,7 @@ export function workerSetupImportConfigPlugin(configPath?: string): Plugin {
 
 export function bundleDependenciesPlugin(
   buildIdentifier: string,
+  dependencies: Record<string, DependencyMeta>,
   dependenciesToBundle?: Array<string | RegExp>,
   tsconfigPath?: string
 ): Plugin {
@@ -147,6 +149,10 @@ export function bundleDependenciesPlugin(
           if (typeof pattern === "string" ? args.path === pattern : pattern.test(args.path)) {
             return undefined; // let esbuild bundle it
           }
+        }
+
+        if (dependencies[args.path] && !dependencies[args.path]!.external) {
+          return undefined; // let esbuild bundle it
         }
 
         logger.debug(`[${buildIdentifier}] Externalizing ${args.path}`, {

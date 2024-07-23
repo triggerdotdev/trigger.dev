@@ -1,6 +1,7 @@
 export interface TestCase {
   resolveEnv?: { [key: string]: string };
   id: string;
+  workspaceRelativeDir?: string;
   skipTypecheck?: boolean;
   wantConfigNotFoundError?: boolean;
   wantConfigInvalidError?: boolean;
@@ -11,6 +12,16 @@ export interface TestCase {
 }
 
 export const fixturesConfig: TestCase[] = [
+  {
+    id: "compile-monorepo-packages",
+    skipTypecheck: true,
+    workspaceRelativeDir: "packages/trigger",
+  },
+  {
+    id: "compile-monorepo-packages-npm",
+    skipTypecheck: true,
+    workspaceRelativeDir: "packages/trigger",
+  },
   {
     id: "config-infisical-sdk",
     skipTypecheck: true,
