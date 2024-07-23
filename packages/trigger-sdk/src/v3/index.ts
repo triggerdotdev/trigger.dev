@@ -6,6 +6,7 @@ export * from "./tasks";
 export * from "./wait";
 export * from "./usage";
 export * from "./idempotencyKeys";
+export * from "./tags";
 export type { Context };
 
 import type { Context } from "./shared";

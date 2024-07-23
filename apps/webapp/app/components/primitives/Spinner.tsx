@@ -1,32 +1,37 @@
 import { cn } from "~/utils/cn";
 
+type CustomColor = {
+  background: string;
+  foreground: string;
+};
+
 export function Spinner({
   className,
   color = "blue",
 }: {
   className?: string;
-  color?: "blue" | "white" | "muted" | "dark";
+  color?: "blue" | "white" | "muted" | "dark" | CustomColor;
 }) {
   const colors = {
     blue: {
-      light: "rgba(59, 130, 246, 0.4)",
-      dark: "rgba(59, 130, 246)",
+      background: "rgba(59, 130, 246, 0.4)",
+      foreground: "rgba(59, 130, 246)",
     },
     white: {
-      light: "rgba(255, 255, 255, 0.4)",
-      dark: "rgba(255, 255, 255)",
+      background: "rgba(255, 255, 255, 0.4)",
+      foreground: "rgba(255, 255, 255)",
     },
     muted: {
-      light: "#1C2433",
-      dark: "#3C4B62",
+      background: "#1C2433",
+      foreground: "#3C4B62",
     },
     dark: {
-      light: "#15171A",
-      dark: "#272A2E",
+      background: "#15171A",
+      foreground: "#272A2E",
     },
   };
 
-  const currentColor = colors[color];
+  const currentColor = typeof color === "string" ? colors[color] : color;
 
   return (
     <svg
@@ -37,13 +42,33 @@ export function Spinner({
       xmlns="http://www.w3.org/2000/svg"
       className={cn("animate-spin motion-reduce:hidden", className)}
     >
-      <rect x="2" y="2" width="16" height="16" rx="8" stroke={currentColor.light} strokeWidth="3" />
+      <rect
+        x="2"
+        y="2"
+        width="16"
+        height="16"
+        rx="8"
+        stroke={currentColor.background}
+        strokeWidth="3"
+      />
       <path
         d="M10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2"
-        stroke={currentColor.dark}
+        stroke={currentColor.foreground}
         strokeWidth="3"
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+export function ButtonSpinner() {
+  return (
+    <Spinner
+      className="size-3"
+      color={{
+        foreground: "rgba(0, 0, 0, 1)",
+        background: "rgba(0, 0, 0, 0.25)",
+      }}
+    />
   );
 }

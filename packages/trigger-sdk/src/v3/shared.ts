@@ -18,6 +18,7 @@ import {
   QueueOptions,
   RetryOptions,
   RunFnParams,
+  RunTags,
   SemanticInternalAttributes,
   StartFnParams,
   SuccessFnParams,
@@ -440,6 +441,21 @@ export type TaskRunOptions = {
    * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
    */
   ttl?: string | number;
+
+  /**
+   * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
+   *
+   * You can set up to 3 tags per run, they must be less than 64 characters each.
+   *
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { tags: ["user:1234567", "org:9876543"] });
+   * ```
+   */
+  tags?: RunTags;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -485,6 +501,7 @@ export function createTask<
             idempotencyKey: await makeKey(options?.idempotencyKey),
             delay: options?.delay,
             ttl: options?.ttl,
+            tags: options?.tags,
             maxAttempts: options?.maxAttempts,
           },
         },
@@ -547,6 +564,7 @@ export function createTask<
                   idempotencyKey: await makeKey(item.options?.idempotencyKey),
                   delay: item.options?.delay,
                   ttl: item.options?.ttl,
+                  tags: item.options?.tags,
                   maxAttempts: item.options?.maxAttempts,
                 },
               };
@@ -616,6 +634,7 @@ export function createTask<
               idempotencyKey: await makeKey(options?.idempotencyKey),
               delay: options?.delay,
               ttl: options?.ttl,
+              tags: options?.tags,
               maxAttempts: options?.maxAttempts,
             },
           });
@@ -701,6 +720,7 @@ export function createTask<
                     idempotencyKey: await makeKey(item.options?.idempotencyKey),
                     delay: item.options?.delay,
                     ttl: item.options?.ttl,
+                    tags: item.options?.tags,
                     maxAttempts: item.options?.maxAttempts,
                   },
                 };
@@ -866,6 +886,7 @@ export async function trigger<TTask extends AnyTask>(
         idempotencyKey: await makeKey(options?.idempotencyKey),
         delay: options?.delay,
         ttl: options?.ttl,
+        tags: options?.tags,
         maxAttempts: options?.maxAttempts,
       },
     },
@@ -942,6 +963,7 @@ export async function triggerAndWait<TTask extends AnyTask>(
             idempotencyKey: await makeKey(options?.idempotencyKey),
             delay: options?.delay,
             ttl: options?.ttl,
+            tags: options?.tags,
             maxAttempts: options?.maxAttempts,
           },
         },
@@ -1051,6 +1073,7 @@ export async function batchTrigger<TTask extends AnyTask>(
               idempotencyKey: await makeKey(item.options?.idempotencyKey),
               delay: item.options?.delay,
               ttl: item.options?.ttl,
+              tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
             },
           };

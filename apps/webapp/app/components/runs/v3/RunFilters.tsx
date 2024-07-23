@@ -4,9 +4,10 @@ import {
   CalendarIcon,
   CpuChipIcon,
   InboxStackIcon,
+  TagIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Form } from "@remix-run/react";
+import { Form, useFetcher } from "@remix-run/react";
 import type {
   RuntimeEnvironment,
   TaskTriggerSource,
@@ -15,7 +16,7 @@ import type {
 } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { startTransition, useCallback, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -51,6 +52,10 @@ import {
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { DateTime } from "~/components/primitives/DateTime";
 import { BulkActionStatusCombo } from "./BulkAction";
+import { type loader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { useProject } from "~/hooks/useProject";
+import { Spinner } from "~/components/primitives/Spinner";
+import { matchSorter } from "match-sorter";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -72,6 +77,10 @@ export const TaskRunListSearchFilters = z.object({
   statuses: z.preprocess(
     (value) => (typeof value === "string" ? [value] : value),
     TaskAttemptStatus.array().optional()
+  ),
+  tags: z.preprocess(
+    (value) => (typeof value === "string" ? [value] : value),
+    z.string().array().optional()
   ),
   period: z.preprocess((value) => (value === "all" ? undefined : value), z.string().optional()),
   bulkId: z.string().optional(),
@@ -104,7 +113,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("environments") ||
     searchParams.has("tasks") ||
     searchParams.has("period") ||
-    searchParams.has("bulkId");
+    searchParams.has("bulkId") ||
+    searchParams.has("tags");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -133,6 +143,7 @@ const filterTypes = [
   },
   { name: "environments", title: "Environment", icon: <CpuChipIcon className="size-4" /> },
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
+  { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
 ] as const;
@@ -209,6 +220,7 @@ function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: Ru
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
+      <AppliedTagsFilter />
       <AppliedPeriodFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
     </>
@@ -237,6 +249,8 @@ function Menu(props: MenuProps) {
       return <CreatedDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "tags":
+      return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -642,6 +656,124 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
           searchValue={search}
           clearSearchValue={() => setSearch("")}
           bulkActions={bulkActions}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function TagsDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const project = useProject();
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      tags: values,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const fetcher = useFetcher<typeof loader>();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams();
+    if (searchValue) {
+      searchParams.set("name", encodeURIComponent(searchValue));
+    }
+    fetcher.load(`/resources/projects/${project.slug}/runs/tags?${searchParams}`);
+  }, [searchValue]);
+
+  const filtered = useMemo(() => {
+    let items: string[] = [];
+    if (searchValue === "") {
+      items = values("tags");
+    }
+
+    if (fetcher.data === undefined) {
+      return matchSorter(items, searchValue);
+    }
+
+    items.push(...fetcher.data.tags.map((t) => t.name));
+
+    return matchSorter(Array.from(new Set(items)), searchValue);
+  }, [searchValue, fetcher.data]);
+
+  return (
+    <SelectProvider value={values("tags")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by tags..."} />
+              {fetcher.state === "loading" && <Spinner color="muted" />}
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((tag, index) => (
+                <SelectItem key={tag} value={tag}>
+                  {tag}
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && fetcher.state !== "loading" && (
+            <SelectItem disabled>No tags found</SelectItem>
+          )}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedTagsFilter() {
+  const { values, del } = useSearchParams();
+
+  const tags = values("tags");
+
+  if (tags.length === 0) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <TagsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+              <AppliedFilter
+                label="Tags"
+                value={appliedSummary(values("tags"))}
+                onRemove={() => del(["tags", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
         />
       )}
     </FilterMenuProvider>
