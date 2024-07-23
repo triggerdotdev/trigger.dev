@@ -153,7 +153,7 @@ export class RunListPresenter extends BasePresenter {
     const periodMs = period ? parse(period) : undefined;
 
     //get the runs with tags, there will be multiple rows for each run if it has multiple tags
-    const runsWithTags = await this._replica.$queryRaw<
+    const runs = await this._replica.$queryRaw<
       {
         id: string;
         number: BigInt;
@@ -174,7 +174,7 @@ export class RunListPresenter extends BasePresenter {
         expiredAt: Date | null;
         costInCents: number;
         usageDurationMs: BigInt;
-        tagName: string | null;
+        tags: string[];
       }[]
     >`
     SELECT
@@ -197,7 +197,7 @@ export class RunListPresenter extends BasePresenter {
     tr."expiredAt" AS "expiredAt",
     tr."costInCents" AS "costInCents",
     tr."usageDurationMs" AS "usageDurationMs",
-    tag.name AS "tagName"
+    array_remove(array_agg(tag.name), NULL) AS "tags"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
 LEFT JOIN
@@ -271,25 +271,11 @@ WHERE
             )`
             : Prisma.empty
         }
+    GROUP BY
+      tr.id, bw.version
     ORDER BY
         ${direction === "forward" ? Prisma.sql`tr.id DESC` : Prisma.sql`tr.id ASC`}
     LIMIT ${pageSize + 1}`;
-
-    //flatten the tags into a single row per run. Needs to be an array and keep the order
-    const runs = runsWithTags.reduce((acc, run) => {
-      const existingRun = acc.find((r) => r.id === run.id);
-      if (existingRun) {
-        if (run.tagName) {
-          existingRun.tags.push(run.tagName);
-        }
-      } else {
-        acc.push({
-          ...run,
-          tags: run.tagName ? [run.tagName] : [],
-        });
-      }
-      return acc;
-    }, [] as (Omit<(typeof runsWithTags)[number], "tagId" | "tagName"> & { tags: string[] })[]);
 
     const hasMore = runs.length > pageSize;
 
