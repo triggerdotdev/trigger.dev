@@ -338,7 +338,7 @@ WHERE
           expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
           costInCents: run.costInCents,
           usageDurationMs: Number(run.usageDurationMs),
-          tags: run.tags,
+          tags: run.tags.sort((a, b) => a.localeCompare(b)),
         };
       }),
       pagination: {
