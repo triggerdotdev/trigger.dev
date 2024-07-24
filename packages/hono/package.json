@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/hono",
-  "version": "3.0.0-beta.50",
+  "version": "3.0.0-beta.51",
   "description": "A Trigger.dev adapter for Hono.dev",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -32,7 +32,7 @@
   },
   "peerDependencies": {
     "hono": "3.x",
-    "@trigger.dev/sdk": "workspace:^3.0.0-beta.50"
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.51"
   },
   "devDependencies": {
     "@trigger.dev/tsconfig": "workspace:*",
