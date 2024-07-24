@@ -8,6 +8,7 @@ import { logger } from "~/services/logger.server";
 import { BatchTriggerTaskService } from "~/v3/services/batchTriggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { env } from "~/env.server";
+import { fromZodError } from "zod-validation-error";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -56,7 +57,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const body = BatchTriggerTaskRequestBody.safeParse(anyBody);
 
   if (!body.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
+    return json(
+      { error: fromZodError(body.error, { prefix: "Invalid batchTrigger call" }).toString() },
+      { status: 400 }
+    );
   }
 
   logger.debug("Triggering batch", {
