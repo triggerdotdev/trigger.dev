@@ -9,7 +9,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command, Option as CommandOption } from "commander";
-import { build } from "esbuild";
+import { build, Metafile } from "esbuild";
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -32,7 +32,11 @@ import {
 import { ReadConfigResult, readConfig } from "../utilities/configFiles.js";
 import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { parsePackageName, stripWorkspaceFromVersion } from "../utilities/installPackages";
+import {
+  detectPackageNameFromImportPath,
+  parsePackageName,
+  stripWorkspaceFromVersion,
+} from "../utilities/installPackages";
 import { logger } from "../utilities/logger.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";
 import { login } from "./login";
@@ -1286,6 +1290,17 @@ async function compileProject(
 
       logger.debug(`Writing compiled files to ${tempDir}`);
 
+      // Get the metaOutput for the result build
+      const metaOutput = result.metafile!.outputs[posix.join("out", "stdin.js")];
+
+      invariant(metaOutput, "Meta output for the result build is missing");
+
+      // Get the metaOutput for the entryPoint build
+      const entryPointMetaOutput =
+        entryPointResult.metafile!.outputs[posix.join("out", "stdin.js")];
+
+      invariant(entryPointMetaOutput, "Meta output for the entryPoint build is missing");
+
       // Get the outputFile and the sourceMapFile for the result build
       const workerOutputFile = result.outputFiles.find(
         (file) => file.path === join(config.projectDir, "out", "stdin.js")
@@ -1317,7 +1332,19 @@ async function compileProject(
       // Save the entryPoint outputFile to /tmp/dir/index.js
       await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
-      const dependencies = await resolveRequiredDependencies(directDependenciesMeta, config);
+      logger.debug("Getting the imports for the worker and entryPoint builds", {
+        workerImports: metaOutput.imports,
+        entryPointImports: entryPointMetaOutput.imports,
+      });
+
+      // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
+      const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
+
+      const dependencies = await resolveRequiredDependencies(
+        directDependenciesMeta,
+        allImports,
+        config
+      );
 
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
@@ -1688,40 +1715,53 @@ export async function typecheckProject(config: ResolvedConfig) {
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 export async function resolveRequiredDependencies(
   directDependenciesMeta: Record<string, DependencyMeta>,
+  imports: Metafile["outputs"][string]["imports"],
   config: ResolvedConfig
 ) {
   return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
-    const externalDirectDependenciesVersion = Object.fromEntries(
-      Object.entries(directDependenciesMeta)
-        .filter(([, { external }]) => external)
-        .map(([packageName, { version }]) => [packageName, version])
-    );
-    span.setAttribute("resolvablePackageNames", Object.keys(externalDirectDependenciesVersion));
+    const dependencies: Record<string, string> = {};
+    const missingPackages: string[] = [];
 
-    const missingPackages = Object.entries(externalDirectDependenciesVersion)
-      .filter(([, version]) => !version)
-      .map(([name]) => name);
+    for (const file of imports) {
+      if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
+        continue;
+      }
 
+      const packageName = detectPackageNameFromImportPath(file.path);
+
+      if (!packageName) {
+        continue;
+      }
+
+      if (!directDependenciesMeta[packageName]) {
+        continue;
+      }
+
+      if (!directDependenciesMeta[packageName].external) {
+        continue;
+      }
+
+      if (!directDependenciesMeta[packageName].version) {
+        missingPackages.push(packageName);
+        const internalDependencyVersion =
+          (packageJson.dependencies as Record<string, string>)[packageName] ??
+          detectDependencyVersion(packageName);
+
+        if (internalDependencyVersion) {
+          dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
+        }
+
+        continue;
+      }
+
+      dependencies[packageName] = directDependenciesMeta[packageName].version;
+    }
+
+    span.setAttribute("resolvablePackageNames", Object.keys(dependencies));
     span.setAttributes({
-      ...flattenAttributes(externalDirectDependenciesVersion, "resolvedPackageVersions"),
+      ...flattenAttributes(dependencies, "resolvedPackageVersions"),
     });
     span.setAttribute("missingPackages", missingPackages);
-
-    const dependencies: Record<string, string> = {};
-
-    for (const missingPackage of missingPackages) {
-      const internalDependencyVersion =
-        (packageJson.dependencies as Record<string, string>)[missingPackage] ??
-        detectDependencyVersion(missingPackage);
-
-      if (internalDependencyVersion) {
-        dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
-      }
-    }
-
-    for (const [packageName, version] of Object.entries(externalDirectDependenciesVersion)) {
-      dependencies[packageName] = version;
-    }
 
     if (config.additionalPackages) {
       span.setAttribute("additionalPackages", config.additionalPackages);
@@ -1737,10 +1777,10 @@ export async function resolveRequiredDependencies(
           dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          const externalDependencyVersion = externalDirectDependenciesVersion[packageParts.name];
+          const dependencyVersion = dependencies[packageParts.name];
 
-          if (externalDependencyVersion) {
-            dependencies[packageParts.name] = externalDependencyVersion;
+          if (dependencyVersion) {
+            dependencies[packageParts.name] = dependencyVersion;
             continue;
           } else {
             logger.log(

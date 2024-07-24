@@ -16,8 +16,11 @@ import { logger } from "../src/utilities/logger.js";
 import { cliLink } from "../src/utilities/cliOutput.js";
 import { E2EJavascriptProject } from "./javascriptProject.js";
 import { DependencyMeta } from "../src/utilities/javascriptProject.js";
+import { Metafile } from "esbuild";
 
 type HandleDependenciesOptions = {
+  entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
+  metaOutput: Metafile["outputs"]["out/stdin.js"];
   directDependenciesMeta: Record<string, DependencyMeta>;
   packageManager: PackageManager;
   resolvedConfig: ReadConfigResult;
@@ -29,15 +32,29 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
     throw new Error("cannot resolve config");
   }
   const {
+    entryPointMetaOutput,
+    metaOutput,
     directDependenciesMeta,
     packageManager,
     resolvedConfig: { config },
     tempDir,
   } = options;
 
+  logger.debug("Getting the imports for the worker and entryPoint builds", {
+    workerImports: metaOutput.imports,
+    entryPointImports: entryPointMetaOutput.imports,
+  });
+
+  // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
+  const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
+
   const javascriptProject = new E2EJavascriptProject(config.projectDir, packageManager);
 
-  const dependencies = await resolveRequiredDependencies(directDependenciesMeta, config);
+  const dependencies = await resolveRequiredDependencies(
+    directDependenciesMeta,
+    allImports,
+    config
+  );
 
   logger.debug("gatherRequiredDependencies()", { dependencies });
 
