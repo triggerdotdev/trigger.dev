@@ -20,8 +20,8 @@ We don't enforce prefixes but if you use them you'll find it easier to filter an
 
 There are two ways to add tags to a run:
 
-1. When triggering the run
-2. Inside the `run` function, using `tags.add()`
+1. When triggering the run.
+2. Inside the `run` function, using `tags.add()`.
 
 ### 1. Adding tags when triggering the run
 
@@ -76,6 +76,25 @@ export const myTask = task({
 ```
 
 Reminder: you can only have up to 3 tags per run. If you call `tags.add()` and the total number of tags will be more than 3 we log an error and ignore the new tags. That includes tags from triggering and from inside the run function.
+
+### Propagating tags to child runs
+
+Tags do not propagate to child runs automatically. By default runs have no tags and you have to set them explicitly.
+
+It's easy to propagate tags if you want:
+
+```ts
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: Payload, { ctx }) => {
+    // Pass the tags from ctx into the child run
+    const { id } = await otherTask.trigger(
+      { message: "triggered from myTask" },
+      { tags: ctx.run.tags }
+    );
+  },
+});
+```
 
 ## Filtering runs by tags
 
