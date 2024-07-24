@@ -64,6 +64,10 @@
     {
       "source": "/documentation/guides/create-a-job",
       "destination": "/documentation/guides/writing-jobs-step-by-step"
+    },
+    {
+      "source": "/documentation/v3/feature-matrix",
+      "destination": "/documentation/"
     }
   ],
   "navigation": [
@@ -75,13 +79,7 @@
     {
       "group": "Getting Started",
       "version": "v3",
-      "pages": [
-        "v3/quick-start",
-        "v3/upgrading-from-v2",
-        "v3/changelog",
-        "v3/feature-matrix",
-        "v3/limits"
-      ]
+      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/limits", "v3/roadmap", "v3/changelog"]
     },
     {
       "group": "Fundamentals",
@@ -206,7 +204,7 @@
         "v3/troubleshooting-alerts",
         "v3/troubleshooting-uptime-status",
         "v3/troubleshooting-github-issues",
-        "v3/troubleshooting-github-discussions"
+        "v3/request-feature"
       ]
     },
     {
