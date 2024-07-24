@@ -225,7 +225,7 @@
     {
       "group": "Task Management",
       "version": "v3",
-      "pages": ["guides/frameworks/creating-a-task", "guides/task-management/deploying"]
+      "pages": ["guides/task-management/creating-a-project", "guides/task-management/deploying"]
     },
     {
       "group": "Getting Started",
