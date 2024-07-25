@@ -27,6 +27,10 @@ export type UsageSeriesData = {
 
 export class UsagePresenter extends BasePresenter {
   public async call({ organizationId, startDate }: Options) {
+    if (isNaN(startDate.getTime())) {
+      throw new Error("Invalid start date");
+    }
+
     //month period
     const startOfMonth = new Date(startDate);
     startOfMonth.setUTCDate(1);
