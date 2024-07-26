@@ -4,6 +4,7 @@ import {
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
+  TaskOperationsPrePullImageOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps/provider";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
@@ -49,6 +50,7 @@ class KubernetesTaskOperations implements TaskOperations {
   #k8sApi: {
     core: k8s.CoreV1Api;
     batch: k8s.BatchV1Api;
+    apps: k8s.AppsV1Api;
   };
 
   constructor(namespace = "default") {
@@ -313,6 +315,72 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
+  async prePullImage(opts: TaskOperationsPrePullImageOptions) {
+    const metaName = this.#getPrePullContainerName(opts.shortCode);
+
+    const metaLabels = {
+      ...this.#getSharedLabels(opts),
+      app: "task-prepull",
+      "app.kubernetes.io/part-of": "trigger-worker",
+      "app.kubernetes.io/component": "prepull",
+      deployment: opts.deploymentId,
+      name: metaName,
+    } satisfies k8s.V1ObjectMeta["labels"];
+
+    await this.#createDaemonSet(
+      {
+        metadata: {
+          name: metaName,
+          namespace: this.#namespace.metadata.name,
+          labels: metaLabels,
+        },
+        spec: {
+          selector: {
+            matchLabels: {
+              name: metaName,
+            },
+          },
+          template: {
+            metadata: {
+              labels: metaLabels,
+            },
+            spec: {
+              ...this.#defaultPodSpec,
+              restartPolicy: "Always",
+              initContainers: [
+                {
+                  name: "prepull",
+                  image: opts.imageRef,
+                  command: ["/usr/bin/true"],
+                  resources: {
+                    limits: {
+                      cpu: "0.25",
+                      memory: "100Mi",
+                      "ephemeral-storage": "1Gi",
+                    },
+                  },
+                },
+              ],
+              containers: [
+                {
+                  name: "pause",
+                  image: "registry.k8s.io/pause:3.9",
+                  resources: {
+                    limits: {
+                      cpu: "1m",
+                      memory: "12Mi",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+      this.#namespace
+    );
+  }
+
   #envTypeToLabelValue(type: EnvironmentType) {
     switch (type) {
       case "PRODUCTION":
@@ -402,7 +470,11 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   #getSharedLabels(
-    opts: TaskOperationsIndexOptions | TaskOperationsCreateOptions | TaskOperationsRestoreOptions
+    opts:
+      | TaskOperationsIndexOptions
+      | TaskOperationsCreateOptions
+      | TaskOperationsRestoreOptions
+      | TaskOperationsPrePullImageOptions
   ): Record<string, string> {
     return {
       env: opts.envId,
@@ -446,6 +518,10 @@ class KubernetesTaskOperations implements TaskOperations {
     return `task-run-${suffix}`;
   }
 
+  #getPrePullContainerName(suffix: string) {
+    return `task-prepull-${suffix}`;
+  }
+
   #createK8sApi() {
     const kubeConfig = new k8s.KubeConfig();
 
@@ -460,6 +536,7 @@ class KubernetesTaskOperations implements TaskOperations {
     return {
       core: kubeConfig.makeApiClient(k8s.CoreV1Api),
       batch: kubeConfig.makeApiClient(k8s.BatchV1Api),
+      apps: kubeConfig.makeApiClient(k8s.AppsV1Api),
     };
   }
 
@@ -497,6 +574,18 @@ class KubernetesTaskOperations implements TaskOperations {
   async #createJob(job: k8s.V1Job, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.batch.createNamespacedJob(namespace.metadata.name, job);
+      logger.debug(res.body);
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
+    }
+  }
+
+  async #createDaemonSet(daemonSet: k8s.V1DaemonSet, namespace: Namespace) {
+    try {
+      const res = await this.#k8sApi.apps.createNamespacedDaemonSet(
+        namespace.metadata.name,
+        daemonSet
+      );
       logger.debug(res.body);
     } catch (err: unknown) {
       this.#handleK8sError(err);
