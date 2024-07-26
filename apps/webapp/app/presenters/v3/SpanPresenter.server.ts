@@ -2,6 +2,7 @@ import { prettyPrintPacket } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { BasePresenter } from "./basePresenter.server";
+import { FINISHED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<Result>["event"];
@@ -117,6 +118,8 @@ export class SpanPresenter extends BasePresenter {
       run: spanRun
         ? {
             ...spanRun,
+            isFinished: FINISHED_STATUSES.includes(spanRun.status),
+            isRunning: RUNNING_STATUSES.includes(spanRun.status),
           }
         : undefined,
       event: {

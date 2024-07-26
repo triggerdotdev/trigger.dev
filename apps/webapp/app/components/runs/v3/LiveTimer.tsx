@@ -23,11 +23,11 @@ export function LiveTimer({
     }, updateInterval);
 
     return () => clearInterval(interval);
-  }, [startTime]);
+  }, [startTime, endTime]);
 
   return (
     <>
-      {formatDuration(startTime, now, {
+      {formatDuration(startTime, endTime ?? now, {
         style: "short",
         maxDecimalPoints: 0,
         units: ["d", "h", "m", "s"],

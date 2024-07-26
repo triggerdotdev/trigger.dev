@@ -1,13 +1,18 @@
 import {
   ArrowPathIcon,
+  ClockIcon,
   CloudArrowDownIcon,
   QueueListIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationNanoseconds, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
-import { useEffect } from "react";
+import {
+  formatDuration,
+  formatDurationNanoseconds,
+  nanosecondsToMilliseconds,
+} from "@trigger.dev/core/v3";
+import { ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -20,7 +25,7 @@ import {
   ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { DateTimeAccurate } from "~/components/primitives/DateTime";
+import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -371,9 +376,9 @@ function RunBody({
               Detail
             </TabButton>
           </TabContainer>
-          {tab === "detail" ? null : (
-            <div className="flex flex-col gap-4">
-              <TaskRunStatusCombo status={run.status} />
+          {tab === "detail" ? (
+            <div className="flex flex-col gap-4 pt-3">
+              <TaskRunStatusCombo status={run.status} className="text-sm" />
               {/* <PropertyTable>
         <Property label="Status">
           <TaskRunStatusCombo status={run.status} />
@@ -387,6 +392,14 @@ function RunBody({
           </TextLink>
         </Property>
       </PropertyTable> */}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 pt-3">
+              <div className="border-b border-grid-bright pb-3">
+                <TaskRunStatusCombo status={run.status} className="text-sm" />
+              </div>
+              <RunTimeline run={run} />
+              {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
               {span.payload !== undefined && (
                 <CodeBlock rowTitle="Payload" code={span.payload} maxLines={20} />
               )}
@@ -395,6 +408,140 @@ function RunBody({
         </div>
       </div>
     </>
+  );
+}
+
+function RunTimeline({ run }: { run: SpanRun }) {
+  return (
+    <div className="min-w-fit max-w-80">
+      <RunTimelineEvent
+        title="Triggered"
+        subtitle={<DateTime date={run.createdAt} />}
+        state="complete"
+      />
+      {run.delayUntil && !run.expiredAt ? (
+        <RunTimelineLine
+          title={
+            run.startedAt ? (
+              <>{formatDuration(run.createdAt, run.delayUntil)} delay</>
+            ) : (
+              <span className="flex items-center gap-1">
+                <ClockIcon className="size-4" />
+                <span>
+                  Delayed until <DateTime date={run.delayUntil} /> {run.ttl && <>(TTL {run.ttl})</>}
+                </span>
+              </span>
+            )
+          }
+          state={run.startedAt ? "complete" : "delayed"}
+        />
+      ) : (
+        <RunTimelineLine
+          title={
+            <>
+              <LiveTimer
+                startTime={run.createdAt}
+                endTime={run.startedAt ?? run.expiredAt ?? undefined}
+              />{" "}
+              {run.ttl && <>(TTL {run.ttl})</>}
+            </>
+          }
+          state={run.startedAt || run.expiredAt ? "complete" : "inprogress"}
+        />
+      )}
+      {run.expiredAt ? (
+        <RunTimelineEvent
+          title="Expired"
+          subtitle={<DateTime date={run.expiredAt} />}
+          state="error"
+        />
+      ) : run.startedAt ? (
+        <>
+          <RunTimelineEvent
+            title="Started"
+            subtitle={<DateTime date={run.startedAt} />}
+            state="complete"
+          />
+          {run.isFinished ? (
+            <>
+              <RunTimelineLine
+                title={formatDuration(run.startedAt, run.updatedAt)}
+                state={"complete"}
+              />
+              <RunTimelineEvent
+                title="Finished"
+                subtitle={<DateTime date={run.updatedAt} />}
+                state="complete"
+              />
+            </>
+          ) : (
+            <RunTimelineLine
+              title={
+                <span className="flex items-center gap-1">
+                  <Spinner className="size-4" />
+                  <span>
+                    <LiveTimer startTime={run.startedAt} />
+                  </span>
+                </span>
+              }
+              state={"inprogress"}
+            />
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+type RunTimelineItemProps = {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  state: "complete" | "error";
+};
+
+function RunTimelineEvent({ title, subtitle, state }: RunTimelineItemProps) {
+  return (
+    <div className="grid h-5 grid-cols-[1.125rem_1fr] text-sm">
+      <div className="flex items-center justify-center">
+        <div
+          className={cn(
+            "size-[0.3125rem] rounded-full",
+            state === "complete" ? "bg-success" : "bg-error"
+          )}
+        ></div>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium text-text-bright">{title}</span>
+        {subtitle ? <span className="text-text-dimmed">{subtitle}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+type RunTimelineLineProps = {
+  title: ReactNode;
+  state: "complete" | "delayed" | "inprogress";
+};
+
+function RunTimelineLine({ title, state }: RunTimelineLineProps) {
+  return (
+    <div className="grid h-6 grid-cols-[1.125rem_1fr] text-xs">
+      <div className="flex items-stretch justify-center">
+        <div
+          className={cn(
+            "w-px",
+            state === "complete"
+              ? "bg-success"
+              : state === "delayed"
+              ? "bg-text-dimmed"
+              : "bg-gradient-to-b from-[#3B82F6] from-50% to-transparent"
+          )}
+        ></div>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-text-dimmed">{title}</span>
+      </div>
+    </div>
   );
 }
 
