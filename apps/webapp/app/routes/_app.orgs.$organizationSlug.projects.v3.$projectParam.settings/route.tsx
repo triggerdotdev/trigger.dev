@@ -17,7 +17,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -116,18 +116,19 @@ export default function Page() {
 
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
-              <Property label="ID">
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value>{project.id}</Property.Value>
                 <div className="flex items-center gap-2">
                   <Paragraph variant="extra-small/bright/mono">{project.id}</Paragraph>
                 </div>
-              </Property>
-              <Property label="Org ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{project.organizationId}</Paragraph>
-                </div>
-              </Property>
-            </PropertyTable>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Org ID</Property.Label>
+                <Property.Value>{project.organizationId}</Property.Value>
+              </Property.Item>
+            </Property.Table>
           </AdminDebugTooltip>
         </PageAccessories>
       </NavBar>

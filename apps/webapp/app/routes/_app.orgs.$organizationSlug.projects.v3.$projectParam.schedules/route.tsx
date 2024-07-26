@@ -28,7 +28,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -122,15 +122,14 @@ export default function Page() {
         <PageTitle title="Schedules" />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
+            <Property.Table>
               {schedules.map((schedule) => (
-                <Property label={schedule.friendlyId} key={schedule.id}>
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{schedule.id}</Paragraph>
-                  </div>
-                </Property>
+                <Property.Item key={schedule.id}>
+                  <Property.Label>{schedule.friendlyId}</Property.Label>
+                  <Property.Value>{schedule.id}</Property.Value>
+                </Property.Item>
               ))}
-            </PropertyTable>
+            </Property.Table>
           </AdminDebugTooltip>
 
           {limits.used >= limits.limit ? (

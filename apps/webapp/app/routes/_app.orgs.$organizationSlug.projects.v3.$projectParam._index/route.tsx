@@ -20,7 +20,7 @@ import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
@@ -129,21 +129,20 @@ export default function Page() {
         <PageTitle title="Tasks" />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
+            <Property.Table>
               {tasks.map((task) => (
-                <Property label={task.exportName} key={task.slug}>
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">
-                      {task.environments
-                        .map((e) =>
-                          e.userName ? `${e.userName}/${e.id}` : `${e.type.slice(0, 3)}/${e.id}`
-                        )
-                        .join(", ")}
-                    </Paragraph>
-                  </div>
-                </Property>
+                <Property.Item key={task.slug}>
+                  <Property.Label>{task.exportName}</Property.Label>
+                  <Property.Value>
+                    {task.environments
+                      .map((e) =>
+                        e.userName ? `${e.userName}/${e.id}` : `${e.type.slice(0, 3)}/${e.id}`
+                      )
+                      .join(", ")}
+                  </Property.Value>
+                </Property.Item>
               ))}
-            </PropertyTable>
+            </Property.Table>
           </AdminDebugTooltip>
         </PageAccessories>
       </NavBar>

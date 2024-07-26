@@ -33,7 +33,7 @@ import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -126,30 +126,24 @@ export default function Page() {
           />
           <PageAccessories>
             <AdminDebugTooltip>
-              <PropertyTable>
-                <Property label="ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Trace ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Env ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Org ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">
-                      {run.environment.organizationId}
-                    </Paragraph>
-                  </div>
-                </Property>
-              </PropertyTable>
+              <Property.Table>
+                <Property.Item>
+                  <Property.Label>ID</Property.Label>
+                  <Property.Value>{run.id}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Trace ID</Property.Label>
+                  <Property.Value>{run.traceId}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Env ID</Property.Label>
+                  <Property.Value>{run.environment.id}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Org ID</Property.Label>
+                  <Property.Value>{run.environment.organizationId}</Property.Value>
+                </Property.Item>
+              </Property.Table>
             </AdminDebugTooltip>
 
             <EnvironmentLabel
@@ -204,30 +198,24 @@ export default function Page() {
         />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
-              <Property label="ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Trace ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Env ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Org ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">
-                    {run.environment.organizationId}
-                  </Paragraph>
-                </div>
-              </Property>
-            </PropertyTable>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value>{run.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Trace ID</Property.Label>
+                <Property.Value>{run.traceId}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Env ID</Property.Label>
+                <Property.Value>{run.environment.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Org ID</Property.Label>
+                <Property.Value>{run.environment.organizationId}</Property.Value>
+              </Property.Item>
+            </Property.Table>
           </AdminDebugTooltip>
 
           <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
