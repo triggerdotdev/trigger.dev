@@ -1,8 +1,11 @@
-import { NavLink, useLocation } from "@remix-run/react";
+import { Link, NavLink, useLocation } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { ReactNode } from "react";
+import { ReactNode, useRef } from "react";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { projectPubSub } from "~/v3/services/projectPubSub.server";
+import { ShortcutKey } from "./ShortcutKey";
 
 export type TabsProps = {
   tabs: {
@@ -42,20 +45,15 @@ export function TabLink({
   children: ReactNode;
   layoutId: string;
 }) {
-  const location = useOptimisticLocation();
-  const toSearch = to.split("?").at(0);
-
   return (
     <NavLink to={to} className="group flex flex-col items-center pt-1" end>
       {({ isActive, isPending }) => {
-        const isActiveWithQuery = isActive && location.search;
-
         return (
           <>
             <span
               className={cn(
                 "text-sm transition duration-200",
-                isActive || isPending ? "text-indigo-500" : "text-charcoal-200"
+                isActive || isPending ? "text-text-bright" : "text-text-bright"
               )}
             >
               {children}
@@ -69,5 +67,57 @@ export function TabLink({
         );
       }}
     </NavLink>
+  );
+}
+
+export function TabButton({
+  isActive,
+  layoutId,
+  shortcut,
+  ...props
+}: {
+  isActive: boolean;
+  shortcut?: ShortcutDefinition;
+  layoutId: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  if (shortcut) {
+    useShortcutKeys({
+      shortcut: shortcut,
+      action: () => {
+        if (ref.current) {
+          ref.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
+  }
+
+  return (
+    <button
+      className={cn("group flex flex-col items-center pt-1", props.className)}
+      ref={ref}
+      {...props}
+    >
+      <>
+        <div className="flex items-center gap-1">
+          <span
+            className={cn(
+              "text-sm transition duration-200",
+              isActive ? "text-text-bright" : "text-text-bright"
+            )}
+          >
+            {props.children}
+          </span>
+          {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}
+        </div>
+        {isActive ? (
+          <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
+        ) : (
+          <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+        )}
+      </>
+    </button>
   );
 }

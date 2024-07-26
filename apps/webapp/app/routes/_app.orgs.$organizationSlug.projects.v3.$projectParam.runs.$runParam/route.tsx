@@ -232,7 +232,7 @@ export default function Page() {
               setResizableRunSettings(document, layout);
             }}
           >
-            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 65}>
               <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
@@ -257,7 +257,7 @@ export default function Page() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId && (
-              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
+              <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 35}>
                 <SpanView
                   runParam={run.friendlyId}
                   spanId={selectedSpanId}
@@ -299,7 +299,7 @@ function TasksTreeView({
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
-  const [showDurations, setShowDurations] = useState(false);
+  const [showDurations, setShowDurations] = useState(true);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
@@ -1021,11 +1021,6 @@ function KeyboardShortcuts({
         title="Collapse all"
       />
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
-      <ShortcutWithAction
-        shortcut={{ key: "d" }}
-        action={() => setShowDurations((d) => !d)}
-        title="Toggle durations"
-      />
     </>
   );
 }
