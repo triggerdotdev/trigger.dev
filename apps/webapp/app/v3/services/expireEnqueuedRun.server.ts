@@ -60,7 +60,7 @@ export class ExpireEnqueuedRunService extends BaseService {
           time: new Date(),
           properties: {
             exception: {
-              message: "Run expired",
+              message: `Run expired because the TTL (${run.ttl}) was reached`,
             },
           },
         },
