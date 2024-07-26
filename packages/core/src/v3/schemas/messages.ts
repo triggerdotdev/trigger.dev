@@ -367,7 +367,7 @@ export const PlatformToProviderMessages = {
       runId: z.string(),
     }),
   },
-  PRE_PULL_IMAGE: {
+  PRE_PULL_DEPLOYMENT: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       imageRef: z.string(),

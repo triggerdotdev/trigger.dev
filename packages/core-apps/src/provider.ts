@@ -64,7 +64,7 @@ export interface TaskOperationsRestoreOptions {
   checkpointId: string;
 }
 
-export interface TaskOperationsPrePullImageOptions {
+export interface TaskOperationsPrePullDeploymentOptions {
   shortCode: string;
   imageRef: string;
   // identifiers
@@ -87,7 +87,7 @@ export interface TaskOperations {
   delete?: (...args: any[]) => Promise<any>;
   get?: (...args: any[]) => Promise<any>;
 
-  prePullImage?: (opts: TaskOperationsPrePullImageOptions) => Promise<any>;
+  prePullDeployment?: (opts: TaskOperationsPrePullDeploymentOptions) => Promise<any>;
 }
 
 type ProviderShellOptions = {
@@ -290,14 +290,14 @@ export class ProviderShell implements Provider {
             logger.error("restore failed", error);
           }
         },
-        PRE_PULL_IMAGE: async (message) => {
-          if (!this.tasks.prePullImage) {
-            logger.debug("prePullImage not implemented", message);
+        PRE_PULL_DEPLOYMENT: async (message) => {
+          if (!this.tasks.prePullDeployment) {
+            logger.debug("prePullDeployment not implemented", message);
             return;
           }
 
           try {
-            await this.tasks.prePullImage({
+            await this.tasks.prePullDeployment({
               shortCode: message.shortCode,
               imageRef: message.imageRef,
               // identifiers
@@ -308,7 +308,7 @@ export class ProviderShell implements Provider {
               deploymentId: message.deploymentId,
             });
           } catch (error) {
-            logger.error("prePullImage failed", error);
+            logger.error("prePullDeployment failed", error);
           }
         },
       },

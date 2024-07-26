@@ -4,7 +4,7 @@ import {
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
-  TaskOperationsPrePullImageOptions,
+  TaskOperationsPrePullDeploymentOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core-apps/provider";
 import { SimpleLogger } from "@trigger.dev/core-apps/logger";
@@ -315,7 +315,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
-  async prePullImage(opts: TaskOperationsPrePullImageOptions) {
+  async prePullDeployment(opts: TaskOperationsPrePullDeploymentOptions) {
     const metaName = this.#getPrePullContainerName(opts.shortCode);
 
     const metaLabels = {
@@ -474,7 +474,7 @@ class KubernetesTaskOperations implements TaskOperations {
       | TaskOperationsIndexOptions
       | TaskOperationsCreateOptions
       | TaskOperationsRestoreOptions
-      | TaskOperationsPrePullImageOptions
+      | TaskOperationsPrePullDeploymentOptions
   ): Record<string, string> {
     return {
       env: opts.envId,

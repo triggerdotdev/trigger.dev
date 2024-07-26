@@ -134,7 +134,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       }
 
       if (deployment.imageReference) {
-        socketIo.providerNamespace.emit("PRE_PULL_IMAGE", {
+        socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
           version: "v1",
           imageRef: deployment.imageReference,
           shortCode: deployment.shortCode,
