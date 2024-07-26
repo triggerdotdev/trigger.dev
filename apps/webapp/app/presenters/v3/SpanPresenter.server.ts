@@ -5,6 +5,7 @@ import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<Result>["event"];
+export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
@@ -63,7 +64,61 @@ export class SpanPresenter extends BasePresenter {
         ? await prettyPrintPacket(span.payload, span.payloadType ?? undefined)
         : undefined;
 
+    //get the run
+    const spanRun = await this._replica.taskRun.findFirst({
+      select: {
+        //metadata
+        number: true,
+        taskIdentifier: true,
+        isTest: true,
+        tags: {
+          select: {
+            name: true,
+          },
+        },
+        machinePreset: true,
+        lockedToVersion: {
+          select: {
+            version: true,
+            sdkVersion: true,
+          },
+        },
+        //status + duration
+        status: true,
+        startedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        queuedAt: true,
+        //idempotency
+        idempotencyKey: true,
+        //delayed
+        delayUntil: true,
+        //ttl
+        ttl: true,
+        expiredAt: true,
+        //queue
+        queue: true,
+        concurrencyKey: true,
+        //schedule
+        schedule: {
+          select: {
+            friendlyId: true,
+            generatorExpression: true,
+            timezone: true,
+          },
+        },
+      },
+      where: {
+        spanId: span.spanId,
+      },
+    });
+
     return {
+      run: spanRun
+        ? {
+            ...spanRun,
+          }
+        : undefined,
       event: {
         ...span,
         events: span.events,

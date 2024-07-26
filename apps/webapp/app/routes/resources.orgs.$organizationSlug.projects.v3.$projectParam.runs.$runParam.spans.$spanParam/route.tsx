@@ -13,12 +13,21 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "~/components/primitives/ClientTabs";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
+import { Tabs } from "~/components/primitives/Tabs";
+import { TextLink } from "~/components/primitives/TextLink";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
@@ -27,16 +36,18 @@ import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
+import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { Span, SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
+import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
+  v3RunsPath,
   v3SpanParamsSchema,
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
@@ -110,7 +121,7 @@ export function SpanView({
   }
 
   const {
-    span: { event },
+    span: { event, run },
   } = fetcher.data;
 
   return (
@@ -141,88 +152,7 @@ export function SpanView({
         )}
       </div>
       <div className="overflow-y-auto px-3 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="flex flex-col gap-4">
-          <PropertyTable>
-            {event.level === "TRACE" ? (
-              <Property label="Timeline" labelClassName="self-end">
-                <Timeline
-                  startTime={new Date(event.startTime)}
-                  duration={event.duration}
-                  inProgress={event.isPartial}
-                  isError={event.isError}
-                />
-              </Property>
-            ) : (
-              <Property label="Timestamp">
-                <Paragraph variant="small/bright">
-                  <DateTimeAccurate date={event.startTime} /> UTC
-                </Paragraph>
-              </Property>
-            )}
-            {event.style.variant === "primary" && (
-              <Property label="Status">
-                <TaskRunAttemptStatusCombo
-                  status={
-                    event.isCancelled
-                      ? "CANCELED"
-                      : event.isError
-                      ? "FAILED"
-                      : event.isPartial
-                      ? "EXECUTING"
-                      : "COMPLETED"
-                  }
-                  className="text-sm"
-                />
-              </Property>
-            )}
-            <Property label="Message">{event.message}</Property>
-            <Property label="Task ID">{event.taskSlug}</Property>
-            {event.idempotencyKey && (
-              <Property label="Idempotency key">{event.idempotencyKey}</Property>
-            )}
-            {event.taskPath && event.taskExportName && (
-              <Property label="Task">
-                <TaskPath
-                  filePath={event.taskPath}
-                  functionName={`${event.taskExportName}()`}
-                  className="text-xs"
-                />
-              </Property>
-            )}
-
-            {event.queueName && <Property label="Queue name">{event.queueName}</Property>}
-            {event.workerVersion && (
-              <Property label="Version">
-                <div className="flex items-center gap-2 text-sm text-text-bright">
-                  <span>{event.workerVersion}</span>
-                  <EnvironmentLabel environment={{ type: event.environmentType }} />
-                </div>
-              </Property>
-            )}
-          </PropertyTable>
-
-          {event.links && event.links.length > 0 && (
-            <div>
-              <Header2 spacing>Links</Header2>
-              <div className="space-y-1">
-                {event.links.map((link, index) => (
-                  <SpanLinkElement key={index} link={link} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {event.events !== undefined && <SpanEvents spanEvents={event.events} />}
-          {event.payload !== undefined && (
-            <PacketDisplay data={event.payload} dataType={event.payloadType} title="Payload" />
-          )}
-          {event.output !== undefined && (
-            <PacketDisplay data={event.output} dataType={event.outputType} title="Output" />
-          )}
-          {event.properties !== undefined && (
-            <CodeBlock rowTitle="Properties" code={event.properties} maxLines={20} />
-          )}
-        </div>
+        {run ? <RunBody run={run} span={event} /> : <SpanBody span={event} />}
       </div>
       {event.showActionBar === true ? (
         <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
@@ -248,6 +178,153 @@ export function SpanView({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SpanBody({ span }: { span: Span }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Property.Table>
+        {span.level === "TRACE" ? (
+          <Property.Item className="self-end">
+            <Property.Label>Timeline</Property.Label>
+            <Timeline
+              startTime={new Date(span.startTime)}
+              duration={span.duration}
+              inProgress={span.isPartial}
+              isError={span.isError}
+            />
+          </Property.Item>
+        ) : (
+          <Property.Item>
+            <Property.Label>Timeline</Property.Label>
+            <Property.Value>
+              <DateTimeAccurate date={span.startTime} /> UTC
+            </Property.Value>
+          </Property.Item>
+        )}
+        {span.style.variant === "primary" && (
+          <Property.Item>
+            <Property.Label>Status</Property.Label>
+            <Property.Value>
+              <TaskRunAttemptStatusCombo
+                status={
+                  span.isCancelled
+                    ? "CANCELED"
+                    : span.isError
+                    ? "FAILED"
+                    : span.isPartial
+                    ? "EXECUTING"
+                    : "COMPLETED"
+                }
+                className="text-sm"
+              />
+            </Property.Value>
+          </Property.Item>
+        )}
+        <Property.Item>
+          <Property.Label>Message</Property.Label>
+          <Property.Value>{span.message}</Property.Value>
+        </Property.Item>
+        <Property.Item>
+          <Property.Label>Task ID</Property.Label>
+          <Property.Value>{span.taskSlug}</Property.Value>
+        </Property.Item>
+        {span.idempotencyKey && (
+          <Property.Item>
+            <Property.Label>Idempotency key</Property.Label>
+            <Property.Value>{span.idempotencyKey}</Property.Value>
+          </Property.Item>
+        )}
+        {span.taskPath && span.taskExportName && (
+          <Property.Item>
+            <Property.Label>Task</Property.Label>
+            <Property.Value>
+              <TaskPath
+                filePath={span.taskPath}
+                functionName={`${span.taskExportName}()`}
+                className="text-xs"
+              />
+            </Property.Value>
+          </Property.Item>
+        )}
+
+        {span.queueName && (
+          <Property.Item>
+            <Property.Label>Queue</Property.Label>
+            <Property.Value>{span.queueName}</Property.Value>
+          </Property.Item>
+        )}
+        {span.workerVersion && (
+          <Property.Item>
+            <Property.Label>Version</Property.Label>
+            <Property.Value className="flex items-center gap-2 text-text-bright">
+              <span>{span.workerVersion}</span>
+              <EnvironmentLabel environment={{ type: span.environmentType }} />
+            </Property.Value>
+          </Property.Item>
+        )}
+      </Property.Table>
+
+      {span.links && span.links.length > 0 && (
+        <div>
+          <Header2 spacing>Links</Header2>
+          <div className="space-y-1">
+            {span.links.map((link, index) => (
+              <SpanLinkElement key={index} link={link} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
+      {span.payload !== undefined && (
+        <PacketDisplay data={span.payload} dataType={span.payloadType} title="Payload" />
+      )}
+      {span.output !== undefined && (
+        <PacketDisplay data={span.output} dataType={span.outputType} title="Output" />
+      )}
+      {span.properties !== undefined && (
+        <CodeBlock rowTitle="Properties" code={span.properties} maxLines={20} />
+      )}
+    </div>
+  );
+}
+
+function RunBody({ run, span }: { run: SpanRun; span: Span }) {
+  const organization = useOrganization();
+  const project = useProject();
+  console.log(run, span);
+
+  return (
+    <div>
+      <Tabs
+        tabs={[
+          { label: "Overview", to: "?tab=overview" },
+          { label: "Detail", to: "?tab=detail" },
+        ]}
+        layoutId="span-run"
+      />
+      <div className="flex flex-col gap-4">
+        <TaskRunStatusCombo status={run.status} />
+        {/* <PropertyTable>
+        <Property label="Status">
+          <TaskRunStatusCombo status={run.status} />
+        </Property>
+        <Property label="Timeline">
+          <TaskRunStatusCombo status={run.status} />
+        </Property>
+        <Property label="Task">
+          <TextLink to={v3RunsPath(organization, project, { tasks: [run.taskIdentifier] })}>
+            {run.taskIdentifier}
+          </TextLink>
+        </Property>
+      </PropertyTable> */}
+        {span.payload !== undefined && (
+          <CodeBlock rowTitle="Payload" code={span.payload} maxLines={20} />
+        )}
+      </div>
     </div>
   );
 }
