@@ -66,43 +66,34 @@ export function calculateNextScheduledEvent(
   schedule: ScheduleMetadata,
   previousTimestamp?: Date | null
 ): Date {
-  let nextStep = calculateNextStep(schedule, previousTimestamp);
-
-  while (nextStep.getTime() < new Date().getTime()) {
-    nextStep = calculateNextStep(schedule, nextStep);
-  }
-
-  return nextStep;
-}
-
-function calculateNextStep(schedule: ScheduleMetadata, previousTimestamp?: Date | null): Date {
   switch (schedule.type) {
     case "interval": {
-      return calculateNextIntervalOfEvent(schedule, previousTimestamp);
+      return calculateFutureIntervalEvent(schedule, previousTimestamp);
     }
     case "cron": {
-      return calculateNextCronEvent(schedule, previousTimestamp);
+      return calculateFutureCronEvent(schedule);
     }
   }
 }
 
-function calculateNextIntervalOfEvent(
-  interval: IntervalMetadata,
-  previousTimestamp?: Date | null
+function calculateFutureIntervalEvent(
+  schedule: IntervalMetadata,
+  previousDate?: Date | null
 ): Date {
-  const now = previousTimestamp ? previousTimestamp.getTime() : new Date().getTime();
+  const now = Date.now();
+  const interval = schedule.options.seconds * 1000;
 
-  return new Date(now + calculateDurationInMs(interval));
+  if (!previousDate) {
+    return new Date(now + interval);
+  }
+
+  const past = +previousDate;
+
+  const intervalsToAdd = Math.ceil((now - past) / interval);
+
+  return new Date(past + interval * intervalsToAdd);
 }
 
-function calculateDurationInMs(schedule: IntervalMetadata): number {
-  return schedule.options.seconds * 1000;
-}
-
-function calculateNextCronEvent(schedule: CronMetadata, previousTimestamp?: Date | null): Date {
-  return parseExpression(schedule.options.cron, {
-    currentDate: previousTimestamp ? previousTimestamp : new Date(),
-  })
-    .next()
-    .toDate();
+function calculateFutureCronEvent(schedule: CronMetadata): Date {
+  return parseExpression(schedule.options.cron).next().toDate();
 }
