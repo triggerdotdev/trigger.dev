@@ -64,6 +64,17 @@ export interface TaskOperationsRestoreOptions {
   checkpointId: string;
 }
 
+export interface TaskOperationsPrePullDeploymentOptions {
+  shortCode: string;
+  imageRef: string;
+  // identifiers
+  envId: string;
+  envType: EnvironmentType;
+  orgId: string;
+  projectId: string;
+  deploymentId: string;
+}
+
 export interface TaskOperations {
   init: () => Promise<any>;
 
@@ -73,8 +84,10 @@ export interface TaskOperations {
   restore: (opts: TaskOperationsRestoreOptions) => Promise<any>;
 
   // unimplemented
-  delete: (...args: any[]) => Promise<any>;
-  get: (...args: any[]) => Promise<any>;
+  delete?: (...args: any[]) => Promise<any>;
+  get?: (...args: any[]) => Promise<any>;
+
+  prePullDeployment?: (opts: TaskOperationsPrePullDeploymentOptions) => Promise<any>;
 }
 
 type ProviderShellOptions = {
@@ -277,6 +290,27 @@ export class ProviderShell implements Provider {
             logger.error("restore failed", error);
           }
         },
+        PRE_PULL_DEPLOYMENT: async (message) => {
+          if (!this.tasks.prePullDeployment) {
+            logger.debug("prePullDeployment not implemented", message);
+            return;
+          }
+
+          try {
+            await this.tasks.prePullDeployment({
+              shortCode: message.shortCode,
+              imageRef: message.imageRef,
+              // identifiers
+              envId: message.envId,
+              envType: message.envType,
+              orgId: message.orgId,
+              projectId: message.projectId,
+              deploymentId: message.deploymentId,
+            });
+          } catch (error) {
+            logger.error("prePullDeployment failed", error);
+          }
+        },
       },
     });
 
@@ -306,9 +340,12 @@ export class ProviderShell implements Provider {
           case "/delete": {
             const body = await getTextBody(req);
 
-            await this.tasks.delete({ runId: body });
-
-            return reply.text(`sent delete request: ${body}`);
+            if (this.tasks.delete) {
+              await this.tasks.delete({ runId: body });
+              return reply.text(`sent delete request: ${body}`);
+            } else {
+              return reply.text("delete not implemented", 501);
+            }
           }
           default: {
             return reply.empty(404);

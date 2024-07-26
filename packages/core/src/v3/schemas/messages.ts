@@ -367,6 +367,19 @@ export const PlatformToProviderMessages = {
       runId: z.string(),
     }),
   },
+  PRE_PULL_DEPLOYMENT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      imageRef: z.string(),
+      shortCode: z.string(),
+      // identifiers
+      envId: z.string(),
+      envType: EnvironmentType,
+      orgId: z.string(),
+      projectId: z.string(),
+      deploymentId: z.string(),
+    }),
+  },
 };
 
 const CreateWorkerMessage = z.object({
