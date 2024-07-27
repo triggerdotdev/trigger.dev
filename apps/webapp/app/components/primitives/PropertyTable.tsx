@@ -8,11 +8,11 @@ type ChildrenClassName = {
 };
 
 function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-y-2", className)}>{children}</div>;
+  return <div className={cn("flex flex-col gap-y-3", className)}>{children}</div>;
 }
 
-function Property({ children, className }: ChildrenClassName) {
-  return <div className={cn("flex flex-col gap-0.5 text-sm", className)}>{children}</div>;
+function PropertyItem({ children, className }: ChildrenClassName) {
+  return <div className={cn("flex flex-col gap-0 text-sm", className)}>{children}</div>;
 }
 
 function PropertyLabel({ children, className }: ChildrenClassName) {
@@ -23,4 +23,9 @@ function PropertyValue({ children, className }: ChildrenClassName) {
   return <div className={cn("text-text-dimmed", className)}>{children}</div>;
 }
 
-export { PropertyTable as Table, Property as Item, PropertyLabel as Label, PropertyValue as Value };
+export {
+  PropertyTable as Table,
+  PropertyItem as Item,
+  PropertyLabel as Label,
+  PropertyValue as Value,
+};
