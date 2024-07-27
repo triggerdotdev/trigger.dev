@@ -1,14 +1,16 @@
 import {
   ArrowPathIcon,
+  CheckIcon,
   ClockIcon,
   CloudArrowDownIcon,
   QueueListIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { useParams } from "@remix-run/react";
+import { Link, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDuration,
+  formatDurationMilliseconds,
   formatDurationNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
@@ -33,10 +35,12 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabContainer, TabButton, Tabs } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
@@ -46,15 +50,18 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { runBasicStatus } from "~/models/jobRun.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
+  v3SchedulePath,
   v3SpanParamsSchema,
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
@@ -328,6 +335,8 @@ function RunBody({
   const project = useProject();
   const { value, replace } = useSearchParams();
 
+  const environment = project.environments.find((e) => e.id === run.environmentId);
+
   const tab = value("tab");
 
   return (
@@ -378,20 +387,182 @@ function RunBody({
           </TabContainer>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 pt-3">
-              <TaskRunStatusCombo status={run.status} className="text-sm" />
-              {/* <PropertyTable>
-        <Property label="Status">
-          <TaskRunStatusCombo status={run.status} />
-        </Property>
-        <Property label="Timeline">
-          <TaskRunStatusCombo status={run.status} />
-        </Property>
-        <Property label="Task">
-          <TextLink to={v3RunsPath(organization, project, { tasks: [run.taskIdentifier] })}>
-            {run.taskIdentifier}
-          </TextLink>
-        </Property>
-      </PropertyTable> */}
+              <Property.Table>
+                <Property.Item>
+                  <Property.Label>Status</Property.Label>
+                  <Property.Value>
+                    <TaskRunStatusCombo status={run.status} />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Task</Property.Label>
+                  <Property.Value>
+                    <SimpleTooltip
+                      button={
+                        <TextLink
+                          to={v3RunsPath(organization, project, { tasks: [run.taskIdentifier] })}
+                        >
+                          {run.taskIdentifier}
+                        </TextLink>
+                      }
+                      content={`Filter runs by ${run.taskIdentifier}`}
+                    />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Version</Property.Label>
+                  <Property.Value>
+                    {run.version ? (
+                      <SimpleTooltip
+                        button={
+                          <TextLink
+                            to={v3RunsPath(organization, project, { tasks: [run.version] })}
+                          >
+                            {run.version}
+                          </TextLink>
+                        }
+                        content={`Filter runs by ${run.version}`}
+                      />
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <span>Never started</span>
+                        <InfoIconTooltip
+                          content={"Runs get locked to the latest version when they start."}
+                          contentClassName="normal-case tracking-normal"
+                        />
+                      </span>
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>SDK version</Property.Label>
+                  <Property.Value>
+                    {run.sdkVersion ? (
+                      run.sdkVersion
+                    ) : (
+                      <span className="flex items-center gap-1">
+                        <span>Never started</span>
+                        <InfoIconTooltip
+                          content={"Runs get locked to the latest version when they start."}
+                          contentClassName="normal-case tracking-normal"
+                        />
+                      </span>
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Test run</Property.Label>
+                  <Property.Value>
+                    {run.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}
+                  </Property.Value>
+                </Property.Item>
+                {environment && (
+                  <Property.Item>
+                    <Property.Label>Environment</Property.Label>
+                    <Property.Value>
+                      <EnvironmentLabel environment={environment} />
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                {run.schedule && (
+                  <Property.Item>
+                    <Property.Label>Schedule</Property.Label>
+                    <Property.Value>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono">{run.schedule.generatorExpression}</span>
+                          <span>({run.schedule.timezone})</span>
+                        </div>
+                        <SimpleTooltip
+                          button={
+                            <TextLink to={v3SchedulePath(organization, project, run.schedule)}>
+                              {run.schedule.description}
+                            </TextLink>
+                          }
+                          content={`Go to schedule ${run.schedule.friendlyId}`}
+                        />
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                <Property.Item>
+                  <Property.Label>Queue</Property.Label>
+                  <Property.Value>
+                    <div>Name: {run.queue.name}</div>
+                    <div>
+                      Concurrency key: {run.queue.concurrencyKey ? run.queue.concurrencyKey : "–"}
+                    </div>
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Time to live (TTL)</Property.Label>
+                  <Property.Value>{run.ttl ?? "–"}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Tags</Property.Label>
+                  <Property.Value>
+                    {run.tags.length === 0 ? (
+                      "–"
+                    ) : (
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                        {run.tags.map((tag) => (
+                          <SimpleTooltip
+                            key={tag}
+                            button={
+                              <Link to={v3RunsPath(organization, project, { tags: [tag] })}>
+                                <RunTag tag={tag} />
+                              </Link>
+                            }
+                            content={`Filter runs by ${tag}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                {span.links && span.links.length > 0 && (
+                  <Property.Item>
+                    <Property.Label>Links</Property.Label>
+                    <Property.Value>
+                      <div className="space-y-1">
+                        {span.links.map((link, index) => (
+                          <SpanLinkElement key={index} link={link} />
+                        ))}
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                <Property.Item>
+                  <Property.Label>Run invocation cost</Property.Label>
+                  <Property.Value>
+                    {run.baseCostInCents > 0
+                      ? formatCurrencyAccurate(run.baseCostInCents / 100)
+                      : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Compute cost</Property.Label>
+                  <Property.Value>
+                    {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Total cost</Property.Label>
+                  <Property.Value>
+                    {run.costInCents > 0
+                      ? formatCurrencyAccurate((run.baseCostInCents + run.costInCents) / 100)
+                      : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Usage duration</Property.Label>
+                  <Property.Value>
+                    {run.usageDurationMs > 0
+                      ? formatDurationMilliseconds(run.usageDurationMs, { style: "short" })
+                      : "–"}
+                  </Property.Value>
+                </Property.Item>
+              </Property.Table>
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">

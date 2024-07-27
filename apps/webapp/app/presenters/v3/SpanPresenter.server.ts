@@ -1,8 +1,7 @@
 import { prettyPrintPacket } from "@trigger.dev/core/v3";
-import { PrismaClient, prisma } from "~/db.server";
+import { FINISHED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { BasePresenter } from "./basePresenter.server";
-import { FINISHED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<Result>["event"];
@@ -106,8 +105,15 @@ export class SpanPresenter extends BasePresenter {
             friendlyId: true,
             generatorExpression: true,
             timezone: true,
+            generatorDescription: true,
           },
         },
+        //usage
+        baseCostInCents: true,
+        costInCents: true,
+        usageDurationMs: true,
+        //env
+        runtimeEnvironmentId: true,
       },
       where: {
         spanId: span.spanId,
@@ -117,7 +123,36 @@ export class SpanPresenter extends BasePresenter {
     return {
       run: spanRun
         ? {
-            ...spanRun,
+            status: spanRun.status,
+            createdAt: spanRun.createdAt,
+            startedAt: spanRun.startedAt,
+            updatedAt: spanRun.updatedAt,
+            delayUntil: spanRun.delayUntil,
+            expiredAt: spanRun.expiredAt,
+            ttl: spanRun.ttl,
+            taskIdentifier: spanRun.taskIdentifier,
+            version: spanRun.lockedToVersion?.version,
+            sdkVersion: spanRun.lockedToVersion?.sdkVersion,
+            isTest: spanRun.isTest,
+            environmentId: spanRun.runtimeEnvironmentId,
+            schedule: spanRun.schedule
+              ? {
+                  friendlyId: spanRun.schedule.friendlyId,
+                  generatorExpression: spanRun.schedule.generatorExpression,
+                  description: spanRun.schedule.generatorDescription,
+                  timezone: spanRun.schedule.timezone,
+                }
+              : undefined,
+            queue: {
+              name: spanRun.queue,
+              isCustomQueue: !spanRun.queue.startsWith("task/"),
+              concurrencyKey: spanRun.concurrencyKey,
+            },
+            tags: spanRun.tags.map((tag) => tag.name),
+            baseCostInCents: spanRun.baseCostInCents,
+            costInCents: spanRun.costInCents,
+            totalCostInCents: spanRun.costInCents + spanRun.baseCostInCents,
+            usageDurationMs: spanRun.usageDurationMs,
             isFinished: FINISHED_STATUSES.includes(spanRun.status),
             isRunning: RUNNING_STATUSES.includes(spanRun.status),
           }
