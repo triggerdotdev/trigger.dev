@@ -51,6 +51,7 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
 
 function ReplayForm({
   payload,
+  payloadType,
   environment,
   environments,
   failedRedirect,
@@ -62,14 +63,20 @@ function ReplayForm({
   const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
   const isSubmitting = navigation.formAction === formAction;
 
+  const editablePayload = payloadType === "application/json";
+
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       const formData = new FormData(e.currentTarget);
-      const data = {
+      const data: Record<string, string> = {
         environment: formData.get("environment") as string,
         failedRedirect: formData.get("failedRedirect") as string,
-        payload: currentJson.current,
       };
+
+      if (editablePayload) {
+        data.payload = currentJson.current;
+      }
+
       submit(data, {
         action: formAction,
         method: "post",
@@ -81,21 +88,25 @@ function ReplayForm({
 
   return (
     <Form action={formAction} method="post" onSubmit={(e) => submitForm(e)}>
-      <Header3 spacing>Payload</Header3>
-      <div className="mb-3 rounded-sm border border-grid-dimmed bg-charcoal-900">
-        <JSONEditor
-          defaultValue={currentJson.current}
-          readOnly={false}
-          basicSetup
-          onChange={(v) => {
-            console.log(v);
-            currentJson.current = v;
-          }}
-          height="100%"
-          min-height="100%"
-          max-height="100%"
-        />
-      </div>
+      {editablePayload ? (
+        <>
+          <Header3 spacing>Payload</Header3>
+          <div className="mb-3 rounded-sm border border-grid-dimmed bg-charcoal-900">
+            <JSONEditor
+              defaultValue={currentJson.current}
+              readOnly={false}
+              basicSetup
+              onChange={(v) => {
+                console.log(v);
+                currentJson.current = v;
+              }}
+              height="100%"
+              min-height="100%"
+              max-height="100%"
+            />
+          </div>
+        </>
+      ) : null}
       <InputGroup>
         <Label>Environment</Label>
         <Select

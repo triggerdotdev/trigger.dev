@@ -7,8 +7,8 @@ import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server"
 import { getTagsForRunId } from "~/models/taskRunTag.server";
 
 type OverrideOptions = {
-  environmentId: string;
-  payload: string;
+  environmentId?: string;
+  payload?: string;
 };
 
 export class ReplayTaskRunService extends BaseService {
@@ -27,7 +27,7 @@ export class ReplayTaskRunService extends BaseService {
 
     let payloadPacket: IOPacket;
 
-    if (overrideOptions) {
+    if (overrideOptions?.payload) {
       payloadPacket = await conditionallyImportPacket({
         data: overrideOptions.payload,
         dataType: "application/json",

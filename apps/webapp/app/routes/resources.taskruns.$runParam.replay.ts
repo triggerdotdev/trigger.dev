@@ -71,6 +71,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   return typedjson({
     payload: await prettyPrintPacket(run.payload, run.payloadType),
+    payloadType: run.payloadType,
     environment: displayableEnvironment(environment, userId),
     environments: sortEnvironments(
       run.project.environments.map((environment) => displayableEnvironment(environment, userId))
@@ -79,8 +80,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 const FormSchema = z.object({
-  environment: z.string(),
-  payload: z.string(),
+  environment: z.string().optional(),
+  payload: z.string().optional(),
   failedRedirect: z.string(),
 });
 
