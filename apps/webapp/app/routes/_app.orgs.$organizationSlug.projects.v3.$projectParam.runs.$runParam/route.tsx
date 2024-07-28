@@ -122,7 +122,16 @@ export default function Page() {
               to: v3RunsPath(organization, project),
               text: "Runs",
             }}
-            title={`Run #${run.number}`}
+            title={
+              <>
+                <span>Cock #${run.number}</span>
+                <EnvironmentLabel
+                  size="large"
+                  environment={run.environment}
+                  userName={usernameForEnv}
+                />
+              </>
+            }
           />
           <PageAccessories>
             <AdminDebugTooltip>
@@ -145,12 +154,6 @@ export default function Page() {
                 </Property.Item>
               </Property.Table>
             </AdminDebugTooltip>
-
-            <EnvironmentLabel
-              size="large"
-              environment={run.environment}
-              userName={usernameForEnv}
-            />
           </PageAccessories>
         </NavBar>
         <PageBody>
@@ -194,7 +197,16 @@ export default function Page() {
             to: v3RunsPath(organization, project),
             text: "Runs",
           }}
-          title={`Run #${run.number}`}
+          title={
+            <div className="flex items-center gap-3">
+              <span>Run #{run.number}</span>
+              <EnvironmentLabel
+                size="large"
+                environment={run.environment}
+                userName={usernameForEnv}
+              />
+            </div>
+          }
         />
         <PageAccessories>
           <AdminDebugTooltip>
@@ -217,8 +229,6 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-
-          <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
