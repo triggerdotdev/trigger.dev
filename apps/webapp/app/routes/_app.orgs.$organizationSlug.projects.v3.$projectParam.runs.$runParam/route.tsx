@@ -1,9 +1,12 @@
 import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
   BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
@@ -26,7 +29,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -71,6 +74,9 @@ import {
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { env } from "~/env.server";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
+import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
@@ -123,14 +129,14 @@ export default function Page() {
               text: "Runs",
             }}
             title={
-              <>
-                <span>Cock #${run.number}</span>
+              <div className="flex items-center gap-3">
+                <span>Run #{run.number}</span>
                 <EnvironmentLabel
                   size="large"
                   environment={run.environment}
                   userName={usernameForEnv}
                 />
-              </>
+              </div>
             }
           />
           <PageAccessories>
@@ -229,6 +235,44 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
+          <Dialog key="replay">
+            <DialogTrigger asChild>
+              <Button
+                variant="tertiary/small"
+                LeadingIcon={ArrowUturnLeftIcon}
+                shortcut={{ key: "R" }}
+              >
+                Replay run
+              </Button>
+            </DialogTrigger>
+            <ReplayRunDialog
+              runFriendlyId={run.friendlyId}
+              failedRedirect={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
+            />
+          </Dialog>
+          {run.isFinished ? null : (
+            <Dialog key="cancel">
+              <DialogTrigger asChild>
+                <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+                  Cancel run
+                </Button>
+              </DialogTrigger>
+              <CancelRunDialog
+                runFriendlyId={run.friendlyId}
+                redirectPath={v3RunSpanPath(
+                  organization,
+                  project,
+                  { friendlyId: run.friendlyId },
+                  { spanId: run.spanId }
+                )}
+              />
+            </Dialog>
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

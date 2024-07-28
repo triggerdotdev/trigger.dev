@@ -1,5 +1,6 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
+import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
@@ -33,6 +34,7 @@ export class RunPresenter {
         traceId: true,
         spanId: true,
         friendlyId: true,
+        status: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -71,6 +73,9 @@ export class RunPresenter {
           number: run.number,
           friendlyId: run.friendlyId,
           traceId: run.traceId,
+          spanId: run.spanId,
+          status: run.status,
+          isFinished: FINISHED_STATUSES.includes(run.status),
           environment: {
             id: run.runtimeEnvironment.id,
             organizationId: run.runtimeEnvironment.organizationId,
@@ -127,6 +132,9 @@ export class RunPresenter {
         number: run.number,
         friendlyId: run.friendlyId,
         traceId: run.traceId,
+        spanId: run.spanId,
+        status: run.status,
+        isFinished: FINISHED_STATUSES.includes(run.status),
         environment: {
           id: run.runtimeEnvironment.id,
           organizationId: run.runtimeEnvironment.organizationId,
