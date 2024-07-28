@@ -701,12 +701,21 @@ function RunTimelineLine({ title, state }: RunTimelineLineProps) {
         <div
           className={cn(
             "w-px",
-            state === "complete"
-              ? "bg-success"
-              : state === "delayed"
-              ? "bg-text-dimmed"
-              : "bg-gradient-to-b from-[#3B82F6] from-50% to-transparent"
+            state === "complete" ? "bg-success" : state === "delayed" ? "bg-text-dimmed" : ""
           )}
+          style={
+            state === "inprogress"
+              ? {
+                  width: "1px",
+                  height: "100%",
+                  background:
+                    "repeating-linear-gradient(to bottom, #3B82F6 0%, #3B82F6 50%, transparent 50%, transparent 100%)",
+                  backgroundSize: "1px 6px",
+                  maskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
+                }
+              : undefined
+          }
         ></div>
       </div>
       <div className="flex items-center justify-between gap-3">
