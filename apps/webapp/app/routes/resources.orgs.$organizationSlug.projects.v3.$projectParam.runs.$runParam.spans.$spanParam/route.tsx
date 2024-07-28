@@ -211,25 +211,23 @@ function SpanBody({
       </div>
       <div className="overflow-y-auto px-3 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="flex flex-col gap-4">
+          {span.level === "TRACE" ? (
+            <SpanTimeline
+              startTime={new Date(span.startTime)}
+              duration={span.duration}
+              inProgress={span.isPartial}
+              isError={span.isError}
+            />
+          ) : (
+            <div className="min-w-fit max-w-80">
+              <RunTimelineEvent
+                title="Timestamp"
+                subtitle={<DateTimeAccurate date={span.startTime} />}
+                state="complete"
+              />
+            </div>
+          )}
           <Property.Table>
-            {span.level === "TRACE" ? (
-              <Property.Item className="self-end">
-                <Property.Label>Timeline</Property.Label>
-                <Timeline
-                  startTime={new Date(span.startTime)}
-                  duration={span.duration}
-                  inProgress={span.isPartial}
-                  isError={span.isError}
-                />
-              </Property.Item>
-            ) : (
-              <Property.Item>
-                <Property.Label>Timeline</Property.Label>
-                <Property.Value>
-                  <DateTimeAccurate date={span.startTime} /> UTC
-                </Property.Value>
-              </Property.Item>
-            )}
             {span.style.variant === "primary" && (
               <Property.Item>
                 <Property.Label>Status</Property.Label>
@@ -831,58 +829,50 @@ type TimelineProps = {
 
 type TimelineState = "error" | "pending" | "complete";
 
-function Timeline({ startTime, duration, inProgress, isError }: TimelineProps) {
+function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProps) {
   const state = isError ? "error" : inProgress ? "pending" : "complete";
   return (
-    <div className="flex w-full flex-col">
-      <div className="flex items-center justify-between gap-1">
-        <Paragraph variant="small">
-          <DateTimeAccurate date={startTime} />
-        </Paragraph>
+    <>
+      <div className="min-w-fit max-w-80">
+        <RunTimelineEvent
+          title="Started"
+          subtitle={<DateTimeAccurate date={startTime} />}
+          state="complete"
+        />
         {state === "pending" ? (
-          <Paragraph variant="extra-small" className={cn("whitespace-nowrap tabular-nums")}>
-            <LiveTimer startTime={startTime} />
-          </Paragraph>
+          <RunTimelineLine
+            title={
+              <span className="flex items-center gap-1">
+                <Spinner className="size-4" />
+                <span>
+                  <LiveTimer startTime={startTime} />
+                </span>
+              </span>
+            }
+            state={"inprogress"}
+          />
         ) : (
-          <Paragraph variant="small">
-            <DateTimeAccurate
-              date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
+          <>
+            <RunTimelineLine
+              title={formatDuration(
+                startTime,
+                new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
+              )}
+              state={"complete"}
             />
-          </Paragraph>
+            <RunTimelineEvent
+              title="Finished"
+              subtitle={
+                <DateTimeAccurate
+                  date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
+                />
+              }
+              state={isError ? "error" : "complete"}
+            />
+          </>
         )}
       </div>
-      <TimelineBar duration={duration} state={state} />
-    </div>
-  );
-}
-
-function TimelineBar({
-  state,
-  duration,
-}: Pick<TimelineProps, "duration"> & { state: TimelineState }) {
-  return (
-    <div className="flex h-6 items-center">
-      <VerticalBar state={state} />
-      {state === "error" ? (
-        <div className={cn("h-0.75 flex-1", classNameForState(state))} />
-      ) : state === "complete" ? (
-        <div className="flex flex-1 items-center">
-          <div className={cn("h-0.75 flex-1", classNameForState(state))} />
-          <Paragraph variant="small" className="px-1 text-success">
-            {formatDurationNanoseconds(duration, { style: "short" })}
-          </Paragraph>
-          <div className={cn("h-0.75 flex-1", classNameForState(state))} />
-        </div>
-      ) : (
-        <div className="flex flex-1 items-center">
-          <div className={cn("h-0.75 flex-1", classNameForState(state))} />
-          <div className={"flex h-0.75 basis-1/6 items-center"}>
-            <DottedLine />
-          </div>
-        </div>
-      )}
-      {state !== "pending" && <VerticalBar state={state} />}
-    </div>
+    </>
   );
 }
 
