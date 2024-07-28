@@ -91,7 +91,7 @@ function ReplayForm({
       {editablePayload ? (
         <>
           <Header3 spacing>Payload</Header3>
-          <div className="mb-3 rounded-sm border border-grid-dimmed bg-charcoal-900">
+          <div className="mb-3 max-h-[70vh] rounded-sm border border-grid-dimmed bg-charcoal-900">
             <JSONEditor
               defaultValue={currentJson.current}
               readOnly={false}
@@ -100,6 +100,8 @@ function ReplayForm({
                 console.log(v);
                 currentJson.current = v;
               }}
+              showClearButton={false}
+              showCopyButton={false}
               height="100%"
               min-height="100%"
               max-height="100%"
