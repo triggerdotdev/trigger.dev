@@ -26,7 +26,7 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
   }, [runFriendlyId]);
 
   return (
-    <DialogContent key="replay">
+    <DialogContent key={`replay`}>
       <DialogHeader>Replay this run?</DialogHeader>
       {isLoading ? (
         <div>

@@ -235,7 +235,7 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-          <Dialog key="replay">
+          <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button
                 variant="tertiary/small"
@@ -256,7 +256,7 @@ export default function Page() {
             />
           </Dialog>
           {run.isFinished ? null : (
-            <Dialog key="cancel">
+            <Dialog key={`cancel-${run.friendlyId}`}>
               <DialogTrigger asChild>
                 <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
                   Cancel run
