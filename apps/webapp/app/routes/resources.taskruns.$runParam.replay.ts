@@ -1,21 +1,92 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { ActionFunction, json, LoaderFunctionArgs } from "@remix-run/node";
+import { prettyPrintPacket } from "@trigger.dev/core/v3";
+import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
-
-const FormSchema = z.object({
-  failedRedirect: z.string(),
-});
 
 const ParamSchema = z.object({
   runParam: z.string(),
 });
 
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const userId = await requireUserId(request);
+  const { runParam } = ParamSchema.parse(params);
+
+  const run = await $replica.taskRun.findFirst({
+    select: {
+      payload: true,
+      payloadType: true,
+      runtimeEnvironmentId: true,
+      project: {
+        select: {
+          environments: {
+            select: {
+              id: true,
+              type: true,
+              slug: true,
+              orgMember: {
+                select: {
+                  user: true,
+                },
+              },
+            },
+            where: {
+              OR: [
+                {
+                  type: {
+                    in: ["PREVIEW", "STAGING", "PRODUCTION"],
+                  },
+                },
+                {
+                  type: "DEVELOPMENT",
+                  orgMember: {
+                    userId,
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+    where: { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
+  });
+
+  if (!run) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  const environment = run.project.environments.find((env) => env.id === run.runtimeEnvironmentId);
+  if (!environment) {
+    throw new Response("Environment not found", { status: 404 });
+  }
+
+  return typedjson({
+    payload: await prettyPrintPacket(run.payload, run.payloadType),
+    environment: displayableEnvironment(environment, userId),
+    environments: sortEnvironments(
+      run.project.environments.map((environment) => displayableEnvironment(environment, userId))
+    ),
+  });
+}
+
+const FormSchema = z.object({
+  environment: z.string(),
+  payload: z.string(),
+  failedRedirect: z.string(),
+});
+
 export const action: ActionFunction = async ({ request, params }) => {
+  const userId = await requireUserId(request);
+
   const { runParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -44,7 +115,10 @@ export const action: ActionFunction = async ({ request, params }) => {
     }
 
     const replayRunService = new ReplayTaskRunService();
-    const newRun = await replayRunService.call(taskRun);
+    const newRun = await replayRunService.call(taskRun, {
+      environmentId: submission.value.environment,
+      payload: submission.value.payload,
+    });
 
     if (!newRun) {
       return redirectWithErrorMessage(

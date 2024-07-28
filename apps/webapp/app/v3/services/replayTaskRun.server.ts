@@ -1,4 +1,4 @@
-import { conditionallyImportPacket, parsePacket, RunTags } from "@trigger.dev/core/v3";
+import { conditionallyImportPacket, IOPacket, parsePacket, RunTags } from "@trigger.dev/core/v3";
 import { TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
@@ -6,10 +6,15 @@ import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { getTagsForRunId } from "~/models/taskRunTag.server";
 
+type OverrideOptions = {
+  environmentId: string;
+  payload: string;
+};
+
 export class ReplayTaskRunService extends BaseService {
-  public async call(existingTaskRun: TaskRun) {
+  public async call(existingTaskRun: TaskRun, overrideOptions?: OverrideOptions) {
     const authenticatedEnvironment = await findEnvironmentById(
-      existingTaskRun.runtimeEnvironmentId
+      overrideOptions?.environmentId ?? existingTaskRun.runtimeEnvironmentId
     );
     if (!authenticatedEnvironment) {
       return;
@@ -20,10 +25,19 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
-    const payloadPacket = await conditionallyImportPacket({
-      data: existingTaskRun.payload,
-      dataType: existingTaskRun.payloadType,
-    });
+    let payloadPacket: IOPacket;
+
+    if (overrideOptions) {
+      payloadPacket = await conditionallyImportPacket({
+        data: overrideOptions.payload,
+        dataType: "application/json",
+      });
+    } else {
+      payloadPacket = await conditionallyImportPacket({
+        data: existingTaskRun.payload,
+        dataType: existingTaskRun.payloadType,
+      });
+    }
 
     const parsedPayload =
       payloadPacket.dataType === "application/json"
