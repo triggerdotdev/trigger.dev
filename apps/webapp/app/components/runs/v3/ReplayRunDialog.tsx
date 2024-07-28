@@ -28,10 +28,6 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
   return (
     <DialogContent key="replay">
       <DialogHeader>Replay this run?</DialogHeader>
-      <DialogDescription>
-        Replaying a run will create a new run with the same payload and environment as the original.
-      </DialogDescription>
-
       {isLoading ? (
         <div>
           <Spinner />
@@ -91,13 +87,12 @@ function ReplayForm({
       {editablePayload ? (
         <>
           <Header3 spacing>Payload</Header3>
-          <div className="mb-3 max-h-[70vh] rounded-sm border border-grid-dimmed bg-charcoal-900">
+          <div className="mb-3 max-h-[70vh] overflow-y-auto rounded-sm border border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               defaultValue={currentJson.current}
               readOnly={false}
               basicSetup
               onChange={(v) => {
-                console.log(v);
                 currentJson.current = v;
               }}
               showClearButton={false}
