@@ -415,7 +415,7 @@ function RunBody({
             </TabButton>
           </TabContainer>
           {tab === "detail" ? (
-            <div className="flex flex-col gap-4 pt-3">
+            <div className="flex flex-col gap-4 py-3">
               <Property.Table>
                 <Property.Item>
                   <Property.Label>Status</Property.Label>
