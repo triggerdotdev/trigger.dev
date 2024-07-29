@@ -1,5 +1,6 @@
 import {
   ArrowPathIcon,
+  ArrowUturnLeftIcon,
   CheckIcon,
   ClockIcon,
   CloudArrowDownIcon,
@@ -772,7 +773,7 @@ function RunActionButtons({ span }: { span: Span }) {
         Download logs
       </LinkButton>
       <DialogTrigger asChild>
-        <Button variant="tertiary/medium" LeadingIcon={ArrowPathIcon}>
+        <Button variant="tertiary/medium" LeadingIcon={ArrowUturnLeftIcon}>
           Replay run
         </Button>
       </DialogTrigger>
