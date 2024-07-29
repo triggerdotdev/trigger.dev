@@ -1,18 +1,9 @@
-import {
-  ArrowPathIcon,
-  ArrowUturnLeftIcon,
-  CheckIcon,
-  ClockIcon,
-  CloudArrowDownIcon,
-  QueueListIcon,
-  StopCircleIcon,
-} from "@heroicons/react/20/solid";
+import { CheckIcon, ClockIcon, CloudArrowDownIcon, QueueListIcon } from "@heroicons/react/20/solid";
 import { Link, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDuration,
   formatDurationMilliseconds,
-  formatDurationNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
 import { ReactNode, useEffect } from "react";
@@ -21,25 +12,15 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
-import { TabContainer, TabButton, Tabs } from "~/components/primitives/Tabs";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
-import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
@@ -47,11 +28,9 @@ import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { runBasicStatus } from "~/models/jobRun.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -725,68 +704,19 @@ function RunTimelineLine({ title, state }: RunTimelineLineProps) {
 }
 
 function RunActionButtons({ span }: { span: Span }) {
-  const organization = useOrganization();
-  const project = useProject();
   const { runParam } = useParams();
-
   if (!runParam) return null;
 
-  if (span.isPartial) {
-    return (
-      <Dialog key="in-progress">
-        <LinkButton
-          to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-          LeadingIcon={CloudArrowDownIcon}
-          variant="tertiary/medium"
-          target="_blank"
-          download
-        >
-          Download logs
-        </LinkButton>
-        <DialogTrigger asChild>
-          <Button variant="danger/medium" LeadingIcon={StopCircleIcon}>
-            Cancel run
-          </Button>
-        </DialogTrigger>
-        <CancelRunDialog
-          runFriendlyId={span.runId}
-          redirectPath={v3RunSpanPath(
-            organization,
-            project,
-            { friendlyId: runParam },
-            { spanId: span.spanId }
-          )}
-        />
-      </Dialog>
-    );
-  }
-
   return (
-    <Dialog key="complete">
-      <LinkButton
-        to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-        LeadingIcon={CloudArrowDownIcon}
-        variant="tertiary/medium"
-        target="_blank"
-        download
-      >
-        Download logs
-      </LinkButton>
-      <DialogTrigger asChild>
-        <Button variant="tertiary/medium" LeadingIcon={ArrowUturnLeftIcon}>
-          Replay run
-        </Button>
-      </DialogTrigger>
-      <ReplayRunDialog
-        runFriendlyId={span.runId}
-        failedRedirect={v3RunSpanPath(
-          organization,
-          project,
-          { friendlyId: runParam },
-          { spanId: span.spanId }
-        )}
-      />
-    </Dialog>
+    <LinkButton
+      to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+      LeadingIcon={CloudArrowDownIcon}
+      variant="tertiary/medium"
+      target="_blank"
+      download
+    >
+      Download logs
+    </LinkButton>
   );
 }
 
