@@ -75,7 +75,6 @@ export class SpanPresenter extends BasePresenter {
             sdkVersion: true,
           },
         },
-
         //status + duration
         status: true,
         startedAt: true,
@@ -207,6 +206,7 @@ export class SpanPresenter extends BasePresenter {
     };
 
     return {
+      friendlyId: run.friendlyId,
       status: run.status,
       createdAt: run.createdAt,
       startedAt: run.startedAt,

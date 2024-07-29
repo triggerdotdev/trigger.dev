@@ -621,14 +621,16 @@ function RunBody({
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
-          <LinkButton
-            to={v3RunSpanPath(organization, project, { friendlyId: runParam }, { spanId })}
-            variant="minimal/medium"
-            LeadingIcon={QueueListIcon}
-            shortcut={{ key: "f" }}
-          >
-            Focus on span
-          </LinkButton>
+          {run.friendlyId !== runParam && (
+            <LinkButton
+              to={v3RunSpanPath(organization, project, { friendlyId: run.friendlyId }, { spanId })}
+              variant="minimal/medium"
+              LeadingIcon={QueueListIcon}
+              shortcut={{ key: "f" }}
+            >
+              Focus on run
+            </LinkButton>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <LinkButton
