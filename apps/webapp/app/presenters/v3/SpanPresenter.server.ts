@@ -75,6 +75,7 @@ export class SpanPresenter extends BasePresenter {
             sdkVersion: true,
           },
         },
+
         //status + duration
         status: true,
         startedAt: true,
@@ -149,7 +150,7 @@ export class SpanPresenter extends BasePresenter {
         ? undefined
         : finishedAttempt.outputType === "application/store"
         ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
-        : typeof finishedAttempt.output !== "undefined"
+        : typeof finishedAttempt.output !== "undefined" && finishedAttempt.output !== null
         ? await prettyPrintPacket(finishedAttempt.output, finishedAttempt.outputType ?? undefined)
         : undefined;
 
@@ -165,6 +166,8 @@ export class SpanPresenter extends BasePresenter {
     const context = {
       task: {
         id: run.taskIdentifier,
+        filePath: run.lockedBy?.filePath,
+        exportName: run.lockedBy?.exportName,
       },
       run: {
         id: run.friendlyId,
@@ -177,6 +180,7 @@ export class SpanPresenter extends BasePresenter {
         costInCents: run.costInCents,
         baseCostInCents: run.baseCostInCents,
         maxAttempts: run.maxAttempts ?? undefined,
+        version: run.lockedToVersion?.version,
       },
       queue: {
         name: run.queue,

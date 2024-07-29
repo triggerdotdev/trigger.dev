@@ -592,6 +592,14 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
               </Property.Table>
+              {run.context && (
+                <CodeBlock
+                  rowTitle="Context"
+                  code={run.context}
+                  maxLines={20}
+                  showLineNumbers={false}
+                />
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
@@ -602,19 +610,11 @@ function RunBody({
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.events !== undefined ? (
+              {run.events !== undefined && run.events.length > 0 ? (
                 <SpanEvents spanEvents={run.events} />
               ) : run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
-              {run.context && (
-                <CodeBlock
-                  rowTitle="Context"
-                  code={run.context}
-                  maxLines={20}
-                  showLineNumbers={false}
-                />
-              )}
             </div>
           )}
         </div>
