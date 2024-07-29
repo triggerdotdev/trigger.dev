@@ -9,6 +9,8 @@ type Payload = {
 export const triggerRunsWithTags = task({
   id: "trigger-runs-with-tags",
   run: async (payload: Payload, { ctx }) => {
+    logger.info(`${ctx.run.version}`);
+
     const { id } = await simpleChildTask.trigger(
       { message: "trigger from triggerRunsWithTags" },
       { tags: payload.tags }
