@@ -11,6 +11,7 @@ import {
   SpanEvents,
   SpanMessagingEvent,
   TaskEventStyle,
+  TaskRunContext,
   TaskRunError,
   correctErrorStackTrace,
   createPacketAttributesAsJson,
@@ -552,6 +553,11 @@ export class EventRepository {
       const show = rehydrateShow(spanEvent.properties);
 
       const properties = sanitizedAttributes(spanEvent.properties);
+      const metadata = sanitizedAttributes(spanEvent.metadata);
+      const context =
+        metadata && typeof metadata === "object"
+          ? (metadata.ctx as Record<string, unknown>)
+          : undefined;
 
       const messagingEvent = SpanMessagingEvent.optional().safeParse(
         (properties as any)?.messaging
@@ -602,6 +608,8 @@ export class EventRepository {
         payload,
         output,
         properties,
+        metadata,
+        context,
         events: spanEvents,
         show,
         links,

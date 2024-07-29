@@ -155,6 +155,7 @@ export class SpanPresenter extends BasePresenter {
             usageDurationMs: spanRun.usageDurationMs,
             isFinished: FINISHED_STATUSES.includes(spanRun.status),
             isRunning: RUNNING_STATUSES.includes(spanRun.status),
+            context: span.context ? JSON.stringify(span.context, null, 2) : undefined,
           }
         : undefined,
       event: {
@@ -165,6 +166,7 @@ export class SpanPresenter extends BasePresenter {
         payload,
         payloadType: span.payloadType ?? "application/json",
         properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+        context: span.context ? JSON.stringify(span.context, null, 2) : undefined,
         showActionBar: span.show?.actions === true,
       },
     };
