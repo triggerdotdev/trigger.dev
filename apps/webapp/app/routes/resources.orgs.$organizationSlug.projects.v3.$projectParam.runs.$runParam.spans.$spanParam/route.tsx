@@ -1,5 +1,5 @@
 import { CheckIcon, ClockIcon, CloudArrowDownIcon, QueueListIcon } from "@heroicons/react/20/solid";
-import { Link, useParams } from "@remix-run/react";
+import { Link } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   formatDuration,
@@ -25,7 +25,6 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
-import { TaskPath } from "~/components/runs/v3/TaskPath";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -33,6 +32,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
@@ -52,24 +52,31 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, runParam, spanParam } = v3SpanParamsSchema.parse(params);
 
   const presenter = new SpanPresenter();
-  const span = await presenter.call({
-    userId,
-    organizationSlug,
-    projectSlug: projectParam,
-    spanId: spanParam,
-    runFriendlyId: runParam,
-  });
 
-  if (!span) {
-    // We're going to redirect to the run page
+  try {
+    const result = await presenter.call({
+      userId,
+      organizationSlug,
+      projectSlug: projectParam,
+      spanId: spanParam,
+      runFriendlyId: runParam,
+    });
+
+    return typedjson(result);
+  } catch (error) {
+    logger.error("Error loading span", {
+      projectParam,
+      organizationSlug,
+      runParam,
+      spanParam,
+      error,
+    });
     return redirectWithErrorMessage(
       v3RunPath({ slug: organizationSlug }, { slug: projectParam }, { friendlyId: runParam }),
       request,
       `Event not found.`
     );
   }
-
-  return typedjson({ span });
 };
 
 export function SpanView({
@@ -114,48 +121,23 @@ export function SpanView({
     );
   }
 
-  const {
-    span: { event, run },
-  } = fetcher.data;
+  const { type } = fetcher.data;
 
-  return (
-    <div
-      className={cn(
-        "grid h-full max-h-full overflow-hidden bg-background-bright",
-        event.showActionBar ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
-      )}
-    >
-      {run ? (
-        <RunBody run={run} span={event} runParam={runParam} closePanel={closePanel} />
-      ) : (
-        <SpanBody span={event} runParam={runParam} closePanel={closePanel} />
-      )}
-      {event.showActionBar === true ? (
-        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-          <div className="flex items-center gap-4">
-            {event.runId !== runParam && (
-              <LinkButton
-                to={v3RunSpanPath(
-                  organization,
-                  project,
-                  { friendlyId: event.runId },
-                  { spanId: event.spanId }
-                )}
-                variant="minimal/medium"
-                LeadingIcon={QueueListIcon}
-                shortcut={{ key: "f" }}
-              >
-                Focus on span
-              </LinkButton>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            <RunActionButtons span={event} />
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+  switch (type) {
+    case "run": {
+      return (
+        <RunBody
+          run={fetcher.data.run}
+          runParam={runParam}
+          spanId={spanId}
+          closePanel={closePanel}
+        />
+      );
+    }
+    case "span": {
+      return <SpanBody span={fetcher.data.span} runParam={runParam} closePanel={closePanel} />;
+    }
+  }
 }
 
 function SpanBody({
@@ -173,7 +155,7 @@ function SpanBody({
   const tab = value("tab");
 
   return (
-    <>
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -302,18 +284,20 @@ function SpanBody({
             <div className="flex flex-col gap-4 pt-3">
               {span.level === "TRACE" ? (
                 <>
-                  <TaskRunAttemptStatusCombo
-                    status={
-                      span.isCancelled
-                        ? "CANCELED"
-                        : span.isError
-                        ? "FAILED"
-                        : span.isPartial
-                        ? "EXECUTING"
-                        : "COMPLETED"
-                    }
-                    className="text-sm"
-                  />
+                  <div className="border-b border-grid-bright pb-3">
+                    <TaskRunAttemptStatusCombo
+                      status={
+                        span.isCancelled
+                          ? "CANCELED"
+                          : span.isError
+                          ? "FAILED"
+                          : span.isPartial
+                          ? "EXECUTING"
+                          : "COMPLETED"
+                      }
+                      className="text-sm"
+                    />
+                  </div>
                   <SpanTimeline
                     startTime={new Date(span.startTime)}
                     duration={span.duration}
@@ -335,47 +319,46 @@ function SpanBody({
                   <Property.Label>Message</Property.Label>
                   <Property.Value>{span.message}</Property.Value>
                 </Property.Item>
+                {span.links && span.links.length > 0 && (
+                  <Property.Item>
+                    <Property.Label>Links</Property.Label>
+                    <Property.Value>
+                      <div className="space-y-1">
+                        {span.links.map((link, index) => (
+                          <SpanLinkElement key={index} link={link} />
+                        ))}
+                      </div>
+                    </Property.Value>
+                  </Property.Item>
+                )}
               </Property.Table>
 
-              {span.links && span.links.length > 0 && (
-                <div>
-                  <Header2 spacing>Links</Header2>
-                  <div className="space-y-1">
-                    {span.links.map((link, index) => (
-                      <SpanLinkElement key={index} link={link} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
-              {span.payload !== undefined && (
-                <PacketDisplay data={span.payload} dataType={span.payloadType} title="Payload" />
-              )}
-              {span.output !== undefined && (
-                <PacketDisplay data={span.output} dataType={span.outputType} title="Output" />
-              )}
-              {span.context && <CodeBlock rowTitle="Context" code={span.context} maxLines={20} />}
               {span.properties !== undefined && (
-                <CodeBlock rowTitle="Properties" code={span.properties} maxLines={20} />
+                <CodeBlock
+                  rowTitle="Properties"
+                  code={span.properties}
+                  maxLines={20}
+                  showLineNumbers={false}
+                />
               )}
             </div>
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 function RunBody({
   run,
-  span,
   runParam,
+  spanId,
   closePanel,
 }: {
   run: SpanRun;
-  span: Span;
-  runParam?: string;
+  runParam: string;
+  spanId: string;
   closePanel: () => void;
 }) {
   const organization = useOrganization();
@@ -386,16 +369,16 @@ function RunBody({
   const environment = project.environments.find((e) => e.id === run.environmentId);
 
   return (
-    <>
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={span.style?.icon}
-            spanName={span.message}
+            name={"task"}
+            spanName={run.taskIdentifier}
             className="h-4 min-h-4 w-4 min-w-4"
           />
-          <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" />
+          <Header2 className={cn("overflow-x-hidden text-blue-500")}>
+            <span className="truncate">{run.taskIdentifier}</span>
           </Header2>
         </div>
         {runParam && (
@@ -566,12 +549,12 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
+                {run.links && run.links.length > 0 && (
                   <Property.Item>
                     <Property.Label>Links</Property.Label>
                     <Property.Value>
                       <div className="space-y-1">
-                        {span.links.map((link, index) => (
+                        {run.links.map((link, index) => (
                           <SpanLinkElement key={index} link={link} />
                         ))}
                       </div>
@@ -616,16 +599,50 @@ function RunBody({
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
               </div>
               <RunTimeline run={run} />
-              {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
-              {span.payload !== undefined && (
-                <CodeBlock rowTitle="Payload" code={span.payload} maxLines={20} />
+              {run.payload !== undefined && (
+                <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.context && <CodeBlock rowTitle="Context" code={run.context} maxLines={20} />}
+              {run.events !== undefined ? (
+                <SpanEvents spanEvents={run.events} />
+              ) : run.output !== undefined ? (
+                <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
+              ) : null}
+              {run.context && (
+                <CodeBlock
+                  rowTitle="Context"
+                  code={run.context}
+                  maxLines={20}
+                  showLineNumbers={false}
+                />
+              )}
             </div>
           )}
         </div>
       </div>
-    </>
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+        <div className="flex items-center gap-4">
+          <LinkButton
+            to={v3RunSpanPath(organization, project, { friendlyId: runParam }, { spanId })}
+            variant="minimal/medium"
+            LeadingIcon={QueueListIcon}
+            shortcut={{ key: "f" }}
+          >
+            Focus on span
+          </LinkButton>
+        </div>
+        <div className="flex items-center gap-4">
+          <LinkButton
+            to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+            LeadingIcon={CloudArrowDownIcon}
+            variant="tertiary/medium"
+            target="_blank"
+            download
+          >
+            Download logs
+          </LinkButton>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -730,7 +747,7 @@ function RunTimelineEvent({ title, subtitle, state }: RunTimelineItemProps) {
       </div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-text-bright">{title}</span>
-        {subtitle ? <span className="text-text-dimmed">{subtitle}</span> : null}
+        {subtitle ? <span className="text-xs text-text-dimmed">{subtitle}</span> : null}
       </div>
     </div>
   );
@@ -772,23 +789,6 @@ function RunTimelineLine({ title, state }: RunTimelineLineProps) {
   );
 }
 
-function RunActionButtons({ span }: { span: Span }) {
-  const { runParam } = useParams();
-  if (!runParam) return null;
-
-  return (
-    <LinkButton
-      to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-      LeadingIcon={CloudArrowDownIcon}
-      variant="tertiary/medium"
-      target="_blank"
-      download
-    >
-      Download logs
-    </LinkButton>
-  );
-}
-
 function PacketDisplay({
   data,
   dataType,
@@ -812,10 +812,26 @@ function PacketDisplay({
       );
     }
     case "text/plain": {
-      return <CodeBlock language="markdown" rowTitle={title} code={data} maxLines={20} />;
+      return (
+        <CodeBlock
+          language="markdown"
+          rowTitle={title}
+          code={data}
+          maxLines={20}
+          showLineNumbers={false}
+        />
+      );
     }
     default: {
-      return <CodeBlock language="json" rowTitle={title} code={data} maxLines={20} />;
+      return (
+        <CodeBlock
+          language="json"
+          rowTitle={title}
+          code={data}
+          maxLines={20}
+          showLineNumbers={false}
+        />
+      );
     }
   }
 }

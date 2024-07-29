@@ -31,6 +31,10 @@ export const simpleChildTask = task({
     await tags.add("product:1");
 
     await wait.for({ seconds: 10 });
+
+    return {
+      foo: "bar",
+    };
   },
 });
 
