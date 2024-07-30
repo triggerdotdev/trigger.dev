@@ -206,9 +206,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       );
 
       if (await isLinuxServer()) {
-        logger.debug(
-          "Will not open login URL automatically, please install `xdg-utils` to change this behavior."
-        );
+        log.message("Please install `xdg-utils` to automatically open the login URL.");
       } else {
         await open(authorizationCodeResult.url);
       }
