@@ -220,12 +220,12 @@
     {
       "group": "Frameworks",
       "version": "v3",
-      "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs"]
+      "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs", "guides/frameworks/remix"]
     },
     {
-      "group": "Task Management",
+      "group": "Dashboard",
       "version": "v3",
-      "pages": ["guides/task-management/creating-a-project", "guides/task-management/deploying"]
+      "pages": ["guides/task-management/creating-a-project"]
     },
     {
       "group": "Getting Started",
