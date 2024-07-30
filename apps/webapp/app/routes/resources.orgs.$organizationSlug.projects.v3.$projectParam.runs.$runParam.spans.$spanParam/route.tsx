@@ -249,16 +249,7 @@ function SpanBody({
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {span.workerVersion ? (
-                      <SimpleTooltip
-                        button={
-                          <TextLink
-                            to={v3RunsPath(organization, project, { tasks: [span.workerVersion] })}
-                          >
-                            {span.workerVersion}
-                          </TextLink>
-                        }
-                        content={`Filter runs by ${span.workerVersion}`}
-                      />
+                      span.workerVersion
                     ) : (
                       <span className="flex items-center gap-1">
                         <span>Never started</span>
@@ -456,16 +447,7 @@ function RunBody({
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
-                      <SimpleTooltip
-                        button={
-                          <TextLink
-                            to={v3RunsPath(organization, project, { tasks: [run.version] })}
-                          >
-                            {run.version}
-                          </TextLink>
-                        }
-                        content={`Filter runs by ${run.version}`}
-                      />
+                      run.version
                     ) : (
                       <span className="flex items-center gap-1">
                         <span>Never started</span>
