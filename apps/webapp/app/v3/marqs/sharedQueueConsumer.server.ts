@@ -1080,7 +1080,7 @@ class SharedQueueTasks {
 
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
-      taskRun,
+      taskRun.id,
       machinePreset
     );
 
@@ -1136,16 +1136,18 @@ class SharedQueueTasks {
       return;
     }
 
-    const run = await prisma.taskRun.findUnique({
+    const run = await prisma.taskRun.findFirst({
       where: {
         id: runId,
-        runtimeEnvironmentId: environment.id,
       },
-      include: {
-        lockedBy: true,
-        _count: {
+      select: {
+        id: true,
+        traceContext: true,
+        friendlyId: true,
+        isTest: true,
+        lockedBy: {
           select: {
-            attempts: true,
+            machineConfig: true,
           },
         },
       },
@@ -1156,9 +1158,20 @@ class SharedQueueTasks {
       return;
     }
 
+    const attemptCount = await prisma.taskRunAttempt.count({
+      where: {
+        taskRunId: run.id,
+      },
+    });
+
+    logger.debug("Getting lazy attempt payload for run", {
+      run,
+      attemptCount,
+    });
+
     const machinePreset = machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
 
-    const variables = await this.#buildEnvironmentVariables(environment, run, machinePreset);
+    const variables = await this.#buildEnvironmentVariables(environment, run.id, machinePreset);
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,
@@ -1169,7 +1182,7 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
-      attemptCount: run._count.attempts,
+      attemptCount,
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 
@@ -1203,13 +1216,13 @@ class SharedQueueTasks {
 
   async #buildEnvironmentVariables(
     environment: RuntimeEnvironment,
-    run: TaskRun,
+    runId: string,
     machinePreset: MachinePreset
   ): Promise<Array<EnvironmentVariable>> {
     const variables = await resolveVariablesForEnvironment(environment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
-      run_id: run.id,
+      run_id: runId,
       machine_preset: machinePreset.name,
     });
 
@@ -1217,7 +1230,7 @@ class SharedQueueTasks {
       ...variables,
       ...[
         { key: "TRIGGER_JWT", value: jwt },
-        { key: "TRIGGER_RUN_ID", value: run.id },
+        { key: "TRIGGER_RUN_ID", value: runId },
         {
           key: "TRIGGER_MACHINE_PRESET",
           value: machinePreset.name,

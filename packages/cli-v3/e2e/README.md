@@ -117,9 +117,9 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     ```sh
     cd packages/cli-v3/e2e/fixtures/<fixture-name>
-    rm -rf node_modules
+    rm -rf **/node_modules
     npm install
-    rm -rf node_modules
+    rm -rf **/node_modules
     corepack use yarn@4.2.2 # will update the yarn lockfile
     ```
 

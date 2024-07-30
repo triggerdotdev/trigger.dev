@@ -64,6 +64,12 @@ const SearchParamsSchema = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  "filter[tag]": z
+    .string()
+    .optional()
+    .transform((value) => {
+      return value ? value.split(",") : undefined;
+    }),
   "filter[bulkAction]": z.string().optional(),
   "filter[schedule]": z.string().optional(),
   "filter[isTest]": z
@@ -168,6 +174,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.versions = $searchParams.data["filter[version]"];
       }
 
+      if ($searchParams.data["filter[tag]"]) {
+        options.tags = $searchParams.data["filter[tag]"];
+      }
+
       if ($searchParams.data["filter[bulkAction]"]) {
         options.bulkId = $searchParams.data["filter[bulkAction]"];
       }
@@ -218,6 +228,10 @@ export class ApiRunListPresenter extends BasePresenter {
             name: run.environment.slug,
             user: run.environment.userName,
           },
+          tags: run.tags,
+          costInCents: run.costInCents,
+          baseCostInCents: run.baseCostInCents,
+          durationMs: run.usageDurationMs,
           ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
             ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
           ),

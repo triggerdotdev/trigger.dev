@@ -689,6 +689,10 @@ export function docsPath(path: string) {
   return `${docsRoot()}/${path}`;
 }
 
+export function docsTroubleshootingPath(path: string) {
+  return `${docsRoot()}/v3/troubleshooting`;
+}
+
 export function docsIntegrationPath(api: string) {
   return `${docsRoot()}/integrations/apis/${api}`;
 }

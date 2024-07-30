@@ -1,5 +1,21 @@
 # trigger.dev
 
+## 3.0.0-beta.51
+
+### Patch Changes
+
+- ae9a8b0ce: Automatically bundle internal packages that use file, link or workspace protocl
+- 6e65591e8: Fix various e2e issues for 'resolve-legacy-peer-deps' fixture, installation of fixture deps and lockfile-based test skipping'
+- Updated dependencies [55264657d]
+  - @trigger.dev/core@3.0.0-beta.51
+
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- Updated dependencies [8ba998794]
+  - @trigger.dev/core@3.0.0-beta.50
+
 ## 3.0.0-beta.49
 
 ### Patch Changes

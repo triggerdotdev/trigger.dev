@@ -66,18 +66,17 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const search = new URL(request.url).searchParams;
   const searchMonth = search.get("month");
-  const startDate = searchMonth ? new Date(searchMonth) : months[0];
+  const startDate = searchMonth ? new Date(decodeURIComponent(searchMonth)) : months[0];
   startDate.setUTCDate(1);
   startDate.setUTCHours(0, 0, 0, 0);
 
   const presenter = new UsagePresenter();
-  const { usageOverTime, usage, tasks } = await presenter.call({
+  const { usage, tasks } = await presenter.call({
     organizationId: organization.id,
     startDate,
   });
 
   return typeddefer({
-    usageOverTime,
     usage,
     tasks,
     months,
@@ -91,8 +90,7 @@ const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export default function Page() {
-  const { usage, usageOverTime, tasks, months, isCurrentMonth } =
-    useTypedLoaderData<typeof loader>();
+  const { usage, tasks, months, isCurrentMonth } = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
   const { value, replace } = useSearchParams();
 
@@ -148,7 +146,7 @@ export default function Page() {
                             {isCurrentMonth ? "Month-to-date" : "Usage"}
                           </Header3>
                           <p className="text-3xl font-medium text-text-bright">
-                            {formatCurrency(usage.current, false)}
+                            {formatCurrency(usage.overall.current, false)}
                           </p>
                         </div>
                         {isCurrentMonth ? (
@@ -157,15 +155,15 @@ export default function Page() {
                             <div className="flex flex-col gap-2 text-text-dimmed">
                               <Header3 className="text-text-dimmed">Projected</Header3>
                               <p className="text-3xl font-medium">
-                                {formatCurrency(usage.projected, false)}
+                                {formatCurrency(usage.overall.projected, false)}
                               </p>
                             </div>
                           </>
                         ) : null}
                       </div>
                       <UsageBar
-                        current={usage.current}
-                        projectedUsage={isCurrentMonth ? usage.projected : undefined}
+                        current={usage.overall.current}
+                        projectedUsage={isCurrentMonth ? usage.overall.projected : undefined}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
                         tierLimit={
                           isCurrentMonth
@@ -190,14 +188,14 @@ export default function Page() {
                 }
               >
                 <Await
-                  resolve={usageOverTime}
+                  resolve={usage}
                   errorElement={
                     <div className="flex min-h-40 items-center justify-center">
                       <Paragraph variant="small">Failed to load graph.</Paragraph>
                     </div>
                   }
                 >
-                  {(past30Days) => <UsageChart data={past30Days} />}
+                  {(u) => <UsageChart data={u.timeSeries} />}
                 </Await>
               </Suspense>
             </div>

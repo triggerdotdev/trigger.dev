@@ -142,6 +142,11 @@ export const QueueOptions = z.object({
 
 export type QueueOptions = z.infer<typeof QueueOptions>;
 
+export const ScheduleMetadata = z.object({
+  cron: z.string(),
+  timezone: z.string(),
+});
+
 export const TaskMetadata = z.object({
   id: z.string(),
   packageVersion: z.string(),
@@ -149,6 +154,7 @@ export const TaskMetadata = z.object({
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
+  schedule: ScheduleMetadata.optional(),
 });
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;
@@ -167,6 +173,7 @@ export const TaskMetadataWithFilePath = z.object({
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
+  schedule: ScheduleMetadata.optional(),
   filePath: z.string(),
   exportName: z.string(),
 });

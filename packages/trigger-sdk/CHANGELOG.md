@@ -1,5 +1,25 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.51
+
+### Patch Changes
+
+- 979bee50d: Fix return type of runs.retrieve, and allow passing the type of the task to runs.retrieve
+- 086a0f95c: Extract common trigger code into internal functions and add a tasks.batchTriggerAndWait function
+- 55264657d: You can now add tags to runs and list runs using them
+- Updated dependencies [55264657d]
+  - @trigger.dev/core@3.0.0-beta.51
+  - @trigger.dev/core-backend@3.0.0-beta.51
+
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- 8ba998794: Added declarative cron schedules
+- Updated dependencies [8ba998794]
+  - @trigger.dev/core@3.0.0-beta.50
+  - @trigger.dev/core-backend@3.0.0-beta.50
+
 ## 3.0.0-beta.49
 
 ### Patch Changes

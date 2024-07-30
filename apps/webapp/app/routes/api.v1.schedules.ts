@@ -50,6 +50,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const responseObject: ScheduleObject = {
       id: schedule.id,
+      type: schedule.type,
       task: schedule.task,
       active: schedule.active,
       generator: {
@@ -107,6 +108,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return {
     data: result.schedules.map((schedule) => ({
       id: schedule.friendlyId,
+      type: schedule.type,
       task: schedule.taskIdentifier,
       generator: {
         type: "CRON",

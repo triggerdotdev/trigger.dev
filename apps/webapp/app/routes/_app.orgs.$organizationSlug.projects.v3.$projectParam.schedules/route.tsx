@@ -11,6 +11,11 @@ import { MainCenteredContainer, PageBody, PageContainer } from "~/components/lay
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
+  ScheduleTypeCombo,
+  ScheduleTypeIcon,
+  scheduleTypeName,
+} from "~/components/runs/v3/ScheduleType";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -334,6 +339,51 @@ function SchedulesTable({
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex max-w-xs flex-col gap-4 p-1">
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"DECLARATIVE"} className="text-sky-500" />
+                      <span className="font-medium">{scheduleTypeName("DECLARATIVE")}</span>
+                    </div>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    Declarative schedules are defined in a{" "}
+                    <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
+                    <InlineCode variant="extra-small">cron</InlineCode>
+                    property. They sync when you update your{" "}
+                    <InlineCode variant="extra-small">schedules.task</InlineCode> definition and run
+                    the CLI dev or deploy commands.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"IMPERATIVE"} className="text-teal-500" />
+                      <span className="font-medium">{scheduleTypeName("IMPERATIVE")}</span>
+                    </div>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    Imperative schedules are defined here in the dashboard or by using the SDK
+                    functions to create or delete them. They can be created, updated, disabled, and
+                    deleted from the dashboard or using the SDK.
+                  </Paragraph>
+                </div>
+                <div>
+                  <LinkButton
+                    variant="tertiary/medium"
+                    to="https://trigger.dev/docs/v3/tasks-scheduled"
+                  >
+                    View the docs
+                  </LinkButton>
+                </div>
+              </div>
+            }
+          >
+            Type
+          </TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>CRON</TableHeaderCell>
           <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
@@ -362,7 +412,14 @@ function SchedulesTable({
                   {schedule.taskIdentifier}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.externalId ? schedule.externalId : "–"}
+                  <ScheduleTypeCombo type={schedule.type} />
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.type === "IMPERATIVE"
+                    ? schedule.externalId
+                      ? schedule.externalId
+                      : "–"
+                    : "N/A"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.cron}
@@ -384,13 +441,21 @@ function SchedulesTable({
                   )}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
+                  {schedule.type === "IMPERATIVE"
+                    ? schedule.userProvidedDeduplicationKey
+                      ? schedule.deduplicationKey
+                      : "–"
+                    : "N/A"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   <EnvironmentLabels environments={schedule.environments} size="small" />
                 </TableCell>
                 <TableCell to={path}>
-                  <EnabledStatus enabled={schedule.active} />
+                  {schedule.type === "IMPERATIVE" ? (
+                    <EnabledStatus enabled={schedule.active} />
+                  ) : (
+                    "N/A"
+                  )}
                 </TableCell>
               </TableRow>
             );

@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -17,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -34,7 +35,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: { slug: organizationSlug, members: { some: { userId } } },
     select: {
       id: true,
@@ -135,6 +136,9 @@ export default function Page() {
     },
   });
 
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "submitting" || navigation.state === "loading";
+
   return (
     <MainCenteredContainer>
       <div>
@@ -190,8 +194,13 @@ export default function Page() {
             )}
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"}>
-                  Create
+                <Button
+                  type="submit"
+                  variant={"primary/small"}
+                  disabled={isLoading}
+                  TrailingIcon={isLoading ? ButtonSpinner : undefined}
+                >
+                  {isLoading ? "Creating…" : "Create"}
                 </Button>
               }
               cancelButton={

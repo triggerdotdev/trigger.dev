@@ -27,6 +27,20 @@ export class DeleteTaskScheduleService extends BaseService {
     }
 
     try {
+      const schedule = await this._prisma.taskSchedule.findFirst({
+        where: {
+          friendlyId,
+        },
+      });
+
+      if (!schedule) {
+        throw new Error("Schedule not found");
+      }
+
+      if (schedule.type === "DECLARATIVE") {
+        throw new Error("Cannot delete declarative schedules");
+      }
+
       await this._prisma.taskSchedule.delete({
         where: {
           friendlyId,

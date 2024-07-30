@@ -1,5 +1,17 @@
 # internal-platform
 
+## 3.0.0-beta.51
+
+### Patch Changes
+
+- 55264657d: You can now add tags to runs and list runs using them
+
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- 8ba998794: Added declarative cron schedules
+
 ## 3.0.0-beta.49
 
 ### Patch Changes

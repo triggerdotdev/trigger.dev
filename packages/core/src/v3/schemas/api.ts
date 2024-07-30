@@ -55,6 +55,15 @@ export const CreateBackgroundWorkerResponse = z.object({
 
 export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWorkerResponse>;
 
+//an array of 1, 2, or 3 strings
+const RunTag = z.string().max(64, "Tags must be less than 64 characters");
+export const RunTags = z.union([
+  RunTag,
+  RunTag.array().max(3, "You can only set a maximum of 3 tags on a run."),
+]);
+
+export type RunTags = z.infer<typeof RunTags>;
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -70,6 +79,7 @@ export const TriggerTaskRequestBody = z.object({
       payloadType: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      tags: RunTags.optional(),
       maxAttempts: z.number().int().optional(),
     })
     .optional(),
@@ -109,6 +119,12 @@ export const GetBatchResponseBody = z.object({
 });
 
 export type GetBatchResponseBody = z.infer<typeof GetBatchResponseBody>;
+
+export const AddTagsRequestBody = z.object({
+  tags: RunTags,
+});
+
+export type AddTagsRequestBody = z.infer<typeof AddTagsRequestBody>;
 
 export const RescheduleRunRequestBody = z.object({
   delay: z.string().or(z.coerce.date()),
@@ -226,10 +242,19 @@ export const CanceledRunResponse = z.object({
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
 
+export const ScheduleType = z.union([z.literal("DECLARATIVE"), z.literal("IMPERATIVE")]);
+
 export const ScheduledTaskPayload = z.object({
   /** The schedule id associated with this run (you can have many schedules for the same task).
     You can use this to remove the schedule, update it, etc */
   scheduleId: z.string(),
+  /** The type of schedule – `"DECLARATIVE"` or `"IMPERATIVE"`.
+   *
+   * **DECLARATIVE** – defined inline on your `schedules.task` using the `cron` property. They can only be created, updated or deleted by modifying the `cron` property on your task.
+   *
+   * **IMPERATIVE** – created using the `schedules.create` functions or in the dashboard.
+   */
+  type: ScheduleType,
   /** When the task was scheduled to run.
    * Note this will be slightly different from `new Date()` because it takes a few ms to run the task.
    * 
@@ -315,6 +340,7 @@ export type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
 
 export const ScheduleObject = z.object({
   id: z.string(),
+  type: ScheduleType,
   task: z.string(),
   active: z.boolean(),
   deduplicationKey: z.string().nullish(),
@@ -442,6 +468,10 @@ const CommonRunFields = {
   delayedUntil: z.coerce.date().optional(),
   ttl: z.string().optional(),
   expiredAt: z.coerce.date().optional(),
+  tags: z.string().array(),
+  costInCents: z.number(),
+  baseCostInCents: z.number(),
+  durationMs: z.number(),
 };
 
 export const RetrieveRunResponse = z.object({

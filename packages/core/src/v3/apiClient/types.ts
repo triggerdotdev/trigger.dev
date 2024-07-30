@@ -28,6 +28,7 @@ export interface ListRunsQueryParams extends CursorPageParams {
   to?: Date | number;
   period?: string;
   bulkAction?: string;
+  tag?: Array<string> | string;
   schedule?: string;
   isTest?: boolean;
 }
