@@ -52,7 +52,7 @@ export class ReplayTaskRunService extends BaseService {
 
     try {
       const tags = await getTagsForRunId({
-        friendlyId: existingTaskRun.id,
+        friendlyId: existingTaskRun.friendlyId,
         environmentId: authenticatedEnvironment.id,
       });
 
