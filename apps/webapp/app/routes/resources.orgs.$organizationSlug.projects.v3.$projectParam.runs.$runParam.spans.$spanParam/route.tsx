@@ -159,7 +159,7 @@ function SpanBody({
   }
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -180,30 +180,32 @@ function SpanBody({
           />
         )}
       </div>
+      <div className="px-3">
+        <TabContainer>
+          <TabButton
+            isActive={!tab || tab === "overview"}
+            layoutId="span-span"
+            onClick={() => {
+              replace({ tab: "overview" });
+            }}
+            shortcut={{ key: "o" }}
+          >
+            Overview
+          </TabButton>
+          <TabButton
+            isActive={tab === "detail"}
+            layoutId="span-span"
+            onClick={() => {
+              replace({ tab: "detail" });
+            }}
+            shortcut={{ key: "d" }}
+          >
+            Detail
+          </TabButton>
+        </TabContainer>
+      </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div>
-          <TabContainer>
-            <TabButton
-              isActive={!tab || tab === "overview"}
-              layoutId="span-span"
-              onClick={() => {
-                replace({ tab: "overview" });
-              }}
-              shortcut={{ key: "o" }}
-            >
-              Overview
-            </TabButton>
-            <TabButton
-              isActive={tab === "detail"}
-              layoutId="span-span"
-              onClick={() => {
-                replace({ tab: "detail" });
-              }}
-              shortcut={{ key: "d" }}
-            >
-              Detail
-            </TabButton>
-          </TabContainer>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 pt-3">
               <Property.Table>
@@ -364,7 +366,7 @@ function RunBody({
   const environment = project.environments.find((e) => e.id === run.environmentId);
 
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
@@ -385,40 +387,42 @@ function RunBody({
           />
         )}
       </div>
+      <div className="px-3">
+        <TabContainer>
+          <TabButton
+            isActive={!tab || tab === "overview"}
+            layoutId="span-run"
+            onClick={() => {
+              replace({ tab: "overview" });
+            }}
+            shortcut={{ key: "o" }}
+          >
+            Overview
+          </TabButton>
+          <TabButton
+            isActive={tab === "detail"}
+            layoutId="span-run"
+            onClick={() => {
+              replace({ tab: "detail" });
+            }}
+            shortcut={{ key: "d" }}
+          >
+            Detail
+          </TabButton>
+          <TabButton
+            isActive={tab === "context"}
+            layoutId="span-run"
+            onClick={() => {
+              replace({ tab: "context" });
+            }}
+            shortcut={{ key: "c" }}
+          >
+            Context
+          </TabButton>
+        </TabContainer>
+      </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div>
-          <TabContainer>
-            <TabButton
-              isActive={!tab || tab === "overview"}
-              layoutId="span-run"
-              onClick={() => {
-                replace({ tab: "overview" });
-              }}
-              shortcut={{ key: "o" }}
-            >
-              Overview
-            </TabButton>
-            <TabButton
-              isActive={tab === "detail"}
-              layoutId="span-run"
-              onClick={() => {
-                replace({ tab: "detail" });
-              }}
-              shortcut={{ key: "d" }}
-            >
-              Detail
-            </TabButton>
-            <TabButton
-              isActive={tab === "context"}
-              layoutId="span-run"
-              onClick={() => {
-                replace({ tab: "context" });
-              }}
-              shortcut={{ key: "c" }}
-            >
-              Context
-            </TabButton>
-          </TabContainer>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
               <Property.Table>
