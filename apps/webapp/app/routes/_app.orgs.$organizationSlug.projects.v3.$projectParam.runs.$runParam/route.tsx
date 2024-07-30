@@ -286,7 +286,7 @@ export default function Page() {
               setResizableRunSettings(document, layout);
             }}
           >
-            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 65}>
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
               <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
@@ -311,7 +311,7 @@ export default function Page() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId && (
-              <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 35}>
+              <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
                 <SpanView
                   runParam={run.friendlyId}
                   spanId={selectedSpanId}
