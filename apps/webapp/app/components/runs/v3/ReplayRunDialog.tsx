@@ -18,6 +18,14 @@ type ReplayRunDialogProps = {
 };
 
 export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
+  return (
+    <DialogContent key={`replay`} className="md:max-w-3xl">
+      <ReplayContent runFriendlyId={runFriendlyId} failedRedirect={failedRedirect} />
+    </DialogContent>
+  );
+}
+
+function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   const fetcher = useTypedFetcher<typeof loader>();
   const isLoading = fetcher.state !== "idle";
 
@@ -26,10 +34,10 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
   }, [runFriendlyId]);
 
   return (
-    <DialogContent key={`replay`}>
-      <DialogHeader>Replay this run?</DialogHeader>
+    <>
+      <DialogHeader>Replay this run</DialogHeader>
       {isLoading ? (
-        <div>
+        <div className="grid place-items-center p-6">
           <Spinner />
         </div>
       ) : fetcher.data ? (
@@ -41,7 +49,7 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
       ) : (
         <>Failed to get run data</>
       )}
-    </DialogContent>
+    </>
   );
 }
 
@@ -83,7 +91,7 @@ function ReplayForm({
   );
 
   return (
-    <Form action={formAction} method="post" onSubmit={(e) => submitForm(e)}>
+    <Form action={formAction} method="post" onSubmit={(e) => submitForm(e)} className="pt-2">
       {editablePayload ? (
         <>
           <Header3 spacing>Payload</Header3>
@@ -114,9 +122,14 @@ function ReplayForm({
           items={environments}
           dropdownIcon
           variant="tertiary/medium"
+          className="w-fit pl-2"
           text={(value) => {
             const env = environments.find((env) => env.id === value)!;
-            return <EnvironmentLabel environment={env} userName={env.userName} />;
+            return (
+              <div className="flex items-center pr-2">
+                <EnvironmentLabel environment={env} userName={env.userName} />
+              </div>
+            );
           }}
         >
           {(matches) =>
@@ -131,11 +144,11 @@ function ReplayForm({
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
       <Button
         type="submit"
-        variant="primary/small"
+        variant="primary/medium"
         LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
         disabled={isSubmitting}
         shortcut={{ modifiers: ["meta"], key: "enter", enabledOnInputElements: true }}
-        className="mt-3"
+        className="mt-5"
       >
         {isSubmitting ? "Replaying..." : "Replay run"}
       </Button>
