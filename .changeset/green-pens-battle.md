@@ -2,4 +2,4 @@
 "trigger.dev": patch
 ---
 
-fix open on linux-server systems
+Fix automatic opening of login URL on linux-server systems with missing xdg-open
