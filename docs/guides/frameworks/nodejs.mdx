@@ -5,20 +5,14 @@ description: "This guide will show you how to setup Trigger.dev in your existing
 icon: "JS"
 ---
 
-## Prerequisites
+import Prerequisites from '/snippets/framework-prerequisites.mdx';
 
-- Setup a Node.js project
-- Install TypeScript by running `npm install typescript --save-dev && npx tsc --init`
-- [Create a Trigger.dev account](https://cloud.trigger.dev)
-- Create a new Trigger.dev project
+<Prerequisites framework="Node.js" />
 
 ## Initial setup
 
 <Steps>
     <Snippet file="v3/step-cli-init.mdx" />
-    <Step title="Install the Hello World example task when prompted">
-        We'll use this task to test the setup.
-    </Step>
     <Snippet file="v3/step-cli-dev.mdx" />
     <Snippet file="v3/step-run-test.mdx" />
     <Snippet file="v3/step-view-run.mdx" />
