@@ -1070,7 +1070,7 @@ function KeyboardShortcuts({
         title="Expand all"
       />
       <ShortcutWithAction
-        shortcut={{ key: "c" }}
+        shortcut={{ key: "w" }}
         action={() => collapseAllBelowDepth(1)}
         title="Collapse all"
       />

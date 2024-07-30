@@ -152,7 +152,11 @@ function SpanBody({
   const organization = useOrganization();
   const project = useProject();
   const { value, replace } = useSearchParams();
-  const tab = value("tab");
+  let tab = value("tab");
+
+  if (tab === "context") {
+    tab = "overview";
+  }
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
@@ -181,7 +185,7 @@ function SpanBody({
           <TabContainer>
             <TabButton
               isActive={!tab || tab === "overview"}
-              layoutId="span-run"
+              layoutId="span-span"
               onClick={() => {
                 replace({ tab: "overview" });
               }}
@@ -191,7 +195,7 @@ function SpanBody({
             </TabButton>
             <TabButton
               isActive={tab === "detail"}
-              layoutId="span-run"
+              layoutId="span-span"
               onClick={() => {
                 replace({ tab: "detail" });
               }}
@@ -413,6 +417,16 @@ function RunBody({
             >
               Detail
             </TabButton>
+            <TabButton
+              isActive={tab === "context"}
+              layoutId="span-run"
+              onClick={() => {
+                replace({ tab: "context" });
+              }}
+              shortcut={{ key: "c" }}
+            >
+              Context
+            </TabButton>
           </TabContainer>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
@@ -592,14 +606,10 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
               </Property.Table>
-              {run.context && (
-                <CodeBlock
-                  rowTitle="Context"
-                  code={run.context}
-                  maxLines={20}
-                  showLineNumbers={false}
-                />
-              )}
+            </div>
+          ) : tab === "context" ? (
+            <div className="flex flex-col gap-4 py-3">
+              <CodeBlock code={run.context} showLineNumbers={false} />
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
