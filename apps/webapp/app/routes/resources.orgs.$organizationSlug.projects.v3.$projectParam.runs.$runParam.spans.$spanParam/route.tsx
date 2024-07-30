@@ -940,30 +940,16 @@ function SpanLinkElement({ link }: { link: SpanLink }) {
   switch (link.type) {
     case "run": {
       return (
-        <LinkButton
-          to={v3RunPath(organization, project, { friendlyId: link.runId })}
-          variant="minimal/medium"
-          LeadingIcon={link.icon}
-          leadingIconClassName="text-text-dimmed"
-          fullWidth
-          textAlignLeft
-        >
+        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
           {link.title}
-        </LinkButton>
+        </TextLink>
       );
     }
     case "span": {
       return (
-        <LinkButton
-          to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}
-          variant="minimal/medium"
-          LeadingIcon={link.icon}
-          leadingIconClassName="text-text-dimmed"
-          fullWidth
-          textAlignLeft
-        >
+        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
           {link.title}
-        </LinkButton>
+        </TextLink>
       );
     }
   }
