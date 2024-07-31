@@ -15,7 +15,6 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
@@ -27,7 +26,7 @@ import {
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   Table,
   TableBlankRow,
@@ -225,36 +224,63 @@ export default function Page() {
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="p-3">
           <div className="space-y-3">
-            <PropertyTable>
-              <Property label="Schedule ID">{schedule.friendlyId}</Property>
-              <Property label="Task ID">{schedule.taskIdentifier}</Property>
-              <Property label="Type">
-                <ScheduleTypeCombo type={schedule.type} className="text-sm" />
-              </Property>
-              <Property label="CRON (UTC)" labelClassName="self-start">
-                <div className="space-y-2">
-                  <InlineCode variant="extra-small">{schedule.cron}</InlineCode>
-                  <Paragraph variant="small">{schedule.cronDescription}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Timezone">{schedule.timezone}</Property>
-              <Property label="Environments">
-                <EnvironmentLabels size="small" environments={schedule.environments} />
-              </Property>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Schedule ID</Property.Label>
+                <Property.Value>{schedule.friendlyId}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Task ID</Property.Label>
+                <Property.Value>{schedule.taskIdentifier}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Type</Property.Label>
+                <Property.Value>
+                  <ScheduleTypeCombo type={schedule.type} className="text-sm" />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>CRON</Property.Label>
+                <Property.Value>
+                  <div className="space-y-2">
+                    <InlineCode variant="extra-small">{schedule.cron}</InlineCode>
+                    <Paragraph variant="small">{schedule.cronDescription}</Paragraph>
+                  </div>
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Timezone</Property.Label>
+                <Property.Value>{schedule.timezone}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Environments</Property.Label>
+                <Property.Value>
+                  <EnvironmentLabels size="small" environments={schedule.environments} />
+                </Property.Value>
+              </Property.Item>
               {isImperative && (
                 <>
-                  <Property label="External ID">
-                    {schedule.externalId ? schedule.externalId : "–"}
-                  </Property>
-                  <Property label="Deduplication key">
-                    {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
-                  </Property>
-                  <Property label="Status">
-                    <EnabledStatus enabled={schedule.active} />
-                  </Property>
+                  <Property.Item>
+                    <Property.Label>External ID</Property.Label>
+                    <Property.Value>
+                      {schedule.externalId ? schedule.externalId : "–"}
+                    </Property.Value>
+                  </Property.Item>
+                  <Property.Item>
+                    <Property.Label>Deduplication key</Property.Label>
+                    <Property.Value>
+                      {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
+                    </Property.Value>
+                  </Property.Item>
+                  <Property.Item>
+                    <Property.Label>Status</Property.Label>
+                    <Property.Value>
+                      <EnabledStatus enabled={schedule.active} />
+                    </Property.Value>
+                  </Property.Item>
                 </>
               )}
-            </PropertyTable>
+            </Property.Table>
             <div className="flex flex-col gap-1">
               <Header3>Last 5 runs</Header3>
               <TaskRunsTable
@@ -297,12 +323,12 @@ export default function Page() {
                         </TableRow>
                       ))
                     ) : (
-                      <TableBlankRow colSpan={1}>
+                      <TableBlankRow colSpan={isUtc ? 1 : 2}>
                         <PlaceholderText title="You found a bug" />
                       </TableBlankRow>
                     )
                   ) : (
-                    <TableBlankRow colSpan={1}>
+                    <TableBlankRow colSpan={isUtc ? 1 : 2}>
                       <PlaceholderText title="Schedule disabled" />
                     </TableBlankRow>
                   )}

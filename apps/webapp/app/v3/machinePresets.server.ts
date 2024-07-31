@@ -24,7 +24,7 @@ export function machinePresetFromConfig(config: unknown): MachinePreset {
   return machinePresetFromName("small-1x");
 }
 
-function machinePresetFromName(name: MachinePresetName): MachinePreset {
+export function machinePresetFromName(name: MachinePresetName): MachinePreset {
   return {
     name,
     ...machines[name],

@@ -190,6 +190,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           costInCents: taskRun.costInCents,
           baseCostInCents: taskRun.baseCostInCents,
           maxAttempts: taskRun.maxAttempts ?? undefined,
+          version: taskRun.lockedBy.worker.version,
         },
         queue: {
           id: queue.friendlyId,

@@ -57,10 +57,7 @@ export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWork
 
 //an array of 1, 2, or 3 strings
 const RunTag = z.string().max(64, "Tags must be less than 64 characters");
-export const RunTags = z.union([
-  RunTag,
-  RunTag.array().max(3, "You can only set a maximum of 3 tags on a run."),
-]);
+export const RunTags = z.union([RunTag, RunTag.array()]);
 
 export type RunTags = z.infer<typeof RunTags>;
 

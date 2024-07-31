@@ -27,7 +27,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -128,23 +128,25 @@ export default function Page() {
 
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
-              <Property label="Org ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{organization.id}</Paragraph>
-                </div>
-              </Property>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Org ID</Property.Label>
+                <Property.Value>{organization.id}</Property.Value>
+              </Property.Item>
 
               {members.map((member) => (
-                <Property label={member.user.name} key={member.id}>
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">
-                      {member.user.email} - {member.user.id}
-                    </Paragraph>
-                  </div>
-                </Property>
+                <Property.Item key={member.id}>
+                  <Property.Label>{member.user.name}</Property.Label>
+                  <Property.Value>
+                    <div className="flex items-center gap-2">
+                      <Paragraph variant="extra-small/bright/mono">
+                        {member.user.email} - {member.user.id}
+                      </Paragraph>
+                    </div>
+                  </Property.Value>
+                </Property.Item>
               ))}
-            </PropertyTable>
+            </Property.Table>
           </AdminDebugTooltip>
         </PageAccessories>
       </NavBar>

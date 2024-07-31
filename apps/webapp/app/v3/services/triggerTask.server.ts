@@ -17,7 +17,7 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
-import { createTag } from "~/models/taskRunTag.server";
+import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -76,6 +76,16 @@ export class TriggerTaskService extends BaseService {
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
+      }
+
+      if (
+        body.options?.tags &&
+        typeof body.options.tags !== "string" &&
+        body.options.tags.length > MAX_TAGS_PER_RUN
+      ) {
+        throw new ServiceValidationError(
+          `Runs can only have ${MAX_TAGS_PER_RUN} tags, you're trying to set ${body.options.tags.length}.`
+        );
       }
 
       const runFriendlyId = generateFriendlyId("run");

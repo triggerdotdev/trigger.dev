@@ -11,7 +11,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   Table,
   TableBody,
@@ -61,15 +61,14 @@ export default function Page() {
         <PageTitle title="API keys" />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
+            <Property.Table>
               {environments.map((environment) => (
-                <Property label={environment.slug} key={environment.id}>
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{environment.id}</Paragraph>
-                  </div>
-                </Property>
+                <Property.Item key={environment.id}>
+                  <Property.Label>{environment.slug}</Property.Label>
+                  <Property.Value>{environment.id}</Property.Value>
+                </Property.Item>
               ))}
-            </PropertyTable>
+            </Property.Table>
           </AdminDebugTooltip>
 
           <LinkButton
