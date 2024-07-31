@@ -1,6 +1,8 @@
 import { prisma } from "~/db.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
+export const MAX_TAGS_PER_RUN = 5;
+
 export async function createTag({ tag, projectId }: { tag: string; projectId: string }) {
   if (tag.trim().length === 0) return;
   return prisma.taskRunTag.upsert({
