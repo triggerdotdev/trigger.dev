@@ -1,9 +1,12 @@
 import {
+  ArrowPathIcon,
+  ArrowUturnLeftIcon,
   BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
@@ -26,14 +29,14 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -71,6 +74,9 @@ import {
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { env } from "~/env.server";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
+import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
@@ -122,41 +128,38 @@ export default function Page() {
               to: v3RunsPath(organization, project),
               text: "Runs",
             }}
-            title={`Run #${run.number}`}
+            title={
+              <div className="flex items-center gap-3">
+                <span>Run #{run.number}</span>
+                <EnvironmentLabel
+                  size="large"
+                  environment={run.environment}
+                  userName={usernameForEnv}
+                />
+              </div>
+            }
           />
           <PageAccessories>
             <AdminDebugTooltip>
-              <PropertyTable>
-                <Property label="ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Trace ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Env ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Org ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">
-                      {run.environment.organizationId}
-                    </Paragraph>
-                  </div>
-                </Property>
-              </PropertyTable>
+              <Property.Table>
+                <Property.Item>
+                  <Property.Label>ID</Property.Label>
+                  <Property.Value>{run.id}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Trace ID</Property.Label>
+                  <Property.Value>{run.traceId}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Env ID</Property.Label>
+                  <Property.Value>{run.environment.id}</Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Org ID</Property.Label>
+                  <Property.Value>{run.environment.organizationId}</Property.Value>
+                </Property.Item>
+              </Property.Table>
             </AdminDebugTooltip>
-
-            <EnvironmentLabel
-              size="large"
-              environment={run.environment}
-              userName={usernameForEnv}
-            />
           </PageAccessories>
         </NavBar>
         <PageBody>
@@ -200,37 +203,76 @@ export default function Page() {
             to: v3RunsPath(organization, project),
             text: "Runs",
           }}
-          title={`Run #${run.number}`}
+          title={
+            <div className="flex items-center gap-3">
+              <span>Run #{run.number}</span>
+              <EnvironmentLabel
+                size="large"
+                environment={run.environment}
+                userName={usernameForEnv}
+              />
+            </div>
+          }
         />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
-              <Property label="ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Trace ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Env ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Org ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">
-                    {run.environment.organizationId}
-                  </Paragraph>
-                </div>
-              </Property>
-            </PropertyTable>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value>{run.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Trace ID</Property.Label>
+                <Property.Value>{run.traceId}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Env ID</Property.Label>
+                <Property.Value>{run.environment.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Org ID</Property.Label>
+                <Property.Value>{run.environment.organizationId}</Property.Value>
+              </Property.Item>
+            </Property.Table>
           </AdminDebugTooltip>
-
-          <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
+          <Dialog key={`replay-${run.friendlyId}`}>
+            <DialogTrigger asChild>
+              <Button
+                variant="tertiary/small"
+                LeadingIcon={ArrowUturnLeftIcon}
+                shortcut={{ key: "R" }}
+              >
+                Replay run
+              </Button>
+            </DialogTrigger>
+            <ReplayRunDialog
+              runFriendlyId={run.friendlyId}
+              failedRedirect={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
+            />
+          </Dialog>
+          {run.isFinished ? null : (
+            <Dialog key={`cancel-${run.friendlyId}`}>
+              <DialogTrigger asChild>
+                <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+                  Cancel run
+                </Button>
+              </DialogTrigger>
+              <CancelRunDialog
+                runFriendlyId={run.friendlyId}
+                redirectPath={v3RunSpanPath(
+                  organization,
+                  project,
+                  { friendlyId: run.friendlyId },
+                  { spanId: run.spanId }
+                )}
+              />
+            </Dialog>
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -244,7 +286,7 @@ export default function Page() {
               setResizableRunSettings(document, layout);
             }}
           >
-            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
+            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
               <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
@@ -269,7 +311,7 @@ export default function Page() {
             </ResizablePanel>
             <ResizableHandle withHandle />
             {selectedSpanId && (
-              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
+              <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
                 <SpanView
                   runParam={run.friendlyId}
                   spanId={selectedSpanId}
@@ -311,7 +353,7 @@ function TasksTreeView({
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
-  const [showDurations, setShowDurations] = useState(false);
+  const [showDurations, setShowDurations] = useState(true);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
@@ -1028,16 +1070,11 @@ function KeyboardShortcuts({
         title="Expand all"
       />
       <ShortcutWithAction
-        shortcut={{ key: "c" }}
+        shortcut={{ key: "w" }}
         action={() => collapseAllBelowDepth(1)}
         title="Collapse all"
       />
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
-      <ShortcutWithAction
-        shortcut={{ key: "d" }}
-        action={() => setShowDurations((d) => !d)}
-        title="Toggle durations"
-      />
     </>
   );
 }

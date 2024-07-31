@@ -248,6 +248,7 @@ export default function Page() {
                       <EditEnvironmentVariablePanel
                         environments={environments}
                         variable={variable}
+                        revealAll={revealAll}
                       />
                       <DeleteEnvironmentVariableButton variable={variable} />
                     </TableCellMenu>
@@ -293,15 +294,21 @@ export default function Page() {
 function EditEnvironmentVariablePanel({
   variable,
   environments,
+  revealAll,
 }: {
   variable: EnvironmentVariableWithSetValues;
   environments: Pick<RuntimeEnvironment, "id" | "type">[];
+  revealAll: boolean;
 }) {
+  const [reveal, setReveal] = useState(revealAll);
+
   const [isOpen, setIsOpen] = useState(false);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
-  const hiddenValues = Object.values(variable.values).filter((value) => !environments.map(e => e.id).includes(value.environment.id));
+  const hiddenValues = Object.values(variable.values).filter(
+    (value) => !environments.map((e) => e.id).includes(value.environment.id)
+  );
 
   const isLoading =
     navigation.state !== "idle" &&
@@ -340,7 +347,11 @@ function EditEnvironmentVariablePanel({
           <input type="hidden" name="key" value={variable.key} />
           {hiddenValues.map((value, index) => (
             <Fragment key={index}>
-              <input type="hidden" name={`values[${index}].environmentId`} value={value.environment.id} />
+              <input
+                type="hidden"
+                name={`values[${index}].environmentId`}
+                value={value.environment.id}
+              />
               <input type="hidden" name={`values[${index}].value`} value={value.value} />
             </Fragment>
           ))}
@@ -355,7 +366,15 @@ function EditEnvironmentVariablePanel({
           </Fieldset>
           <Fieldset>
             <InputGroup fullWidth>
-              <Label>Values</Label>
+              <div className="flex justify-between gap-1">
+                <Label>Values</Label>
+                <Switch
+                  variant="small"
+                  label="Reveal"
+                  checked={reveal}
+                  onCheckedChange={(e) => setReveal(e.valueOf())}
+                />
+              </div>
               <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-2">
                 {environments.map((environment, index) => {
                   const value = variable.values[environment.id]?.value;
@@ -377,7 +396,7 @@ function EditEnvironmentVariablePanel({
                         name={`values[${index}].value`}
                         placeholder="Not set"
                         defaultValue={value}
-                        type="password"
+                        type={reveal ? "text" : "password"}
                       />
                     </Fragment>
                   );

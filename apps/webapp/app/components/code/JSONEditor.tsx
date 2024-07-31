@@ -107,39 +107,51 @@ export function JSONEditor(opts: JSONEditorProps) {
     }, 1500);
   }, [view]);
 
+  const showButtons = showClearButton || showCopyButton;
+
   return (
-    <div className={cn(opts.className, "grid grid-rows-[2.5rem_1fr]")}>
-      <div className="mx-3 flex items-center justify-end gap-2 border-b border-grid-dimmed">
-        {showClearButton && (
-          <Button
-            type="button"
-            variant="minimal/small"
-            TrailingIcon={TrashIcon}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              clear();
-            }}
-          >
-            Clear
-          </Button>
-        )}
-        {showCopyButton && (
-          <Button
-            type="button"
-            variant="minimal/small"
-            TrailingIcon={copied ? CheckIcon : ClipboardIcon}
-            trailingIconClassName={copied ? "text-green-500 group-hover:text-green-500" : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              copy();
-            }}
-          >
-            Copy
-          </Button>
-        )}
-      </div>
+    <div
+      className={cn(
+        opts.className,
+        "grid",
+        showButtons ? "grid-rows-[2.5rem_1fr]" : "grid-rows-[1fr]"
+      )}
+    >
+      {showButtons && (
+        <div className="mx-3 flex items-center justify-end gap-2 border-b border-grid-dimmed">
+          {showClearButton && (
+            <Button
+              type="button"
+              variant="minimal/small"
+              TrailingIcon={TrashIcon}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                clear();
+              }}
+            >
+              Clear
+            </Button>
+          )}
+          {showCopyButton && (
+            <Button
+              type="button"
+              variant="minimal/small"
+              TrailingIcon={copied ? CheckIcon : ClipboardIcon}
+              trailingIconClassName={
+                copied ? "text-green-500 group-hover:text-green-500" : undefined
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                copy();
+              }}
+            >
+              Copy
+            </Button>
+          )}
+        </div>
+      )}
       <div
         className="w-full overflow-auto"
         ref={editor}

@@ -10,6 +10,7 @@ import { LoadingBarDivider } from "./LoadingBarDivider";
 import { NamedIcon } from "./NamedIcon";
 import { Paragraph } from "./Paragraph";
 import { Tabs, TabsProps } from "./Tabs";
+import { ReactNode } from "react";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -34,7 +35,7 @@ export function NavBar({ children }: WithChildren) {
 }
 
 type PageTitleProps = {
-  title: string;
+  title: ReactNode;
   backButton?: {
     to: string;
     text: string;

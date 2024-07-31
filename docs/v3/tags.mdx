@@ -5,7 +5,7 @@ description: "Tags allow you to easily filter runs in the dashboard and when usi
 
 ## What are tags?
 
-We support up to 3 tags per run. Each one must be a string between 1 and 64 characters long.
+We support up to 5 tags per run. Each one must be a string between 1 and 64 characters long.
 
 We recommend prefixing your tags with their type and then an underscore or colon. For example, `user_123456` or `video:123`.
 
@@ -75,7 +75,7 @@ export const myTask = task({
 });
 ```
 
-Reminder: you can only have up to 3 tags per run. If you call `tags.add()` and the total number of tags will be more than 3 we log an error and ignore the new tags. That includes tags from triggering and from inside the run function.
+Reminder: you can only have up to 5 tags per run. If you call `tags.add()` and the total number of tags will be more than 5 we log an error and ignore the new tags. That includes tags from triggering and from inside the run function.
 
 ### Propagating tags to child runs
 

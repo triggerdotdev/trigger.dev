@@ -2,7 +2,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { AddTagsRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { createTag, getTagsForRunId } from "~/models/taskRunTag.server";
+import { createTag, getTagsForRunId, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
@@ -51,12 +51,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return !existingTags.map((t) => t.name).includes(tag);
     });
 
-    if (existingTags.length + newTags.length > 3) {
+    if (existingTags.length + newTags.length > MAX_TAGS_PER_RUN) {
       return json(
         {
-          error: `Runs can only have 3 tags, you're trying to set ${
+          error: `Runs can only have ${MAX_TAGS_PER_RUN} tags, you're trying to set ${
             existingTags.length + newTags.length
-          }.`,
+          }. These tags have not been set: ${newTags.map((t) => `'${t}'`).join(", ")}.`,
         },
         { status: 422 }
       );

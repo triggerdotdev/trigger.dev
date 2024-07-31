@@ -137,6 +137,7 @@ export const TaskRun = z.object({
   durationMs: z.number().default(0),
   costInCents: z.number().default(0),
   baseCostInCents: z.number().default(0),
+  version: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
