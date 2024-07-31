@@ -11,7 +11,6 @@ import {
   SpanEvents,
   SpanMessagingEvent,
   TaskEventStyle,
-  TaskRunContext,
   TaskRunError,
   correctErrorStackTrace,
   createPacketAttributesAsJson,
