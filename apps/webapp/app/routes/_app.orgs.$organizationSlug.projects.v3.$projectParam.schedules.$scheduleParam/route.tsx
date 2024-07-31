@@ -15,7 +15,6 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
@@ -324,12 +323,12 @@ export default function Page() {
                         </TableRow>
                       ))
                     ) : (
-                      <TableBlankRow colSpan={1}>
+                      <TableBlankRow colSpan={isUtc ? 1 : 2}>
                         <PlaceholderText title="You found a bug" />
                       </TableBlankRow>
                     )
                   ) : (
-                    <TableBlankRow colSpan={1}>
+                    <TableBlankRow colSpan={isUtc ? 1 : 2}>
                       <PlaceholderText title="Schedule disabled" />
                     </TableBlankRow>
                   )}
