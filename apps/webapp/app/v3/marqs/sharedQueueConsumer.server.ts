@@ -274,14 +274,6 @@ export class SharedQueueConsumer {
           where: {
             id: message.messageId,
           },
-          include: {
-            lockedToVersion: {
-              include: {
-                deployment: true,
-                tasks: true,
-              },
-            },
-          },
         });
 
         if (!existingTaskRun) {
