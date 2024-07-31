@@ -1,10 +1,17 @@
-import { conditionallyImportPacket, IOPacket, parsePacket, RunTags } from "@trigger.dev/core/v3";
+import {
+  conditionallyImportPacket,
+  IOPacket,
+  parsePacket,
+  RunTags,
+  stringifyIO,
+} from "@trigger.dev/core/v3";
+import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { getTagsForRunId } from "~/models/taskRunTag.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { getTagsForRunId } from "~/models/taskRunTag.server";
 
 type OverrideOptions = {
   environmentId?: string;
@@ -28,10 +35,18 @@ export class ReplayTaskRunService extends BaseService {
     let payloadPacket: IOPacket;
 
     if (overrideOptions?.payload) {
-      payloadPacket = await conditionallyImportPacket({
-        data: overrideOptions.payload,
-        dataType: "application/json",
-      });
+      if (existingTaskRun.payloadType === "application/super+json") {
+        const newPayload = await replaceSuperJsonPayload(
+          existingTaskRun.payload,
+          overrideOptions.payload
+        );
+        payloadPacket = await stringifyIO(newPayload);
+      } else {
+        payloadPacket = await conditionallyImportPacket({
+          data: overrideOptions.payload,
+          dataType: existingTaskRun.payloadType,
+        });
+      }
     } else {
       payloadPacket = await conditionallyImportPacket({
         data: existingTaskRun.payload,

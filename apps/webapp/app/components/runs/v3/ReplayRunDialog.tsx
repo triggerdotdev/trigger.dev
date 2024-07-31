@@ -67,7 +67,8 @@ function ReplayForm({
   const formAction = `/resources/taskruns/${runFriendlyId}/replay`;
   const isSubmitting = navigation.formAction === formAction;
 
-  const editablePayload = payloadType === "application/json";
+  const editablePayload =
+    payloadType === "application/json" || payloadType === "application/super+json";
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
