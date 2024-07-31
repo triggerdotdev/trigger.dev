@@ -445,7 +445,7 @@ export type TaskRunOptions = {
   /**
    * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
    *
-   * You can set up to 3 tags per run, they must be less than 64 characters each.
+   * You can set up to 5 tags per run, they must be less than 64 characters each.
    *
    * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
    *

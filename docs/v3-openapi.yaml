@@ -1510,7 +1510,7 @@ components:
               description: |
                 Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
 
-                You can set up to 3 tags per run, they must be less than 64 characters each.
+                You can set up to 5 tags per run, they must be less than 64 characters each.
 
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
               items:
@@ -1719,7 +1719,7 @@ components:
           example: ["user_5df987al13", "org_c6b7dycmxw"]
           items:
             type: string
-            description: A tag must be between 1 and 64 characters, a run can have up to 3 tags attached to it.
+            description: A tag must be between 1 and 64 characters, a run can have up to 5 tags attached to it.
         costInCents:
           type: number
           example: 0.00292
@@ -1913,7 +1913,7 @@ components:
           example: ["user_5df987al13", "org_c6b7dycmxw"]
           items:
             type: string
-            description: A tag must be between 1 and 64 characters, a run can have up to 3 tags attached to it.
+            description: A tag must be between 1 and 64 characters, a run can have up to 5 tags attached to it.
         costInCents:
           type: number
           example: 0.00292
