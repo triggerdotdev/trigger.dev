@@ -13,9 +13,9 @@ import {
 import { ReadConfigResult } from "../src/utilities/configFiles.js";
 import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { PackageManager } from "../src/utilities/getUserPackageManager.js";
-import { JavascriptProject } from "../src/utilities/javascriptProject.js";
 import { logger } from "../src/utilities/logger.js";
 import { cliLink } from "../src/utilities/cliOutput.js";
+import { E2EJavascriptProject } from "./javascriptProject.js";
 
 type HandleDependenciesOptions = {
   entryPointMetaOutput: Metafile["outputs"]["out/stdin.js"];
@@ -24,19 +24,6 @@ type HandleDependenciesOptions = {
   resolvedConfig: ReadConfigResult;
   tempDir: string;
 };
-
-class JavascriptProjectLocal extends JavascriptProject {
-  constructor(
-    projectPath: string,
-    private overridenPackageManager: PackageManager
-  ) {
-    super(projectPath);
-  }
-
-  async getPackageManager(): Promise<PackageManager> {
-    return Promise.resolve(this.overridenPackageManager);
-  }
-}
 
 export async function handleDependencies(options: HandleDependenciesOptions) {
   if (options.resolvedConfig.status === "error") {
@@ -58,7 +45,7 @@ export async function handleDependencies(options: HandleDependenciesOptions) {
   // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
   const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
 
-  const javascriptProject = new JavascriptProjectLocal(config.projectDir, packageManager);
+  const javascriptProject = new E2EJavascriptProject(config.projectDir, packageManager);
 
   const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
 

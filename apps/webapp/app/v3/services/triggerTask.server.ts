@@ -17,6 +17,7 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { createTag } from "~/models/taskRunTag.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -210,6 +211,22 @@ export class TriggerTaskService extends BaseService {
               event.setAttribute("queueName", queueName);
               span.setAttribute("queueName", queueName);
 
+              //upsert tags
+              let tagIds: string[] = [];
+              const bodyTags =
+                typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
+              if (bodyTags && bodyTags.length > 0) {
+                for (const tag of bodyTags) {
+                  const tagRecord = await createTag({
+                    tag,
+                    projectId: environment.projectId,
+                  });
+                  if (tagRecord) {
+                    tagIds.push(tagRecord.id);
+                  }
+                }
+              }
+
               const taskRun = await tx.taskRun.create({
                 data: {
                   status: delayUntil ? "DELAYED" : "PENDING",
@@ -233,6 +250,12 @@ export class TriggerTaskService extends BaseService {
                   queuedAt: delayUntil ? undefined : new Date(),
                   maxAttempts: body.options?.maxAttempts,
                   ttl,
+                  tags:
+                    tagIds.length === 0
+                      ? undefined
+                      : {
+                          connect: tagIds.map((id) => ({ id })),
+                        },
                 },
               });
 

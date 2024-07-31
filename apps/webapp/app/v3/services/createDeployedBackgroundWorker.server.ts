@@ -11,6 +11,7 @@ import { logger } from "~/services/logger.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { socketIo } from "../handleSocketIo.server";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -130,6 +131,20 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
         await marqs?.updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error("Failed to publish WORKER_CREATED event", { err });
+      }
+
+      if (deployment.imageReference) {
+        socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
+          version: "v1",
+          imageRef: deployment.imageReference,
+          shortCode: deployment.shortCode,
+          // identifiers
+          deploymentId: deployment.id,
+          envId: environment.id,
+          envType: environment.type,
+          orgId: environment.organizationId,
+          projectId: deployment.projectId,
+        });
       }
 
       await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id, this._prisma);

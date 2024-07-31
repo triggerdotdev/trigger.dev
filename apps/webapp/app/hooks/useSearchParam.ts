@@ -18,13 +18,13 @@ export function useSearchParams() {
         }
 
         if (typeof value === "string") {
-          search.set(param, value);
+          search.set(param, encodeURIComponent(value));
           continue;
         }
 
         search.delete(param);
         for (const v of value) {
-          search.append(param, v);
+          search.append(param, encodeURIComponent(v));
         }
       }
     },
@@ -54,14 +54,20 @@ export function useSearchParams() {
 
   const value = useCallback(
     (param: string) => {
-      return search.get(param) ?? undefined;
+      const val = search.get(param) ?? undefined;
+      if (val === undefined) {
+        return val;
+      }
+
+      return decodeURIComponent(val);
     },
     [location, search]
   );
 
   const values = useCallback(
     (param: string) => {
-      return search.getAll(param);
+      const all = search.getAll(param);
+      return all.map((v) => decodeURIComponent(v));
     },
     [location, search]
   );

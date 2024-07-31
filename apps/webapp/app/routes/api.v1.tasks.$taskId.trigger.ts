@@ -1,3 +1,4 @@
+import { fromZodError } from "zod-validation-error";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
@@ -69,7 +70,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!body.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
+    return json(
+      { error: fromZodError(body.error, { prefix: "Invalid trigger call" }).toString() },
+      { status: 400 }
+    );
   }
 
   const service = new TriggerTaskService();

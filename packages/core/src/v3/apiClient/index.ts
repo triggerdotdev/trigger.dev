@@ -1,6 +1,8 @@
 import { context, propagation } from "@opentelemetry/api";
+import { z } from "zod";
 import { version } from "../../../package.json";
 import {
+  AddTagsRequestBody,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
@@ -63,8 +65,8 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   },
 };
 
-export type { ApiRequestOptions };
 export { isRequestOptions };
+export type { ApiRequestOptions };
 
 /**
  * Trigger.dev v3 API client
@@ -280,6 +282,19 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/reschedule`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  addTags(runId: string, body: AddTagsRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.object({ message: z.string() }),
+      `${this.baseUrl}/api/v1/runs/${runId}/tags`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
@@ -532,6 +547,13 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.bulkAction) {
       searchParams.append("filter[bulkAction]", query.bulkAction);
+    }
+
+    if (query.tag) {
+      searchParams.append(
+        "filter[tag]",
+        Array.isArray(query.tag) ? query.tag.join(",") : query.tag
+      );
     }
 
     if (query.schedule) {

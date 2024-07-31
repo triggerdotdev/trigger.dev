@@ -3,16 +3,18 @@ title: "Triggering"
 description: "Tasks need to be triggered to run."
 ---
 
-There are currently six ways you can trigger tasks:
+These are the different ways you can trigger tasks:
 
 | Function                         | Where does this work? | What it does                                                                                                                       |
 | -------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result.                      |
 | `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
-| `yourTask.triggerAndWait()`      | Inside a task         | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
-| `yourTask.batchTriggerAndWait()` | Inside a task         | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
-| `tasks.trigger()`                | Outside of a task     | Triggers a task and gets a handle you can use to fetch and manage the run.                                                         |
-| `tasks.batchTrigger()`           | Outside of a task     | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs.                                         |
+| `yourTask.triggerAndWait()`      | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
+| `yourTask.batchTriggerAndWait()` | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
+| `tasks.trigger()`                | Anywhere              | Triggers a task and gets a handle you can use to fetch and manage the run.                                                         |
+| `tasks.batchTrigger()`           | Anywhere              | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs.                                         |
+| `tasks.triggerAndWait()`         | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with                                       |
+| `tasks.batchTriggerAndWait()`    | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
 
 Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered on their schedule and [webhooks](/v3/tasks-webhooks) when receiving a webhook.
 

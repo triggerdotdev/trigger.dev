@@ -66,7 +66,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const search = new URL(request.url).searchParams;
   const searchMonth = search.get("month");
-  const startDate = searchMonth ? new Date(searchMonth) : months[0];
+  const startDate = searchMonth ? new Date(decodeURIComponent(searchMonth)) : months[0];
   startDate.setUTCDate(1);
   startDate.setUTCHours(0, 0, 0, 0);
 
