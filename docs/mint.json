@@ -68,6 +68,10 @@
     {
       "source": "/documentation/v3/feature-matrix",
       "destination": "/documentation/"
+    },
+    {
+      "source": "/documentation/v3/upgrading-from-v2",
+      "destination": "/documentation/guides/use-cases/upgrading-from-v2"
     }
   ],
 
@@ -85,7 +89,6 @@
       "pages": [
         "v3/introduction",
         "v3/quick-start",
-        "v3/upgrading-from-v2",
         "v3/changelog",
         "v3/feature-matrix",
         "v3/limits"
@@ -230,7 +233,12 @@
     {
       "group": "Dashboard",
       "version": "v3",
-      "pages": ["guides/task-management/creating-a-project"]
+      "pages": ["guides/dashboard/creating-a-project"]
+    },
+    {
+      "group": "Use cases",
+      "version": "v3",
+      "pages": ["guides/use-cases/upgrading-from-v2"]
     },
     {
       "group": "Getting Started",
