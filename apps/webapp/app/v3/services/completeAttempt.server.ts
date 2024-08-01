@@ -57,6 +57,7 @@ export class CompleteAttemptService extends BaseService {
         },
         data: {
           status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
         },
       });
 
@@ -107,6 +108,7 @@ export class CompleteAttemptService extends BaseService {
           update: {
             data: {
               status: "COMPLETED_SUCCESSFULLY",
+              completedAt: new Date(),
             },
           },
         },
@@ -260,6 +262,7 @@ export class CompleteAttemptService extends BaseService {
           },
           data: {
             status: "SYSTEM_FAILURE",
+            completedAt: new Date(),
           },
         });
 
@@ -332,6 +335,7 @@ export class CompleteAttemptService extends BaseService {
           },
           data: {
             status: "SYSTEM_FAILURE",
+            completedAt: new Date(),
           },
         });
       } else {
@@ -341,6 +345,7 @@ export class CompleteAttemptService extends BaseService {
           },
           data: {
             status: "COMPLETED_WITH_ERRORS",
+            completedAt: new Date(),
           },
         });
       }

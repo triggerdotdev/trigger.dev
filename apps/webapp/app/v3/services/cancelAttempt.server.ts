@@ -66,6 +66,9 @@ export class CancelAttemptService extends BaseService {
                 status: isCancellableRunStatus(taskRunAttempt.taskRun.status)
                   ? "INTERRUPTED"
                   : undefined,
+                completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
+                  ? cancelledAt
+                  : undefined,
               },
             },
           },

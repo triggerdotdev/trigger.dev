@@ -57,6 +57,7 @@ export class CancelTaskRunService extends BaseService {
       },
       data: {
         status: "CANCELED",
+        completedAt: opts.cancelledAt,
       },
       include: {
         attempts: {

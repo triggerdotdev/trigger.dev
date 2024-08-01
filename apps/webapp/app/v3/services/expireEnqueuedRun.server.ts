@@ -46,6 +46,7 @@ export class ExpireEnqueuedRunService extends BaseService {
       data: {
         status: "EXPIRED",
         expiredAt: new Date(),
+        completedAt: new Date(),
       },
     });
 
