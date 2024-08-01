@@ -566,6 +566,7 @@ export class SharedQueueConsumer {
                 lockedById: null,
                 status: lockedTaskRun.status,
                 startedAt: existingTaskRun.startedAt,
+                //should we set the completedAt to null here?
               },
             }),
           ]);
