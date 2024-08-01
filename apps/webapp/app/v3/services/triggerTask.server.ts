@@ -1,5 +1,6 @@
 import {
   IOPacket,
+  QueueOptions,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   packetRequiresOffloading,
@@ -18,6 +19,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -211,7 +213,9 @@ export class TriggerTaskService extends BaseService {
                   })
                 : undefined;
 
-              let queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
+              let queueName = sanitizeQueueName(
+                await this.#getQueueName(taskId, environment, body.options?.queue?.name)
+              );
 
               // Check that the queuename is not an empty string
               if (!queueName) {
@@ -397,6 +401,57 @@ export class TriggerTaskService extends BaseService {
         }
       );
     });
+  }
+
+  async #getQueueName(taskId: string, environment: AuthenticatedEnvironment, queueName?: string) {
+    if (queueName) {
+      return queueName;
+    }
+
+    const defaultQueueName = `task/${taskId}`;
+
+    const worker = await findCurrentWorkerFromEnvironment(environment);
+
+    if (!worker) {
+      logger.debug("Failed to get queue name: No worker found", {
+        taskId,
+        environmentId: environment.id,
+      });
+
+      return defaultQueueName;
+    }
+
+    const task = await this._prisma.backgroundWorkerTask.findUnique({
+      where: {
+        workerId_slug: {
+          workerId: worker.id,
+          slug: taskId,
+        },
+      },
+    });
+
+    if (!task) {
+      console.log("Failed to get queue name: No task found", {
+        taskId,
+        environmentId: environment.id,
+      });
+
+      return defaultQueueName;
+    }
+
+    const queueConfig = QueueOptions.optional().safeParse(task.queueConfig);
+
+    if (!queueConfig.success) {
+      console.log("Failed to get queue name: Invalid queue config", {
+        taskId,
+        environmentId: environment.id,
+        queueConfig: task.queueConfig,
+      });
+
+      return defaultQueueName;
+    }
+
+    return queueConfig.data?.name ?? defaultQueueName;
   }
 
   async #handlePayloadPacket(

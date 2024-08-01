@@ -7,8 +7,8 @@
   },
   "scripts": {
     "dev:trigger": "triggerdev dev",
-    "management": "ts-node -r tsconfig-paths/register ./src/management.ts",
-    "queues": "ts-node -r tsconfig-paths/register ./src/queues.ts",
+    "management": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/management.ts",
+    "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
