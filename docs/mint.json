@@ -70,8 +70,8 @@
       "destination": "/documentation/"
     },
     {
-      "source": "/documentation/v3/upgrading-from-v2",
-      "destination": "/documentation/guides/use-cases/upgrading-from-v2"
+      "source": "/docs/v3/upgrading-from-v2",
+      "destination": "/docs/guides/use-cases/upgrading-from-v2"
     }
   ],
 
