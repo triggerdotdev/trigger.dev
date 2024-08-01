@@ -1,5 +1,11 @@
 # @trigger.dev/core-apps
 
+## 3.0.0-beta.52
+
+### Patch Changes
+
+- 9882d66f8: Pre-pull deployment images for faster startups
+
 ## 3.0.0-beta.51
 
 ## 3.0.0-beta.50
