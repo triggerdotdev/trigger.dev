@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.0-beta.52
+
+### Patch Changes
+
+- 9882d66f8: Pre-pull deployment images for faster startups
+- 09413a62a: Added version to ctx.run
+
 ## 3.0.0-beta.51
 
 ### Patch Changes
