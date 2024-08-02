@@ -103,8 +103,8 @@ export class SharedQueueConsumer {
     options: SharedQueueConsumerOptions = {}
   ) {
     this._options = {
-      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
+      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 500,
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 10,
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
     };
