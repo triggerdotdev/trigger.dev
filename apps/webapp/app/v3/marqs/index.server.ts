@@ -645,17 +645,21 @@ export class MarQS {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span) => {
+        span.setAttribute("consumerId", consumerId);
+
         const { range } = await queuePriorityStrategy.nextCandidateSelection(
           parentQueue,
           consumerId
         );
 
-        const queues = await this.#getChildQueuesWithScores(parentQueue, range);
+        const queues = await this.#getChildQueuesWithScores(parentQueue, range, span);
+        span.setAttribute("queueCount", queues.length);
 
         const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
+        span.setAttribute("queuesWithScoresCount", queuesWithScores.length);
 
         // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-        const choice = this.queuePriorityStrategy.chooseQueue(
+        const { choice, nextRange } = this.queuePriorityStrategy.chooseQueue(
           queuesWithScores,
           parentQueue,
           consumerId,
@@ -668,17 +672,20 @@ export class MarQS {
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("nextRange.offset", range.offset);
-        span.setAttribute("nextRange.count", range.count);
-        span.setAttribute("queueCount", queues.length);
+        span.setAttribute("range.offset", range.offset);
+        span.setAttribute("range.count", range.count);
+        span.setAttribute("nextRange.offset", nextRange.offset);
+        span.setAttribute("nextRange.count", nextRange.count);
 
-        if (this.options.verbose) {
+        if (this.options.verbose || nextRange.offset > 0) {
           if (typeof choice === "string") {
             logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
-              nextRange: range,
+              range,
+              nextRange,
               queueCount: queues.length,
+              queuesWithScoresCount: queuesWithScores.length,
               queueChoice: choice,
               consumerId,
             });
@@ -686,8 +693,10 @@ export class MarQS {
             logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
-              nextRange: range,
+              range,
+              nextRange,
               queueCount: queues.length,
+              queuesWithScoresCount: queuesWithScores.length,
               noQueueChoice: true,
               consumerId,
             });
@@ -752,7 +761,8 @@ export class MarQS {
 
   async #getChildQueuesWithScores(
     key: string,
-    range: QueueRange
+    range: QueueRange,
+    span?: Span
   ): Promise<Array<{ value: string; score: number }>> {
     const valuesWithScores = await this.redis.zrangebyscore(
       key,
@@ -763,6 +773,12 @@ export class MarQS {
       range.offset,
       range.count
     );
+
+    span?.setAttribute("zrangebyscore.valuesWithScores.rawLength", valuesWithScores.length);
+    span?.setAttributes({
+      ...flattenAttributes(valuesWithScores, "zrangebyscore.valuesWithScores.rawValues"),
+    });
+
     const result: Array<{ value: string; score: number }> = [];
 
     for (let i = 0; i < valuesWithScores.length; i += 2) {
