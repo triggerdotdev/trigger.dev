@@ -37,7 +37,7 @@ import {
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
@@ -213,6 +213,9 @@ export class SharedQueueConsumer {
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
+          attributes: {
+            [SEMINTATTRS_FORCE_RECORDING]: true,
+          },
         },
         ROOT_CONTEXT
       );
