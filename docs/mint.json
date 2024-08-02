@@ -66,12 +66,12 @@
       "destination": "/documentation/guides/writing-jobs-step-by-step"
     },
     {
-      "source": "/documentation/v3/feature-matrix",
-      "destination": "/documentation/"
+      "source": "/v3/feature-matrix",
+      "destination": "/"
     },
     {
-      "source": "/docs/v3/upgrading-from-v2",
-      "destination": "/docs/guides/use-cases/upgrading-from-v2"
+      "source": "/v3/upgrading-from-v2",
+      "destination": "/guides/use-cases/upgrading-from-v2"
     }
   ],
 
