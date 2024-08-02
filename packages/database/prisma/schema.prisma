@@ -1647,6 +1647,7 @@ model TaskRun {
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
+  completedAt   DateTime?
   machinePreset String?
 
   usageDurationMs Int   @default(0)
