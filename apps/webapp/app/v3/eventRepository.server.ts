@@ -1102,16 +1102,6 @@ export class EventRepository {
     return this._randomIdGenerator.generateSpanId();
   }
 
-  public async truncateEvents() {
-    await this.db.taskEvent.deleteMany({
-      where: {
-        createdAt: {
-          lt: new Date(Date.now() - this._config.retentionInDays * 24 * 60 * 60 * 1000),
-        },
-      },
-    });
-  }
-
   /**
    * Returns a deterministically random 8-byte span ID formatted/encoded as a 16 lowercase hex
    * characters corresponding to 64 bits, based on the trace ID and seed.
