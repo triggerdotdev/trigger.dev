@@ -13,3 +13,7 @@ interface Array<T> {
 export type Prettify<T> = {
   [K in keyof T]: T[K];
 } & {};
+
+export type EnsureProperty<T, K extends keyof T> = T & {
+  [P in K]-?: NonNullable<T[P]>;
+};

@@ -1682,6 +1682,8 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
+  logsDeletedAt DateTime?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])

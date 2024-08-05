@@ -35,6 +35,8 @@ export class RunPresenter {
         spanId: true,
         friendlyId: true,
         status: true,
+        completedAt: true,
+        logsDeletedAt: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -76,6 +78,8 @@ export class RunPresenter {
           spanId: run.spanId,
           status: run.status,
           isFinished: FINISHED_STATUSES.includes(run.status),
+          completedAt: run.completedAt,
+          logsDeletedAt: run.logsDeletedAt,
           environment: {
             id: run.runtimeEnvironment.id,
             organizationId: run.runtimeEnvironment.organizationId,
@@ -135,6 +139,8 @@ export class RunPresenter {
         spanId: run.spanId,
         status: run.status,
         isFinished: FINISHED_STATUSES.includes(run.status),
+        completedAt: run.completedAt,
+        logsDeletedAt: run.logsDeletedAt,
         environment: {
           id: run.runtimeEnvironment.id,
           organizationId: run.runtimeEnvironment.organizationId,

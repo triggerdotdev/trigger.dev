@@ -4,7 +4,6 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ZodWorker } from "~/platform/zodWorker.server";
-import { eventRepository } from "~/v3/eventRepository.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
@@ -310,13 +309,6 @@ function getWorkerQueue() {
               },
             },
           });
-        },
-      },
-      // Run this every hour at the 13 minute mark
-      purgeOldTaskEvents: {
-        match: "47 * * * *",
-        handler: async (payload, job) => {
-          await eventRepository.truncateEvents();
         },
       },
       "marqs.v3.queueConcurrencyMonitor": {

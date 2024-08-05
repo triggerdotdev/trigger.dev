@@ -86,7 +86,7 @@ export function SpanView({
 }: {
   runParam: string;
   spanId: string | undefined;
-  closePanel: () => void;
+  closePanel?: () => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -147,7 +147,7 @@ function SpanBody({
 }: {
   span: Span;
   runParam?: string;
-  closePanel: () => void;
+  closePanel?: () => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -171,7 +171,7 @@ function SpanBody({
             <SpanTitle {...span} size="large" />
           </Header2>
         </div>
-        {runParam && (
+        {runParam && closePanel && (
           <Button
             onClick={closePanel}
             variant="minimal/medium"
@@ -356,7 +356,7 @@ function RunBody({
   run: SpanRun;
   runParam: string;
   spanId: string;
-  closePanel: () => void;
+  closePanel?: () => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -378,7 +378,7 @@ function RunBody({
             <span className="truncate">{run.taskIdentifier}</span>
           </Header2>
         </div>
-        {runParam && (
+        {runParam && closePanel && (
           <Button
             onClick={closePanel}
             variant="minimal/medium"
@@ -629,15 +629,17 @@ function RunBody({
           )}
         </div>
         <div className="flex items-center gap-4">
-          <LinkButton
-            to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-            LeadingIcon={CloudArrowDownIcon}
-            variant="tertiary/medium"
-            target="_blank"
-            download
-          >
-            Download logs
-          </LinkButton>
+          {run.logsDeletedAt === null ? (
+            <LinkButton
+              to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+              LeadingIcon={CloudArrowDownIcon}
+              variant="tertiary/medium"
+              target="_blank"
+              download
+            >
+              Download logs
+            </LinkButton>
+          ) : null}
         </div>
       </div>
     </div>

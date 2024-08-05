@@ -98,6 +98,7 @@ function ReplayForm({
           <Header3 spacing>Payload</Header3>
           <div className="mb-3 max-h-[70vh] overflow-y-auto rounded-sm border border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
+              autoFocus
               defaultValue={currentJson.current}
               readOnly={false}
               basicSetup
