@@ -8,7 +8,6 @@ export default function Story() {
         <Badge variant="small">Small</Badge>
       </div>
       <Badge variant="outline">Outline</Badge>
-      <Badge variant="v3">v3</Badge>
       <Badge variant="outline-rounded">Outline rounded</Badge>
     </div>
   );
