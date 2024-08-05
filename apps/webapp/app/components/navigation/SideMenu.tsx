@@ -1,6 +1,5 @@
 import {
   AcademicCapIcon,
-  ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
@@ -20,9 +19,9 @@ import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject } from "~/hooks/useProject";
-import { User } from "~/models/user.server";
+import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { type MatchedProject } from "~/hooks/useProject";
+import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
@@ -65,7 +64,6 @@ import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
 import { Button, LinkButton } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Icon } from "../primitives/Icon";
@@ -79,9 +77,8 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
-import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem } from "./SideMenuItem";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -379,10 +376,10 @@ function ProjectSelector({
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          {p.version === "V2" ? (
-                            <MenuCount count={p.jobCount} />
-                          ) : (
-                            <Badge variant="v3">v3</Badge>
+                          {p.version === "V2" && (
+                            <Badge variant="small" className="normal-case">
+                              v2
+                            </Badge>
                           )}
                         </div>
                       }
@@ -401,7 +398,7 @@ function ProjectSelector({
             </div>
           </Fragment>
         ))}
-        <div className="border-t border-charcoal-800 p-1">
+        <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
         </div>
       </PopoverContent>
