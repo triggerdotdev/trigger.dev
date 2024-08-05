@@ -1,5 +1,6 @@
 import {
   AcademicCapIcon,
+  ArrowRightIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
   BellAlertIcon,
@@ -63,7 +64,7 @@ import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Buttons";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -218,14 +219,18 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
         <div className="m-2">
           {project.version === "V2" && (
-            <Callout variant={"info"}>
-              <Paragraph variant="small">
-                This is a v2 project.{" "}
-                <TextLink href="https://trigger.dev/docs/v3/upgrading-from-v2">
-                  Upgrade to v3
-                </TextLink>
+            <div className="flex flex-col gap-3 rounded border border-success/50 bg-success/10 p-3">
+              <Paragraph variant="small/bright">
+                This is a v2 project. V2 will be deprecated on January 31, 2025.
               </Paragraph>
-            </Callout>
+              <LinkButton
+                variant="primary/medium"
+                to="https://trigger.dev/docs/v3/upgrading-from-v2"
+                fullWidth
+              >
+                Upgrade to v3
+              </LinkButton>
+            </div>
           )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
