@@ -1,10 +1,7 @@
 packages:
   - "config-packages/*"
   - "packages/*"
-  - "integrations/*"
   - "apps/**"
   - "references/*"
   - "docs"
-  - "perf"
-  - "runtime_tests"
   - "!packages/cli-v3/e2e/**"
