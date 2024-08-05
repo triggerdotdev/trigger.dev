@@ -81,6 +81,8 @@ export class SpanPresenter extends BasePresenter {
         createdAt: true,
         updatedAt: true,
         queuedAt: true,
+        completedAt: true,
+        logsDeletedAt: true,
         //idempotency
         idempotencyKey: true,
         //delayed
@@ -213,6 +215,8 @@ export class SpanPresenter extends BasePresenter {
       updatedAt: run.updatedAt,
       delayUntil: run.delayUntil,
       expiredAt: run.expiredAt,
+      completedAt: run.completedAt,
+      logsDeletedAt: run.logsDeletedAt,
       ttl: run.ttl,
       taskIdentifier: run.taskIdentifier,
       version: run.lockedToVersion?.version,
