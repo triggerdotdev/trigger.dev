@@ -12,7 +12,7 @@ import {
   trace,
 } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { InstrumentationOption, registerInstrumentations } from "@opentelemetry/instrumentation";
+import { type Instrumentation, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { Resource } from "@opentelemetry/resources";
@@ -167,7 +167,7 @@ function getTracer() {
 
   provider.register();
 
-  let instrumentations: InstrumentationOption[] = [
+  let instrumentations: Instrumentation[] = [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
   ];
