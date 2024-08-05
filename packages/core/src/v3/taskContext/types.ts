@@ -1,4 +1,4 @@
-import { BackgroundWorkerProperties, TaskRunContext } from "../schemas";
+import { BackgroundWorkerProperties, TaskRunContext } from "../schemas/index.js";
 
 export type TaskContext = {
   ctx: TaskRunContext;

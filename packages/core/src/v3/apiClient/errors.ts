@@ -148,6 +148,8 @@ export class RateLimitError extends ApiError {
       // Add between 0 and 2000ms to the reset time to add jitter
       return Math.max(resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 2000), 0);
     }
+
+    return;
   }
 }
 

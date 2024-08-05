@@ -1,20 +1,20 @@
-export * from "./apiClient";
-export * from "./apiClient/types";
-export * from "./apiClient/pagination";
-export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core";
-export * from "./apiClient/errors";
-export * from "./clock-api";
-export * from "./errors";
-export * from "./limits";
-export * from "./logger-api";
-export * from "./runtime-api";
-export * from "./task-context-api";
-export * from "./apiClientManager-api";
-export * from "./usage-api";
-export * from "./schemas";
-export { SemanticInternalAttributes } from "./semanticInternalAttributes";
-export * from "./task-catalog-api";
-export * from "./types";
+export * from "./apiClient/index.js";
+export * from "./apiClient/types.js";
+export * from "./apiClient/pagination.js";
+export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core.js";
+export * from "./apiClient/errors.js";
+export * from "./clock-api.js";
+export * from "./errors.js";
+export * from "./limits.js";
+export * from "./logger-api.js";
+export * from "./runtime-api.js";
+export * from "./task-context-api.js";
+export * from "./apiClientManager-api.js";
+export * from "./usage-api.js";
+export * from "./schemas/index.js";
+export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
+export * from "./task-catalog-api.js";
+export * from "./types/index.js";
 export {
   formatDuration,
   formatDurationInDays,
@@ -22,29 +22,29 @@ export {
   formatDurationNanoseconds,
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
-} from "./utils/durations";
+} from "./utils/durations.js";
 
-export { TriggerTracer } from "./tracer";
+export { TriggerTracer } from "./tracer.js";
 
-export type { LogLevel } from "./logger/taskLogger";
+export type { LogLevel } from "./logger/taskLogger.js";
 
-export { eventFilterMatches } from "../eventFilterMatches";
+export { eventFilterMatches } from "../eventFilterMatches.js";
 export {
   flattenAttributes,
   primitiveValueOrflattenedAttributes,
   unflattenAttributes,
   NULL_SENTINEL,
-} from "./utils/flattenAttributes";
-export { omit } from "./utils/omit";
+} from "./utils/flattenAttributes.js";
+export { omit } from "./utils/omit.js";
 export {
   calculateNextRetryDelay,
   calculateResetAt,
   defaultFetchRetryOptions,
   defaultRetryOptions,
-} from "./utils/retries";
-export { accessoryAttributes } from "./utils/styleAttributes";
+} from "./utils/retries.js";
+export { accessoryAttributes } from "./utils/styleAttributes.js";
 
-export { detectDependencyVersion } from "./utils/detectDependencyVersion";
+export { detectDependencyVersion } from "./utils/detectDependencyVersion.js";
 export {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -55,4 +55,4 @@ export {
   prettyPrintPacket,
   stringifyIO,
   type IOPacket,
-} from "./utils/ioSerialization";
+} from "./utils/ioSerialization.js";

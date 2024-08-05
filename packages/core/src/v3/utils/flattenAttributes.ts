@@ -105,15 +105,22 @@ export function unflattenAttributes(
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       const nextPart = parts[i + 1];
+      // @ts-expect-error
       const isArray = /^\d+$/.test(nextPart);
+      // @ts-expect-error
       if (isArray && !Array.isArray(current[part])) {
+        // @ts-expect-error
         current[part] = [];
+        // @ts-expect-error
       } else if (!isArray && current[part] === undefined) {
+        // @ts-expect-error
         current[part] = {};
       }
+      // @ts-expect-error
       current = current[part];
     }
     const lastPart = parts[parts.length - 1];
+    // @ts-expect-error
     current[lastPart] = rehydrateNull(value);
   }
 

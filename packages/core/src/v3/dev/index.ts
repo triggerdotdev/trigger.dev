@@ -1,1 +1,1 @@
-export { DevRuntimeManager } from "../runtime/devRuntimeManager";
+export { DevRuntimeManager } from "../runtime/devRuntimeManager.js";

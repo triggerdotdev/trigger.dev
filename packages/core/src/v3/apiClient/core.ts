@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { RetryOptions } from "../schemas";
-import { calculateNextRetryDelay } from "../utils/retries";
-import { ApiConnectionError, ApiError } from "./errors";
+import { RetryOptions } from "../schemas/index.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
+import { ApiConnectionError, ApiError } from "./errors.js";
 
 import { Attributes, Span } from "@opentelemetry/api";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TriggerTracer } from "../tracer";
-import { accessoryAttributes } from "../utils/styleAttributes";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { TriggerTracer } from "../tracer.js";
+import { accessoryAttributes } from "../utils/styleAttributes.js";
 import {
   CursorPage,
   CursorPageParams,
@@ -15,7 +15,7 @@ import {
   OffsetLimitPage,
   OffsetLimitPageParams,
   OffsetLimitPageResponse,
-} from "./pagination";
+} from "./pagination.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,

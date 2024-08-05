@@ -33,10 +33,13 @@ import {
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
   OTEL_SPAN_EVENT_COUNT_LIMIT,
-} from "../limits";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../taskContext/otelProcessors";
-import { getEnvVar } from "../utils/getEnv";
+} from "../limits.js";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import {
+  TaskContextLogProcessor,
+  TaskContextSpanProcessor,
+} from "../taskContext/otelProcessors.js";
+import { getEnvVar } from "../utils/getEnv.js";
 import { version } from "../../../package.json";
 
 class AsyncResourceDetector implements DetectorSync {

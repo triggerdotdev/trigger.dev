@@ -1,6 +1,6 @@
-import { TaskFileMetadata, TaskMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
-import { TaskCatalog } from "./catalog";
+import { TaskFileMetadata, TaskMetadata, TaskMetadataWithFilePath } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskCatalog } from "./catalog.js";
 
 export class StandardTaskCatalog implements TaskCatalog {
   private _taskMetadata: Map<string, TaskMetadata> = new Map();
@@ -9,6 +9,10 @@ export class StandardTaskCatalog implements TaskCatalog {
 
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
     const { fns, ...metadata } = task;
+
+    if (!task.id) {
+      return;
+    }
 
     this._taskMetadata.set(task.id, metadata);
     this._taskFunctions.set(task.id, fns);

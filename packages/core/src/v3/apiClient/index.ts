@@ -25,8 +25,8 @@ import {
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
   UpdateScheduleOptions,
-} from "../schemas";
-import { taskContext } from "../task-context-api";
+} from "../schemas/index.js";
+import { taskContext } from "../task-context-api.js";
 import {
   ApiRequestOptions,
   CursorPagePromise,
@@ -35,15 +35,15 @@ import {
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
-} from "./core";
-import { ApiError } from "./errors";
+} from "./core.js";
+import { ApiError } from "./errors.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
-} from "./types";
+} from "./types.js";
 
 export type {
   CreateEnvironmentVariableParams,

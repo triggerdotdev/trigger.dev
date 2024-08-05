@@ -7,9 +7,9 @@ import {
   MessagesFromSocketCatalog,
   SocketMessageHasCallback,
   ZodSocketMessageCatalogSchema,
-} from "./zodSocket";
+} from "./zodSocket.js";
 import { z } from "zod";
-import { ZodSchemaParsedError } from "./zodMessageHandler";
+import { ZodSchemaParsedError } from "./zodMessageHandler.js";
 import { inspect } from "node:util";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
@@ -92,7 +92,7 @@ class ZodIpcMessageHandler<
     if (!parsedMessage.success) {
       throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
     }
-
+    // @ts-expect-error
     const schema = this.#schema[parsedMessage.data.type]["message"];
 
     if (!schema) {
@@ -261,6 +261,7 @@ export class ZodIpcConnection<
     type: K,
     payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
   ): Promise<void> {
+    // @ts-expect-error
     const schema = this.opts.emitSchema[type]["message"];
 
     if (!schema) {
@@ -307,6 +308,7 @@ export class ZodIpcConnection<
 
       this.#acks.set(currentId, { resolve, reject, timeout });
 
+      // @ts-expect-error
       const schema = this.opts.emitSchema[type]["message"];
 
       if (!schema) {

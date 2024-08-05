@@ -1,5 +1,5 @@
-import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
+import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
 
 export interface TaskCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void;

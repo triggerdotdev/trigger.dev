@@ -1,6 +1,6 @@
 // EventFilter is typed as type EventFilter = { [key: string]: EventFilter | string[] | number[] | boolean[] }
 
-import { EventFilter } from "./schemas";
+import { EventFilter } from "./schemas/index.js";
 
 // This function should take any number of EventFilters and return a new EventFilter that is the result of merging of them.
 export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
@@ -23,6 +23,7 @@ export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
         ) {
           result[key] = deepMergeFilters(existingValue, filterValue);
         } else {
+          // @ts-expect-error
           result[key] = filterValue;
         }
       }

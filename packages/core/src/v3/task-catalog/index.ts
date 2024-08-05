@@ -1,10 +1,10 @@
 const API_NAME = "task-catalog";
 
-import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
-import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
-import { type TaskCatalog } from "./catalog";
-import { NoopTaskCatalog } from "./noopTaskCatalog";
+import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
+import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
+import { type TaskCatalog } from "./catalog.js";
+import { NoopTaskCatalog } from "./noopTaskCatalog.js";
 
 const NOOP_TASK_CATALOG = new NoopTaskCatalog();
 

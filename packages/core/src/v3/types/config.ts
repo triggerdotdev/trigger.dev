@@ -1,6 +1,6 @@
-import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from ".";
-import { LogLevel } from "../logger/taskLogger";
-import { MachinePresetName, RetryOptions } from "../schemas";
+import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from "./index.js";
+import { LogLevel } from "../logger/taskLogger.js";
+import { MachinePresetName, RetryOptions } from "../schemas/index.js";
 import type { Instrumentation } from "@opentelemetry/instrumentation";
 
 export interface ProjectConfig {

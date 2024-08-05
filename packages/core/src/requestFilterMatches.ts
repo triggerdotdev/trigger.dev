@@ -1,5 +1,5 @@
-import { eventFilterMatches } from "./eventFilterMatches";
-import { HttpMethod, RequestFilter, ResponseFilter, StringMatch } from "./schemas/requestFilter";
+import { eventFilterMatches } from "./eventFilterMatches.js";
+import { HttpMethod, RequestFilter, ResponseFilter } from "./schemas/requestFilter.js";
 
 export async function requestFilterMatches(
   request: Request,
