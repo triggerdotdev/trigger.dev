@@ -649,7 +649,7 @@ function RunTimeline({ run }: { run: SpanRun }) {
     <div className="min-w-fit max-w-80">
       <RunTimelineEvent
         title="Triggered"
-        subtitle={<DateTime date={run.createdAt} />}
+        subtitle={<DateTimeAccurate date={run.createdAt} />}
         state="complete"
       />
       {run.delayUntil && !run.expiredAt ? (
@@ -668,6 +668,8 @@ function RunTimeline({ run }: { run: SpanRun }) {
           }
           state={run.startedAt ? "complete" : "delayed"}
         />
+      ) : run.startedAt ? (
+        <RunTimelineLine title={formatDuration(run.createdAt, run.startedAt)} state={"complete"} />
       ) : (
         <RunTimelineLine
           title={
@@ -685,14 +687,14 @@ function RunTimeline({ run }: { run: SpanRun }) {
       {run.expiredAt ? (
         <RunTimelineEvent
           title="Expired"
-          subtitle={<DateTime date={run.expiredAt} />}
+          subtitle={<DateTimeAccurate date={run.expiredAt} />}
           state="error"
         />
       ) : run.startedAt ? (
         <>
           <RunTimelineEvent
             title="Started"
-            subtitle={<DateTime date={run.startedAt} />}
+            subtitle={<DateTimeAccurate date={run.startedAt} />}
             state="complete"
           />
           {run.isFinished ? (
@@ -703,7 +705,7 @@ function RunTimeline({ run }: { run: SpanRun }) {
               />
               <RunTimelineEvent
                 title="Finished"
-                subtitle={<DateTime date={run.updatedAt} />}
+                subtitle={<DateTimeAccurate date={run.updatedAt} />}
                 state="complete"
               />
             </>
