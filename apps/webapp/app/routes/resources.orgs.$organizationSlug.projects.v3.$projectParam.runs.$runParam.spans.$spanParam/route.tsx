@@ -670,6 +670,8 @@ function RunTimeline({ run }: { run: SpanRun }) {
           }
           state={run.startedAt ? "complete" : "delayed"}
         />
+      ) : run.startedAt ? (
+        <RunTimelineLine title={formatDuration(run.createdAt, run.startedAt)} state={"complete"} />
       ) : (
         <RunTimelineLine
           title={
