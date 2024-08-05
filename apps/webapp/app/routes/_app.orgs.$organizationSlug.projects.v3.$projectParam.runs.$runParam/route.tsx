@@ -1008,7 +1008,7 @@ function SpanWithDuration({
             !showDuration && "opacity-0"
           )}
         >
-          <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+          <div className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
               maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
