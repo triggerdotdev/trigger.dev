@@ -193,6 +193,11 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                   to={v3BillingPath(organization)}
                   iconColor="text-blue-600"
                   data-action="billing"
+                  badge={
+                    currentPlan?.v3Subscription?.isPaying
+                      ? currentPlan?.v3Subscription?.plan?.title
+                      : undefined
+                  }
                 />
               </>
             )}
@@ -488,7 +493,6 @@ function V2ProjectSideMenu({
         name="Jobs"
         icon="job"
         iconColor="text-indigo-500"
-        count={project.jobCount}
         to={projectPath(organization, project)}
         data-action="jobs"
       />
@@ -516,7 +520,6 @@ function V2ProjectSideMenu({
         name="HTTP endpoints"
         icon="http-endpoint"
         iconColor="text-pink-500"
-        count={project.httpEndpointCount}
         to={projectHttpEndpointsPath(organization, project)}
         data-action="httpendpoints"
       />
