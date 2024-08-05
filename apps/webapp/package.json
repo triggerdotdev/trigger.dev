@@ -98,6 +98,7 @@
     "@trigger.dev/otlp-importer": "workspace:*",
     "@trigger.dev/platform": "1.0.12",
     "@trigger.dev/sdk": "workspace:*",
+    "@trigger.dev/yalt": "npm:@trigger.dev/yalt",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
     "@upstash/ratelimit": "^1.1.3",

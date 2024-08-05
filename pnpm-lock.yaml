@@ -396,6 +396,9 @@ importers:
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
+      '@trigger.dev/yalt':
+        specifier: npm:@trigger.dev/yalt
+        version: 2.3.19
       '@types/pg':
         specifier: 8.6.6
         version: 8.6.6
@@ -12444,6 +12447,19 @@ packages:
       zod: 3.22.3
     dev: false
 
+  /@trigger.dev/yalt@2.3.19:
+    resolution: {integrity: sha512-q7YebisSl8EjO9tAI2t22uloFxcixHubHhyV2ZBwwMje1bu9LolQajk59BYRUvvxJMSwUMwaMoc2pluwOyV1jw==}
+    engines: {node: '>=18.0.0'}
+    dependencies:
+      https: 1.0.0
+      node-fetch: 3.3.2
+      partysocket: 0.0.17
+      proxy-agent: 6.3.0
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
   /@tsconfig/node10@1.0.9:
     resolution: {integrity: sha512-jNsYVVxU8v5g43Erja32laIDHXeoNvFEpX33OK4d6hljo3jDhCBDhx5dhCCTMWUojscpAagGiRkBKxpdl9fxqA==}
 
@@ -18771,6 +18787,10 @@ packages:
       - supports-color
     dev: false
 
+  /https@1.0.0:
+    resolution: {integrity: sha512-4EC57ddXrkaF0x83Oj8sM6SLQHAWXw90Skqu2M4AEWENZ3F02dFJE/GARA8igO79tcgYqGrD7ae4f5L3um2lgg==}
+    dev: false
+
   /human-id@1.0.2:
     resolution: {integrity: sha512-UNopramDEhHJD+VR+ehk8rOslwSfByxPIZyJRfV739NDhN5LF1fa1MqnzKm2lGTQRjNrjK19Q5fhkgIfjlVUKw==}
     dev: false
@@ -21697,6 +21717,15 @@ packages:
 
   /node-fetch@3.3.0:
     resolution: {integrity: sha512-BKwRP/O0UvoMKp7GNdwPlObhYGB5DQqwhEDQlNKuoqwVYSxkSZCSbHjnFFmUEtwSKRPU4kNK8PbDYYitwaE3QA==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+    dependencies:
+      data-uri-to-buffer: 4.0.1
+      fetch-blob: 3.2.0
+      formdata-polyfill: 4.0.10
+    dev: false
+
+  /node-fetch@3.3.2:
+    resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
     dependencies:
       data-uri-to-buffer: 4.0.1
