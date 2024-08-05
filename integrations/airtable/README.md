@@ -1,3 +1,0 @@
-
-# @trigger.dev/airtable
-  

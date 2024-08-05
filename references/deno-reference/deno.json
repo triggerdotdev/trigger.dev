@@ -1,8 +1,0 @@
-{
-  "trigger.dev": {
-    "endpointId": "borderless" 
-  },
-  "tasks": {
-    "dev": "deno run --watch main.ts"
-  }
-}
