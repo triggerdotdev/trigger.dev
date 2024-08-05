@@ -1,4 +1,4 @@
-import { apiClientManager } from "../apiClientManager-api";
+import { apiClientManager } from "../apiClientManager-api.js";
 
 export type UsageClientOptions = {
   token: string;

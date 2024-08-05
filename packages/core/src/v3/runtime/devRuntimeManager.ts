@@ -3,9 +3,9 @@ import {
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
-} from "../schemas";
-import { RuntimeManager } from "./manager";
-import { unboundedTimeout } from "../utils/timers";
+} from "../schemas/index.js";
+import { RuntimeManager } from "./manager.js";
+import { unboundedTimeout } from "../utils/timers.js";
 
 export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<string, { resolve: (value: TaskRunExecutionResult) => void }> = new Map();

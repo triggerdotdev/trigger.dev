@@ -1,14 +1,15 @@
 import type { DisconnectReason, Namespace, Server, Socket } from "socket.io";
-import { ZodMessageSender } from "./zodMessageHandler";
+import { ZodMessageSender } from "./zodMessageHandler.js";
 import {
   ZodMessageCatalogToSocketIoEvents,
   ZodSocketMessageCatalogSchema,
   ZodSocketMessageHandler,
   ZodSocketMessageHandlers,
-} from "./zodSocket";
+} from "./zodSocket.js";
+// @ts-ignore
 import type { DefaultEventsMap, EventsMap } from "socket.io/dist/typed-events";
 import { z } from "zod";
-import { SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger";
+import { SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger.js";
 
 interface ExtendedError extends Error {
   data?: any;
@@ -146,6 +147,8 @@ export class ZodNamespace<
         logger.info("success");
 
         next();
+
+        return;
       });
     }
 

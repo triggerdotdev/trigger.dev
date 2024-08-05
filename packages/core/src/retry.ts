@@ -1,4 +1,4 @@
-import { RetryOptions } from "./schemas";
+import { RetryOptions } from "./schemas/index.js";
 
 const DEFAULT_RETRY_OPTIONS = {
   limit: 5,
@@ -119,11 +119,11 @@ function calculateISO8601DurationOpenAIVariantResetAt(
   if (!match) return undefined;
 
   // Extract days, hours, minutes, seconds, and milliseconds from the string
-  const days = parseInt(match[1], 10) || 0;
-  const hours = parseInt(match[2], 10) || 0;
-  const minutes = parseInt(match[3], 10) || 0;
-  const seconds = parseFloat(match[4]) || 0;
-  const milliseconds = parseInt(match[5], 10) || 0;
+  const days = parseInt(match[1] ?? "0", 10) || 0;
+  const hours = parseInt(match[2] ?? "0", 10) || 0;
+  const minutes = parseInt(match[3] ?? "0", 10) || 0;
+  const seconds = parseFloat(match[4] ?? "0") || 0;
+  const milliseconds = parseInt(match[5] ?? "0", 10) || 0;
 
   // Calculate the future date based on the current date plus the extracted time
   const resetAt = new Date(now);

@@ -4,7 +4,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
-} from "./common";
+} from "./common.js";
 import {
   EnvironmentType,
   ProdTaskRunExecution,
@@ -13,8 +13,8 @@ import {
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   WaitReason,
-} from "./schemas";
-import { TaskResource } from "./resources";
+} from "./schemas.js";
+import { TaskResource } from "./resources.js";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({

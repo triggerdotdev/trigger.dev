@@ -1,10 +1,10 @@
-import { ApiClientConfiguration } from "../apiClientManager/types";
-import { Clock } from "../clock/clock";
-import type { RuntimeManager } from "../runtime/manager";
-import { TaskCatalog } from "../task-catalog/catalog";
-import { TaskContext } from "../taskContext/types";
-import { UsageManager } from "../usage/types";
-import { _globalThis } from "./platform";
+import { ApiClientConfiguration } from "../apiClientManager/types.js";
+import { Clock } from "../clock/clock.js";
+import type { RuntimeManager } from "../runtime/manager.js";
+import { TaskCatalog } from "../task-catalog/catalog.js";
+import { TaskContext } from "../taskContext/types.js";
+import { UsageManager } from "../usage/types.js";
+import { _globalThis } from "./platform.js";
 
 const GLOBAL_TRIGGER_DOT_DEV_KEY = Symbol.for(`dev.trigger.ts.api`);
 

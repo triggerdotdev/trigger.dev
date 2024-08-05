@@ -1,9 +1,9 @@
 import { LogRecord, LogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { Context } from "@opentelemetry/api";
-import { flattenAttributes } from "../utils/flattenAttributes";
-import { taskContext } from "../task-context-api";
+import { flattenAttributes } from "../utils/flattenAttributes.js";
+import { taskContext } from "../task-context-api.js";
 
 export class TaskContextSpanProcessor implements SpanProcessor {
   private _innerProcessor: SpanProcessor;

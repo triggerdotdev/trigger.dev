@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
-import { QueueOptions } from "./schemas";
-import { SerializedError } from "../errors";
+import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources.js";
+import { QueueOptions } from "./schemas.js";
+import { SerializedError } from "../errors.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),

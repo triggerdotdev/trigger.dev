@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
-import { DisplayPropertySchema } from "./properties";
-import { ScheduleMetadataSchema } from "./schedules";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter.js";
+import { DisplayPropertySchema } from "./properties.js";
+import { ScheduleMetadataSchema } from "./schedules.js";
 
 export const EventExampleSchema = z.object({
   id: z.string(),

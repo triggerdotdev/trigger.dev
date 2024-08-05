@@ -1,7 +1,7 @@
-import { ApiClient } from "../apiClient";
-import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
-import { getEnvVar } from "../utils/getEnv";
-import { ApiClientConfiguration } from "./types";
+import { ApiClient } from "../apiClient/index.js";
+import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
+import { getEnvVar } from "../utils/getEnv.js";
+import { ApiClientConfiguration } from "./types.js";
 
 const API_NAME = "api-client";
 

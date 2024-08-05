@@ -1,9 +1,8 @@
 import {
   BatchTaskRunExecutionResult,
-  TaskMetadataWithFilePath,
   TaskRunContext,
   TaskRunExecutionResult,
-} from "../schemas";
+} from "../schemas/index.js";
 
 export interface RuntimeManager {
   disable(): void;

@@ -1,7 +1,7 @@
 import { SpanKind } from "@opentelemetry/api";
-import { ConsoleInterceptor } from "../consoleInterceptor";
-import { parseError, sanitizeError } from "../errors";
-import { TracingSDK, recordSpanException } from "../otel";
+import { ConsoleInterceptor } from "../consoleInterceptor.js";
+import { parseError, sanitizeError } from "../errors.js";
+import { TracingSDK, recordSpanException } from "../otel/index.js";
 import {
   BackgroundWorkerProperties,
   Config,
@@ -10,22 +10,22 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
-} from "../schemas";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { taskContext } from "../task-context-api";
-import { TriggerTracer } from "../tracer";
-import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types";
+} from "../schemas/index.js";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { taskContext } from "../task-context-api.js";
+import { TriggerTracer } from "../tracer.js";
+import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
   createPacketAttributes,
   parsePacket,
   stringifyIO,
-} from "../utils/ioSerialization";
-import { calculateNextRetryDelay } from "../utils/retries";
-import { accessoryAttributes } from "../utils/styleAttributes";
-import { UsageMeasurement } from "../usage/types";
-import { ApiError, RateLimitError } from "../apiClient/errors";
+} from "../utils/ioSerialization.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
+import { accessoryAttributes } from "../utils/styleAttributes.js";
+import { UsageMeasurement } from "../usage/types.js";
+import { ApiError, RateLimitError } from "../apiClient/errors.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;

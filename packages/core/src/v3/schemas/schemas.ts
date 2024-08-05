@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { RequireKeys } from "../types";
-import { MachineConfig, MachinePreset, TaskRunExecution } from "./common";
+import { RequireKeys } from "../types/index.js";
+import { MachineConfig, MachinePreset, TaskRunExecution } from "./common.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.

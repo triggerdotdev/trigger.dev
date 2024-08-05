@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { RedactStringSchema, RetryOptionsSchema } from "./api";
-import { EventFilterSchema } from "./eventFilter";
-import { ResponseFilterSchema } from "./requestFilter";
-import { Prettify } from "../types";
+import { RedactStringSchema, RetryOptionsSchema } from "./api.js";
+import { EventFilterSchema } from "./eventFilter.js";
+import { ResponseFilterSchema } from "./requestFilter.js";
+import { Prettify } from "../types.js";
 
 export const FetchRetryHeadersStrategySchema = z.object({
   /** The `headers` strategy retries the request using info from the response headers. */

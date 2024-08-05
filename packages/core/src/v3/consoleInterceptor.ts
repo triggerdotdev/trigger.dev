@@ -1,11 +1,11 @@
 import type * as logsAPI from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import util from "node:util";
-import { iconStringForSeverity } from "./icons";
-import { SemanticInternalAttributes } from "./semanticInternalAttributes";
-import { flattenAttributes } from "./utils/flattenAttributes";
-import { ClockTime } from "./clock/clock";
-import { clock } from "./clock-api";
+import { iconStringForSeverity } from "./icons.js";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
+import { flattenAttributes } from "./utils/flattenAttributes.js";
+import { ClockTime } from "./clock/clock.js";
+import { clock } from "./clock-api.js";
 
 export class ConsoleInterceptor {
   constructor(

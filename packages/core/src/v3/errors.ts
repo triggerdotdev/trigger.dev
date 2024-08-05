@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TaskRunError } from "./schemas/common";
+import { TaskRunError } from "./schemas/common.js";
 
 export class AbortTaskRunError extends Error {
   constructor(message: string) {

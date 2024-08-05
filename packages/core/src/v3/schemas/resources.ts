@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { QueueOptions, RetryOptions, ScheduleMetadata } from "./schemas";
-import { MachineConfig } from "./common";
+import { QueueOptions, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import { MachineConfig } from "./common.js";
 
 export const TaskResource = z.object({
   id: z.string(),

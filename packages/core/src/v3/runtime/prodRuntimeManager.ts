@@ -1,13 +1,13 @@
-import { clock } from "../clock-api";
+import { clock } from "../clock-api.js";
 import {
   BatchTaskRunExecutionResult,
   ProdChildToWorkerMessages,
   ProdWorkerToChildMessages,
   TaskRunContext,
   TaskRunExecutionResult,
-} from "../schemas";
-import { ZodIpcConnection } from "../zodIpc";
-import { RuntimeManager } from "./manager";
+} from "../schemas/index.js";
+import { ZodIpcConnection } from "../zodIpc.js";
+import { RuntimeManager } from "./manager.js";
 
 export type ProdRuntimeManagerOptions = {
   waitThresholdInMs?: number;

@@ -1,4 +1,4 @@
-import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes";
+import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
   it("handles null correctly", () => {

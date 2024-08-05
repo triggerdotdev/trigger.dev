@@ -1,5 +1,9 @@
-import { BatchTaskRunExecutionResult, TaskRunContext, TaskRunExecutionResult } from "../schemas";
-import { RuntimeManager } from "./manager";
+import {
+  BatchTaskRunExecutionResult,
+  TaskRunContext,
+  TaskRunExecutionResult,
+} from "../schemas/index.js";
+import { RuntimeManager } from "./manager.js";
 
 export class NoopRuntimeManager implements RuntimeManager {
   disable(): void {

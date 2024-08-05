@@ -1,23 +1,22 @@
-import { ulid } from "ulidx";
 import { z } from "zod";
-import { Prettify } from "../types";
-import { addMissingVersionField } from "./addMissingVersionField";
-import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors";
-import { EventFilterSchema, EventRuleSchema } from "./eventFilter";
-import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations";
-import { DeserializedJsonSchema, SerializableJsonSchema } from "./json";
-import { DisplayPropertySchema, StyleSchema } from "./properties";
+import { Prettify } from "../types.js";
+import { addMissingVersionField } from "./addMissingVersionField.js";
+import { ErrorWithStackSchema, SchemaErrorSchema } from "./errors.js";
+import { EventFilterSchema, EventRuleSchema } from "./eventFilter.js";
+import { ConnectionAuthSchema, IntegrationConfigSchema } from "./integrations.js";
+import { DeserializedJsonSchema, SerializableJsonSchema } from "./json.js";
+import { DisplayPropertySchema, StyleSchema } from "./properties.js";
 import {
   CronMetadataSchema,
   IntervalMetadataSchema,
   RegisterDynamicSchedulePayloadSchema,
   ScheduleMetadataSchema,
-} from "./schedules";
-import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks";
-import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers";
-import { RunStatusSchema } from "./runs";
-import { JobRunStatusRecordSchema } from "./statuses";
-import { RequestFilterSchema } from "./requestFilter";
+} from "./schedules.js";
+import { CachedTaskSchema, ServerTaskSchema, TaskSchema } from "./tasks.js";
+import { EventSpecificationSchema, TriggerMetadataSchema } from "./triggers.js";
+import { RunStatusSchema } from "./runs.js";
+import { JobRunStatusRecordSchema } from "./statuses.js";
+import { RequestFilterSchema } from "./requestFilter.js";
 
 export const UpdateTriggerSourceBodyV1Schema = z.object({
   registeredEvents: z.array(z.string()),
@@ -474,7 +473,7 @@ export const RawEventSchema = z.object({
   context: z.any().optional(),
   /** The `id` property uniquely identify this particular event. If unset it
       will be set automatically using `ulid`. */
-  id: z.string().default(() => ulid()),
+  id: z.string().default(() => globalThis.crypto.randomUUID()),
   /** This is optional, it defaults to the current timestamp. Usually you would
       only set this if you have a timestamp that you wish to pass through, e.g.
       you receive a timestamp from a service and you want the same timestamp to

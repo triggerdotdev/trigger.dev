@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { EventFilterSchema, stringPatternMatchers } from "./eventFilter";
-import { Prettify } from "../types";
+import { EventFilterSchema, stringPatternMatchers } from "./eventFilter.js";
+import { Prettify } from "../types.js";
 
 const StringMatchSchema = z.union([
   /** Match against a string */

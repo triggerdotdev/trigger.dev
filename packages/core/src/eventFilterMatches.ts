@@ -1,4 +1,4 @@
-import { EventFilter } from "./schemas/eventFilter";
+import { EventFilter } from "./schemas/eventFilter.js";
 
 // EventFilter is a recursive type, where the keys are strings and the values are an array of strings, numbers, booleans, or objects.
 // If the values of the array are strings, numbers, or booleans, than we are matching against the value of the payload.
@@ -79,8 +79,6 @@ type ContentFilters = Exclude<EventFilter[string], EventFilter | string[] | numb
 function contentFiltersMatches(actualValue: any, contentFilters: ContentFilters): boolean {
   for (const contentFilter of contentFilters) {
     if (typeof contentFilter === "object") {
-      const [key, value] = Object.entries(contentFilter)[0];
-
       if (!contentFilterMatches(actualValue, contentFilter)) {
         return false;
       }
@@ -201,7 +199,11 @@ function contentFilterMatches(actualValue: any, contentFilter: ContentFilters[nu
   if ("$not" in contentFilter) {
     if (Array.isArray(actualValue)) {
       return !actualValue.includes(contentFilter.$not);
-    } else if (typeof actualValue === 'number' || typeof actualValue === 'boolean' || typeof actualValue === 'string') {
+    } else if (
+      typeof actualValue === "number" ||
+      typeof actualValue === "boolean" ||
+      typeof actualValue === "string"
+    ) {
       return actualValue !== contentFilter.$not;
     }
 

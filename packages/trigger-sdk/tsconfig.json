@@ -1,21 +1,17 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts", "tsup.config.ts"],
+  "extends": "../../.configs/tsconfig.base.json",
   "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
+    "isolatedDeclarations": false,
+    "composite": true,
+    "sourceMap": true,
     "paths": {
       "@trigger.dev/core/*": ["../core/src/*"],
       "@trigger.dev/core": ["../core/src/index"],
       "@trigger.dev/core-backend/*": ["../core-backend/src/*"],
-      "@trigger.dev/core-backend": ["../core-backend/src/index"],
-      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
-      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
+      "@trigger.dev/core-backend": ["../core-backend/src/index"]
     },
-    "lib": ["DOM", "DOM.Iterable"],
-    "declaration": false,
-    "declarationMap": false,
     "stripInternal": true
   },
+  "include": ["./src/**/*.ts"],
   "exclude": ["node_modules"]
 }

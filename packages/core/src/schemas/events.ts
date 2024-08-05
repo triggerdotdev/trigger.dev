@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RunStatusSchema } from "./runs";
+import { RunStatusSchema } from "./runs.js";
 
 export const GetEventSchema = z.object({
   /** The event id */

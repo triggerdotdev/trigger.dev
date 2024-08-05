@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   moduleFileExtensions: ["ts", "tsx", "js"],
   transform: {
     "^.+\\.(ts|tsx)$": "ts-jest",

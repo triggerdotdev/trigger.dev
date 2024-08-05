@@ -3,4 +3,6 @@ export function getEnvVar(name: string): string | undefined {
   if (typeof process !== "undefined" && typeof process.env === "object" && process.env !== null) {
     return process.env[name];
   }
+
+  return;
 }

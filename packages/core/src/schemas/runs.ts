@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { Prettify } from "../types";
-import { RuntimeEnvironmentType } from "./api";
-import { ErrorWithStack } from "./errors";
-import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses";
-import { TaskStatusSchema } from "./tasks";
+import { Prettify } from "../types.js";
+import { RuntimeEnvironmentType } from "./api.js";
+import { ErrorWithStack } from "./errors.js";
+import { JobRunStatusRecord, JobRunStatusRecordSchema } from "./statuses.js";
+import { TaskStatusSchema } from "./tasks.js";
 
 export const RunStatusSchema = z.union([
   z.literal("PENDING"),
