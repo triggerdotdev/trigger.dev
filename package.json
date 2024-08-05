@@ -48,7 +48,6 @@
   "devDependencies": {
     "@manypkg/cli": "^0.19.2",
     "@playwright/test": "^1.36.2",
-    "@trigger.dev/cli": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "18.17.1",
     "autoprefixer": "^10.4.12",
