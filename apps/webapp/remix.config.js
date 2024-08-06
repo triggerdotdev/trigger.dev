@@ -25,12 +25,6 @@ module.exports = {
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
   watchPaths: async () => {
-    return [
-      "../../packages/core/src/**/*",
-      "../../packages/core-backend/src/**/*",
-      "../../packages/trigger-sdk/src/**/*",
-      "../../packages/yalt/src/**/*",
-      "../../packages/emails/src/**/*",
-    ];
+    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*"];
   },
 };

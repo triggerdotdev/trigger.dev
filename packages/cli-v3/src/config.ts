@@ -6,7 +6,7 @@ import * as esbuild from "esbuild";
 import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
-import { generateCode, loadFile } from "./utilities/importMagicast.js";
+import { generateCode, loadFile } from "./imports/magicast.js";
 
 export type ResolveConfigOptions = {
   cwd?: string;

@@ -1,6 +1,6 @@
 import { readPackageJSON } from "pkg-types";
-import { packageDir } from "../packageDir.js";
+import { pj } from "../pkg.js";
 
 export async function readPackageJson() {
-  return await readPackageJSON(packageDir);
+  return await readPackageJSON(pj);
 }
