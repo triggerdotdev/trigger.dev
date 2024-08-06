@@ -60,7 +60,7 @@ You can see from the comments that the payload has several useful properties:
   to do that.
 </Note>
 
-Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/v3/trigger-folder), and you [can configure them](/v3/tasks-overview#defining-a-task).
+Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/trigger-folder), and you [can configure them](/tasks-overview#defining-a-task).
 
 ## How to attach a schedule
 
@@ -78,7 +78,7 @@ There are two ways of doing this:
 
 ### Declarative schedules
 
-These sync when you run the [dev](/v3/cli-dev) or [deploy](/v3/cli-deploy) commands.
+These sync when you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands.
 
 To create them you add the `cron` property to your `schedules.task()`. This property is optional and is only used if you want to add a declarative schedule to your task:
 
@@ -107,7 +107,7 @@ export const secondScheduledTask = schedules.task({
 });
 ```
 
-When you run the [dev](/v3/cli-dev) or [deploy](/v3/cli-deploy) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
+When you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
 
 ### Imperative schedules
 
@@ -216,7 +216,7 @@ const createdSchedule = await schedules.create({
 });
 ```
 
-See [the SDK reference](/v3/management/schedules/create) for full details.
+See [the SDK reference](/management/schedules/create) for full details.
 
 ### Dynamic schedules (or multi-tenant schedules)
 
@@ -300,7 +300,7 @@ You can test a scheduled task in the dashboard. Note that the `scheduleId` will 
 const retrievedSchedule = await schedules.retrieve(scheduleId);
 ```
 
-See [the SDK reference](/v3/management/schedules/retrieve) for full details.
+See [the SDK reference](/management/schedules/retrieve) for full details.
 
 ### Listing schedules
 
@@ -308,7 +308,7 @@ See [the SDK reference](/v3/management/schedules/retrieve) for full details.
 const allSchedules = await schedules.list();
 ```
 
-See [the SDK reference](/v3/management/schedules/list) for full details.
+See [the SDK reference](/management/schedules/list) for full details.
 
 ### Updating a schedule
 
@@ -321,7 +321,7 @@ const updatedSchedule = await schedules.update(scheduleId, {
 });
 ```
 
-See [the SDK reference](/v3/management/schedules/update) for full details.
+See [the SDK reference](/management/schedules/update) for full details.
 
 ### Deactivating a schedule
 
@@ -329,7 +329,7 @@ See [the SDK reference](/v3/management/schedules/update) for full details.
 const deactivatedSchedule = await schedules.deactivate(scheduleId);
 ```
 
-See [the SDK reference](/v3/management/schedules/deactivate) for full details.
+See [the SDK reference](/management/schedules/deactivate) for full details.
 
 ### Activating a schedule
 
@@ -337,7 +337,7 @@ See [the SDK reference](/v3/management/schedules/deactivate) for full details.
 const activatedSchedule = await schedules.activate(scheduleId);
 ```
 
-See [the SDK reference](/v3/management/schedules/activate) for full details.
+See [the SDK reference](/management/schedules/activate) for full details.
 
 ### Deleting a schedule
 
@@ -345,7 +345,7 @@ See [the SDK reference](/v3/management/schedules/activate) for full details.
 const deletedSchedule = await schedules.del(scheduleId);
 ```
 
-See [the SDK reference](/v3/management/schedules/delete) for full details.
+See [the SDK reference](/management/schedules/delete) for full details.
 
 ### Getting possible timezones
 
@@ -355,4 +355,4 @@ You might want to show a dropdown menu in your UI so your users can select their
 const timezones = await schedules.timezones();
 ```
 
-See [the SDK reference](/v3/management/schedules/timezones) for full details.
+See [the SDK reference](/management/schedules/timezones) for full details.

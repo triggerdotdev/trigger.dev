@@ -19,7 +19,7 @@ You can skip typechecking, by adding the `--skip-typecheck` flag when calling de
 
 ### `Error: Cannot find module 'X'`
 
-This errors occurs if we can't figure out how to automatically import some code. You can fix this by adding it to the `dependenciesToBundle` array in the [trigger.config file](/v3/trigger-config).
+This errors occurs if we can't figure out how to automatically import some code. You can fix this by adding it to the `dependenciesToBundle` array in the [trigger.config file](/trigger-config).
 
 Like this:
 
@@ -72,11 +72,11 @@ You need to be on at least these minor versions:
 
 ### `Environment variable not found:`
 
-Your code is deployed separately from the rest of your app(s) so you need to make sure that you set any environment variables you use in your tasks in the Trigger.dev dashboard. [Read the guide](/v3/deploy-environment-variables).
+Your code is deployed separately from the rest of your app(s) so you need to make sure that you set any environment variables you use in your tasks in the Trigger.dev dashboard. [Read the guide](/deploy-environment-variables).
 
 ### `Error: @prisma/client did not initialize yet.`
 
-Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [read the guide](/v3/trigger-config#prisma-and-other-generators).
+Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [read the guide](/trigger-config#prisma-and-other-generators).
 
 ### When triggering subtasks the parent task finishes too soon
 

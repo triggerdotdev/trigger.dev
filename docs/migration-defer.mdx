@@ -79,7 +79,7 @@ export async function runLongRunningTask() {
 
 #### `wait`
 
-In Trigger.dev you can use the [wait](/v3/wait) functions to freeze execution of your code until a later date (it can be months later). You won't pay while it's frozen and the state is restored exactly when it wakes (using a technology called CRIU).
+In Trigger.dev you can use the [wait](/wait) functions to freeze execution of your code until a later date (it can be months later). You won't pay while it's frozen and the state is restored exactly when it wakes (using a technology called CRIU).
 
 ```ts
 //In Defer you could use "sleep" but that would keep your function running.
@@ -237,12 +237,12 @@ export async function runLongRunningTask() {
 
 <Warning>
   You need to set your `TRIGGER_SECRET_KEY` environment variable in your `.env` or `.env.local` file
-  to trigger tasks from your code. See the [API keys page](/v3/apikeys) for more information.
+  to trigger tasks from your code. See the [API keys page](/apikeys) for more information.
 </Warning>
 
 #### Example 2: A CRON task
 
-We call these [scheduled tasks](/v3/tasks-scheduled) in Trigger.dev.
+We call these [scheduled tasks](/tasks-scheduled) in Trigger.dev.
 
 In Defer you might have a function like this:
 
@@ -272,6 +272,6 @@ export const sendMondayNewletter = schedules.task({
 
 Then you need to attach a schedule to the task, either using the dashboard or in your code. You can attach unlimited schedules to a task.
 
-<Card title="Attaching schedules" icon="clock" href="/v3/tasks-scheduled">
+<Card title="Attaching schedules" icon="clock" href="/tasks-scheduled">
   How to attach a schedule to a task
 </Card>

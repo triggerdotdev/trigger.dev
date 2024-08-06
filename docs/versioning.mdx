@@ -47,10 +47,10 @@ Every deployment creates a new version of all tasks for that environment.
 
 ## Retries and reattempts
 
-When a task has an uncaught error it will [retry](/v3/errors-retrying), assuming you have not set `maxAttempts` to 0. Retries are locked to the original version of the run.
+When a task has an uncaught error it will [retry](/errors-retrying), assuming you have not set `maxAttempts` to 0. Retries are locked to the original version of the run.
 
-If all the attempts have failed you can start a [reattempt](/v3/reattempting-replaying). This will be version locked to the original version of the run.
+If all the attempts have failed you can start a [reattempt](/reattempting-replaying). This will be version locked to the original version of the run.
 
 ## Replays
 
-A "replay" is a new run of a task that uses the same inputs but will use the latest version of the code. This is useful when you fix a bug and want to re-run a task with the same inputs. See [replays](/v3/reattempting-replaying) for more information.
+A "replay" is a new run of a task that uses the same inputs but will use the latest version of the code. This is useful when you fix a bug and want to re-run a task with the same inputs. See [replays](/reattempting-replaying) for more information.

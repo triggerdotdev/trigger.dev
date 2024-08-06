@@ -16,15 +16,15 @@ These are the different ways you can trigger tasks:
 | `tasks.triggerAndWait()`         | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with                                       |
 | `tasks.batchTriggerAndWait()`    | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
 
-Additionally, [scheduled tasks](/v3/tasks-scheduled) get automatically triggered on their schedule and webhooks when receiving a webhook.
+Additionally, [scheduled tasks](/tasks-scheduled) get automatically triggered on their schedule and webhooks when receiving a webhook.
 
 ## Scheduled tasks
 
-You should attach one or more schedules to your `schedules.task()` to trigger it on a recurring schedule. [Read the scheduled tasks docs](/v3/tasks-scheduled).
+You should attach one or more schedules to your `schedules.task()` to trigger it on a recurring schedule. [Read the scheduled tasks docs](/tasks-scheduled).
 
 ## Authentication
 
-When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/v3/apikeys).
+When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
 
 ## Task instance methods
 
@@ -544,7 +544,7 @@ export const myTask = task({
 });
 ```
 
-For more information, see our [Idempotency](/v3/idempotency) documentation.
+For more information, see our [Idempotency](/idempotency) documentation.
 
 ### `queue`
 

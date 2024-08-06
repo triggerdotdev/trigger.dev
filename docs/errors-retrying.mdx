@@ -9,12 +9,12 @@ When an uncaught error is thrown inside your task, that task attempt will fail.
 
 You can configure retrying in two ways:
 
-1. In your [trigger.config file](/v3/trigger-config) you can set the default retrying behavior for all tasks.
+1. In your [trigger.config file](/trigger-config) you can set the default retrying behavior for all tasks.
 2. On each task you can set the retrying behavior.
 
 <Note>
   By default when you create your project using the CLI init command we disabled retrying in the DEV
-  environment. You can enable it in your [trigger.config file](/v3/trigger-config).
+  environment. You can enable it in your [trigger.config file](/trigger-config).
 </Note>
 
 ## A simple example with OpenAI
@@ -28,7 +28,7 @@ This task will retry 10 times with exponential backoff.
 
 ## Combining tasks
 
-One way to gain reliability is to break your work into smaller tasks and [trigger](/v3/triggering) them from each other. Each task can have its own retrying behavior:
+One way to gain reliability is to break your work into smaller tasks and [trigger](/triggering) them from each other. Each task can have its own retrying behavior:
 
 ```ts /trigger/multiple-tasks.ts
 import { task } from "@trigger.dev/sdk/v3";

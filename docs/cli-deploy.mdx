@@ -23,14 +23,14 @@ yarn dlx trigger.dev@beta deploy
 
 </CodeGroup>
 
-<Warning>Will fail in CI if any version mismatches are detected. Ensure everything runs locally first using the [dev](/v3/cli-dev) command and don't bypass the version checks!</Warning>
+<Warning>Will fail in CI if any version mismatches are detected. Ensure everything runs locally first using the [dev](/cli-dev) command and don't bypass the version checks!</Warning>
 
 It performs a few steps to deploy:
 
 1. Optionally updates packages when running locally.
 2. Typechecks the code.
 3. Compiles and bundles the code.
-4. Checks that [environment variables](/v3/deploy-environment-variables) are set.
+4. Checks that [environment variables](/deploy-environment-variables) are set.
 5. Deploys the code to the cloud.
 6. Registers the tasks as a new version in the environment (prod by default).
 

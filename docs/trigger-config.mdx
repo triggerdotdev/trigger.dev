@@ -4,7 +4,7 @@ sidebarTitle: "trigger.config file"
 description: "This file is used to configure your project and how it's bundled."
 ---
 
-Let's take a look at a basic `trigger.config.ts` file. This is generated for you when you follow [the quick start guide](/v3/quick-start). This file is used to configure your project and how it's bundled.
+Let's take a look at a basic `trigger.config.ts` file. This is generated for you when you follow [the quick start guide](/quick-start). This file is used to configure your project and how it's bundled.
 
 ```ts trigger.config.ts
 import type { TriggerConfig } from "@trigger.dev/sdk/v3";
@@ -69,7 +69,7 @@ export const config: TriggerConfig = {
 };
 ```
 
-Read more about task lifecycle functions in the [tasks overview](/v3/tasks-overview).
+Read more about task lifecycle functions in the [tasks overview](/tasks-overview).
 
 ## Instrumentations
 
@@ -104,7 +104,7 @@ Some ones we recommend:
 
 ## Syncing environment variables
 
-You can sync environment variables from another service using the `resolveEnvVars` function. [Read the docs](/v3/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
+You can sync environment variables from another service using the `resolveEnvVars` function. [Read the docs](/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
 
 ## ESM-only packages
 
@@ -277,4 +277,4 @@ export const taskThatUsesDecorators = task({
 
 ## Troubleshooting
 
-If you have an issue with bundling checkout our [troubleshooting guide](/v3/troubleshooting).
+If you have an issue with bundling checkout our [troubleshooting guide](/troubleshooting).
