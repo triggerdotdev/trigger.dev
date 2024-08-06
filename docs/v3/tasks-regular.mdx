@@ -3,6 +3,8 @@ title: "Regular tasks"
 description: "The simplest type of task which can be triggered from elsewhere in your code."
 ---
 
+import OpenaiRetry from "/snippets/code/openai-retry.mdx"
+
 They are defined using the `task()` function and can be [triggered](/v3/triggering) from your backend or inside another task.
 
 Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/v3/trigger-folder), and you [can configure them](/v3/tasks-overview#defining-a-task).
@@ -13,7 +15,7 @@ Like all tasks they don't have timeouts, they should be placed inside a [/trigge
 
 Sometimes OpenAI calls can take a long time to complete, or they can fail. This task will retry if the API call fails completely or if the response is empty.
 
-<Snippet file="v3/code/openai-retry.mdx" />
+<OpenaiRetry />
 
 ### A Task that sends emails in a sequence with delays in between
 
@@ -80,7 +82,3 @@ export const emailSequence = task({
   },
 });
 ```
-
-### Other examples
-
-<Snippet file="incomplete-docs.mdx" />

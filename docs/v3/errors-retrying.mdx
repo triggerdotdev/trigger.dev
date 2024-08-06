@@ -3,6 +3,8 @@ title: "Errors & Retrying"
 description: "How to deal with errors and write reliable tasks."
 ---
 
+import OpenaiRetry from "/snippets/code/openai-retry.mdx";
+
 When an uncaught error is thrown inside your task, that task attempt will fail.
 
 You can configure retrying in two ways:
@@ -22,7 +24,7 @@ This task will retry 10 times with exponential backoff.
 - `openai.chat.completions.create()` can throw an error.
 - The result can be empty and we want to try again. So we manually throw an error.
 
-<Snippet file="v3/code/openai-retry.mdx" />
+<OpenaiRetry />
 
 ## Combining tasks
 

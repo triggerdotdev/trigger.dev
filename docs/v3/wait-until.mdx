@@ -3,6 +3,8 @@ title: "Wait until"
 description: "Wait until a date, then continue execution."
 ---
 
+import PausedExecutionFree from "/snippets/paused-execution-free.mdx"
+
 This example sends a reminder email to a user at the specified datetime.
 
 ```ts /trigger/reminder-email.ts
@@ -25,7 +27,7 @@ export const sendReminderEmail = task({
 
 This allows you to write linear code without having to worry about the complexity of scheduling or managing CRON jobs.
 
-<Snippet file="v3/paused-execution-free.mdx" />
+<PausedExecutionFree />
 
 ## `throwIfInThePast`
 

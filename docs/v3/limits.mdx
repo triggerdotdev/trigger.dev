@@ -3,6 +3,8 @@ title: "Limits"
 description: "There are some hard and soft limits in v3 that you might hit."
 ---
 
+import SoftLimit from '/snippets/soft-limit.mdx';
+
 ## Concurrency limits
 
 These are the default limits on a free account.
@@ -12,7 +14,7 @@ These are the default limits on a free account.
 | Organization | 10 concurrent runs |
 | Environment  | 5 concurrent runs  |
 
-<Snippet file="v3/soft-limit.mdx" />
+<SoftLimit />
 
 ## Rate limits
 
@@ -36,7 +38,7 @@ If you add them dynamically using code make sure you add a `deduplicationKey` so
 
 If you're creating schedules for your user you will definitely need to request more schedules from us.
 
-<Snippet file="v3/soft-limit.mdx" />
+<SoftLimit />
 
 ## Task payloads and outputs
 
