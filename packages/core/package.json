@@ -28,6 +28,7 @@
       "./types": "./src/types.ts",
       "./versions": "./src/versions.ts",
       "./v3": "./src/v3/index.ts",
+      "./v3/apps": "./src/v3/apps/index.ts",
       "./v3/errors": "./src/v3/errors.ts",
       "./v3/logger-api": "./src/v3/logger-api.ts",
       "./v3/otel": "./src/v3/otel/index.ts",
@@ -80,7 +81,8 @@
     "superjson": "^2.2.1",
     "zod": "3.22.3",
     "zod-error": "1.5.0",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "execa": "^8.0.1"
   },
   "devDependencies": {
     "@types/humanize-duration": "^3.27.1",
@@ -89,7 +91,6 @@
     "vitest": "^1.6.0",
     "rimraf": "^3.0.2",
     "socket.io": "4.7.4",
-    "ts-jest": "^29.1.1",
     "tshy": "^3.0.2",
     "typescript": "^5.5.4"
   },
@@ -228,6 +229,17 @@
       "require": {
         "types": "./dist/commonjs/v3/index.d.ts",
         "default": "./dist/commonjs/v3/index.js"
+      }
+    },
+    "./v3/apps": {
+      "import": {
+        "triggerdotdev-source": "./src/v3/apps/index.ts",
+        "types": "./dist/esm/v3/apps/index.d.ts",
+        "default": "./dist/esm/v3/apps/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/apps/index.d.ts",
+        "default": "./dist/commonjs/v3/apps/index.js"
       }
     },
     "./v3/errors": {

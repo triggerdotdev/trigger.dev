@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 
 type PodCleanerOptions = {
   runtimeEnv: "local" | "kubernetes";

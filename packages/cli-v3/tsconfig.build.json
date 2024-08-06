@@ -4,6 +4,5 @@
     "isolatedDeclarations": false,
     "composite": true,
     "sourceMap": true
-  },
-  "include": ["./src/**/*.ts", "./src/**/*.tsx"]
+  }
 }

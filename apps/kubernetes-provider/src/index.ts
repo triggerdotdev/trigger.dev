@@ -6,8 +6,8 @@ import {
   TaskOperationsIndexOptions,
   TaskOperationsPrePullDeploymentOptions,
   TaskOperationsRestoreOptions,
-} from "@trigger.dev/core-apps/provider";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+} from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import {
   MachinePreset,
   PostStartCauses,

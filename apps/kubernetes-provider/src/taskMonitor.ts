@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
-import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core-apps/process";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
+import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core/v3/apps";
 import { setTimeout } from "timers/promises";
 import PQueue from "p-queue";
 import type { Prettify } from "@trigger.dev/core/v3";
