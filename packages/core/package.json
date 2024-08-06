@@ -28,6 +28,7 @@
       "./types": "./src/types.ts",
       "./versions": "./src/versions.ts",
       "./v3": "./src/v3/index.ts",
+      "./v3/build": "./src/v3/build/index.ts",
       "./v3/apps": "./src/v3/apps/index.ts",
       "./v3/errors": "./src/v3/errors.ts",
       "./v3/logger-api": "./src/v3/logger-api.ts",
@@ -79,7 +80,7 @@
     "humanize-duration": "^3.27.3",
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
-    "zod": "3.22.3",
+    "zod": "3.23.8",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0",
     "execa": "^8.0.1"
@@ -92,7 +93,10 @@
     "rimraf": "^3.0.2",
     "socket.io": "4.7.4",
     "tshy": "^3.0.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "esbuild": "^0.23.0",
+    "defu": "^6.1.4",
+    "ts-essentials": "10.0.1"
   },
   "engines": {
     "node": ">=18.20.0"
@@ -229,6 +233,17 @@
       "require": {
         "types": "./dist/commonjs/v3/index.d.ts",
         "default": "./dist/commonjs/v3/index.js"
+      }
+    },
+    "./v3/build": {
+      "import": {
+        "triggerdotdev-source": "./src/v3/build/index.ts",
+        "types": "./dist/esm/v3/build/index.d.ts",
+        "default": "./dist/esm/v3/build/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/build/index.d.ts",
+        "default": "./dist/commonjs/v3/build/index.js"
       }
     },
     "./v3/apps": {

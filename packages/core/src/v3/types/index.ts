@@ -7,7 +7,6 @@ import {
 import { Prettify } from "./utils.js";
 
 export * from "./utils.js";
-export * from "./config.js";
 
 export type InitOutput = Record<string, any> | void | undefined;
 

@@ -8,3 +8,4 @@ export * from "./style.js";
 export * from "./fetch.js";
 export * from "./eventFilter.js";
 export * from "./openTelemetry.js";
+export * from "./config.js";

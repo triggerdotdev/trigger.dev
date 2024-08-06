@@ -1,6 +1,5 @@
 import { context, propagation } from "@opentelemetry/api";
 import { z } from "zod";
-import { version } from "../../../package.json";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
@@ -44,6 +43,7 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { VERSION } from "../../consts.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -503,7 +503,7 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
-      "trigger-version": version,
+      "trigger-version": VERSION,
     };
 
     // Only inject the context if we are inside a task

@@ -20,7 +20,6 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { readConfig } from "../utilities/configFiles.js";
 import { createFileFromTemplate } from "../utilities/createFileFromTemplate.js";
 import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
 import { PackageManager, getUserPackageManager } from "../utilities/getUserPackageManager.js";
@@ -30,8 +29,8 @@ import { cliRootPath } from "../utilities/resolveInternalFilePath.js";
 import { login } from "./login.js";
 import { spinner } from "../utilities/windows.js";
 import { CLOUD_API_URL } from "../consts.js";
-import { version } from "../../package.json";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { loadConfig } from "../config.js";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -56,7 +55,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        version
+        "latest"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -112,11 +111,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   if (!options.overrideConfig) {
     try {
       // check to see if there is an existing trigger.dev config file in the project directory
-      const result = await readConfig(dir);
+      const result = await loadConfig({ cwd: dir });
 
       outro(
-        result.status === "file"
-          ? `Project already initialized: Found config file at ${result.path}. Pass --override-config to override`
+        result.configFile
+          ? `Project already initialized: Found config file at ${result.configFile}. Pass --override-config to override`
           : "Project already initialized"
       );
 

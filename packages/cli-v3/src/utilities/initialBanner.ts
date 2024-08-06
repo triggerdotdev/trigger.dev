@@ -1,14 +1,13 @@
 import chalk from "chalk";
 import type { Result } from "update-check";
 import checkForUpdate from "update-check";
-import pkg from "../../package.json";
 import { chalkGrey, chalkRun, chalkTask, chalkWorker, green, logo } from "./cliOutput.js";
-import { getVersion } from "./getVersion.js";
 import { logger } from "./logger.js";
 import { spinner } from "./windows.js";
+import { readPackageJson } from "./packageJson.js";
 
 export async function printInitialBanner(performUpdateCheck = true) {
-  const cliVersion = getVersion();
+  const cliVersion = await getVersion();
   const text = `\n${logo()} ${chalkGrey(`(${cliVersion})`)}\n`;
 
   logger.info(text);
@@ -38,7 +37,7 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 }
 
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
-  const cliVersion = getVersion();
+  const cliVersion = await getVersion();
 
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
@@ -72,9 +71,10 @@ export function printDevBanner(printTopBorder = true) {
 async function doUpdateCheck(): Promise<string | undefined> {
   let update: Result | null = null;
   try {
+    const pkg = await readPackageJson();
     // default cache for update check is 1 day
-    update = await checkForUpdate(pkg, {
-      distTag: pkg.version.startsWith("3.0.0-beta") ? "beta" : "latest",
+    update = await checkForUpdate.default(pkg, {
+      distTag: pkg.version?.startsWith("3.0.0-beta") ? "beta" : "latest",
     });
   } catch (err) {
     // ignore error
@@ -86,4 +86,9 @@ async function doUpdateCheck(): Promise<string | undefined> {
 let updateCheckPromise: Promise<string | undefined>;
 export function updateCheck(): Promise<string | undefined> {
   return (updateCheckPromise ??= doUpdateCheck());
+}
+
+async function getVersion() {
+  const packageJson = await readPackageJson();
+  return packageJson.version ?? "unknown";
 }

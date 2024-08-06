@@ -1,7 +1,6 @@
-import type { TriggerConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { AppDataSource } from "@/trigger/orm";
 import { InfisicalClient } from "@infisical/sdk";
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { defineConfig, type ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 
 export { handleError } from "./src/handleError";
 
@@ -32,7 +31,7 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
   };
 };
 
-export const config: TriggerConfig = {
+export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",
   machine: "small-2x",
   retries: {
@@ -53,13 +52,9 @@ export const config: TriggerConfig = {
   logLevel: "info",
   postInstall: "echo '========== config.postInstall'",
   onStart: async (payload, { ctx }) => {
-    if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
-      console.log("Initializing the app data source");
-
-      await AppDataSource.initialize();
-    }
+    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
   },
-};
+});

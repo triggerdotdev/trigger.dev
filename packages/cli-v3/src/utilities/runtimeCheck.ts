@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 /**
  * This function is used by the dev CLI to make sure that the runtime is compatible

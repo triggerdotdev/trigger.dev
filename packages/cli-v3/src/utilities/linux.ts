@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 export const isLinuxServer = async () => {
   if (process.platform !== "linux") {

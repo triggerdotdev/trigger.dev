@@ -1,11 +1,17 @@
 import chalk from "chalk";
 import { relative } from "node:path";
-import { chalkError, chalkPurple, chalkGrey, chalkGreen, chalkWarning, cliLink } from "./cliOutput";
-import { logger } from "./logger";
-import { ReadConfigResult } from "./configFiles";
+import {
+  chalkError,
+  chalkPurple,
+  chalkGrey,
+  chalkGreen,
+  chalkWarning,
+  cliLink,
+} from "./cliOutput.js";
+import { logger } from "./logger.js";
 import { z } from "zod";
 import { groupTaskMetadataIssuesByTask } from "@trigger.dev/core/v3";
-import { docs } from "./links";
+import { docs } from "./links.js";
 
 export type ESMRequireError = {
   type: "esm-require-error";
@@ -41,6 +47,8 @@ export function parseBuildErrorStack(error: unknown): BuildError | undefined {
       return error.message;
     }
   }
+
+  return;
 }
 
 function getPackageNameFromEsmRequireError(stack: string): string | undefined {
@@ -75,7 +83,7 @@ function getPackageNameFromEsmRequireError(stack: string): string | undefined {
   return match[1];
 }
 
-export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig: ReadConfigResult) {
+export function logESMRequireError(parsedError: ESMRequireError) {
   logger.log(
     `\n${chalkError("X Error:")} The ${chalkPurple(
       parsedError.moduleName
@@ -89,28 +97,13 @@ export function logESMRequireError(parsedError: ESMRequireError, resolvedConfig:
     )}`
   );
 
-  if (resolvedConfig.status === "file") {
-    const relativePath = relative(resolvedConfig.config.projectDir, resolvedConfig.path).replace(
-      /\\/g,
-      "/"
-    );
-
-    logger.log(
-      `${chalkGrey("○")} ${chalk.underline("Or")} add ${chalkPurple(
-        parsedError.moduleName
-      )} to the ${chalkGreen("dependenciesToBundle")} array in your config file ${chalkGrey(
-        `(${relativePath})`
-      )}. This will bundle the module with your code.\n`
-    );
-  } else {
-    logger.log(
-      `${chalkGrey("○")} ${chalk.underline("Or")} add ${chalkPurple(
-        parsedError.moduleName
-      )} to the ${chalkGreen("dependenciesToBundle")} array in your config file ${chalkGrey(
-        "(you'll need to create one)"
-      )}. This will bundle the module with your code.\n`
-    );
-  }
+  logger.log(
+    `${chalkGrey("○")} ${chalk.underline("Or")} add ${chalkPurple(
+      parsedError.moduleName
+    )} to the ${chalkGreen("dependenciesToBundle")} array in your config file ${chalkGrey(
+      "(you'll need to create one)"
+    )}. This will bundle the module with your code.\n`
+  );
 
   logger.log(
     `${chalkGrey("○")} For more info see the ${cliLink("relevant docs", docs.config.esm)}.\n`

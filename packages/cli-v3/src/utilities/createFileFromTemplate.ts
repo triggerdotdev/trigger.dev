@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { pathExists, readFile } from "./fileSystem";
+import { pathExists, readFile } from "./fileSystem.js";
 import path from "path";
 
 type Result =

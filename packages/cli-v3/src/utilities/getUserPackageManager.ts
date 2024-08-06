@@ -1,6 +1,6 @@
 import { findUp } from "find-up";
 import { basename } from "path";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 export const LOCKFILES = {

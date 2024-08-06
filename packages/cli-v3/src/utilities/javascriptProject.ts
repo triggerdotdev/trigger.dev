@@ -1,12 +1,12 @@
 import { $, ExecaError } from "execa";
 import { join } from "node:path";
-import { readJSONFileSync } from "./fileSystem";
-import { logger } from "./logger";
-import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
+import { readJSONFileSync } from "./fileSystem.js";
+import { logger } from "./logger.js";
+import { PackageManager, getUserPackageManager } from "./getUserPackageManager.js";
 import { PackageJson } from "type-fest";
-import { assertExhaustive } from "./assertExhaustive";
+import { assertExhaustive } from "./assertExhaustive.js";
 import { builtinModules } from "node:module";
-import { tracer } from "../cli/common";
+import { tracer } from "../cli/common.js";
 import { recordSpanException } from "@trigger.dev/core/v3/otel";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 
@@ -233,6 +233,8 @@ export class JavascriptProject {
         error,
       });
     }
+
+    return;
   }
 
   async #getCommand(): Promise<PackageManagerCommands> {
@@ -328,6 +330,8 @@ class PNPMCommands implements PackageManagerCommands {
         return dependency.version;
       }
     }
+
+    return;
   }
 
   async resolveDependencyVersions(
@@ -524,6 +528,8 @@ class NPMCommands implements PackageManagerCommands {
         }
       }
     }
+
+    return;
   }
 
   #flattenDependenciesMeta(
