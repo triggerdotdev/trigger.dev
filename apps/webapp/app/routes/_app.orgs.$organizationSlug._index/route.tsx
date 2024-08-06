@@ -49,13 +49,7 @@ export default function Page() {
                     <NamedIcon name="folder" className="h-10 w-10 flex-none" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
-                      {project.version === "V2" ? (
-                        <Paragraph variant="small">{simplur`${project.jobCount} Job[|s]`}</Paragraph>
-                      ) : (
-                        <Badge className="max-w-max" variant="v3">
-                          v3
-                        </Badge>
-                      )}
+                      <Badge className="max-w-max">{project.version}</Badge>
                     </div>
                   </Link>
                 </li>

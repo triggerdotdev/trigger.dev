@@ -1,8 +1,8 @@
-import { AnchorHTMLAttributes } from "react";
+import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
-import { IconNames } from "../primitives/NamedIcon";
+import { type IconNames } from "../primitives/NamedIcon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Icon } from "../primitives/Icon";
 import { IconExclamationCircle } from "@tabler/icons-react";
@@ -13,7 +13,7 @@ export function SideMenuItem({
   name,
   to,
   hasWarning,
-  count,
+  badge,
   target,
   subItem = false,
 }: {
@@ -22,7 +22,7 @@ export function SideMenuItem({
   name: string;
   to: string;
   hasWarning?: string | boolean;
-  count?: number;
+  badge?: string;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   subItem?: boolean;
 }) {
@@ -47,20 +47,20 @@ export function SideMenuItem({
       <div className="flex w-full items-center justify-between">
         {name}
         <div className="flex items-center gap-1">
-          {count !== undefined && count > 0 && <MenuCount count={count} />}
+          {badge !== undefined && <MenuCount count={badge} />}
           {typeof hasWarning === "string" ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
+                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
                 </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
+                <TooltipContent className="flex items-center gap-1 border border-error bg-error/20 backdrop-blur-xl">
                   {hasWarning}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
-            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
+            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
           )}
         </div>
       </div>
@@ -68,8 +68,10 @@ export function SideMenuItem({
   );
 }
 
-export function MenuCount({ count }: { count: number | string }) {
+function MenuCount({ count }: { count: number | string }) {
   return (
-    <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs text-text-dimmed">{count}</div>
+    <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
+      {count}
+    </div>
   );
 }

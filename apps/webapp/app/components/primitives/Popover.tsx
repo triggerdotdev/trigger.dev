@@ -4,8 +4,8 @@ import { ChevronDownIcon, EllipsisVerticalIcon } from "@heroicons/react/24/solid
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { ButtonContentPropsType, LinkButton } from "./Buttons";
-import { Paragraph, ParagraphVariant } from "./Paragraph";
+import { type ButtonContentPropsType, LinkButton } from "./Buttons";
+import { Paragraph, type ParagraphVariant } from "./Paragraph";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -41,7 +41,7 @@ function PopoverSectionHeader({
   variant?: ParagraphVariant;
 }) {
   return (
-    <Paragraph variant={variant} className="bg-charcoal-900 px-2.5 py-1.5">
+    <Paragraph variant={variant} className="bg-charcoal-750 px-2.5 py-1.5">
       {title}
     </Paragraph>
   );
@@ -71,7 +71,10 @@ function PopoverMenuItem({
       fullWidth
       textAlignLeft
       TrailingIcon={isSelected ? "check" : undefined}
-      className={isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-800" : undefined}
+      className={cn(
+        "group-hover:bg-charcoal-700",
+        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
+      )}
     >
       {title}
     </LinkButton>
