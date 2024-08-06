@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 export async function callResolveEnvVars(
   configModule: any,
@@ -59,4 +59,6 @@ export async function callResolveEnvVars(
       logger.error(error);
     }
   }
+
+  return;
 }

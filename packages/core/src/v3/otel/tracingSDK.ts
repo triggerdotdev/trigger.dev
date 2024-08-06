@@ -40,7 +40,7 @@ import {
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { version } from "../../../package.json";
+import { VERSION } from "../../consts.js";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -112,7 +112,7 @@ export class TracingSDK {
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
-          [SemanticInternalAttributes.CLI_VERSION]: version,
+          [SemanticInternalAttributes.CLI_VERSION]: VERSION,
         })
       )
       .merge(config.resource ?? new Resource({}))

@@ -44,7 +44,6 @@ export {
 } from "./utils/retries.js";
 export { accessoryAttributes } from "./utils/styleAttributes.js";
 
-export { detectDependencyVersion } from "./utils/detectDependencyVersion.js";
 export {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -56,3 +55,5 @@ export {
   stringifyIO,
   type IOPacket,
 } from "./utils/ioSerialization.js";
+
+export * from "./config.js";

@@ -14,7 +14,7 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
-import { HandleErrorFunction, ProjectConfig, TaskMetadataWithFunctions } from "../types/index.js";
+import { HandleErrorFunction, TaskMetadataWithFunctions } from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -26,13 +26,14 @@ import { calculateNextRetryDelay } from "../utils/retries.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
 import { UsageMeasurement } from "../usage/types.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
+import { TriggerConfig } from "../index.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
   tracer: TriggerTracer;
   consoleInterceptor: ConsoleInterceptor;
   projectConfig: Config;
-  importedConfig: ProjectConfig | undefined;
+  importedConfig: TriggerConfig | undefined;
   handleErrorFn: HandleErrorFunction | undefined;
 };
 
@@ -41,7 +42,7 @@ export class TaskExecutor {
   private _tracer: TriggerTracer;
   private _consoleInterceptor: ConsoleInterceptor;
   private _config: Config;
-  private _importedConfig: ProjectConfig | undefined;
+  private _importedConfig: TriggerConfig | undefined;
   private _handleErrorFn: HandleErrorFunction | undefined;
 
   constructor(

@@ -12,7 +12,6 @@ coverage
 # next.js
 .next/
 out/
-build
 dist
 packages/**/dist
 

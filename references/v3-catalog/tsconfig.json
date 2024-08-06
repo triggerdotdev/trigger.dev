@@ -1,19 +1,17 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["./src/**/*.ts", "trigger.config.ts", "src/trigger/email.tsx"],
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "baseUrl": ".",
-    "lib": ["DOM", "DOM.Iterable"],
-    "paths": {
-      "@/*": ["./src/*"],
-      "@trigger.dev/core/v3": ["../../packages/core/src/v3/index"],
-      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"],
-      "@trigger.dev/sdk/v3": ["../../packages/trigger-sdk/src/v3/index"],
-      "@trigger.dev/sdk/v3/*": ["../../packages/trigger-sdk/src/v3/*"]
-    },
+    "target": "esnext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "strict": true,
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "customConditions": ["triggerdotdev-source"],
+    "jsx": "preserve",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "allowJs": true
-  }
+    "lib": ["DOM", "DOM.Iterable"]
+  },
+  "include": ["./src/**/*.ts", "trigger.config.ts", "src/trigger/email.tsx"]
 }

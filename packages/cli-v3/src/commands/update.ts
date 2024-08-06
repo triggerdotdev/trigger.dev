@@ -10,8 +10,8 @@ import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBa
 import { join, resolve } from "path";
 import { JavascriptProject } from "../utilities/javascriptProject.js";
 import { PackageManager } from "../utilities/getUserPackageManager.js";
-import { getVersion } from "../utilities/getVersion.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
+import { VERSION } from "../consts.js";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -66,7 +66,7 @@ export async function updateTriggerPackages(
     return false;
   }
 
-  const cliVersion = getVersion();
+  const cliVersion = VERSION;
   const newCliVersion = await updateCheck();
 
   if (newCliVersion) {

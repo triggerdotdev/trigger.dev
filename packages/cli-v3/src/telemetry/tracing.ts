@@ -4,12 +4,12 @@ import { Resource, detectResourcesSync, processDetectorSync } from "@opentelemet
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { DiagConsoleLogger, DiagLogLevel, diag, trace } from "@opentelemetry/api";
-import { version } from "../../package.json";
 import {
   SEMRESATTRS_SERVICE_NAME,
   SEMRESATTRS_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import { logger } from "../utilities/logger.js";
+import { VERSION } from "../consts.js";
 
 function initializeTracing(): NodeTracerProvider | undefined {
   if (
@@ -30,7 +30,7 @@ function initializeTracing(): NodeTracerProvider | undefined {
   }).merge(
     new Resource({
       [SEMRESATTRS_SERVICE_NAME]: "trigger.dev cli v3",
-      [SEMRESATTRS_SERVICE_VERSION]: version,
+      [SEMRESATTRS_SERVICE_VERSION]: VERSION,
     })
   );
 
@@ -70,5 +70,5 @@ function initializeTracing(): NodeTracerProvider | undefined {
 export const provider = initializeTracing();
 
 export function getTracer() {
-  return trace.getTracer("trigger.dev cli v3", version);
+  return trace.getTracer("trigger.dev cli v3", VERSION);
 }
