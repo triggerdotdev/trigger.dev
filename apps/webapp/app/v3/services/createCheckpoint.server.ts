@@ -17,11 +17,15 @@ export class CreateCheckpointService extends BaseService {
     >
   ): Promise<
     | {
+        success: true;
         checkpoint: Checkpoint;
         event: CheckpointRestoreEvent;
         keepRunAlive: boolean;
       }
-    | undefined
+    | {
+        success: false;
+        keepRunAlive?: boolean;
+      }
   > {
     logger.debug(`Creating checkpoint`, params);
 
@@ -46,7 +50,10 @@ export class CreateCheckpointService extends BaseService {
 
     if (!attempt) {
       logger.error("Attempt not found", { attemptFriendlyId: params.attemptFriendlyId });
-      return;
+
+      return {
+        success: false,
+      };
     }
 
     if (
@@ -64,14 +71,10 @@ export class CreateCheckpointService extends BaseService {
         },
       });
 
-      // This should only affect CLIs < beta.24, in very limited scenarios
-      const service = new CrashTaskRunService(this._prisma);
-      await service.call(attempt.taskRunId, {
-        crashAttempts: true,
-        reason: "Unfreezable state: Please upgrade your CLI",
-      });
-
-      return;
+      return {
+        success: false,
+        keepRunAlive: true,
+      };
     }
 
     const imageRef = attempt.backgroundWorker.deployment?.imageReference;
@@ -81,7 +84,10 @@ export class CreateCheckpointService extends BaseService {
         attemptId: attempt.id,
         workerId: attempt.backgroundWorker.id,
       });
-      return;
+
+      return {
+        success: false,
+      };
     }
 
     const checkpoint = await this._prisma.checkpoint.create({
@@ -175,7 +181,10 @@ export class CreateCheckpointService extends BaseService {
         checkpointId: checkpoint.id,
       });
       await marqs?.acknowledgeMessage(attempt.taskRunId);
-      return;
+
+      return {
+        success: false,
+      };
     }
 
     if (reason.type === "WAIT_FOR_DURATION") {
@@ -191,6 +200,7 @@ export class CreateCheckpointService extends BaseService {
     }
 
     return {
+      success: true,
       checkpoint,
       event: checkpointEvent,
       keepRunAlive,
