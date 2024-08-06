@@ -1,14 +1,14 @@
 import { findUp } from "find-up";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import xdgAppPaths from "xdg-app-paths";
+import { xdgAppPaths } from "../imports/xdg-app-paths.js";
 import { z } from "zod";
 import { CONFIG_FILES } from "../consts.js";
 import { readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 
 function getGlobalConfigFolderPath() {
-  const configDir = xdgAppPaths.default("trigger").config();
+  const configDir = xdgAppPaths("trigger").config();
 
   return configDir;
 }

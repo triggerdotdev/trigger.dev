@@ -43,7 +43,7 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { VERSION } from "../../consts.js";
+import { pkg } from "../../pkg.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -503,7 +503,7 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
-      "trigger-version": VERSION,
+      "trigger-version": pkg.version,
     };
 
     // Only inject the context if we are inside a task
