@@ -1,6 +1,6 @@
 import { ConnectionAuth } from "@trigger.dev/core";
-import { IOWithIntegrations, TriggerIntegration } from "./integrations";
-import { IO } from "./io";
+import { IOWithIntegrations, TriggerIntegration } from "./integrations.js";
+import { IO } from "./io.js";
 
 export function createIOWithIntegrations<TIntegrations extends Record<string, TriggerIntegration>>(
   io: IO,
@@ -39,6 +39,7 @@ export function createIOWithIntegrations<TIntegrations extends Record<string, Tr
       }
 
       if (typeof prop === "string" && prop in connections) {
+        // @ts-expect-error
         const { integration, auth } = connections[prop];
         return integration.cloneForRun(io, prop, auth);
       }

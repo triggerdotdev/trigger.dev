@@ -13,10 +13,10 @@ import type {
   TriggerMetadata,
 } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
-import type TypedEmitter from "typed-emitter";
+import type { TypedEventEmitter } from "./typed-emitter.js";
 import { z } from "zod";
-import { Job } from "./job";
-import { TriggerClient } from "./triggerClient";
+import { Job } from "./job.js";
+import { TriggerClient } from "./triggerClient.js";
 
 export type {
   DisplayProperty,
@@ -179,4 +179,4 @@ export type NotificationEvents = {
   runFailed: (notification: FailedRunNotification) => void;
 };
 
-export type NotificationsEventEmitter = TypedEmitter<NotificationEvents>;
+export type NotificationsEventEmitter = TypedEventEmitter<NotificationEvents>;

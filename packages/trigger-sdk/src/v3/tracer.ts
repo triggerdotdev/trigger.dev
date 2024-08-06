@@ -1,4 +1,4 @@
 import { TriggerTracer } from "@trigger.dev/core/v3";
-import * as packageJson from "../../package.json";
+import { version } from "../../package.json";
 
-export const tracer = new TriggerTracer({ name: "@trigger.dev/sdk", version: packageJson.version });
+export const tracer = new TriggerTracer({ name: "@trigger.dev/sdk", version: version });

@@ -1,16 +1,16 @@
 import { EventFilter, TriggerMetadata, deepMergeFilters } from "@trigger.dev/core";
-import { Job } from "../job";
-import { TriggerClient } from "../triggerClient";
+import { Job } from "../job.js";
+import { TriggerClient } from "../triggerClient.js";
 import {
   EventSpecification,
   EventSpecificationExample,
   EventTypeFromSpecification,
   SchemaParser,
   Trigger,
-} from "../types";
-import { formatSchemaErrors } from "../utils/formatSchemaErrors";
-import { ParsedPayloadSchemaError } from "../errors";
-import { VerifyCallback } from "../httpEndpoint";
+} from "../types.js";
+import { formatSchemaErrors } from "../utils/formatSchemaErrors.js";
+import { ParsedPayloadSchemaError } from "../errors.js";
+import { VerifyCallback } from "../httpEndpoint.js";
 
 type EventTriggerOptions<TEventSpecification extends EventSpecification<any>> = {
   event: TEventSpecification;
