@@ -55,6 +55,10 @@
     {
       "source": "/v3/upgrading-from-v2",
       "destination": "/guides/use-cases/upgrading-from-v2"
+    },
+    {
+      "source": "/v3/:slug*",
+      "destination": "/pages/:slug*"
     }
   ],
 
@@ -68,130 +72,140 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["v3/introduction", "v3/quick-start", "v3/limits", "v3/changelog", "v3/roadmap"]
+      "pages": [
+        "pages/introduction",
+        "pages/quick-start",
+        "pages/limits",
+        "pages/changelog",
+        "pages/roadmap"
+      ]
     },
     {
       "group": "Fundamentals",
       "pages": [
-        "v3/trigger-folder",
-        "v3/tasks-overview",
-        "v3/triggering",
-        "v3/apikeys",
+        "pages/trigger-folder",
+        "pages/tasks-overview",
+        "pages/triggering",
+        "pages/apikeys",
         {
           "group": "Task types",
-          "pages": ["v3/tasks-regular", "v3/tasks-scheduled"]
+          "pages": ["pages/tasks-regular", "pages/tasks-scheduled"]
         },
-        "v3/trigger-config"
+        "pages/trigger-config"
       ]
     },
     {
       "group": "Development",
-      "pages": ["v3/cli-dev", "v3/run-tests"]
+      "pages": ["pages/cli-dev", "pages/run-tests"]
     },
     {
       "group": "Deployment",
       "pages": [
-        "v3/deploy-environment-variables",
-        "v3/cli-deploy",
-        "v3/github-actions",
+        "pages/deploy-environment-variables",
+        "pages/cli-deploy",
+        "pages/github-actions",
         {
           "group": "Deployment integrations",
-          "pages": ["v3/vercel-integration"]
+          "pages": ["pages/vercel-integration"]
         }
       ]
     },
     {
       "group": "Writing tasks",
       "pages": [
-        "v3/writing-tasks-introduction",
-        "v3/logging",
-        "v3/errors-retrying",
+        "pages/writing-tasks-introduction",
+        "pages/logging",
+        "pages/errors-retrying",
         {
           "group": "Wait",
           "pages": [
-            "v3/wait",
-            "v3/wait-for",
-            "v3/wait-until",
-            "v3/wait-for-event",
-            "v3/wait-for-request"
+            "pages/wait",
+            "pages/wait-for",
+            "pages/wait-until",
+            "pages/wait-for-event",
+            "pages/wait-for-request"
           ]
         },
-        "v3/queue-concurrency",
-        "v3/versioning",
-        "v3/machines",
-        "v3/idempotency",
-        "v3/reattempting-replaying",
-        "v3/tags",
-        "v3/notifications",
-        "v3/run-usage"
+        "pages/queue-concurrency",
+        "pages/versioning",
+        "pages/machines",
+        "pages/idempotency",
+        "pages/reattempting-replaying",
+        "pages/tags",
+        "pages/notifications",
+        "pages/run-usage"
       ]
     },
     {
       "group": "API reference",
       "pages": [
-        "v3/management/overview",
+        "pages/management/overview",
         {
           "group": "Tasks API",
-          "pages": ["v3/management/tasks/trigger", "v3/management/tasks/batch-trigger"]
+          "pages": ["pages/management/tasks/trigger", "pages/management/tasks/batch-trigger"]
         },
         {
           "group": "Runs API",
           "pages": [
-            "v3/management/runs/list",
-            "v3/management/runs/retrieve",
-            "v3/management/runs/replay",
-            "v3/management/runs/cancel",
-            "v3/management/runs/reschedule"
+            "pages/management/runs/list",
+            "pages/management/runs/retrieve",
+            "pages/management/runs/replay",
+            "pages/management/runs/cancel",
+            "pages/management/runs/reschedule"
           ]
         },
         {
           "group": "Schedules API",
           "pages": [
-            "v3/management/schedules/list",
-            "v3/management/schedules/create",
-            "v3/management/schedules/retrieve",
-            "v3/management/schedules/update",
-            "v3/management/schedules/delete",
-            "v3/management/schedules/deactivate",
-            "v3/management/schedules/activate",
-            "v3/management/schedules/timezones"
+            "pages/management/schedules/list",
+            "pages/management/schedules/create",
+            "pages/management/schedules/retrieve",
+            "pages/management/schedules/update",
+            "pages/management/schedules/delete",
+            "pages/management/schedules/deactivate",
+            "pages/management/schedules/activate",
+            "pages/management/schedules/timezones"
           ]
         },
         {
           "group": "Env Vars API",
           "pages": [
-            "v3/management/envvars/list",
-            "v3/management/envvars/import",
-            "v3/management/envvars/create",
-            "v3/management/envvars/retrieve",
-            "v3/management/envvars/update",
-            "v3/management/envvars/delete"
+            "pages/management/envvars/list",
+            "pages/management/envvars/import",
+            "pages/management/envvars/create",
+            "pages/management/envvars/retrieve",
+            "pages/management/envvars/update",
+            "pages/management/envvars/delete"
           ]
         },
         {
           "group": "Projects API",
-          "pages": ["v3/management/projects/runs"]
+          "pages": ["pages/management/projects/runs"]
         }
       ]
     },
     {
       "group": "Open source",
-      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
+      "pages": [
+        "pages/github-repo",
+        "pages/open-source-self-hosting",
+        "pages/open-source-contributing"
+      ]
     },
     {
       "group": "Troubleshooting",
       "pages": [
-        "v3/troubleshooting",
-        "v3/upgrading-packages",
-        "v3/troubleshooting-alerts",
-        "v3/troubleshooting-uptime-status",
-        "v3/troubleshooting-github-issues",
-        "v3/request-feature"
+        "pages/troubleshooting",
+        "pages/upgrading-packages",
+        "pages/troubleshooting-alerts",
+        "pages/troubleshooting-uptime-status",
+        "pages/troubleshooting-github-issues",
+        "pages/request-feature"
       ]
     },
     {
       "group": "Help",
-      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
+      "pages": ["pages/community", "pages/help-slack", "pages/help-email"]
     },
     {
       "group": "Frameworks",

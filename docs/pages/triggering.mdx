@@ -450,7 +450,7 @@ await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 
 
 Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
 
-![Delayed run in the dashboard](/images/v3/delayed-runs.png)
+![Delayed run in the dashboard](/images/delayed-runs.png)
 
 <Note>
   Delayed runs will be enqueued at the time specified, and will run as soon as possible after that
@@ -501,7 +501,7 @@ await myTask.trigger({ some: "data" }, { ttl: 3600 }); // 1 hour
 
 When a run is expired, it will be marked as "Expired" in the dashboard:
 
-![Expired runs in the dashboard](/images/v3/expired-runs.png)
+![Expired runs in the dashboard](/images/expired-runs.png)
 
 When you use both `delay` and `ttl`, the TTL will start counting down from the time the run is enqueued, not from the time the run is triggered.
 
