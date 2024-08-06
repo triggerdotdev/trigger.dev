@@ -351,3 +351,16 @@ function safeJsonParse(value: string): any {
     return;
   }
 }
+
+export async function replaceSuperJsonPayload(original: string, newPayload: string) {
+  const superjson = await loadSuperJSON();
+  const originalObject = superjson.parse(original);
+  const { meta } = superjson.serialize(originalObject);
+
+  const newSuperJson = {
+    json: JSON.parse(newPayload) as any,
+    meta,
+  };
+
+  return superjson.deserialize(newSuperJson);
+}

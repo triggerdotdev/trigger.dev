@@ -19,9 +19,9 @@ import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
-import { MatchedProject } from "~/hooks/useProject";
-import { User } from "~/models/user.server";
+import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { type MatchedProject } from "~/hooks/useProject";
+import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { cn } from "~/utils/cn";
 import {
@@ -63,8 +63,7 @@ import { StepContentContainer } from "../StepContentContainer";
 import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
-import { Button } from "../primitives/Buttons";
-import { Callout } from "../primitives/Callout";
+import { Button, LinkButton } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Icon } from "../primitives/Icon";
@@ -78,9 +77,9 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
-import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { MenuCount, SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem } from "./SideMenuItem";
+import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -195,6 +194,11 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                   to={v3BillingPath(organization)}
                   iconColor="text-blue-600"
                   data-action="billing"
+                  badge={
+                    currentPlan?.v3Subscription?.isPaying
+                      ? currentPlan?.v3Subscription?.plan?.title
+                      : undefined
+                  }
                 />
               </>
             )}
@@ -218,14 +222,25 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
         <div className="m-2">
           {project.version === "V2" && (
-            <Callout variant={"info"}>
-              <Paragraph variant="small">
-                This is a v2 project.{" "}
-                <TextLink href="https://trigger.dev/docs/v3/upgrading-from-v2">
-                  Upgrade to v3
+            <div className="flex flex-col gap-3 rounded border border-success/50 bg-success/10 p-3">
+              <Paragraph variant="small/bright">
+                This is a v2 project. V2 will be deprecated on January 31, 2025.{" "}
+                <TextLink
+                  className="text-text-bright underline decoration-text-dimmed underline-offset-2 transition hover:text-text-bright hover:decoration-text-bright"
+                  to="https://trigger.dev/blog/v2-end-of-life-announcement"
+                >
+                  Learn more
                 </TextLink>
+                .
               </Paragraph>
-            </Callout>
+              <LinkButton
+                variant="primary/medium"
+                to="https://trigger.dev/docs/v3/upgrading-from-v2"
+                fullWidth
+              >
+                Upgrade to v3
+              </LinkButton>
+            </div>
           )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
@@ -374,10 +389,10 @@ function ProjectSelector({
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>
-                          {p.version === "V2" ? (
-                            <MenuCount count={p.jobCount} />
-                          ) : (
-                            <Badge variant="v3">v3</Badge>
+                          {p.version === "V2" && (
+                            <Badge variant="small" className="normal-case">
+                              v2
+                            </Badge>
                           )}
                         </div>
                       }
@@ -396,7 +411,7 @@ function ProjectSelector({
             </div>
           </Fragment>
         ))}
-        <div className="border-t border-charcoal-800 p-1">
+        <div className="border-t border-charcoal-700 p-1">
           <PopoverMenuItem to={newOrganizationPath()} title="New Organization" icon="plus" />
         </div>
       </PopoverContent>
@@ -486,7 +501,6 @@ function V2ProjectSideMenu({
         name="Jobs"
         icon="job"
         iconColor="text-indigo-500"
-        count={project.jobCount}
         to={projectPath(organization, project)}
         data-action="jobs"
       />
@@ -514,7 +528,6 @@ function V2ProjectSideMenu({
         name="HTTP endpoints"
         icon="http-endpoint"
         iconColor="text-pink-500"
-        count={project.httpEndpointCount}
         to={projectHttpEndpointsPath(organization, project)}
         data-action="httpendpoints"
       />

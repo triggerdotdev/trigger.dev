@@ -1,7 +1,7 @@
 {
   "name": "@trigger.dev/testing",
   "description": "A collection of useful tools to write tests for Trigger.dev.",
-  "version": "3.0.0-beta.51",
+  "version": "3.0.0-beta.52",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

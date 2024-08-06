@@ -445,7 +445,7 @@ export type TaskRunOptions = {
   /**
    * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
    *
-   * You can set up to 3 tags per run, they must be less than 64 characters each.
+   * You can set up to 5 tags per run, they must be less than 64 characters each.
    *
    * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
    *
@@ -476,6 +476,13 @@ export function createTask<
 >(
   params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
 ): Task<TIdentifier, TInput, TOutput> {
+  const customQueue = params.queue
+    ? queue({
+        name: params.queue?.name ?? `task/${params.id}`,
+        ...params.queue,
+      })
+    : undefined;
+
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     trigger: async (payload, options) => {
@@ -487,7 +494,10 @@ export function createTask<
           : `trigger()`,
         params.id,
         payload,
-        options
+        {
+          queue: customQueue,
+          ...options,
+        }
       );
     },
     batchTrigger: async (items) => {
@@ -498,7 +508,9 @@ export function createTask<
           ? `${taskMetadata.exportName}.batchTrigger()`
           : `batchTrigger()`,
         params.id,
-        items
+        items,
+        undefined,
+        customQueue
       );
     },
     triggerAndWait: async (payload, options) => {
@@ -510,7 +522,10 @@ export function createTask<
           : `triggerAndWait()`,
         params.id,
         payload,
-        options
+        {
+          queue: customQueue,
+          ...options,
+        }
       );
     },
     batchTriggerAndWait: async (items) => {
@@ -521,7 +536,9 @@ export function createTask<
           ? `${taskMetadata.exportName}.batchTriggerAndWait()`
           : `batchTriggerAndWait()`,
         params.id,
-        items
+        items,
+        undefined,
+        customQueue
       );
     },
   };
@@ -758,7 +775,8 @@ async function batchTrigger_internal<TPayload, TOutput>(
   name: string,
   id: string,
   items: Array<BatchItem<TPayload>>,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: ApiRequestOptions,
+  queue?: QueueOptions
 ): Promise<BatchRunHandle<TOutput>> {
   const apiClient = apiClientManager.client;
 
@@ -776,7 +794,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
           return {
             payload: payloadPacket.data,
             options: {
-              queue: item.options?.queue,
+              queue: item.options?.queue ?? queue,
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
@@ -919,7 +937,8 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
   name: string,
   id: string,
   items: Array<BatchItem<TPayload>>,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: ApiRequestOptions,
+  queue?: QueueOptions
 ): Promise<BatchResult<TOutput>> {
   const ctx = taskContext.ctx;
 
@@ -947,7 +966,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                 payload: payloadPacket.data,
                 options: {
                   lockToVersion: taskContext.worker?.version,
-                  queue: item.options?.queue,
+                  queue: item.options?.queue ?? queue,
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,

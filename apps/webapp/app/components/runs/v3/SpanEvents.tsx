@@ -6,7 +6,7 @@ import {
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 
 type SpanEventsProps = {
@@ -34,8 +34,8 @@ function SpanEventHeader({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <Header2 className={titleClassName}>{title}</Header2>
-      <Paragraph variant="small">
+      <Header3 className={titleClassName}>{title}</Header3>
+      <Paragraph variant="extra-small">
         <DateTimeAccurate date={time} />
       </Paragraph>
     </div>
@@ -57,7 +57,7 @@ function SpanEvent({ spanEvent }: { spanEvent: OtelSpanEvent }) {
   );
 }
 
-function SpanEventError({
+export function SpanEventError({
   spanEvent,
   exception,
 }: {
@@ -65,7 +65,7 @@ function SpanEventError({
   exception: ExceptionEventProperties;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 p-3">
+    <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
       <SpanEventHeader
         title={exception.type ?? "Error"}
         time={spanEvent.time}

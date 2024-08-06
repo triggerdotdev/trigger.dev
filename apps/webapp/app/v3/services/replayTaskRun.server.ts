@@ -1,15 +1,27 @@
-import { conditionallyImportPacket, parsePacket, RunTags } from "@trigger.dev/core/v3";
+import {
+  conditionallyImportPacket,
+  IOPacket,
+  parsePacket,
+  RunTags,
+  stringifyIO,
+} from "@trigger.dev/core/v3";
+import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { getTagsForRunId } from "~/models/taskRunTag.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { getTagsForRunId } from "~/models/taskRunTag.server";
+
+type OverrideOptions = {
+  environmentId?: string;
+  payload?: string;
+};
 
 export class ReplayTaskRunService extends BaseService {
-  public async call(existingTaskRun: TaskRun) {
+  public async call(existingTaskRun: TaskRun, overrideOptions?: OverrideOptions) {
     const authenticatedEnvironment = await findEnvironmentById(
-      existingTaskRun.runtimeEnvironmentId
+      overrideOptions?.environmentId ?? existingTaskRun.runtimeEnvironmentId
     );
     if (!authenticatedEnvironment) {
       return;
@@ -20,10 +32,27 @@ export class ReplayTaskRunService extends BaseService {
       taskRunFriendlyId: existingTaskRun.friendlyId,
     });
 
-    const payloadPacket = await conditionallyImportPacket({
-      data: existingTaskRun.payload,
-      dataType: existingTaskRun.payloadType,
-    });
+    let payloadPacket: IOPacket;
+
+    if (overrideOptions?.payload) {
+      if (existingTaskRun.payloadType === "application/super+json") {
+        const newPayload = await replaceSuperJsonPayload(
+          existingTaskRun.payload,
+          overrideOptions.payload
+        );
+        payloadPacket = await stringifyIO(newPayload);
+      } else {
+        payloadPacket = await conditionallyImportPacket({
+          data: overrideOptions.payload,
+          dataType: existingTaskRun.payloadType,
+        });
+      }
+    } else {
+      payloadPacket = await conditionallyImportPacket({
+        data: existingTaskRun.payload,
+        dataType: existingTaskRun.payloadType,
+      });
+    }
 
     const parsedPayload =
       payloadPacket.dataType === "application/json"
@@ -38,7 +67,7 @@ export class ReplayTaskRunService extends BaseService {
 
     try {
       const tags = await getTagsForRunId({
-        friendlyId: existingTaskRun.id,
+        friendlyId: existingTaskRun.friendlyId,
         environmentId: authenticatedEnvironment.id,
       });
 

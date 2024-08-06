@@ -65,6 +65,7 @@ export class FailedTaskRunService extends BaseService {
       },
       data: {
         status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
       },
     });
   }

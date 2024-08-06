@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.0.0-beta.52
+
+### Patch Changes
+
+- c1d4c04e8: Fix automatic opening of login URL on linux-server systems with missing xdg-open
+- Updated dependencies [9882d66f8]
+- Updated dependencies [09413a62a]
+  - @trigger.dev/core@3.0.0-beta.52
+
 ## 3.0.0-beta.51
 
 ### Patch Changes

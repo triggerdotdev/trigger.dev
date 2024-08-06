@@ -1,40 +1,31 @@
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 
-export function PropertyTable({
-  children,
-  className,
-}: {
+type ChildrenClassName = {
   children: ReactNode;
   className?: string;
-}) {
-  return (
-    <div className={cn("grid grid-cols-[auto,1fr] items-center gap-x-4 gap-y-2", className)}>
-      {children}
-    </div>
-  );
-}
-
-export type PropertyProps = {
-  label: ReactNode;
-  labelClassName?: string;
-  children: ReactNode;
 };
 
-export function Property({ label, labelClassName, children }: PropertyProps) {
-  return (
-    <>
-      <div className={labelClassName}>
-        {typeof label === "string" ? <Paragraph variant="small">{label}</Paragraph> : label}
-      </div>
-      <div>
-        {typeof children === "string" ? (
-          <Paragraph variant="small/bright">{children}</Paragraph>
-        ) : (
-          children
-        )}
-      </div>
-    </>
-  );
+function PropertyTable({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex flex-col gap-y-3", className)}>{children}</div>;
 }
+
+function PropertyItem({ children, className }: ChildrenClassName) {
+  return <div className={cn("flex flex-col gap-0 text-sm", className)}>{children}</div>;
+}
+
+function PropertyLabel({ children, className }: ChildrenClassName) {
+  return <div className={cn("font-medium text-text-bright", className)}>{children}</div>;
+}
+
+function PropertyValue({ children, className }: ChildrenClassName) {
+  return <div className={cn("text-text-dimmed", className)}>{children}</div>;
+}
+
+export {
+  PropertyTable as Table,
+  PropertyItem as Item,
+  PropertyLabel as Label,
+  PropertyValue as Value,
+};

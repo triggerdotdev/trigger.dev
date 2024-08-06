@@ -65,7 +65,7 @@ export interface MarQSQueuePriorityStrategy {
     parentQueue: string,
     consumerId: string,
     previousRange: QueueRange
-  ): PriorityStrategyChoice;
+  ): { choice: PriorityStrategyChoice; nextRange: QueueRange };
 
   /**
    * This function is called to get the next candidate selection for the queue

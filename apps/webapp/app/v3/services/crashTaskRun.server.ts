@@ -52,6 +52,7 @@ export class CrashTaskRunService extends BaseService {
       },
       data: {
         status: "CRASHED",
+        completedAt: new Date(),
       },
       include: {
         attempts: {

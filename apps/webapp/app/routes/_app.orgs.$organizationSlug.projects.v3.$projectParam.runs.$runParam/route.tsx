@@ -1,13 +1,17 @@
 import {
+  ArrowUturnLeftIcon,
   BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  InformationCircleIcon,
+  LockOpenIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
 import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs, SerializeFrom } from "@remix-run/server-runtime";
+import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
@@ -20,20 +24,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
+import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -43,11 +48,15 @@ import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
 import { NodesState } from "~/components/primitives/TreeView/reducer";
+import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
+import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
+import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
@@ -62,6 +71,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
 import {
+  v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
   v3RunSpanPath,
@@ -69,8 +79,7 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { env } from "~/env.server";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
@@ -89,13 +98,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   //resizable settings
   const resizeSettings = await getResizableRunSettings(request);
 
-  return {
+  return json({
     run: result.run,
     trace: result.trace,
     maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
     resizeSettings,
-  };
+  });
 };
+
+type LoaderData = SerializeFrom<typeof loader>;
 
 function getSpanId(location: Location<any>): string | undefined {
   const search = new URLSearchParams(location.search);
@@ -105,72 +116,121 @@ function getSpanId(location: Location<any>): string | undefined {
 export default function Page() {
   const { run, trace, resizeSettings, maximumLiveReloadingSetting } =
     useLoaderData<typeof loader>();
+  const user = useUser();
   const organization = useOrganization();
   const project = useProject();
-  const user = useUser();
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
-  if (!trace) {
-    return (
-      <>
-        <NavBar>
-          <PageTitle
-            backButton={{
-              to: v3RunsPath(organization, project),
-              text: "Runs",
-            }}
-            title={`Run #${run.number}`}
-          />
-          <PageAccessories>
-            <AdminDebugTooltip>
-              <PropertyTable>
-                <Property label="ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Trace ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Env ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                  </div>
-                </Property>
-                <Property label="Org ID">
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">
-                      {run.environment.organizationId}
-                    </Paragraph>
-                  </div>
-                </Property>
-              </PropertyTable>
-            </AdminDebugTooltip>
-
-            <EnvironmentLabel
-              size="large"
-              environment={run.environment}
-              userName={usernameForEnv}
+  return (
+    <>
+      <NavBar>
+        <PageTitle
+          backButton={{
+            to: v3RunsPath(organization, project),
+            text: "Runs",
+          }}
+          title={
+            <div className="flex items-center gap-3">
+              <span>Run #{run.number}</span>
+              <EnvironmentLabel
+                size="large"
+                environment={run.environment}
+                userName={usernameForEnv}
+              />
+            </div>
+          }
+        />
+        <PageAccessories>
+          <AdminDebugTooltip>
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>ID</Property.Label>
+                <Property.Value>{run.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Trace ID</Property.Label>
+                <Property.Value>{run.traceId}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Env ID</Property.Label>
+                <Property.Value>{run.environment.id}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Org ID</Property.Label>
+                <Property.Value>{run.environment.organizationId}</Property.Value>
+              </Property.Item>
+            </Property.Table>
+          </AdminDebugTooltip>
+          <Dialog key={`replay-${run.friendlyId}`}>
+            <DialogTrigger asChild>
+              <Button
+                variant="tertiary/small"
+                LeadingIcon={ArrowUturnLeftIcon}
+                shortcut={{ key: "R" }}
+              >
+                Replay run
+              </Button>
+            </DialogTrigger>
+            <ReplayRunDialog
+              runFriendlyId={run.friendlyId}
+              failedRedirect={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
             />
-          </PageAccessories>
-        </NavBar>
-        <PageBody>
-          <MainCenteredContainer className="max-w-prose">
-            <BlankstateInstructions title="These logs have taken a walk">
-              <Paragraph spacing>
-                Looks like the logs from this run have wandered off after their 7-day stay. We tidy
-                up older logs to keep things running smoothly.
-              </Paragraph>
-            </BlankstateInstructions>
-          </MainCenteredContainer>
-        </PageBody>
-      </>
-    );
+          </Dialog>
+          {run.isFinished ? null : (
+            <Dialog key={`cancel-${run.friendlyId}`}>
+              <DialogTrigger asChild>
+                <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
+                  Cancel run
+                </Button>
+              </DialogTrigger>
+              <CancelRunDialog
+                runFriendlyId={run.friendlyId}
+                redirectPath={v3RunSpanPath(
+                  organization,
+                  project,
+                  { friendlyId: run.friendlyId },
+                  { spanId: run.spanId }
+                )}
+              />
+            </Dialog>
+          )}
+        </PageAccessories>
+      </NavBar>
+      <PageBody scrollable={false}>
+        {trace ? (
+          <TraceView
+            run={run}
+            trace={trace}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizeSettings={resizeSettings}
+          />
+        ) : (
+          <NoLogsView
+            run={run}
+            trace={trace}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizeSettings={resizeSettings}
+          />
+        )}
+      </PageBody>
+    </>
+  );
+}
+
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: LoaderData) {
+  const organization = useOrganization();
+  const project = useProject();
+  const { location, replaceSearchParam } = useReplaceLocation();
+  const selectedSpanId = getSpanId(location);
+
+  if (!trace) {
+    return <></>;
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
@@ -193,94 +253,134 @@ export default function Page() {
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <>
-      <NavBar>
-        <PageTitle
-          backButton={{
-            to: v3RunsPath(organization, project),
-            text: "Runs",
-          }}
-          title={`Run #${run.number}`}
-        />
-        <PageAccessories>
-          <AdminDebugTooltip>
-            <PropertyTable>
-              <Property label="ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Trace ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.traceId}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Env ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">{run.environment.id}</Paragraph>
-                </div>
-              </Property>
-              <Property label="Org ID">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">
-                    {run.environment.organizationId}
-                  </Paragraph>
-                </div>
-              </Property>
-            </PropertyTable>
-          </AdminDebugTooltip>
+    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+      <ResizablePanelGroup
+        direction="horizontal"
+        className="h-full max-h-full"
+        onLayout={(layout) => {
+          if (layout.length !== 2) return;
+          if (!selectedSpanId) return;
+          setResizableRunSettings(document, layout);
+        }}
+      >
+        <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
+          <TasksTreeView
+            selectedId={selectedSpanId}
+            key={events[0]?.id ?? "-"}
+            events={events}
+            parentRunFriendlyId={parentRunFriendlyId}
+            onSelectedIdChanged={(selectedSpan) => {
+              //instantly close the panel if no span is selected
+              if (!selectedSpan) {
+                replaceSearchParam("span");
+                return;
+              }
 
-          <EnvironmentLabel size="large" environment={run.environment} userName={usernameForEnv} />
-        </PageAccessories>
-      </NavBar>
-      <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-          <ResizablePanelGroup
-            direction="horizontal"
-            className="h-full max-h-full"
-            onLayout={(layout) => {
-              if (layout.length !== 2) return;
-              if (!selectedSpanId) return;
-              setResizableRunSettings(document, layout);
+              changeToSpan(selectedSpan);
             }}
-          >
-            <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0]}>
-              <TasksTreeView
-                selectedId={selectedSpanId}
-                key={events[0]?.id ?? "-"}
-                events={events}
-                parentRunFriendlyId={parentRunFriendlyId}
-                onSelectedIdChanged={(selectedSpan) => {
-                  //instantly close the panel if no span is selected
-                  if (!selectedSpan) {
-                    replaceSearchParam("span");
-                    return;
-                  }
+            totalDuration={duration}
+            rootSpanStatus={rootSpanStatus}
+            rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
+            environmentType={run.environment.type}
+            shouldLiveReload={shouldLiveReload}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+          />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        {selectedSpanId && (
+          <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
+            <SpanView
+              runParam={run.friendlyId}
+              spanId={selectedSpanId}
+              closePanel={() => replaceSearchParam("span")}
+            />
+          </ResizablePanel>
+        )}
+      </ResizablePanelGroup>
+    </div>
+  );
+}
 
-                  changeToSpan(selectedSpan);
-                }}
-                totalDuration={duration}
-                rootSpanStatus={rootSpanStatus}
-                rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
-                environmentType={run.environment.type}
-                shouldLiveReload={shouldLiveReload}
-                maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-              />
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            {selectedSpanId && (
-              <ResizablePanel order={2} minSize={30} defaultSize={resizeSettings.layout?.[1]}>
-                <SpanView
-                  runParam={run.friendlyId}
-                  spanId={selectedSpanId}
-                  closePanel={() => replaceSearchParam("span")}
-                />
-              </ResizablePanel>
+function NoLogsView({ run, resizeSettings }: LoaderData) {
+  const plan = useCurrentPlan();
+  const organization = useOrganization();
+
+  const logRetention = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
+
+  const completedAt = run.completedAt ? new Date(run.completedAt) : undefined;
+  const now = new Date();
+
+  const daysSinceCompleted = completedAt
+    ? Math.floor((now.getTime() - completedAt.getTime()) / (1000 * 60 * 60 * 24))
+    : undefined;
+
+  const isWithinLogRetention =
+    daysSinceCompleted !== undefined && daysSinceCompleted <= logRetention;
+
+  return (
+    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+      <ResizablePanelGroup
+        direction="horizontal"
+        className="h-full max-h-full"
+        onLayout={(layout) => {
+          if (layout.length !== 2) return;
+          setResizableRunSettings(document, layout);
+        }}
+      >
+        <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
+          <div className="grid h-full place-items-center">
+            {daysSinceCompleted === undefined ? (
+              <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
+                <Paragraph variant="small">
+                  We tidy up older logs to keep things running smoothly.
+                </Paragraph>
+              </InfoPanel>
+            ) : isWithinLogRetention ? (
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="These logs have been deleted"
+              >
+                <Paragraph variant="small">
+                  Your log retention is {logRetention} days but these logs had already been deleted.
+                  From now on only logs from runs that completed {logRetention} days ago will be
+                  deleted.
+                </Paragraph>
+              </InfoPanel>
+            ) : daysSinceCompleted <= 30 ? (
+              <InfoPanel
+                variant="upgrade"
+                icon={LockOpenIcon}
+                iconClassName="text-indigo-500"
+                title="Unlock longer log retention"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+              >
+                <Paragraph variant="small">
+                  The logs for this run have been deleted because the run completed{" "}
+                  {daysSinceCompleted} days ago.
+                </Paragraph>
+                <Paragraph variant="small">Upgrade your plan to keep logs for longer.</Paragraph>
+              </InfoPanel>
+            ) : (
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="These logs are more than 30 days old"
+              >
+                <Paragraph variant="small">
+                  We tidy up older logs to keep things running smoothly.
+                </Paragraph>
+              </InfoPanel>
             )}
-          </ResizablePanelGroup>
-        </div>
-      </PageBody>
-    </>
+          </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
+          <SpanView runParam={run.friendlyId} spanId={run.spanId} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   );
 }
 
@@ -311,7 +411,7 @@ function TasksTreeView({
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
-  const [showDurations, setShowDurations] = useState(false);
+  const [showDurations, setShowDurations] = useState(true);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
@@ -927,7 +1027,7 @@ function SpanWithDuration({
             !showDuration && "opacity-0"
           )}
         >
-          <div className="rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
+          <div className="whitespace-nowrap rounded-sm px-1 py-0.5 text-xxs text-text-bright text-shadow-custom">
             {formatDurationMilliseconds(props.durationMs, {
               style: "short",
               maxDecimalPoints: props.durationMs < 1000 ? 0 : 1,
@@ -1028,16 +1128,11 @@ function KeyboardShortcuts({
         title="Expand all"
       />
       <ShortcutWithAction
-        shortcut={{ key: "c" }}
+        shortcut={{ key: "w" }}
         action={() => collapseAllBelowDepth(1)}
         title="Collapse all"
       />
       <NumberShortcuts toggleLevel={(number) => toggleExpandLevel(number)} />
-      <ShortcutWithAction
-        shortcut={{ key: "d" }}
-        action={() => setShowDurations((d) => !d)}
-        title="Toggle durations"
-      />
     </>
   );
 }

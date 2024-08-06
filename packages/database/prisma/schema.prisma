@@ -1647,6 +1647,7 @@ model TaskRun {
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
+  completedAt   DateTime?
   machinePreset String?
 
   usageDurationMs Int   @default(0)
@@ -1681,6 +1682,8 @@ model TaskRun {
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
 
+  logsDeletedAt DateTime?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
@@ -1691,6 +1694,8 @@ model TaskRun {
   @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
+  // Run page inspector
+  @@index([spanId])
 }
 
 enum TaskRunStatus {

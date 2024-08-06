@@ -37,7 +37,7 @@ import {
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
@@ -103,8 +103,8 @@ export class SharedQueueConsumer {
     options: SharedQueueConsumerOptions = {}
   ) {
     this._options = {
-      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
+      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 500,
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 10,
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
     };
@@ -213,6 +213,9 @@ export class SharedQueueConsumer {
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
+          attributes: {
+            [SEMINTATTRS_FORCE_RECORDING]: true,
+          },
         },
         ROOT_CONTEXT
       );
@@ -273,14 +276,6 @@ export class SharedQueueConsumer {
         const existingTaskRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
-          },
-          include: {
-            lockedToVersion: {
-              include: {
-                deployment: true,
-                tasks: true,
-              },
-            },
           },
         });
 

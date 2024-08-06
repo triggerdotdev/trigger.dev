@@ -124,6 +124,9 @@ function getTracer() {
     sampler: new ParentBasedSampler({
       root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
     }),
+    spanLimits: {
+      attributeCountLimit: 1024,
+    },
   });
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
