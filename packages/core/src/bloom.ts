@@ -11,11 +11,13 @@ export class BloomFilter {
 
   add(item: string): void {
     const index = murmurHash3(item) % this.size;
+    // @ts-expect-error
     this.bitArray[Math.floor(index / 8)] |= 1 << index % 8;
   }
 
   test(item: string): boolean {
     const index = murmurHash3(item) % this.size;
+    // @ts-expect-error
     return (this.bitArray[Math.floor(index / 8)] & (1 << index % 8)) !== 0;
   }
 

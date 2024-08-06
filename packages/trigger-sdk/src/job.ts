@@ -7,7 +7,7 @@ import {
   RunNotification,
   SuccessfulRunNotification,
 } from "@trigger.dev/core";
-import { LogLevel } from "@trigger.dev/core-backend";
+import { LogLevel } from "@trigger.dev/core/logger";
 import { ConcurrencyLimit } from "./concurrencyLimit";
 import { IOWithIntegrations, TriggerIntegration } from "./integrations";
 import { runLocalStorage } from "./runLocalStorage";

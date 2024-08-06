@@ -12,7 +12,7 @@ import type {
   SuccessfulRunNotification,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { Logger } from "@trigger.dev/core-backend";
+import { Logger } from "@trigger.dev/core/logger";
 import type TypedEmitter from "typed-emitter";
 import { z } from "zod";
 import { Job } from "./job";
