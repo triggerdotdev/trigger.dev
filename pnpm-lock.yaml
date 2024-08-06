@@ -1145,18 +1145,12 @@ importers:
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1
-      '@types/jest':
-        specifier: ^29.5.3
-        version: 29.5.3
       '@types/node':
         specifier: 20.14.14
         version: 20.14.14
       '@types/readable-stream':
         specifier: ^4.0.14
         version: 4.0.14
-      jest:
-        specifier: ^29.6.2
-        version: 29.6.2(@types/node@20.14.14)
       rimraf:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1172,6 +1166,9 @@ importers:
       typescript:
         specifier: ^5.5.4
         version: 5.5.4
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@20.14.14)
 
   packages/core-apps:
     dependencies:
@@ -13236,7 +13233,7 @@ packages:
     dependencies:
       '@vitest/spy': 0.28.5
       '@vitest/utils': 0.28.5
-      chai: 4.3.7
+      chai: 4.4.1
     dev: true
 
   /@vitest/expect@1.4.0:
@@ -15849,11 +15846,6 @@ packages:
 
   /didyoumean@1.2.2:
     resolution: {integrity: sha512-gxtyfqMg7GKyhQmb056K7M3xszy/myH8w+B4RT+QXBQsvAOdc3XymqDDPHx1BgPgsdAA5SIifona89YtRATDzw==}
-
-  /diff-sequences@29.4.3:
-    resolution: {integrity: sha512-ofrBgwpPhCD85kMKtE9RYFFq6OC1A89oW2vvgWZNCwxrUpRUILopY7lsYyMDSjc8g6U6aiO0Qubg6r4Wgt5ZnA==}
-    engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
-    dev: true
 
   /diff-sequences@29.6.3:
     resolution: {integrity: sha512-EjePK1srD3P08o2j4f0ExnylqRs5B9tJjcp9t1krH2qRi8CCdsYfwe9JgSLurFBWwq4uOlipzfk5fHNvwFKr8Q==}
@@ -19592,7 +19584,7 @@ packages:
       jest-snapshot: 29.6.2
       jest-util: 29.6.2
       p-limit: 3.1.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
       pure-rand: 6.0.2
       slash: 3.0.0
       stack-utils: 2.0.6
@@ -19691,7 +19683,7 @@ packages:
       jest-validate: 29.6.2
       micromatch: 4.0.5
       parse-json: 5.2.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
       slash: 3.0.0
       strip-json-comments: 3.1.1
     transitivePeerDependencies:
@@ -19731,7 +19723,7 @@ packages:
       jest-validate: 29.6.2
       micromatch: 4.0.5
       parse-json: 5.2.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
       slash: 3.0.0
       strip-json-comments: 3.1.1
     transitivePeerDependencies:
@@ -19771,7 +19763,7 @@ packages:
       jest-validate: 29.6.2
       micromatch: 4.0.5
       parse-json: 5.2.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
       slash: 3.0.0
       strip-json-comments: 3.1.1
     transitivePeerDependencies:
@@ -19784,9 +19776,9 @@ packages:
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
     dependencies:
       chalk: 4.1.2
-      diff-sequences: 29.4.3
+      diff-sequences: 29.6.3
       jest-get-type: 29.4.3
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
     dev: true
 
   /jest-docblock@29.4.3:
@@ -19804,7 +19796,7 @@ packages:
       chalk: 4.1.2
       jest-get-type: 29.4.3
       jest-util: 29.6.2
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
     dev: true
 
   /jest-environment-node@29.6.2:
@@ -19848,7 +19840,7 @@ packages:
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
     dependencies:
       jest-get-type: 29.4.3
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
     dev: true
 
   /jest-matcher-utils@29.6.2:
@@ -20008,7 +20000,7 @@ packages:
       jest-message-util: 29.6.2
       jest-util: 29.6.2
       natural-compare: 1.4.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
       semver: 7.5.4
     transitivePeerDependencies:
       - supports-color
@@ -20035,7 +20027,7 @@ packages:
       chalk: 4.1.2
       jest-get-type: 29.4.3
       leven: 3.1.0
-      pretty-format: 29.6.2
+      pretty-format: 29.7.0
     dev: true
 
   /jest-watcher@29.6.2:
@@ -20539,7 +20531,7 @@ packages:
     resolution: {integrity: sha512-RaPMZKiMy8/JruncMU5Bt6na1eftNoo++R4Y+N2FrxkDVTrGvcyzFTsaGif4QTeKESheMGegbhw6iUAq+5A8zA==}
     deprecated: Please upgrade to 2.3.7 which fixes GHSA-4q6p-r6v2-jvc5
     dependencies:
-      get-func-name: 2.0.0
+      get-func-name: 2.0.2
     dev: true
 
   /loupe@2.3.7:
@@ -27642,6 +27634,27 @@ packages:
       - terser
     dev: true
 
+  /vite-node@1.6.0(@types/node@20.14.14):
+    resolution: {integrity: sha512-de6HJgzC+TFzOu0NTC4RAIsyf/DY/ibWDYQUcuEA84EMHhcefTUGkjFHKKEJhQN4A+6I0u++kr3l36ZF2d7XRw==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+    dependencies:
+      cac: 6.7.14
+      debug: 4.3.4
+      pathe: 1.1.1
+      picocolors: 1.0.0
+      vite: 5.2.7(@types/node@20.14.14)
+    transitivePeerDependencies:
+      - '@types/node'
+      - less
+      - lightningcss
+      - sass
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+    dev: true
+
   /vite-tsconfig-paths@4.0.5(typescript@5.5.4):
     resolution: {integrity: sha512-/L/eHwySFYjwxoYt1WRJniuK/jPv+WGwgRGBYx3leciR5wBeqntQpUE6Js6+TJemChc+ter7fDBKieyEWDx4yQ==}
     dependencies:
@@ -27865,6 +27878,42 @@ packages:
       fsevents: 2.3.3
     dev: true
 
+  /vite@5.2.7(@types/node@20.14.14):
+    resolution: {integrity: sha512-k14PWOKLI6pMaSzAuGtT+Cf0YmIx12z9YGon39onaJNy8DLBfBJrzg9FQEmkAM5lpHBZs9wksWAsyF/HkpEwJA==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^18.0.0 || >=20.0.0
+      less: '*'
+      lightningcss: ^1.21.0
+      sass: '*'
+      stylus: '*'
+      sugarss: '*'
+      terser: ^5.4.0
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+    dependencies:
+      '@types/node': 20.14.14
+      esbuild: 0.20.2
+      postcss: 8.4.38
+      rollup: 4.13.2
+    optionalDependencies:
+      fsevents: 2.3.3
+    dev: true
+
   /vitest@0.28.5:
     resolution: {integrity: sha512-pyCQ+wcAOX7mKMcBNkzDwEHRGqQvHUl0XnoHR+3Pb1hytAHISgSxv9h0gUiSiYtISXUU3rMrKiKzFYDrI6ZIHA==}
     engines: {node: '>=v14.16.0'}
@@ -28022,6 +28071,62 @@ packages:
       tinypool: 0.8.3
       vite: 5.2.7(@types/node@18.17.1)
       vite-node: 1.6.0(@types/node@18.17.1)
+      why-is-node-running: 2.2.2
+    transitivePeerDependencies:
+      - less
+      - lightningcss
+      - sass
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+    dev: true
+
+  /vitest@1.6.0(@types/node@20.14.14):
+    resolution: {integrity: sha512-H5r/dN06swuFnzNFhq/dnz37bPXnq8xB2xB5JOVk8K09rUtoeNN+LHWkoQ0A/i3hvbUKKcCei9KpbxqHMLhLLA==}
+    engines: {node: ^18.0.0 || >=20.0.0}
+    hasBin: true
+    peerDependencies:
+      '@edge-runtime/vm': '*'
+      '@types/node': ^18.0.0 || >=20.0.0
+      '@vitest/browser': 1.6.0
+      '@vitest/ui': 1.6.0
+      happy-dom: '*'
+      jsdom: '*'
+    peerDependenciesMeta:
+      '@edge-runtime/vm':
+        optional: true
+      '@types/node':
+        optional: true
+      '@vitest/browser':
+        optional: true
+      '@vitest/ui':
+        optional: true
+      happy-dom:
+        optional: true
+      jsdom:
+        optional: true
+    dependencies:
+      '@types/node': 20.14.14
+      '@vitest/expect': 1.6.0
+      '@vitest/runner': 1.6.0
+      '@vitest/snapshot': 1.6.0
+      '@vitest/spy': 1.6.0
+      '@vitest/utils': 1.6.0
+      acorn-walk: 8.3.2
+      chai: 4.4.1
+      debug: 4.3.4
+      execa: 8.0.1
+      local-pkg: 0.5.0
+      magic-string: 0.30.8
+      pathe: 1.1.1
+      picocolors: 1.0.0
+      std-env: 3.7.0
+      strip-literal: 2.1.0
+      tinybench: 2.6.0
+      tinypool: 0.8.3
+      vite: 5.2.7(@types/node@20.14.14)
+      vite-node: 1.6.0(@types/node@20.14.14)
       why-is-node-running: 2.2.2
     transitivePeerDependencies:
       - less
