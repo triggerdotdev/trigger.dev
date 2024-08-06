@@ -79,6 +79,7 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
 
@@ -301,7 +302,10 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
 }
 
 function NoLogsView({ run, resizeSettings }: LoaderData) {
+  const plan = useCurrentPlan();
   const organization = useOrganization();
+
+  const logRetention = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
   const completedAt = run.completedAt ? new Date(run.completedAt) : undefined;
   const now = new Date();
@@ -309,6 +313,9 @@ function NoLogsView({ run, resizeSettings }: LoaderData) {
   const daysSinceCompleted = completedAt
     ? Math.floor((now.getTime() - completedAt.getTime()) / (1000 * 60 * 60 * 24))
     : undefined;
+
+  const isWithinLogRetention =
+    daysSinceCompleted !== undefined && daysSinceCompleted <= logRetention;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -326,6 +333,18 @@ function NoLogsView({ run, resizeSettings }: LoaderData) {
               <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
                 <Paragraph variant="small">
                   We tidy up older logs to keep things running smoothly.
+                </Paragraph>
+              </InfoPanel>
+            ) : isWithinLogRetention ? (
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="These logs have been deleted"
+              >
+                <Paragraph variant="small">
+                  Your log retention is {logRetention} days but these logs had already been deleted.
+                  From now on only logs from runs that completed {logRetention} days ago will be
+                  deleted.
                 </Paragraph>
               </InfoPanel>
             ) : daysSinceCompleted <= 30 ? (
