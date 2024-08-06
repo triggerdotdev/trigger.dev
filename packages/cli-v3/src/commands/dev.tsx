@@ -21,14 +21,14 @@ import React, { Suspense, useEffect } from "react";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { CliApiClient } from "../apiClient";
+import { CliApiClient } from "../apiClient.js";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import {
   bundleDependenciesPlugin,
   bundleTriggerDevCore,
   mockServerOnlyPlugin,
   workerSetupImportConfigPlugin,
-} from "../utilities/build";
+} from "../utilities/build.js";
 import {
   chalkError,
   chalkGrey,
@@ -37,15 +37,15 @@ import {
   chalkTask,
   chalkWorker,
   cliLink,
-} from "../utilities/cliOutput";
-import { readConfig } from "../utilities/configFiles";
-import { readJSONFile } from "../utilities/fileSystem";
+} from "../utilities/cliOutput.js";
+import { readConfig } from "../utilities/configFiles.js";
+import { readJSONFile } from "../utilities/fileSystem.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
   detectPackageNameFromImportPath,
   parsePackageName,
   stripWorkspaceFromVersion,
-} from "../utilities/installPackages";
+} from "../utilities/installPackages.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
 import { createTaskFileImports, gatherTaskFiles } from "../utilities/taskFiles";

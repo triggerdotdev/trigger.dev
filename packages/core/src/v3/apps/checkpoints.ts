@@ -1,9 +1,5 @@
-import { randomUUID } from "crypto";
-import { $, type ExecaChildProcess } from "execa";
-
-export function isExecaChildProcess(maybeExeca: unknown): maybeExeca is Awaited<ExecaChildProcess> {
-  return typeof maybeExeca === "object" && maybeExeca !== null && "escapedCommand" in maybeExeca;
-}
+import { randomUUID } from "node:crypto";
+import { isExecaChildProcess } from "./isExecaChildProcess.js";
 
 export type CheckpointTestResult =
   | {
@@ -16,6 +12,8 @@ export type CheckpointTestResult =
     };
 
 export async function testDockerCheckpoint(): Promise<CheckpointTestResult> {
+  const { $ } = await import("execa");
+
   try {
     // Create a dummy container
     const container =

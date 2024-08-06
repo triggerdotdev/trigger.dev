@@ -29,7 +29,7 @@ import {
   UncaughtExceptionError,
   UnexpectedExitError,
   getFriendlyErrorMessage,
-} from "../common/errors";
+} from "../common/errors.js";
 
 type BackgroundWorkerParams = {
   env: Record<string, string>;

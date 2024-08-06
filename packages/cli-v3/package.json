@@ -2,8 +2,7 @@
   "name": "trigger.dev",
   "version": "3.0.0-beta.52",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,17 +28,26 @@
   "files": [
     "dist"
   ],
-  "type": "module",
-  "exports": "./dist/index.js",
   "bin": {
     "triggerdev": "./dist/index.js"
   },
+  "tshy": {
+    "selfLink": false,
+    "main": false,
+    "module": false,
+    "dialects": [
+      "esm"
+    ],
+    "project": "./tsconfig.build.json",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    }
+  },
   "devDependencies": {
-    "@trigger.dev/core-apps": "workspace:*",
-    "@trigger.dev/tsconfig": "workspace:*",
     "@types/gradient-string": "^1.1.2",
     "@types/mock-fs": "^4.13.1",
-    "@types/node": "18",
+    "@types/node": "20.14.14",
     "@types/object-hash": "^3.0.6",
     "@types/react": "^18.2.48",
     "@types/semver": "^7.3.13",
@@ -50,24 +58,16 @@
     "open": "^10.0.3",
     "p-retry": "^6.1.0",
     "rimraf": "^5.0.7",
-    "tsup": "^8.0.1",
     "type-fest": "^3.6.0",
-    "typescript": "^5.3.3",
+    "typescript": "^5.5.4",
     "vitest": "^1.6.0",
-    "xdg-app-paths": "^8.3.0"
+    "xdg-app-paths": "^8.3.0",
+    "tshy": "^3.0.2"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.check.json",
-    "build": "npm run clean && run-p build:**",
-    "build:main": "tsup",
-    "build:workers": "tsup --config tsup.workers.config.ts",
-    "build:prod-containerfile": "cpy --flat src/Containerfile.prod dist/",
-    "dev": "npm run clean && run-p dev:**",
-    "dev:main": "tsup --watch",
-    "dev:workers": "tsup --config tsup.workers.config.ts --watch",
-    "dev:test": "nodemon -w src/Containerfile.prod -x npm run build:prod-containerfile",
-    "clean": "rimraf dist",
-    "start": "node dist/index.js",
+    "typecheck": "tsc",
+    "build": "tshy",
+    "dev": "tshy --watch",
     "test": "vitest",
     "test:e2e": "vitest --run -c e2e/vite.config.js"
   },
@@ -129,6 +129,6 @@
     "zod-validation-error": "^1.5.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.20.0"
   }
 }

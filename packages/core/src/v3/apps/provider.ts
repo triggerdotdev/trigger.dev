@@ -1,20 +1,20 @@
 import { createServer } from "node:http";
-import {
-  ClientToSharedQueueMessages,
-  clientWebsocketMessages,
-  EnvironmentType,
-  MachinePreset,
-  PlatformToProviderMessages,
-  ProviderToPlatformMessages,
-  SharedQueueToClientMessages,
-} from "@trigger.dev/core/v3";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { getRandomPortNumber, HttpReply, getTextBody } from "./http";
-import { SimpleLogger } from "./logger";
-import { isExecaChildProcess } from "./checkpoints";
+import { getRandomPortNumber, HttpReply, getTextBody } from "./http.js";
+import { SimpleLogger } from "./logger.js";
+import { isExecaChildProcess } from "./isExecaChildProcess.js";
 import { setTimeout } from "node:timers/promises";
-import { EXIT_CODE_ALREADY_HANDLED } from "./process";
+import { EXIT_CODE_ALREADY_HANDLED } from "./process.js";
+import { EnvironmentType } from "../schemas/schemas.js";
+import { MachinePreset } from "../schemas/common.js";
+import {
+  ProviderToPlatformMessages,
+  PlatformToProviderMessages,
+  ClientToSharedQueueMessages,
+  SharedQueueToClientMessages,
+  clientWebsocketMessages,
+} from "../schemas/messages.js";
+import { ZodMessageSender } from "../zodMessageHandler.js";
+import { ZodSocketConnection } from "../zodSocket.js";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
@@ -358,6 +358,7 @@ export class ProviderShell implements Provider {
       } catch (error) {
         logger.error("HTTP server error", { error });
         reply.empty(500);
+        return;
       }
     });
 

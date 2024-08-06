@@ -19,7 +19,7 @@ import { setTimeout } from "node:timers/promises";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import * as packageJson from "../../package.json";
-import { CliApiClient } from "../apiClient";
+import { CliApiClient } from "../apiClient.js";
 import {
   CommonCommandOptions,
   SkipCommandError,
@@ -30,7 +30,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { ReadConfigResult, readConfig } from "../utilities/configFiles.js";
-import { createTempDir, writeJSONFile } from "../utilities/fileSystem";
+import { createTempDir, writeJSONFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import {
   detectPackageNameFromImportPath,

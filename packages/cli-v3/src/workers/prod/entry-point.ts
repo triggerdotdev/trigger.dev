@@ -12,16 +12,20 @@ import {
   WaitReason,
 } from "@trigger.dev/core/v3";
 import { InferSocketMessageSchema, ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getRandomPortNumber } from "@trigger.dev/core-apps/http";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
-import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core-apps/process";
-import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
+import {
+  HttpReply,
+  getRandomPortNumber,
+  SimpleLogger,
+  EXIT_CODE_ALREADY_HANDLED,
+  EXIT_CODE_CHILD_NONZERO,
+  ExponentialBackoff,
+} from "@trigger.dev/core/v3/apps";
 import {
   OnWaitForBatchMessage,
   OnWaitForTaskMessage,
   ProdBackgroundWorker,
-} from "./backgroundWorker";
-import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors";
+} from "./backgroundWorker.js";
+import { TaskMetadataParseError, UncaughtExceptionError } from "../common/errors.js";
 import { checkpointSafeTimeout, unboundedTimeout } from "@trigger.dev/core/v3/utils/timers";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -1346,6 +1350,7 @@ class ProdWorker {
       } catch (error) {
         logger.error("HTTP server error", { error });
         reply.empty(500);
+        return;
       }
     });
 
