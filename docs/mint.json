@@ -58,7 +58,7 @@
     },
     {
       "source": "/v3/:slug*",
-      "destination": "/pages/:slug*"
+      "destination": "/:slug*"
     }
   ],
 
@@ -72,140 +72,124 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": [
-        "pages/introduction",
-        "pages/quick-start",
-        "pages/limits",
-        "pages/changelog",
-        "pages/roadmap"
-      ]
+      "pages": ["introduction", "quick-start", "limits", "changelog", "roadmap"]
     },
     {
       "group": "Fundamentals",
       "pages": [
-        "pages/trigger-folder",
-        "pages/tasks-overview",
-        "pages/triggering",
-        "pages/apikeys",
+        "trigger-folder",
+        "tasks-overview",
+        "triggering",
+        "apikeys",
         {
           "group": "Task types",
-          "pages": ["pages/tasks-regular", "pages/tasks-scheduled"]
+          "pages": ["tasks-regular", "tasks-scheduled"]
         },
-        "pages/trigger-config"
+        "trigger-config"
       ]
     },
     {
       "group": "Development",
-      "pages": ["pages/cli-dev", "pages/run-tests"]
+      "pages": ["cli-dev", "run-tests"]
     },
     {
       "group": "Deployment",
       "pages": [
-        "pages/deploy-environment-variables",
-        "pages/cli-deploy",
-        "pages/github-actions",
+        "deploy-environment-variables",
+        "cli-deploy",
+        "github-actions",
         {
           "group": "Deployment integrations",
-          "pages": ["pages/vercel-integration"]
+          "pages": ["vercel-integration"]
         }
       ]
     },
     {
       "group": "Writing tasks",
       "pages": [
-        "pages/writing-tasks-introduction",
-        "pages/logging",
-        "pages/errors-retrying",
+        "writing-tasks-introduction",
+        "logging",
+        "errors-retrying",
         {
           "group": "Wait",
-          "pages": [
-            "pages/wait",
-            "pages/wait-for",
-            "pages/wait-until",
-            "pages/wait-for-event",
-            "pages/wait-for-request"
-          ]
+          "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
         },
-        "pages/queue-concurrency",
-        "pages/versioning",
-        "pages/machines",
-        "pages/idempotency",
-        "pages/reattempting-replaying",
-        "pages/tags",
-        "pages/notifications",
-        "pages/run-usage"
+        "queue-concurrency",
+        "versioning",
+        "machines",
+        "idempotency",
+        "reattempting-replaying",
+        "tags",
+        "notifications",
+        "run-usage"
       ]
     },
     {
       "group": "API reference",
       "pages": [
-        "pages/management/overview",
+        "management/overview",
         {
           "group": "Tasks API",
-          "pages": ["pages/management/tasks/trigger", "pages/management/tasks/batch-trigger"]
+          "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
         },
         {
           "group": "Runs API",
           "pages": [
-            "pages/management/runs/list",
-            "pages/management/runs/retrieve",
-            "pages/management/runs/replay",
-            "pages/management/runs/cancel",
-            "pages/management/runs/reschedule"
+            "management/runs/list",
+            "management/runs/retrieve",
+            "management/runs/replay",
+            "management/runs/cancel",
+            "management/runs/reschedule"
           ]
         },
         {
           "group": "Schedules API",
           "pages": [
-            "pages/management/schedules/list",
-            "pages/management/schedules/create",
-            "pages/management/schedules/retrieve",
-            "pages/management/schedules/update",
-            "pages/management/schedules/delete",
-            "pages/management/schedules/deactivate",
-            "pages/management/schedules/activate",
-            "pages/management/schedules/timezones"
+            "management/schedules/list",
+            "management/schedules/create",
+            "management/schedules/retrieve",
+            "management/schedules/update",
+            "management/schedules/delete",
+            "management/schedules/deactivate",
+            "management/schedules/activate",
+            "management/schedules/timezones"
           ]
         },
         {
           "group": "Env Vars API",
           "pages": [
-            "pages/management/envvars/list",
-            "pages/management/envvars/import",
-            "pages/management/envvars/create",
-            "pages/management/envvars/retrieve",
-            "pages/management/envvars/update",
-            "pages/management/envvars/delete"
+            "management/envvars/list",
+            "management/envvars/import",
+            "management/envvars/create",
+            "management/envvars/retrieve",
+            "management/envvars/update",
+            "management/envvars/delete"
           ]
         },
         {
           "group": "Projects API",
-          "pages": ["pages/management/projects/runs"]
+          "pages": ["management/projects/runs"]
         }
       ]
     },
     {
       "group": "Open source",
-      "pages": [
-        "pages/github-repo",
-        "pages/open-source-self-hosting",
-        "pages/open-source-contributing"
-      ]
+      "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
     },
     {
       "group": "Troubleshooting",
       "pages": [
-        "pages/troubleshooting",
-        "pages/upgrading-packages",
-        "pages/troubleshooting-alerts",
-        "pages/troubleshooting-uptime-status",
-        "pages/troubleshooting-github-issues",
-        "pages/request-feature"
+        "troubleshooting",
+        "upgrading-packages",
+        "troubleshooting-alerts",
+        "troubleshooting-uptime-status",
+        "troubleshooting-github-issues",
+        "request-feature"
       ]
     },
     {
       "group": "Help",
-      "pages": ["pages/community", "pages/help-slack", "pages/help-email"]
+      "pages": ["community", "help-slack", "help-email"]
     },
     {
       "group": "Frameworks",
