@@ -6,6 +6,6 @@
     "isolatedDeclarations": false,
     "composite": true,
     "sourceMap": true,
-    "types": ["jest"]
+    "types": ["vitest/globals"]
   }
 }
