@@ -9,7 +9,7 @@ import { applyEdits, modify, findNodeAtLocation, parseTree, getNodeValue } from 
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { CliApiClient } from "../apiClient";
+import { CliApiClient } from "../apiClient.js";
 import {
   CommonCommandOptions,
   OutroCommandError,
@@ -21,17 +21,17 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { readConfig } from "../utilities/configFiles.js";
-import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
-import { createFile, pathExists, readFile } from "../utilities/fileSystem";
-import { PackageManager, getUserPackageManager } from "../utilities/getUserPackageManager";
+import { createFileFromTemplate } from "../utilities/createFileFromTemplate.js";
+import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
+import { PackageManager, getUserPackageManager } from "../utilities/getUserPackageManager.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { logger } from "../utilities/logger";
-import { cliRootPath } from "../utilities/resolveInternalFilePath";
-import { login } from "./login";
-import { spinner } from "../utilities/windows";
-import { CLOUD_API_URL } from "../consts";
-import * as packageJson from "../../package.json";
-import { cliLink, prettyError } from "../utilities/cliOutput";
+import { logger } from "../utilities/logger.js";
+import { cliRootPath } from "../utilities/resolveInternalFilePath.js";
+import { login } from "./login.js";
+import { spinner } from "../utilities/windows.js";
+import { CLOUD_API_URL } from "../consts.js";
+import { version } from "../../package.json";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -56,7 +56,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        packageJson.version
+        version
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
