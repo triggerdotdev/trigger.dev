@@ -6,12 +6,12 @@ import {
   RequestWithRawBodySchema,
   TriggerMetadata,
 } from "@trigger.dev/core";
-import { ParsedPayloadSchemaError } from "./errors";
-import { Job } from "./job";
-import { TriggerClient } from "./triggerClient";
-import { EventSpecification, EventSpecificationExample, Trigger, VerifyResult } from "./types";
-import { formatSchemaErrors } from "./utils/formatSchemaErrors";
-import { slugifyId } from "./utils";
+import { ParsedPayloadSchemaError } from "./errors.js";
+import { Job } from "./job.js";
+import { TriggerClient } from "./triggerClient.js";
+import { EventSpecification, EventSpecificationExample, Trigger, VerifyResult } from "./types.js";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors.js";
+import { slugifyId } from "./utils.js";
 
 type HttpEndpointOptions<TEventSpecification extends EventSpecification<any>> = {
   id: string;

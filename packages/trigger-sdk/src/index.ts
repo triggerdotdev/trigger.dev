@@ -1,22 +1,22 @@
-export * from "./job";
-export * from "./triggerClient";
-export * from "./integrations";
-export * from "./triggers/eventTrigger";
-export * from "./triggers/externalSource";
-export * from "./triggers/dynamic";
-export * from "./triggers/scheduled";
-export * from "./triggers/notifications";
-export * from "./triggers/invokeTrigger";
-export * from "./triggers/webhook";
-export * from "./io";
-export * from "./types";
-export * from "./utils";
-export * from "./security";
+export * from "./job.js";
+export * from "./triggerClient.js";
+export * from "./integrations.js";
+export * from "./triggers/eventTrigger.js";
+export * from "./triggers/externalSource.js";
+export * from "./triggers/dynamic.js";
+export * from "./triggers/scheduled.js";
+export * from "./triggers/notifications.js";
+export * from "./triggers/invokeTrigger.js";
+export * from "./triggers/webhook.js";
+export * from "./io.js";
+export * from "./types.js";
+export * from "./utils.js";
+export * from "./security.js";
 
 import { ServerTask } from "@trigger.dev/core";
-import { RedactString } from "./types";
-export { isTriggerError } from "./errors";
-export { retry } from "./retry";
+import { RedactString } from "./types.js";
+export { isTriggerError } from "./errors.js";
+export { retry } from "./retry.js";
 
 export type { NormalizedRequest, EventFilter } from "@trigger.dev/core";
 

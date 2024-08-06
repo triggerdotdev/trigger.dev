@@ -8,18 +8,18 @@ import {
   SuccessfulRunNotification,
 } from "@trigger.dev/core";
 import { LogLevel } from "@trigger.dev/core/logger";
-import { ConcurrencyLimit } from "./concurrencyLimit";
-import { IOWithIntegrations, TriggerIntegration } from "./integrations";
-import { runLocalStorage } from "./runLocalStorage";
-import { TriggerClient } from "./triggerClient";
+import { ConcurrencyLimit } from "./concurrencyLimit.js";
+import { IOWithIntegrations, TriggerIntegration } from "./integrations.js";
+import { runLocalStorage } from "./runLocalStorage.js";
+import { TriggerClient } from "./triggerClient.js";
 import type {
   EventSpecification,
   Trigger,
   TriggerContext,
   TriggerEventType,
   TriggerInvokeType,
-} from "./types";
-import { slugifyId } from "./utils";
+} from "./types.js";
+import { slugifyId } from "./utils.js";
 
 export type JobOptions<
   TTrigger extends Trigger<EventSpecification<any>>,
@@ -153,6 +153,10 @@ export class Job<
     return Object.keys(this.options.integrations ?? {}).reduce(
       (acc: Record<string, IntegrationConfig>, key) => {
         const integration = this.options.integrations![key];
+
+        if (!integration) {
+          return acc;
+        }
 
         acc[key] = {
           id: integration.id,

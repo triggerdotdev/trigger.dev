@@ -1,6 +1,6 @@
 import { AsyncMap } from "@trigger.dev/core";
 import { KeyValueStoreResponseBody } from "@trigger.dev/core";
-import { JSONOutputSerializer, Json } from "../io";
+import { JSONOutputSerializer, Json } from "../io.js";
 
 type QueryKeyValueStoreFunction = (
   action: "DELETE" | "GET" | "HAS" | "SET",

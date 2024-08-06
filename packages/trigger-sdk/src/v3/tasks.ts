@@ -6,7 +6,7 @@ import {
   trigger,
   triggerAndPoll,
   triggerAndWait,
-} from "./shared";
+} from "./shared.js";
 
 import type {
   TaskOptions,
@@ -22,7 +22,7 @@ import type {
   TaskIdentifier,
   TaskRunOptions,
   AnyTask,
-} from "./shared";
+} from "./shared.js";
 
 export type {
   TaskOptions,

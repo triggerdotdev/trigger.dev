@@ -14,8 +14,8 @@ import {
   mergeRequestOptions,
   taskContext,
 } from "@trigger.dev/core/v3";
-import { apiClientMissingError } from "./shared";
-import { tracer } from "./tracer";
+import { apiClientMissingError } from "./shared.js";
+import { tracer } from "./tracer.js";
 
 export type { CreateEnvironmentVariableParams, ImportEnvironmentVariablesParams };
 

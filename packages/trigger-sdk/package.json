@@ -3,45 +3,32 @@
   "version": "3.0.0-beta.52",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "module": "./dist/index.mjs",
   "publishConfig": {
     "access": "public"
   },
+  "type": "module",
   "files": [
     "dist"
   ],
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      },
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+  "tshy": {
+    "selfLink": false,
+    "main": false,
+    "module": false,
+    "project": "./tsconfig.build.json",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts",
+      "./v3": "./src/v3/index.ts"
     },
-    "./v3": {
-      "import": {
-        "types": "./dist/v3/index.d.mts",
-        "default": "./dist/v3/index.mjs"
-      },
-      "require": "./dist/v3/index.js",
-      "types": "./dist/v3/index.d.ts"
-    },
-    "./package.json": "./package.json"
-  },
-  "typesVersions": {
-    "*": {
-      "v3": [
-        "./dist/v3/index.d.ts"
-      ]
-    }
+    "sourceDialects": [
+      "triggerdotdev-source"
+    ]
   },
   "scripts": {
     "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:tsup",
-    "build:tsup": "tsup --dts-resolve",
+    "prepare": "tshy",
+    "build": "tshy",
+    "dev": "tshy --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -65,20 +52,44 @@
     "msw": "^2.2.1"
   },
   "devDependencies": {
-    "@trigger.dev/tsup": "workspace:*",
     "@types/debug": "^4.1.7",
-    "@types/node": "18",
+    "@types/node": "20.14.14",
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "encoding": "^0.1.13",
     "msw": "^2.2.1",
     "rimraf": "^3.0.2",
-    "tsup": "^8.0.1",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.5.4",
+    "tshy": "^3.0.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "triggerdotdev-source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    },
+    "./v3": {
+      "import": {
+        "triggerdotdev-source": "./src/v3/index.ts",
+        "types": "./dist/esm/v3/index.d.ts",
+        "default": "./dist/esm/v3/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/index.d.ts",
+        "default": "./dist/commonjs/v3/index.js"
+      }
+    }
   }
 }

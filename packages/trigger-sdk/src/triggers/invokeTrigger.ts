@@ -1,16 +1,10 @@
 import { TriggerMetadata } from "@trigger.dev/core";
-import { ParsedPayloadSchemaError } from "../errors";
-import { Job } from "../job";
-import { TriggerClient } from "../triggerClient";
-import {
-  EventSpecification,
-  EventSpecificationExample,
-  SchemaParser,
-  Trigger,
-  VerifyResult,
-} from "../types";
-import { formatSchemaErrors } from "../utils/formatSchemaErrors";
 import { TypeOf, ZodType, z } from "zod";
+import { ParsedPayloadSchemaError } from "../errors.js";
+import { Job } from "../job.js";
+import { TriggerClient } from "../triggerClient.js";
+import { EventSpecification, EventSpecificationExample, Trigger } from "../types.js";
+import { formatSchemaErrors } from "../utils/formatSchemaErrors.js";
 
 /** Configuration options for an InvokeTrigger */
 type InvokeTriggerOptions<TSchema extends ZodType = z.ZodTypeAny> = {

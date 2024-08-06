@@ -12,9 +12,9 @@ import {
   taskCatalog,
 } from "@trigger.dev/core/v3";
 import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
-import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
-import * as SchedulesAPI from "./api";
-import { tracer } from "../tracer";
+import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared.js";
+import * as SchedulesAPI from "./api.js";
+import { tracer } from "../tracer.js";
 
 export type ScheduleOptions<
   TIdentifier extends string,

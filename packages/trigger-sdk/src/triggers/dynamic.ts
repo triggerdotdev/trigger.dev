@@ -4,12 +4,12 @@ import {
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { Job } from "../job";
-import { TriggerClient } from "../triggerClient";
-import { EventSpecification, Trigger } from "../types";
-import { slugifyId } from "../utils";
-import { ExternalSource, ExternalSourceParams } from "./externalSource";
-import { runLocalStorage } from "../runLocalStorage";
+import { Job } from "../job.js";
+import { TriggerClient } from "../triggerClient.js";
+import { EventSpecification, Trigger } from "../types.js";
+import { slugifyId } from "../utils.js";
+import { ExternalSource, ExternalSourceParams } from "./externalSource.js";
+import { runLocalStorage } from "../runLocalStorage.js";
 import { EventFilter } from "@trigger.dev/core";
 
 /** Options for a DynamicTrigger  */

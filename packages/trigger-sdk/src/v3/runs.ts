@@ -17,8 +17,8 @@ import {
   isRequestOptions,
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
-import { AnyTask, Prettify, RunHandle, Task, apiClientMissingError } from "./shared";
-import { tracer } from "./tracer";
+import { AnyTask, Prettify, RunHandle, Task, apiClientMissingError } from "./shared.js";
+import { tracer } from "./tracer.js";
 
 export type RetrieveRunResult<TRunId> = Prettify<
   TRunId extends RunHandle<infer TOutput>

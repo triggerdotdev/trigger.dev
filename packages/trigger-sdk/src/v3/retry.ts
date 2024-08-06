@@ -24,7 +24,7 @@ import {
 import { defaultFetchRetryOptions } from "@trigger.dev/core/v3";
 import type { HttpHandler } from "msw";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { tracer } from "./tracer";
+import { tracer } from "./tracer.js";
 
 export type { RetryOptions };
 
@@ -457,6 +457,8 @@ const calculateRetryDelayForResponse = async (
       break;
     }
   }
+
+  return;
 };
 
 const getRetryStrategyForResponse = async (
@@ -468,7 +470,16 @@ const getRetryStrategyForResponse = async (
 
   for (let i = 0; i < statusCodes.length; i++) {
     const statusRange = statusCodes[i];
+
+    if (!statusRange) {
+      continue;
+    }
+
     const strategy = retry[statusRange];
+
+    if (!strategy) {
+      continue;
+    }
 
     if (isStatusCodeInRange(response.status, statusRange)) {
       if (strategy.bodyFilter) {
@@ -488,6 +499,8 @@ const getRetryStrategyForResponse = async (
       return strategy;
     }
   }
+
+  return;
 };
 
 /**
@@ -512,13 +525,17 @@ const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean =
   const [start, end] = statusRange.split("-");
 
   if (end) {
-    return statusCode >= parseInt(start, 10) && statusCode <= parseInt(end, 10);
+    return statusCode >= parseInt(start ?? "0", 10) && statusCode <= parseInt(end, 10);
   }
 
-  if (start.endsWith("xx")) {
+  if (start?.endsWith("xx")) {
     const prefix = start.slice(0, -2);
     const statusCodePrefix = Math.floor(statusCode / 100).toString();
     return statusCodePrefix === prefix;
+  }
+
+  if (!start) {
+    return false;
   }
 
   const statusCodeString = statusCode.toString();

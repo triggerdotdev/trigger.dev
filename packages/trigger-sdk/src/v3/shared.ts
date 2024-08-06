@@ -36,10 +36,10 @@ import {
   taskCatalog,
   taskContext,
 } from "@trigger.dev/core/v3";
-import * as packageJson from "../../package.json";
-import { tracer } from "./tracer";
-import { PollOptions, RetrieveRunResult, runs } from "./runs";
-import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys";
+import { version } from "../../package.json";
+import { tracer } from "./tracer.js";
+import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
+import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 
 export type Context = TaskRunContext;
 
@@ -545,7 +545,7 @@ export function createTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
-    packageVersion: packageJson.version,
+    packageVersion: version,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,

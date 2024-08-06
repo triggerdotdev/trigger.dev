@@ -1,15 +1,15 @@
-export * from "./cache";
-export * from "./config";
-export { retry, type RetryOptions } from "./retry";
-export { queue } from "./shared";
-export * from "./tasks";
-export * from "./wait";
-export * from "./usage";
-export * from "./idempotencyKeys";
-export * from "./tags";
+export * from "./cache.js";
+export * from "./config.js";
+export { retry, type RetryOptions } from "./retry.js";
+export { queue } from "./shared.js";
+export * from "./tasks.js";
+export * from "./wait.js";
+export * from "./usage.js";
+export * from "./idempotencyKeys.js";
+export * from "./tags.js";
 export type { Context };
 
-import type { Context } from "./shared";
+import type { Context } from "./shared.js";
 
 import type { ApiClientConfiguration } from "@trigger.dev/core/v3";
 import { apiClientManager } from "@trigger.dev/core/v3";
@@ -31,10 +31,10 @@ export {
   type LogLevel,
 } from "@trigger.dev/core/v3";
 
-export { runs } from "./runs";
-export * as schedules from "./schedules";
-export * as envvars from "./envvars";
-export type { ImportEnvironmentVariablesParams } from "./envvars";
+export { runs } from "./runs.js";
+export * as schedules from "./schedules/index.js";
+export * as envvars from "./envvars.js";
+export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 /**
  * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.

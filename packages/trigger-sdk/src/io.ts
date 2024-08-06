@@ -25,7 +25,7 @@ import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import { BloomFilter } from "@trigger.dev/core/bloom";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { webcrypto } from "node:crypto";
-import { ApiClient } from "./apiClient";
+import { ApiClient } from "./apiClient.js";
 import {
   AutoYieldExecutionError,
   AutoYieldRateLimitError,
@@ -38,23 +38,23 @@ import {
   TriggerInternalError,
   YieldExecutionError,
   isTriggerError,
-} from "./errors";
-import { IntegrationTaskKey } from "./integrations";
-import { calculateRetryAt } from "./retry";
-import { TriggerStatus } from "./status";
-import { TriggerClient } from "./triggerClient";
-import { DynamicTrigger } from "./triggers/dynamic";
-import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource";
-import { DynamicSchedule } from "./triggers/scheduled";
+} from "./errors.js";
+import { IntegrationTaskKey } from "./integrations.js";
+import { calculateRetryAt } from "./retry.js";
+import { TriggerStatus } from "./status.js";
+import { TriggerClient } from "./triggerClient.js";
+import { DynamicTrigger } from "./triggers/dynamic.js";
+import { ExternalSource, ExternalSourceParams } from "./triggers/externalSource.js";
+import { DynamicSchedule } from "./triggers/scheduled.js";
 import {
   EventSpecification,
   TaskLogger,
   TriggerContext,
   WaitForEventResult,
   waitForEventSchema,
-} from "./types";
+} from "./types.js";
 import { z } from "zod";
-import { KeyValueStore } from "./store/keyValueStore";
+import { KeyValueStore } from "./store/keyValueStore.js";
 import { Buffer } from "node:buffer";
 
 export type IOTask = ServerTask;
@@ -1065,6 +1065,7 @@ export class IO {
           .map((outcome) => outcome as PromiseRejectedResult);
 
         if (nonInternalErrors.length > 0) {
+          // @ts-expect-error
           throw nonInternalErrors[0].reason;
         }
 
