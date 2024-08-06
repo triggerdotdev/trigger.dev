@@ -39,7 +39,7 @@ import {
   assertExhaustive,
   urlWithSearchParams,
 } from "@trigger.dev/core";
-import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import { env } from "node:process";
 
 import { z } from "zod";

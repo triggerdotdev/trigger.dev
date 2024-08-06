@@ -44,7 +44,7 @@ import {
   WebhookMetadata,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
-import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import EventEmitter from "node:events";
 import { env } from "node:process";
 import * as packageJson from "../package.json";

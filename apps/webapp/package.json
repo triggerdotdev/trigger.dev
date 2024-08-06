@@ -93,7 +93,6 @@
     "@team-plain/typescript-sdk": "^3.5.0",
     "@trigger.dev/companyicons": "^1.5.35",
     "@trigger.dev/core": "workspace:*",
-    "@trigger.dev/core-backend": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
     "@trigger.dev/platform": "1.0.12",

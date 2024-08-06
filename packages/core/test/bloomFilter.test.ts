@@ -1,4 +1,4 @@
-import { BloomFilter } from "../src";
+import { BloomFilter } from "../src/bloom.js";
 
 describe("BloomFilter", () => {
   it("should be able to correct test for inclusion in the set", () => {

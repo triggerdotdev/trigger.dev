@@ -12,7 +12,7 @@ import {
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { Logger } from "@trigger.dev/core-backend";
+import { Logger } from "@trigger.dev/core/logger";
 import type { Buffer } from "buffer";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations";
 import { IO } from "../io";

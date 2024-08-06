@@ -6,9 +6,7 @@
     "sourceMap": true,
     "paths": {
       "@trigger.dev/core/*": ["../core/src/*"],
-      "@trigger.dev/core": ["../core/src/index"],
-      "@trigger.dev/core-backend/*": ["../core-backend/src/*"],
-      "@trigger.dev/core-backend": ["../core-backend/src/index"]
+      "@trigger.dev/core": ["../core/src/index"]
     },
     "stripInternal": true
   },
