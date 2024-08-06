@@ -86,13 +86,7 @@
     {
       "group": "Getting Started",
       "version": "v3",
-      "pages": [
-        "v3/introduction",
-        "v3/quick-start",
-        "v3/changelog",
-        "v3/feature-matrix",
-        "v3/limits"
-      ]
+      "pages": ["v3/introduction", "v3/quick-start", "v3/limits", "v3/changelog", "v3/roadmap"]
     },
     {
       "group": "Fundamentals",
