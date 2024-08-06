@@ -5,7 +5,7 @@ import pkg from "../../package.json";
 import { chalkGrey, chalkRun, chalkTask, chalkWorker, green, logo } from "./cliOutput.js";
 import { getVersion } from "./getVersion.js";
 import { logger } from "./logger.js";
-import { spinner } from "./windows";
+import { spinner } from "./windows.js";
 
 export async function printInitialBanner(performUpdateCheck = true) {
   const cliVersion = getVersion();

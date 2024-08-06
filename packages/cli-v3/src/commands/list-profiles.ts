@@ -1,21 +1,11 @@
+import { log, outro } from "@clack/prompts";
 import { Command } from "commander";
-import {
-  deleteAuthConfigProfile,
-  readAuthConfigFile,
-  readAuthConfigProfile,
-  writeAuthConfigProfile,
-} from "../utilities/configFiles.js";
-import { logger } from "../utilities/logger.js";
-import {
-  CommonCommandOptions,
-  commonOptions,
-  handleTelemetry,
-  wrapCommandAction,
-} from "../cli/common.js";
-import { printInitialBanner } from "../utilities/initialBanner.js";
 import { z } from "zod";
+import { CommonCommandOptions, handleTelemetry, wrapCommandAction } from "../cli/common.js";
 import { chalkGrey } from "../utilities/cliOutput.js";
-import { log, outro, text } from "@clack/prompts";
+import { readAuthConfigFile } from "../utilities/configFiles.js";
+import { printInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
 
 const ListProfilesOptions = CommonCommandOptions;
 
