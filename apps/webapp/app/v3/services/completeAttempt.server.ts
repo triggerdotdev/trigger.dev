@@ -252,7 +252,7 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      if (!checkpointCreateResult.success) {
+      if (!checkpointCreateResult) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
         // Update the task run to be failed
