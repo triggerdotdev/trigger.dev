@@ -57,6 +57,10 @@
       "destination": "/guides/use-cases/upgrading-from-v2"
     },
     {
+      "source": "/v3/open-source-self-hosting",
+      "destination": "/open-source-self-hosting"
+    },
+    {
       "source": "/v3/:slug*",
       "destination": "/:slug*"
     }
