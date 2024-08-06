@@ -79,6 +79,7 @@ import {
 import { StepNumber } from "../primitives/StepNumber";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -223,7 +224,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           {project.version === "V2" && (
             <div className="flex flex-col gap-3 rounded border border-success/50 bg-success/10 p-3">
               <Paragraph variant="small/bright">
-                This is a v2 project. V2 will be deprecated on January 31, 2025.
+                This is a v2 project. V2 will be deprecated on January 31, 2025.{" "}
+                <TextLink
+                  className="text-text-bright underline decoration-text-dimmed underline-offset-2 transition hover:text-text-bright hover:decoration-text-bright"
+                  to="https://trigger.dev/blog/v2-end-of-life-announcement"
+                >
+                  Learn more
+                </TextLink>
+                .
               </Paragraph>
               <LinkButton
                 variant="primary/medium"
