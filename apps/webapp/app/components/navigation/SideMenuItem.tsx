@@ -1,8 +1,8 @@
-import { AnchorHTMLAttributes } from "react";
+import { type AnchorHTMLAttributes } from "react";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
-import { IconNames } from "../primitives/NamedIcon";
+import { type IconNames } from "../primitives/NamedIcon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { Icon } from "../primitives/Icon";
 import { IconExclamationCircle } from "@tabler/icons-react";
@@ -52,15 +52,15 @@ export function SideMenuItem({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
-                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
+                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
                 </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1 border border-rose-500 bg-rose-500/20 backdrop-blur-xl">
+                <TooltipContent className="flex items-center gap-1 border border-error bg-error/20 backdrop-blur-xl">
                   {hasWarning}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           ) : (
-            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-rose-500" />
+            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
           )}
         </div>
       </div>
