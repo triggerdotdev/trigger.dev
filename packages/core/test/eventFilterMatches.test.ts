@@ -1,5 +1,5 @@
-import { EventFilter } from "../src/index.js";
-import { eventFilterMatches } from "../src/eventFilterMatches";
+import { type EventFilter } from "../src/index.js";
+import { eventFilterMatches } from "../src/eventFilterMatches.js";
 
 describe("eventFilterMatches", () => {
   it("should return true if the payload is undefined and the filter is empty", () => {
