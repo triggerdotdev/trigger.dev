@@ -48,3 +48,22 @@ yarn dlx trigger.dev@beta dev --debugger
 ```
 
 </CodeGroup>
+
+### Concurrently running the terminal
+
+Install the concurrently package as a dev dependency:
+
+```ts
+concurrently --raw --kill-others npm:dev:remix npm:dev:trigger
+```
+
+Then add something like this in your package.json scripts. This assumes you're running Next.js so swap that bit out if you're not:
+
+```json
+"scripts": {
+  "dev": "concurrently --raw --kill-others npm:dev:*",
+  "dev:next": "next dev",
+  "dev:trigger": "npx trigger.dev@beta dev",
+  //...
+}
+```
