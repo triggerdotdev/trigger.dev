@@ -82,6 +82,10 @@ Prisma uses code generation to create the client from your schema file. This mea
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
+### `Error: Prisma generate failed to find the specified schema at ../../path`
+
+
+
 ## Framework specific issues
 
 ### NestJS swallows all errors/exceptions
@@ -105,7 +109,11 @@ NestJS has a global exception filter that catches all errors and swallows them, 
 
 ### React is not defined
 
-#### `Worker failed to start ReferenceError: React is not defined`
+If you see this error:
+
+```ts
+Worker failed to start ReferenceError: React is not defined
+```
 
 Either add this to your file:
 
