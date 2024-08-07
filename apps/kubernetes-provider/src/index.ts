@@ -211,7 +211,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: `${this.#getRunContainerName(opts.runId)}-${randomUUID().slice(0, 8)}`,
+          name: `${this.#getRunContainerName(opts.runId)}-${opts.checkpointId.slice(0, 8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
             ...this.#getSharedLabels(opts),
