@@ -89,6 +89,7 @@ export const TaskRunErrorCodes = {
   TASK_OUTPUT_ERROR: "TASK_OUTPUT_ERROR",
   HANDLE_ERROR_ERROR: "HANDLE_ERROR_ERROR",
   GRACEFUL_EXIT_TIMEOUT: "GRACEFUL_EXIT_TIMEOUT",
+  TASK_RUN_CRASHED: "TASK_RUN_CRASHED",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -107,6 +108,7 @@ export const TaskRunInternalError = z.object({
     "HANDLE_ERROR_ERROR",
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
+    "TASK_RUN_CRASHED",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
