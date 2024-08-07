@@ -21,11 +21,9 @@ import {
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
 export class CliApiClient {
-  private readonly apiURL: string;
-
   constructor(
-    apiURL: string,
-    private readonly accessToken?: string
+    public readonly apiURL: string,
+    public readonly accessToken?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
   }

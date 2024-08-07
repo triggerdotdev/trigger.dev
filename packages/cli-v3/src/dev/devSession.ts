@@ -21,9 +21,11 @@ import { type DevCommandOptions } from "../commands/dev.js";
 import { logger } from "../utilities/logger.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { copyManifestToDir } from "../build/manifests.js";
+import { startWorkerRuntime } from "./workerRuntime.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
+  dashboardUrl: string;
   initialMode: "local";
   showInteractiveDevSession: boolean | undefined;
   rawConfig: ResolvedConfig;
@@ -31,8 +33,22 @@ export type DevSessionOptions = {
   client: CliApiClient;
 };
 
-export async function startDevSession({ rawConfig }: DevSessionOptions) {
+export async function startDevSession({
+  rawConfig,
+  name,
+  rawArgs,
+  client,
+  dashboardUrl,
+}: DevSessionOptions) {
   const destination = getTmpDir(rawConfig.workingDir, "build");
+
+  const runtime = await startWorkerRuntime({
+    name,
+    config: rawConfig,
+    args: rawArgs,
+    client,
+    dashboardUrl,
+  });
 
   logger.debug("Starting dev session", { destination: destination.path, rawConfig });
 
@@ -124,6 +140,7 @@ export async function startDevSession({ rawConfig }: DevSessionOptions) {
 
       destination.remove();
       stopBundling?.().catch((error) => {});
+      runtime.shutdown().catch((error) => {});
     },
   };
 }

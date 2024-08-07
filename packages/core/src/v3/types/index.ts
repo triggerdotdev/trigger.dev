@@ -1,9 +1,4 @@
-import {
-  RetryOptions,
-  TaskMetadata,
-  TaskMetadataWithFilePath,
-  TaskRunContext,
-} from "../schemas/index.js";
+import { RetryOptions, TaskMetadata, TaskManifest, TaskRunContext } from "../schemas/index.js";
 import { Prettify } from "./utils.js";
 
 export * from "./utils.js";

@@ -152,6 +152,7 @@ async function startDev(options: StartDevOptions) {
           initialMode="local"
           showInteractiveDevSession={true}
           client={projectClient.client}
+          dashboardUrl={options.login.dashboardUrl}
         />
       );
     }

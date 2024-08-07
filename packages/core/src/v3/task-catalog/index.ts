@@ -1,6 +1,6 @@
 const API_NAME = "task-catalog";
 
-import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas/index.js";
+import { TaskFileMetadata, TaskManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions } from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type TaskCatalog } from "./catalog.js";
@@ -41,12 +41,12 @@ export class TaskCatalogAPI {
     this.#getCatalog().registerTaskFileMetadata(id, metadata);
   }
 
-  public getAllTaskMetadata(): Array<TaskMetadataWithFilePath> {
-    return this.#getCatalog().getAllTaskMetadata();
+  public listTaskManifests(): Array<TaskManifest> {
+    return this.#getCatalog().listTaskManifests();
   }
 
-  public getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
-    return this.#getCatalog().getTaskMetadata(id);
+  public getTaskManifest(id: string): TaskManifest | undefined {
+    return this.#getCatalog().getTaskManifest(id);
   }
 
   public getTask(id: string): TaskMetadataWithFunctions | undefined {

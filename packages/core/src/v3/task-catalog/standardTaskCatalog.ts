@@ -1,4 +1,4 @@
-import { TaskFileMetadata, TaskMetadata, TaskMetadataWithFilePath } from "../schemas/index.js";
+import { TaskFileMetadata, TaskMetadata, TaskManifest } from "../schemas/index.js";
 import { TaskMetadataWithFunctions } from "../types/index.js";
 import { TaskCatalog } from "./catalog.js";
 
@@ -45,8 +45,8 @@ export class StandardTaskCatalog implements TaskCatalog {
   }
 
   // Return all the tasks, without the functions
-  getAllTaskMetadata(): Array<TaskMetadataWithFilePath> {
-    const result: Array<TaskMetadataWithFilePath> = [];
+  listTaskManifests(): Array<TaskManifest> {
+    const result: Array<TaskManifest> = [];
 
     for (const [id, metadata] of this._taskMetadata) {
       const fileMetadata = this._taskFileMetadata.get(id);
@@ -64,7 +64,7 @@ export class StandardTaskCatalog implements TaskCatalog {
     return result;
   }
 
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+  getTaskManifest(id: string): TaskManifest | undefined {
     const metadata = this._taskMetadata.get(id);
     const fileMetadata = this._taskFileMetadata.get(id);
 
