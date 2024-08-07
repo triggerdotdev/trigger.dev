@@ -43,13 +43,14 @@
     "get-caller-file": "^2.0.5",
     "git-remote-origin-url": "^4.0.0",
     "git-repo-info": "^2.1.1",
+    "msw": "^2.2.1",
+    "package-json-from-dist": "^1.0.0",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
     "ws": "^8.11.0",
-    "zod": "3.23.8",
-    "msw": "^2.2.1"
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/debug": "^4.1.7",
@@ -60,9 +61,9 @@
     "encoding": "^0.1.13",
     "msw": "^2.2.1",
     "rimraf": "^3.0.2",
+    "tshy": "^3.0.2",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4",
-    "tshy": "^3.0.2"
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.20.0"

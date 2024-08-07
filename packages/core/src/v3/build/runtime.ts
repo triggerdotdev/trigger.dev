@@ -1,4 +1,4 @@
-import { BuildRuntime } from "../schemas/config.js";
+import { BuildRuntime } from "../schemas/build.js";
 
 export const DEFAULT_RUNTIME: BuildRuntime = "node20";
 

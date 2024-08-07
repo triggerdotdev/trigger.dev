@@ -1,10 +1,14 @@
-import { Instrumentation } from "@opentelemetry/instrumentation";
-import { BuildRuntime } from "./schemas/config.js";
-import { BuildExtension } from "./build/extensions.js";
-import { MachinePresetName } from "./schemas/common.js";
-import { LogLevel } from "./logger/taskLogger.js";
-import { FailureFnParams, InitFnParams, StartFnParams, SuccessFnParams } from "./types/index.js";
-import { RetryOptions } from "./index.js";
+import type { Instrumentation } from "@opentelemetry/instrumentation";
+import type { BuildExtension } from "./build/extensions.js";
+import type { MachinePresetName } from "./schemas/common.js";
+import type { LogLevel } from "./logger/taskLogger.js";
+import type {
+  FailureFnParams,
+  InitFnParams,
+  StartFnParams,
+  SuccessFnParams,
+} from "./types/index.js";
+import type { BuildRuntime, RetryOptions } from "./index.js";
 
 export type TriggerConfig = {
   /**

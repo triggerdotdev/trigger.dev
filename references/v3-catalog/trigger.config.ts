@@ -1,39 +1,10 @@
-import { InfisicalClient } from "@infisical/sdk";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { defineConfig, type ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-
-export { handleError } from "./src/handleError";
-
-export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
-  projectRef,
-  env,
-  environment,
-}) => {
-  if (env.INFISICAL_CLIENT_ID === undefined || env.INFISICAL_CLIENT_SECRET === undefined) {
-    return;
-  }
-
-  const client = new InfisicalClient({
-    clientId: env.INFISICAL_CLIENT_ID,
-    clientSecret: env.INFISICAL_CLIENT_SECRET,
-  });
-
-  const secrets = await client.listSecrets({
-    environment,
-    projectId: env.INFISICAL_PROJECT_ID!,
-  });
-
-  return {
-    variables: secrets.map((secret) => ({
-      name: secret.secretKey,
-      value: secret.secretValue,
-    })),
-  };
-};
 
 export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",
   machine: "small-2x",
+  instrumentations: [new OpenAIInstrumentation()],
   retries: {
     enabledInDev: true,
     default: {
@@ -45,12 +16,7 @@ export default defineConfig({
     },
   },
   enableConsoleLogging: false,
-  additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
-  additionalFiles: ["./wrangler/wrangler.toml"],
-  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp", /@t3-oss/],
-  instrumentations: [new OpenAIInstrumentation()],
   logLevel: "info",
-  postInstall: "echo '========== config.postInstall'",
   onStart: async (payload, { ctx }) => {
     console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
   },

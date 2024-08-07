@@ -121,13 +121,7 @@ export class CliApiClient {
     });
   }
 
-  async getProjectEnv({
-    projectRef,
-    env,
-  }: {
-    projectRef: string;
-    env: "dev" | "prod" | "staging";
-  }) {
+  async getProjectEnv({ projectRef, env }: { projectRef: string; env: string }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
     }

@@ -1,7 +1,7 @@
 import { type Defu } from "defu";
 import type { Prettify } from "ts-essentials";
 import { TriggerConfig } from "../config.js";
-import { BuildRuntime } from "../schemas/config.js";
+import { BuildRuntime } from "../schemas/build.js";
 
 export type ResolvedConfig = Prettify<
   Defu<

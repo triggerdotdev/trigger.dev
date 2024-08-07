@@ -7,9 +7,12 @@ import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
 import { generateCode, loadFile } from "./imports/magicast.js";
+import { logger } from "./utilities/logger.js";
 
 export type ResolveConfigOptions = {
   cwd?: string;
+  overrides?: Partial<TriggerConfig>;
+  configFile?: string;
 };
 
 export async function loadConfig({
@@ -40,19 +43,22 @@ export async function watchConfig({
   onUpdate,
   debounce = 100,
   ignoreInitial = true,
+  overrides,
+  configFile,
 }: ResolveWatchConfigOptions): Promise<ResolveWatchConfigResult> {
   const result = await c12.watchConfig<TriggerConfig>({
     name: "trigger",
+    configFile,
     cwd,
     debounce,
     chokidarOptions: { ignoreInitial },
     acceptHMR: async ({ oldConfig, newConfig, getDiff }) => {
       const diff = getDiff();
 
-      console.log("watchConfig.acceptHMR", { diff, oldConfig, newConfig });
+      logger.debug("watchConfig.acceptHMR", { diff, oldConfig, newConfig });
 
       if (diff.length === 0) {
-        console.log("No config changed detected!");
+        logger.debug("No config changed detected!");
         return true; // No changes!
       }
 
@@ -62,17 +68,17 @@ export async function watchConfig({
       const diff = getDiff();
 
       if (diff.length === 0) {
-        console.log("No config changed detected!");
+        logger.debug("No config changed detected!");
         return;
       }
 
-      const resolvedConfig = await resolveConfig(cwd, newConfig);
+      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides);
 
       onUpdate(resolvedConfig);
     },
   });
 
-  const config = await resolveConfig(cwd, result);
+  const config = await resolveConfig(cwd, result, overrides);
 
   return {
     config,
@@ -96,10 +102,10 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
       // Convert the filename to a regex to filter against
       const filter = new RegExp(`${filename.replace(/\./g, "\\.")}$`);
 
-      console.log("trigger-config-strip.filter", filter);
+      logger.debug("trigger-config-strip.filter", filter);
 
       build.onLoad({ filter }, async (args) => {
-        console.log("trigger-config-strip.onLoad", args);
+        logger.debug("trigger-config-strip.onLoad", args);
 
         const $mod = await loadFile(args.path);
 
@@ -113,7 +119,7 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
 
         const contents = generateCode($mod);
 
-        console.log("trigger-config-strip.onLoad.contents", contents);
+        logger.debug("trigger-config-strip.onLoad.contents", contents);
 
         return {
           contents: contents.code,
@@ -127,7 +133,8 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
 
 async function resolveConfig(
   cwd: string,
-  result: c12.ResolvedConfig<TriggerConfig>
+  result: c12.ResolvedConfig<TriggerConfig>,
+  overrides?: Partial<TriggerConfig>
 ): Promise<ResolvedConfig> {
   const packageJsonPath = await resolvePackageJSON(cwd);
   const tsconfigPath = await resolveTSConfig(cwd);
@@ -149,6 +156,7 @@ async function resolveConfig(
       lockfilePath,
       workspaceDir,
     },
+    overrides,
     result.config,
     {
       dirs,

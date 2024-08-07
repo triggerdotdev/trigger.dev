@@ -9,3 +9,4 @@ export * from "./fetch.js";
 export * from "./eventFilter.js";
 export * from "./openTelemetry.js";
 export * from "./config.js";
+export * from "./build.js";
