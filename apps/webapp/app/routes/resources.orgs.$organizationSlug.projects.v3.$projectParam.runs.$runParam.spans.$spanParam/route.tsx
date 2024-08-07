@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatDurationMilliseconds,
   nanosecondsToMilliseconds,
+  TaskRunError,
 } from "@trigger.dev/core/v3";
 import { ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -12,8 +13,9 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -606,8 +608,8 @@ function RunBody({
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.events !== undefined && run.events.length > 0 ? (
-                <SpanEvents spanEvents={run.events} />
+              {run.error !== undefined ? (
+                <RunError error={run.error} />
               ) : run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
@@ -789,6 +791,42 @@ function RunTimelineLine({ title, state }: RunTimelineLineProps) {
       </div>
     </div>
   );
+}
+
+function RunError({ error }: { error: TaskRunError }) {
+  switch (error.type) {
+    case "STRING_ERROR":
+    case "CUSTOM_ERROR": {
+      return (
+        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
+          <CodeBlock
+            showCopyButton={false}
+            showLineNumbers={false}
+            code={error.raw}
+            maxLines={20}
+          />
+        </div>
+      );
+    }
+    case "BUILT_IN_ERROR":
+    case "INTERNAL_ERROR": {
+      const name = "name" in error ? error.name : error.code;
+      return (
+        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
+          <Header3 className="text-rose-500">{name}</Header3>
+          {error.message && <Callout variant="error">{error.message}</Callout>}
+          {error.stackTrace && (
+            <CodeBlock
+              showCopyButton={false}
+              showLineNumbers={false}
+              code={error.stackTrace}
+              maxLines={20}
+            />
+          )}
+        </div>
+      );
+    }
+  }
 }
 
 function PacketDisplay({
