@@ -9,18 +9,15 @@ import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
-  TaskMetadataWithFilePath,
+  TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionPayload,
   WaitReason,
 } from "./schemas.js";
 import { TaskResource } from "./resources.js";
+import { WorkerManifest } from "./build.js";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("EXECUTE_RUNS"),
-    payloads: z.array(TaskRunExecutionPayload),
-  }),
   z.object({
     type: z.literal("CANCEL_ATTEMPT"),
     taskAttemptId: z.string(),
@@ -86,13 +83,13 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
 
 export type BackgroundWorkerClientMessages = z.infer<typeof BackgroundWorkerClientMessages>;
 
-export const BackgroundWorkerProperties = z.object({
+export const ServerBackgroundWorker = z.object({
   id: z.string(),
   version: z.string(),
   contentHash: z.string(),
 });
 
-export type BackgroundWorkerProperties = z.infer<typeof BackgroundWorkerProperties>;
+export type ServerBackgroundWorker = z.infer<typeof ServerBackgroundWorker>;
 
 export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
@@ -116,7 +113,7 @@ export const workerToChildMessages = {
     version: z.literal("v1").default("v1"),
     execution: TaskRunExecution,
     traceContext: z.record(z.unknown()),
-    metadata: BackgroundWorkerProperties,
+    metadata: ServerBackgroundWorker,
   }),
   TASK_RUN_COMPLETED_NOTIFICATION: z.discriminatedUnion("version", [
     z.object({
@@ -160,9 +157,9 @@ export const childToWorkerMessages = {
     execution: TaskRunExecution,
     result: TaskRunExecutionResult,
   }),
-  TASKS_READY: z.object({
+  INDEX_COMPLETE: z.object({
     version: z.literal("v1").default("v1"),
-    tasks: TaskMetadataWithFilePath.array(),
+    manifest: WorkerManifest,
   }),
   TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
   TASK_HEARTBEAT: z.object({
@@ -201,7 +198,7 @@ export const ProdChildToWorkerMessages = {
   TASKS_READY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
-      tasks: TaskMetadataWithFilePath.array(),
+      tasks: TaskManifest.array(),
     }),
   },
   TASKS_FAILED_TO_PARSE: {
@@ -248,7 +245,7 @@ export const ProdWorkerToChildMessages = {
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
       traceContext: z.record(z.unknown()),
-      metadata: BackgroundWorkerProperties,
+      metadata: ServerBackgroundWorker,
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {

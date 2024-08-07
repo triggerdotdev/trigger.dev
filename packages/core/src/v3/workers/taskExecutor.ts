@@ -3,7 +3,7 @@ import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { parseError, sanitizeError } from "../errors.js";
 import { TracingSDK, recordSpanException } from "../otel/index.js";
 import {
-  BackgroundWorkerProperties,
+  ServerBackgroundWorker,
   Config,
   TaskRunContext,
   TaskRunErrorCodes,
@@ -27,6 +27,7 @@ import { accessoryAttributes } from "../utils/styleAttributes.js";
 import { UsageMeasurement } from "../usage/types.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { TriggerConfig } from "../index.js";
+import { pkg } from "../../pkg.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -59,7 +60,7 @@ export class TaskExecutor {
 
   async execute(
     execution: TaskRunExecution,
-    worker: BackgroundWorkerProperties,
+    worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
     usage: UsageMeasurement
   ): Promise<{ result: TaskRunExecutionResult }> {
@@ -78,7 +79,7 @@ export class TaskExecutor {
 
     this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
       ...taskContext.attributes,
-      [SemanticInternalAttributes.SDK_VERSION]: this.task.packageVersion,
+      [SemanticInternalAttributes.SDK_VERSION]: pkg.version,
       [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
     });
 

@@ -1,5 +1,5 @@
 import { Attributes } from "@opentelemetry/api";
-import { BackgroundWorkerProperties, TaskRunContext } from "../schemas/index.js";
+import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
@@ -27,7 +27,7 @@ export class TaskContextAPI {
     return this.#getTaskContext()?.ctx;
   }
 
-  get worker(): BackgroundWorkerProperties | undefined {
+  get worker(): ServerBackgroundWorker | undefined {
     return this.#getTaskContext()?.worker;
   }
 

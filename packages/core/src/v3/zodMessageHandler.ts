@@ -36,6 +36,11 @@ export type MessageFromSchema<
   payload: z.input<TMessageCatalog[K]>;
 };
 
+export type MessagePayloadFromSchema<
+  K extends keyof TMessageCatalog,
+  TMessageCatalog extends ZodMessageCatalogSchema,
+> = z.output<TMessageCatalog[K]>;
+
 export type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSchema<K, TMessageCatalog>;
 }[keyof TMessageCatalog];

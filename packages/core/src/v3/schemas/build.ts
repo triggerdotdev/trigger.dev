@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-
-export const TaskFile = z.object({
-  entry: z.string(),
-  out: z.string(),
-});
-
-export type TaskFile = z.infer<typeof TaskFile>;
+import { TaskFile, TaskManifest } from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -52,14 +46,6 @@ export const IndexMessage = z.object({
 });
 
 export type IndexMessage = z.infer<typeof IndexMessage>;
-
-export const TaskManifest = z.object({
-  id: z.string(),
-  exportName: z.string(),
-  file: TaskFile,
-});
-
-export type TaskManifest = z.infer<typeof TaskManifest>;
 
 export const WorkerManifest = z.object({
   tasks: TaskManifest.array(),
