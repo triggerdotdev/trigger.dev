@@ -102,3 +102,24 @@ export const simplestTask = task({
 ```
 
 NestJS has a global exception filter that catches all errors and swallows them, so we can't receive them. Our current recommendation is to not use NestJS inside your tasks. If you're a NestJS user you can still use Trigger.dev but just don't use NestJS inside your tasks like this.
+
+### React is not defined
+
+#### `Worker failed to start ReferenceError: React is not defined`
+
+Either add this to your file:
+
+```ts
+import React from "react";
+```
+
+Or change the tsconfig jsx setting:
+
+```json
+{
+  "compilerOptions": {
+    //...
+    "jsx": "react-jsx" 
+  },
+}
+```
