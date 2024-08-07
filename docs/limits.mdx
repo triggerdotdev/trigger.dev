@@ -49,3 +49,9 @@ If you're creating schedules for your user you will definitely need to request m
 | Task outputs           | Must not exceed 10MB                           |
 
 Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
+
+### Machines
+
+The default machine is `small-1x` which has 0.5 vCPU and 0.5 GB of RAM. You can optionally configure a higher spec machine which will increase the cost of running the task but can also improve the performance of the task if it is CPU or memory bound.
+
+See the [machine configurations](/machines#machine-configurations) for more details.
