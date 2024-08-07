@@ -1,18 +1,26 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { sourceDir } from "../sourceDir.js";
 
-export const devEntryPoint = join(sourceDir, "workers", "dev.js")
-export const prodEntryPoint = join(sourceDir, "workers", "prod.js")
-export const telemetryLoader = join(sourceDir, "telemetry", "loader.js")
+export const devEntryPoint = join(sourceDir, "entryPoints", "dev.js");
+export const deployEntryPoint = join(sourceDir, "entryPoints", "deploy.js");
+export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");
 
-export const packageModules = [
-  devEntryPoint,
-  prodEntryPoint,
-  telemetryLoader,
-]
+export const devEntryPoints = [devEntryPoint, telemetryEntryPoint];
 
-export const esmShimPath = join(sourceDir, "shims", "esm.js")
+export const deployEntryPoints = [devEntryPoint, deployEntryPoint, telemetryEntryPoint];
 
-export const shims = [
-  esmShimPath
-]
+export const esmShimPath = join(sourceDir, "shims", "esm.js");
+
+export const shims = [esmShimPath];
+
+export function isDevEntryPoint(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev.js"));
+}
+
+export function isDeployEntryPoint(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy.js"));
+}
+
+export function isLoaderEntryPoint(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "loader.js"));
+}
