@@ -85,10 +85,9 @@
         "tasks-overview",
         "triggering",
         "apikeys",
-        {
-          "group": "Task types",
-          "pages": ["tasks-regular", "tasks-scheduled"]
-        },
+        "Task types",
+        "tasks-regular",
+        "tasks-scheduled",
         "trigger-config"
       ]
     },
