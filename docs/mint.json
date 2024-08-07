@@ -2,7 +2,6 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
   "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
-  "versions": ["v3", "v2"],
   "api": {
     "playground": {
       "mode": "simple"
@@ -20,8 +19,8 @@
     "light": "#A8FF53",
     "dark": "#A8FF53",
     "anchors": {
-      "from": "#fff",
-      "to": "#eee"
+      "from": "#252630",
+      "to": "#252630"
     },
     "background": {
       "light": "#fff",
@@ -45,540 +44,168 @@
   "topbarLinks": [
     {
       "name": "Community",
-      "url": "https://discord.gg/kA47vcd8P6"
+      "url": "https://trigger.dev/discord"
     }
   ],
   "redirects": [
     {
-      "source": "/documentation/quickstart",
-      "destination": "/documentation/quickstarts/introduction"
+      "source": "/v3/feature-matrix",
+      "destination": "https://feedback.trigger.dev/roadmap"
     },
     {
-      "source": "/documentation/guides/manual",
-      "destination": "/documentation/guides/manual/nextjs"
+      "source": "/v3/upgrading-from-v2",
+      "destination": "/guides/use-cases/upgrading-from-v2"
     },
     {
-      "source": "/documentation/concepts/limitations",
-      "destination": "/documentation/concepts/limits"
+      "source": "/v3/open-source-self-hosting",
+      "destination": "/open-source-self-hosting"
     },
     {
-      "source": "/documentation/guides/create-a-job",
-      "destination": "/documentation/guides/writing-jobs-step-by-step"
-    },
+      "source": "/v3/:slug*",
+      "destination": "/:slug*"
+    }
+  ],
+
+  "anchors": [
     {
-      "source": "/documentation/v3/feature-matrix",
-      "destination": "/documentation/"
+      "name": "Guides",
+      "icon": "book",
+      "url": "guides"
     }
   ],
   "navigation": [
     {
-      "group": "",
-      "version": "v3",
-      "pages": ["v3/introduction"]
-    },
-    {
       "group": "Getting Started",
-      "version": "v3",
-      "pages": ["v3/quick-start", "v3/upgrading-from-v2", "v3/limits", "v3/roadmap", "v3/changelog"]
+      "pages": ["introduction", "quick-start", "limits", "changelog", "roadmap"]
     },
     {
       "group": "Fundamentals",
-      "version": "v3",
       "pages": [
-        "v3/trigger-folder",
-        "v3/tasks-overview",
-        "v3/triggering",
-        "v3/apikeys",
+        "trigger-folder",
+        "tasks-overview",
+        "triggering",
+        "apikeys",
         {
           "group": "Task types",
-          "pages": ["v3/tasks-regular", "v3/tasks-scheduled"]
+          "pages": ["tasks-regular", "tasks-scheduled"]
         },
-        "v3/trigger-config"
+        "trigger-config"
       ]
     },
     {
       "group": "Development",
-      "version": "v3",
-      "pages": ["v3/cli-dev", "v3/run-tests"]
+      "pages": ["cli-dev", "run-tests"]
     },
     {
       "group": "Deployment",
-      "version": "v3",
       "pages": [
-        "v3/deploy-environment-variables",
-        "v3/cli-deploy",
-        "v3/github-actions",
+        "deploy-environment-variables",
+        "cli-deploy",
+        "github-actions",
         {
           "group": "Deployment integrations",
-          "pages": ["v3/vercel-integration"]
+          "pages": ["vercel-integration"]
         }
       ]
     },
     {
       "group": "Writing tasks",
-      "version": "v3",
       "pages": [
-        "v3/writing-tasks-introduction",
-        "v3/logging",
-        "v3/errors-retrying",
+        "writing-tasks-introduction",
+        "logging",
+        "errors-retrying",
         {
           "group": "Wait",
-          "pages": [
-            "v3/wait",
-            "v3/wait-for",
-            "v3/wait-until",
-            "v3/wait-for-event",
-            "v3/wait-for-request"
-          ]
+          "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
         },
-        "v3/queue-concurrency",
-        "v3/versioning",
-        "v3/machines",
-        "v3/idempotency",
-        "v3/reattempting-replaying",
-        "v3/tags",
-        "v3/notifications",
-        "v3/run-usage"
+        "queue-concurrency",
+        "versioning",
+        "machines",
+        "idempotency",
+        "reattempting-replaying",
+        "tags",
+        "notifications",
+        "run-usage"
       ]
     },
     {
       "group": "API reference",
-      "version": "v3",
       "pages": [
-        "v3/management/overview",
+        "management/overview",
         {
           "group": "Tasks API",
-          "pages": ["v3/management/tasks/trigger", "v3/management/tasks/batch-trigger"]
+          "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
         },
         {
           "group": "Runs API",
           "pages": [
-            "v3/management/runs/list",
-            "v3/management/runs/retrieve",
-            "v3/management/runs/replay",
-            "v3/management/runs/cancel",
-            "v3/management/runs/reschedule"
+            "management/runs/list",
+            "management/runs/retrieve",
+            "management/runs/replay",
+            "management/runs/cancel",
+            "management/runs/reschedule"
           ]
         },
         {
           "group": "Schedules API",
           "pages": [
-            "v3/management/schedules/list",
-            "v3/management/schedules/create",
-            "v3/management/schedules/retrieve",
-            "v3/management/schedules/update",
-            "v3/management/schedules/delete",
-            "v3/management/schedules/deactivate",
-            "v3/management/schedules/activate",
-            "v3/management/schedules/timezones"
+            "management/schedules/list",
+            "management/schedules/create",
+            "management/schedules/retrieve",
+            "management/schedules/update",
+            "management/schedules/delete",
+            "management/schedules/deactivate",
+            "management/schedules/activate",
+            "management/schedules/timezones"
           ]
         },
         {
           "group": "Env Vars API",
           "pages": [
-            "v3/management/envvars/list",
-            "v3/management/envvars/import",
-            "v3/management/envvars/create",
-            "v3/management/envvars/retrieve",
-            "v3/management/envvars/update",
-            "v3/management/envvars/delete"
+            "management/envvars/list",
+            "management/envvars/import",
+            "management/envvars/create",
+            "management/envvars/retrieve",
+            "management/envvars/update",
+            "management/envvars/delete"
           ]
         },
         {
           "group": "Projects API",
-          "pages": ["v3/management/projects/runs"]
+          "pages": ["management/projects/runs"]
         }
       ]
     },
     {
       "group": "Open source",
-      "version": "v3",
-      "pages": ["v3/github-repo", "v3/open-source-self-hosting", "v3/open-source-contributing"]
+      "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
     },
     {
       "group": "Troubleshooting",
-      "version": "v3",
       "pages": [
-        "v3/troubleshooting",
-        "v3/upgrading-packages",
-        "v3/troubleshooting-alerts",
-        "v3/troubleshooting-uptime-status",
-        "v3/troubleshooting-github-issues",
-        "v3/request-feature"
+        "troubleshooting",
+        "upgrading-packages",
+        "troubleshooting-alerts",
+        "troubleshooting-uptime-status",
+        "troubleshooting-github-issues",
+        "request-feature"
       ]
     },
     {
       "group": "Help",
-      "version": "v3",
-      "pages": ["v3/community", "v3/help-slack", "v3/help-email"]
+      "pages": ["community", "help-slack", "help-email"]
     },
     {
-      "group": "Getting Started",
-      "version": "v2",
-      "pages": [
-        "documentation/introduction",
-        {
-          "group": "Quick Starts",
-          "pages": [
-            "documentation/quickstarts/introduction",
-            {
-              "group": "Frameworks",
-              "pages": [
-                "documentation/quickstarts/nextjs",
-                "documentation/quickstarts/express",
-                "documentation/quickstarts/remix",
-                "documentation/quickstarts/redwood",
-                "documentation/quickstarts/nestjs",
-                "documentation/quickstarts/astro",
-                "documentation/quickstarts/nuxt",
-                "documentation/quickstarts/sveltekit",
-                "documentation/quickstarts/hono",
-                "documentation/quickstarts/fastify"
-              ]
-            },
-            "documentation/quickstarts/supabase"
-          ]
-        },
-        "documentation/guides/writing-jobs-step-by-step",
-        "documentation/guides/task-library",
-        "documentation/guides/video-walkthrough"
-      ]
+      "group": "Frameworks",
+      "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs", "guides/frameworks/remix"]
     },
     {
-      "group": "Concepts",
-      "version": "v2",
-      "pages": [
-        "documentation/concepts/what-is-triggerdotdev",
-        "documentation/concepts/limits",
-        "documentation/concepts/projects",
-        "documentation/concepts/client-adaptors",
-        {
-          "group": "Jobs, Runs & Tasks",
-          "pages": [
-            "documentation/concepts/jobs",
-            "documentation/concepts/runs",
-            "documentation/concepts/tasks"
-          ]
-        },
-        {
-          "group": "Triggers",
-          "pages": [
-            "documentation/concepts/triggers/introduction",
-            "documentation/concepts/triggers/invoke",
-            "documentation/concepts/triggers/events",
-            "documentation/concepts/triggers/scheduled",
-            "documentation/concepts/triggers/http",
-            "documentation/concepts/triggers/webhooks",
-            "documentation/concepts/triggers/dynamic"
-          ]
-        },
-        "documentation/concepts/http-endpoints",
-        "documentation/concepts/resumability",
-        "documentation/concepts/delays",
-        "documentation/concepts/integrations",
-        "documentation/concepts/connect",
-        "documentation/concepts/environments-endpoints"
-      ]
+      "group": "Dashboard",
+      "pages": ["guides/dashboard/creating-a-project"]
     },
     {
-      "group": "Guides",
-      "version": "v2",
-      "pages": [
-        {
-          "group": "Frameworks",
-          "pages": [
-            "documentation/guides/platforms/nextjs",
-            "documentation/guides/platforms/express",
-            "documentation/guides/platforms/remix",
-            "documentation/guides/platforms/redwood",
-            "documentation/guides/platforms/astro",
-            "documentation/guides/platforms/nuxt",
-            "documentation/guides/platforms/sveltekit",
-            "documentation/guides/platforms/fastify"
-          ]
-        },
-        "documentation/guides/cli",
-        {
-          "group": "Manual setup",
-          "pages": [
-            "documentation/guides/manual/nextjs",
-            "documentation/guides/manual/nestjs",
-            "documentation/guides/manual/express",
-            "documentation/guides/manual/remix",
-            "documentation/guides/manual/redwood",
-            "documentation/guides/manual/astro",
-            "documentation/guides/manual/nuxt",
-            "documentation/guides/manual/sveltekit",
-            "documentation/guides/manual/fastify"
-          ]
-        },
-        "documentation/guides/running-jobs",
-        "documentation/guides/jobs/managing",
-        {
-          "group": "Using the Dashboard",
-          "pages": [
-            "documentation/guides/managing-jobs",
-            "documentation/guides/viewing-runs",
-            "documentation/guides/testing-jobs",
-            "documentation/guides/rerunning"
-          ]
-        },
-        {
-          "group": "Using Integrations",
-          "pages": [
-            "documentation/guides/using-integrations",
-            "documentation/guides/using-integrations-apikeys",
-            "documentation/guides/using-integrations-oauth",
-            "documentation/guides/using-integrations-byo-auth"
-          ]
-        },
-        {
-          "group": "React hooks",
-          "pages": [
-            "documentation/guides/react-hooks",
-            "documentation/guides/react-hooks-automatic",
-            "documentation/guides/react-hooks-statuses"
-          ]
-        },
-        {
-          "group": "Deployment",
-          "pages": [
-            "documentation/guides/deployment",
-            "documentation/guides/deployment-setup",
-            "documentation/guides/deployment-manual",
-            "documentation/guides/deployment-automatic"
-          ]
-        },
-        "documentation/guides/event-filter",
-        "documentation/guides/zod",
-        {
-          "group": "Self hosting",
-          "pages": [
-            "documentation/guides/self-hosting",
-            "documentation/guides/self-hosting/flyio",
-            "documentation/guides/self-hosting/render",
-            "documentation/guides/self-hosting/kubernetes",
-            "documentation/guides/self-hosting/supabase",
-            "documentation/guides/tunneling-platform"
-          ]
-        },
-        "documentation/guides/contributing"
-      ]
-    },
-    {
-      "group": "Community & Support",
-      "version": "v2",
-      "pages": [
-        "documentation/get-help",
-        "documentation/faq",
-        "documentation/changelog",
-        "documentation/roadmap"
-      ]
-    },
-    {
-      "group": "Overview",
-      "version": "v2",
-      "pages": [
-        "integrations/introduction",
-        {
-          "group": "Create an Integration",
-          "pages": [
-            "integrations/create",
-            "integrations/create-setup",
-            "integrations/create-anatomy",
-            "integrations/create-oauth",
-            "integrations/create-client",
-            "integrations/create-tasks",
-            "integrations/create-triggers",
-            "integrations/create-testing",
-            "integrations/create-publishing"
-          ]
-        }
-      ]
-    },
-    {
-      "group": "Integrations",
-      "version": "v2",
-      "pages": [
-        {
-          "group": "Airtable",
-          "pages": ["integrations/apis/airtable", "integrations/apis/airtable-tasks"]
-        },
-        {
-          "group": "GitHub",
-          "pages": [
-            "integrations/apis/github",
-            "integrations/apis/github-triggers",
-            "integrations/apis/github-tasks"
-          ]
-        },
-        "integrations/apis/linear",
-        {
-          "group": "OpenAI",
-          "pages": [
-            "integrations/apis/openai",
-            "integrations/apis/openai/chat",
-            "integrations/apis/openai/assistants",
-            "integrations/apis/openai/files",
-            "integrations/apis/openai/images",
-            "integrations/apis/openai/fine-tunes",
-            "integrations/apis/openai/models",
-            "integrations/apis/openai/completions"
-          ]
-        },
-        {
-          "group": "Plain",
-          "pages": ["integrations/apis/plain", "integrations/apis/plain-tasks"]
-        },
-        "integrations/apis/replicate",
-        {
-          "group": "SendGrid",
-          "pages": ["integrations/apis/sendgrid", "integrations/apis/sendgrid-tasks"]
-        },
-        {
-          "group": "Resend",
-          "pages": ["integrations/apis/resend", "integrations/apis/resend-tasks"]
-        },
-        {
-          "group": "Shopify",
-          "pages": [
-            "integrations/apis/shopify",
-            "integrations/apis/shopify-triggers",
-            "integrations/apis/shopify-tasks"
-          ]
-        },
-        {
-          "group": "Slack",
-          "pages": ["integrations/apis/slack", "integrations/apis/slack-tasks"]
-        },
-        "integrations/apis/stripe",
-        {
-          "group": "Supabase",
-          "pages": [
-            "integrations/apis/supabase/introduction",
-            "integrations/apis/supabase/management",
-            "integrations/apis/supabase/client"
-          ]
-        },
-        "integrations/apis/typeform"
-      ]
-    },
-    {
-      "group": "SDK",
-      "version": "v2",
-      "pages": [
-        "sdk/introduction",
-        {
-          "group": "TriggerClient",
-          "pages": [
-            "sdk/triggerclient/overview",
-            "sdk/triggerclient/constructor",
-            {
-              "group": "Instance properties",
-              "pages": ["sdk/triggerclient/store"]
-            },
-            {
-              "group": "Instance methods",
-              "pages": [
-                "sdk/triggerclient/instancemethods/sendevent",
-                "sdk/triggerclient/instancemethods/sendevents",
-                "sdk/triggerclient/instancemethods/getevent",
-                "sdk/triggerclient/instancemethods/cancel-event",
-                "sdk/triggerclient/instancemethods/cancel-runs-for-event",
-                "sdk/triggerclient/instancemethods/cancel-runs-for-job",
-                "sdk/triggerclient/instancemethods/getruns",
-                "sdk/triggerclient/instancemethods/getrun",
-                "sdk/triggerclient/instancemethods/define-job",
-                "sdk/triggerclient/instancemethods/define-http-endpoint",
-                "sdk/triggerclient/instancemethods/define-dynamic-trigger",
-                "sdk/triggerclient/instancemethods/define-dynamic-schedule",
-                "sdk/triggerclient/instancemethods/define-auth-resolver",
-                "sdk/triggerclient/instancemethods/concurrency-limit",
-                "sdk/triggerclient/instancemethods/on"
-              ]
-            }
-          ]
-        },
-        "sdk/job",
-        {
-          "group": "IO",
-          "pages": [
-            "sdk/io/overview",
-            "sdk/io/runtask",
-            "sdk/io/sendevent",
-            "sdk/io/sendevents",
-            "sdk/io/store",
-            "sdk/io/wait",
-            "sdk/io/wait-for-event",
-            "sdk/io/wait-for-request",
-            "sdk/io/backgroundfetch",
-            "sdk/io/background-poll",
-            "sdk/io/random",
-            "sdk/io/logger",
-            "sdk/io/try",
-            "sdk/io/registerinterval",
-            "sdk/io/unregisterinterval",
-            "sdk/io/registercron",
-            "sdk/io/unregistercron",
-            "sdk/io/registertrigger"
-          ]
-        },
-        "sdk/context",
-        "sdk/run-notification",
-        "sdk/invoke-trigger",
-        "sdk/eventtrigger",
-        "sdk/crontrigger",
-        "sdk/intervaltrigger",
-        "sdk/http-endpoint",
-        "sdk/http-trigger",
-        {
-          "group": "DynamicTrigger",
-          "pages": [
-            "sdk/dynamictrigger/overview",
-            "sdk/dynamictrigger/constructor",
-            {
-              "group": "Instance methods",
-              "pages": ["sdk/dynamictrigger/register", "sdk/dynamictrigger/unregister"]
-            }
-          ]
-        },
-        {
-          "group": "DynamicSchedule",
-          "pages": [
-            "sdk/dynamicschedule/overview",
-            "sdk/dynamicschedule/constructor",
-            {
-              "group": "Instance methods",
-              "pages": ["sdk/dynamicschedule/register", "sdk/dynamicschedule/unregister"]
-            }
-          ]
-        },
-        "sdk/connection-auth",
-        "sdk/istriggererror",
-        "sdk/redactstring",
-        "sdk/verify-request-signature"
-      ]
-    },
-    {
-      "group": "HTTP Reference",
-      "version": "v2",
-      "pages": ["sdk/api-reference/events/create-an-event"]
-    },
-    {
-      "group": "React SDK",
-      "version": "v2",
-      "pages": [
-        "sdk/react/introduction",
-        "sdk/react/triggerprovider",
-        "sdk/react/useeventdetails",
-        "sdk/react/useeventrundetails",
-        "sdk/react/userundetails"
-      ]
-    },
-    {
-      "group": "Overview",
-      "version": "v2",
-      "pages": ["examples/introduction"]
+      "group": "Use cases",
+      "pages": ["guides/use-cases/upgrading-from-v2"]
     }
   ],
   "footerSocials": {

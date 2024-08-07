@@ -1,0 +1,32 @@
+<Step title="Run the CLI `init` command">
+
+The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
+
+Run this command in the root of your project to get started:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta init
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta init
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta init
+```
+
+</CodeGroup>
+
+It will do a few things:
+
+1. Log you into the CLI if you're not already logged in.
+2. Create a `trigger.config.ts` file in the root of your project.
+3. Ask where you'd like to create the `/trigger` directory.
+4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
+
+Install the "Hello World" example task when prompted. We'll use this task to test the setup.
+
+</Step>
