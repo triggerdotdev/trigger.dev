@@ -16,7 +16,7 @@ import {
   resolvePluginsForContext,
 } from "../build/extensions.js";
 import { createExternalsBuildExtension } from "../build/externals.js";
-import { devEntryPoint, telemetryLoader } from "../build/packageModules.js";
+import { devEntryPoint, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { logger } from "../utilities/logger.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
@@ -60,7 +60,7 @@ export async function startDevSession({ rawConfig }: DevSessionOptions) {
   }
 
   async function updateBuild(build: esbuild.BuildResult, workerDir: EphemeralDirectory) {
-    const bundle = getBundleResultFromBuild(rawConfig.workingDir, build);
+    const bundle = getBundleResultFromBuild("dev", rawConfig.workingDir, build);
 
     if (bundle) {
       await updateBundle({ ...bundle, stop: undefined }, workerDir);
@@ -141,9 +141,8 @@ async function createBuildManifestFromBundle(
     externals: [],
     config: resolvedConfig,
     outputPath: destination,
-    workerEntryPath: bundle.workerDevPath ?? devEntryPoint,
-    workerForkPath: bundle.workerDevPath ?? devEntryPoint,
-    loaderPath: bundle.loaderPath ?? telemetryLoader,
+    workerEntryPoint: bundle.workerEntryPoint ?? devEntryPoint,
+    loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundle.configPath,
     deploy: {
       env: {},

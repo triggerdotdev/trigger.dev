@@ -3,7 +3,16 @@ import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { join, resolve } from "node:path";
 import { logger } from "../utilities/logger.js";
-import { packageModules, shims } from "./packageModules.js";
+import {
+  deployEntryPoint,
+  deployEntryPoints,
+  devEntryPoint,
+  devEntryPoints,
+  isDeployEntryPoint,
+  isDevEntryPoint,
+  isLoaderEntryPoint,
+  shims,
+} from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 
 export interface BundleOptions {
@@ -21,22 +30,19 @@ export interface BundleOptions {
 export type BundleResult = {
   files: TaskFile[];
   configPath: string;
-  loaderPath: string | undefined;
-  workerProdPath: string | undefined;
-  workerDevPath: string | undefined;
+  loaderEntryPoint: string | undefined;
+  workerEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
-export async function bundleWorker(
-  options: BundleOptions
-): Promise<BundleResult> {
+export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
 
   // We need to add the package entry points here somehow
   // Then we need to get them out of the build result into the build manifest
   // taskhero/dist/esm/workers/dev.js
   // taskhero/dist/esm/telemetry/loader.js
-  const entryPoints = await getEntryPoints(resolvedConfig);
+  const entryPoints = await getEntryPoints(options.target, resolvedConfig);
   const $buildPlugins = await buildPlugins(options.target, resolvedConfig);
 
   let initialBuildResult: (result: esbuild.BuildResult) => void;
@@ -81,7 +87,7 @@ export async function bundleWorker(
     ...(options.jsxFragment && { jsxFragment: options.jsxFragment }),
     logLevel: "silent",
     logOverride: {
-      'empty-glob': 'silent',
+      "empty-glob": "silent",
     },
   };
 
@@ -108,7 +114,7 @@ export async function bundleWorker(
     stop = async function () {};
   }
 
-  const bundleResult = getBundleResultFromBuild(options.cwd, result);
+  const bundleResult = getBundleResultFromBuild(options.target, options.cwd, result);
 
   if (!bundleResult) {
     throw new Error("Failed to get bundle result");
@@ -118,45 +124,35 @@ export async function bundleWorker(
 }
 
 export function getBundleResultFromBuild(
+  target: BuildTarget,
   workingDir: string,
   result: esbuild.BuildResult<{ metafile: true }>
 ): Omit<BundleResult, "stop"> | undefined {
   const files: Array<{ entry: string; out: string }> = [];
-  const imports = new Set<string>();
-  let configPath: string | undefined;
-  let loaderPath: string | undefined;
-  let workerDevPath: string | undefined;
-  let workerProdPath: string | undefined;
 
-  for (const [outputPath, outputMeta] of Object.entries(
-    result.metafile.outputs
-  )) {
+  let configPath: string | undefined;
+  let loaderEntryPoint: string | undefined;
+  let workerEntryPoint: string | undefined;
+
+  for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
       const $outputPath = resolve(workingDir, outputPath);
 
-      if (outputMeta.entryPoint) {
-        if (outputMeta.entryPoint.startsWith("trigger.config.ts")) {
-          configPath = $outputPath;
-        } else if (
-          outputMeta.entryPoint.includes(
-            "dist/esm/telemetry/loader.js"
-          )
-        ) {
-          loaderPath = $outputPath;
-        } else if (
-          outputMeta.entryPoint.includes("dist/esm/workers/dev.js")
-        ) {
-          workerDevPath = $outputPath;
-        } else if (
-          outputMeta.entryPoint.includes("dist/esm/workers/prod.js")
-        ) {
-          workerProdPath = $outputPath;
-        } else {
-          files.push({
-            entry: outputMeta.entryPoint,
-            out: $outputPath,
-          });
-        }
+      if (!outputMeta.entryPoint) {
+        continue;
+      }
+
+      if (isConfigEntryPoint(outputMeta.entryPoint)) {
+        configPath = $outputPath;
+      } else if (isLoaderEntryPoint(outputMeta.entryPoint)) {
+        loaderEntryPoint = $outputPath;
+      } else if (isEntryPointForTarget(outputMeta.entryPoint, target)) {
+        workerEntryPoint = $outputPath;
+      } else {
+        files.push({
+          entry: outputMeta.entryPoint,
+          out: $outputPath,
+        });
       }
     }
   }
@@ -168,30 +164,48 @@ export function getBundleResultFromBuild(
   return {
     files,
     configPath: configPath,
-    loaderPath,
-    workerDevPath,
-    workerProdPath,
+    loaderEntryPoint,
+    workerEntryPoint,
   };
 }
 
-async function getEntryPoints(config: ResolvedConfig) {
+function isEntryPointForTarget(entryPoint: string, target: BuildTarget) {
+  if (target === "dev") {
+    return isDevEntryPoint(entryPoint);
+  } else {
+    return isDeployEntryPoint(entryPoint);
+  }
+}
+
+function isConfigEntryPoint(entryPoint: string) {
+  return entryPoint.startsWith("trigger.config.ts");
+}
+
+async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
   const projectEntryPoints = config.dirs.flatMap((dir) => dirToEntryPointGlob(dir));
 
   if (config.configFile) {
     projectEntryPoints.push(config.configFile);
   }
 
-  projectEntryPoints.push(...packageModules);
+  if (target === "dev") {
+    projectEntryPoints.push(...devEntryPoints);
+  } else {
+    projectEntryPoints.push(...deployEntryPoints);
+  }
 
   return projectEntryPoints;
 }
 
 // Converts a directory to a glob that matches all the entry points in that
 function dirToEntryPointGlob(dir: string): string[] {
-  return [join(dir, "**", "*.ts"), join(dir, "**", "*.tsx"), join(dir, "**", "*.js"), join(dir, "**", "*.jsx")];
+  return [
+    join(dir, "**", "*.ts"),
+    join(dir, "**", "*.tsx"),
+    join(dir, "**", "*.js"),
+    join(dir, "**", "*.jsx"),
+  ];
 }
-
-
 
 export function logBuildWarnings(warnings: esbuild.Message[]) {
   const logs = esbuild.formatMessagesSync(warnings, { kind: "warning", color: true });
