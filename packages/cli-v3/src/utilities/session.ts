@@ -2,21 +2,24 @@ import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { getTracer } from "../telemetry/tracing.js";
+import { logger } from "./logger.js";
 
 const tracer = getTracer();
 
+export type LoginResultOk = {
+  ok: true;
+  profile: string;
+  userId: string;
+  email: string;
+  dashboardUrl: string;
+  auth: {
+    apiUrl: string;
+    accessToken: string;
+  };
+};
+
 export type LoginResult =
-  | {
-      ok: true;
-      profile: string;
-      userId: string;
-      email: string;
-      dashboardUrl: string;
-      auth: {
-        apiUrl: string;
-        accessToken: string;
-      };
-    }
+  | LoginResultOk
   | {
       ok: false;
       error: string;
@@ -84,4 +87,42 @@ export async function isLoggedIn(profile: string = "default"): Promise<LoginResu
       };
     }
   });
+}
+
+export type GetEnvOptions = {
+  accessToken: string;
+  apiUrl: string;
+  projectRef: string;
+  env: string;
+  profile: string;
+};
+
+export async function getProjectClient(options: GetEnvOptions) {
+  const apiClient = new CliApiClient(options.apiUrl, options.accessToken);
+
+  const projectEnv = await apiClient.getProjectEnv({
+    projectRef: options.projectRef,
+    env: options.env,
+  });
+
+  if (!projectEnv.success) {
+    if (projectEnv.error === "Project not found") {
+      logger.error(
+        `Project not found: ${options.projectRef}. Ensure you are using the correct project ref and CLI profile (use --profile). Currently using the "${options.profile}" profile, which points to ${options.apiUrl}`
+      );
+    } else {
+      logger.error(
+        `Failed to initialize dev environment: ${projectEnv.error}. Using project ref ${options.projectRef}`
+      );
+    }
+
+    return;
+  }
+
+  const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey);
+
+  return {
+    name: projectEnv.data.name,
+    client,
+  };
 }

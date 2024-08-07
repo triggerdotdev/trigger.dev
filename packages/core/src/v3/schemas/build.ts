@@ -62,38 +62,6 @@ export const TaskManifest = z.object({
 
 export type TaskManifest = z.infer<typeof TaskManifest>;
 
-export const ExecuteTaskMessage = z.object({
-  type: z.literal("execute-task"),
-  data: z.object({
-    task: TaskManifest,
-    payload: z.unknown(),
-    projectRef: z.string(),
-    configPath: z.string(),
-  }),
-});
-
-export type ExecuteTaskMessage = z.infer<typeof ExecuteTaskMessage>;
-
-export const RunExecution = z.object({
-  task: TaskManifest,
-  payload: z.unknown(),
-  projectRef: z.string(),
-  configPath: z.string(),
-  entryPath: z.string(),
-  loaderPath: z.string().optional(),
-  env: z.record(z.string()),
-  cwd: z.string().optional(),
-});
-
-export type RunExecution = z.infer<typeof RunExecution>;
-
-export const ParentToChildMessages = z.discriminatedUnion("type", [
-  IndexMessage,
-  ExecuteTaskMessage,
-]);
-
-export type ParentToChildMessages = z.infer<typeof ParentToChildMessages>;
-
 export const WorkerManifest = z.object({
   tasks: TaskManifest.array(),
 });
@@ -108,63 +76,3 @@ export const WorkerManifestMessage = z.object({
 });
 
 export type WorkerManifestMessage = z.infer<typeof WorkerManifestMessage>;
-
-export const FailedTaskCompletion = z.object({
-  ok: z.literal(false),
-  error: z.object({
-    message: z.string(),
-    stack: z.string().optional(),
-    name: z.string().optional(),
-  }),
-});
-
-export type FailedTaskCompletion = z.infer<typeof FailedTaskCompletion>;
-
-export const SuccessfulTaskCompletion = z.object({
-  ok: z.literal(true),
-  output: z.unknown(),
-});
-
-export type SuccessfulTaskCompletion = z.infer<typeof SuccessfulTaskCompletion>;
-
-export const TaskCompletion = z.discriminatedUnion("ok", [
-  FailedTaskCompletion,
-  SuccessfulTaskCompletion,
-]);
-
-export type TaskCompletion = z.infer<typeof TaskCompletion>;
-
-export const CompletedTask = z.object({
-  id: z.string(),
-  completion: TaskCompletion,
-  spans: z.array(z.any()),
-});
-
-export type CompletedTask = z.infer<typeof CompletedTask>;
-
-export const CompletedTaskMessage = z.object({
-  type: z.literal("completed-task"),
-  data: CompletedTask,
-});
-
-export type CompletedTaskMessage = z.infer<typeof CompletedTaskMessage>;
-
-export const ChildToParentMessages = z.discriminatedUnion("type", [
-  WorkerManifestMessage,
-  CompletedTaskMessage,
-]);
-
-export type ChildToParentMessages = z.infer<typeof ChildToParentMessages>;
-
-export const TriggerTaskResult = z.discriminatedUnion("ok", [
-  z.object({
-    ok: z.literal(true),
-    output: z.unknown(),
-  }),
-  z.object({
-    ok: z.literal(false),
-    error: z.string(),
-  }),
-]);
-
-export type TriggerTaskResult = z.infer<typeof TriggerTaskResult>;

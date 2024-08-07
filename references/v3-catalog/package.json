@@ -23,7 +23,7 @@
     "@react-email/render": "^0.0.7",
     "@sindresorhus/slugify": "^2.2.1",
     "@t3-oss/env-nextjs": "^0.10.1",
-    "@traceloop/instrumentation-openai": "^0.3.9",
+    "@traceloop/instrumentation-openai": "^0.10.0",
     "@trigger.dev/sdk": "workspace:*",
     "dotenv": "^16.4.5",
     "execa": "^8.0.1",

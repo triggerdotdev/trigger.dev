@@ -11,7 +11,10 @@
     "jsx": "preserve",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "lib": ["DOM", "DOM.Iterable"]
+    "lib": ["DOM", "DOM.Iterable"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["./src/**/*.ts", "trigger.config.ts", "src/trigger/email.tsx"]
 }
