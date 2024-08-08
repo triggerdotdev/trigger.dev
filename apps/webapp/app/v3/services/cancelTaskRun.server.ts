@@ -1,14 +1,14 @@
-import { Prisma, TaskRun } from "@trigger.dev/database";
+import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { socketIo } from "../handleSocketIo.server";
 import { devPubSub } from "../marqs/devPubSub.server";
+import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskStatus";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -47,34 +47,12 @@ export class CancelTaskRunService extends BaseService {
       return;
     }
 
-    /*
-    "CANCELED"
-    
-    Steps:
-    1. marqs ack
-    2. Updates the run to canceled and gets attempts, dependencies, etc
-    3. Cancels all incomplete OTEL events
-    4. Cancels all in progress attempts
-    5. Cancels all in progress workers
-
-    Inputs:
-    - taskRun: id, friendlyId
-    - cancelledAt
-    - reason
-    */
-
-    // Remove the task run from the queue if it's there for some reason
-    await marqs?.acknowledgeMessage(taskRun.id);
-
-    // Set the task run status to cancelled
-    const cancelledTaskRun = await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
-        status: "CANCELED",
-        completedAt: opts.cancelledAt,
-      },
+    const finalizeService = new FinalizeTaskRunService();
+    const cancelledTaskRun = await finalizeService.call({
+      tx: this._prisma,
+      id: taskRun.id,
+      status: "CANCELED",
+      completedAt: opts.cancelledAt,
       include: {
         attempts: {
           where: {
