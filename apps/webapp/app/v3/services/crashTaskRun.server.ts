@@ -44,22 +44,6 @@ export class CrashTaskRunService extends BaseService {
       return;
     }
 
-    /*
-    "CRASHED"
-    
-    Steps:
-    1. marqs ack
-    2. Updates the run to crashed, gets attempts, dependencies, etc
-    3. Crashes all the relevant OTEL events
-    4. Cancels any in progress attempts
-
-    Inputs:
-    - taskRun: id, friendlyId
-    - crashedAt
-    - reason
-    - logs/stacktrace
-    */
-
     const finalizeService = new FinalizeTaskRunService();
     const crashedTaskRun = await finalizeService.call({
       tx: this._prisma,
