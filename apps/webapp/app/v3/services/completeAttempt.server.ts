@@ -8,7 +8,7 @@ import {
   flattenAttributes,
   sanitizeError,
 } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -111,49 +111,27 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    /*
-    "COMPLETED"
+    const finalizeService = new FinalizeTaskRunService();
 
-    Steps:
-    1. Updates the run *attempt* to completed AND the run to completed successfully
-    2. marqs ack
-    3. Complete the run span OTEL event
-    4. Resume the task dependencies
-
-    Inputs:
-    - taskRunAttempt: id
-    - taskRun: id, spanId
-    - output
-    - outputType
-    - usage
-    - Prisma client/transaction
-
-    Questions:
-    - Why do we ack after the db update?
-    */
-
-    await this._prisma.taskRunAttempt.update({
-      where: { id: taskRunAttempt.id },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-        output: completion.output,
-        outputType: completion.outputType,
-        usageDurationMs: completion.usage?.durationMs,
-        taskRun: {
-          update: {
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
-              completedAt: new Date(),
-            },
-          },
+    await $transaction(this._prisma, async (tx) => {
+      await tx.taskRunAttempt.update({
+        where: { id: taskRunAttempt.id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: completion.output,
+          outputType: completion.outputType,
+          usageDurationMs: completion.usage?.durationMs,
         },
-      },
+      });
+
+      await finalizeService.call({
+        tx,
+        id: taskRunAttempt.taskRun.id,
+        status: "COMPLETED_SUCCESSFULLY",
+        completedAt: new Date(),
+      });
     });
-
-    logger.debug("Completed attempt successfully, ACKing message");
-
-    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
