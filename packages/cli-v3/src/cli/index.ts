@@ -4,9 +4,10 @@ import { configureInitCommand } from "../commands/init.js";
 import { configureLoginCommand } from "../commands/login.js";
 import { configureLogoutCommand } from "../commands/logout.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
-import { COMMAND_NAME, VERSION } from "../consts.js";
+import { COMMAND_NAME } from "../consts.js";
 import { configureListProfilesCommand } from "../commands/list-profiles.js";
 import { configureUpdateCommand } from "../commands/update.js";
+import { VERSION } from "../version.js";
 
 export const program = new Command();
 

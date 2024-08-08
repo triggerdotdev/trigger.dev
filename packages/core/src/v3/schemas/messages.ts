@@ -15,7 +15,7 @@ import {
   WaitReason,
 } from "./schemas.js";
 import { TaskResource } from "./resources.js";
-import { WorkerManifest } from "./build.js";
+import { BuildManifest, WorkerManifest } from "./build.js";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
@@ -108,6 +108,9 @@ export const clientWebsocketMessages = {
 };
 
 export const workerToChildMessages = {
+  INDEX: z.object({
+    build: BuildManifest,
+  }),
   EXECUTE_TASK_RUN: z.object({
     version: z.literal("v1").default("v1"),
     execution: TaskRunExecution,

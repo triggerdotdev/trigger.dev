@@ -18,7 +18,8 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts",
-      "./v3": "./src/v3/index.ts"
+      "./v3": "./src/v3/index.ts",
+      "./v3/extensions": "./src/v3/extensions.ts"
     },
     "sourceDialects": [
       "triggerdotdev-source"
@@ -26,10 +27,11 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "prepare": "tshy",
+    "prepare": "tshy && pnpm run update-version",
     "build": "tshy",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "update-version": "tsx ../../scripts/updateVersion.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
@@ -40,11 +42,7 @@
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
-    "get-caller-file": "^2.0.5",
-    "git-remote-origin-url": "^4.0.0",
-    "git-repo-info": "^2.1.1",
     "msw": "^2.2.1",
-    "package-json-from-dist": "^1.0.0",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
@@ -63,7 +61,8 @@
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "tsx": "4.17.0"
   },
   "engines": {
     "node": ">=18.20.0"
@@ -90,6 +89,17 @@
       "require": {
         "types": "./dist/commonjs/v3/index.d.ts",
         "default": "./dist/commonjs/v3/index.js"
+      }
+    },
+    "./v3/extensions": {
+      "import": {
+        "triggerdotdev-source": "./src/v3/extensions.ts",
+        "types": "./dist/esm/v3/extensions.d.ts",
+        "default": "./dist/esm/v3/extensions.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/extensions.d.ts",
+        "default": "./dist/commonjs/v3/extensions.js"
       }
     }
   }

@@ -70,6 +70,8 @@ export async function startDevSession({
       buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
       logger.debug("Updated bundle", { bundle, buildManifest });
+
+      await runtime.initializeWorker(buildManifest);
     } catch (error) {
       logger.error("Error updating bundle", { error });
     }
@@ -156,7 +158,10 @@ async function createBuildManifestFromBundle(
     target: "dev",
     files: bundle.files,
     externals: [],
-    config: resolvedConfig,
+    config: {
+      project: resolvedConfig.project,
+      dirs: resolvedConfig.dirs,
+    },
     outputPath: destination,
     workerEntryPoint: bundle.workerEntryPoint ?? devEntryPoint,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,

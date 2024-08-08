@@ -1,20 +1,14 @@
-import * as esbuild from "esbuild";
-import { resolveModule } from "./resolveModule.js";
-import { BuildContext, BuildExtension, BuildLayer, RegisteredPlugin, RegisterPluginOptions, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import {
+  BuildContext,
+  BuildExtension,
+  BuildLayer,
+  RegisteredPlugin,
+  ResolvedConfig,
+} from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
+import * as esbuild from "esbuild";
 import { logger } from "../utilities/logger.js";
-
-export function createExtensionForPlugin(
-  plugin: esbuild.Plugin,
-  options: RegisterPluginOptions = {}
-): BuildExtension {
-  return {
-    name: plugin.name,
-    onBuildStart(context) {
-      context.registerPlugin(plugin, options);
-    },
-  };
-}
+import { resolveModule } from "./resolveModule.js";
 
 export interface InternalBuildContext extends BuildContext {
   getLayers(): BuildLayer[];
@@ -25,9 +19,7 @@ export interface InternalBuildContext extends BuildContext {
   getExtensions(): BuildExtension[];
 }
 
-export async function notifyExtensionOnBuildStart(
-  context: InternalBuildContext
-) {
+export async function notifyExtensionOnBuildStart(context: InternalBuildContext) {
   for (const extension of context.getExtensions()) {
     if (extension.onBuildStart) {
       await extension.onBuildStart(context);
@@ -118,10 +110,7 @@ function applyContextLayersToManifest(
   return manifest;
 }
 
-function applyLayerToManifest(
-  layer: BuildLayer,
-  manifest: BuildManifest
-): BuildManifest {
+function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): BuildManifest {
   let $manifest = { ...manifest };
 
   if (layer.commands) {
@@ -152,9 +141,7 @@ function applyLayerToManifest(
   return $manifest;
 }
 
-export function resolvePluginsForContext(
-  context: InternalBuildContext
-): esbuild.Plugin[] {
+export function resolvePluginsForContext(context: InternalBuildContext): esbuild.Plugin[] {
   const registeredPlugins = context.getPlugins();
 
   if (registeredPlugins.length === 0) {

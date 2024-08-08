@@ -314,13 +314,33 @@ export class BackgroundWorker {
       });
 
       child.stdout?.on("data", (data) => {
-        logger.log(data.toString());
+        logger.debug(data.toString());
       });
 
       child.stderr?.on("data", (data) => {
-        this.stderr.push(data.toString());
+        logger.debug(data.toString());
+      });
+
+      const sender = new ZodMessageSender({
+        schema: workerToChildMessages,
+        sender: async (message) => {
+          if (child.connected && !resolved) {
+            child.send(message);
+          }
+        },
+      });
+
+      sender.send("INDEX", { build: this.build }).catch((err) => {
+        if (err instanceof Error) {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(err);
+          child.kill();
+        }
       });
     });
+
+    logger.debug("Worker initialized", { manifest: this.manifest });
 
     this._initialized = true;
   }
