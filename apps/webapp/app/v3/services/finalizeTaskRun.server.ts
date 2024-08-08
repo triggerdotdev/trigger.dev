@@ -1,4 +1,4 @@
-import { TaskRun, type Prisma, type TaskRunStatus } from "@trigger.dev/database";
+import { type Prisma, type TaskRun, type TaskRunStatus } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
