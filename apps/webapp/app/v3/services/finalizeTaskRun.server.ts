@@ -1,9 +1,9 @@
+import { TaskRun, type Prisma, type TaskRunStatus } from "@trigger.dev/database";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { type TaskRunStatus } from "@trigger.dev/database";
-import { type PrismaClientOrTransaction } from "~/db.server";
 
-type Input = {
+type BaseInput = {
   tx: PrismaClientOrTransaction;
   id: string;
   status: TaskRunStatus;
@@ -11,27 +11,37 @@ type Input = {
   completedAt?: Date;
 };
 
-//todo
-//1. ack
-//2. Using the passed in transaction client, update the run status and any optional dates passed in
-//3. Remove the run from it's concurrency sets in Redis
-//4? Do alerts if the run has failed
+type InputWithInclude<T extends Prisma.TaskRunInclude> = BaseInput & {
+  include: T;
+};
+
+type InputWithoutInclude = BaseInput & {
+  include?: undefined;
+};
+
+type Output<T extends Prisma.TaskRunInclude | undefined> = T extends Prisma.TaskRunInclude
+  ? Prisma.TaskRunGetPayload<{ include: T }>
+  : TaskRun;
 
 export class FinalizeTaskRunService extends BaseService {
-  public async call({ tx, id, status, expiredAt, completedAt }: Input) {
+  public async call<T extends Prisma.TaskRunInclude | undefined>({
+    tx,
+    id,
+    status,
+    expiredAt,
+    completedAt,
+    include,
+  }: T extends Prisma.TaskRunInclude ? InputWithInclude<T> : InputWithoutInclude): Promise<
+    Output<T>
+  > {
     await marqs?.acknowledgeMessage(id);
 
     const run = await tx.taskRun.update({
-      where: {
-        id,
-      },
-      data: {
-        status,
-        expiredAt,
-        completedAt,
-      },
+      where: { id },
+      data: { status, expiredAt, completedAt },
+      ...(include ? { include } : {}),
     });
 
-    return run;
+    return run as Output<T>;
   }
 }
