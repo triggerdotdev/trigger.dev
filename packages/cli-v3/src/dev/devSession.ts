@@ -22,6 +22,7 @@ import { logger } from "../utilities/logger.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { copyManifestToDir } from "../build/manifests.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
+import { chalkGrey } from "../utilities/cliOutput.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -78,7 +79,7 @@ export async function startDevSession({
   }
 
   async function updateBuild(build: esbuild.BuildResult, workerDir: EphemeralDirectory) {
-    const bundle = getBundleResultFromBuild("dev", rawConfig.workingDir, build);
+    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, build);
 
     if (bundle) {
       await updateBundle({ ...bundle, stop: undefined }, workerDir);
@@ -91,6 +92,10 @@ export async function startDevSession({
     setup(b: esbuild.PluginBuild) {
       b.onStart(() => {
         logger.debug("on-end plugin started");
+
+        if (bundled) {
+          logger.log(chalkGrey("○ Rebuilding background worker…"));
+        }
       });
       b.onEnd(async (result: esbuild.BuildResult) => {
         const errors = result.errors;
@@ -108,7 +113,7 @@ export async function startDevSession({
           // First bundle, no need to update bundle
           bundled = true;
         } else {
-          const workerDir = getTmpDir(rawConfig.workingDir, "worker");
+          const workerDir = getTmpDir(rawConfig.workingDir, "build");
 
           await updateBuild(result, workerDir);
         }
@@ -128,6 +133,8 @@ export async function startDevSession({
       jsxFragment: rawConfig.build.jsx.fragment,
       jsxAutomatic: rawConfig.build.jsx.automatic,
     });
+
+    logger.log(chalkGrey("○ Building background worker…"));
 
     await updateBundle(bundleResult);
 
@@ -154,6 +161,7 @@ async function createBuildManifestFromBundle(
   workerDir: string | undefined
 ): Promise<BuildManifest> {
   const buildManifest: BuildManifest = {
+    contentHash: bundle.contentHash,
     runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
     target: "dev",
     files: bundle.files,

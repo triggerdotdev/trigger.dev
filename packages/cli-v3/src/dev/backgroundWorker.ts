@@ -115,9 +115,13 @@ export class BackgroundWorkerCoordinator {
     await worker.cancelRun(taskRunId);
   }
 
-  async registerWorker(record: CreateBackgroundWorkerResponse, worker: BackgroundWorker) {
+  async registerWorker(worker: BackgroundWorker) {
+    if (!worker.serverWorker) {
+      return;
+    }
+
     for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
-      if (workerId === record.id) {
+      if (workerId === worker.serverWorker.id) {
         continue;
       }
 
@@ -125,11 +129,19 @@ export class BackgroundWorkerCoordinator {
       this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
     }
 
-    this._backgroundWorkers.set(record.id, worker);
-    this.onWorkerRegistered.post({ worker, id: record.id, record });
+    this._backgroundWorkers.set(worker.serverWorker.id, worker);
+    this.onWorkerRegistered.post({
+      worker,
+      id: worker.serverWorker.id,
+      record: worker.serverWorker,
+    });
 
     worker.onTaskRunHeartbeat.attach((id) => {
-      this.onWorkerTaskRunHeartbeat.post({ id, backgroundWorkerId: record.id, worker });
+      this.onWorkerTaskRunHeartbeat.post({
+        id,
+        backgroundWorkerId: worker.serverWorker!.id,
+        worker,
+      });
     });
   }
 

@@ -1,4 +1,3 @@
-
 import * as esbuild from "esbuild";
 import { makeRe } from "minimatch";
 import { mkdir, symlink } from "node:fs/promises";
@@ -20,10 +19,7 @@ const FORCED_EXTERNALS = ["import-in-the-middle"];
  * This function will create a symbolic link from a place where the external is resolvable
  * to the actual resolved external path
  */
-async function linkUnresolvableExternals(
-  externals: Array<CollectedExternal>,
-  resolveDir: string
-) {
+async function linkUnresolvableExternals(externals: Array<CollectedExternal>, resolveDir: string) {
   for (const external of externals) {
     if (!(await isExternalResolvable(external, resolveDir))) {
       logger.debug("External is not resolvable", { external });
@@ -44,10 +40,7 @@ async function linkExternal(external: CollectedExternal, resolveDir: string) {
   await symlink(external.path, join(destinationPath, external.name), "dir");
 }
 
-async function isExternalResolvable(
-  external: CollectedExternal,
-  resolveDir: string
-) {
+async function isExternalResolvable(external: CollectedExternal, resolveDir: string) {
   try {
     const resolvedPath = nodeResolve.sync(external.name, {
       basedir: resolveDir,
@@ -60,7 +53,6 @@ async function isExternalResolvable(
 
     return true;
   } catch (e) {
-    console.error("Could not resolve external", { external, resolveDir, e });
     return false;
   }
 }
@@ -100,70 +92,65 @@ function createExternalsCollector(
         });
 
         maybeExternals.forEach((external) => {
-          build.onResolve(
-            { filter: external.filter, namespace: "file" },
-            async (args) => {
-              const resolvedPath = nodeResolve.sync(args.path, {
-                basedir: args.resolveDir,
-              });
+          build.onResolve({ filter: external.filter, namespace: "file" }, async (args) => {
+            const resolvedPath = nodeResolve.sync(args.path, {
+              basedir: args.resolveDir,
+            });
 
-              logger.debug("Resolved external", {
-                external,
-                resolvedPath,
-                args,
-              });
+            logger.debug("Resolved external", {
+              external,
+              resolvedPath,
+              args,
+            });
 
-              const packageJsonPath = await resolvePackageJSON(
-                dirname(resolvedPath)
-              );
+            const packageJsonPath = await resolvePackageJSON(dirname(resolvedPath));
 
-              if (!packageJsonPath) {
-                return undefined;
-              }
-
-              logger.debug("Found package.json", { packageJsonPath });
-
-              const packageJson = await readPackageJSON(packageJsonPath);
-
-              if (!packageJson || !packageJson.name) {
-                return undefined;
-              }
-
-              if (!external.filter.test(packageJson.name)) {
-                logger.debug("Package name does not match", {
-                  external,
-                  packageJson,
-                });
-
-                return undefined;
-              }
-
-              if (!packageJson.version) {
-                logger.debug("No version found in package.json", {
-                  external,
-                  packageJson,
-                });
-
-                return undefined;
-              }
-
-              externals.push({
-                name: packageJson.name,
-                path: dirname(packageJsonPath),
-                version: packageJson.version,
-              });
-
-              logger.debug("Resolved external", {
-                external,
-                resolvedPath,
-                args,
-              });
-
-              return {
-                external: true,
-              };
+            if (!packageJsonPath) {
+              return undefined;
             }
-          );
+
+            logger.debug("Found package.json", { packageJsonPath });
+
+            const packageJson = await readPackageJSON(packageJsonPath);
+
+            if (!packageJson || !packageJson.name) {
+              return undefined;
+            }
+
+            if (!external.filter.test(packageJson.name)) {
+              logger.debug("Package name does not match", {
+                external,
+                packageJson,
+              });
+
+              return undefined;
+            }
+
+            if (!packageJson.version) {
+              logger.debug("No version found in package.json", {
+                external,
+                packageJson,
+              });
+
+              return undefined;
+            }
+
+            externals.push({
+              name: packageJson.name,
+              path: dirname(packageJsonPath),
+              version: packageJson.version,
+            });
+
+            logger.debug("Resolved external", {
+              external,
+              resolvedPath,
+              args,
+            });
+
+            return {
+              external: true,
+            };
+          });
         });
       },
     },
@@ -172,10 +159,7 @@ function createExternalsCollector(
 
 type MaybeExternal = { raw: string; filter: RegExp };
 
-function discoverMaybeExternals(
-  target: BuildTarget,
-  config: ResolvedConfig
-): Array<MaybeExternal> {
+function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Array<MaybeExternal> {
   const external: Array<MaybeExternal> = [];
 
   for (const externalName of FORCED_EXTERNALS) {
@@ -187,9 +171,7 @@ function discoverMaybeExternals(
 
     external.push({
       raw: externalName,
-      filter: new RegExp(
-        `^${externalName}$|${externalRegex.source}`
-      ),
+      filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
     });
   }
 
@@ -212,14 +194,12 @@ function discoverMaybeExternals(
     const externalRegex = makeRe(externalName);
 
     if (!externalRegex) {
-      continue
+      continue;
     }
 
     external.push({
       raw: externalName,
-      filter: new RegExp(
-        `^${externalName}$|${externalRegex.source}`
-      ),
+      filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
     });
   }
 
@@ -235,9 +215,7 @@ function discoverMaybeExternals(
 
       external.push({
         raw: externalName,
-        filter: new RegExp(
-          `^${externalName}$|${externalRegex.source}`
-        ),
+        filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
       });
     }
   }

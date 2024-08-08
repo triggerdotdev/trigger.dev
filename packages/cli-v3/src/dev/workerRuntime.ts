@@ -1,9 +1,12 @@
 import {
   BuildManifest,
   clientWebsocketMessages,
+  CreateBackgroundWorkerRequestBody,
   SemanticInternalAttributes,
   serverWebsocketMessages,
+  TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
+  WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { ClientRequestArgs } from "node:http";
@@ -11,7 +14,7 @@ import { WebSocket } from "partysocket";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { CliApiClient } from "../apiClient.js";
 import { DevCommandOptions } from "../commands/dev.js";
-import { chalkError } from "../utilities/cliOutput.js";
+import { chalkError, chalkGrey, chalkTask } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import {
@@ -20,6 +23,7 @@ import {
   ZodMessageSender,
 } from "@trigger.dev/core/v3/zodMessageHandler";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
+import { VERSION } from "../version.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -47,6 +51,7 @@ class DevWorkerRuntime implements WorkerRuntime {
   private backgroundWorkerCoordinator: BackgroundWorkerCoordinator;
   private sender: ZodMessageSender<typeof clientWebsocketMessages>;
   private websocketMessageHandler: ZodMessageHandler<typeof serverWebsocketMessages>;
+  private lastBuild: BuildManifest | undefined;
 
   constructor(public readonly options: WorkerRuntimeOptions) {
     const websocketUrl = new URL(this.options.client.apiURL);
@@ -151,6 +156,11 @@ class DevWorkerRuntime implements WorkerRuntime {
   }
 
   async initializeWorker(manifest: BuildManifest, options?: { cwd?: string }): Promise<void> {
+    if (this.lastBuild && this.lastBuild.contentHash === manifest.contentHash) {
+      logger.log(chalkGrey("○ No changes detected, skipping build…"));
+      return;
+    }
+
     const env = await this.#getEnvVars();
 
     const backgroundWorker = new BackgroundWorker(manifest, {
@@ -159,6 +169,41 @@ class DevWorkerRuntime implements WorkerRuntime {
     });
 
     await backgroundWorker.initialize();
+
+    if (!backgroundWorker.manifest) {
+      throw new Error("Could not initialize worker");
+    }
+
+    const issues = validateWorkerManifest(backgroundWorker.manifest);
+
+    if (issues.length > 0) {
+      issues.forEach((issue) => logger.error(issue));
+      return;
+    }
+
+    const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
+      localOnly: true,
+      metadata: {
+        packageVersion: VERSION,
+        cliPackageVersion: VERSION,
+        tasks: backgroundWorker.manifest.tasks,
+        contentHash: manifest.contentHash,
+      },
+      supportsLazyAttempts: true,
+    };
+
+    const backgroundWorkerRecord = await this.options.client.createBackgroundWorker(
+      this.options.config.project,
+      backgroundWorkerBody
+    );
+
+    if (!backgroundWorkerRecord.success) {
+      throw new Error(backgroundWorkerRecord.error);
+    }
+
+    backgroundWorker.serverWorker = backgroundWorkerRecord.data;
+    this.backgroundWorkerCoordinator.registerWorker(backgroundWorker);
+    this.lastBuild = manifest;
   }
 
   async #getEnvVars(): Promise<Record<string, string>> {
@@ -269,4 +314,39 @@ function gatherProcessEnv() {
 
   // Filter out undefined values
   return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+}
+
+function validateWorkerManifest(manifest: WorkerManifest): string[] {
+  const issues: string[] = [];
+
+  if (!manifest.tasks || manifest.tasks.length === 0) {
+    issues.push("No tasks defined. Make sure you are exporting tasks.");
+  }
+
+  // Check for any duplicate task ids
+  const taskIds = manifest.tasks.map((task) => task.id);
+  const duplicateTaskIds = taskIds.filter((id, index) => taskIds.indexOf(id) !== index);
+
+  if (duplicateTaskIds.length > 0) {
+    issues.push(createDuplicateTaskIdOutputErrorMessage(duplicateTaskIds, manifest.tasks));
+  }
+
+  return issues;
+}
+
+function createDuplicateTaskIdOutputErrorMessage(
+  duplicateTaskIds: Array<string>,
+  tasks: Array<TaskManifest>
+) {
+  const duplicateTable = duplicateTaskIds
+    .map((id) => {
+      const $tasks = tasks.filter((task) => task.id === id);
+
+      return `\n\n${chalkTask(id)} was found in:${tasks
+        .map((task) => `\n${task.filePath} -> ${task.exportName}`)
+        .join("")}`;
+    })
+    .join("");
+
+  return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
 }

@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import pathModule from "node:path";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
-export async function createFile(path: string, contents: string): Promise<string> {
+export async function createFile(
+  path: string,
+  contents: string | NodeJS.ArrayBufferView
+): Promise<string> {
   await fsModule.mkdir(pathModule.dirname(path), { recursive: true });
   await fsModule.writeFile(path, contents);
 
