@@ -23,6 +23,7 @@ import { TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -50,25 +51,29 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
-      /*
-      "SYSTEM_FAILURE"
-
-      Steps:
-      1. Updates the run to system failure
-
-      Inputs:
-      - taskRun: id
-      */
-
-      // Update the task run to be failed
-      await this._prisma.taskRun.update({
+      const run = await this._prisma.taskRun.findUnique({
         where: {
           friendlyId: execution.run.id,
         },
-        data: {
-          status: "SYSTEM_FAILURE",
-          completedAt: new Date(),
+        select: {
+          id: true,
         },
+      });
+
+      if (!run) {
+        logger.error("[CompleteAttemptService] Task run not found", {
+          friendlyId: execution.run.id,
+        });
+
+        return "COMPLETED";
+      }
+
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        tx: this._prisma,
+        id: run.id,
+        status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
       });
 
       // No attempt, so there's no message to ACK
