@@ -2,6 +2,7 @@ import { type Prisma, type TaskRun, type TaskRunStatus } from "@trigger.dev/data
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
+import { logger } from "~/services/logger.server";
 
 type BaseInput = {
   tx: PrismaClientOrTransaction;
@@ -34,7 +35,20 @@ export class FinalizeTaskRunService extends BaseService {
   }: T extends Prisma.TaskRunInclude ? InputWithInclude<T> : InputWithoutInclude): Promise<
     Output<T>
   > {
+    logger.debug("Finalizing run marqs ack", {
+      id,
+      status,
+      expiredAt,
+      completedAt,
+    });
     await marqs?.acknowledgeMessage(id);
+
+    logger.debug("Finalizing run updating run status", {
+      id,
+      status,
+      expiredAt,
+      completedAt,
+    });
 
     const run = await tx.taskRun.update({
       where: { id },
