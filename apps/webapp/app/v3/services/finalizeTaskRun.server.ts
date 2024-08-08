@@ -3,11 +3,12 @@ import { type PrismaClientOrTransaction } from "~/db.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { type FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type BaseInput = {
   tx: PrismaClientOrTransaction;
   id: string;
-  status?: TaskRunStatus;
+  status?: FINISHED_STATUSES;
   expiredAt?: Date;
   completedAt?: Date;
 };
