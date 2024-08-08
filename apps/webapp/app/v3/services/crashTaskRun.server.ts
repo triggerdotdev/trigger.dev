@@ -43,6 +43,22 @@ export class CrashTaskRunService extends BaseService {
       return;
     }
 
+    /*
+    "CRASHED"
+    
+    Steps:
+    1. marqs ack
+    2. Updates the run to crashed, gets attempts, dependencies, etc
+    3. Crashes all the relevant OTEL events
+    4. Cancels any in progress attempts
+
+    Inputs:
+    - taskRun: id, friendlyId
+    - crashedAt
+    - reason
+    - logs/stacktrace
+    */
+
     // Remove the task run from the queue if it's there for some reason
     await marqs?.acknowledgeMessage(taskRun.id);
 

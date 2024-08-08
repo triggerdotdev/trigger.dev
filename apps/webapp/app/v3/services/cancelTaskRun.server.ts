@@ -47,6 +47,22 @@ export class CancelTaskRunService extends BaseService {
       return;
     }
 
+    /*
+    "CANCELED"
+    
+    Steps:
+    1. marqs ack
+    2. Updates the run to canceled and gets attempts, dependencies, etc
+    3. Cancels all incomplete OTEL events
+    4. Cancels all in progress attempts
+    5. Cancels all in progress workers
+
+    Inputs:
+    - taskRun: id, friendlyId
+    - cancelledAt
+    - reason
+    */
+
     // Remove the task run from the queue if it's there for some reason
     await marqs?.acknowledgeMessage(taskRun.id);
 

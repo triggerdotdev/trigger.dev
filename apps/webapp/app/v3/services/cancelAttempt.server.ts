@@ -51,6 +51,23 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
+      /*
+      "INTERRUPTED" (or leave it as is)
+      
+      Steps:
+      1. marqs ack
+      2. Updates the run *attempt* to canceled AND potentially the run to INTERRUPTED
+      3. Cancels all incomplete OTEL events
+      4. Enqueues resuming task run dependencies
+
+      Inputs: 
+      - taskRun: id, status, friendlyId
+      - taskRunAttempt: friendlyId
+      - cancelledAt
+      - reason
+      - Prisma client/transaction
+      */
+
       await marqs?.acknowledgeMessage(taskRunId);
 
       await this._prisma.taskRunAttempt.update({

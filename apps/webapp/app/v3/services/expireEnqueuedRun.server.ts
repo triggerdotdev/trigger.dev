@@ -39,6 +39,21 @@ export class ExpireEnqueuedRunService extends BaseService {
       run,
     });
 
+    /*
+    "EXPIRED"
+
+    Steps:
+    1. Updates the run to expired, with dates
+    2. Completes the run span OTEL event
+    3. marqs ack
+
+    Inputs:
+    - taskRun: id, spanId, ttl
+
+    Questions:
+    - Why do we ack after the db update?
+    */
+
     await this._prisma.taskRun.update({
       where: {
         id: run.id,

@@ -50,6 +50,16 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
+      /*
+      "SYSTEM_FAILURE"
+
+      Steps:
+      1. Updates the run to system failure
+
+      Inputs:
+      - taskRun: id
+      */
+
       // Update the task run to be failed
       await this._prisma.taskRun.update({
         where: {
@@ -96,6 +106,27 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
+    /*
+    "COMPLETED"
+
+    Steps:
+    1. Updates the run *attempt* to completed AND the run to completed successfully
+    2. marqs ack
+    3. Complete the run span OTEL event
+    4. Resume the task dependencies
+
+    Inputs:
+    - taskRunAttempt: id
+    - taskRun: id, spanId
+    - output
+    - outputType
+    - usage
+    - Prisma client/transaction
+
+    Questions:
+    - Why do we ack after the db update?
+    */
+
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
@@ -255,6 +286,21 @@ export class CompleteAttemptService extends BaseService {
       if (!checkpointCreateResult) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
+        /*
+        "SYSTEM_FAILURE"
+
+        Steps:
+        1. Updates the run to system failure
+        2. marqs ack
+
+        Inputs:
+        - taskRun: id, friendlyId
+
+        Questions:
+        - Nothing with OTEL events?
+        - Why do we ack after the db update?
+        */
+
         // Update the task run to be failed
         await this._prisma.taskRun.update({
           where: {
@@ -279,6 +325,30 @@ export class CompleteAttemptService extends BaseService {
 
       return "RETRIED";
     } else {
+      /*
+      "SYSTEM_FAILURE"
+      Steps:
+      1. marqs ack
+      2. Completes the run span OTEL event
+      3. Crash all incomplete OTEL events 
+      4. Updates the run to system failure
+      
+      OR
+
+      "COMPLETED_WITH_ERRORS"
+      Steps:
+      1. marqs ack
+      2. Completes the run span OTEL event
+      3. Updates the run to completed with errors
+      4. Enqueues resuming task run dependencies
+
+      Inputs:
+      - taskRun: id, spanId
+      - taskRunAttempt: id
+      - error message
+      - Prisma client/transaction
+      */
+
       // No more retries, we need to fail the task run
       logger.debug("Completed attempt, ACKing message", taskRunAttempt);
 

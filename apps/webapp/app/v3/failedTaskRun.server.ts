@@ -40,6 +40,19 @@ export class FailedTaskRunService extends BaseService {
     // No more retries, we need to fail the task run
     logger.debug("[FailedTaskRunService] Failing task run", { taskRun, completion });
 
+    /*
+    "SYSTEM_FAILURE"
+
+    Steps:
+    1. marqs ack
+    2. Completes the run span OTEL event
+    3. Updates the run to system failure
+
+    Inputs:
+    - taskRun: id, spanId
+    - completion: error
+    */
+
     await marqs?.acknowledgeMessage(taskRun.id);
 
     // Now we need to "complete" the task run event/span
