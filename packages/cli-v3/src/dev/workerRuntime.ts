@@ -24,6 +24,7 @@ import {
 } from "@trigger.dev/core/v3/zodMessageHandler";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { VERSION } from "../version.js";
+import { eventBus } from "../utilities/eventBus.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -157,7 +158,7 @@ class DevWorkerRuntime implements WorkerRuntime {
 
   async initializeWorker(manifest: BuildManifest, options?: { cwd?: string }): Promise<void> {
     if (this.lastBuild && this.lastBuild.contentHash === manifest.contentHash) {
-      logger.log(chalkGrey("○ No changes detected, skipping build…"));
+      eventBus.emit("workerSkipped");
       return;
     }
 
@@ -204,6 +205,8 @@ class DevWorkerRuntime implements WorkerRuntime {
     backgroundWorker.serverWorker = backgroundWorkerRecord.data;
     this.backgroundWorkerCoordinator.registerWorker(backgroundWorker);
     this.lastBuild = manifest;
+
+    eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
   }
 
   async #getEnvVars(): Promise<Record<string, string>> {
