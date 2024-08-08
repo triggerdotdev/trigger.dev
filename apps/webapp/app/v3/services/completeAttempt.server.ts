@@ -269,33 +269,13 @@ export class CompleteAttemptService extends BaseService {
       if (!checkpointCreateResult) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
-        /*
-        "SYSTEM_FAILURE"
-
-        Steps:
-        1. Updates the run to system failure
-        2. marqs ack
-
-        Inputs:
-        - taskRun: id, friendlyId
-
-        Questions:
-        - Nothing with OTEL events?
-        - Why do we ack after the db update?
-        */
-
-        // Update the task run to be failed
-        await this._prisma.taskRun.update({
-          where: {
-            friendlyId: execution.run.id,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-            completedAt: new Date(),
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          tx: this._prisma,
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
         });
-
-        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
         return "COMPLETED";
       }
