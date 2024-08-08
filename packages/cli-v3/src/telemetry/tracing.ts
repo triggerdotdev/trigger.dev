@@ -9,7 +9,7 @@ import {
   SEMRESATTRS_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 import { logger } from "../utilities/logger.js";
-import { VERSION } from "../consts.js";
+import { VERSION } from "../version.js";
 
 function initializeTracing(): NodeTracerProvider | undefined {
   if (

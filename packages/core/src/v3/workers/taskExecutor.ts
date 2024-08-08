@@ -1,10 +1,12 @@
 import { SpanKind } from "@opentelemetry/api";
+import { VERSION } from "../../version.js";
+import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { parseError, sanitizeError } from "../errors.js";
-import { TracingSDK, recordSpanException } from "../otel/index.js";
+import { TriggerConfig } from "../index.js";
+import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
   ServerBackgroundWorker,
-  Config,
   TaskRunContext,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -15,6 +17,7 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { TriggerTracer } from "../tracer.js";
 import { HandleErrorFunction, TaskMetadataWithFunctions } from "../types/index.js";
+import { UsageMeasurement } from "../usage/types.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -24,17 +27,12 @@ import {
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
-import { UsageMeasurement } from "../usage/types.js";
-import { ApiError, RateLimitError } from "../apiClient/errors.js";
-import { TriggerConfig } from "../index.js";
-import { pkg } from "../../pkg.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
   tracer: TriggerTracer;
   consoleInterceptor: ConsoleInterceptor;
-  projectConfig: Config;
-  importedConfig: TriggerConfig | undefined;
+  config: TriggerConfig | undefined;
   handleErrorFn: HandleErrorFunction | undefined;
 };
 
@@ -42,7 +40,6 @@ export class TaskExecutor {
   private _tracingSDK: TracingSDK;
   private _tracer: TriggerTracer;
   private _consoleInterceptor: ConsoleInterceptor;
-  private _config: Config;
   private _importedConfig: TriggerConfig | undefined;
   private _handleErrorFn: HandleErrorFunction | undefined;
 
@@ -53,8 +50,7 @@ export class TaskExecutor {
     this._tracingSDK = options.tracingSDK;
     this._tracer = options.tracer;
     this._consoleInterceptor = options.consoleInterceptor;
-    this._config = options.projectConfig;
-    this._importedConfig = options.importedConfig;
+    this._importedConfig = options.config;
     this._handleErrorFn = options.handleErrorFn;
   }
 
@@ -79,7 +75,7 @@ export class TaskExecutor {
 
     this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
       ...taskContext.attributes,
-      [SemanticInternalAttributes.SDK_VERSION]: pkg.version,
+      [SemanticInternalAttributes.SDK_VERSION]: VERSION,
       [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
     });
 
@@ -452,7 +448,7 @@ export class TaskExecutor {
     | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
     | { status: "noop"; error?: unknown }
   > {
-    const retriesConfig = this._importedConfig?.retries ?? this._config.retries;
+    const retriesConfig = this._importedConfig?.retries;
 
     const retry = this.task.retry ?? retriesConfig?.default;
 

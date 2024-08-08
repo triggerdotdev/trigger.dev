@@ -18,6 +18,8 @@ export async function buildPlugins(
     plugins.push($configPlugin);
   }
 
+  plugins.push(mockServerOnlyPlugin());
+
   return plugins;
 }
 
@@ -35,6 +37,36 @@ export function analyzeMetadataPlugin(): esbuild.Plugin {
             verbose: true,
           })
         );
+      });
+    },
+  };
+}
+
+export function mockServerOnlyPlugin(): esbuild.Plugin {
+  return {
+    name: "trigger-mock-server-only",
+    setup(build) {
+      build.onResolve({ filter: /^server-only$/ }, (args) => {
+        if (args.path !== "server-only") {
+          return undefined;
+        }
+
+        logger.debug(`[trigger-mock-server-only] Bundling ${args.path}`, {
+          ...args,
+        });
+
+        return {
+          path: args.path,
+          external: false,
+          namespace: "server-only-mock",
+        };
+      });
+
+      build.onLoad({ filter: /^server-only$/, namespace: "server-only-mock" }, (args) => {
+        return {
+          contents: `export default true;`,
+          loader: "js",
+        };
       });
     },
   };

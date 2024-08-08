@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { emitDecoratorMetadata } from "@trigger.dev/sdk/v3/extensions";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 export default defineConfig({
@@ -22,5 +23,9 @@ export default defineConfig({
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
+  },
+  build: {
+    extensions: [emitDecoratorMetadata()],
+    external: ["@ffmpeg-installer/ffmpeg"],
   },
 });

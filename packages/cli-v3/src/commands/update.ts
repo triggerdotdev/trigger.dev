@@ -11,7 +11,7 @@ import { join, resolve } from "path";
 import { JavascriptProject } from "../utilities/javascriptProject.js";
 import { PackageManager } from "../utilities/getUserPackageManager.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
-import { VERSION } from "../consts.js";
+import { VERSION } from "../version.js";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,

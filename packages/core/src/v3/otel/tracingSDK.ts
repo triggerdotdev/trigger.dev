@@ -24,6 +24,7 @@ import {
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
   OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
@@ -40,7 +41,6 @@ import {
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { pkg } from "../../pkg.js";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -112,7 +112,7 @@ export class TracingSDK {
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
-          [SemanticInternalAttributes.CLI_VERSION]: pkg.version,
+          [SemanticInternalAttributes.CLI_VERSION]: VERSION,
         })
       )
       .merge(config.resource ?? new Resource({}))

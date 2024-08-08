@@ -21,7 +21,7 @@ import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { isLinuxServer } from "../utilities/linux.js";
-import { VERSION } from "../consts.js";
+import { VERSION } from "../version.js";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),

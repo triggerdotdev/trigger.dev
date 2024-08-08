@@ -36,10 +36,9 @@ import {
   taskCatalog,
   taskContext,
 } from "@trigger.dev/core/v3";
-import { tracer } from "./tracer.js";
-import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
-import { pkg } from "../pkg.js";
+import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
+import { tracer } from "./tracer.js";
 
 export type Context = TaskRunContext;
 
@@ -486,7 +485,7 @@ export function createTask<
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     trigger: async (payload, options) => {
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await trigger_internal<TInput, TOutput>(
         taskMetadata && taskMetadata.exportName
@@ -501,7 +500,7 @@ export function createTask<
       );
     },
     batchTrigger: async (items) => {
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTrigger_internal<TInput, TOutput>(
         taskMetadata && taskMetadata.exportName
@@ -514,7 +513,7 @@ export function createTask<
       );
     },
     triggerAndWait: async (payload, options) => {
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await triggerAndWait_internal<TInput, TOutput>(
         taskMetadata && taskMetadata.exportName
@@ -529,7 +528,7 @@ export function createTask<
       );
     },
     batchTriggerAndWait: async (items) => {
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<TInput, TOutput>(
         taskMetadata && taskMetadata.exportName
@@ -545,7 +544,6 @@ export function createTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
-    packageVersion: pkg.version,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
@@ -560,6 +558,9 @@ export function createTask<
       onStart: params.onStart,
     },
   });
+
+  // @ts-expect-error
+  task[Symbol.for("trigger.dev/task")] = true;
 
   return task;
 }
