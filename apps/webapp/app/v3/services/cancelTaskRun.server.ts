@@ -49,7 +49,6 @@ export class CancelTaskRunService extends BaseService {
 
     const finalizeService = new FinalizeTaskRunService();
     const cancelledTaskRun = await finalizeService.call({
-      tx: this._prisma,
       id: taskRun.id,
       status: "CANCELED",
       completedAt: opts.cancelledAt,

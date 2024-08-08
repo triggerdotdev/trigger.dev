@@ -41,7 +41,6 @@ export class FailedTaskRunService extends BaseService {
 
     const finalizeService = new FinalizeTaskRunService();
     await finalizeService.call({
-      tx: this._prisma,
       id: taskRun.id,
       status: "SYSTEM_FAILURE",
       completedAt: new Date(),

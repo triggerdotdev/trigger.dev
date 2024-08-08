@@ -46,7 +46,6 @@ export class CrashTaskRunService extends BaseService {
 
     const finalizeService = new FinalizeTaskRunService();
     const crashedTaskRun = await finalizeService.call({
-      tx: this._prisma,
       id: taskRun.id,
       status: "CRASHED",
       completedAt: new Date(),

@@ -50,8 +50,6 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      const finalizeService = new FinalizeTaskRunService();
-
       await $transaction(this._prisma, async (tx) => {
         await tx.taskRunAttempt.update({
           where: {
@@ -63,8 +61,8 @@ export class CancelAttemptService extends BaseService {
           },
         });
 
+        const finalizeService = new FinalizeTaskRunService(tx);
         await finalizeService.call({
-          tx,
           id: taskRunId,
           status: isCancellableRunStatus(taskRunAttempt.taskRun.status) ? "INTERRUPTED" : undefined,
           completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)

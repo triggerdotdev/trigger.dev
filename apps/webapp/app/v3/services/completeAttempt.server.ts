@@ -51,7 +51,7 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
-      const run = await this._prisma.taskRun.findUnique({
+      const run = await this._prisma.taskRun.findFirst({
         where: {
           friendlyId: execution.run.id,
         },
@@ -70,7 +70,6 @@ export class CompleteAttemptService extends BaseService {
 
       const finalizeService = new FinalizeTaskRunService();
       await finalizeService.call({
-        tx: this._prisma,
         id: run.id,
         status: "SYSTEM_FAILURE",
         completedAt: new Date(),
@@ -111,8 +110,6 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    const finalizeService = new FinalizeTaskRunService();
-
     await $transaction(this._prisma, async (tx) => {
       await tx.taskRunAttempt.update({
         where: { id: taskRunAttempt.id },
@@ -125,9 +122,9 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
+      const finalizeService = new FinalizeTaskRunService(tx);
       await finalizeService.call({
-        tx,
-        id: taskRunAttempt.taskRun.id,
+        id: taskRunAttempt.taskRunId,
         status: "COMPLETED_SUCCESSFULLY",
         completedAt: new Date(),
       });
@@ -271,7 +268,6 @@ export class CompleteAttemptService extends BaseService {
 
         const finalizeService = new FinalizeTaskRunService();
         await finalizeService.call({
-          tx: this._prisma,
           id: taskRunAttempt.taskRunId,
           status: "SYSTEM_FAILURE",
           completedAt: new Date(),
@@ -311,7 +307,6 @@ export class CompleteAttemptService extends BaseService {
       ) {
         const finalizeService = new FinalizeTaskRunService();
         await finalizeService.call({
-          tx: this._prisma,
           id: taskRunAttempt.taskRunId,
           status: "SYSTEM_FAILURE",
           completedAt: new Date(),
@@ -343,7 +338,6 @@ export class CompleteAttemptService extends BaseService {
       } else {
         const finalizeService = new FinalizeTaskRunService();
         await finalizeService.call({
-          tx: this._prisma,
           id: taskRunAttempt.taskRunId,
           status: "COMPLETED_WITH_ERRORS",
           completedAt: new Date(),

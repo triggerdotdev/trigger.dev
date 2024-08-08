@@ -41,7 +41,6 @@ export class ExpireEnqueuedRunService extends BaseService {
 
     const finalizeService = new FinalizeTaskRunService();
     await finalizeService.call({
-      tx: this._prisma,
       id: run.id,
       status: "EXPIRED",
       expiredAt: new Date(),

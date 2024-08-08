@@ -1,12 +1,10 @@
-import { type Prisma, type TaskRun, type TaskRunStatus } from "@trigger.dev/database";
-import { type PrismaClientOrTransaction } from "~/db.server";
+import { type Prisma, type TaskRun } from "@trigger.dev/database";
+import { type FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
-import { type FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 
 type BaseInput = {
-  tx: PrismaClientOrTransaction;
   id: string;
   status?: FINISHED_STATUSES;
   expiredAt?: Date;
@@ -27,7 +25,6 @@ type Output<T extends Prisma.TaskRunInclude | undefined> = T extends Prisma.Task
 
 export class FinalizeTaskRunService extends BaseService {
   public async call<T extends Prisma.TaskRunInclude | undefined>({
-    tx,
     id,
     status,
     expiredAt,
@@ -51,7 +48,7 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
-    const run = await tx.taskRun.update({
+    const run = await this._prisma.taskRun.update({
       where: { id },
       data: { status, expiredAt, completedAt },
       ...(include ? { include } : {}),
