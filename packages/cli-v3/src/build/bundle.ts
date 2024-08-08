@@ -14,6 +14,8 @@ import {
   shims,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { createHash, hash } from "node:crypto";
+import { createFile } from "../utilities/fileSystem.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -28,6 +30,7 @@ export interface BundleOptions {
 }
 
 export type BundleResult = {
+  contentHash: string;
   files: TaskFile[];
   configPath: string;
   loaderEntryPoint: string | undefined;
@@ -62,7 +65,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     absWorkingDir: options.cwd,
     bundle: true,
     metafile: true,
-    write: true,
+    write: false,
     minify: false,
     splitting: true,
     charset: "utf8",
@@ -114,7 +117,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     stop = async function () {};
   }
 
-  const bundleResult = getBundleResultFromBuild(options.target, options.cwd, result);
+  const bundleResult = await getBundleResultFromBuild(options.target, options.cwd, result);
 
   if (!bundleResult) {
     throw new Error("Failed to get bundle result");
@@ -123,11 +126,19 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
   return { ...bundleResult, stop };
 }
 
-export function getBundleResultFromBuild(
+export async function getBundleResultFromBuild(
   target: BuildTarget,
   workingDir: string,
-  result: esbuild.BuildResult<{ metafile: true }>
-): Omit<BundleResult, "stop"> | undefined {
+  result: esbuild.BuildResult<{ metafile: true; write: false }>
+): Promise<Omit<BundleResult, "stop"> | undefined> {
+  const hasher = createHash("md5");
+
+  for (const outputFile of result.outputFiles) {
+    hasher.update(outputFile.hash);
+
+    await createFile(outputFile.path, outputFile.contents);
+  }
+
   const files: Array<{ entry: string; out: string }> = [];
 
   let configPath: string | undefined;
@@ -149,10 +160,15 @@ export function getBundleResultFromBuild(
       } else if (isEntryPointForTarget(outputMeta.entryPoint, target)) {
         workerEntryPoint = $outputPath;
       } else {
-        files.push({
-          entry: outputMeta.entryPoint,
-          out: $outputPath,
-        });
+        if (
+          !outputMeta.entryPoint.startsWith("..") &&
+          !outputMeta.entryPoint.includes("node_modules")
+        ) {
+          files.push({
+            entry: outputMeta.entryPoint,
+            out: $outputPath,
+          });
+        }
       }
     }
   }
@@ -166,6 +182,7 @@ export function getBundleResultFromBuild(
     configPath: configPath,
     loaderEntryPoint,
     workerEntryPoint,
+    contentHash: hasher.digest("hex"),
   };
 }
 

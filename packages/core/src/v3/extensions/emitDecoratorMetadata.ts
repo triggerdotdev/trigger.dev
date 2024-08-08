@@ -34,10 +34,6 @@ function plugin(options: EmitDecoratorMetadataOptions = {}): esbuild.Plugin {
         return;
       }
 
-      console.log("Setting up typescript decorators plugin", {
-        tsconfig,
-      });
-
       build.onLoad({ filter: /\.ts$/ }, async (args) => {
         const ts = await readFile(args.path, "utf8");
 

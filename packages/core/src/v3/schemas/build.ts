@@ -19,6 +19,7 @@ export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
 export const BuildManifest = z.object({
   target: BuildTarget,
+  contentHash: z.string(),
   runtime: BuildRuntime,
   config: ConfigManifest,
   files: z.array(TaskFile),

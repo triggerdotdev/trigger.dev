@@ -120,8 +120,7 @@ async function registerTaskFileMetadata(files: Array<{ entry: string; out: strin
         if (taskCatalog.taskExists(task.id)) {
           taskCatalog.registerTaskFileMetadata(task.id, {
             exportName,
-            filePath: file.out,
-            entryPoint: file.entry,
+            filePath: file.entry,
           });
         }
       }
