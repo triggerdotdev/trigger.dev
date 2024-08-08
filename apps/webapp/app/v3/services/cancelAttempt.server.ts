@@ -1,11 +1,10 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
-import { BaseService } from "./baseService.server";
-
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { isCancellableRunStatus } from "../taskStatus";
+import { BaseService } from "./baseService.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CancelAttemptService extends BaseService {
@@ -51,45 +50,27 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      /*
-      "INTERRUPTED" (or leave it as is)
-      
-      Steps:
-      1. marqs ack
-      2. Updates the run *attempt* to canceled AND potentially the run to INTERRUPTED
-      3. Cancels all incomplete OTEL events
-      4. Enqueues resuming task run dependencies
+      const finalizeService = new FinalizeTaskRunService();
 
-      Inputs: 
-      - taskRun: id, status, friendlyId
-      - taskRunAttempt: friendlyId
-      - cancelledAt
-      - reason
-      - Prisma client/transaction
-      */
-
-      await marqs?.acknowledgeMessage(taskRunId);
-
-      await this._prisma.taskRunAttempt.update({
-        where: {
-          friendlyId: attemptId,
-        },
-        data: {
-          status: "CANCELED",
-          completedAt: cancelledAt,
-          taskRun: {
-            update: {
-              data: {
-                status: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-                  ? "INTERRUPTED"
-                  : undefined,
-                completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-                  ? cancelledAt
-                  : undefined,
-              },
-            },
+      await $transaction(this._prisma, async (tx) => {
+        await tx.taskRunAttempt.update({
+          where: {
+            friendlyId: attemptId,
           },
-        },
+          data: {
+            status: "CANCELED",
+            completedAt: cancelledAt,
+          },
+        });
+
+        await finalizeService.call({
+          tx,
+          id: taskRunId,
+          status: isCancellableRunStatus(taskRunAttempt.taskRun.status) ? "INTERRUPTED" : undefined,
+          completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
+            ? cancelledAt
+            : undefined,
+        });
       });
 
       const inProgressEvents = await eventRepository.queryIncompleteEvents({
