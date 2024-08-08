@@ -23,6 +23,8 @@ import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { copyManifestToDir } from "../build/manifests.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
 import { chalkGrey } from "../utilities/cliOutput.js";
+import { eventBus } from "../utilities/eventBus.js";
+import { startDevOutput } from "./devOutput.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -49,6 +51,13 @@ export async function startDevSession({
     args: rawArgs,
     client,
     dashboardUrl,
+  });
+
+  const stopOutput = startDevOutput({
+    name,
+    dashboardUrl,
+    config: rawConfig,
+    args: rawArgs,
   });
 
   logger.debug("Starting dev session", { destination: destination.path, rawConfig });
@@ -94,7 +103,7 @@ export async function startDevSession({
         logger.debug("on-end plugin started");
 
         if (bundled) {
-          logger.log(chalkGrey("○ Rebuilding background worker…"));
+          eventBus.emit("rebuildStarted", "dev");
         }
       });
       b.onEnd(async (result: esbuild.BuildResult) => {
@@ -122,6 +131,8 @@ export async function startDevSession({
   };
 
   async function runBundle() {
+    eventBus.emit("buildStarted", "dev");
+
     const bundleResult = await bundleWorker({
       target: "dev",
       cwd: rawConfig.workingDir,
@@ -133,8 +144,6 @@ export async function startDevSession({
       jsxFragment: rawConfig.build.jsx.fragment,
       jsxAutomatic: rawConfig.build.jsx.automatic,
     });
-
-    logger.log(chalkGrey("○ Building background worker…"));
 
     await updateBundle(bundleResult);
 
@@ -150,6 +159,7 @@ export async function startDevSession({
       destination.remove();
       stopBundling?.().catch((error) => {});
       runtime.shutdown().catch((error) => {});
+      stopOutput();
     },
   };
 }
