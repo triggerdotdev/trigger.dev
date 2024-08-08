@@ -288,35 +288,6 @@ export class CompleteAttemptService extends BaseService {
 
       return "RETRIED";
     } else {
-      /*
-      "SYSTEM_FAILURE"
-      Steps:
-      1. marqs ack
-      2. Completes the run span OTEL event
-      3. Crash all incomplete OTEL events 
-      4. Updates the run to system failure
-      
-      OR
-
-      "COMPLETED_WITH_ERRORS"
-      Steps:
-      1. marqs ack
-      2. Completes the run span OTEL event
-      3. Updates the run to completed with errors
-      4. Enqueues resuming task run dependencies
-
-      Inputs:
-      - taskRun: id, spanId
-      - taskRunAttempt: id
-      - error message
-      - Prisma client/transaction
-      */
-
-      // No more retries, we need to fail the task run
-      logger.debug("Completed attempt, ACKing message", taskRunAttempt);
-
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
-
       // Now we need to "complete" the task run event/span
       await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
         endTime: new Date(),
@@ -338,6 +309,14 @@ export class CompleteAttemptService extends BaseService {
         sanitizedError.type === "INTERNAL_ERROR" &&
         sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
       ) {
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          tx: this._prisma,
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
+        });
+
         // We need to fail all incomplete spans
         const inProgressEvents = await eventRepository.queryIncompleteEvents({
           attemptId: execution.attempt.id,
@@ -361,25 +340,13 @@ export class CompleteAttemptService extends BaseService {
             });
           })
         );
-
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-            completedAt: new Date(),
-          },
-        });
       } else {
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "COMPLETED_WITH_ERRORS",
-            completedAt: new Date(),
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          tx: this._prisma,
+          id: taskRunAttempt.taskRunId,
+          status: "COMPLETED_WITH_ERRORS",
+          completedAt: new Date(),
         });
       }
 
