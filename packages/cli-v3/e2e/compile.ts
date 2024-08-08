@@ -2,7 +2,7 @@ import { esbuildDecorators } from "@anatine/esbuild-decorators";
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
-import { basename, join, posix, relative, resolve, sep } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import invariant from "tiny-invariant";
 
 import {
@@ -67,6 +67,8 @@ export async function compile(options: CompileOptions) {
 
   const e2eJsProject = new E2EJavascriptProject(config.projectDir, packageManager);
   const directDependenciesMeta = await e2eJsProject.extractDirectDependenciesMeta();
+
+  logger.debug("Direct dependencies metadata", directDependenciesMeta);
 
   const result = await build({
     stdin: {
@@ -214,9 +216,10 @@ export async function compile(options: CompileOptions) {
   await writeFile(join(tempDir, "index.js"), entryPointOutputFile.text);
 
   return {
-    workerMetaOutput: metaOutput,
-    workerOutputFile,
     entryPointMetaOutput,
+    workerMetaOutput: metaOutput,
+    directDependenciesMeta,
+    workerOutputFile,
     entryPointOutputFile,
   };
 }

@@ -9,12 +9,12 @@ import {
 } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command, Option as CommandOption } from "commander";
-import { Metafile, build } from "esbuild";
+import { build, Metafile } from "esbuild";
 import { execa } from "execa";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, posix, relative, resolve } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -56,7 +56,7 @@ import {
   parseBuildErrorStack,
   parseNpmInstallError,
 } from "../utilities/deployErrors";
-import { JavascriptProject } from "../utilities/javascriptProject";
+import { DependencyMeta, JavascriptProject } from "../utilities/javascriptProject";
 import { docs, getInTouch } from "../utilities/links";
 import { cliRootPath } from "../utilities/resolveInternalFilePath";
 import { safeJsonParse } from "../utilities/safeJsonParse";
@@ -1170,6 +1170,11 @@ async function compileProject(
         );
       }
 
+      const javascriptProject = new JavascriptProject(config.projectDir);
+      const directDependenciesMeta = await javascriptProject.extractDirectDependenciesMeta();
+
+      logger.debug("Direct dependencies metadata", directDependenciesMeta);
+
       const result = await build({
         stdin: {
           contents: workerContents,
@@ -1335,9 +1340,11 @@ async function compileProject(
       // Get all the required dependencies from the metaOutputs and save them to /tmp/dir/package.json
       const allImports = [...metaOutput.imports, ...entryPointMetaOutput.imports];
 
-      const javascriptProject = new JavascriptProject(config.projectDir);
-
-      const dependencies = await resolveRequiredDependencies(allImports, config, javascriptProject);
+      const dependencies = await resolveRequiredDependencies(
+        directDependenciesMeta,
+        allImports,
+        config
+      );
 
       logger.debug("gatherRequiredDependencies()", { dependencies });
 
@@ -1707,12 +1714,13 @@ export async function typecheckProject(config: ResolvedConfig) {
 // Returns the dependencies that are required by the output that are found in output and the CLI package dependencies
 // Returns the dependency names and the version to use (taken from the CLI deps package.json)
 export async function resolveRequiredDependencies(
+  directDependenciesMeta: Record<string, DependencyMeta>,
   imports: Metafile["outputs"][string]["imports"],
-  config: ResolvedConfig,
-  project: JavascriptProject
+  config: ResolvedConfig
 ) {
   return await tracer.startActiveSpan("resolveRequiredDependencies", async (span) => {
-    const resolvablePackageNames = new Set<string>();
+    const dependencies: Record<string, string> = {};
+    const missingPackages: string[] = [];
 
     for (const file of imports) {
       if ((file.kind !== "require-call" && file.kind !== "dynamic-import") || !file.external) {
@@ -1725,36 +1733,35 @@ export async function resolveRequiredDependencies(
         continue;
       }
 
-      resolvablePackageNames.add(packageName);
+      if (!directDependenciesMeta[packageName]) {
+        continue;
+      }
+
+      if (!directDependenciesMeta[packageName].external) {
+        continue;
+      }
+
+      if (!directDependenciesMeta[packageName].version) {
+        missingPackages.push(packageName);
+        const internalDependencyVersion =
+          (packageJson.dependencies as Record<string, string>)[packageName] ??
+          detectDependencyVersion(packageName);
+
+        if (internalDependencyVersion) {
+          dependencies[packageName] = stripWorkspaceFromVersion(internalDependencyVersion);
+        }
+
+        continue;
+      }
+
+      dependencies[packageName] = directDependenciesMeta[packageName].version;
     }
 
-    span.setAttribute("resolvablePackageNames", Array.from(resolvablePackageNames));
-
-    const resolvedPackageVersions = await project.resolveAll(Array.from(resolvablePackageNames));
-    const missingPackages = Array.from(resolvablePackageNames).filter(
-      (packageName) => !resolvedPackageVersions[packageName]
-    );
-
+    span.setAttribute("resolvablePackageNames", Object.keys(dependencies));
     span.setAttributes({
-      ...flattenAttributes(resolvedPackageVersions, "resolvedPackageVersions"),
+      ...flattenAttributes(dependencies, "resolvedPackageVersions"),
     });
     span.setAttribute("missingPackages", missingPackages);
-
-    const dependencies: Record<string, string> = {};
-
-    for (const missingPackage of missingPackages) {
-      const internalDependencyVersion =
-        (packageJson.dependencies as Record<string, string>)[missingPackage] ??
-        detectDependencyVersion(missingPackage);
-
-      if (internalDependencyVersion) {
-        dependencies[missingPackage] = stripWorkspaceFromVersion(internalDependencyVersion);
-      }
-    }
-
-    for (const [packageName, version] of Object.entries(resolvedPackageVersions)) {
-      dependencies[packageName] = version;
-    }
 
     if (config.additionalPackages) {
       span.setAttribute("additionalPackages", config.additionalPackages);
@@ -1770,12 +1777,10 @@ export async function resolveRequiredDependencies(
           dependencies[packageParts.name] = packageParts.version;
           continue;
         } else {
-          const externalDependencyVersion = await project.resolve(packageParts.name, {
-            allowDev: true,
-          });
+          const dependencyVersion = dependencies[packageParts.name];
 
-          if (externalDependencyVersion) {
-            dependencies[packageParts.name] = externalDependencyVersion;
+          if (dependencyVersion) {
+            dependencies[packageParts.name] = dependencyVersion;
             continue;
           } else {
             logger.log(

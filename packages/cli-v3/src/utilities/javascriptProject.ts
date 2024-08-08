@@ -1,16 +1,14 @@
-import { $, ExecaError } from "execa";
+import { $ } from "execa";
 import { join } from "node:path";
 import { readJSONFileSync } from "./fileSystem";
 import { logger } from "./logger";
 import { PackageManager, getUserPackageManager } from "./getUserPackageManager";
 import { PackageJson } from "type-fest";
 import { assertExhaustive } from "./assertExhaustive";
-import { builtinModules } from "node:module";
 import { tracer } from "../cli/common";
 import { recordSpanException } from "@trigger.dev/core/v3/otel";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 
-export type ResolveOptions = { allowDev: boolean };
 export type DependencyMeta = { version: string; external: boolean };
 
 export class JavascriptProject {
@@ -106,10 +104,51 @@ export class JavascriptProject {
         });
 
         try {
-          span.end();
-          return await command.extractDirectDependenciesMeta({
+          const packagesMeta = await command.extractDirectDependenciesMeta({
             cwd: this.projectPath,
           });
+
+          // Merge the resolved versions with the package.json dependencies
+          const missingPackagesMeta = Object.entries(packagesMeta).filter(
+            ([, { version }]) => !version
+          );
+          const missingPackageVersions: Record<string, string> = {};
+
+          for (const [packageName, { external }] of missingPackagesMeta) {
+            const packageJsonVersion = this.packageJson.dependencies?.[packageName];
+
+            if (typeof packageJsonVersion === "string") {
+              logger.debug(`Resolved ${packageName} version using package.json`, {
+                packageJsonVersion,
+              });
+
+              packagesMeta[packageName] = { version: packageJsonVersion, external };
+              missingPackageVersions[packageName] = packageJsonVersion;
+            } else {
+              // Last resort: check devDependencies
+              const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
+
+              if (typeof devPackageJsonVersion === "string") {
+                logger.debug(`Resolved ${packageName} version using devDependencies`, {
+                  devPackageJsonVersion,
+                });
+
+                packagesMeta[packageName] = { version: devPackageJsonVersion, external };
+                missingPackageVersions[packageName] = devPackageJsonVersion;
+              }
+            }
+          }
+
+          span.setAttributes({
+            ...flattenAttributes(missingPackageVersions, "missingPackageVersions"),
+            missingPackages: missingPackagesMeta.map(
+              ([packageName]: [string, DependencyMeta]) => packageName
+            ),
+          });
+
+          span.end();
+
+          return packagesMeta;
         } catch (error) {
           recordSpanException(span, error);
           span.end();
@@ -122,117 +161,6 @@ export class JavascriptProject {
         }
       }
     );
-  }
-
-  async resolveAll(packageNames: string[]): Promise<Record<string, string>> {
-    return tracer.startActiveSpan("JavascriptProject.resolveAll", async (span) => {
-      const externalPackages = packageNames.filter((packageName) => !isBuiltInModule(packageName));
-
-      const command = await this.#getCommand();
-
-      span.setAttributes({
-        externalPackages,
-        packageManager: command.name,
-      });
-
-      try {
-        const versions = await command.resolveDependencyVersions(externalPackages, {
-          cwd: this.projectPath,
-        });
-
-        if (versions) {
-          logger.debug(`Resolved [${externalPackages.join(", ")}] version using ${command.name}`, {
-            versions,
-          });
-
-          span.setAttributes({
-            ...flattenAttributes(versions, "versions"),
-          });
-        }
-
-        // Merge the resolved versions with the package.json dependencies
-        const missingPackages = externalPackages.filter((packageName) => !versions[packageName]);
-        const missingPackageVersions: Record<string, string> = {};
-
-        for (const packageName of missingPackages) {
-          const packageJsonVersion = this.packageJson.dependencies?.[packageName];
-
-          if (typeof packageJsonVersion === "string") {
-            logger.debug(`Resolved ${packageName} version using package.json`, {
-              packageJsonVersion,
-            });
-
-            missingPackageVersions[packageName] = packageJsonVersion;
-          }
-        }
-
-        span.setAttributes({
-          ...flattenAttributes(missingPackageVersions, "missingPackageVersions"),
-          missingPackages,
-        });
-
-        span.end();
-
-        return { ...versions, ...missingPackageVersions };
-      } catch (error) {
-        recordSpanException(span, error);
-        span.end();
-
-        logger.debug(`Failed to resolve dependency versions using ${command.name}`, {
-          packageNames,
-          error,
-        });
-
-        return {};
-      }
-    });
-  }
-
-  async resolve(packageName: string, options?: ResolveOptions): Promise<string | undefined> {
-    if (isBuiltInModule(packageName)) {
-      return undefined;
-    }
-
-    const opts = { allowDev: false, ...options };
-
-    const command = await this.#getCommand();
-
-    try {
-      const version = await command.resolveDependencyVersion(packageName, {
-        cwd: this.projectPath,
-      });
-
-      if (version) {
-        logger.debug(`Resolved ${packageName} version using ${command.name}`, { version });
-
-        return version;
-      }
-
-      const packageJsonVersion = this.packageJson.dependencies?.[packageName];
-
-      if (typeof packageJsonVersion === "string") {
-        logger.debug(`Resolved ${packageName} version using package.json`, { packageJsonVersion });
-
-        return packageJsonVersion;
-      }
-
-      if (opts.allowDev) {
-        const devPackageJsonVersion = this.packageJson.devDependencies?.[packageName];
-
-        if (typeof devPackageJsonVersion === "string") {
-          logger.debug(`Resolved ${packageName} version using devDependencies`, {
-            devPackageJsonVersion,
-          });
-
-          return devPackageJsonVersion;
-        }
-      }
-    } catch (error) {
-      logger.debug(`Failed to resolve dependency version using ${command.name}`, {
-        packageName,
-        error,
-      });
-    }
   }
 
   async #getCommand(): Promise<PackageManagerCommands> {
@@ -287,16 +215,6 @@ interface PackageManagerCommands {
   extractDirectDependenciesMeta(
     options: PackageManagerOptions
   ): Promise<Record<string, DependencyMeta>>;
-
-  resolveDependencyVersion(
-    packageName: string,
-    options: PackageManagerOptions
-  ): Promise<string | undefined>;
-
-  resolveDependencyVersions(
-    packageNames: string[],
-    options: PackageManagerOptions
-  ): Promise<Record<string, string>>;
 }
 
 class PNPMCommands implements PackageManagerCommands {
@@ -312,46 +230,6 @@ class PNPMCommands implements PackageManagerCommands {
     const { stdout, stderr } = await $({ cwd: options.cwd })`${this.cmd} install`;
 
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
-  }
-
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} -r --json`;
-    const result = JSON.parse(stdout) as PnpmList;
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`);
-
-    // Return the first dependency version that matches the package name
-    for (const dep of result) {
-      const dependency = dep.dependencies?.[packageName];
-
-      if (dependency) {
-        return dependency.version;
-      }
-    }
-  }
-
-  async resolveDependencyVersions(
-    packageNames: string[],
-    options: PackageManagerOptions
-  ): Promise<Record<string, string>> {
-    const result = await this.#listDependencies(packageNames, options);
-
-    logger.debug(`Resolving ${packageNames.join(" ")} version using ${this.name}`);
-
-    const results: Record<string, string> = {};
-
-    // Return the first dependency version that matches the package name
-    for (const dep of result) {
-      for (const packageName of packageNames) {
-        const dependency = dep.dependencies?.[packageName];
-
-        if (dependency) {
-          results[packageName] = dependency.version;
-        }
-      }
-    }
-
-    return results;
   }
 
   async extractDirectDependenciesMeta(options: PackageManagerOptions) {
@@ -393,21 +271,6 @@ class PNPMCommands implements PackageManagerCommands {
 
     return JSON.parse(childProcess.stdout) as PnpmList;
   }
-
-  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
-    const childProcess = await $({
-      cwd: options.cwd,
-      reject: false,
-    })`${this.cmd} list ${packageNames} -r --json`;
-
-    if (childProcess.failed) {
-      logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess,
-      });
-    }
-
-    return JSON.parse(childProcess.stdout) as PnpmList;
-  }
 }
 
 type NpmDependency = {
@@ -437,36 +300,6 @@ class NPMCommands implements PackageManagerCommands {
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
   }
 
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} list ${packageName} --json`;
-    const output = JSON.parse(stdout) as NpmListOutput;
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`, { output });
-
-    return this.#recursivelySearchDependencies(output.dependencies, packageName);
-  }
-
-  async resolveDependencyVersions(
-    packageNames: string[],
-    options: PackageManagerOptions
-  ): Promise<Record<string, string>> {
-    const output = await this.#listDependencies(packageNames, options);
-
-    logger.debug(`Resolving ${packageNames.join(" ")} version using ${this.name}`, { output });
-
-    const results: Record<string, string> = {};
-
-    for (const packageName of packageNames) {
-      const version = this.#recursivelySearchDependencies(output.dependencies, packageName);
-
-      if (version) {
-        results[packageName] = version;
-      }
-    }
-
-    return results;
-  }
-
   async extractDirectDependenciesMeta(
     options: PackageManagerOptions
   ): Promise<Record<string, DependencyMeta>> {
@@ -490,40 +323,6 @@ class NPMCommands implements PackageManagerCommands {
     }
 
     return JSON.parse(childProcess.stdout) as NpmListOutput;
-  }
-
-  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
-    const childProcess = await $({
-      cwd: options.cwd,
-      reject: false,
-    })`${this.cmd} list ${packageNames} --json`;
-
-    if (childProcess.failed) {
-      logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess,
-      });
-    }
-
-    return JSON.parse(childProcess.stdout) as NpmListOutput;
-  }
-
-  #recursivelySearchDependencies(
-    dependencies: Record<string, NpmDependency>,
-    packageName: string
-  ): string | undefined {
-    for (const [name, dependency] of Object.entries(dependencies)) {
-      if (name === packageName) {
-        return dependency.version;
-      }
-
-      if (dependency.dependencies) {
-        const result = this.#recursivelySearchDependencies(dependency.dependencies, packageName);
-
-        if (result) {
-          return result;
-        }
-      }
-    }
   }
 
   #flattenDependenciesMeta(
@@ -559,47 +358,6 @@ class YarnCommands implements PackageManagerCommands {
     logger.debug(`Installing dependencies using ${this.name}`, { stdout, stderr });
   }
 
-  async resolveDependencyVersion(packageName: string, options: PackageManagerOptions) {
-    const { stdout } = await $({ cwd: options.cwd })`${this.cmd} info ${packageName} --json`;
-
-    const lines = stdout.split("\n");
-
-    logger.debug(`Resolving ${packageName} version using ${this.name}`);
-
-    for (const line of lines) {
-      const json = JSON.parse(line);
-
-      if (json.value === packageName) {
-        return json.children.Version;
-      }
-    }
-  }
-
-  async resolveDependencyVersions(
-    packageNames: string[],
-    options: PackageManagerOptions
-  ): Promise<Record<string, string>> {
-    const stdout = await this.#listDependencies(packageNames, options);
-
-    const lines = stdout.split("\n");
-
-    logger.debug(`Resolving ${packageNames.join(" ")} version using ${this.name}`);
-
-    const results: Record<string, string> = {};
-
-    for (const line of lines) {
-      const json = JSON.parse(line);
-
-      const packageName = this.#parseYarnValueIntoPackageName(json.value);
-
-      if (packageNames.includes(packageName)) {
-        results[packageName] = json.children.Version;
-      }
-    }
-
-    return results;
-  }
-
   async extractDirectDependenciesMeta(options: PackageManagerOptions) {
     const result = await this.#listDirectDependencies(options);
 
@@ -633,37 +391,10 @@ class YarnCommands implements PackageManagerCommands {
     return childProcess.stdout;
   }
 
-  async #listDependencies(packageNames: string[], options: PackageManagerOptions) {
-    const childProcess = await $({
-      cwd: options.cwd,
-      reject: false,
-    })`${this.cmd} info ${packageNames} --json`;
-
-    if (childProcess.failed) {
-      logger.debug("Failed to list dependencies, using stdout anyway...", {
-        error: childProcess,
-      });
-    }
-
-    return childProcess.stdout;
-  }
-
   // The "value" when doing yarn info is formatted like this:
   // "package-name@npm:version" or "package-name@workspace:version"
   // This function will parse the value into just the package name.
   // This correctly handles scoped packages as well e.g. @scope/package-name@npm:version
-  #parseYarnValueIntoPackageName(value: string): string {
-    const parts = value.split("@");
-
-    // If the value does not contain an "@" symbol, then it's just the package name
-    if (parts.length === 3) {
-      return parts[1] as string;
-    }
-
-    // If the value contains an "@" symbol, then the package name is the first part
-    return parts[0] as string;
-  }
-
   #parseYarnValueIntoDependencyMeta(value: string): [string, DependencyMeta] {
     const parts = value.split("@");
     let name: string, protocol: string, version: string;
@@ -688,13 +419,4 @@ class YarnCommands implements PackageManagerCommands {
       },
     ];
   }
-}
-
-function isBuiltInModule(module: string): boolean {
-  // if the module has node: prefix, it's a built-in module
-  if (module.startsWith("node:")) {
-    return true;
-  }
-
-  return builtinModules.includes(module);
 }
