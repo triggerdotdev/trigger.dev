@@ -8,7 +8,7 @@ import {
   flattenAttributes,
   sanitizeError,
 } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -23,6 +23,7 @@ import { TaskRun } from "@trigger.dev/database";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -50,15 +51,28 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
-      // Update the task run to be failed
-      await this._prisma.taskRun.update({
+      const run = await this._prisma.taskRun.findFirst({
         where: {
           friendlyId: execution.run.id,
         },
-        data: {
-          status: "SYSTEM_FAILURE",
-          completedAt: new Date(),
+        select: {
+          id: true,
         },
+      });
+
+      if (!run) {
+        logger.error("[CompleteAttemptService] Task run not found", {
+          friendlyId: execution.run.id,
+        });
+
+        return "COMPLETED";
+      }
+
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        id: run.id,
+        status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
       });
 
       // No attempt, so there's no message to ACK
@@ -96,28 +110,25 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    await this._prisma.taskRunAttempt.update({
-      where: { id: taskRunAttempt.id },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-        output: completion.output,
-        outputType: completion.outputType,
-        usageDurationMs: completion.usage?.durationMs,
-        taskRun: {
-          update: {
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
-              completedAt: new Date(),
-            },
-          },
+    await $transaction(this._prisma, async (tx) => {
+      await tx.taskRunAttempt.update({
+        where: { id: taskRunAttempt.id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: completion.output,
+          outputType: completion.outputType,
+          usageDurationMs: completion.usage?.durationMs,
         },
-      },
+      });
+
+      const finalizeService = new FinalizeTaskRunService(tx);
+      await finalizeService.call({
+        id: taskRunAttempt.taskRunId,
+        status: "COMPLETED_SUCCESSFULLY",
+        completedAt: new Date(),
+      });
     });
-
-    logger.debug("Completed attempt successfully, ACKing message");
-
-    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
@@ -255,18 +266,12 @@ export class CompleteAttemptService extends BaseService {
       if (!checkpointCreateResult) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
-        // Update the task run to be failed
-        await this._prisma.taskRun.update({
-          where: {
-            friendlyId: execution.run.id,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-            completedAt: new Date(),
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
         });
-
-        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
         return "COMPLETED";
       }
@@ -279,11 +284,6 @@ export class CompleteAttemptService extends BaseService {
 
       return "RETRIED";
     } else {
-      // No more retries, we need to fail the task run
-      logger.debug("Completed attempt, ACKing message", taskRunAttempt);
-
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
-
       // Now we need to "complete" the task run event/span
       await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
         endTime: new Date(),
@@ -305,6 +305,13 @@ export class CompleteAttemptService extends BaseService {
         sanitizedError.type === "INTERNAL_ERROR" &&
         sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
       ) {
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
+        });
+
         // We need to fail all incomplete spans
         const inProgressEvents = await eventRepository.queryIncompleteEvents({
           attemptId: execution.attempt.id,
@@ -328,25 +335,12 @@ export class CompleteAttemptService extends BaseService {
             });
           })
         );
-
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-            completedAt: new Date(),
-          },
-        });
       } else {
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "COMPLETED_WITH_ERRORS",
-            completedAt: new Date(),
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "COMPLETED_WITH_ERRORS",
+          completedAt: new Date(),
         });
       }
 
