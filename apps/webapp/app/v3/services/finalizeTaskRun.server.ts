@@ -6,7 +6,7 @@ import { BaseService } from "./baseService.server";
 type BaseInput = {
   tx: PrismaClientOrTransaction;
   id: string;
-  status: TaskRunStatus;
+  status?: TaskRunStatus;
   expiredAt?: Date;
   completedAt?: Date;
 };
