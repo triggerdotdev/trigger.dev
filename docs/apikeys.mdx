@@ -15,14 +15,14 @@ Each environment has its own secret key. You can find the value on the API keys 
 
 To automatically configure the SDK with your secret key, you can set the `TRIGGER_SECRET_KEY` environment variable. The SDK will automatically use this value when calling API methods (like `trigger`).
 
-```bash
-export TRIGGER_SECRET_KEY=tr_dev_…
+```bash .env
+TRIGGER_SECRET_KEY="tr_dev_…"
 ```
 
 You can do the same if you are self-hosting and need to change the default URL by using `TRIGGER_API_URL`.
 
-```bash
-export TRIGGER_API_URL=https://trigger.example.com
+```bash .env
+TRIGGER_API_URL="https://trigger.example.com"
 ```
 
 The default URL is `https://api.trigger.dev`.

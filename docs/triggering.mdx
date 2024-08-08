@@ -446,6 +446,8 @@ await myTask.trigger({ some: "data" }, { delay: "1h52m18s" });
 await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
 // Delay using a Date object
 await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
+// Delay using a timezone
+await myTask.trigger({ some: "data" }, { delay: new Date('2024-07-23T11:50:00+02:00') });
 ```
 
 Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
