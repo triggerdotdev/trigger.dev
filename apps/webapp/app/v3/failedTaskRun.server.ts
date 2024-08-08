@@ -5,6 +5,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
+import { FinalizeTaskRunService } from "./services/finalizeTaskRun.server";
 
 const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
 
@@ -40,20 +41,13 @@ export class FailedTaskRunService extends BaseService {
     // No more retries, we need to fail the task run
     logger.debug("[FailedTaskRunService] Failing task run", { taskRun, completion });
 
-    /*
-    "SYSTEM_FAILURE"
-
-    Steps:
-    1. marqs ack
-    2. Completes the run span OTEL event
-    3. Updates the run to system failure
-
-    Inputs:
-    - taskRun: id, spanId
-    - completion: error
-    */
-
-    await marqs?.acknowledgeMessage(taskRun.id);
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      tx: this._prisma,
+      id: taskRun.id,
+      status: "SYSTEM_FAILURE",
+      completedAt: new Date(),
+    });
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRun.spanId, {
@@ -70,16 +64,6 @@ export class FailedTaskRunService extends BaseService {
           },
         },
       ],
-    });
-
-    await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
-        status: "SYSTEM_FAILURE",
-        completedAt: new Date(),
-      },
     });
   }
 }
