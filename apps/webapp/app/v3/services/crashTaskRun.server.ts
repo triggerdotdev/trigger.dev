@@ -7,6 +7,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 import { sanitizeError } from "@trigger.dev/core/v3";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -59,18 +60,12 @@ export class CrashTaskRunService extends BaseService {
     - logs/stacktrace
     */
 
-    // Remove the task run from the queue if it's there for some reason
-    await marqs?.acknowledgeMessage(taskRun.id);
-
-    // Set the task run status to crashed
-    const crashedTaskRun = await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
-        status: "CRASHED",
-        completedAt: new Date(),
-      },
+    const finalizeService = new FinalizeTaskRunService();
+    const crashedTaskRun = await finalizeService.call({
+      tx: this._prisma,
+      id: taskRun.id,
+      status: "CRASHED",
+      completedAt: new Date(),
       include: {
         attempts: {
           where: {
