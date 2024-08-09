@@ -323,6 +323,10 @@ export function v3EnvironmentVariablesPath(organization: OrgForPath, project: Pr
   return `${v3ProjectPath(organization, project)}/environment-variables`;
 }
 
+export function v3ConcurrencyPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/concurrency`;
+}
+
 export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
   return `${v3EnvironmentVariablesPath(organization, project)}/new`;
 }

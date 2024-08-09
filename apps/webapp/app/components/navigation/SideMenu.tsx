@@ -9,6 +9,7 @@ import {
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
+  RectangleStackIcon,
   ServerStackIcon,
   ShieldCheckIcon,
   SignalIcon,
@@ -46,6 +47,7 @@ import {
   projectTriggersPath,
   v3ApiKeysPath,
   v3BillingPath,
+  v3ConcurrencyPath,
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
@@ -77,9 +79,9 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
+import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -601,6 +603,13 @@ function V3ProjectSideMenu({
         iconColor="text-pink-500"
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
+      />
+      <SideMenuItem
+        name="Concurrency"
+        icon={RectangleStackIcon}
+        iconColor="text-indigo-500"
+        to={v3ConcurrencyPath(organization, project)}
+        data-action="concurrency"
       />
       <SideMenuItem
         name="Deployments"
