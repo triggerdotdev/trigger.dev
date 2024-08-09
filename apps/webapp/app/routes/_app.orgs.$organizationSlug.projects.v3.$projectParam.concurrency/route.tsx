@@ -1,6 +1,6 @@
 import { ArrowUpCircleIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, UseDataFunctionReturn, useTypedLoaderData } from "remix-typedjson";
+import { typeddefer, typedjson, UseDataFunctionReturn, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -26,11 +26,18 @@ import {
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useTextFilter } from "~/hooks/useTextFilter";
-import { ConcurrencyPresenter } from "~/presenters/v3/ConcurrencyPresenter.server";
+import {
+  ConcurrencyPresenter,
+  Environment,
+  Task,
+} from "~/presenters/v3/ConcurrencyPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { ProjectParamSchema, docsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { Feedback } from "~/components/Feedback";
+import { Suspense } from "react";
+import { Await } from "@remix-run/react";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -43,7 +50,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
     });
 
-    return typedjson(result);
+    return typeddefer(result);
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -53,24 +60,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-type Task = UseDataFunctionReturn<typeof loader>["tasks"][0];
-
 export default function Page() {
   const { environments, tasks, limit } = useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
-    items: tasks,
-    filter: (task, text) => {
-      if (task.identifier.toLowerCase().includes(text.toLowerCase())) {
-        return true;
-      }
-
-      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
-        return true;
-      }
-
-      return false;
-    },
-  });
 
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -80,17 +71,7 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Concurrency" />
         <PageAccessories>
-          <AdminDebugTooltip>
-            <Property.Table>
-              {environments.map((environment) => (
-                <Property.Item key={environment.id}>
-                  <Property.Label>{environment.slug}</Property.Label>
-                  <Property.Value>{environment.id}</Property.Value>
-                </Property.Item>
-              ))}
-            </Property.Table>
-          </AdminDebugTooltip>
-
+          <AdminDebugTooltip />
           <LinkButton
             variant={"minimal/small"}
             LeadingIcon={BookOpenIcon}
@@ -136,69 +117,108 @@ export default function Page() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {environments.map((environment) => (
-                  <TableRow key={environment.id}>
-                    <TableCell>
-                      <EnvironmentLabel environment={environment} userName={environment.userName} />
-                    </TableCell>
-                    <TableCell alignment="right">–</TableCell>
-                    <TableCell alignment="right">{environment.concurrency}</TableCell>
-                    <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
-                  </TableRow>
-                ))}
+                <Suspense fallback={<Spinner />}>
+                  <Await resolve={environments} errorElement={<p>Error loading environments</p>}>
+                    {(environments) => <EnvironmentsTable environments={environments} />}
+                  </Await>
+                </Suspense>
               </TableBody>
             </Table>
           </div>
           <div>
             <Header2 spacing>Tasks</Header2>
-            <div className="h-8">
-              <Input
-                placeholder="Search tasks"
-                variant="small"
-                icon="search"
-                fullWidth={true}
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Task ID</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredItems.length > 0 ? (
-                  filteredItems.map((task) => (
-                    <TableRow key={task.identifier}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <SimpleTooltip
-                            button={<TaskTriggerSourceIcon source={task.triggerSource} />}
-                            content={taskTriggerSourceDescription(task.triggerSource)}
-                          />
-                          <span>{task.identifier}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell alignment="right">{task.queued}</TableCell>
-                      <TableCell alignment="right">{task.concurrency}</TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableBlankRow colSpan={3}>
-                    <Paragraph variant="small" className="flex items-center justify-center">
-                      {tasks.length > 0 ? "No tasks match your filters" : "No tasks"}
-                    </Paragraph>
-                  </TableBlankRow>
-                )}
-              </TableBody>
-            </Table>
+            <Suspense fallback={<Spinner />}>
+              <Await resolve={tasks} errorElement={<p>Error loading tasks</p>}>
+                {(tasks) => <TaskTable tasks={tasks} />}
+              </Await>
+            </Suspense>
           </div>
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function EnvironmentsTable({ environments }: { environments: Environment[] }) {
+  return (
+    <>
+      {environments.map((environment) => (
+        <TableRow key={environment.id}>
+          <TableCell>
+            <EnvironmentLabel environment={environment} userName={environment.userName} />
+          </TableCell>
+          <TableCell alignment="right">–</TableCell>
+          <TableCell alignment="right">{environment.concurrency}</TableCell>
+          <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+function TaskTable({ tasks }: { tasks: Task[] }) {
+  const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
+    items: tasks,
+    filter: (task, text) => {
+      if (task.identifier.toLowerCase().includes(text.toLowerCase())) {
+        return true;
+      }
+
+      if (task.triggerSource === "SCHEDULED" && "scheduled".includes(text.toLowerCase())) {
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  return (
+    <>
+      <div className="h-8">
+        <Input
+          placeholder="Search tasks"
+          variant="small"
+          icon="search"
+          fullWidth={true}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          autoFocus
+        />
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHeaderCell>Task ID</TableHeaderCell>
+            <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+            <TableHeaderCell alignment="right">Running</TableHeaderCell>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredItems.length > 0 ? (
+            filteredItems.map((task) => (
+              <TableRow key={task.identifier}>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <SimpleTooltip
+                      button={<TaskTriggerSourceIcon source={task.triggerSource} />}
+                      content={taskTriggerSourceDescription(task.triggerSource)}
+                    />
+                    <span>{task.identifier}</span>
+                  </div>
+                </TableCell>
+                <TableCell alignment="right">{task.queued}</TableCell>
+                <TableCell alignment="right">{task.concurrency}</TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableBlankRow colSpan={3}>
+              <Paragraph variant="small" className="flex items-center justify-center">
+                {tasks.length > 0 ? "No tasks match your filters" : "No tasks"}
+              </Paragraph>
+            </TableBlankRow>
+          )}
+        </TableBody>
+      </Table>
+    </>
   );
 }

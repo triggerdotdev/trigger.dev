@@ -1,13 +1,22 @@
+import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { Prisma, sqlDatabaseSchema } from "~/db.server";
 import { type Project } from "~/models/project.server";
-import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import {
+  displayableEnvironment,
+  type DisplayableInputEnvironment,
+} from "~/models/runtimeEnvironment.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { type User } from "~/models/user.server";
+import { getLimit } from "~/services/platform.v3.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
-import { getLimit } from "~/services/platform.v3.server";
-import { Prisma, sqlDatabaseSchema } from "~/db.server";
-import { QUEUED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+
+//from the ConcurrencyPresenter taskConcurrency method
+export type Task = Awaited<ReturnType<ConcurrencyPresenter["taskConcurrency"]>>[number];
+export type Environment = Awaited<
+  ReturnType<ConcurrencyPresenter["environmentConcurrency"]>
+>[number];
 
 export class ConcurrencyPresenter extends BasePresenter {
   public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
@@ -48,10 +57,20 @@ export class ConcurrencyPresenter extends BasePresenter {
       throw new Error(`Project not found: ${projectSlug}`);
     }
 
+    const limit = await getLimit(project.organizationId, "concurrentRuns", 10);
+
+    return {
+      environments: this.environmentConcurrency(project.id, userId, project.environments),
+      tasks: this.taskConcurrency(project.id),
+      limit,
+    };
+  }
+
+  async taskConcurrency(projectId: string) {
     //get all possible tasks
-    const possibleTasks = await getAllTaskIdentifiers(this._replica, project.id);
+    const possibleTasks = await getAllTaskIdentifiers(this._replica, projectId);
     const concurrencies = await concurrencyTracker.taskConcurrentRunCounts(
-      project.id,
+      projectId,
       possibleTasks.map((task) => task.slug)
     );
     const queued = await this._replica.$queryRaw<
@@ -60,44 +79,48 @@ export class ConcurrencyPresenter extends BasePresenter {
         count: BigInt;
       }[]
     >`
-    SELECT 
-      tr."taskIdentifier",
-      COUNT(*) 
-    FROM 
-      ${sqlDatabaseSchema}."TaskRun" as tr
-    WHERE 
-      tr."taskIdentifier" IN (${Prisma.join(possibleTasks.map((task) => task.slug))})
-      AND tr."projectId" = ${project.id}
-      AND tr."status" = ANY(ARRAY[${Prisma.join(QUEUED_STATUSES)}]::\"TaskRunStatus\"[])
-    GROUP BY 
-      tr."taskIdentifier"
-    ORDER BY 
-      tr."taskIdentifier" ASC`;
+SELECT 
+  tr."taskIdentifier",
+  COUNT(*) 
+FROM 
+  ${sqlDatabaseSchema}."TaskRun" as tr
+WHERE 
+  tr."taskIdentifier" IN (${Prisma.join(possibleTasks.map((task) => task.slug))})
+  AND tr."projectId" = ${projectId}
+  AND tr."status" = ANY(ARRAY[${Prisma.join(QUEUED_STATUSES)}]::\"TaskRunStatus\"[])
+GROUP BY 
+  tr."taskIdentifier"
+ORDER BY 
+  tr."taskIdentifier" ASC`;
 
+    return possibleTasks
+      .map((task) => ({
+        identifier: task.slug,
+        triggerSource: task.triggerSource,
+        concurrency: concurrencies[task.slug] ?? 0,
+        queued: Number(queued.find((q) => q.taskIdentifier === task.slug)?.count ?? 0),
+      }))
+      .sort((a, b) => a.identifier.localeCompare(b.identifier));
+  }
+
+  async environmentConcurrency(
+    projectId: string,
+    userId: string,
+    environments: (DisplayableInputEnvironment & { maximumConcurrencyLimit: number })[]
+  ) {
     const environmentConcurrency = await concurrencyTracker.environmentConcurrentRunCounts(
-      project.id,
-      project.environments.map((env) => env.id)
+      projectId,
+      environments.map((env) => env.id)
     );
 
-    const sortedEnvironments = sortEnvironments(project.environments).map((environment) => ({
+    //todo get queue counts
+
+    const sortedEnvironments = sortEnvironments(environments).map((environment) => ({
       ...displayableEnvironment(environment, userId),
       concurrencyLimit: environment.maximumConcurrencyLimit,
       concurrency: environmentConcurrency[environment.id] ?? 0,
     }));
 
-    const limit = await getLimit(project.organizationId, "concurrentRuns", 10);
-
-    return {
-      environments: sortedEnvironments,
-      tasks: possibleTasks
-        .map((task) => ({
-          identifier: task.slug,
-          triggerSource: task.triggerSource,
-          concurrency: concurrencies[task.slug] ?? 0,
-          queued: Number(queued.find((q) => q.taskIdentifier === task.slug)?.count ?? 0),
-        }))
-        .sort((a, b) => a.identifier.localeCompare(b.identifier)),
-      limit,
-    };
+    return sortedEnvironments;
   }
 }
