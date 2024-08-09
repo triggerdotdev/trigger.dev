@@ -1235,7 +1235,7 @@ class ProdWorker {
       try {
         await backoff.wait(attempt + 1);
 
-        await this.#waitForTaskHandlerFactory("replay")(message);
+        await this.#waitForTaskHandlerFactory("replay")(message, idempotencyKey);
       } catch (error) {
         if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
           logger.error("wait for task replay retry limit exceeded", { error });
@@ -1278,7 +1278,7 @@ class ProdWorker {
       try {
         await backoff.wait(attempt + 1);
 
-        await this.#waitForBatchHandlerFactory("replay")(message);
+        await this.#waitForBatchHandlerFactory("replay")(message, idempotencyKey);
       } catch (error) {
         if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
           logger.error("wait for batch replay retry limit exceeded", { error });
