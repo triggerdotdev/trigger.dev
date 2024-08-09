@@ -13,9 +13,14 @@ import {
   childToWorkerMessages,
   correctErrorStackTrace,
   formatDurationMilliseconds,
+  indexerToWorkerMessages,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import {
+  parseMessageFromCatalog,
+  ZodMessageHandler,
+  ZodMessageSender,
+} from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import {
@@ -41,6 +46,8 @@ import {
   UnexpectedExitError,
   getFriendlyErrorMessage,
 } from "./errors.js";
+import { writeJSONFile } from "../utilities/fileSystem.js";
+import { join } from "node:path";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -208,18 +215,12 @@ export type BackgroundWorkerOptions = {
 };
 
 export class BackgroundWorker {
-  private _initialized: boolean = false;
-  private _handler = new ZodMessageHandler({
-    schema: childToWorkerMessages,
-  });
-
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   private _onClose: Evt<void> = new Evt();
 
   public deprecated: boolean = false;
   public manifest: WorkerManifest | undefined;
   public serverWorker: ServerBackgroundWorker | undefined;
-  public stderr: Array<string> = [];
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
   private _taskRunProcessesBeingKilled: Set<number> = new Set();
@@ -258,19 +259,27 @@ export class BackgroundWorker {
   }
 
   async initialize() {
-    if (this._initialized) {
+    if (this.manifest) {
       throw new Error("Worker already initialized");
     }
 
     let resolved = false;
 
+    const buildManifestPath = join(this.build.outputPath, "build.json");
+
+    // Write the build manifest to this.build.outputPath/build.json
+    await writeJSONFile(buildManifestPath, this.build, true);
+
     logger.debug("Initializing worker", { build: this.build, params: this.params });
 
     this.manifest = await new Promise<WorkerManifest>((resolve, reject) => {
-      const child = fork(this.build.workerEntryPoint, {
+      const child = fork(this.build.indexerEntryPoint, {
         stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
         cwd: this.params.cwd,
-        env: this.params.env,
+        env: {
+          ...this.params.env,
+          TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
+        },
       });
 
       // Set a timeout to kill the child process if it doesn't respond
@@ -285,35 +294,30 @@ export class BackgroundWorker {
       }, 20_000);
 
       child.on("message", async (msg: any) => {
-        const message = this._handler.parseMessage(msg);
+        const message = parseMessageFromCatalog(msg, indexerToWorkerMessages);
 
-        if (!message.success) {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(new Error(`Failed to parse message: ${message.error}`));
-          child.kill();
-          return;
-        }
-
-        if (message.data.type === "INDEX_COMPLETE" && !resolved) {
-          clearTimeout(timeout);
-          resolved = true;
-          resolve(message.data.payload.manifest);
-          child.kill();
-        } else if (message.data.type === "UNCAUGHT_EXCEPTION") {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(
-            new UncaughtExceptionError(message.data.payload.error, message.data.payload.origin)
-          );
-          child.kill();
-        } else if (message.data.type === "TASKS_FAILED_TO_PARSE") {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(
-            new TaskMetadataParseError(message.data.payload.zodIssues, message.data.payload.tasks)
-          );
-          child.kill();
+        switch (message.type) {
+          case "INDEX_COMPLETE": {
+            clearTimeout(timeout);
+            resolved = true;
+            resolve(message.payload.manifest);
+            child.kill();
+            break;
+          }
+          case "TASKS_FAILED_TO_PARSE": {
+            clearTimeout(timeout);
+            resolved = true;
+            reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
+            child.kill();
+            break;
+          }
+          case "UNCAUGHT_EXCEPTION": {
+            clearTimeout(timeout);
+            resolved = true;
+            reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
+            child.kill();
+            break;
+          }
         }
       });
 
@@ -326,35 +330,20 @@ export class BackgroundWorker {
       });
 
       child.stdout?.on("data", (data) => {
-        logger.debug(data.toString());
+        logger.debug(`indexer: ${data.toString()}`);
       });
 
       child.stderr?.on("data", (data) => {
-        logger.debug(data.toString());
-      });
-
-      const sender = new ZodMessageSender({
-        schema: workerToChildMessages,
-        sender: async (message) => {
-          if (child.connected && !resolved) {
-            child.send(message);
-          }
-        },
-      });
-
-      sender.send("INDEX", { build: this.build }).catch((err) => {
-        if (err instanceof Error) {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(err);
-          child.kill();
-        }
+        logger.debug(`indexer: ${data.toString()}`);
       });
     });
 
-    logger.debug("Worker initialized", { manifest: this.manifest });
+    const indexManifestPath = join(this.build.outputPath, "index.json");
 
-    this._initialized = true;
+    // Write the build manifest to this.build.outputPath/worker.json
+    await writeJSONFile(indexManifestPath, this.manifest, true);
+
+    logger.debug("Worker initialized", { index: indexManifestPath });
   }
 
   // We need to notify all the task run processes that a task run has completed,

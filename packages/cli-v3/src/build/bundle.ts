@@ -10,6 +10,7 @@ import {
   devEntryPoints,
   isDeployEntryPoint,
   isDevEntryPoint,
+  isIndexerEntryPoint,
   isLoaderEntryPoint,
   shims,
 } from "./packageModules.js";
@@ -35,6 +36,7 @@ export type BundleResult = {
   configPath: string;
   loaderEntryPoint: string | undefined;
   workerEntryPoint: string | undefined;
+  indexerEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -144,6 +146,7 @@ export async function getBundleResultFromBuild(
   let configPath: string | undefined;
   let loaderEntryPoint: string | undefined;
   let workerEntryPoint: string | undefined;
+  let indexerEntryPoint: string | undefined;
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
@@ -159,6 +162,8 @@ export async function getBundleResultFromBuild(
         loaderEntryPoint = $outputPath;
       } else if (isEntryPointForTarget(outputMeta.entryPoint, target)) {
         workerEntryPoint = $outputPath;
+      } else if (isIndexerEntryPoint(outputMeta.entryPoint)) {
+        indexerEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -182,6 +187,7 @@ export async function getBundleResultFromBuild(
     configPath: configPath,
     loaderEntryPoint,
     workerEntryPoint,
+    indexerEntryPoint,
     contentHash: hasher.digest("hex"),
   };
 }

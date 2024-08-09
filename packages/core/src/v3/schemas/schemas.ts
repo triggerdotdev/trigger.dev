@@ -170,6 +170,7 @@ export type TaskFile = z.infer<typeof TaskFile>;
 const taskFileMetadata = {
   filePath: z.string(),
   exportName: z.string(),
+  entryPoint: z.string(),
 };
 
 export const TaskFileMetadata = z.object(taskFileMetadata);

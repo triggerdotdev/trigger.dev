@@ -109,9 +109,7 @@ export const clientWebsocketMessages = {
 };
 
 export const workerToChildMessages = {
-  INDEX: z.object({
-    build: BuildManifest,
-  }),
+  INDEX: z.object({}),
   EXECUTE_TASK_RUN: z.object({
     version: z.literal("v1").default("v1"),
     execution: TaskRunExecution,
@@ -160,11 +158,6 @@ export const childToWorkerMessages = {
     execution: TaskRunExecution,
     result: TaskRunExecutionResult,
   }),
-  INDEX_COMPLETE: z.object({
-    version: z.literal("v1").default("v1"),
-    manifest: WorkerManifest,
-  }),
-  TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
   TASK_HEARTBEAT: z.object({
     version: z.literal("v1").default("v1"),
     id: z.string(),
@@ -187,6 +180,15 @@ export const childToWorkerMessages = {
     id: z.string(),
     runs: z.string().array(),
   }),
+  UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
+};
+
+export const indexerToWorkerMessages = {
+  INDEX_COMPLETE: z.object({
+    version: z.literal("v1").default("v1"),
+    manifest: WorkerManifest,
+  }),
+  TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 

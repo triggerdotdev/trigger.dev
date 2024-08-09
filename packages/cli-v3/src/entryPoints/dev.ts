@@ -1,6 +1,7 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  BuildManifest,
   childToWorkerMessages,
   clock,
   type HandleErrorFunction,
@@ -12,6 +13,7 @@ import {
   TaskRunExecution,
   TriggerConfig,
   TriggerTracer,
+  WorkerManifest,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
@@ -28,11 +30,8 @@ import {
   TracingSDK,
   usage,
 } from "@trigger.dev/core/v3/workers";
-import {
-  ZodMessageHandler,
-  ZodMessageSender,
-  ZodSchemaParsedError,
-} from "@trigger.dev/core/v3/zodMessageHandler";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
 
@@ -71,8 +70,25 @@ async function importConfig(
   };
 }
 
-async function bootstrap(configPath: string) {
-  const { config, handleError } = await importConfig(configPath);
+async function loadBuildManifest() {
+  const manifestContents = await readFile(process.env.TRIGGER_BUILD_MANIFEST_PATH!, "utf-8");
+  const raw = JSON.parse(manifestContents);
+
+  return BuildManifest.parse(raw);
+}
+
+async function loadWorkerManifest() {
+  const manifestContents = await readFile(process.env.TRIGGER_WORKER_MANIFEST_PATH!, "utf-8");
+  const raw = JSON.parse(manifestContents);
+
+  return WorkerManifest.parse(raw);
+}
+
+async function bootstrap() {
+  const buildManifest = await loadBuildManifest();
+  const workerManifest = await loadWorkerManifest();
+
+  const { config, handleError } = await importConfig(process.env.TRIGGER_BUILD_MANIFEST_PATH!);
 
   const tracingSDK = new TracingSDK({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
@@ -100,7 +116,14 @@ async function bootstrap(configPath: string) {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
-  return { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn: handleError };
+  return {
+    tracer,
+    tracingSDK,
+    consoleInterceptor,
+    config,
+    handleErrorFn: handleError,
+    workerManifest,
+  };
 }
 
 async function registerTaskFileMetadata(files: Array<{ entry: string; out: string }>) {
@@ -135,23 +158,6 @@ let _tracingSDK: TracingSDK | undefined;
 const handler = new ZodMessageHandler({
   schema: workerToChildMessages,
   messages: {
-    INDEX: async ({ build }) => {
-      await bootstrap(build.configPath);
-      await registerTaskFileMetadata(build.files);
-
-      const tasks = taskCatalog.listTaskManifests();
-
-      await sender.send("INDEX_COMPLETE", { manifest: { tasks } }).catch((err) => {
-        if (err instanceof ZodSchemaParsedError) {
-          sender.send("TASKS_FAILED_TO_PARSE", {
-            zodIssues: err.error.issues,
-            tasks,
-          });
-        } else {
-          console.error("Failed to send TASKS_READY message", err);
-        }
-      });
-    },
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
       if (_isRunning) {
         console.error("Worker is already running a task");
@@ -199,9 +205,8 @@ const handler = new ZodMessageHandler({
         return;
       }
 
-      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn } = await bootstrap(
-        "./trigger.config.js"
-      );
+      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        await bootstrap();
 
       const executor = new TaskExecutor(task, {
         tracer,

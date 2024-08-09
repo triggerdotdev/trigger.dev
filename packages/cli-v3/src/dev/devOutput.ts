@@ -39,7 +39,7 @@ export function startDevOutput(options: DevOutputOptions) {
     const testLink = chalkLink(cliLink("Test tasks", testUrl));
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
-    const workerStarted = chalkGrey("Background worker started");
+    const workerStarted = chalkGrey("Background worker ready");
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logger.log(
