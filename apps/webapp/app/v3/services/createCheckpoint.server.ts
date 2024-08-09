@@ -6,7 +6,6 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
-import { CrashTaskRunService } from "./crashTaskRun.server";
 import { isFinalRunStatus, isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 
 export class CreateCheckpointService extends BaseService {
