@@ -154,7 +154,10 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
       pipeline.scard(this.getTaskKey(projectId, taskId));
     });
     const results = await pipeline.exec();
-    return results!.map(([err, count]) => {
+    if (!results) {
+      return [];
+    }
+    return results.map(([err, count]) => {
       if (err) {
         console.error("Error in getTaskCounts:", err);
         return 0;
@@ -163,7 +166,7 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     });
   }
 
-  async projectConcurrentRunCount(projectId: string, taskIds: string[]): Promise<number> {
+  async projectTotalConcurrentRunCount(projectId: string, taskIds: string[]): Promise<number> {
     const counts = await this.getTaskCounts(projectId, taskIds);
     return counts.reduce((total, count) => total + count, 0);
   }
@@ -175,6 +178,29 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     const counts = await this.getTaskCounts(projectId, taskIds);
     return taskIds.reduce((acc, taskId, index) => {
       acc[taskId] = counts[index];
+      return acc;
+    }, {} as Record<string, number>);
+  }
+
+  async environmentConcurrentRunCounts(
+    projectId: string,
+    environmentIds: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+    environmentIds.forEach((environmentId) => {
+      pipeline.scard(this.getEnvironmentKey(projectId, environmentId));
+    });
+    const results = await pipeline.exec();
+    if (!results) {
+      return Object.fromEntries(environmentIds.map((id) => [id, 0]));
+    }
+
+    return results.reduce((acc, [err, count], index) => {
+      if (err) {
+        console.error("Error in environmentConcurrentRunCounts:", err);
+        return acc;
+      }
+      acc[environmentIds[index]] = count as number;
       return acc;
     }, {} as Record<string, number>);
   }
