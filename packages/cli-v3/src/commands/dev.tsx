@@ -14,8 +14,6 @@ import Dev from "../dev/dev.js";
 import { render } from "ink";
 import React from "react";
 
-let apiClient: CliApiClient | undefined;
-
 const DevCommandOptions = CommonCommandOptions.extend({
   debugger: z.boolean().default(false),
   debugOtel: z.boolean().default(false),

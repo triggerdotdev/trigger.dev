@@ -1,12 +1,12 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
+import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import {
-  deployEntryPoint,
   deployEntryPoints,
-  devEntryPoint,
   devEntryPoints,
   isDeployEntryPoint,
   isDevEntryPoint,
@@ -15,8 +15,6 @@ import {
   shims,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
-import { createHash, hash } from "node:crypto";
-import { createFile } from "../utilities/fileSystem.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -225,8 +223,12 @@ function dirToEntryPointGlob(dir: string): string[] {
   return [
     join(dir, "**", "*.ts"),
     join(dir, "**", "*.tsx"),
+    join(dir, "**", "*.mts"),
+    join(dir, "**", "*.cts"),
     join(dir, "**", "*.js"),
     join(dir, "**", "*.jsx"),
+    join(dir, "**", "*.mjs"),
+    join(dir, "**", "*.cjs"),
   ];
 }
 

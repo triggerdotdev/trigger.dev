@@ -44,10 +44,6 @@ export function analyzeMetadataPlugin(): esbuild.Plugin {
 
 const polysheds = [
   {
-    moduleName: "is-core-module",
-    code: "const { isBuiltin } = require('node:module'); module.exports = isBuiltin;",
-  },
-  {
     moduleName: "server-only",
     code: "export default true;",
   },

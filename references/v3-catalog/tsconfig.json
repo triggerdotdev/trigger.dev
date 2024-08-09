@@ -16,5 +16,10 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["./src/**/*.ts", "trigger.config.ts", "src/trigger/email.tsx"]
+  "include": [
+    "./src/**/*.ts",
+    "trigger.config.ts",
+    "src/trigger/email.tsx",
+    "src/trigger/openai.mts"
+  ]
 }
