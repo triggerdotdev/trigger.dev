@@ -41,6 +41,35 @@ sourceMapSupport.install({
   hookRequire: false,
 });
 
+process.on("uncaughtException", function (error, origin) {
+  if (error instanceof Error) {
+    process.send &&
+      process.send({
+        type: "UNCAUGHT_EXCEPTION",
+        payload: {
+          error: { name: error.name, message: error.message, stack: error.stack },
+          origin,
+        },
+        version: "v1",
+      });
+  } else {
+    process.send &&
+      process.send({
+        type: "UNCAUGHT_EXCEPTION",
+        payload: {
+          error: {
+            name: "Error",
+            message: typeof error === "string" ? error : JSON.stringify(error),
+          },
+          origin,
+        },
+        version: "v1",
+      });
+  }
+});
+
+console.log("Node.js version", process.version);
+
 const sender = new ZodMessageSender({
   schema: childToWorkerMessages,
   sender: async (message) => {

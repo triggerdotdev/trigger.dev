@@ -15,7 +15,6 @@ import { render } from "ink";
 import React from "react";
 
 const DevCommandOptions = CommonCommandOptions.extend({
-  debugger: z.boolean().default(false),
   debugOtel: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
@@ -35,7 +34,6 @@ export function configureDevCommand(program: Command) {
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
       )
-      .option("--debugger", "Enable the debugger")
       .option("--debug-otel", "Enable OpenTelemetry debugging")
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
   ).action(async (_, options) => {

@@ -268,8 +268,8 @@ export class BackgroundWorker {
           ...this.params.env,
           TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
           NODE_OPTIONS: this.build.loaderEntryPoint
-            ? `--import=${this.build.loaderEntryPoint}`
-            : undefined,
+            ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
+            : process.env.NODE_OPTIONS,
         },
       });
 
@@ -379,7 +379,9 @@ export class BackgroundWorker {
         ...payload.environment,
         TRIGGER_BUILD_MANIFEST_PATH: join(this.build.outputPath, "build.json"),
         TRIGGER_WORKER_MANIFEST_PATH: join(this.build.outputPath, "index.json"),
-        NODE_OPTIONS: this.build.loaderEntryPoint ? `--import=${this.build.loaderEntryPoint}` : "",
+        NODE_OPTIONS: this.build.loaderEntryPoint
+          ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
+          : process.env.NODE_OPTIONS ?? "",
       },
       serverWorker: this.serverWorker,
       workerManifest: this.manifest,
@@ -651,6 +653,7 @@ class TaskRunProcess {
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
   public onIsBeingKilled: Evt<number | undefined> = new Evt();
+  private _debuggingPort: number | undefined;
 
   constructor(public readonly options: TaskRunProcessOptions) {
     this._sender = new ZodMessageSender({

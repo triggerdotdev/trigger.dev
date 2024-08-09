@@ -149,7 +149,9 @@ class DevWorkerRuntime implements WorkerRuntime {
     this.websocket.addEventListener("message", this.#handleWebsocketMessage.bind(this));
   }
 
-  async init(): Promise<void> {}
+  async init(): Promise<void> {
+    logger.debug("initialized worker runtime", { options: this.options });
+  }
 
   async shutdown(): Promise<void> {
     this.websocket.close();

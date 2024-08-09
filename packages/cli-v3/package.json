@@ -52,8 +52,8 @@
     "@types/react": "^18.2.48",
     "@types/resolve": "^1.20.6",
     "@types/semver": "^7.3.13",
-    "@types/ws": "^8.5.3",
     "@types/source-map-support": "0.5.10",
+    "@types/ws": "^8.5.3",
     "cpy-cli": "^5.0.0",
     "nodemon": "^3.0.1",
     "npm-run-all": "^4.1.5",
@@ -62,11 +62,11 @@
     "rimraf": "^5.0.7",
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
+    "tsx": "4.17.0",
     "type-fest": "^3.6.0",
     "typescript": "^5.5.4",
     "vitest": "^1.6.0",
-    "xdg-app-paths": "^8.3.0",
-    "tsx": "4.17.0"
+    "xdg-app-paths": "^8.3.0"
   },
   "scripts": {
     "typecheck": "tsc",

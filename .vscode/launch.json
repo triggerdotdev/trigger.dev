@@ -33,7 +33,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Dev CLI",
-      "command": "pnpm exec triggerdev dev --log-level debug",
+      "command": "pnpm exec triggerdev dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },
