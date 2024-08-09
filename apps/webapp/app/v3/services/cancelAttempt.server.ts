@@ -1,11 +1,10 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
-import { BaseService } from "./baseService.server";
-
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { isCancellableRunStatus } from "../taskStatus";
+import { BaseService } from "./baseService.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CancelAttemptService extends BaseService {
@@ -51,28 +50,25 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      await marqs?.acknowledgeMessage(taskRunId);
-
-      await this._prisma.taskRunAttempt.update({
-        where: {
-          friendlyId: attemptId,
-        },
-        data: {
-          status: "CANCELED",
-          completedAt: cancelledAt,
-          taskRun: {
-            update: {
-              data: {
-                status: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-                  ? "INTERRUPTED"
-                  : undefined,
-                completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-                  ? cancelledAt
-                  : undefined,
-              },
-            },
+      await $transaction(this._prisma, async (tx) => {
+        await tx.taskRunAttempt.update({
+          where: {
+            friendlyId: attemptId,
           },
-        },
+          data: {
+            status: "CANCELED",
+            completedAt: cancelledAt,
+          },
+        });
+
+        const finalizeService = new FinalizeTaskRunService(tx);
+        await finalizeService.call({
+          id: taskRunId,
+          status: isCancellableRunStatus(taskRunAttempt.taskRun.status) ? "INTERRUPTED" : undefined,
+          completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
+            ? cancelledAt
+            : undefined,
+        });
       });
 
       const inProgressEvents = await eventRepository.queryIncompleteEvents({

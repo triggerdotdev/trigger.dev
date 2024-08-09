@@ -43,7 +43,11 @@
   },
   "topbarLinks": [
     {
-      "name": "Community",
+      "name": "v2 docs",
+      "url": "https://v2docs.trigger.dev/documentation/introduction"
+    },
+    {
+      "name": "Discord",
       "url": "https://trigger.dev/discord"
     }
   ],
@@ -85,10 +89,8 @@
         "tasks-overview",
         "triggering",
         "apikeys",
-        {
-          "group": "Task types",
-          "pages": ["tasks-regular", "tasks-scheduled"]
-        },
+        "tasks-regular",
+        "tasks-scheduled",
         "trigger-config"
       ]
     },

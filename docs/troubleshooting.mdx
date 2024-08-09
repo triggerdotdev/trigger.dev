@@ -3,6 +3,29 @@ title: "Common problems"
 description: "Some common problems you might experience and their solutions"
 ---
 
+## Development
+
+### `EACCES: permission denied`
+
+If you see this error:
+
+```ts
+6090 verbose stack Error: EACCES: permission denied, rename '/Users/user/.npm/_cacache/tmp/f1bfea11' -> '/Users/user/.npm/_cacache/content-v2/sha512/31/d8/e094a47a0105d06fd246892ed1736c02eae323726ec6a3f34734eeb71308895dfba4f4f82a88ffe7e480c90b388c91fc3d9f851ba7b96db4dc33fbc65528'
+```
+
+First, clear the npm cache:
+
+```ts
+npm cache clean --force
+```
+
+Then change the permissions of the npm folder (if 1 doesn't work):
+
+```ts
+sudo chown -R $(whoami) ~/.npm
+```
+
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
@@ -82,6 +105,10 @@ Prisma uses code generation to create the client from your schema file. This mea
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
+### `Error: Prisma generate failed to find the specified schema at ../../path`
+
+
+
 ## Framework specific issues
 
 ### NestJS swallows all errors/exceptions
@@ -102,3 +129,28 @@ export const simplestTask = task({
 ```
 
 NestJS has a global exception filter that catches all errors and swallows them, so we can't receive them. Our current recommendation is to not use NestJS inside your tasks. If you're a NestJS user you can still use Trigger.dev but just don't use NestJS inside your tasks like this.
+
+### React is not defined
+
+If you see this error:
+
+```ts
+Worker failed to start ReferenceError: React is not defined
+```
+
+Either add this to your file:
+
+```ts
+import React from "react";
+```
+
+Or change the tsconfig jsx setting:
+
+```json
+{
+  "compilerOptions": {
+    //...
+    "jsx": "react-jsx" 
+  },
+}
+```

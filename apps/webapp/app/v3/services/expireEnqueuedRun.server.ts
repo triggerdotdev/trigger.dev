@@ -1,7 +1,7 @@
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { eventRepository } from "../eventRepository.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
   public async call(runId: string) {
@@ -39,15 +39,12 @@ export class ExpireEnqueuedRunService extends BaseService {
       run,
     });
 
-    await this._prisma.taskRun.update({
-      where: {
-        id: run.id,
-      },
-      data: {
-        status: "EXPIRED",
-        expiredAt: new Date(),
-        completedAt: new Date(),
-      },
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      id: run.id,
+      status: "EXPIRED",
+      expiredAt: new Date(),
+      completedAt: new Date(),
     });
 
     await eventRepository.completeEvent(run.spanId, {
@@ -67,7 +64,5 @@ export class ExpireEnqueuedRunService extends BaseService {
         },
       ],
     });
-
-    await marqs?.acknowledgeMessage(run.id);
   }
 }

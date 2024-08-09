@@ -77,20 +77,19 @@ jobs:
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
 
-You need to add the `TRIGGER_ACCESS_TOKEN` secret to your repository. You can create a new access token by going to your profile page and then clicking on the ["Personal Access Tokens"](https://cloud.trigger.dev/account/tokens) tab.
+### Creating a Personal Access Token
 
-To set it in GitHub go to your repository, click on "Settings", "Secrets and variables" and then "Actions". Add a new secret with the name `TRIGGER_ACCESS_TOKEN` and use the value of your access token.
+<Steps>
 
-<Accordion title="How to add TRIGGER_ACCESS_TOKEN in GitHub">
-  1. Go to your repository on GitHub.
-  2. Click on "Settings".
-  3. Click on "Secrets and variables" -> "Actions"
-  4. Click on "New repository secret".
-  5. Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token.
+<Step title="Create a new access token">Go to your profile page and click on the ["Personal Access Tokens"](https://cloud.trigger.dev/account/tokens) tab.</Step>
 
-![Add TRIGGER_ACCESS_TOKEN in GitHub](/images/github-access-token.png)
+<Step title="Go to your repository on GitHub.">Click on 'Settings' -> 'Secrets and variables' -> 'Actions' -> 'New repository secret'</Step>
 
-</Accordion>
+<Step title="Add the TRIGGER_ACCESS_TOKEN">Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token. ![Add TRIGGER_ACCESS_TOKEN in GitHub](/images/github-access-token.png)</Step>
+
+</Steps>
+
+
 
 ## Version pinning
 

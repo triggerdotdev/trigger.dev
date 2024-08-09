@@ -1,6 +1,6 @@
 ---
-title: "Scheduled tasks"
-description: "A task that is triggered on a recurring schedule using CRON syntax."
+title: "Scheduled tasks (cron)"
+description: "A task that is triggered on a recurring schedule using cron syntax."
 ---
 
 ## Defining a scheduled task
@@ -120,7 +120,7 @@ To use imperative schedules you need to do two things:
 1. Define a task in your code using `schedules.task()`.
 2. Attach 1+ schedules to the task either using the dashboard or the SDK.
 
-## Supported CRON syntax
+## Supported cron syntax
 
 ```
 *    *    *    *    *
@@ -135,7 +135,7 @@ To use imperative schedules you need to do two things:
 
 "L" means the last. In the "day of week" field, 1L means the last Monday of the month. In the "day of month" field, L means the last day of the month.
 
-We do not support seconds in the CRON syntax.
+We do not support seconds in the cron syntax.
 
 ## When schedules won't trigger
 
@@ -165,7 +165,7 @@ These are the options when creating a schedule:
 | Name              | Description                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | Task              | The id of the task you want to attach to.                                                     |
-| CRON pattern      | The schedule in CRON format.                                                                  |
+| Cron pattern      | The schedule in cron format.                                                                  |
 | Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
 | External id       | An optional external id, usually you'd use a userId.                                          |
 | Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. |
@@ -183,7 +183,7 @@ You call `schedules.create()` to create a schedule from your code. Here's the si
 const createdSchedule = await schedules.create({
   //The id of the scheduled task you want to attach to.
   task: firstScheduledTask.id,
-  //The schedule in CRON format.
+  //The schedule in cron format.
   cron: "0 0 * * *",
   //this is required, it prevents you from creating duplicate schedules. It will update the schedule if it already exists.
   deduplicationKey: "my-deduplication-key",
@@ -200,14 +200,14 @@ This means you can have thousands of schedules attached to a single task, but on
 const createdSchedule = await schedules.create({
   //The id of the scheduled task you want to attach to.
   task: firstScheduledTask.id,
-  //The schedule in CRON format.
+  //The schedule in cron format.
   cron: "0 0 * * *",
   // Optional, it defaults to "UTC". In IANA format, e.g. "America/New_York".
   // In this case, the task will run at midnight every day in New York time.
   // If you specify a timezone it will automatically work with daylight saving time.
   timezone: "America/New_York",
   //Optionally, you can specify your own IDs (like a user ID) and then use it inside the run function of your task.
-  //This allows you to have per-user CRON tasks.
+  //This allows you to have per-user cron tasks.
   externalId: "user_123456",
   //You can only create one schedule with this key.
   //If you use it twice, the second call will update the schedule.
