@@ -88,7 +88,7 @@ async function bootstrap() {
   const buildManifest = await loadBuildManifest();
   const workerManifest = await loadWorkerManifest();
 
-  const { config, handleError } = await importConfig(process.env.TRIGGER_BUILD_MANIFEST_PATH!);
+  const { config, handleError } = await importConfig(buildManifest.configPath);
 
   const tracingSDK = new TracingSDK({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
@@ -116,6 +116,14 @@ async function bootstrap() {
 
   logger.setGlobalTaskLogger(otelTaskLogger);
 
+  for (const task of workerManifest.tasks) {
+    taskCatalog.registerTaskFileMetadata(task.id, {
+      exportName: task.exportName,
+      filePath: task.filePath,
+      entryPoint: task.entryPoint,
+    });
+  }
+
   return {
     tracer,
     tracingSDK,
@@ -124,31 +132,6 @@ async function bootstrap() {
     handleErrorFn: handleError,
     workerManifest,
   };
-}
-
-async function registerTaskFileMetadata(files: Array<{ entry: string; out: string }>) {
-  for (const file of files) {
-    console.log("Detecting exported tasks in file", file.out);
-
-    const module = await import(file.out);
-
-    for (const exportName of Object.keys(module)) {
-      const task = module[exportName];
-
-      if (!task) {
-        continue;
-      }
-
-      if (task[Symbol.for("trigger.dev/task")]) {
-        if (taskCatalog.taskExists(task.id)) {
-          taskCatalog.registerTaskFileMetadata(task.id, {
-            exportName,
-            filePath: file.entry,
-          });
-        }
-      }
-    }
-  }
 }
 
 let _execution: TaskRunExecution | undefined;
@@ -180,8 +163,58 @@ const handler = new ZodMessageHandler({
         return;
       }
 
+      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+        await bootstrap();
+
+      const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
+
+      if (!taskManifest) {
+        console.error(`Could not find task ${execution.task.id}`);
+
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.run.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+            },
+            usage: {
+              durationMs: 0,
+            },
+          },
+        });
+
+        return;
+      }
+
+      try {
+        await import(taskManifest.entryPoint);
+      } catch (err) {
+        console.error(`Failed to import task ${execution.task.id}`, err);
+
+        await sender.send("TASK_RUN_COMPLETED", {
+          execution,
+          result: {
+            ok: false,
+            id: execution.run.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+            },
+            usage: {
+              durationMs: 0,
+            },
+          },
+        });
+
+        return;
+      }
+
       process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
 
+      // Import the task module
       const task = taskCatalog.getTask(execution.task.id);
 
       if (!task) {
@@ -204,9 +237,6 @@ const handler = new ZodMessageHandler({
 
         return;
       }
-
-      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
-        await bootstrap();
 
       const executor = new TaskExecutor(task, {
         tracer,
@@ -294,7 +324,4 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
   return _doHeartbeat();
 }
 
-// Start the async interval after 30 seconds
-asyncHeartbeat().catch((err) => {
-  console.error("Failed to start asyncHeartbeat", err);
-});
+await asyncHeartbeat();

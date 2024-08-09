@@ -66,9 +66,7 @@ class DevWorkerRuntime implements WorkerRuntime {
       },
     });
 
-    this.backgroundWorkerCoordinator = new BackgroundWorkerCoordinator(
-      `${options.dashboardUrl}/projects/v3/${options.config.project}`
-    );
+    this.backgroundWorkerCoordinator = new BackgroundWorkerCoordinator();
 
     this.backgroundWorkerCoordinator.onWorkerTaskRunHeartbeat.attach(
       async ({ worker, backgroundWorkerId, id }) => {

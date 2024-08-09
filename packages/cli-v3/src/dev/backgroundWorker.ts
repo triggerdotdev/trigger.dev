@@ -3,7 +3,6 @@ import {
   CreateBackgroundWorkerResponse,
   ServerBackgroundWorker,
   TaskRunBuiltInError,
-  TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
@@ -12,30 +11,21 @@ import {
   WorkerManifest,
   childToWorkerMessages,
   correctErrorStackTrace,
-  formatDurationMilliseconds,
   indexerToWorkerMessages,
   workerToChildMessages,
 } from "@trigger.dev/core/v3";
 import {
-  parseMessageFromCatalog,
   ZodMessageHandler,
   ZodMessageSender,
+  parseMessageFromCatalog,
 } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
-import {
-  chalkError,
-  chalkGrey,
-  chalkLink,
-  chalkRun,
-  chalkSuccess,
-  chalkTask,
-  chalkWarning,
-  chalkWorker,
-  cliLink,
-  prettyPrintDate,
-} from "../utilities/cliOutput.js";
+import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
+import { join } from "node:path";
+import { eventBus } from "../utilities/eventBus.js";
+import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
@@ -46,8 +36,6 @@ import {
   UnexpectedExitError,
   getFriendlyErrorMessage,
 } from "./errors.js";
-import { writeJSONFile } from "../utilities/fileSystem.js";
-import { join } from "node:path";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -84,7 +72,7 @@ export class BackgroundWorkerCoordinator {
   public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
   private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
 
-  constructor(private baseURL: string) {
+  constructor() {
     this.onTaskCompleted.attach(async ({ completion }) => {
       if (!completion.ok && typeof completion.retry !== "undefined") {
         return;
@@ -169,7 +157,7 @@ export class BackgroundWorkerCoordinator {
     }
 
     try {
-      const completion = await worker.executeTaskRun(payload, this.baseURL);
+      const completion = await worker.executeTaskRun(payload);
 
       this.onTaskCompleted.post({
         completion,
@@ -343,7 +331,7 @@ export class BackgroundWorker {
     // Write the build manifest to this.build.outputPath/worker.json
     await writeJSONFile(indexManifestPath, this.manifest, true);
 
-    logger.debug("Worker initialized", { index: indexManifestPath });
+    logger.debug("Worker initialized", { index: indexManifestPath, path: this.build.outputPath });
   }
 
   // We need to notify all the task run processes that a task run has completed,
@@ -386,6 +374,8 @@ export class BackgroundWorker {
       env: {
         ...this.params.env,
         ...payload.environment,
+        TRIGGER_BUILD_MANIFEST_PATH: join(this.build.outputPath, "build.json"),
+        TRIGGER_WORKER_MANIFEST_PATH: join(this.build.outputPath, "index.json"),
       },
       serverWorker: this.serverWorker,
       workerManifest: this.manifest,
@@ -499,7 +489,6 @@ export class BackgroundWorker {
   // We need to fork the process before we can execute any tasks
   async executeTaskRun(
     payload: TaskRunExecutionPayload,
-    baseURL: string,
     messageId?: string
   ): Promise<TaskRunExecutionResult> {
     if (this._closed) {
@@ -514,24 +503,7 @@ export class BackgroundWorker {
       throw new Error("Worker not registered");
     }
 
-    const { execution } = payload;
-    // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
-
-    const logsUrl = `${baseURL}/runs/${execution.run.id}`;
-
-    const pipe = chalkGrey("|");
-    const bullet = chalkGrey("○");
-    const link = chalkLink(cliLink("View logs", logsUrl));
-    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
-    const workerPrefix = chalkWorker(this.serverWorker.version);
-    const taskPrefix = chalkTask(execution.task.id);
-    const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
-
-    logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
-    );
+    eventBus.emit("runStarted", this, payload);
 
     const now = performance.now();
 
@@ -539,37 +511,7 @@ export class BackgroundWorker {
 
     const elapsed = performance.now() - now;
 
-    const retryingText = chalkGrey(
-      !completion.ok && completion.skippedRetrying
-        ? " (retrying skipped)"
-        : !completion.ok && completion.retry !== undefined
-        ? ` (retrying in ${completion.retry.delay}ms)`
-        : ""
-    );
-
-    const resultText = !completion.ok
-      ? completion.error.type === "INTERNAL_ERROR" &&
-        (completion.error.code === TaskRunErrorCodes.TASK_EXECUTION_ABORTED ||
-          completion.error.code === TaskRunErrorCodes.TASK_RUN_CANCELLED)
-        ? chalkWarning("Cancelled")
-        : `${chalkError("Error")}${retryingText}`
-      : chalkSuccess("Success");
-
-    const errorText = !completion.ok
-      ? formatErrorLog(completion.error)
-      : "retry" in completion
-      ? `retry in ${completion.retry}ms`
-      : "";
-
-    const elapsedText = chalkGrey(`(${formatDurationMilliseconds(elapsed, { style: "short" })})`);
-
-    timestampPrefix = chalkGrey(prettyPrintDate());
-
-    logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
-    );
+    eventBus.emit("runCompleted", this, payload, completion, elapsed);
 
     return completion;
   }
@@ -652,6 +594,7 @@ export class BackgroundWorker {
         error: {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
+          message: String(e),
         },
       };
     }
@@ -808,7 +751,7 @@ class TaskRunProcess {
     this._attemptStatuses.set(this.payload.execution.attempt.id, "PENDING");
 
     // @ts-expect-error - We know that the resolver and rejecter are defined
-    this._attemptPromises.set(payload.execution.attempt.id, { resolver, rejecter });
+    this._attemptPromises.set(this.payload.execution.attempt.id, { resolver, rejecter });
 
     const { execution, traceContext } = this.payload;
 
@@ -1013,22 +956,5 @@ class TaskRunProcess {
 
   get pid() {
     return this._childPid;
-  }
-}
-
-function formatErrorLog(error: TaskRunError) {
-  switch (error.type) {
-    case "INTERNAL_ERROR": {
-      return "";
-    }
-    case "STRING_ERROR": {
-      return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
-    }
-    case "CUSTOM_ERROR": {
-      return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
-    }
-    case "BUILT_IN_ERROR": {
-      return `\n\n${error.stackTrace.replace(/^Error: /, chalkError("X Error: "))}\n`;
-    }
   }
 }

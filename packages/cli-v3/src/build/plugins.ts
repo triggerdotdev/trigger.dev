@@ -18,7 +18,7 @@ export async function buildPlugins(
     plugins.push($configPlugin);
   }
 
-  plugins.push(mockServerOnlyPlugin());
+  plugins.push(polyshedPlugin());
 
   return plugins;
 }
@@ -42,32 +42,47 @@ export function analyzeMetadataPlugin(): esbuild.Plugin {
   };
 }
 
-export function mockServerOnlyPlugin(): esbuild.Plugin {
-  return {
-    name: "trigger-mock-server-only",
-    setup(build) {
-      build.onResolve({ filter: /^server-only$/ }, (args) => {
-        if (args.path !== "server-only") {
-          return undefined;
-        }
+const polysheds = [
+  {
+    moduleName: "is-core-module",
+    code: "const { isBuiltin } = require('node:module'); module.exports = isBuiltin;",
+  },
+  {
+    moduleName: "server-only",
+    code: "export default true;",
+  },
+];
 
-        logger.debug(`[trigger-mock-server-only] Bundling ${args.path}`, {
-          ...args,
+export function polyshedPlugin(): esbuild.Plugin {
+  return {
+    name: "polyshed",
+    setup(build) {
+      for (const polyshed of polysheds) {
+        build.onResolve({ filter: new RegExp(`^${polyshed.moduleName}$`) }, (args) => {
+          if (args.path !== polyshed.moduleName) {
+            return undefined;
+          }
+
+          return {
+            path: args.path,
+            external: false,
+            namespace: `polyshed-${polyshed.moduleName}`,
+          };
         });
 
-        return {
-          path: args.path,
-          external: false,
-          namespace: "server-only-mock",
-        };
-      });
-
-      build.onLoad({ filter: /^server-only$/, namespace: "server-only-mock" }, (args) => {
-        return {
-          contents: `export default true;`,
-          loader: "js",
-        };
-      });
+        build.onLoad(
+          {
+            filter: new RegExp(`^${polyshed.moduleName}$`),
+            namespace: `polyshed-${polyshed.moduleName}`,
+          },
+          (args) => {
+            return {
+              contents: polyshed.code,
+              loader: "js",
+            };
+          }
+        );
+      }
     },
   };
 }
