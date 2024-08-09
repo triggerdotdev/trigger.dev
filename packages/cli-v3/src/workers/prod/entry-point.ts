@@ -190,128 +190,156 @@ class ProdWorker {
   }
 
   // MARK: TASK WAIT
-  async #waitForTaskHandler(message: OnWaitForTaskMessage, replayIdempotencyKey?: string) {
-    const waitForTask = await defaultBackoff.execute(async ({ retry }) => {
-      logger.log("Wait for task with backoff", { retry });
+  #waitForTaskHandlerFactory(workerId?: string) {
+    return async (message: OnWaitForTaskMessage, replayIdempotencyKey?: string) => {
+      logger.log("onWaitForTask", { workerId, message });
 
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+      if (this.nextResumeAfter) {
+        logger.error("Already waiting for resume, skipping wait for task", {
+          nextResumeAfter: this.nextResumeAfter,
+        });
 
-        throw new ExponentialBackoff.StopRetrying("No attempt ID");
+        return;
       }
 
-      return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_TASK", {
-        version: "v2",
-        friendlyId: message.friendlyId,
-        attemptFriendlyId: this.attemptFriendlyId,
-      });
-    });
+      const waitForTask = await defaultBackoff.execute(async ({ retry }) => {
+        logger.log("Wait for task with backoff", { retry });
 
-    if (!waitForTask.success) {
-      logger.error("Failed to wait for task with backoff", {
-        cause: waitForTask.cause,
-        error: waitForTask.error,
-      });
+        if (!this.attemptFriendlyId) {
+          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-      this.#emitUnrecoverableError(
-        "WaitForTaskFailed",
-        `${waitForTask.cause}: ${waitForTask.error}`
-      );
-
-      return;
-    }
-
-    const { willCheckpointAndRestore } = waitForTask.result;
-
-    await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
-
-    if (willCheckpointAndRestore) {
-      // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
-      if (!this.waitForTaskReplay) {
-        this.waitForTaskReplay = {
-          message,
-          attempt: 1,
-          idempotencyKey: randomUUID(),
-        };
-      } else {
-        if (
-          replayIdempotencyKey &&
-          replayIdempotencyKey !== this.waitForTaskReplay.idempotencyKey
-        ) {
-          logger.error(
-            "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
-          );
-          return;
+          throw new ExponentialBackoff.StopRetrying("No attempt ID");
         }
 
-        this.waitForTaskReplay.attempt++;
+        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_TASK", {
+          version: "v2",
+          friendlyId: message.friendlyId,
+          attemptFriendlyId: this.attemptFriendlyId,
+        });
+      });
+
+      if (!waitForTask.success) {
+        logger.error("Failed to wait for task with backoff", {
+          cause: waitForTask.cause,
+          error: waitForTask.error,
+        });
+
+        this.#emitUnrecoverableError(
+          "WaitForTaskFailed",
+          `${waitForTask.cause}: ${waitForTask.error}`
+        );
+
+        return;
       }
-    }
+
+      const { willCheckpointAndRestore } = waitForTask.result;
+
+      await this.#prepareForWait("WAIT_FOR_TASK", willCheckpointAndRestore);
+
+      if (willCheckpointAndRestore) {
+        // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
+        if (!this.waitForTaskReplay) {
+          this.waitForTaskReplay = {
+            message,
+            attempt: 1,
+            idempotencyKey: randomUUID(),
+          };
+        } else {
+          if (
+            replayIdempotencyKey &&
+            replayIdempotencyKey !== this.waitForTaskReplay.idempotencyKey
+          ) {
+            logger.error(
+              "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
+            );
+            return;
+          }
+
+          this.waitForTaskReplay.attempt++;
+        }
+      }
+    };
   }
 
   // MARK: BATCH WAIT
-  async #waitForBatchHandler(message: OnWaitForBatchMessage, replayIdempotencyKey?: string) {
-    const waitForBatch = await defaultBackoff.execute(async ({ retry }) => {
-      logger.log("Wait for batch with backoff", { retry });
+  #waitForBatchHandlerFactory(workerId?: string) {
+    return async (message: OnWaitForBatchMessage, replayIdempotencyKey?: string) => {
+      logger.log("onWaitForBatch", { workerId, message });
 
-      if (!this.attemptFriendlyId) {
-        logger.error("Failed to send wait message, attempt friendly ID not set", { message });
+      if (this.nextResumeAfter) {
+        logger.error("Already waiting for resume, skipping wait for batch", {
+          nextResumeAfter: this.nextResumeAfter,
+        });
 
-        throw new ExponentialBackoff.StopRetrying("No attempt ID");
+        return;
       }
 
-      return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_BATCH", {
-        version: "v2",
-        batchFriendlyId: message.batchFriendlyId,
-        runFriendlyIds: message.runFriendlyIds,
-        attemptFriendlyId: this.attemptFriendlyId,
-      });
-    });
+      const waitForBatch = await defaultBackoff.execute(async ({ retry }) => {
+        logger.log("Wait for batch with backoff", { retry });
 
-    if (!waitForBatch.success) {
-      logger.error("Failed to wait for batch with backoff", {
-        cause: waitForBatch.cause,
-        error: waitForBatch.error,
-      });
+        if (!this.attemptFriendlyId) {
+          logger.error("Failed to send wait message, attempt friendly ID not set", { message });
 
-      this.#emitUnrecoverableError(
-        "WaitForBatchFailed",
-        `${waitForBatch.cause}: ${waitForBatch.error}`
-      );
-
-      return;
-    }
-
-    const { willCheckpointAndRestore } = waitForBatch.result;
-
-    await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
-
-    if (willCheckpointAndRestore) {
-      // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
-      if (!this.waitForBatchReplay) {
-        this.waitForBatchReplay = {
-          message,
-          attempt: 1,
-          idempotencyKey: randomUUID(),
-        };
-      } else {
-        if (
-          replayIdempotencyKey &&
-          replayIdempotencyKey !== this.waitForBatchReplay.idempotencyKey
-        ) {
-          logger.error(
-            "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
-          );
-          return;
+          throw new ExponentialBackoff.StopRetrying("No attempt ID");
         }
 
-        this.waitForBatchReplay.attempt++;
+        return await this.#coordinatorSocket.socket.timeout(20_000).emitWithAck("WAIT_FOR_BATCH", {
+          version: "v2",
+          batchFriendlyId: message.batchFriendlyId,
+          runFriendlyIds: message.runFriendlyIds,
+          attemptFriendlyId: this.attemptFriendlyId,
+        });
+      });
+
+      if (!waitForBatch.success) {
+        logger.error("Failed to wait for batch with backoff", {
+          cause: waitForBatch.cause,
+          error: waitForBatch.error,
+        });
+
+        this.#emitUnrecoverableError(
+          "WaitForBatchFailed",
+          `${waitForBatch.cause}: ${waitForBatch.error}`
+        );
+
+        return;
       }
-    }
+
+      const { willCheckpointAndRestore } = waitForBatch.result;
+
+      await this.#prepareForWait("WAIT_FOR_BATCH", willCheckpointAndRestore);
+
+      if (willCheckpointAndRestore) {
+        // We need to replay this on next connection if we don't receive RESUME_AFTER_DEPENDENCY within a reasonable time
+        if (!this.waitForBatchReplay) {
+          this.waitForBatchReplay = {
+            message,
+            attempt: 1,
+            idempotencyKey: randomUUID(),
+          };
+        } else {
+          if (
+            replayIdempotencyKey &&
+            replayIdempotencyKey !== this.waitForBatchReplay.idempotencyKey
+          ) {
+            logger.error(
+              "wait for task handler called with mismatched idempotency key, won't overwrite replay request"
+            );
+            return;
+          }
+
+          this.waitForBatchReplay.attempt++;
+        }
+      }
+    };
   }
 
   // MARK: WORKER CREATION
   #createBackgroundWorker() {
+    const workerId = randomUUID();
+
+    logger.log("Creating background worker", { workerId });
+
     const backgroundWorker = new ProdBackgroundWorker("worker.js", {
       projectConfig: __PROJECT_CONFIG__,
       env: {
@@ -325,7 +353,10 @@ class ProdWorker {
     });
 
     backgroundWorker.onTaskHeartbeat.attach((attemptFriendlyId) => {
-      logger.log("onTaskHeartbeat", { attemptFriendlyId });
+      logger.log("onTaskHeartbeat", {
+        workerId,
+        attemptFriendlyId,
+      });
 
       this.#coordinatorSocket.socket.volatile.emit("TASK_HEARTBEAT", {
         version: "v1",
@@ -334,13 +365,19 @@ class ProdWorker {
     });
 
     backgroundWorker.onTaskRunHeartbeat.attach((runId) => {
-      logger.log("onTaskRunHeartbeat", { runId });
+      logger.log("onTaskRunHeartbeat", {
+        workerId,
+        runId,
+      });
 
       this.#coordinatorSocket.socket.volatile.emit("TASK_RUN_HEARTBEAT", { version: "v1", runId });
     });
 
     backgroundWorker.onCreateTaskRunAttempt.attach(async (message) => {
-      logger.log("onCreateTaskRunAttempt()", { message });
+      logger.log("onCreateTaskRunAttempt()", {
+        workerId,
+        message,
+      });
 
       const createAttempt = await defaultBackoff.execute(async ({ retry }) => {
         logger.log("Create task run attempt with backoff", { retry });
@@ -377,6 +414,7 @@ class ProdWorker {
 
     backgroundWorker.attemptCreatedNotification.attach((message) => {
       logger.log("attemptCreatedNotification", {
+        workerId,
         success: message.success,
         ...(message.success
           ? {
@@ -398,8 +436,21 @@ class ProdWorker {
       this.attemptFriendlyId = message.execution.attempt.id;
     });
 
+    // MARK: WAIT_FOR_DURATION
     backgroundWorker.onWaitForDuration.attach(async (message) => {
-      logger.log("onWaitForDuration", { ...message, drift: Date.now() - message.now });
+      logger.log("onWaitForDuration", {
+        workerId,
+        ...message,
+        drift: Date.now() - message.now,
+      });
+
+      if (this.nextResumeAfter) {
+        logger.error("Already waiting for resume, skipping wait for duration", {
+          nextResumeAfter: this.nextResumeAfter,
+        });
+
+        return;
+      }
 
       noResume: {
         const { ms, waitThresholdInMs } = message;
@@ -505,14 +556,26 @@ class ProdWorker {
       this.#resumeAfterDuration();
     });
 
-    backgroundWorker.onWaitForTask.attach(this.#waitForTaskHandler.bind(this));
-    backgroundWorker.onWaitForBatch.attach(this.#waitForBatchHandler.bind(this));
+    backgroundWorker.onWaitForTask.attach(this.#waitForTaskHandlerFactory(workerId).bind(this));
+    backgroundWorker.onWaitForBatch.attach(this.#waitForBatchHandlerFactory(workerId).bind(this));
 
     return backgroundWorker;
   }
 
   async #prepareForWait(reason: WaitReason, willCheckpointAndRestore: boolean) {
     logger.log(`prepare for ${reason}`, { willCheckpointAndRestore });
+
+    if (this.nextResumeAfter) {
+      logger.error("Already waiting for resume, skipping prepare for wait", {
+        nextResumeAfter: this.nextResumeAfter,
+        params: {
+          reason,
+          willCheckpointAndRestore,
+        },
+      });
+
+      return;
+    }
 
     if (!willCheckpointAndRestore) {
       return;
@@ -1169,7 +1232,7 @@ class ProdWorker {
       try {
         await backoff.wait(attempt + 1);
 
-        await this.#waitForTaskHandler(message);
+        await this.#waitForTaskHandlerFactory("replay")(message);
       } catch (error) {
         if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
           logger.error("wait for task replay retry limit exceeded", { error });
@@ -1212,7 +1275,7 @@ class ProdWorker {
       try {
         await backoff.wait(attempt + 1);
 
-        await this.#waitForBatchHandler(message);
+        await this.#waitForBatchHandlerFactory("replay")(message);
       } catch (error) {
         if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
           logger.error("wait for batch replay retry limit exceeded", { error });
