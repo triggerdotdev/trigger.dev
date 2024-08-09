@@ -95,6 +95,7 @@ export class CreateCheckpointService extends BaseService {
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
         projectId: attempt.taskRun.projectId,
         attemptId: attempt.id,
+        attemptNumber: attempt.number,
         runId: attempt.taskRunId,
         location: params.location,
         type: params.docker ? "DOCKER" : "KUBERNETES",

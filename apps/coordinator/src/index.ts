@@ -294,6 +294,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
           setSocketDataFromHeader("runId", "x-trigger-run-id");
           setSocketDataFromHeader("attemptFriendlyId", "x-trigger-attempt-friendly-id", false);
+          setSocketDataFromHeader("attemptNumber", "x-trigger-attempt-number", false);
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
           setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
@@ -309,6 +310,10 @@ class TaskCoordinator {
       },
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
+
+        const getAttemptNumber = () => {
+          return socket.data.attemptNumber ? parseInt(socket.data.attemptNumber) : undefined;
+        };
 
         const crashRun = async (error: { name: string; message: string; stack?: string }) => {
           try {
@@ -385,6 +390,10 @@ class TaskCoordinator {
           socket.data.attemptFriendlyId = attemptFriendlyId;
         };
 
+        const updateAttemptNumber = (attemptNumber: string | number) => {
+          socket.data.attemptNumber = String(attemptNumber);
+        };
+
         this.#platformSocket?.send("LOG", {
           metadata: socket.data,
           text: "connected",
@@ -434,6 +443,7 @@ class TaskCoordinator {
             });
 
             updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
+            updateAttemptNumber(executionAck.payload.execution.attempt.number);
           } catch (error) {
             logger.error("Error", { error });
 
@@ -509,11 +519,17 @@ class TaskCoordinator {
 
           updateAttemptFriendlyId(message.attemptFriendlyId);
 
-          this.#platformSocket?.send("READY_FOR_RESUME", message);
+          if (message.version === "v2") {
+            updateAttemptNumber(message.attemptNumber);
+          }
+
+          this.#platformSocket?.send("READY_FOR_RESUME", { ...message, version: "v1" });
         });
 
         // MARK: RUN COMPLETED
-        socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
+        socket.on("TASK_RUN_COMPLETED", async (message, callback) => {
+          const { completion, execution } = message;
+
           logger.log("completed task", { completionId: completion.id });
 
           // Cancel all in-progress checkpoints (if any)
@@ -522,8 +538,10 @@ class TaskCoordinator {
           await chaosMonkey.call({ throwErrors: false });
 
           const completeWithoutCheckpoint = (shouldExit: boolean) => {
+            const supportsRetryCheckpoints = message.version === "v1";
+
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-              version: "v1",
+              version: supportsRetryCheckpoints ? "v1" : "v2",
               execution,
               completion,
             });
@@ -550,6 +568,11 @@ class TaskCoordinator {
 
           if (completion.retry.delay < this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
+            return;
+          }
+
+          if (message.version === "v2") {
+            completeWithoutCheckpoint(true);
             return;
           }
 
@@ -685,6 +708,7 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
@@ -756,6 +780,7 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
@@ -825,6 +850,7 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
@@ -909,6 +935,7 @@ class TaskCoordinator {
           }
 
           updateAttemptFriendlyId(createAttempt.executionPayload.execution.attempt.id);
+          updateAttemptNumber(createAttempt.executionPayload.execution.attempt.number);
 
           callback({
             success: true,
@@ -927,6 +954,10 @@ class TaskCoordinator {
 
           if (message.attemptFriendlyId) {
             updateAttemptFriendlyId(message.attemptFriendlyId);
+          }
+
+          if (message.attemptNumber) {
+            updateAttemptNumber(message.attemptNumber);
           }
         });
       },

@@ -58,6 +58,7 @@ class ProdWorker {
   private completed = new Set<string>();
   private paused = false;
   private attemptFriendlyId?: string;
+  private attemptNumber?: number;
 
   private nextResumeAfter?: WaitReason;
   private waitForPostStart = false;
@@ -80,16 +81,6 @@ class ProdWorker {
   private readyForLazyAttemptReplay:
     | {
         idempotencyKey: string;
-      }
-    | undefined;
-  private submitAttemptCompletionReplay:
-    | {
-        idempotencyKey: string;
-        message: {
-          execution: ProdTaskRunExecution;
-          completion: TaskRunExecutionResult;
-        };
-        attempt: number;
       }
     | undefined;
   private durationResumeFallback:
@@ -434,6 +425,7 @@ class ProdWorker {
 
       // Workers with lazy attempt support set their friendly ID here
       this.attemptFriendlyId = message.execution.attempt.id;
+      this.attemptNumber = message.execution.attempt.number;
     });
 
     // MARK: WAIT_FOR_DURATION
@@ -592,19 +584,11 @@ class ProdWorker {
   }
 
   // MARK: RETRY PREP
-  async #prepareForRetry(
-    willCheckpointAndRestore: boolean,
-    shouldExit: boolean,
-    exitCode?: number
-  ) {
-    logger.log("prepare for retry", { willCheckpointAndRestore, shouldExit, exitCode });
+  async #prepareForRetry(shouldExit: boolean, exitCode?: number) {
+    logger.log("prepare for retry", { shouldExit, exitCode });
 
     // Graceful shutdown on final attempt
     if (shouldExit) {
-      if (willCheckpointAndRestore) {
-        logger.error("WARNING: Will checkpoint but also requested exit. This won't end well.");
-      }
-
       await this.#exitGracefully(false, exitCode);
       return;
     }
@@ -614,15 +598,7 @@ class ProdWorker {
     this.waitForPostStart = false;
     this.executing = false;
     this.attemptFriendlyId = undefined;
-
-    if (!willCheckpointAndRestore) {
-      return;
-    }
-
-    this.waitForPostStart = true;
-
-    // We already flush after completion, so we don't need to do it here
-    await this.#prepareForCheckpoint(false);
+    this.attemptNumber = undefined;
   }
 
   // MARK: CHECKPOINT PREP
@@ -749,7 +725,7 @@ class ProdWorker {
       return await this.#coordinatorSocket.socket
         .timeout(20_000)
         .emitWithAck("TASK_RUN_COMPLETED", {
-          version: "v1",
+          version: "v2",
           execution,
           completion,
         });
@@ -777,32 +753,10 @@ class ProdWorker {
         ? EXIT_CODE_CHILD_NONZERO
         : 0;
 
-    await this.#prepareForRetry(willCheckpointAndRestore, shouldExit, exitCode);
+    await this.#prepareForRetry(shouldExit, exitCode);
 
     if (willCheckpointAndRestore) {
-      // We need to replay this on next connection if we don't receive READY_FOR_RETRY within a reasonable time
-      if (!this.submitAttemptCompletionReplay) {
-        this.submitAttemptCompletionReplay = {
-          message: {
-            execution,
-            completion,
-          },
-          attempt: 1,
-          idempotencyKey: randomUUID(),
-        };
-      } else {
-        if (
-          replayIdempotencyKey &&
-          replayIdempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey
-        ) {
-          logger.error(
-            "attempt completion handler called with mismatched idempotency key, won't overwrite replay request"
-          );
-          return;
-        }
-
-        this.submitAttemptCompletionReplay.attempt++;
-      }
+      logger.error("This worker should never be checkpointed between attempts. This is a bug.");
     }
   }
 
@@ -831,6 +785,10 @@ class ProdWorker {
 
     if (this.attemptFriendlyId) {
       extraHeaders["x-trigger-attempt-friendly-id"] = this.attemptFriendlyId;
+    }
+
+    if (this.attemptNumber !== undefined) {
+      extraHeaders["x-trigger-attempt-number"] = String(this.attemptNumber);
     }
 
     logger.log(`connecting to coordinator: ${host}:${COORDINATOR_PORT}`);
@@ -921,36 +879,12 @@ class ProdWorker {
 
           this.#resumeAfterDuration();
         },
-        // Deprecated: This will never get called as this worker supports lazy attempts. It's only here for a quick view of the flow old workers use.
-        EXECUTE_TASK_RUN: async ({ executionPayload }) => {
-          if (this.executing) {
-            logger.error("dropping execute request, already executing");
-            return;
-          }
-
-          if (this.completed.has(executionPayload.execution.attempt.id)) {
-            logger.error("dropping execute request, already completed");
-            return;
-          }
-
-          this.executing = true;
-          this.attemptFriendlyId = executionPayload.execution.attempt.id;
-          const completion = await this.#backgroundWorker.executeTaskRun(executionPayload);
-
-          logger.log("completed", completion);
-
-          this.completed.add(executionPayload.execution.attempt.id);
-
-          const { willCheckpointAndRestore, shouldExit } =
-            await this.#coordinatorSocket.socket.emitWithAck("TASK_RUN_COMPLETED", {
-              version: "v1",
-              execution: executionPayload.execution,
-              completion,
-            });
-
-          logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
-
-          await this.#prepareForRetry(willCheckpointAndRestore, shouldExit);
+        EXECUTE_TASK_RUN: async () => {
+          // These messages should only be received by old workers that don't support lazy attempts
+          this.#failRun(
+            this.runId,
+            "Received deprecated EXECUTE_TASK_RUN message. Please contact us if you see this error."
+          );
         },
         EXECUTE_TASK_RUN_LAZY_ATTEMPT: async (message) => {
           this.readyForLazyAttemptReplay = undefined;
@@ -1013,8 +947,6 @@ class ProdWorker {
             return;
           }
 
-          this.submitAttemptCompletionReplay = undefined;
-
           await this.#readyForLazyAttempt();
         },
       },
@@ -1026,7 +958,11 @@ class ProdWorker {
         });
 
         // We need to send our current state to the coordinator
-        socket.emit("SET_STATE", { version: "v1", attemptFriendlyId: this.attemptFriendlyId });
+        socket.emit("SET_STATE", {
+          version: "v1",
+          attemptFriendlyId: this.attemptFriendlyId,
+          attemptNumber: this.attemptNumber ? String(this.attemptNumber) : undefined,
+        });
 
         try {
           if (this.waitForPostStart) {
@@ -1047,7 +983,7 @@ class ProdWorker {
             }
 
             if (!this.attemptFriendlyId) {
-              logger.error("Missing friendly ID", { status: this.#status });
+              logger.error("Missing attempt friendly ID", { status: this.#status });
 
               this.#emitUnrecoverableError(
                 "NoAttemptId",
@@ -1057,9 +993,21 @@ class ProdWorker {
               return;
             }
 
+            if (!this.attemptNumber) {
+              logger.error("Missing attempt number", { status: this.#status });
+
+              this.#emitUnrecoverableError(
+                "NoAttemptNumber",
+                "Attempt number not set while resuming from paused state"
+              );
+
+              return;
+            }
+
             socket.emit("READY_FOR_RESUME", {
-              version: "v1",
+              version: "v2",
               attemptFriendlyId: this.attemptFriendlyId,
+              attemptNumber: this.attemptNumber,
               type: this.nextResumeAfter,
             });
 
@@ -1289,49 +1237,6 @@ class ProdWorker {
 
       return;
     }
-
-    if (this.submitAttemptCompletionReplay) {
-      logger.log("replaying attempt completion", {
-        ...this.submitAttemptCompletionReplay,
-        cancellationDelay: replayCancellationDelay,
-      });
-
-      const { idempotencyKey, message, attempt } = this.submitAttemptCompletionReplay;
-
-      // Give the platform some time to send READY_FOR_RETRY
-      await timeout(replayCancellationDelay);
-
-      if (!this.submitAttemptCompletionReplay) {
-        logger.error("attempt completion replay cancelled, discarding", {
-          originalMessage: { idempotencyKey, message, attempt },
-        });
-
-        return;
-      }
-
-      if (idempotencyKey !== this.submitAttemptCompletionReplay.idempotencyKey) {
-        logger.error("attempt completion replay idempotency key mismatch, discarding", {
-          originalMessage: { idempotencyKey, message, attempt },
-          newMessage: this.submitAttemptCompletionReplay,
-        });
-
-        return;
-      }
-
-      try {
-        await backoff.wait(attempt + 1);
-
-        await this.#submitAttemptCompletion(message.execution, message.completion, idempotencyKey);
-      } catch (error) {
-        if (error instanceof ExponentialBackoff.RetryLimitExceeded) {
-          logger.error("attempt completion replay retry limit exceeded", { error });
-        } else {
-          logger.error("attempt completion replay error", { error });
-        }
-      }
-
-      return;
-    }
   }
 
   // MARK: HTTP SERVER
@@ -1518,6 +1423,7 @@ class ProdWorker {
       nextResumeAfter: this.nextResumeAfter,
       waitForPostStart: this.waitForPostStart,
       attemptFriendlyId: this.attemptFriendlyId,
+      attemptNumber: this.attemptNumber,
       waitForTaskReplay: this.waitForTaskReplay,
       waitForBatchReplay: this.waitForBatchReplay,
     };

@@ -17,6 +17,7 @@ type CheckpointAndPushOptions = {
   projectRef: string;
   deploymentVersion: string;
   shouldHeartbeat?: boolean;
+  attemptNumber?: number;
 };
 
 type CheckpointAndPushResult =
@@ -258,6 +259,7 @@ export class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
+    attemptNumber,
   }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
     this.#logger.log("Checkpointing with backoff", {
       runId,
@@ -297,6 +299,7 @@ export class Checkpointer {
           leaveRunning,
           projectRef,
           deploymentVersion,
+          attemptNumber,
         });
 
         if (result.success) {
@@ -359,6 +362,7 @@ export class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
+    attemptNumber,
   }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
     await this.init();
 
@@ -367,6 +371,7 @@ export class Checkpointer {
       leaveRunning,
       projectRef,
       deploymentVersion,
+      attemptNumber,
     };
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
@@ -417,7 +422,7 @@ export class Checkpointer {
 
       this.#logger.log("Checkpointing:", { options });
 
-      const containterName = this.#getRunContainerName(runId);
+      const containterName = this.#getRunContainerName(runId, attemptNumber);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
@@ -581,7 +586,7 @@ export class Checkpointer {
     return this.#failedCheckpoints.has(runId);
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
   }
 }

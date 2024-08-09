@@ -100,6 +100,7 @@ export class RestoreCheckpointService extends BaseService {
       reason: checkpoint.reason ?? undefined,
       imageRef: checkpoint.imageRef,
       machine,
+      attemptNumber: checkpoint.attemptNumber ?? undefined,
       // identifiers
       checkpointId: checkpoint.id,
       envId: checkpoint.runtimeEnvironment.id,
