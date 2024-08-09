@@ -1,53 +1,142 @@
 import { env } from "~/env.server";
 import Redis, { type RedisOptions } from "ioredis";
 import { singleton } from "~/utils/singleton";
+import { type MessagePayload, type MessageQueueSubscriber } from "../marqs/types";
+import { z } from "zod";
+import { logger } from "~/services/logger.server";
 
 type Options = {
   redis: RedisOptions;
 };
 
-class TaskRunConcurrencyTracker {
+const ConcurrentMessageData = z.object({
+  taskIdentifier: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  environmentType: z.string(),
+});
+
+class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   private redis: Redis;
 
   constructor(config: Options) {
     this.redis = new Redis(config.redis);
   }
 
-  private getTaskKey(projectId: string, taskId: string): string {
-    return `project:${projectId}:task:${taskId}`;
-  }
-  private getGlobalKey(deployed: boolean): string {
-    return `global:${deployed ? "deployed" : "dev"}`;
+  async messageEnqueued(message: MessagePayload): Promise<void> {}
+
+  async messageDequeued(message: MessagePayload): Promise<void> {
+    const data = this.getMessageData(message);
+    if (!data) {
+      logger.info(
+        `TaskRunConcurrencyTracker.messageDequeued(): could not parse message data`,
+        message
+      );
+      return;
+    }
+
+    await this.executionStarted({
+      projectId: data.projectId,
+      taskId: data.taskIdentifier,
+      runId: message.messageId,
+      environmentId: data.environmentId,
+      deployed: data.environmentType !== "DEVELOPMENT",
+    });
   }
 
-  async runStarted({
+  async messageAcked(message: MessagePayload): Promise<void> {
+    const data = this.getMessageData(message);
+    if (!data) {
+      logger.info(
+        `TaskRunConcurrencyTracker.messageAcked(): could not parse message data`,
+        message
+      );
+      return;
+    }
+
+    await this.executionFinished({
+      projectId: data.projectId,
+      taskId: data.taskIdentifier,
+      runId: message.messageId,
+      environmentId: data.environmentId,
+      deployed: data.environmentType !== "DEVELOPMENT",
+    });
+  }
+
+  async messageNacked(message: MessagePayload): Promise<void> {
+    const data = this.getMessageData(message);
+    if (!data) {
+      logger.info(
+        `TaskRunConcurrencyTracker.messageNacked(): could not parse message data`,
+        message
+      );
+      return;
+    }
+
+    await this.executionFinished({
+      projectId: data.projectId,
+      taskId: data.taskIdentifier,
+      runId: message.messageId,
+      environmentId: data.environmentId,
+      deployed: data.environmentType !== "DEVELOPMENT",
+    });
+  }
+
+  private getMessageData(message: MessagePayload) {
+    const result = ConcurrentMessageData.safeParse(message.data);
+    if (result.success) {
+      return result.data;
+    }
+    return;
+  }
+
+  private async executionStarted({
     projectId,
     taskId,
     runId,
+    environmentId,
     deployed,
   }: {
     projectId: string;
     taskId: string;
     runId: string;
+    environmentId: string;
     deployed: boolean;
   }): Promise<void> {
-    await this.redis.sadd(this.getTaskKey(projectId, taskId), runId);
-    await this.redis.sadd(this.getGlobalKey(deployed), runId);
+    const pipeline = this.redis.pipeline();
+
+    if (deployed) {
+      pipeline.sadd(this.getTaskKey(projectId, taskId), runId);
+    }
+    pipeline.sadd(this.getEnvironmentKey(projectId, environmentId), runId);
+    pipeline.sadd(this.getGlobalKey(deployed), runId);
+
+    await pipeline.exec();
   }
 
-  async runFinished({
+  private async executionFinished({
     projectId,
     taskId,
     runId,
+    environmentId,
     deployed,
   }: {
     projectId: string;
     taskId: string;
     runId: string;
+    environmentId: string;
     deployed: boolean;
   }): Promise<void> {
-    await this.redis.srem(this.getTaskKey(projectId, taskId), runId);
-    await this.redis.srem(this.getGlobalKey(deployed), runId);
+    const pipeline = this.redis.pipeline();
+
+    if (deployed) {
+      pipeline.srem(this.getTaskKey(projectId, taskId), runId);
+    }
+
+    pipeline.srem(this.getEnvironmentKey(projectId, environmentId), runId);
+    pipeline.srem(this.getGlobalKey(deployed), runId);
+
+    await pipeline.exec();
   }
 
   async taskConcurrentRunCount(projectId: string, taskId: string): Promise<number> {
@@ -91,6 +180,18 @@ class TaskRunConcurrencyTracker {
       acc[taskId] = counts[index];
       return acc;
     }, {} as Record<string, number>);
+  }
+
+  private getTaskKey(projectId: string, taskId: string): string {
+    return `project:${projectId}:task:${taskId}`;
+  }
+
+  private getGlobalKey(deployed: boolean): string {
+    return `global:${deployed ? "deployed" : "dev"}`;
+  }
+
+  private getEnvironmentKey(projectId: string, environmentId: string): string {
+    return `project:${projectId}:env:${environmentId}`;
   }
 }
 
