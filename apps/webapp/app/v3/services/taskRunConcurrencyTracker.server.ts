@@ -105,9 +105,8 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   }): Promise<void> {
     const pipeline = this.redis.pipeline();
 
-    if (deployed) {
-      pipeline.sadd(this.getTaskKey(projectId, taskId), runId);
-    }
+    pipeline.sadd(this.getTaskKey(projectId, taskId), runId);
+    pipeline.sadd(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
     pipeline.sadd(this.getEnvironmentKey(projectId, environmentId), runId);
     pipeline.sadd(this.getGlobalKey(deployed), runId);
 
@@ -129,10 +128,8 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   }): Promise<void> {
     const pipeline = this.redis.pipeline();
 
-    if (deployed) {
-      pipeline.srem(this.getTaskKey(projectId, taskId), runId);
-    }
-
+    pipeline.srem(this.getTaskKey(projectId, taskId), runId);
+    pipeline.srem(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
     pipeline.srem(this.getEnvironmentKey(projectId, environmentId), runId);
     pipeline.srem(this.getGlobalKey(deployed), runId);
 
@@ -184,6 +181,10 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
 
   private getTaskKey(projectId: string, taskId: string): string {
     return `project:${projectId}:task:${taskId}`;
+  }
+
+  private getTaskEnvironmentKey(projectId: string, taskId: string, environmentId: string): string {
+    return `project:${projectId}:task:${taskId}:env:${environmentId}`;
   }
 
   private getGlobalKey(deployed: boolean): string {
