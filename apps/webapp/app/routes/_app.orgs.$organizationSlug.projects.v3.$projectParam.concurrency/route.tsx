@@ -183,7 +183,7 @@ export default function Page() {
                           <span>{task.identifier}</span>
                         </div>
                       </TableCell>
-                      <TableCell alignment="right">–</TableCell>
+                      <TableCell alignment="right">{task.queued}</TableCell>
                       <TableCell alignment="right">{task.concurrency}</TableCell>
                     </TableRow>
                   ))
