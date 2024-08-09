@@ -30,15 +30,32 @@ import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
 Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions:
 
 <Tabs>
+
   <Tab title="Pages Router">
-    ☝️ Welcome to the content that you can only see inside the first Tab.
+    ```ts
+    // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+    import { helloWorldTask } from "@/trigger/example";
+    import type { NextApiRequest, NextApiResponse } from "next";
+
+    export default async function handler(
+    req: NextApiRequest,
+    res: NextApiResponse<{ id: string }>
+    ) {
+    const handle = await helloWorldTask.trigger("John Doe");
+
+    res.status(200).json(handle);
+    }
+    ```
   </Tab>
+
   <Tab title="App Router">
     ✌️ Here's content that's only inside the second Tab.
   </Tab>
+
   <Tab title="Server Actions">
     💪 Here's content that's only inside the third Tab.
   </Tab>
+
 </Tabs>
 
 ## Deploying your task in Next.js
