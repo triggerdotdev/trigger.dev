@@ -80,6 +80,9 @@ export class ResumeBatchRunService extends BaseService {
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: batchRun.dependentTaskAttempt.id,
           checkpointEventId: batchRun.checkpointEventId,
+          projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
+          environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
+          environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined
       );
