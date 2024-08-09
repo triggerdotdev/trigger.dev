@@ -545,9 +545,12 @@ class ProdWorker {
             this.#resumeAfterDuration();
           }, 15_000);
         } catch (error) {
-          // If the cancellation times out, we will proceed as if the checkpoint was canceled
-          logger.debug("Checkpoint cancellation timed out", { error });
-          break noResume;
+          // Just log this for now, but don't automatically resume. Wait for the external checkpoint-based resume.
+          logger.debug("Checkpoint cancellation timed out", {
+            workerId,
+            message,
+            error,
+          });
         }
 
         return;
