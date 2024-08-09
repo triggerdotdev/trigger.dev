@@ -1,5 +1,6 @@
-import type { JobRun, Task, TaskAttempt } from "@trigger.dev/database";
+import type { JobRun, Task, TaskAttempt, TaskTriggerSource } from "@trigger.dev/database";
 import { CachedTask, ServerTask } from "@trigger.dev/core";
+import { PrismaClientOrTransaction, sqlDatabaseSchema } from "~/db.server";
 
 export type TaskWithAttempts = Task & {
   attempts: TaskAttempt[];
@@ -115,4 +116,17 @@ function prepareTaskForCaching(task: TaskForCaching): CachedTask {
 
 function calculateCachedTaskSize(task: CachedTask): number {
   return JSON.stringify(task).length;
+}
+
+export function getAllTaskIdentifiers(prisma: PrismaClientOrTransaction, projectId: string) {
+  return prisma.$queryRaw<
+    {
+      slug: string;
+      triggerSource: TaskTriggerSource;
+    }[]
+  >`
+    SELECT DISTINCT(slug), "triggerSource"
+    FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
+    WHERE "projectId" = ${projectId}
+    ORDER BY slug ASC;`;
 }

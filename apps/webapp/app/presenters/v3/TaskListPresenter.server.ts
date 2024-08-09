@@ -1,9 +1,9 @@
+import { Prisma } from "@trigger.dev/database";
 import type {
   RuntimeEnvironmentType,
   TaskTriggerSource,
   TaskRunStatus as TaskRunStatusType,
 } from "@trigger.dev/database";
-import { Prisma } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
