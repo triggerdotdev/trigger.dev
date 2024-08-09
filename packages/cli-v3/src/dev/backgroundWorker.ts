@@ -267,6 +267,9 @@ export class BackgroundWorker {
         env: {
           ...this.params.env,
           TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
+          NODE_OPTIONS: this.build.loaderEntryPoint
+            ? `--import=${this.build.loaderEntryPoint}`
+            : undefined,
         },
       });
 
@@ -376,6 +379,7 @@ export class BackgroundWorker {
         ...payload.environment,
         TRIGGER_BUILD_MANIFEST_PATH: join(this.build.outputPath, "build.json"),
         TRIGGER_WORKER_MANIFEST_PATH: join(this.build.outputPath, "index.json"),
+        NODE_OPTIONS: this.build.loaderEntryPoint ? `--import=${this.build.loaderEntryPoint}` : "",
       },
       serverWorker: this.serverWorker,
       workerManifest: this.manifest,

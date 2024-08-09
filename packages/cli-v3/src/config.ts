@@ -52,26 +52,7 @@ export async function watchConfig({
     cwd,
     debounce,
     chokidarOptions: { ignoreInitial },
-    acceptHMR: async ({ oldConfig, newConfig, getDiff }) => {
-      const diff = getDiff();
-
-      logger.debug("watchConfig.acceptHMR", { diff, oldConfig, newConfig });
-
-      if (diff.length === 0) {
-        logger.debug("No config changed detected!");
-        return true; // No changes!
-      }
-
-      return false;
-    },
-    onUpdate: async ({ newConfig, getDiff }) => {
-      const diff = getDiff();
-
-      if (diff.length === 0) {
-        logger.debug("No config changed detected!");
-        return;
-      }
-
+    onUpdate: async ({ newConfig }) => {
       const resolvedConfig = await resolveConfig(cwd, newConfig, overrides);
 
       onUpdate(resolvedConfig);

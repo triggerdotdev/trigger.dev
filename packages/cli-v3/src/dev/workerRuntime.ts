@@ -25,6 +25,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { VERSION } from "../version.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
+import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -214,6 +215,7 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const processEnv = gatherProcessEnv();
     const dotEnvVars = resolveDotEnvVars();
+    const OTEL_IMPORT_HOOK_INCLUDES = getInstrumentedPackageNames(this.options.config).join(",");
 
     return {
       ...processEnv,
@@ -225,6 +227,7 @@ class DevWorkerRuntime implements WorkerRuntime {
       OTEL_RESOURCE_ATTRIBUTES: JSON.stringify({
         [SemanticInternalAttributes.PROJECT_DIR]: this.options.config.workingDir,
       }),
+      OTEL_IMPORT_HOOK_INCLUDES,
     };
   }
 
