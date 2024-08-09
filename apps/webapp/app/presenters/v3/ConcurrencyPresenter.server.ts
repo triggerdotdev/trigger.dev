@@ -5,12 +5,14 @@ import { type User } from "~/models/user.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
+import { getLimit } from "~/services/platform.v3.server";
 
 export class ConcurrencyPresenter extends BasePresenter {
   public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
     const project = await this._replica.project.findFirst({
       select: {
         id: true,
+        organizationId: true,
         environments: {
           select: {
             id: true,
@@ -62,6 +64,8 @@ export class ConcurrencyPresenter extends BasePresenter {
       concurrency: environmentConcurrency[environment.id] ?? 0,
     }));
 
+    const limit = await getLimit(project.organizationId, "concurrentRuns", 10);
+
     return {
       environments: sortedEnvironments,
       tasks: possibleTasks
@@ -71,6 +75,7 @@ export class ConcurrencyPresenter extends BasePresenter {
           concurrency: concurrencies[task.slug] ?? 0,
         }))
         .sort((a, b) => a.identifier.localeCompare(b.identifier)),
+      limit,
     };
   }
 }

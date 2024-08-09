@@ -1,10 +1,10 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, UseDataFunctionReturn, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -19,11 +19,18 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import {
+  taskTriggerSourceDescription,
+  TaskTriggerSourceIcon,
+} from "~/components/runs/v3/TaskTriggerSource";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { ConcurrencyPresenter } from "~/presenters/v3/ConcurrencyPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { ProjectParamSchema, docsPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, docsPath, v3BillingPath } from "~/utils/pathBuilder";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { Feedback } from "~/components/Feedback";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -31,15 +38,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new ConcurrencyPresenter();
-    const { environments, tasks } = await presenter.call({
+    const result = await presenter.call({
       userId,
       projectSlug: projectParam,
     });
 
-    return typedjson({
-      environments,
-      tasks,
-    });
+    return typedjson(result);
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -52,7 +56,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type Task = UseDataFunctionReturn<typeof loader>["tasks"][0];
 
 export default function Page() {
-  const { environments, tasks } = useTypedLoaderData<typeof loader>();
+  const { environments, tasks, limit } = useTypedLoaderData<typeof loader>();
   const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
     items: tasks,
     filter: (task, text) => {
@@ -67,6 +71,9 @@ export default function Page() {
       return false;
     },
   });
+
+  const organization = useOrganization();
+  const plan = useCurrentPlan();
 
   return (
     <PageContainer>
@@ -94,9 +101,31 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody>
-        <div className="mt-1 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div>
-            <Header2 spacing>Environments</Header2>
+            <div className="mb-2 flex items-center justify-between">
+              <Header2>Environments</Header2>
+              {plan ? (
+                plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+                  <Feedback
+                    button={
+                      <Button LeadingIcon={ArrowUpCircleIcon} variant="tertiary/small">
+                        Request more concurrency
+                      </Button>
+                    }
+                    defaultValue="help"
+                  />
+                ) : (
+                  <LinkButton
+                    LeadingIcon={ArrowUpCircleIcon}
+                    to={v3BillingPath(organization)}
+                    variant="tertiary/small"
+                  >
+                    Upgrade for more concurrency
+                  </LinkButton>
+                )
+              ) : null}
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -125,7 +154,7 @@ export default function Page() {
             <div className="h-8">
               <Input
                 placeholder="Search tasks"
-                variant="tertiary"
+                variant="small"
                 icon="search"
                 fullWidth={true}
                 value={filterText}
@@ -145,7 +174,15 @@ export default function Page() {
                 {filteredItems.length > 0 ? (
                   filteredItems.map((task) => (
                     <TableRow key={task.identifier}>
-                      <TableCell>{task.identifier}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <SimpleTooltip
+                            button={<TaskTriggerSourceIcon source={task.triggerSource} />}
+                            content={taskTriggerSourceDescription(task.triggerSource)}
+                          />
+                          <span>{task.identifier}</span>
+                        </div>
+                      </TableCell>
                       <TableCell alignment="right">–</TableCell>
                       <TableCell alignment="right">{task.concurrency}</TableCell>
                     </TableRow>
