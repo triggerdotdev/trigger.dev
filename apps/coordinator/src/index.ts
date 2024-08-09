@@ -49,7 +49,11 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
-const chaosMonkey = new ChaosMonkey(!!process.env.CHAOS_MONKEY_ENABLED);
+const chaosMonkey = new ChaosMonkey(
+  !!process.env.CHAOS_MONKEY_ENABLED,
+  !!process.env.CHAOS_MONKEY_DISABLE_ERRORS,
+  !!process.env.CHAOS_MONKEY_DISABLE_DELAYS
+);
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
