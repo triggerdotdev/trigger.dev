@@ -16,15 +16,14 @@ import {
   resolvePluginsForContext,
 } from "../build/extensions.js";
 import { createExternalsBuildExtension } from "../build/externals.js";
-import { devEntryPoint, telemetryEntryPoint } from "../build/packageModules.js";
+import { copyManifestToDir } from "../build/manifests.js";
+import { devEntryPoint, indexerEntryPoint, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
+import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
-import { copyManifestToDir } from "../build/manifests.js";
-import { startWorkerRuntime } from "./workerRuntime.js";
-import { chalkGrey } from "../utilities/cliOutput.js";
-import { eventBus } from "../utilities/eventBus.js";
 import { startDevOutput } from "./devOutput.js";
+import { startWorkerRuntime } from "./workerRuntime.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -183,6 +182,7 @@ async function createBuildManifestFromBundle(
     outputPath: destination,
     workerEntryPoint: bundle.workerEntryPoint ?? devEntryPoint,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
+    indexerEntryPoint: bundle.indexerEntryPoint ?? indexerEntryPoint,
     configPath: bundle.configPath,
     deploy: {
       env: {},

@@ -24,6 +24,7 @@ export const BuildManifest = z.object({
   config: ConfigManifest,
   files: z.array(TaskFile),
   outputPath: z.string(),
+  indexerEntryPoint: z.string(),
   workerEntryPoint: z.string(),
   loaderEntryPoint: z.string().optional(),
   configPath: z.string(),

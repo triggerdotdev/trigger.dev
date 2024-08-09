@@ -9,22 +9,22 @@ import {
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { ClientRequestArgs } from "node:http";
-import { WebSocket } from "partysocket";
-import { ClientOptions, WebSocket as wsWebSocket } from "ws";
-import { CliApiClient } from "../apiClient.js";
-import { DevCommandOptions } from "../commands/dev.js";
-import { chalkError, chalkGrey, chalkTask } from "../utilities/cliOutput.js";
-import { logger } from "../utilities/logger.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import {
   MessagePayloadFromSchema,
   ZodMessageHandler,
   ZodMessageSender,
 } from "@trigger.dev/core/v3/zodMessageHandler";
+import { ClientRequestArgs } from "node:http";
+import { WebSocket } from "partysocket";
+import { ClientOptions, WebSocket as wsWebSocket } from "ws";
+import { CliApiClient } from "../apiClient.js";
+import { DevCommandOptions } from "../commands/dev.js";
+import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
-import { VERSION } from "../version.js";
 import { eventBus } from "../utilities/eventBus.js";
+import { logger } from "../utilities/logger.js";
+import { VERSION } from "../version.js";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
