@@ -26,6 +26,9 @@ import { logger } from "../utilities/logger.js";
 import { VERSION } from "../version.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import { getInstrumentedPackageNames } from "../build/instrumentation.js";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -183,6 +186,11 @@ class DevWorkerRuntime implements WorkerRuntime {
       return;
     }
 
+    const fileContents = await this.#fetchTaskFiles(
+      backgroundWorker.manifest.tasks,
+      this.options.config.workingDir
+    );
+
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,
       metadata: {
@@ -190,6 +198,7 @@ class DevWorkerRuntime implements WorkerRuntime {
         cliPackageVersion: VERSION,
         tasks: backgroundWorker.manifest.tasks,
         contentHash: manifest.contentHash,
+        fileContents,
       },
       supportsLazyAttempts: true,
     };
@@ -208,6 +217,41 @@ class DevWorkerRuntime implements WorkerRuntime {
     this.lastBuild = manifest;
 
     eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
+  }
+
+  async #fetchTaskFiles(tasks: TaskManifest[], workingDir: string) {
+    const tasksGroupedByFile: Record<string, TaskManifest[]> = {};
+
+    for (const task of tasks) {
+      if (!tasksGroupedByFile[task.filePath]) {
+        tasksGroupedByFile[task.filePath] = [];
+      }
+
+      tasksGroupedByFile[task.filePath]!.push(task);
+    }
+
+    const taskFiles: Array<{
+      taskIds: string[];
+      contents: string;
+      contentHash: string;
+      filePath: string;
+    }> = [];
+
+    for (const [filePath, tasks] of Object.entries(tasksGroupedByFile)) {
+      const contents = await readFile(join(workingDir, filePath), "utf-8");
+      const taskIds = tasks.map((task) => task.id);
+      const hasher = createHash("md5");
+      hasher.update(contents);
+
+      taskFiles.push({
+        filePath,
+        taskIds,
+        contents,
+        contentHash: hasher.digest("hex"),
+      });
+    }
+
+    return taskFiles;
   }
 
   async #getEnvVars(): Promise<Record<string, string>> {
