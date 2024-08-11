@@ -12,7 +12,6 @@ import { sortEnvironments } from "~/utils/environmentSort";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
 
-//from the ConcurrencyPresenter taskConcurrency method
 export type Task = Awaited<ReturnType<ConcurrencyPresenter["taskConcurrency"]>>[number];
 export type Environment = Awaited<
   ReturnType<ConcurrencyPresenter["environmentConcurrency"]>

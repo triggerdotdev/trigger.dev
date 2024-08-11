@@ -118,6 +118,12 @@ function calculateCachedTaskSize(task: CachedTask): number {
   return JSON.stringify(task).length;
 }
 
+/**
+ *
+ * @param prisma An efficient query to get all task identifiers for a project.
+ * It has indexes for fast performance.
+ * It does NOT care about versions, so includes all tasks ever created.
+ */
 export function getAllTaskIdentifiers(prisma: PrismaClientOrTransaction, projectId: string) {
   return prisma.$queryRaw<
     {
