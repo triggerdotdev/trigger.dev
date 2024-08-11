@@ -113,12 +113,28 @@ ORDER BY
       environments.map((env) => env.id)
     );
 
-    //todo get queue counts
+    const queued = await this._replica.$queryRaw<
+      {
+        runtimeEnvironmentId: string;
+        count: BigInt;
+      }[]
+    >`
+SELECT
+    "runtimeEnvironmentId",
+    COUNT(*)
+FROM
+    ${sqlDatabaseSchema}."TaskRun" as tr
+WHERE
+    tr."projectId" = ${projectId}
+    AND tr."status" = ANY(ARRAY[${Prisma.join(QUEUED_STATUSES)}]::\"TaskRunStatus\"[])
+GROUP BY
+    tr."runtimeEnvironmentId";`;
 
     const sortedEnvironments = sortEnvironments(environments).map((environment) => ({
       ...displayableEnvironment(environment, userId),
       concurrencyLimit: environment.maximumConcurrencyLimit,
       concurrency: environmentConcurrency[environment.id] ?? 0,
+      queued: Number(queued.find((q) => q.runtimeEnvironmentId === environment.id)?.count ?? 0),
     }));
 
     return sortedEnvironments;

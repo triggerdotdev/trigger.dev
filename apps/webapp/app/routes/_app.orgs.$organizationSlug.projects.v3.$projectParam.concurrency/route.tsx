@@ -147,7 +147,7 @@ function EnvironmentsTable({ environments }: { environments: Environment[] }) {
           <TableCell>
             <EnvironmentLabel environment={environment} userName={environment.userName} />
           </TableCell>
-          <TableCell alignment="right">–</TableCell>
+          <TableCell alignment="right">{environment.queued}</TableCell>
           <TableCell alignment="right">{environment.concurrency}</TableCell>
           <TableCell alignment="right">{environment.concurrencyLimit}</TableCell>
         </TableRow>
