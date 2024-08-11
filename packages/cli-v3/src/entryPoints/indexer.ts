@@ -85,8 +85,8 @@ async function bootstrap() {
   for (const file of buildManifest.files) {
     const module = await import(file.out);
 
-    for (const exportName of Object.keys(module)) {
-      const task = module[exportName];
+    for (const exportName of getExportNames(module)) {
+      const task = module[exportName] ?? module.default?.[exportName];
 
       if (!task) {
         continue;
@@ -142,3 +142,19 @@ await sendMessageInCatalog(
 
   return;
 });
+
+function getExportNames(module: any) {
+  const exports: string[] = [];
+
+  const exportKeys = Object.keys(module);
+
+  if (exportKeys.length === 0) {
+    return exports;
+  }
+
+  if (exportKeys.length === 1 && exportKeys[0] === "default") {
+    return Object.keys(module.default);
+  }
+
+  return exportKeys;
+}
