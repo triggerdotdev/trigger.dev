@@ -227,7 +227,7 @@ export const concurrencyTracker = singleton("concurrency-tracker", getTracker);
 function getTracker() {
   if (!env.REDIS_HOST || !env.REDIS_PORT) {
     throw new Error(
-      "Could not initialize auto-increment counter because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. "
+      "Could not initialize TaskRunConcurrencyTracker because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. "
     );
   }
 
