@@ -22,6 +22,8 @@ module.exports = {
     "superjson",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
+    "react-window-splitter",
+    "d3-ease",
   ],
   browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
   watchPaths: async () => {

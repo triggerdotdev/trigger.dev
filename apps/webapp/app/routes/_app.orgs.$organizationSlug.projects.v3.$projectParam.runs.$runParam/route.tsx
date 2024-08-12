@@ -66,7 +66,6 @@ import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -80,8 +79,38 @@ import {
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
+import { logger } from "~/services/logger.server";
+import { typedjson, UseDataFunctionReturn, useTypedLoaderData } from "remix-typedjson";
 
-type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
+type TraceEvent = NonNullable<UseDataFunctionReturn<typeof loader>["trace"]>["events"][0];
+
+const resizableSettings = {
+  parent: {
+    autosaveId: "panel-run-parent",
+    handleId: "parent-handle",
+    main: {
+      id: "run",
+      min: "100px" as const,
+    },
+    inspector: {
+      id: "inspector",
+      default: "300px" as const,
+    },
+  },
+  tree: {
+    autosaveId: "panel-run-tree",
+    handleId: "tree-handle",
+    tree: {
+      id: "tree",
+      default: "20%" as const,
+    },
+    timeline: {
+      id: "timeline",
+      default: "80%" as const,
+    },
+  },
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -96,17 +125,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   //resizable settings
-  const resizeSettings = await getResizableRunSettings(request);
+  const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
+  const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
-  return json({
+  logger.log("Resizable snapshots", {
+    parent,
+    tree,
+  });
+
+  return typedjson({
     run: result.run,
     trace: result.trace,
     maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
-    resizeSettings,
+    resizable: {
+      parent,
+      tree,
+    },
   });
 };
 
-type LoaderData = SerializeFrom<typeof loader>;
+type LoaderData = UseDataFunctionReturn<typeof loader>;
 
 function getSpanId(location: Location<any>): string | undefined {
   const search = new URLSearchParams(location.search);
@@ -114,8 +152,8 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, trace, resizeSettings, maximumLiveReloadingSetting } =
-    useLoaderData<typeof loader>();
+  const { run, trace, resizable, maximumLiveReloadingSetting } =
+    useTypedLoaderData<typeof loader>();
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
@@ -208,14 +246,14 @@ export default function Page() {
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizeSettings={resizeSettings}
+            resizable={resizable}
           />
         ) : (
           <NoLogsView
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizeSettings={resizeSettings}
+            resizable={resizable}
           />
         )}
       </PageBody>
@@ -223,7 +261,7 @@ export default function Page() {
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: LoaderData) {
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
   const organization = useOrganization();
   const project = useProject();
   const { location, replaceSearchParam } = useReplaceLocation();
@@ -254,8 +292,15 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-      <ResizablePanelGroup autosaveId="pnl-run-parent" className="h-full max-h-full">
-        <ResizablePanel id="run" min="20%">
+      <ResizablePanelGroup
+        autosaveId={resizableSettings.parent.autosaveId}
+        snapshot={resizable.parent}
+        className="h-full max-h-full"
+      >
+        <ResizablePanel
+          id={resizableSettings.parent.main.id}
+          min={resizableSettings.parent.main.min}
+        >
           <TasksTreeView
             selectedId={selectedSpanId}
             key={events[0]?.id ?? "-"}
@@ -278,9 +323,12 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
           />
         </ResizablePanel>
-        <ResizableHandle />
+        <ResizableHandle id={resizableSettings.parent.handleId} />
         {selectedSpanId && (
-          <ResizablePanel id="span" default="350px">
+          <ResizablePanel
+            id={resizableSettings.parent.inspector.id}
+            default={resizableSettings.parent.inspector.default}
+          >
             <SpanView
               runParam={run.friendlyId}
               spanId={selectedSpanId}
@@ -293,7 +341,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
   );
 }
 
-function NoLogsView({ run, resizeSettings }: LoaderData) {
+function NoLogsView({ run, resizable }: LoaderData) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -312,14 +360,14 @@ function NoLogsView({ run, resizeSettings }: LoaderData) {
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
-        direction="horizontal"
+        autosaveId={resizableSettings.parent.autosaveId}
+        snapshot={resizable.parent}
         className="h-full max-h-full"
-        onLayout={(layout) => {
-          if (layout.length !== 2) return;
-          setResizableRunSettings(document, layout);
-        }}
       >
-        <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
+        <ResizablePanel
+          id={resizableSettings.parent.main.id}
+          min={resizableSettings.parent.main.min}
+        >
           <div className="grid h-full place-items-center">
             {daysSinceCompleted === undefined ? (
               <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
@@ -367,8 +415,11 @@ function NoLogsView({ run, resizeSettings }: LoaderData) {
             )}
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
+        <ResizableHandle id={resizableSettings.parent.handleId} />{" "}
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+        >
           <SpanView runParam={run.friendlyId} spanId={run.spanId} />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -456,15 +507,13 @@ function TasksTreeView({
           />
         </div>
       </div>
-      <ResizablePanelGroup
-        direction="horizontal"
-        onLayout={(layout) => {
-          if (layout.length !== 2) return;
-          setResizableRunSettings(document, layout);
-        }}
-      >
+      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
         {/* Tree list */}
-        <ResizablePanel order={1} minSize={20} defaultSize={50} className="pl-3">
+        <ResizablePanel
+          id={resizableSettings.tree.tree.id}
+          default={resizableSettings.tree.tree.default}
+          className="pl-3"
+        >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
             <div className="flex items-center pr-2">
               {parentRunFriendlyId ? (
@@ -570,9 +619,12 @@ function TasksTreeView({
             />
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        <ResizableHandle id={resizableSettings.tree.handleId} />
         {/* Timeline */}
-        <ResizablePanel order={2} minSize={20} defaultSize={50}>
+        <ResizablePanel
+          id={resizableSettings.tree.timeline.id}
+          default={resizableSettings.tree.timeline.default}
+        >
           <TimelineView
             totalDuration={totalDuration}
             scale={scale}
