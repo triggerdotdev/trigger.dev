@@ -27,6 +27,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { setTimeout as timeout } from "node:timers/promises";
+import { Evt } from "evt";
 
 declare const __PROJECT_CONFIG__: Config;
 
@@ -63,6 +64,8 @@ class ProdWorker {
   private nextResumeAfter?: WaitReason;
   private waitForPostStart = false;
   private connectionCount = 0;
+
+  private restoreNotification = Evt.create();
 
   private waitForTaskReplay:
     | {
@@ -500,6 +503,17 @@ class ProdWorker {
         // checkpointSafeInternalTimeout is accurate even after non-simulated restores
         await Promise.race([internalTimeout, checkpointSafeInternalTimeout]);
 
+        const idempotencyKey = randomUUID();
+        this.durationResumeFallback = { idempotencyKey };
+
+        try {
+          await this.restoreNotification.waitFor(5_000);
+        } catch (error) {
+          logger.error("Did not receive restore notification in time", {
+            error,
+          });
+        }
+
         try {
           // The coordinator should cancel any in-progress checkpoints so we don't end up with race conditions
           const { checkpointCanceled } = await this.#coordinatorSocket.socket
@@ -517,9 +531,6 @@ class ProdWorker {
           }
 
           logger.log("Waiting for external duration resume as we may have been restored");
-
-          const idempotencyKey = randomUUID();
-          this.durationResumeFallback = { idempotencyKey };
 
           setTimeout(() => {
             if (!this.durationResumeFallback) {
@@ -632,6 +643,8 @@ class ProdWorker {
     this.paused = false;
     this.nextResumeAfter = undefined;
     this.waitForPostStart = false;
+
+    this.durationResumeFallback = undefined;
 
     this.#backgroundWorker.waitCompletedNotification();
   }
@@ -874,8 +887,6 @@ class ProdWorker {
             });
             return;
           }
-
-          this.durationResumeFallback = undefined;
 
           this.#resumeAfterDuration();
         },
@@ -1316,6 +1327,7 @@ class ProdWorker {
               }
               case "restore": {
                 await this.#reconnectAfterPostStart();
+                this.restoreNotification.post();
                 break;
               }
               default: {
