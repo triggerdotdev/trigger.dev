@@ -44,7 +44,7 @@ export class CompleteAttemptService extends BaseService {
     execution: TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
-    supportsRetryCheckpoints: boolean;
+    supportsRetryCheckpoints?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -168,7 +168,7 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
-    supportsRetryCheckpoints: boolean;
+    supportsRetryCheckpoints?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
@@ -377,7 +377,7 @@ export class CompleteAttemptService extends BaseService {
     retryTimestamp: number;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
-    supportsRetryCheckpoints: boolean;
+    supportsRetryCheckpoints?: boolean;
   }) {
     if (checkpointEventId || !supportsLazyAttempts || !supportsRetryCheckpoints) {
       if (!supportsRetryCheckpoints && checkpointEventId) {
