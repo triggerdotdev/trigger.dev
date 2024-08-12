@@ -50,6 +50,7 @@ export const IndexMessage = z.object({
 export type IndexMessage = z.infer<typeof IndexMessage>;
 
 export const WorkerManifest = z.object({
+  configPath: z.string(),
   tasks: TaskManifest.array(),
 });
 

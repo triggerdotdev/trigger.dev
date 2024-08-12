@@ -1,7 +1,6 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
-  BuildManifest,
   childToWorkerMessages,
   clock,
   type HandleErrorFunction,
@@ -99,13 +98,6 @@ async function importConfig(
   };
 }
 
-async function loadBuildManifest() {
-  const manifestContents = await readFile(process.env.TRIGGER_BUILD_MANIFEST_PATH!, "utf-8");
-  const raw = JSON.parse(manifestContents);
-
-  return BuildManifest.parse(raw);
-}
-
 async function loadWorkerManifest() {
   const manifestContents = await readFile(process.env.TRIGGER_WORKER_MANIFEST_PATH!, "utf-8");
   const raw = JSON.parse(manifestContents);
@@ -114,10 +106,9 @@ async function loadWorkerManifest() {
 }
 
 async function bootstrap() {
-  const buildManifest = await loadBuildManifest();
   const workerManifest = await loadWorkerManifest();
 
-  const { config, handleError } = await importConfig(buildManifest.configPath);
+  const { config, handleError } = await importConfig(workerManifest.configPath);
 
   const tracingSDK = new TracingSDK({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",

@@ -246,6 +246,14 @@ export class BackgroundWorker {
     return Array.from(this._taskRunProcesses.keys());
   }
 
+  get workerManifestPath(): string {
+    return join(this.build.outputPath, "index.json");
+  }
+
+  get buildManifestPath(): string {
+    return join(this.build.outputPath, "build.json");
+  }
+
   async initialize() {
     if (this.manifest) {
       throw new Error("Worker already initialized");
@@ -253,10 +261,8 @@ export class BackgroundWorker {
 
     let resolved = false;
 
-    const buildManifestPath = join(this.build.outputPath, "build.json");
-
     // Write the build manifest to this.build.outputPath/build.json
-    await writeJSONFile(buildManifestPath, this.build, true);
+    await writeJSONFile(this.buildManifestPath, this.build, true);
 
     logger.debug("Initializing worker", { build: this.build, params: this.params });
 
@@ -266,7 +272,7 @@ export class BackgroundWorker {
         cwd: this.params.cwd,
         env: {
           ...this.params.env,
-          TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
+          TRIGGER_BUILD_MANIFEST_PATH: this.buildManifestPath,
           NODE_OPTIONS: this.build.loaderEntryPoint
             ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
             : process.env.NODE_OPTIONS,
@@ -329,12 +335,10 @@ export class BackgroundWorker {
       });
     });
 
-    const indexManifestPath = join(this.build.outputPath, "index.json");
-
     // Write the build manifest to this.build.outputPath/worker.json
-    await writeJSONFile(indexManifestPath, this.manifest, true);
+    await writeJSONFile(this.workerManifestPath, this.manifest, true);
 
-    logger.debug("Worker initialized", { index: indexManifestPath, path: this.build.outputPath });
+    logger.debug("Worker initialized", { path: this.build.outputPath });
   }
 
   // We need to notify all the task run processes that a task run has completed,
@@ -377,8 +381,7 @@ export class BackgroundWorker {
       env: {
         ...this.params.env,
         ...payload.environment,
-        TRIGGER_BUILD_MANIFEST_PATH: join(this.build.outputPath, "build.json"),
-        TRIGGER_WORKER_MANIFEST_PATH: join(this.build.outputPath, "index.json"),
+        TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
         NODE_OPTIONS: this.build.loaderEntryPoint
           ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
           : process.env.NODE_OPTIONS ?? "",

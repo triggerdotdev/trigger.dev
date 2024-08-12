@@ -111,7 +111,7 @@ async function bootstrap() {
   };
 }
 
-await bootstrap();
+const { buildManifest } = await bootstrap();
 
 const tasks = taskCatalog.listTaskManifests();
 
@@ -121,6 +121,7 @@ await sendMessageInCatalog(
   {
     manifest: {
       tasks,
+      configPath: buildManifest.configPath,
     },
   },
   async (msg) => {
