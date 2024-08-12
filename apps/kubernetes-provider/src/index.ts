@@ -139,10 +139,12 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   async create(opts: TaskOperationsCreateOptions) {
+    const containerName = this.#getRunContainerName(opts.runId, opts.nextAttemptNumber);
+
     await this.#createPod(
       {
         metadata: {
-          name: this.#getRunContainerName(opts.runId),
+          name: containerName,
           namespace: this.#namespace.metadata.name,
           labels: {
             ...this.#getSharedLabels(opts),
@@ -157,7 +159,7 @@ class KubernetesTaskOperations implements TaskOperations {
           terminationGracePeriodSeconds: 60 * 60,
           containers: [
             {
-              name: this.#getRunContainerName(opts.runId),
+              name: containerName,
               image: opts.image,
               ports: [
                 {
@@ -514,8 +516,8 @@ class KubernetesTaskOperations implements TaskOperations {
     return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
   }
 
   #getPrePullContainerName(suffix: string) {
