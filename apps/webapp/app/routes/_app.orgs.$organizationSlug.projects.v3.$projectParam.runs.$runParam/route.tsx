@@ -254,16 +254,8 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-      <ResizablePanelGroup
-        direction="horizontal"
-        className="h-full max-h-full"
-        onLayout={(layout) => {
-          if (layout.length !== 2) return;
-          if (!selectedSpanId) return;
-          setResizableRunSettings(document, layout);
-        }}
-      >
-        <ResizablePanel order={1} minSize={30} defaultSize={resizeSettings.layout?.[0] ?? 70}>
+      <ResizablePanelGroup autosaveId="pnl-run-parent" className="h-full max-h-full">
+        <ResizablePanel id="run" min="20%">
           <TasksTreeView
             selectedId={selectedSpanId}
             key={events[0]?.id ?? "-"}
@@ -286,9 +278,9 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
           />
         </ResizablePanel>
-        <ResizableHandle withHandle />
+        <ResizableHandle />
         {selectedSpanId && (
-          <ResizablePanel order={2} minSize={25} defaultSize={resizeSettings.layout?.[1] ?? 30}>
+          <ResizablePanel id="span" default="350px">
             <SpanView
               runParam={run.friendlyId}
               spanId={selectedSpanId}
