@@ -282,7 +282,7 @@ export class BackgroundWorker {
         resolved = true;
         child.kill();
         reject(new Error("Worker timed out"));
-      }, 9920_000);
+      }, 20_000);
 
       child.on("message", async (msg: any) => {
         const message = parseMessageFromCatalog(msg, indexerToWorkerMessages);
