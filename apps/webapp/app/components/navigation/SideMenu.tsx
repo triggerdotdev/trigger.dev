@@ -604,13 +604,7 @@ function V3ProjectSideMenu({
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
-      <SideMenuItem
-        name="Concurrency"
-        icon={RectangleStackIcon}
-        iconColor="text-indigo-500"
-        to={v3ConcurrencyPath(organization, project)}
-        data-action="concurrency"
-      />
+
       <SideMenuItem
         name="Deployments"
         icon={ServerStackIcon}
@@ -627,6 +621,13 @@ function V3ProjectSideMenu({
           data-action="alerts"
         />
       )}
+      <SideMenuItem
+        name="Concurrency limits"
+        icon={RectangleStackIcon}
+        iconColor="text-indigo-500"
+        to={v3ConcurrencyPath(organization, project)}
+        data-action="concurrency"
+      />
       <SideMenuItem
         name="Project settings"
         icon="settings"
