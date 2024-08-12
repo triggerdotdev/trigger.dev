@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
 import { generateCode, loadFile } from "./imports/magicast.js";
 import { logger } from "./utilities/logger.js";
+import { additionalFiles, additionalPackages } from "@trigger.dev/core/v3/extensions";
 
 export type ResolveConfigOptions = {
   cwd?: string;
@@ -53,7 +54,7 @@ export async function watchConfig({
     debounce,
     chokidarOptions: { ignoreInitial },
     onUpdate: async ({ newConfig }) => {
-      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides);
+      const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, false);
 
       onUpdate(resolvedConfig);
     },
@@ -115,7 +116,8 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
 async function resolveConfig(
   cwd: string,
   result: c12.ResolvedConfig<TriggerConfig>,
-  overrides?: Partial<TriggerConfig>
+  overrides?: Partial<TriggerConfig>,
+  warn = true
 ): Promise<ResolvedConfig> {
   const packageJsonPath = await resolvePackageJSON(cwd);
   const tsconfigPath = await resolveTSConfig(cwd);
@@ -123,6 +125,8 @@ async function resolveConfig(
   const workspaceDir = await findWorkspaceDir(cwd);
 
   const workingDir = packageJsonPath ? dirname(packageJsonPath) : cwd;
+
+  validateConfig(result.config, warn);
 
   let dirs = result.config.dirs ? result.config.dirs : await autoDetectDirs(workingDir);
 
@@ -187,4 +191,58 @@ async function autoDetectDirs(workingDir: string): Promise<string[]> {
   }
 
   return dirs;
+}
+
+function validateConfig(config: TriggerConfig, warn = true) {
+  if (config.additionalFiles && config.additionalFiles.length > 0) {
+    warn &&
+      logger.warn(
+        `The "additionalFiles" option is deprecated and will be removed. Use the "additionalFiles" build extension instead. See https://trigger.dev/docs/trigger-config#additionalFiles for more information.`
+      );
+
+    config.build ??= {};
+    config.build.extensions ??= [];
+    config.build.extensions.push(additionalFiles({ files: config.additionalFiles }));
+  }
+
+  if (config.additionalPackages && config.additionalPackages.length > 0) {
+    warn &&
+      logger.warn(
+        `The "additionalPackages" option is deprecated and will be removed. Use the "additionalPackages" build extension instead. See https://trigger.dev/docs/trigger-config#additionalPackages for more information.`
+      );
+
+    config.build ??= {};
+    config.build.extensions ??= [];
+    config.build.extensions.push(additionalPackages({ packages: config.additionalPackages }));
+  }
+
+  if (config.triggerDirectories) {
+    warn &&
+      logger.warn(
+        `The "triggerDirectories" option is deprecated and will be removed. Use the "dirs" option instead.`
+      );
+
+    config.dirs = config.triggerDirectories;
+  }
+
+  if (config.dependenciesToBundle) {
+    warn &&
+      logger.warn(
+        `The "dependenciesToBundle" option is deprecated and will be removed. Dependencies are now bundled by default. If you want to exclude some dependencies from the bundle, use the "build.external" option.`
+      );
+  }
+
+  if (config.tsconfigPath) {
+    warn &&
+      logger.warn(
+        `The "tsconfigPath" option is deprecated and will be removed. Use the "tsconfig" option instead.`
+      );
+
+    config.tsconfig = config.tsconfigPath;
+  }
+
+  if (config.runtime && config.runtime === "bun") {
+    warn &&
+      logger.warn(`The "bun" runtime is currently experimental and may not work as expected.`);
+  }
 }

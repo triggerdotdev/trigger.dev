@@ -22,7 +22,7 @@
       "./v3/extensions": "./src/v3/extensions.ts"
     },
     "sourceDialects": [
-      "triggerdotdev-source"
+      "@triggerdotdev/source"
     ]
   },
   "scripts": {
@@ -71,7 +71,7 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "triggerdotdev-source": "./src/index.ts",
+        "@triggerdotdev/source": "./src/index.ts",
         "types": "./dist/esm/index.d.ts",
         "default": "./dist/esm/index.js"
       },
@@ -82,7 +82,7 @@
     },
     "./v3": {
       "import": {
-        "triggerdotdev-source": "./src/v3/index.ts",
+        "@triggerdotdev/source": "./src/v3/index.ts",
         "types": "./dist/esm/v3/index.d.ts",
         "default": "./dist/esm/v3/index.js"
       },
@@ -93,7 +93,7 @@
     },
     "./v3/extensions": {
       "import": {
-        "triggerdotdev-source": "./src/v3/extensions.ts",
+        "@triggerdotdev/source": "./src/v3/extensions.ts",
         "types": "./dist/esm/v3/extensions.d.ts",
         "default": "./dist/esm/v3/extensions.js"
       },

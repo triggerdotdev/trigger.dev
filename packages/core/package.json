@@ -53,7 +53,7 @@
       "./v3/schemas": "./src/v3/schemas/index.ts"
     },
     "sourceDialects": [
-      "triggerdotdev-source"
+      "@triggerdotdev/source"
     ]
   },
   "sideEffects": false,
@@ -83,6 +83,7 @@
     "humanize-duration": "^3.27.3",
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
+    "tinyglobby": "^0.2.2",
     "zod": "3.23.8",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0"
@@ -97,9 +98,9 @@
     "socket.io": "4.7.4",
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
+    "tsx": "4.17.0",
     "typescript": "^5.5.4",
-    "vitest": "^1.6.0",
-    "tsx": "4.17.0"
+    "vitest": "^1.6.0"
   },
   "engines": {
     "node": ">=18.20.0"
@@ -108,7 +109,7 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "triggerdotdev-source": "./src/index.ts",
+        "@triggerdotdev/source": "./src/index.ts",
         "types": "./dist/esm/index.d.ts",
         "default": "./dist/esm/index.js"
       },
@@ -119,7 +120,7 @@
     },
     "./logger": {
       "import": {
-        "triggerdotdev-source": "./src/logger.ts",
+        "@triggerdotdev/source": "./src/logger.ts",
         "types": "./dist/esm/logger.d.ts",
         "default": "./dist/esm/logger.js"
       },
@@ -130,7 +131,7 @@
     },
     "./bloom": {
       "import": {
-        "triggerdotdev-source": "./src/bloom.ts",
+        "@triggerdotdev/source": "./src/bloom.ts",
         "types": "./dist/esm/bloom.d.ts",
         "default": "./dist/esm/bloom.js"
       },
@@ -141,7 +142,7 @@
     },
     "./eventFilterMatches": {
       "import": {
-        "triggerdotdev-source": "./src/eventFilterMatches.ts",
+        "@triggerdotdev/source": "./src/eventFilterMatches.ts",
         "types": "./dist/esm/eventFilterMatches.d.ts",
         "default": "./dist/esm/eventFilterMatches.js"
       },
@@ -152,7 +153,7 @@
     },
     "./replacements": {
       "import": {
-        "triggerdotdev-source": "./src/replacements.ts",
+        "@triggerdotdev/source": "./src/replacements.ts",
         "types": "./dist/esm/replacements.d.ts",
         "default": "./dist/esm/replacements.js"
       },
@@ -163,7 +164,7 @@
     },
     "./requestFilterMatches": {
       "import": {
-        "triggerdotdev-source": "./src/requestFilterMatches.ts",
+        "@triggerdotdev/source": "./src/requestFilterMatches.ts",
         "types": "./dist/esm/requestFilterMatches.d.ts",
         "default": "./dist/esm/requestFilterMatches.js"
       },
@@ -174,7 +175,7 @@
     },
     "./retry": {
       "import": {
-        "triggerdotdev-source": "./src/retry.ts",
+        "@triggerdotdev/source": "./src/retry.ts",
         "types": "./dist/esm/retry.d.ts",
         "default": "./dist/esm/retry.js"
       },
@@ -185,7 +186,7 @@
     },
     "./utils": {
       "import": {
-        "triggerdotdev-source": "./src/utils.ts",
+        "@triggerdotdev/source": "./src/utils.ts",
         "types": "./dist/esm/utils.d.ts",
         "default": "./dist/esm/utils.js"
       },
@@ -196,7 +197,7 @@
     },
     "./schemas": {
       "import": {
-        "triggerdotdev-source": "./src/schemas/index.ts",
+        "@triggerdotdev/source": "./src/schemas/index.ts",
         "types": "./dist/esm/schemas/index.d.ts",
         "default": "./dist/esm/schemas/index.js"
       },
@@ -207,7 +208,7 @@
     },
     "./types": {
       "import": {
-        "triggerdotdev-source": "./src/types.ts",
+        "@triggerdotdev/source": "./src/types.ts",
         "types": "./dist/esm/types.d.ts",
         "default": "./dist/esm/types.js"
       },
@@ -218,7 +219,7 @@
     },
     "./versions": {
       "import": {
-        "triggerdotdev-source": "./src/versions.ts",
+        "@triggerdotdev/source": "./src/versions.ts",
         "types": "./dist/esm/versions.d.ts",
         "default": "./dist/esm/versions.js"
       },
@@ -229,7 +230,7 @@
     },
     "./v3": {
       "import": {
-        "triggerdotdev-source": "./src/v3/index.ts",
+        "@triggerdotdev/source": "./src/v3/index.ts",
         "types": "./dist/esm/v3/index.d.ts",
         "default": "./dist/esm/v3/index.js"
       },
@@ -240,7 +241,7 @@
     },
     "./v3/build": {
       "import": {
-        "triggerdotdev-source": "./src/v3/build/index.ts",
+        "@triggerdotdev/source": "./src/v3/build/index.ts",
         "types": "./dist/esm/v3/build/index.d.ts",
         "default": "./dist/esm/v3/build/index.js"
       },
@@ -251,7 +252,7 @@
     },
     "./v3/extensions": {
       "import": {
-        "triggerdotdev-source": "./src/v3/extensions/index.ts",
+        "@triggerdotdev/source": "./src/v3/extensions/index.ts",
         "types": "./dist/esm/v3/extensions/index.d.ts",
         "default": "./dist/esm/v3/extensions/index.js"
       },
@@ -262,7 +263,7 @@
     },
     "./v3/apps": {
       "import": {
-        "triggerdotdev-source": "./src/v3/apps/index.ts",
+        "@triggerdotdev/source": "./src/v3/apps/index.ts",
         "types": "./dist/esm/v3/apps/index.d.ts",
         "default": "./dist/esm/v3/apps/index.js"
       },
@@ -273,7 +274,7 @@
     },
     "./v3/errors": {
       "import": {
-        "triggerdotdev-source": "./src/v3/errors.ts",
+        "@triggerdotdev/source": "./src/v3/errors.ts",
         "types": "./dist/esm/v3/errors.d.ts",
         "default": "./dist/esm/v3/errors.js"
       },
@@ -284,7 +285,7 @@
     },
     "./v3/logger-api": {
       "import": {
-        "triggerdotdev-source": "./src/v3/logger-api.ts",
+        "@triggerdotdev/source": "./src/v3/logger-api.ts",
         "types": "./dist/esm/v3/logger-api.d.ts",
         "default": "./dist/esm/v3/logger-api.js"
       },
@@ -295,7 +296,7 @@
     },
     "./v3/otel": {
       "import": {
-        "triggerdotdev-source": "./src/v3/otel/index.ts",
+        "@triggerdotdev/source": "./src/v3/otel/index.ts",
         "types": "./dist/esm/v3/otel/index.d.ts",
         "default": "./dist/esm/v3/otel/index.js"
       },
@@ -306,7 +307,7 @@
     },
     "./v3/semanticInternalAttributes": {
       "import": {
-        "triggerdotdev-source": "./src/v3/semanticInternalAttributes.ts",
+        "@triggerdotdev/source": "./src/v3/semanticInternalAttributes.ts",
         "types": "./dist/esm/v3/semanticInternalAttributes.d.ts",
         "default": "./dist/esm/v3/semanticInternalAttributes.js"
       },
@@ -317,7 +318,7 @@
     },
     "./v3/utils/durations": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/durations.ts",
+        "@triggerdotdev/source": "./src/v3/utils/durations.ts",
         "types": "./dist/esm/v3/utils/durations.d.ts",
         "default": "./dist/esm/v3/utils/durations.js"
       },
@@ -328,7 +329,7 @@
     },
     "./v3/utils/flattenAttributes": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/flattenAttributes.ts",
+        "@triggerdotdev/source": "./src/v3/utils/flattenAttributes.ts",
         "types": "./dist/esm/v3/utils/flattenAttributes.d.ts",
         "default": "./dist/esm/v3/utils/flattenAttributes.js"
       },
@@ -339,7 +340,7 @@
     },
     "./v3/utils/ioSerialization": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/ioSerialization.ts",
+        "@triggerdotdev/source": "./src/v3/utils/ioSerialization.ts",
         "types": "./dist/esm/v3/utils/ioSerialization.d.ts",
         "default": "./dist/esm/v3/utils/ioSerialization.js"
       },
@@ -350,7 +351,7 @@
     },
     "./v3/utils/omit": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/omit.ts",
+        "@triggerdotdev/source": "./src/v3/utils/omit.ts",
         "types": "./dist/esm/v3/utils/omit.d.ts",
         "default": "./dist/esm/v3/utils/omit.js"
       },
@@ -361,7 +362,7 @@
     },
     "./v3/utils/retries": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/retries.ts",
+        "@triggerdotdev/source": "./src/v3/utils/retries.ts",
         "types": "./dist/esm/v3/utils/retries.d.ts",
         "default": "./dist/esm/v3/utils/retries.js"
       },
@@ -372,7 +373,7 @@
     },
     "./v3/utils/structuredLogger": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/structuredLogger.ts",
+        "@triggerdotdev/source": "./src/v3/utils/structuredLogger.ts",
         "types": "./dist/esm/v3/utils/structuredLogger.d.ts",
         "default": "./dist/esm/v3/utils/structuredLogger.js"
       },
@@ -383,7 +384,7 @@
     },
     "./v3/zodfetch": {
       "import": {
-        "triggerdotdev-source": "./src/v3/zodfetch.ts",
+        "@triggerdotdev/source": "./src/v3/zodfetch.ts",
         "types": "./dist/esm/v3/zodfetch.d.ts",
         "default": "./dist/esm/v3/zodfetch.js"
       },
@@ -394,7 +395,7 @@
     },
     "./v3/zodMessageHandler": {
       "import": {
-        "triggerdotdev-source": "./src/v3/zodMessageHandler.ts",
+        "@triggerdotdev/source": "./src/v3/zodMessageHandler.ts",
         "types": "./dist/esm/v3/zodMessageHandler.d.ts",
         "default": "./dist/esm/v3/zodMessageHandler.js"
       },
@@ -405,7 +406,7 @@
     },
     "./v3/zodNamespace": {
       "import": {
-        "triggerdotdev-source": "./src/v3/zodNamespace.ts",
+        "@triggerdotdev/source": "./src/v3/zodNamespace.ts",
         "types": "./dist/esm/v3/zodNamespace.d.ts",
         "default": "./dist/esm/v3/zodNamespace.js"
       },
@@ -416,7 +417,7 @@
     },
     "./v3/zodSocket": {
       "import": {
-        "triggerdotdev-source": "./src/v3/zodSocket.ts",
+        "@triggerdotdev/source": "./src/v3/zodSocket.ts",
         "types": "./dist/esm/v3/zodSocket.d.ts",
         "default": "./dist/esm/v3/zodSocket.js"
       },
@@ -427,7 +428,7 @@
     },
     "./v3/zodIpc": {
       "import": {
-        "triggerdotdev-source": "./src/v3/zodIpc.ts",
+        "@triggerdotdev/source": "./src/v3/zodIpc.ts",
         "types": "./dist/esm/v3/zodIpc.d.ts",
         "default": "./dist/esm/v3/zodIpc.js"
       },
@@ -438,7 +439,7 @@
     },
     "./v3/utils/timers": {
       "import": {
-        "triggerdotdev-source": "./src/v3/utils/timers.ts",
+        "@triggerdotdev/source": "./src/v3/utils/timers.ts",
         "types": "./dist/esm/v3/utils/timers.d.ts",
         "default": "./dist/esm/v3/utils/timers.js"
       },
@@ -449,7 +450,7 @@
     },
     "./v3/dev": {
       "import": {
-        "triggerdotdev-source": "./src/v3/dev/index.ts",
+        "@triggerdotdev/source": "./src/v3/dev/index.ts",
         "types": "./dist/esm/v3/dev/index.d.ts",
         "default": "./dist/esm/v3/dev/index.js"
       },
@@ -460,7 +461,7 @@
     },
     "./v3/prod": {
       "import": {
-        "triggerdotdev-source": "./src/v3/prod/index.ts",
+        "@triggerdotdev/source": "./src/v3/prod/index.ts",
         "types": "./dist/esm/v3/prod/index.d.ts",
         "default": "./dist/esm/v3/prod/index.js"
       },
@@ -471,7 +472,7 @@
     },
     "./v3/workers": {
       "import": {
-        "triggerdotdev-source": "./src/v3/workers/index.ts",
+        "@triggerdotdev/source": "./src/v3/workers/index.ts",
         "types": "./dist/esm/v3/workers/index.d.ts",
         "default": "./dist/esm/v3/workers/index.js"
       },
@@ -482,7 +483,7 @@
     },
     "./v3/schemas": {
       "import": {
-        "triggerdotdev-source": "./src/v3/schemas/index.ts",
+        "@triggerdotdev/source": "./src/v3/schemas/index.ts",
         "types": "./dist/esm/v3/schemas/index.d.ts",
         "default": "./dist/esm/v3/schemas/index.js"
       },

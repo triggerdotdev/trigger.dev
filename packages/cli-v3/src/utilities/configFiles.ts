@@ -1,9 +1,7 @@
-import { findUp } from "find-up";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { xdgAppPaths } from "../imports/xdg-app-paths.js";
 import { z } from "zod";
-import { CONFIG_FILES } from "../consts.js";
+import { xdgAppPaths } from "../imports/xdg-app-paths.js";
 import { readJSONFileSync } from "./fileSystem.js";
 import { logger } from "./logger.js";
 
@@ -83,26 +81,4 @@ export function writeAuthConfigFile(config: UserAuthConfigFile) {
   writeFileSync(path.join(authConfigFilePath), JSON.stringify(config), {
     encoding: "utf-8",
   });
-}
-
-async function getConfigPath(dir: string, fileName?: string): Promise<string | undefined> {
-  logger.debug("Searching for the config file", {
-    dir,
-    fileName,
-    configFiles: CONFIG_FILES,
-  });
-
-  return await findUp(fileName ? [fileName] : CONFIG_FILES, { cwd: dir });
-}
-
-async function findFilePath(dir: string, fileName: string): Promise<string | undefined> {
-  const result = await findUp([fileName], { cwd: dir });
-
-  logger.debug("Searched for the file", {
-    dir,
-    fileName,
-    result,
-  });
-
-  return result;
 }

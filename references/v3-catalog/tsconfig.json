@@ -7,7 +7,7 @@
     "strict": true,
     "outDir": "dist",
     "skipLibCheck": true,
-    "customConditions": ["triggerdotdev-source"],
+    "customConditions": ["@triggerdotdev/source"],
     "jsx": "preserve",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -20,6 +20,7 @@
     "./src/**/*.ts",
     "trigger.config.ts",
     "src/trigger/email.tsx",
-    "src/trigger/openai.mts"
+    "src/trigger/openai.mts",
+    "src/trigger/wrangler.mts"
   ]
 }

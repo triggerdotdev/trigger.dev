@@ -4,6 +4,7 @@
   "compilerOptions": {
     "isolatedDeclarations": false,
     "composite": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "customConditions": ["@triggerdotdev/source"]
   }
 }

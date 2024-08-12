@@ -1,18 +1,17 @@
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { Command } from "commander";
+import { render } from "ink";
+import React from "react";
 import { z } from "zod";
-import { CliApiClient } from "../apiClient.js";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
+import { watchConfig } from "../config.js";
+import Dev from "../dev/dev.js";
 import { chalkError } from "../utilities/cliOutput.js";
+import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { runtimeCheck } from "../utilities/runtimeCheck.js";
 import { getProjectClient, isLoggedIn, LoginResultOk } from "../utilities/session.js";
-import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { updateTriggerPackages } from "./update.js";
-import { watchConfig } from "../config.js";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import Dev from "../dev/dev.js";
-import { render } from "ink";
-import React from "react";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),

@@ -22,7 +22,7 @@
     "noFallthroughCasesInSwitch": true,
     "resolveJsonModule": true,
 
-    "removeComments": true,
+    "removeComments": false,
     "esModuleInterop": true,
     "emitDecoratorMetadata": false,
     "experimentalDecorators": false,
@@ -31,6 +31,6 @@
     "noUncheckedIndexedAccess": true,
 
     "pretty": true,
-    "customConditions": ["triggerdotdev-source"]
+    "customConditions": ["@triggerdotdev/source"]
   }
 }

@@ -1,16 +1,17 @@
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { emitDecoratorMetadata } from "@trigger.dev/sdk/v3/extensions";
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",
   machine: "small-2x",
   instrumentations: [new OpenAIInstrumentation()],
+  additionalFiles: ["wrangler/wrangler.toml"],
   retries: {
     enabledInDev: true,
     default: {
       maxAttempts: 4,
-      minTimeoutInMs: 1000,
+      minTimeoutInMs: 10000,
       maxTimeoutInMs: 10000,
       factor: 2,
       randomize: true,
