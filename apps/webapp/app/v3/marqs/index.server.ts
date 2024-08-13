@@ -386,6 +386,8 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+
+          await this.options.subscriber?.messageDequeued(message);
         }
 
         await this.options.visibilityTimeoutStrategy.heartbeat(
