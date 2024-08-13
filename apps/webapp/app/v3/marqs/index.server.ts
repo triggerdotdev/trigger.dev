@@ -480,7 +480,7 @@ export class MarQS {
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
-          data: { ...messageData, ...traceContext },
+          data: { ...oldMessage.data, ...messageData, ...traceContext },
           queue: oldMessage.queue,
           concurrencyKey: oldMessage.concurrencyKey,
           timestamp: timestamp ?? Date.now(),
