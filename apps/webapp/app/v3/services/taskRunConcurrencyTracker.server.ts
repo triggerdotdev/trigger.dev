@@ -26,6 +26,11 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   async messageEnqueued(message: MessagePayload): Promise<void> {}
 
   async messageDequeued(message: MessagePayload): Promise<void> {
+    logger.debug("TaskRunConcurrencyTracker.messageDequeued()", {
+      data: message.data,
+      messageId: message.messageId,
+    });
+
     const data = this.getMessageData(message);
     if (!data) {
       logger.info(
@@ -45,6 +50,11 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   }
 
   async messageAcked(message: MessagePayload): Promise<void> {
+    logger.debug("TaskRunConcurrencyTracker.messageAcked()", {
+      data: message.data,
+      messageId: message.messageId,
+    });
+
     const data = this.getMessageData(message);
     if (!data) {
       logger.info(
@@ -64,6 +74,11 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   }
 
   async messageNacked(message: MessagePayload): Promise<void> {
+    logger.debug("TaskRunConcurrencyTracker.messageNacked()", {
+      data: message.data,
+      messageId: message.messageId,
+    });
+
     const data = this.getMessageData(message);
     if (!data) {
       logger.info(
@@ -103,14 +118,18 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     environmentId: string;
     deployed: boolean;
   }): Promise<void> {
-    const pipeline = this.redis.pipeline();
+    try {
+      const pipeline = this.redis.pipeline();
 
-    pipeline.sadd(this.getTaskKey(projectId, taskId), runId);
-    pipeline.sadd(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
-    pipeline.sadd(this.getEnvironmentKey(projectId, environmentId), runId);
-    pipeline.sadd(this.getGlobalKey(deployed), runId);
+      pipeline.sadd(this.getTaskKey(projectId, taskId), runId);
+      pipeline.sadd(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
+      pipeline.sadd(this.getEnvironmentKey(projectId, environmentId), runId);
+      pipeline.sadd(this.getGlobalKey(deployed), runId);
 
-    await pipeline.exec();
+      await pipeline.exec();
+    } catch (error) {
+      logger.error("TaskRunConcurrencyTracker.executionStarted() error", { error });
+    }
   }
 
   private async executionFinished({
@@ -126,14 +145,18 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     environmentId: string;
     deployed: boolean;
   }): Promise<void> {
-    const pipeline = this.redis.pipeline();
+    try {
+      const pipeline = this.redis.pipeline();
 
-    pipeline.srem(this.getTaskKey(projectId, taskId), runId);
-    pipeline.srem(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
-    pipeline.srem(this.getEnvironmentKey(projectId, environmentId), runId);
-    pipeline.srem(this.getGlobalKey(deployed), runId);
+      pipeline.srem(this.getTaskKey(projectId, taskId), runId);
+      pipeline.srem(this.getTaskEnvironmentKey(projectId, taskId, environmentId), runId);
+      pipeline.srem(this.getEnvironmentKey(projectId, environmentId), runId);
+      pipeline.srem(this.getGlobalKey(deployed), runId);
 
-    await pipeline.exec();
+      await pipeline.exec();
+    } catch (error) {
+      logger.error("TaskRunConcurrencyTracker.executionFinished() error", { error });
+    }
   }
 
   async taskConcurrentRunCount(projectId: string, taskId: string): Promise<number> {
@@ -149,21 +172,26 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   }
 
   private async getTaskCounts(projectId: string, taskIds: string[]): Promise<number[]> {
-    const pipeline = this.redis.pipeline();
-    taskIds.forEach((taskId) => {
-      pipeline.scard(this.getTaskKey(projectId, taskId));
-    });
-    const results = await pipeline.exec();
-    if (!results) {
+    try {
+      const pipeline = this.redis.pipeline();
+      taskIds.forEach((taskId) => {
+        pipeline.scard(this.getTaskKey(projectId, taskId));
+      });
+      const results = await pipeline.exec();
+      if (!results) {
+        return [];
+      }
+      return results.map(([err, count]) => {
+        if (err) {
+          console.error("Error in getTaskCounts:", err);
+          return 0;
+        }
+        return count as number;
+      });
+    } catch (error) {
+      logger.error("TaskRunConcurrencyTracker.getTaskCounts() error", { error });
       return [];
     }
-    return results.map(([err, count]) => {
-      if (err) {
-        console.error("Error in getTaskCounts:", err);
-        return 0;
-      }
-      return count as number;
-    });
   }
 
   async projectTotalConcurrentRunCount(projectId: string, taskIds: string[]): Promise<number> {
@@ -177,7 +205,7 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
   ): Promise<Record<string, number>> {
     const counts = await this.getTaskCounts(projectId, taskIds);
     return taskIds.reduce((acc, taskId, index) => {
-      acc[taskId] = counts[index];
+      acc[taskId] = counts[index] ?? 0;
       return acc;
     }, {} as Record<string, number>);
   }
@@ -186,23 +214,28 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     projectId: string,
     environmentIds: string[]
   ): Promise<Record<string, number>> {
-    const pipeline = this.redis.pipeline();
-    environmentIds.forEach((environmentId) => {
-      pipeline.scard(this.getEnvironmentKey(projectId, environmentId));
-    });
-    const results = await pipeline.exec();
-    if (!results) {
+    try {
+      const pipeline = this.redis.pipeline();
+      environmentIds.forEach((environmentId) => {
+        pipeline.scard(this.getEnvironmentKey(projectId, environmentId));
+      });
+      const results = await pipeline.exec();
+      if (!results) {
+        return Object.fromEntries(environmentIds.map((id) => [id, 0]));
+      }
+
+      return results.reduce((acc, [err, count], index) => {
+        if (err) {
+          console.error("Error in environmentConcurrentRunCounts:", err);
+          return acc;
+        }
+        acc[environmentIds[index]] = count as number;
+        return acc;
+      }, {} as Record<string, number>);
+    } catch (error) {
+      logger.error("TaskRunConcurrencyTracker.environmentConcurrentRunCounts() error", { error });
       return Object.fromEntries(environmentIds.map((id) => [id, 0]));
     }
-
-    return results.reduce((acc, [err, count], index) => {
-      if (err) {
-        console.error("Error in environmentConcurrentRunCounts:", err);
-        return acc;
-      }
-      acc[environmentIds[index]] = count as number;
-      return acc;
-    }, {} as Record<string, number>);
   }
 
   private getTaskKey(projectId: string, taskId: string): string {
@@ -230,6 +263,11 @@ function getTracker() {
       "Could not initialize TaskRunConcurrencyTracker because process.env.REDIS_HOST and process.env.REDIS_PORT are required to be set. "
     );
   }
+
+  logger.debug("Initializing TaskRunConcurrencyTracker", {
+    redisHost: env.REDIS_HOST,
+    redisPort: env.REDIS_PORT,
+  });
 
   return new TaskRunConcurrencyTracker({
     redis: {
