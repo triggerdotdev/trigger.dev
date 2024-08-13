@@ -11,6 +11,7 @@ import CliDevStep from '/snippets/step-cli-dev.mdx';
 import CliRunTestStep from '/snippets/step-run-test.mdx';
 import CliViewRunStep from '/snippets/step-view-run.mdx';
 import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
+import NextjsTroubleshooting from '/snippets/nextjs-missing-api-key.mdx';
 
 <Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
 
@@ -24,6 +25,8 @@ import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
   <CliRunTestStep />
   <CliViewRunStep />
 </Steps>
+
+## Set your secret key
 
 ## Triggering your task in Next.js
 
@@ -67,22 +70,40 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 </Tabs>
 
+## Add your environment variables (optional)
+
+Any environment variables used in your tasks need to be added to ensure the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
+
+In the sidebar select the "Environment Variables" page, then press the "New environment variable"
+button. ![Environment variables page](/images/environment-variables-page.jpg)
+
+You can add values for your local dev environment, staging and prod. ![Environment variables
+page](/images/environment-variables-panel.jpg)
+
 ## Deploying your task in Next.js
 
-Ensure you have the Trigger.dev CLI installed and are logged in.
-
 Run the CLI deploy command
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta deploy
+```
+
+</CodeGroup>
 
 We're working on adding a [Vercel integration](/vercel-integration) to Trigger.dev. In the meantime, you can follow [this guide](/github-actions) to use GitHub Actions to deploy your tasks.
 
 ## Troubleshooting
 
-    ### Next.js build failing due to missing API key in GitHub CI
-
-    This issue occurs during the Next.js app build process on GitHub CI where the Trigger.dev SDK is expecting the TRIGGER_SECRET_KEY environment variable to be set at build time. Next.js attempts to compile routes and creates static pages, which can cause issues with SDKs that require runtime environment variables. The solution is to mark the relevant pages as dynamic to prevent Next.js from trying to make them static. You can do this by adding the following line to the route file:
-
-    ```ts
-    export const dynamic = "force-dynamic";
-    ```
+    <NextjsTroubleshooting/>
 
 <UsefulNextSteps />
