@@ -507,6 +507,8 @@ export class MarQS {
         });
 
         await this.#callEnqueueMessage(newMessage);
+
+        await this.options.subscriber?.messageReplaced(newMessage);
       },
       {
         kind: SpanKind.CONSUMER,
