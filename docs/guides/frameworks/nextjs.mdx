@@ -19,10 +19,10 @@ import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
 ## Initial setup
 
 <Steps>
-    <CliInitStep />
-    <CliDevStep />
-    <CliRunTestStep />
-    <CliViewRunStep />
+  <CliInitStep />
+  <CliDevStep />
+  <CliRunTestStep />
+  <CliViewRunStep />
 </Steps>
 
 ## Triggering your task in Next.js
@@ -35,18 +35,22 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
     To trigger your task, you can create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
 
-    ```ts
+    ```ts pages/api/hello.ts
     // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
     import { helloWorldTask } from "@/trigger/example";
+    import { tasks } from "@trigger.dev/sdk/v3";
     import type { NextApiRequest, NextApiResponse } from "next";
 
     export default async function handler(
-    req: NextApiRequest,
-    res: NextApiResponse<{ id: string }>
+      req: NextApiRequest,
+      res: NextApiResponse<{ id: string }>
     ) {
-    const handle = await helloWorldTask.trigger("");
+      const handle = await tasks.trigger<typeof helloWorldTask>(
+      "hello-world",
+      "James"
+      );
 
-    res.status(200).json(handle);
+      res.status(200).json(handle);   
     }
     ```
   </Tab>
@@ -55,11 +59,9 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
     App router content
 
-  </Tab>
+    API route (same as Pages router)
 
-  <Tab title="Server Actions">
-    
-    Server actions content
+    Server actions example
 
   </Tab>
 
@@ -67,9 +69,11 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 ## Deploying your task in Next.js
 
-To deploy your task in Next.js, you can use Vercel, Netlify, or any other hosting provider that supports Node.js. Here's how you can deploy your task using Vercel:
+Ensure you have the Trigger.dev CLI installed and are logged in.
 
-If you want to deploy your task using GitHub Actions, you can follow [this guide](/github-actions).
+Run the CLI deploy command
+
+We're working on adding a [Vercel integration](/vercel-integration) to Trigger.dev. In the meantime, you can follow [this guide](/github-actions) to use GitHub Actions to deploy your tasks.
 
 ## Troubleshooting
 
@@ -80,12 +84,5 @@ If you want to deploy your task using GitHub Actions, you can follow [this guide
     ```ts
     export const dynamic = "force-dynamic";
     ```
-
-# Todos
-
-- Pages directory triggering
-- Edge runtime triggering `tasks.trigger<>("my-task, {});`
-- App directory triggering
-- How to update your UI using the run status. Use `runs.retrieve` with the handle
 
 <UsefulNextSteps />
