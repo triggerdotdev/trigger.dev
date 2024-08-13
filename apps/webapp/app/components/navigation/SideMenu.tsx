@@ -106,9 +106,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   const currentPlan = useCurrentPlan();
   const { isManagedCloud } = useFeatures();
 
-  const hasV2Projects = organizations.some((org) =>
-    org.projects.some((proj) => proj.version === "V2")
-  );
+  const isV3Project = project.version === "V3";
   const isFreeV3User = currentPlan?.v3Subscription?.isPaying === false;
 
   useEffect(() => {
@@ -339,7 +337,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          {hasV2Projects && isFreeV3User && (
+          {isV3Project && isFreeV3User && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
               percentage={currentPlan.v3Usage.usagePercentage}
