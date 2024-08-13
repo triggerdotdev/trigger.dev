@@ -392,7 +392,13 @@ export class TriggerTaskService extends BaseService {
               environment,
               run.queue,
               run.id,
-              { type: "EXECUTE", taskIdentifier: taskId },
+              {
+                type: "EXECUTE",
+                taskIdentifier: taskId,
+                projectId: environment.projectId,
+                environmentId: environment.id,
+                environmentType: environment.type,
+              },
               body.options?.concurrencyKey
             );
           }

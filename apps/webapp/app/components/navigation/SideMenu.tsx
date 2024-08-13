@@ -9,6 +9,7 @@ import {
   CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
+  RectangleStackIcon,
   ServerStackIcon,
   ShieldCheckIcon,
   SignalIcon,
@@ -46,6 +47,7 @@ import {
   projectTriggersPath,
   v3ApiKeysPath,
   v3BillingPath,
+  v3ConcurrencyPath,
   v3DeploymentsPath,
   v3EnvironmentVariablesPath,
   v3ProjectAlertsPath,
@@ -605,6 +607,7 @@ function V3ProjectSideMenu({
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
+
       <SideMenuItem
         name="Deployments"
         icon={ServerStackIcon}
@@ -621,6 +624,13 @@ function V3ProjectSideMenu({
           data-action="alerts"
         />
       )}
+      <SideMenuItem
+        name="Concurrency limits"
+        icon={RectangleStackIcon}
+        iconColor="text-indigo-500"
+        to={v3ConcurrencyPath(organization, project)}
+        data-action="concurrency"
+      />
       <SideMenuItem
         name="Project settings"
         icon="settings"
