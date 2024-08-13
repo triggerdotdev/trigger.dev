@@ -422,14 +422,15 @@ export class Checkpointer {
 
       this.#logger.log("Checkpointing:", { options });
 
-      const containterName = this.#getRunContainerName(runId, attemptNumber);
+      const containterName = this.#getRunContainerName(runId);
+      const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
         try {
           if (this.opts.forceSimulate || !this.#canCheckpoint) {
             this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $$`docker pause ${containterName}`);
+            this.#logger.debug(await $$`docker pause ${containterNameWithAttempt}`);
           } else {
             if (this.simulateCheckpointFailure) {
               if (performance.now() < this.simulateCheckpointFailureSeconds * 1000) {
@@ -440,11 +441,11 @@ export class Checkpointer {
 
             if (leaveRunning) {
               this.#logger.debug(
-                await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create --leave-running ${containterNameWithAttempt} ${exportLocation}`
               );
             } else {
               this.#logger.debug(
-                await $$`docker checkpoint create ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create ${containterNameWithAttempt} ${exportLocation}`
               );
             }
           }
