@@ -77,9 +77,9 @@ import {
   PopoverSectionHeader,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
+import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { TextLink } from "../primitives/TextLink";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<
@@ -105,6 +105,9 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
   const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const currentPlan = useCurrentPlan();
   const { isManagedCloud } = useFeatures();
+
+  const isV3Project = project.version === "V3";
+  const isFreeV3User = currentPlan?.v3Subscription?.isPaying === false;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -334,7 +337,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </Button>
             }
           />
-          {currentPlan?.v3Subscription?.isPaying === false && (
+          {isV3Project && isFreeV3User && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
               percentage={currentPlan.v3Usage.usagePercentage}
