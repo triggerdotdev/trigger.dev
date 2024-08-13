@@ -3,6 +3,8 @@ title: "Common problems"
 description: "Some common problems you might experience and their solutions"
 ---
 
+import BundlePackages from '/snippets/bundle-packages.mdx';
+
 ## Development
 
 ### `EACCES: permission denied`
@@ -44,17 +46,7 @@ You can skip typechecking, by adding the `--skip-typecheck` flag when calling de
 
 This errors occurs if we can't figure out how to automatically import some code. You can fix this by adding it to the `dependenciesToBundle` array in the [trigger.config file](/trigger-config).
 
-Like this:
-
-```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
-
-export const config: TriggerConfig = {
-  //..other stuff
-  //either regex or strings of package names
-  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
-};
-```
+<BundlePackages/>
 
 ### `Failed to build project image: Error building image`
 
