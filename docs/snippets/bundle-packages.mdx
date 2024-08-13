@@ -1,0 +1,31 @@
+<Tabs>
+  <Tab title="Bundle everything">
+  
+    Bundle all ESM packages so that you don't have to specifiy them manually like this:
+
+    ```ts trigger.config.ts
+    import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+    export const config: TriggerConfig = {
+      //..other stuff
+      dependenciesToBundle: [/.*/],
+    };
+    ```
+  
+  </Tab>
+  <Tab title="Bundle individual packages">
+
+    Bundle individual packages using strings or regex like this:
+  
+    ```ts trigger.config.ts
+    import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+
+    export const config: TriggerConfig = {
+      //..other stuff
+      //either regex or strings of package names
+      dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp"],
+    };
+    ```
+  
+  </Tab>
+</Tabs>
