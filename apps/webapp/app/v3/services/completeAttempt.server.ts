@@ -38,11 +38,13 @@ export class CompleteAttemptService extends BaseService {
     execution,
     env,
     checkpoint,
+    supportsRetryCheckpoints,
   }: {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -95,13 +97,14 @@ export class CompleteAttemptService extends BaseService {
     if (completion.ok) {
       return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, env);
     } else {
-      return await this.#completeAttemptFailed(
+      return await this.#completeAttemptFailed({
         completion,
         execution,
         taskRunAttempt,
         env,
-        checkpoint
-      );
+        checkpoint,
+        supportsRetryCheckpoints,
+      });
     }
   }
 
@@ -152,13 +155,21 @@ export class CompleteAttemptService extends BaseService {
     return "COMPLETED";
   }
 
-  async #completeAttemptFailed(
-    completion: TaskRunFailedExecutionResult,
-    execution: TaskRunExecution,
-    taskRunAttempt: NonNullable<FoundAttempt>,
-    env?: AuthenticatedEnvironment,
-    checkpoint?: CheckpointData
-  ): Promise<"COMPLETED" | "RETRIED"> {
+  async #completeAttemptFailed({
+    completion,
+    execution,
+    taskRunAttempt,
+    env,
+    checkpoint,
+    supportsRetryCheckpoints,
+  }: {
+    completion: TaskRunFailedExecutionResult;
+    execution: TaskRunExecution;
+    taskRunAttempt: NonNullable<FoundAttempt>;
+    env?: AuthenticatedEnvironment;
+    checkpoint?: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
+  }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
       completion.error.code === "TASK_RUN_CANCELLED"
@@ -243,12 +254,13 @@ export class CompleteAttemptService extends BaseService {
       }
 
       if (!checkpoint) {
-        await this.#retryAttempt(
-          taskRunAttempt.taskRun,
-          completion.retry.timestamp,
-          undefined,
-          taskRunAttempt.backgroundWorker.supportsLazyAttempts
-        );
+        await this.#retryAttempt({
+          run: taskRunAttempt.taskRun,
+          retryTimestamp: completion.retry.timestamp,
+          supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+          supportsRetryCheckpoints,
+        });
+
         return "RETRIED";
       }
 
@@ -263,7 +275,7 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      if (!checkpointCreateResult) {
+      if (!checkpointCreateResult.success) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
         const finalizeService = new FinalizeTaskRunService();
@@ -276,11 +288,13 @@ export class CompleteAttemptService extends BaseService {
         return "COMPLETED";
       }
 
-      await this.#retryAttempt(
-        taskRunAttempt.taskRun,
-        completion.retry.timestamp,
-        checkpointCreateResult.event.id
-      );
+      await this.#retryAttempt({
+        run: taskRunAttempt.taskRun,
+        retryTimestamp: completion.retry.timestamp,
+        checkpointEventId: checkpointCreateResult.event.id,
+        supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+        supportsRetryCheckpoints,
+      });
 
       return "RETRIED";
     } else {
@@ -352,13 +366,27 @@ export class CompleteAttemptService extends BaseService {
     }
   }
 
-  async #retryAttempt(
-    run: TaskRun,
-    retryTimestamp: number,
-    checkpointEventId?: string,
-    supportsLazyAttempts?: boolean
-  ) {
-    if (checkpointEventId || !supportsLazyAttempts) {
+  async #retryAttempt({
+    run,
+    retryTimestamp,
+    checkpointEventId,
+    supportsLazyAttempts,
+    supportsRetryCheckpoints,
+  }: {
+    run: TaskRun;
+    retryTimestamp: number;
+    checkpointEventId?: string;
+    supportsLazyAttempts: boolean;
+    supportsRetryCheckpoints?: boolean;
+  }) {
+    if (checkpointEventId || !supportsLazyAttempts || !supportsRetryCheckpoints) {
+      if (!supportsRetryCheckpoints && checkpointEventId) {
+        logger.error("Worker does not support retry checkpoints, but a checkpoint was created", {
+          runId: run.id,
+          checkpointEventId,
+        });
+      }
+
       // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
       return await marqs?.replaceMessage(
@@ -366,7 +394,8 @@ export class CompleteAttemptService extends BaseService {
         {
           type: "EXECUTE",
           taskIdentifier: run.taskIdentifier,
-          checkpointEventId: checkpointEventId,
+          checkpointEventId: supportsRetryCheckpoints ? checkpointEventId : undefined,
+          retryCheckpointsDisabled: !supportsRetryCheckpoints,
         },
         retryTimestamp
       );

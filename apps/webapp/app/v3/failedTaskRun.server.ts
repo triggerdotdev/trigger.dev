@@ -1,11 +1,9 @@
 import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
-import { TaskRunStatus } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
 import { FinalizeTaskRunService } from "./services/finalizeTaskRun.server";
-
-const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
+import { FAILABLE_RUN_STATUSES } from "./taskStatus";
 
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
@@ -27,7 +25,7 @@ export class FailedTaskRunService extends BaseService {
       return;
     }
 
-    if (!FAILABLE_TASK_RUN_STATUSES.includes(taskRun.status)) {
+    if (!FAILABLE_RUN_STATUSES.includes(taskRun.status)) {
       logger.error("[FailedTaskRunService] Task run is not in a failable state", {
         taskRun,
         completion,

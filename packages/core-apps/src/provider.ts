@@ -43,6 +43,7 @@ export interface TaskOperationsCreateOptions {
   image: string;
   machine: MachinePreset;
   version: string;
+  nextAttemptNumber?: number;
   // identifiers
   envId: string;
   envType: EnvironmentType;
@@ -55,6 +56,7 @@ export interface TaskOperationsRestoreOptions {
   imageRef: string;
   checkpointRef: string;
   machine: MachinePreset;
+  attemptNumber?: number;
   // identifiers
   envId: string;
   envType: EnvironmentType;
@@ -142,6 +144,7 @@ export class ProviderShell implements Provider {
                 image: message.data.image,
                 machine: message.data.machine,
                 version: message.data.version,
+                nextAttemptNumber: message.data.nextAttemptNumber,
                 // identifiers
                 envId: message.data.envId,
                 envType: message.data.envType,
@@ -278,6 +281,7 @@ export class ProviderShell implements Provider {
               checkpointRef: message.location,
               machine: message.machine,
               imageRef: message.imageRef,
+              attemptNumber: message.attemptNumber,
               // identifiers
               envId: message.envId,
               envType: message.envType,
