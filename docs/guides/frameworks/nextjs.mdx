@@ -32,6 +32,9 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 <Tabs>
 
   <Tab title="Pages Router">
+
+    To trigger your task, you can create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
+
     ```ts
     // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
     import { helloWorldTask } from "@/trigger/example";
@@ -41,7 +44,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
     req: NextApiRequest,
     res: NextApiResponse<{ id: string }>
     ) {
-    const handle = await helloWorldTask.trigger("John Doe");
+    const handle = await helloWorldTask.trigger("");
 
     res.status(200).json(handle);
     }
@@ -49,21 +52,39 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
   </Tab>
 
   <Tab title="App Router">
-    ✌️ Here's content that's only inside the second Tab.
+
+    App router content
+
   </Tab>
 
   <Tab title="Server Actions">
-    💪 Here's content that's only inside the third Tab.
+    
+    Server actions content
+
   </Tab>
 
 </Tabs>
 
 ## Deploying your task in Next.js
 
+To deploy your task in Next.js, you can use Vercel, Netlify, or any other hosting provider that supports Node.js. Here's how you can deploy your task using Vercel:
+
+If you want to deploy your task using GitHub Actions, you can follow [this guide](/github-actions).
+
+## Troubleshooting
+
+    ### Next.js build failing due to missing API key in GitHub CI
+
+    This issue occurs during the Next.js app build process on GitHub CI where the Trigger.dev SDK is expecting the TRIGGER_SECRET_KEY environment variable to be set at build time. Next.js attempts to compile routes and creates static pages, which can cause issues with SDKs that require runtime environment variables. The solution is to mark the relevant pages as dynamic to prevent Next.js from trying to make them static. You can do this by adding the following line to the route file:
+
+    ```ts
+    export const dynamic = "force-dynamic";
+    ```
+
 # Todos
 
-- Edge runtime triggering `tasks.trigger<>("my-task, {});`
 - Pages directory triggering
+- Edge runtime triggering `tasks.trigger<>("my-task, {});`
 - App directory triggering
 - How to update your UI using the run status. Use `runs.retrieve` with the handle
 
