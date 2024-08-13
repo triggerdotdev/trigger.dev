@@ -116,7 +116,7 @@ export async function disconnectSession(environmentId: string) {
   return session;
 }
 
-type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+export type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   select: {
     id: true;
     type: true;

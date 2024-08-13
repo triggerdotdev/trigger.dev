@@ -1,20 +1,16 @@
-import * as Property from "~/components/primitives/PropertyTable";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
-import {
-  useIsImpersonating,
-  useOptionalOrganization,
-  useOrganization,
-} from "~/hooks/useOrganizations";
-import { useOptionalProject, useProject } from "~/hooks/useProject";
+import { useIsImpersonating, useOptionalOrganization } from "~/hooks/useOrganizations";
+import { useOptionalProject } from "~/hooks/useProject";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 
-export function AdminDebugTooltip({ children }: { children: React.ReactNode }) {
+export function AdminDebugTooltip({ children }: { children?: React.ReactNode }) {
   const hasAdminAccess = useHasAdminAccess();
   const isImpersonating = useIsImpersonating();
 

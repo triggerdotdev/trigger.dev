@@ -3,15 +3,10 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
-import { getUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  await requireUserId(request);
-  const user = await getUser(request);
-  if (user == null) {
-    return redirect("/");
-  }
-
+  const user = await requireUser(request);
   if (!user.admin) {
     return redirect("/");
   }
@@ -32,6 +27,10 @@ export default function Page() {
             {
               label: "Organizations",
               to: "/admin/orgs",
+            },
+            {
+              label: "Concurrency",
+              to: "/admin/concurrency",
             },
           ]}
           layoutId={"admin"}

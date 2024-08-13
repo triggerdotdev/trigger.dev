@@ -57,6 +57,9 @@ export class ResumeTaskDependencyService extends BaseService {
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: dependency.dependentAttempt.id,
           checkpointEventId: dependency.checkpointEventId,
+          projectId: dependency.taskRun.runtimeEnvironment.projectId,
+          environmentId: dependency.taskRun.runtimeEnvironment.id,
+          environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined
       );

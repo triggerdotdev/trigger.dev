@@ -1,9 +1,9 @@
+import { Prisma } from "@trigger.dev/database";
 import type {
   RuntimeEnvironmentType,
   TaskTriggerSource,
   TaskRunStatus as TaskRunStatusType,
 } from "@trigger.dev/database";
-import { Prisma } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import type { Organization } from "~/models/organization.server";
@@ -20,6 +20,7 @@ import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 
 export type Task = {
   slug: string;
@@ -114,7 +115,7 @@ export class TaskListPresenter extends BasePresenter {
     JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" tasks ON tasks."workerId" = workers.id
     ORDER BY slug ASC;`;
 
-    //group by the task identifier (task.slug). Add the latestRun and add all the environments.
+    //group by the task identifier (task.slug).
     const outputTasks = tasks.reduce((acc, task) => {
       const environment = project.environments.find((env) => env.id === task.runtimeEnvironmentId);
       if (!environment) {
@@ -251,51 +252,40 @@ export class TaskListPresenter extends BasePresenter {
       return {};
     }
 
-    const statuses = await this._replica.$queryRaw<
+    const concurrencies = await concurrencyTracker.taskConcurrentRunCounts(projectId, tasks);
+
+    const queued = await this._replica.$queryRaw<
       {
         taskIdentifier: string;
-        status: TaskRunStatusType;
         count: BigInt;
       }[]
     >`
     SELECT 
-    tr."taskIdentifier", 
-    tr."status",
+    tr."taskIdentifier",
     COUNT(*) 
   FROM 
     ${sqlDatabaseSchema}."TaskRun" as tr
   WHERE 
     tr."taskIdentifier" IN (${Prisma.join(tasks)})
     AND tr."projectId" = ${projectId}
-    AND tr."status" IN ('PENDING', 'WAITING_FOR_DEPLOY', 'EXECUTING', 'RETRYING_AFTER_FAILURE', 'WAITING_TO_RESUME')
+    AND tr."status" = ANY(ARRAY[${Prisma.join(QUEUED_STATUSES)}]::\"TaskRunStatus\"[])
   GROUP BY 
-    tr."taskIdentifier", 
-    tr."status"
+    tr."taskIdentifier"
   ORDER BY 
-    tr."taskIdentifier" ASC,
-    tr."status" ASC;`;
+    tr."taskIdentifier" ASC`;
 
-    return statuses.reduce((acc, a) => {
-      let existingTask = acc[a.taskIdentifier];
+    //create an object combining the queued and concurrency counts
+    const result: Record<string, { queued: number; running: number }> = {};
+    for (const task of tasks) {
+      const concurrency = concurrencies[task] ?? 0;
+      const queuedCount = queued.find((q) => q.taskIdentifier === task)?.count ?? 0;
 
-      if (!existingTask) {
-        existingTask = {
-          queued: 0,
-          running: 0,
-        };
-
-        acc[a.taskIdentifier] = existingTask;
-      }
-
-      if (QUEUED_STATUSES.includes(a.status)) {
-        existingTask.queued += Number(a.count);
-      }
-      if (RUNNING_STATUSES.includes(a.status)) {
-        existingTask.running += Number(a.count);
-      }
-
-      return acc;
-    }, {} as Record<string, { queued: number; running: number }>);
+      result[task] = {
+        queued: Number(queuedCount),
+        running: concurrency,
+      };
+    }
+    return result;
   }
 
   async #getAverageDurations(tasks: string[], projectId: string) {
