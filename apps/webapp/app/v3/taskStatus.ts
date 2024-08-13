@@ -69,3 +69,10 @@ export function isRestorableRunStatus(status: TaskRunStatus): boolean {
 export function isRestorableAttemptStatus(status: TaskRunAttemptStatus): boolean {
   return RESTORABLE_ATTEMPT_STATUSES.includes(status);
 }
+
+export const FAILABLE_RUN_STATUSES = [
+  "EXECUTING",
+  "PENDING",
+  "WAITING_FOR_DEPLOY",
+  "RETRYING_AFTER_FAILURE",
+] satisfies TaskRunStatus[];

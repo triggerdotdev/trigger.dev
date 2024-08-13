@@ -109,7 +109,7 @@ class DockerTaskOperations implements TaskOperations {
   async create(opts: TaskOperationsCreateOptions) {
     await this.init();
 
-    const containerName = this.#getRunContainerName(opts.runId);
+    const containerName = this.#getRunContainerName(opts.runId, opts.nextAttemptNumber);
 
     const runArgs = [
       "run",
@@ -150,7 +150,7 @@ class DockerTaskOperations implements TaskOperations {
   async restore(opts: TaskOperationsRestoreOptions) {
     await this.init();
 
-    const containerName = this.#getRunContainerName(opts.runId);
+    const containerName = this.#getRunContainerName(opts.runId, opts.attemptNumber);
 
     if (!this.#canCheckpoint || this.opts.forceSimulate) {
       logger.log("Simulating restore");
@@ -195,8 +195,8 @@ class DockerTaskOperations implements TaskOperations {
     return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
   }
 
   async #sendPostStart(containerName: string): Promise<void> {

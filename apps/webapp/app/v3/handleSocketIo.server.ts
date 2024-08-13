@@ -128,6 +128,7 @@ function createCoordinatorNamespace(io: Server) {
           completion: message.completion,
           execution: message.execution,
           checkpoint: message.checkpoint,
+          supportsRetryCheckpoints: message.version === "v1",
         });
       },
       TASK_RUN_FAILED_TO_RUN: async (message) => {

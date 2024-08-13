@@ -445,7 +445,7 @@ export class TriggerTaskService extends BaseService {
       return defaultQueueName;
     }
 
-    const queueConfig = QueueOptions.optional().safeParse(task.queueConfig);
+    const queueConfig = QueueOptions.optional().nullable().safeParse(task.queueConfig);
 
     if (!queueConfig.success) {
       console.log("Failed to get queue name: Invalid queue config", {

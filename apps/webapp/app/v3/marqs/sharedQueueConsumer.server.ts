@@ -54,6 +54,7 @@ export const SharedQueueMessageBody = z.discriminatedUnion("type", [
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
     checkpointEventId: z.string().optional(),
+    retryCheckpointsDisabled: z.boolean().optional(),
   }),
   WithTraceContext.extend({
     type: z.literal("RESUME"),
@@ -294,12 +295,9 @@ export class SharedQueueConsumer {
 
         const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
 
-        const EXECUTABLE_RUN_STATUSES: {
-          fromCheckpoint: TaskRunStatus[];
-          withoutCheckpoint: TaskRunStatus[];
-        } = {
-          fromCheckpoint: ["WAITING_TO_RESUME"],
-          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"],
+        const EXECUTABLE_RUN_STATUSES = {
+          fromCheckpoint: ["WAITING_TO_RESUME"] satisfies TaskRunStatus[],
+          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"] satisfies TaskRunStatus[],
         };
 
         if (
@@ -474,7 +472,10 @@ export class SharedQueueConsumer {
           ? lockedTaskRun.attempts[0].number + 1
           : 1;
 
-        const isRetry = lockedTaskRun.status === "WAITING_TO_RESUME" && nextAttemptNumber > 1;
+        const isRetry =
+          nextAttemptNumber > 1 &&
+          (lockedTaskRun.status === "WAITING_TO_RESUME" ||
+            lockedTaskRun.status === "RETRYING_AFTER_FAILURE");
 
         try {
           if (messageBody.data.checkpointEventId) {
@@ -515,11 +516,13 @@ export class SharedQueueConsumer {
             }
           }
 
-          if (isRetry) {
+          if (isRetry && !messageBody.data.retryCheckpointsDisabled) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
               runId: lockedTaskRun.id,
             });
+
+            // Retries for workers with disabled retry checkpoints will be handled just like normal attempts
           } else {
             const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
             const machine = machinePresetFromConfig(machineConfig ?? {});
@@ -531,6 +534,7 @@ export class SharedQueueConsumer {
                 image: deployment.imageReference,
                 version: deployment.version,
                 machine,
+                nextAttemptNumber,
                 // identifiers
                 id: "placeholder", // TODO: Remove this completely in a future release
                 envId: lockedTaskRun.runtimeEnvironment.id,
