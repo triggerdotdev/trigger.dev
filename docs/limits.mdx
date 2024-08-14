@@ -4,6 +4,7 @@ description: "There are some hard and soft limits in v3 that you might hit."
 ---
 
 import SoftLimit from '/snippets/soft-limit.mdx';
+import RateLimitHitUseBatchTrigger from '/snippets/rate-limit-hit-use-batchtrigger.mdx';
 
 ## Concurrency limits
 
@@ -24,7 +25,7 @@ These are the default limits on a free account.
 
 Generally speaking each SDK call is an API call.
 
-The most common cause of hitting the API rate limit is if you're calling `trigger()` on a task in a loop, instead of doing this use `batchTrigger()` which will trigger multiple tasks in a single API call. You can have up to 100 tasks in a single batch trigger call.
+<RateLimitHitUseBatchTrigger/>
 
 ## Schedules
 

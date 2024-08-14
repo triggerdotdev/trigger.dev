@@ -4,6 +4,8 @@ description: "Some common problems you might experience and their solutions"
 ---
 
 import NextjsTroubleshooting from '/snippets/nextjs-missing-api-key.mdx';
+import BundlePackages from '/snippets/bundle-packages.mdx';
+import RateLimitHitUseBatchTrigger from '/snippets/rate-limit-hit-use-batchtrigger.mdx';
 
 ## Development
 
@@ -106,6 +108,12 @@ Prisma uses code generation to create the client from your schema file. This mea
 ### When triggering subtasks the parent task finishes too soon
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
+
+### Rate limit exceeded
+
+<RateLimitHitUseBatchTrigger/>
+
+View the [rate limits](/limits) page for more information.
 
 ### `Error: Prisma generate failed to find the specified schema at ../../path`
 
