@@ -51,7 +51,7 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
-  ScheduleListItem,
+  type ScheduleListItem,
   ScheduleListPresenter,
 } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -179,72 +179,74 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
           <ResizablePanel order={1} minSize={20} defaultSize={60}>
-            {possibleTasks.length === 0 ? (
-              <CreateScheduledTaskInstructions />
-            ) : schedules.length === 0 && !hasFilters ? (
-              <AttachYourFirstScheduleInstructions />
-            ) : (
-              <div className="p-3">
-                <div className="mb-2 flex items-center justify-between gap-x-2">
-                  <ScheduleFilters
-                    possibleEnvironments={possibleEnvironments}
-                    possibleTasks={possibleTasks}
-                  />
-                  <div className="flex items-center justify-end gap-x-2">
-                    <PaginationControls
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      showPageNumbers={false}
+            <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              {possibleTasks.length === 0 ? (
+                <CreateScheduledTaskInstructions />
+              ) : schedules.length === 0 && !hasFilters ? (
+                <AttachYourFirstScheduleInstructions />
+              ) : (
+                <div className="p-3">
+                  <div className="mb-2 flex items-center justify-between gap-x-2">
+                    <ScheduleFilters
+                      possibleEnvironments={possibleEnvironments}
+                      possibleTasks={possibleTasks}
                     />
+                    <div className="flex items-center justify-end gap-x-2">
+                      <PaginationControls
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        showPageNumbers={false}
+                      />
+                    </div>
+                  </div>
+
+                  <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                  <div className="mt-3 flex w-full items-start justify-between">
+                    {requiresUpgrade ? (
+                      <InfoPanel
+                        variant="upgrade"
+                        icon={LockOpenIcon}
+                        iconClassName="text-indigo-500"
+                        title="Unlock more schedules"
+                        to={v3BillingPath(organization)}
+                        buttonLabel="Upgrade"
+                      >
+                        <Paragraph variant="small">
+                          You've used all {limits.limit} of your available schedules. Upgrade your
+                          plan to enable more.
+                        </Paragraph>
+                      </InfoPanel>
+                    ) : (
+                      <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
+                        <div className="flex items-center justify-between gap-6">
+                          <Header3>
+                            You've used {limits.used}/{limits.limit} of your schedules.
+                          </Header3>
+
+                          {canUpgrade ? (
+                            <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                              Upgrade
+                            </LinkButton>
+                          ) : (
+                            <Feedback
+                              button={<Button variant="secondary/small">Request more</Button>}
+                              defaultValue="help"
+                            />
+                          )}
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
+                          <div
+                            className="h-full bg-grid-bright"
+                            style={{ width: `${(limits.used / limits.limit) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                   </div>
                 </div>
-
-                <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-3 flex w-full items-start justify-between">
-                  {requiresUpgrade ? (
-                    <InfoPanel
-                      variant="upgrade"
-                      icon={LockOpenIcon}
-                      iconClassName="text-indigo-500"
-                      title="Unlock more schedules"
-                      to={v3BillingPath(organization)}
-                      buttonLabel="Upgrade"
-                    >
-                      <Paragraph variant="small">
-                        You've used all {limits.limit} of your available schedules. Upgrade your
-                        plan to enable more.
-                      </Paragraph>
-                    </InfoPanel>
-                  ) : (
-                    <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
-                      <div className="flex items-center justify-between gap-6">
-                        <Header3>
-                          You've used {limits.used}/{limits.limit} of your schedules.
-                        </Header3>
-
-                        {canUpgrade ? (
-                          <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                            Upgrade
-                          </LinkButton>
-                        ) : (
-                          <Feedback
-                            button={<Button variant="secondary/small">Request more</Button>}
-                            defaultValue="help"
-                          />
-                        )}
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
-                        <div
-                          className="h-full bg-grid-bright"
-                          style={{ width: `${(limits.used / limits.limit) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </ResizablePanel>
           {(isShowingNewPane || isShowingSchedule) && (
             <>
