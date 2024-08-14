@@ -28,9 +28,15 @@ import NextjsTroubleshooting from '/snippets/nextjs-missing-api-key.mdx';
 
 ## Set your secret key
 
+Set your `TRIGGER_SECRET_KEY` environment variable in your `.env` file. This key is used to authenticate with Trigger.dev. Visit the API Keys page in the dashboard and select the secret key for the environment you are deploying to.
+
+![How to find your secret key](/images/api-keys.png)
+
+For more information on authenticating with Trigger.dev, see the [API keys page](/apikeys).
+
 ## Triggering your task in Next.js
 
-Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions:
+Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions.
 
 <Tabs>
 
