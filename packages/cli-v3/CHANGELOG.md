@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 3.0.0-beta.53
+
+### Patch Changes
+
+- 5cf90da72: Fix issues that could result in unreezable state run crashes. Details:
+  - Never checkpoint between attempts
+  - Some messages and socket data now include attempt numbers
+  - Remove attempt completion replays
+  - Additional prod entry point logging
+  - Fail runs that receive deprecated (pre-lazy attempt) execute messages
+- Updated dependencies [5cf90da72]
+  - @trigger.dev/core@3.0.0-beta.53
+
 ## 3.0.0-beta.52
 
 ### Patch Changes
