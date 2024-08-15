@@ -104,8 +104,8 @@ export default function Page() {
         <PageTitle title="Deployments" />
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-          <ResizablePanel order={1} minSize={20} defaultSize={60}>
+        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+          <ResizablePanel id="deployments-main" min="100px">
             {hasDeployments ? (
               <div className="flex flex-col gap-4 p-3">
                 <Table>
@@ -211,8 +211,8 @@ export default function Page() {
 
           {deploymentParam && (
             <>
-              <ResizableHandle withHandle />
-              <ResizablePanel order={2} minSize={20} defaultSize={40}>
+              <ResizableHandle id="deployments-handle" />
+              <ResizablePanel id="deployments-inspector" min="100px" max="600px">
                 <Outlet />
               </ResizablePanel>
             </>
