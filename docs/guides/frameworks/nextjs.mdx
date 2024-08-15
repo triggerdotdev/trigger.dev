@@ -42,7 +42,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
   <Tab title="App Router">
 
-      1. Add a Route Handler by creating a `route.ts` (or `route.js`) file in the `app/api` directory like this: `app/api/hello-world/route.ts`.
+      1. Add a Route Handler by creating a `route.ts` file (or `route.js` file if using JavaScript) in the `app/api` directory like this: `app/api/hello-world/route.ts`.
       2. Then add this example code to `route.ts` to trigger your task:
 
       ```ts app/api/hello-world/route.ts
@@ -93,7 +93,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 ## Add your environment variables (optional)
 
-If you have any environment variables in your tasks be sure to add them in the dashboard so the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
+If you have any environment variables in your tasks, be sure to add them in the dashboard so the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
 
 In the sidebar select the "Environment Variables" page, then press the "New environment variable"
 button. ![Environment variables page](/images/environment-variables-page.jpg)
@@ -105,7 +105,7 @@ You can also add environment variables in code by following the steps on the [En
 
 ## Deploying your task in Next.js
 
-You can manually deploy your tasks by running the [CLI deploy command]():
+For this guide, we'll manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
 
 <CodeGroup>
 
@@ -123,11 +123,23 @@ yarn dlx trigger.dev@beta deploy
 
 </CodeGroup>
 
-Or use GitHub Actions to automatically deploy your tasks whenever new code is pushed to the `main` branch and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
+### Other ways to deploy
 
-We're also working on adding a [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
+<Tabs>
 
-NOTE: Add your trigger secret key in Vercel (or other hosting provider).
+<Tab title="GitHub Actions">
+
+Use GitHub Actions to automatically deploy your tasks whenever new code is pushed to the `main` branch and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
+
+</Tab>
+
+<Tab title="Vercel Integration">
+
+We're working on adding an official [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
+
+</Tab>
+
+</Tabs>
 
 ## Troubleshooting
 
