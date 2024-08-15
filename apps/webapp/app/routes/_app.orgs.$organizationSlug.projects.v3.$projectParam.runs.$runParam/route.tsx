@@ -10,8 +10,8 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
+import { useParams, useRevalidator } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
@@ -22,6 +22,7 @@ import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -66,6 +67,8 @@ import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { logger } from "~/services/logger.server";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -77,11 +80,8 @@ import {
   v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { logger } from "~/services/logger.server";
-import { typedjson, UseDataFunctionReturn, useTypedLoaderData } from "remix-typedjson";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 
 type TraceEvent = NonNullable<UseDataFunctionReturn<typeof loader>["trace"]>["events"][0];
 
@@ -95,7 +95,8 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "300px" as const,
+      default: "430px" as const,
+      min: "50px" as const,
     },
   },
   tree: {
@@ -103,11 +104,13 @@ const resizableSettings = {
     handleId: "tree-handle",
     tree: {
       id: "tree",
-      default: "20%" as const,
+      default: "50%" as const,
+      min: "50px" as const,
     },
     timeline: {
       id: "timeline",
-      default: "80%" as const,
+      default: "50%" as const,
+      min: "50px" as const,
     },
   },
 };
@@ -328,6 +331,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
           <ResizablePanel
             id={resizableSettings.parent.inspector.id}
             default={resizableSettings.parent.inspector.default}
+            min={resizableSettings.parent.inspector.min}
           >
             <SpanView
               runParam={run.friendlyId}
@@ -419,6 +423,7 @@ function NoLogsView({ run, resizable }: LoaderData) {
         <ResizablePanel
           id={resizableSettings.parent.inspector.id}
           default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
         >
           <SpanView runParam={run.friendlyId} spanId={run.spanId} />
         </ResizablePanel>
@@ -512,6 +517,7 @@ function TasksTreeView({
         <ResizablePanel
           id={resizableSettings.tree.tree.id}
           default={resizableSettings.tree.tree.default}
+          min={resizableSettings.tree.tree.min}
           className="pl-3"
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
@@ -624,6 +630,7 @@ function TasksTreeView({
         <ResizablePanel
           id={resizableSettings.tree.timeline.id}
           default={resizableSettings.tree.timeline.default}
+          min={resizableSettings.tree.timeline.min}
         >
           <TimelineView
             totalDuration={totalDuration}
