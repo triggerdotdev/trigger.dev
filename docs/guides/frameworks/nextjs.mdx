@@ -12,6 +12,7 @@ import CliRunTestStep from '/snippets/step-run-test.mdx';
 import CliViewRunStep from '/snippets/step-view-run.mdx';
 import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
 import NextjsTroubleshooting from '/snippets/nextjs-missing-api-key.mdx';
+import TriggerTaskNextjs from '/snippets/trigger-tasks-nextjs.mdx';
 
 <Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
 
@@ -42,8 +43,17 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
   <Tab title="App Router">
 
-      1. Add a Route Handler by creating a `route.ts` file (or `route.js` file if using JavaScript) in the `app/api` directory like this: `app/api/hello-world/route.ts`.
-      2. Then add this example code to `route.ts` to trigger your task:
+  <Steps>
+
+  <Step title="Create a Route Handler">
+
+      Add a Route Handler by creating a `route.ts` file (or `route.js` file) in the `app/api` directory like this: `app/api/hello-world/route.ts`.
+
+  </Step>
+
+  <Step title="Add your task">
+
+      Add this code to your `route.ts` file which imports your task along with `NextResponse` to handle the API route response:
 
       ```ts app/api/hello-world/route.ts
       // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
@@ -60,37 +70,142 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
         return NextResponse.json(handle);
       }
       ```
+
+    </Step>
+
+    <Step title="Trigger your task">
+
+    <TriggerTaskNextjs/>
+
+    </Step>
+
+    </Steps>
 
     </Tab>
 
     <Tab title="App Router (Server Actions)">
 
-      1. Then add this example code to `route.ts` to trigger your task:
-      2. Create a button on a page in your app with an `onClick` event that triggers your task. Make sure to import your task and include `"use client";` at the top of your file.
+    <Steps>
+    
+    <Step title="Create an `actions.ts` file">
 
-      ```ts app/api/hello-world/route.ts
-      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
-      import type { helloWorldTask } from "@/trigger/example";
-      import { tasks } from "@trigger.dev/sdk/v3";
-      import { NextResponse } from "next/server";
+      Create an `actions.ts` file in the `app/api` directory and add this code which imports your `helloWorldTask()` task. Make sure to include `"use server";` at the top of the file.
+      
+      ```ts app/api/actions.ts
+        "use server";
 
-      export async function GET(request: Request) {
-        const handle = await tasks.trigger<typeof helloWorldTask>(
-          "hello-world",
-          "James"
+        import { helloWorldTask } from "@/trigger/example";
+        import { tasks } from "@trigger.dev/sdk/v3";
+
+        export async function myTask() {
+          try {
+            const handle = await tasks.trigger<typeof helloWorldTask>(
+              "hello-world",
+              "James"
+            );
+
+            return { handle };
+          } catch (error) {
+            console.error(error);
+            return {
+              error: "something went wrong",
+            };
+          }
+        }
+      ```
+
+    </Step>
+    
+    <Step title="Create a button to trigger your task">
+
+      For the purposes of this guide, we'll create a button with an `onClick` event that triggers your task. We'll add this to the `page.tsx` file so we can trigger the task by clicking the button. Make sure to import your task and include `"use client";` at the top of your file.
+
+      ```ts app/page.tsx
+      "use client";
+
+      import { myTask } from "./actions";
+
+      export default function Home() {
+        return (
+          <main className="flex min-h-screen flex-col items-center justify-center p-24">
+            <button
+              onClick={async () => {
+                await myTask();
+              }}
+            >
+              Trigger my task
+            </button>
+          </main>
         );
-
-        return NextResponse.json(handle);
       }
       ```
+    </Step>
+
+    <Step title="Trigger your task">
+
+    Run your Next.js app:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash pnpm
+    pnpm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+    </CodeGroup>
+
+    Open your app in a browser, making sure the port number is the same as the one you're running your Next.js app on. For example, if you're running your Next.js app on port 3000, visit: 
+
+    ```bash
+    http://localhost:3000
+    ```
+    
+    Run the dev server from Step 2. of the [Initial Setup](/guides/frameworks/nextjs#initial-setup) section above if it's not already running:
+    
+    <CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@beta dev
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@beta dev
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@beta dev
+    ```
+
+    </CodeGroup>
+    
+    Then click the button we created in your app to trigger the task. You should see the CLI log the task run with a link to view the logs. 
+
+    ![Trigger.dev CLI showing a successful run](/images/trigger-cli-run-success.png)
+
+    Visit the [Trigger.dev dashboard](https://cloud.trigger.dev) to see your run.
+
+    </Step>
+
+    </Steps>
 
     </Tab>
 
     <Tab title="Pages Router">
 
-      Create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
+    <Steps>
 
-      ```ts pages/api/hello.ts
+    <Step title="Create an API route">
+
+      Create an API route in the `pages/api` directory. Then create a `hello-world .ts` (or `hello-world.js`) file for your task and copy this code example:
+
+      ```ts pages/api/hello-world.ts
       // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
       import { helloWorldTask } from "@/trigger/example";
       import { tasks } from "@trigger.dev/sdk/v3";
@@ -108,13 +223,23 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
         res.status(200).json(handle);   
       }
       ```
+    </Step>
+
+    <Step title="Trigger your task">
+
+    <TriggerTaskNextjs/>
+
+    </Step>
+
+    </Steps>
+
     </Tab>
 
 </Tabs>
 
 ## Add your environment variables (optional)
 
-If you have any environment variables in your tasks, be sure to add them in the dashboard so the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
+If you have any environment variables in your tasks, be sure to add them in the dashboard so deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
 
 In the sidebar select the "Environment Variables" page, then press the "New environment variable"
 button. ![Environment variables page](/images/environment-variables-page.jpg)
