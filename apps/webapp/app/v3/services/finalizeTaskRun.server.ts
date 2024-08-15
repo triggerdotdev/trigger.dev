@@ -1,5 +1,5 @@
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
-import { type FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
@@ -47,6 +47,9 @@ export class FinalizeTaskRunService extends BaseService {
       expiredAt,
       completedAt,
     });
+
+    //todo if it's a failed status ensure there's an error
+    //todo if it's canceled add the reason as an error
 
     const run = await this._prisma.taskRun.update({
       where: { id },

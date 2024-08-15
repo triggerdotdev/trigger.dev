@@ -76,3 +76,10 @@ export const FAILABLE_RUN_STATUSES = [
   "WAITING_FOR_DEPLOY",
   "RETRYING_AFTER_FAILURE",
 ] satisfies TaskRunStatus[];
+
+export const FAILED_RUN_STATUSES = [
+  "INTERRUPTED",
+  "COMPLETED_WITH_ERRORS",
+  "SYSTEM_FAILURE",
+  "CRASHED",
+] satisfies TaskRunStatus[];
