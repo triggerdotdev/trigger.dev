@@ -311,27 +311,36 @@ export class TriggerTaskService extends BaseService {
                     ? Math.max(0, body.options.queue.concurrencyLimit)
                     : undefined;
 
-                const taskQueue = await tx.taskQueue.upsert({
+                let taskQueue = await tx.taskQueue.findFirst({
                   where: {
-                    runtimeEnvironmentId_name: {
-                      runtimeEnvironmentId: environment.id,
-                      name: queueName,
-                    },
-                  },
-                  update: {
-                    concurrencyLimit,
-                    rateLimit: body.options.queue.rateLimit,
-                  },
-                  create: {
-                    friendlyId: generateFriendlyId("queue"),
-                    name: queueName,
-                    concurrencyLimit,
                     runtimeEnvironmentId: environment.id,
-                    projectId: environment.projectId,
-                    rateLimit: body.options.queue.rateLimit,
-                    type: "NAMED",
+                    name: queueName,
                   },
                 });
+
+                if (taskQueue) {
+                  taskQueue = await tx.taskQueue.update({
+                    where: {
+                      id: taskQueue.id,
+                    },
+                    data: {
+                      concurrencyLimit,
+                      rateLimit: body.options.queue.rateLimit,
+                    },
+                  });
+                } else {
+                  taskQueue = await tx.taskQueue.create({
+                    data: {
+                      friendlyId: generateFriendlyId("queue"),
+                      name: queueName,
+                      concurrencyLimit,
+                      runtimeEnvironmentId: environment.id,
+                      projectId: environment.projectId,
+                      rateLimit: body.options.queue.rateLimit,
+                      type: "NAMED",
+                    },
+                  });
+                }
 
                 if (typeof taskQueue.concurrencyLimit === "number") {
                   await marqs?.updateQueueConcurrencyLimits(
