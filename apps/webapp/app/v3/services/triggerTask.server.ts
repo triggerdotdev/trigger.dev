@@ -311,46 +311,46 @@ export class TriggerTaskService extends BaseService {
                     ? Math.max(0, body.options.queue.concurrencyLimit)
                     : undefined;
 
-                // let taskQueue = await tx.taskQueue.findFirst({
-                //   where: {
-                //     runtimeEnvironmentId: environment.id,
-                //     name: queueName,
-                //   },
-                // });
+                let taskQueue = await tx.taskQueue.findFirst({
+                  where: {
+                    runtimeEnvironmentId: environment.id,
+                    name: queueName,
+                  },
+                });
 
-                // if (taskQueue) {
-                //   taskQueue = await tx.taskQueue.update({
-                //     where: {
-                //       id: taskQueue.id,
-                //     },
-                //     data: {
-                //       concurrencyLimit,
-                //       rateLimit: body.options.queue.rateLimit,
-                //     },
-                //   });
-                // } else {
-                //   taskQueue = await tx.taskQueue.create({
-                //     data: {
-                //       friendlyId: generateFriendlyId("queue"),
-                //       name: queueName,
-                //       concurrencyLimit,
-                //       runtimeEnvironmentId: environment.id,
-                //       projectId: environment.projectId,
-                //       rateLimit: body.options.queue.rateLimit,
-                //       type: "NAMED",
-                //     },
-                //   });
-                // }
+                if (taskQueue) {
+                  taskQueue = await tx.taskQueue.update({
+                    where: {
+                      id: taskQueue.id,
+                    },
+                    data: {
+                      concurrencyLimit,
+                      rateLimit: body.options.queue.rateLimit,
+                    },
+                  });
+                } else {
+                  taskQueue = await tx.taskQueue.create({
+                    data: {
+                      friendlyId: generateFriendlyId("queue"),
+                      name: queueName,
+                      concurrencyLimit,
+                      runtimeEnvironmentId: environment.id,
+                      projectId: environment.projectId,
+                      rateLimit: body.options.queue.rateLimit,
+                      type: "NAMED",
+                    },
+                  });
+                }
 
-                // if (typeof taskQueue.concurrencyLimit === "number") {
-                //   await marqs?.updateQueueConcurrencyLimits(
-                //     environment,
-                //     taskQueue.name,
-                //     taskQueue.concurrencyLimit
-                //   );
-                // } else {
-                //   await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
-                // }
+                if (typeof taskQueue.concurrencyLimit === "number") {
+                  await marqs?.updateQueueConcurrencyLimits(
+                    environment,
+                    taskQueue.name,
+                    taskQueue.concurrencyLimit
+                  );
+                } else {
+                  await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                }
               }
 
               if (taskRun.delayUntil) {
