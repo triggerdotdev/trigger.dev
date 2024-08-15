@@ -9,6 +9,7 @@ import { machinePresetFromConfig } from "../machinePresets.server";
 import { workerQueue } from "~/services/worker.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CrashTaskRunService } from "./crashTaskRun.server";
+import { reportInvocationUsage } from "~/services/platform.v3.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
@@ -149,14 +150,8 @@ export class CreateTaskRunAttemptService extends BaseService {
       }
 
       if (taskRunAttempt.number === 1 && taskRun.baseCostInCents > 0) {
-        await workerQueue.enqueue("v3.reportUsage", {
-          orgId: environment.organizationId,
-          data: {
-            costInCents: String(taskRun.baseCostInCents),
-          },
-          additionalData: {
-            runId: taskRun.id,
-          },
+        await reportInvocationUsage(environment.organizationId, taskRun.baseCostInCents, {
+          runId: taskRun.id,
         });
       }
 
