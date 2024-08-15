@@ -198,6 +198,7 @@ export class RunPresenter {
           orderBy: {
             createdAt: "asc",
           },
+          take: 1000,
         },
         runConnections: {
           select: {
