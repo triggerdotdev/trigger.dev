@@ -3,6 +3,7 @@ import {
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
+  TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
@@ -24,6 +25,7 @@ import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAler
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { env } from "~/env.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -256,7 +258,7 @@ export class CompleteAttemptService extends BaseService {
       if (!checkpoint) {
         await this.#retryAttempt({
           run: taskRunAttempt.taskRun,
-          retryTimestamp: completion.retry.timestamp,
+          retry: completion.retry,
           supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
           supportsRetryCheckpoints,
         });
@@ -290,7 +292,7 @@ export class CompleteAttemptService extends BaseService {
 
       await this.#retryAttempt({
         run: taskRunAttempt.taskRun,
-        retryTimestamp: completion.retry.timestamp,
+        retry: completion.retry,
         checkpointEventId: checkpointCreateResult.event.id,
         supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
         supportsRetryCheckpoints,
@@ -368,28 +370,20 @@ export class CompleteAttemptService extends BaseService {
 
   async #retryAttempt({
     run,
-    retryTimestamp,
+    retry,
     checkpointEventId,
     supportsLazyAttempts,
     supportsRetryCheckpoints,
   }: {
     run: TaskRun;
-    retryTimestamp: number;
+    retry: TaskRunExecutionRetry;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
     supportsRetryCheckpoints?: boolean;
   }) {
-    if (checkpointEventId || !supportsLazyAttempts || !supportsRetryCheckpoints) {
-      if (!supportsRetryCheckpoints && checkpointEventId) {
-        logger.error("Worker does not support retry checkpoints, but a checkpoint was created", {
-          runId: run.id,
-          checkpointEventId,
-        });
-      }
-
-      // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
+    const retryViaQueue = () => {
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      return await marqs?.replaceMessage(
+      return marqs?.replaceMessage(
         run.id,
         {
           type: "EXECUTE",
@@ -397,14 +391,41 @@ export class CompleteAttemptService extends BaseService {
           checkpointEventId: supportsRetryCheckpoints ? checkpointEventId : undefined,
           retryCheckpointsDisabled: !supportsRetryCheckpoints,
         },
-        retryTimestamp
+        retry.timestamp
       );
-    } else {
-      // There's no checkpoint and the worker supports lazy attempts
-      // This means the worker is still running and waiting for a retry message
-      // It supports lazy attempts so we can bypass the queue and send the message directly to it
-      RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
+    };
+
+    const retryDirectly = () => {
+      return RetryAttemptService.enqueue(run.id, this._prisma, new Date(retry.timestamp));
+    };
+
+    // There's a checkpoint, so we need to go through the queue
+    if (checkpointEventId) {
+      if (!supportsRetryCheckpoints) {
+        logger.error("Worker does not support retry checkpoints, but a checkpoint was created", {
+          runId: run.id,
+          checkpointEventId,
+        });
+      }
+
+      await retryViaQueue();
+      return;
     }
+
+    // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
+    if (!supportsLazyAttempts) {
+      await retryViaQueue();
+      return;
+    }
+
+    // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
+    if (!supportsRetryCheckpoints && retry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS) {
+      await retryViaQueue();
+      return;
+    }
+
+    // The worker is still running and waiting for a retry message
+    await retryDirectly();
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
