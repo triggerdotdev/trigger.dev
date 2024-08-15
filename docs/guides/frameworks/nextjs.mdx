@@ -26,9 +26,9 @@ import NextjsTroubleshooting from '/snippets/nextjs-missing-api-key.mdx';
   <CliViewRunStep />
 </Steps>
 
-## Set your secret key
+## Set your secret key locally
 
-Set your `TRIGGER_SECRET_KEY` environment variable in your `.env` file. This key is used to authenticate with Trigger.dev. Visit the API Keys page in the dashboard and select the secret key for the environment you are deploying to.
+Set your `TRIGGER_SECRET_KEY` environment variable in your `.env.local` file if using the Next.js App router or `.env` file if using Pages router. This key is used to authenticate with Trigger.dev, so you can trigger runs from your Next.js app. Visit the API Keys page in the dashboard and select the DEV secret key.
 
 ![How to find your secret key](/images/api-keys.png)
 
@@ -40,9 +40,34 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 <Tabs>
 
+  <Tab title="App Router">
+
+      1. Add a Route Handler by creating a `route.ts` (or `route.js`) file in the `app/api` directory like this: `app/api/hello-world/route.ts`.
+      2. Then add this example code to `route.ts` to trigger your task:
+
+      ```ts app/api/hello-world/route.ts
+      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+      import type { helloWorldTask } from "@/trigger/example";
+      import { tasks } from "@trigger.dev/sdk/v3";
+      import { NextResponse } from "next/server";
+
+      export async function GET(request: Request) {
+        const handle = await tasks.trigger<typeof helloWorldTask>(
+          "hello-world",
+          "James"
+        );
+
+        return NextResponse.json(handle);
+      }
+      ```
+
+      Server actions example
+
+    </Tab>
+
   <Tab title="Pages Router">
 
-    To trigger your task, you can create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
+    Create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
 
     ```ts pages/api/hello.ts
     // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
@@ -64,27 +89,19 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
     ```
   </Tab>
 
-  <Tab title="App Router">
-
-    App router content
-
-    API route (same as Pages router)
-
-    Server actions example
-
-  </Tab>
-
 </Tabs>
 
 ## Add your environment variables (optional)
 
-Any environment variables used in your tasks need to be added to ensure the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
+If you have any environment variables in your tasks be sure to add them in the dashboard so the deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
 
 In the sidebar select the "Environment Variables" page, then press the "New environment variable"
 button. ![Environment variables page](/images/environment-variables-page.jpg)
 
 You can add values for your local dev environment, staging and prod. ![Environment variables
 page](/images/environment-variables-panel.jpg)
+
+You can also add environment variables in code by following the steps on the [Environment Variables page](/deploy-environment-variables#in-your-code).
 
 ## Deploying your task in Next.js
 
@@ -109,6 +126,8 @@ yarn dlx trigger.dev@beta deploy
 Or use GitHub Actions to automatically deploy your tasks whenever new code is pushed to the `main` branch and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
 
 We're also working on adding a [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
+
+NOTE: Add your trigger secret key in Vercel (or other hosting provider).
 
 ## Troubleshooting
 
