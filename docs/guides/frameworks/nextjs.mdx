@@ -61,33 +61,54 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
       }
       ```
 
-      Server actions example
+    </Tab>
+
+    <Tab title="App Router (Server Actions)">
+
+      1. Then add this example code to `route.ts` to trigger your task:
+      2. Create a button on a page in your app with an `onClick` event that triggers your task. Make sure to import your task and include `"use client";` at the top of your file.
+
+      ```ts app/api/hello-world/route.ts
+      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+      import type { helloWorldTask } from "@/trigger/example";
+      import { tasks } from "@trigger.dev/sdk/v3";
+      import { NextResponse } from "next/server";
+
+      export async function GET(request: Request) {
+        const handle = await tasks.trigger<typeof helloWorldTask>(
+          "hello-world",
+          "James"
+        );
+
+        return NextResponse.json(handle);
+      }
+      ```
 
     </Tab>
 
-  <Tab title="Pages Router">
+    <Tab title="Pages Router">
 
-    Create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
+      Create an API route in the `pages/api` directory. Here's an example of how you can trigger your task in the Pages router:
 
-    ```ts pages/api/hello.ts
-    // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
-    import { helloWorldTask } from "@/trigger/example";
-    import { tasks } from "@trigger.dev/sdk/v3";
-    import type { NextApiRequest, NextApiResponse } from "next";
+      ```ts pages/api/hello.ts
+      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+      import { helloWorldTask } from "@/trigger/example";
+      import { tasks } from "@trigger.dev/sdk/v3";
+      import type { NextApiRequest, NextApiResponse } from "next";
 
-    export default async function handler(
-      req: NextApiRequest,
-      res: NextApiResponse<{ id: string }>
-    ) {
-      const handle = await tasks.trigger<typeof helloWorldTask>(
-      "hello-world",
-      "James"
-      );
+      export default async function handler(
+        req: NextApiRequest,
+        res: NextApiResponse<{ id: string }>
+      ) {
+        const handle = await tasks.trigger<typeof helloWorldTask>(
+        "hello-world",
+        "James"
+        );
 
-      res.status(200).json(handle);   
-    }
-    ```
-  </Tab>
+        res.status(200).json(handle);   
+      }
+      ```
+    </Tab>
 
 </Tabs>
 
