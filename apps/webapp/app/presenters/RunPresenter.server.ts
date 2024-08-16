@@ -4,7 +4,7 @@ import {
   EventSpecificationSchema,
   StyleSchema,
 } from "@trigger.dev/core";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, prisma } from "~/db.server";
 import { isRunCompleted, runBasicStatus } from "~/models/jobRun.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { taskListToTree } from "~/utils/taskListToTree";
@@ -110,7 +110,7 @@ export class RunPresenter {
   }
 
   query({ id, userId }: RunOptions) {
-    return this.#prismaClient.jobRun.findFirst({
+    return $replica.jobRun.findFirst({
       select: {
         id: true,
         number: true,
@@ -198,6 +198,7 @@ export class RunPresenter {
           orderBy: {
             createdAt: "asc",
           },
+          take: 1000,
         },
         runConnections: {
           select: {

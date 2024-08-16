@@ -79,6 +79,9 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
           {
             type: "EXECUTE",
             taskIdentifier: run.taskIdentifier,
+            projectId: backgroundWorker.runtimeEnvironment.projectId,
+            environmentId: backgroundWorker.runtimeEnvironment.id,
+            environmentType: backgroundWorker.runtimeEnvironment.type,
           },
           run.concurrencyKey ?? undefined,
           Date.now() + i * 5 // slight delay to help preserve order

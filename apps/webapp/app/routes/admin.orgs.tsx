@@ -1,7 +1,7 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { adminGetOrganizations } from "~/models/admin.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -28,13 +28,16 @@ export const SearchParams = z.object({
 export type SearchParams = z.infer<typeof SearchParams>;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  if (!user.admin) {
+    return redirect("/");
+  }
 
   const searchParams = createSearchParams(request.url, SearchParams);
   if (!searchParams.success) {
     throw new Error(searchParams.error);
   }
-  const result = await adminGetOrganizations(userId, searchParams.params.getAll());
+  const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
 
   return typedjson(result);
 };

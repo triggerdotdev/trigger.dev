@@ -1602,6 +1602,8 @@ model BackgroundWorkerTask {
   triggerSource TaskTriggerSource @default(STANDARD)
 
   @@unique([workerId, slug])
+  // Quick lookup of task identifiers
+  @@index([projectId, slug])
 }
 
 enum TaskTriggerSource {
@@ -2113,8 +2115,9 @@ model Checkpoint {
   run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
-  attempt   TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  attemptId String
+  attempt       TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  attemptId     String
+  attemptNumber Int?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String

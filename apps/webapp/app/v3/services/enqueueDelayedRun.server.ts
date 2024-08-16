@@ -65,7 +65,13 @@ export class EnqueueDelayedRunService extends BaseService {
       run.runtimeEnvironment,
       run.queue,
       run.id,
-      { type: "EXECUTE", taskIdentifier: run.taskIdentifier },
+      {
+        type: "EXECUTE",
+        taskIdentifier: run.taskIdentifier,
+        projectId: run.runtimeEnvironment.projectId,
+        environmentId: run.runtimeEnvironment.id,
+        environmentType: run.runtimeEnvironment.type,
+      },
       run.concurrencyKey ?? undefined
     );
   }

@@ -6,6 +6,8 @@ import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
+import { sanitizeError } from "@trigger.dev/core/v3";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -42,18 +44,11 @@ export class CrashTaskRunService extends BaseService {
       return;
     }
 
-    // Remove the task run from the queue if it's there for some reason
-    await marqs?.acknowledgeMessage(taskRun.id);
-
-    // Set the task run status to crashed
-    const crashedTaskRun = await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
-        status: "CRASHED",
-        completedAt: new Date(),
-      },
+    const finalizeService = new FinalizeTaskRunService();
+    const crashedTaskRun = await finalizeService.call({
+      id: taskRun.id,
+      status: "CRASHED",
+      completedAt: new Date(),
       include: {
         attempts: {
           where: {
@@ -111,7 +106,11 @@ export class CrashTaskRunService extends BaseService {
         attempt,
         crashedTaskRun,
         new Date(),
-        crashedTaskRun.runtimeEnvironment
+        crashedTaskRun.runtimeEnvironment,
+        {
+          reason: opts.reason,
+          logs: opts.logs,
+        }
       );
     }
   }
@@ -120,7 +119,11 @@ export class CrashTaskRunService extends BaseService {
     attempt: TaskRunAttempt,
     run: TaskRun,
     failedAt: Date,
-    environment: AuthenticatedEnvironment
+    environment: AuthenticatedEnvironment,
+    error: {
+      reason: string;
+      logs?: string;
+    }
   ) {
     return await this.traceWithEnv("failAttempt()", environment, async (span) => {
       span.setAttribute("taskRunId", run.id);
@@ -135,6 +138,12 @@ export class CrashTaskRunService extends BaseService {
         data: {
           status: "FAILED",
           completedAt: failedAt,
+          error: sanitizeError({
+            type: "INTERNAL_ERROR",
+            code: "TASK_RUN_CRASHED",
+            message: error.reason,
+            stackTrace: error.logs,
+          }),
         },
       });
 

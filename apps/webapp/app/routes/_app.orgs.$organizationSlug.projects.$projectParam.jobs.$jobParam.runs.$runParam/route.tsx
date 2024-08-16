@@ -49,7 +49,7 @@ export default function Page() {
   const revalidator = useRevalidator();
   const events = useEventSource(runStreamingPath(organization, project, job, run), {
     event: "message",
-    disabled: !!run.completedAt,
+    disabled: !!run.completedAt || run.tasks.length > 100,
   });
   useEffect(() => {
     if (events !== null) {

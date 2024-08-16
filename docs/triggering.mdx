@@ -36,6 +36,8 @@ Triggers a single run of a task with the payload you pass in, and any options yo
 
 If called from within a task, you can use the `AndWait` version to pause execution until the triggered run is complete.
 
+If you need to call `trigger()` on a task in a loop, use [`batchTrigger()`](/triggering#task-batchtrigger) instead which will trigger up to 100 tasks in a single call.
+
 <CodeGroup>
 
 ```ts Next.js API route

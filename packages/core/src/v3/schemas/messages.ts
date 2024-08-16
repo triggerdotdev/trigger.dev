@@ -31,6 +31,7 @@ export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
     image: z.string(),
     version: z.string(),
     machine: MachinePreset,
+    nextAttemptNumber: z.number().optional(),
     // identifiers
     id: z.string().optional(), // TODO: Remove this completely in a future release
     envId: z.string(),
@@ -357,6 +358,7 @@ export const PlatformToProviderMessages = {
       location: z.string(),
       reason: z.string().optional(),
       imageRef: z.string(),
+      attemptNumber: z.number().optional(),
       machine: MachinePreset,
       // identifiers
       checkpointId: z.string(),
@@ -482,7 +484,7 @@ export const CoordinatorToPlatformMessages = {
   },
   TASK_RUN_COMPLETED: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       execution: ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
       checkpoint: z
@@ -701,11 +703,19 @@ export const ProdWorkerToCoordinatorMessages = {
     }),
   },
   READY_FOR_RESUME: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      attemptFriendlyId: z.string(),
-      type: WaitReason,
-    }),
+    message: z.discriminatedUnion("version", [
+      z.object({
+        version: z.literal("v1"),
+        attemptFriendlyId: z.string(),
+        type: WaitReason,
+      }),
+      z.object({
+        version: z.literal("v2"),
+        attemptFriendlyId: z.string(),
+        attemptNumber: z.number(),
+        type: WaitReason,
+      }),
+    ]),
   },
   READY_FOR_CHECKPOINT: {
     message: z.object({
@@ -744,7 +754,7 @@ export const ProdWorkerToCoordinatorMessages = {
   },
   TASK_RUN_COMPLETED: {
     message: z.object({
-      version: z.literal("v1").default("v1"),
+      version: z.enum(["v1", "v2"]).default("v1"),
       execution: ProdTaskRunExecution,
       completion: TaskRunExecutionResult,
     }),
@@ -835,6 +845,7 @@ export const ProdWorkerToCoordinatorMessages = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       attemptFriendlyId: z.string().optional(),
+      attemptNumber: z.string().optional(),
     }),
   },
 };
@@ -899,6 +910,7 @@ export const ProdWorkerSocketData = z.object({
   envId: z.string(),
   runId: z.string(),
   attemptFriendlyId: z.string().optional(),
+  attemptNumber: z.string().optional(),
   podName: z.string(),
   deploymentId: z.string(),
   deploymentVersion: z.string(),

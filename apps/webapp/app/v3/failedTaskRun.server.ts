@@ -1,12 +1,9 @@
 import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
-
-import { TaskRunStatus } from "@trigger.dev/database";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
-
-const FAILABLE_TASK_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "PENDING", "WAITING_FOR_DEPLOY"];
+import { FinalizeTaskRunService } from "./services/finalizeTaskRun.server";
+import { FAILABLE_RUN_STATUSES } from "./taskStatus";
 
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
@@ -28,7 +25,7 @@ export class FailedTaskRunService extends BaseService {
       return;
     }
 
-    if (!FAILABLE_TASK_RUN_STATUSES.includes(taskRun.status)) {
+    if (!FAILABLE_RUN_STATUSES.includes(taskRun.status)) {
       logger.error("[FailedTaskRunService] Task run is not in a failable state", {
         taskRun,
         completion,
@@ -40,7 +37,12 @@ export class FailedTaskRunService extends BaseService {
     // No more retries, we need to fail the task run
     logger.debug("[FailedTaskRunService] Failing task run", { taskRun, completion });
 
-    await marqs?.acknowledgeMessage(taskRun.id);
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      id: taskRun.id,
+      status: "SYSTEM_FAILURE",
+      completedAt: new Date(),
+    });
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRun.spanId, {
@@ -57,16 +59,6 @@ export class FailedTaskRunService extends BaseService {
           },
         },
       ],
-    });
-
-    await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
-        status: "SYSTEM_FAILURE",
-        completedAt: new Date(),
-      },
     });
   }
 }

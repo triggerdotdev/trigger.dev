@@ -26,11 +26,13 @@ import {
   MarQSKeyProducer,
   MarQSQueuePriorityStrategy,
   MessagePayload,
+  MessageQueueSubscriber,
   QueueCapacities,
   QueueRange,
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
+import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -60,6 +62,7 @@ export type MarQSOptions = {
   visibilityTimeoutStrategy: VisibilityTimeoutStrategy;
   enableRebalancing?: boolean;
   verbose?: boolean;
+  subscriber?: MessageQueueSubscriber;
 };
 
 /**
@@ -207,6 +210,8 @@ export class MarQS {
         });
 
         await this.#callEnqueueMessage(messagePayload);
+
+        await this.options.subscriber?.messageEnqueued(messagePayload);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -264,6 +269,8 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+
+          await this.options.subscriber?.messageDequeued(message);
         } else {
           logger.error(`Failed to read message, undoing the dequeueing of the message`, {
             messageData,
@@ -379,6 +386,8 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+
+          await this.options.subscriber?.messageDequeued(message);
         }
 
         await this.options.visibilityTimeoutStrategy.heartbeat(
@@ -427,6 +436,8 @@ export class MarQS {
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
           messageId,
         });
+
+        await this.options.subscriber?.messageAcked(message);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -469,7 +480,7 @@ export class MarQS {
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
-          data: { ...messageData, ...traceContext },
+          data: { ...oldMessage.data, ...messageData, ...traceContext },
           queue: oldMessage.queue,
           concurrencyKey: oldMessage.concurrencyKey,
           timestamp: timestamp ?? Date.now(),
@@ -496,6 +507,8 @@ export class MarQS {
         });
 
         await this.#callEnqueueMessage(newMessage);
+
+        await this.options.subscriber?.messageReplaced(newMessage);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -580,6 +593,8 @@ export class MarQS {
           messageId,
           messageScore: retryAt,
         });
+
+        await this.options.subscriber?.messageNacked(message);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1721,6 +1736,7 @@ function getMarQSClient() {
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
         enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
+        subscriber: concurrencyTracker,
       });
     } else {
       console.warn(

@@ -6,6 +6,7 @@ import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { isCancellableRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
+import { getAllTaskIdentifiers } from "~/models/task.server";
 
 export type RunListOptions = {
   userId?: string;
@@ -97,16 +98,7 @@ export class RunListPresenter extends BasePresenter {
     });
 
     //get all possible tasks
-    const possibleTasksAsync = this._replica.$queryRaw<
-      {
-        slug: string;
-        triggerSource: TaskTriggerSource;
-      }[]
-    >`
-    SELECT DISTINCT(slug), "triggerSource"
-    FROM ${sqlDatabaseSchema}."BackgroundWorkerTask"
-    WHERE "projectId" = ${project.id}
-    ORDER BY slug ASC;`;
+    const possibleTasksAsync = getAllTaskIdentifiers(this._replica, project.id);
 
     //get possible bulk actions
     const bulkActionsAsync = this._replica.bulkActionGroup.findMany({

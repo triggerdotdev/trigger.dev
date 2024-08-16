@@ -1,9 +1,9 @@
-import { Context, MachinePresetName, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { MachinePresetName, prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
 import { FINISHED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
-import { BasePresenter } from "./basePresenter.server";
-import { machineDefinition } from "@trigger.dev/platform/v3";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
+import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -57,6 +57,7 @@ export class SpanPresenter extends BasePresenter {
   async getRun(spanId: string) {
     const run = await this._replica.taskRun.findFirst({
       select: {
+        id: true,
         traceId: true,
         //metadata
         number: true,
@@ -113,17 +114,6 @@ export class SpanPresenter extends BasePresenter {
         payload: true,
         payloadType: true,
         maxAttempts: true,
-        //finished attempt
-        attempts: {
-          select: {
-            output: true,
-            outputType: true,
-            error: true,
-          },
-          where: {
-            status: "COMPLETED",
-          },
-        },
         project: {
           include: {
             organization: true,
@@ -145,9 +135,23 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const finishedAttempt = run.attempts.at(0);
+    const finishedAttempt = await this._replica.taskRunAttempt.findFirst({
+      select: {
+        output: true,
+        outputType: true,
+        error: true,
+      },
+      where: {
+        status: { in: FINAL_ATTEMPT_STATUSES },
+        taskRunId: run.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
     const output =
-      finishedAttempt === undefined
+      finishedAttempt === null
         ? undefined
         : finishedAttempt.outputType === "application/store"
         ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
@@ -161,6 +165,19 @@ export class SpanPresenter extends BasePresenter {
         : typeof run.payload !== "undefined" && run.payload !== null
         ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
         : undefined;
+
+    let error: TaskRunError | undefined = undefined;
+    if (finishedAttempt?.error) {
+      const result = TaskRunError.safeParse(finishedAttempt.error);
+      if (result.success) {
+        error = result.data;
+      } else {
+        error = {
+          type: "CUSTOM_ERROR",
+          raw: JSON.stringify(finishedAttempt.error),
+        };
+      }
+    }
 
     const span = await eventRepository.getSpan(spanId, run.traceId);
 
@@ -247,8 +264,8 @@ export class SpanPresenter extends BasePresenter {
       payloadType: run.payloadType,
       output,
       outputType: finishedAttempt?.outputType ?? "application/json",
+      error,
       links: span?.links,
-      events: span?.events,
       context: JSON.stringify(context, null, 2),
     };
   }

@@ -12,7 +12,11 @@ export class ChaosMonkey {
   private chaosEventRate = 0.2;
   private delayInSeconds = 45;
 
-  constructor(private enabled = false) {
+  constructor(
+    private enabled = false,
+    private disableErrors = false,
+    private disableDelays = false
+  ) {
     if (this.enabled) {
       console.log("🍌 Chaos monkey enabled");
     }
@@ -32,8 +36,8 @@ export class ChaosMonkey {
 
   async call({
     $,
-    throwErrors = true,
-    addDelays = true,
+    throwErrors = !this.disableErrors,
+    addDelays = !this.disableDelays,
   }: {
     $?: Execa$<string>;
     throwErrors?: boolean;
