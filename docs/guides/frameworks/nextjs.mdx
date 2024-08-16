@@ -63,6 +63,9 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
       import { tasks } from "@trigger.dev/sdk/v3";
       import { NextResponse } from "next/server";
 
+      //tasks.trigger also works with the edge runtime
+      //export const runtime = "edge";
+
       export async function GET(request: Request) {
         const handle = await tasks.trigger<typeof helloWorldTask>(
           "hello-world",
@@ -277,7 +280,7 @@ yarn dlx trigger.dev@beta deploy
 
 <Tab title="GitHub Actions">
 
-Use GitHub Actions to automatically deploy your tasks whenever new code is pushed to the `main` branch and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
+Use GitHub Actions to automatically deploy your tasks whenever new code is pushed and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
 
 </Tab>
 

@@ -67,6 +67,10 @@
     {
       "source": "/v3/:slug*",
       "destination": "/:slug*"
+    },
+    {
+      "source": "/reattempting-replaying",
+      "destination": "/replaying"
     }
   ],
 
@@ -125,7 +129,7 @@
         "versioning",
         "machines",
         "idempotency",
-        "reattempting-replaying",
+        "replaying",
         "tags",
         "notifications",
         "run-usage"
