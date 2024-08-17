@@ -1,4 +1,4 @@
-import { BuildExtension } from "../build/extensions.js";
+import { BuildContext, BuildExtension } from "../build/extensions.js";
 
 export type SyncEnvVarsBody = Record<string, string> | Array<{ name: string; value: string }>;
 
@@ -77,14 +77,18 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         return;
       }
 
+      const $spinner = context.logger.spinner("Invoking syncEnvVars callback");
+
       const result = await callSyncEnvVarsFn(
         fn,
         manifest.deploy.env ?? {},
         manifest.environment,
-        context.config.project
+        context
       );
 
       if (!result) {
+        $spinner.stop("No env vars detected");
+
         return;
       }
 
@@ -99,6 +103,18 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         },
         {} as Record<string, string>
       );
+
+      const numberOfEnvVars = Object.keys(env).length;
+
+      if (numberOfEnvVars === 0) {
+        $spinner.stop("No env vars detected");
+
+        return;
+      } else if (numberOfEnvVars === 1) {
+        $spinner.stop(`Found 1 env var`);
+      } else {
+        $spinner.stop(`Found ${numberOfEnvVars} env vars to sync`);
+      }
 
       context.addLayer({
         id: "sync-env-vars",
@@ -115,22 +131,25 @@ async function callSyncEnvVarsFn(
   syncEnvVarsFn: SyncEnvVarsFunction | undefined,
   env: Record<string, string>,
   environment: string,
-  projectRef: string
+  context: BuildContext
 ): Promise<Record<string, string> | undefined> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
     let resolvedEnvVars: Record<string, string> = {};
+    let result;
 
-    let result = syncEnvVarsFn({
-      projectRef,
-      environment,
-      env,
-    });
+    try {
+      result = await syncEnvVarsFn({
+        projectRef: context.config.project,
+        environment,
+        env,
+      });
+    } catch (error) {
+      context.logger.warn("Error calling syncEnvVars function", error);
+    }
 
     if (!result) {
       return;
     }
-
-    result = await result;
 
     if (Array.isArray(result)) {
       for (const item of result) {

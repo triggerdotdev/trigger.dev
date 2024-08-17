@@ -1,15 +1,13 @@
-import { intro, log, outro } from "@clack/prompts";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
-import {
-  BuildManifest,
-  InitializeDeploymentResponseBody,
-  TaskFile,
-} from "@trigger.dev/core/v3/schemas";
+import { intro, outro } from "@clack/prompts";
 import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest, InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
+import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { readPackageJSON, writePackageJSON } from "pkg-types";
 import { z } from "zod";
+import { CliApiClient } from "../apiClient.js";
 import { bundleWorker } from "../build/bundle.js";
 import {
   createBuildContext,
@@ -31,22 +29,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
-import { createTempDir, writeJSONFile } from "../utilities/fileSystem.js";
-import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { logger } from "../utilities/logger.js";
-import { getProjectClient } from "../utilities/session.js";
-import { getTmpDir } from "../utilities/tempDirectories.js";
-import { login } from "./login.js";
-import { updateTriggerPackages } from "./update.js";
-import { spinner } from "../utilities/windows.js";
-import { readFile, writeFile } from "node:fs/promises";
-import { VERSION } from "../version.js";
-import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { buildImage, generateContainerfile } from "../deploy/buildImage.js";
-import { buildManifestToJSON } from "../utilities/buildManifest.js";
-import { CliApiClient } from "../apiClient.js";
-import { chalkError, chalkWarning, cliLink } from "../utilities/cliOutput.js";
-import { docs, getInTouch } from "../utilities/links.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -54,6 +37,19 @@ import {
   printWarnings,
   saveLogs,
 } from "../deploy/logs.js";
+import { buildManifestToJSON } from "../utilities/buildManifest.js";
+import { chalkError, cliLink } from "../utilities/cliOutput.js";
+import { writeJSONFile } from "../utilities/fileSystem.js";
+import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
+import { getProjectClient } from "../utilities/session.js";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
+import { getTmpDir } from "../utilities/tempDirectories.js";
+import { spinner } from "../utilities/windows.js";
+import { VERSION } from "../version.js";
+import { login } from "./login.js";
+import { updateTriggerPackages } from "./update.js";
+import { loadDotEnvVars, resolveDotEnvVars } from "../utilities/dotEnv.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -210,6 +206,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const serverEnvVars = await projectClient.client.getEnvironmentVariables(resolvedConfig.project);
+  loadDotEnvVars(resolvedConfig.workingDir);
 
   const destination = getTmpDir(resolvedConfig.workingDir, "build", options.dryRun);
   const externalsExtension = createExternalsBuildExtension("deploy", resolvedConfig);
@@ -293,18 +290,21 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (
-    buildManifest.deploy.env &&
-    Object.keys(buildManifest.deploy.env).length > 0 &&
-    buildManifest.deploy.needsSyncing
+    buildManifest.deploy.sync &&
+    buildManifest.deploy.sync.env &&
+    Object.keys(buildManifest.deploy.sync.env).length > 0
   ) {
+    const numberOfEnvVars = Object.keys(buildManifest.deploy.sync.env).length;
+    const vars = numberOfEnvVars === 1 ? "var" : "vars";
+
     if (!options.skipSyncEnvVars) {
       const $spinner = spinner();
-      $spinner.start("Syncing environment variables with the server");
+      $spinner.start(`Syncing ${numberOfEnvVars} env ${vars} with the server`);
       const success = await syncEnvVarsWithServer(
         projectClient.client,
         resolvedConfig.project,
         options.env,
-        buildManifest.deploy.env
+        buildManifest.deploy.sync.env
       );
 
       if (!success) {
@@ -313,19 +313,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
           deployment,
           {
             name: "SyncEnvVarsError",
-            message: "Failed to sync environment variables with the server",
+            message: `Failed to sync ${numberOfEnvVars} env ${vars} with the server`,
           },
           "",
           $spinner
         );
       } else {
-        $spinner.stop("Successfully synced environment variables with the server");
+        $spinner.stop(`Successfully synced ${numberOfEnvVars} env ${vars} with the server`);
       }
+    } else {
+      logger.log(
+        "Skipping syncing env vars. The environment variables in your project have changed, but the --skip-sync-env-vars flag was provided."
+      );
     }
-
-    logger.log(
-      "Skipping syncing environment variables. The environment variables in your project have changed, but the --skip-sync-env-vars flag was provided."
-    );
   }
 
   const version = deployment.version;

@@ -44,7 +44,11 @@ export const BuildManifest = z.object({
   }),
   deploy: z.object({
     env: z.record(z.string()).optional(),
-    needsSyncing: z.boolean().optional(),
+    sync: z
+      .object({
+        env: z.record(z.string()).optional(),
+      })
+      .optional(),
   }),
 });
 

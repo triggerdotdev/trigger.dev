@@ -19,3 +19,11 @@ export function resolveDotEnvVars(cwd?: string) {
 
   return result;
 }
+
+export function loadDotEnvVars(cwd?: string) {
+  dotenv.config({
+    path: [".env", ".env.local", ".env.development.local"].map((p) =>
+      resolve(cwd ?? process.cwd(), p)
+    ),
+  });
+}

@@ -24,10 +24,17 @@ export interface BuildExtension {
   ) => Promise<undefined | void> | undefined | void;
 }
 
+export interface BuildSpinner {
+  stop: (message: string, code?: number) => void;
+  message: (message: string) => void;
+}
+
 export interface BuildLogger {
   debug: (...args: unknown[]) => void;
   log: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
+  progress: (message: string) => void;
+  spinner: (message: string) => BuildSpinner;
 }
 
 export interface BuildContext {

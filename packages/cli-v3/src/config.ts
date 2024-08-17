@@ -1,4 +1,4 @@
-import { TriggerConfig } from "@trigger.dev/core/v3";
+import { ResolveEnvironmentVariablesFunction, TriggerConfig } from "@trigger.dev/core/v3";
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
 import { defu } from "defu";
@@ -8,7 +8,7 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
 import { generateCode, loadFile } from "./imports/magicast.js";
 import { logger } from "./utilities/logger.js";
-import { additionalFiles, additionalPackages } from "@trigger.dev/core/v3/extensions";
+import { additionalFiles, additionalPackages, syncEnvVars } from "@trigger.dev/core/v3/extensions";
 
 export type ResolveConfigOptions = {
   cwd?: string;
@@ -98,6 +98,9 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
             : $mod.exports.default;
 
         options.build = {};
+
+        // Remove export resolveEnvVars function as well
+        delete $mod.exports.resolveEnvVars;
 
         const contents = generateCode($mod);
 
@@ -247,11 +250,32 @@ function validateConfig(config: TriggerConfig, warn = true) {
         `The "resolveEnvVars" option is deprecated and will be removed. Use the "syncEnvVars" build extension instead. See https://trigger.dev/docs/trigger-config#syncEnvVars for more information.`
       );
 
-    //
+    const resolveEnvVarsFn = config.resolveEnvVars as ResolveEnvironmentVariablesFunction;
+
+    config.build ??= {};
+    config.build.extensions ??= [];
+    config.build.extensions.push(adaptResolveEnvVarsToSyncEnvVarsExtension(resolveEnvVarsFn));
   }
 
   if (config.runtime && config.runtime === "bun") {
     warn &&
       logger.warn(`The "bun" runtime is currently experimental and may not work as expected.`);
   }
+}
+
+function adaptResolveEnvVarsToSyncEnvVarsExtension(
+  resolveEnvVarsFn: ResolveEnvironmentVariablesFunction
+) {
+  return syncEnvVars(
+    async (ctx) => {
+      const resolveEnvVarsResult = await resolveEnvVarsFn(ctx);
+
+      if (!resolveEnvVarsResult) {
+        return;
+      }
+
+      return resolveEnvVarsResult.variables;
+    },
+    { override: true }
+  );
 }

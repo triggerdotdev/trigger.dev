@@ -9,6 +9,7 @@ import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { logger } from "../utilities/logger.js";
 import { resolveModule } from "./resolveModule.js";
+import { log, spinner } from "@clack/prompts";
 
 export interface InternalBuildContext extends BuildContext {
   getLayers(): BuildLayer[];
@@ -98,6 +99,12 @@ export function createBuildContext(
       debug: (...args) => logger.debug(...args),
       log: (...args) => logger.log(...args),
       warn: (...args) => logger.warn(...args),
+      progress: (message) => log.message(message),
+      spinner: (message) => {
+        const $spinner = spinner();
+        $spinner.start(message);
+        return $spinner;
+      },
     },
   };
 }
@@ -130,6 +137,8 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
 
   if (layer.deploy?.env) {
     manifest.deploy.env ??= {};
+    manifest.deploy.sync ??= {};
+    manifest.deploy.sync.env ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.env)) {
       if (!value) {
@@ -137,15 +146,11 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
       }
 
       if (layer.deploy.override || manifest.deploy.env[key] === undefined) {
-        let needsSyncing = manifest.deploy.needsSyncing;
         const existingValue = manifest.deploy.env[key];
 
         if (existingValue !== value) {
-          needsSyncing = true;
+          manifest.deploy.sync.env[key] = value;
         }
-
-        manifest.deploy.env[key] = value;
-        manifest.deploy.needsSyncing = needsSyncing;
       }
     }
   }

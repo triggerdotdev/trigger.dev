@@ -1,12 +1,34 @@
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 import { emitDecoratorMetadata } from "@trigger.dev/sdk/v3/extensions";
+import { InfisicalClient } from "@infisical/sdk";
 
-export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
-  projectRef,
-  env,
-  environment,
-}) => {};
+export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
+  if (
+    process.env.INFISICAL_CLIENT_ID === undefined ||
+    process.env.INFISICAL_CLIENT_SECRET === undefined ||
+    process.env.INFISICAL_PROJECT_ID === undefined
+  ) {
+    return;
+  }
+
+  const client = new InfisicalClient({
+    clientId: process.env.INFISICAL_CLIENT_ID,
+    clientSecret: process.env.INFISICAL_CLIENT_SECRET,
+  });
+
+  const secrets = await client.listSecrets({
+    environment: ctx.environment,
+    projectId: process.env.INFISICAL_PROJECT_ID,
+  });
+
+  return {
+    variables: secrets.map((secret) => ({
+      name: secret.secretKey,
+      value: secret.secretValue,
+    })),
+  };
+};
 
 export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",
