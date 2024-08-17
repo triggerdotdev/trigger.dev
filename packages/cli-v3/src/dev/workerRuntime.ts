@@ -18,17 +18,14 @@ import { ClientRequestArgs } from "node:http";
 import { WebSocket } from "partysocket";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { CliApiClient } from "../apiClient.js";
+import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 import { DevCommandOptions } from "../commands/dev.js";
 import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { VERSION } from "../version.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -186,19 +183,16 @@ class DevWorkerRuntime implements WorkerRuntime {
       return;
     }
 
-    const fileContents = await this.#fetchTaskFiles(
-      backgroundWorker.manifest.tasks,
-      this.options.config.workingDir
-    );
+    const sourceFiles = resolveTaskSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,
       metadata: {
-        packageVersion: VERSION,
-        cliPackageVersion: VERSION,
+        packageVersion: manifest.packageVersion,
+        cliPackageVersion: manifest.cliPackageVersion,
         tasks: backgroundWorker.manifest.tasks,
         contentHash: manifest.contentHash,
-        fileContents,
+        sourceFiles,
       },
       supportsLazyAttempts: true,
     };
@@ -219,7 +213,10 @@ class DevWorkerRuntime implements WorkerRuntime {
     eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
   }
 
-  async #fetchTaskFiles(tasks: TaskManifest[], workingDir: string) {
+  async #fetchTaskFiles(
+    sources: Record<string, { contents: string; contentHash: string }>,
+    tasks: TaskManifest[]
+  ) {
     const tasksGroupedByFile: Record<string, TaskManifest[]> = {};
 
     for (const task of tasks) {
@@ -238,16 +235,18 @@ class DevWorkerRuntime implements WorkerRuntime {
     }> = [];
 
     for (const [filePath, tasks] of Object.entries(tasksGroupedByFile)) {
-      const contents = await readFile(join(workingDir, filePath), "utf-8");
+      const source = sources[filePath];
+
+      if (!source) {
+        continue;
+      }
+
       const taskIds = tasks.map((task) => task.id);
-      const hasher = createHash("md5");
-      hasher.update(contents);
 
       taskFiles.push({
-        filePath,
+        ...source,
         taskIds,
-        contents,
-        contentHash: hasher.digest("hex"),
+        filePath,
       });
     }
 

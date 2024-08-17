@@ -48,6 +48,22 @@
     {
       "type": "node-terminal",
       "request": "launch",
+      "name": "Debug V3 list-profiles CLI",
+      "command": "pnpm exec triggerdev list-profiles --log-level debug",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 update CLI",
+      "command": "pnpm exec triggerdev update",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
       "name": "Debug V3 Management",
       "command": "pnpm run management",
       "cwd": "${workspaceFolder}/references/v3-catalog",

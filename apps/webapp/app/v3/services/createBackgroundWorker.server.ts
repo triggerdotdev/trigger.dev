@@ -1,5 +1,5 @@
 import {
-  BackgroundWorkerFileMetadata,
+  BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
   TaskResource,
 } from "@trigger.dev/core/v3";
@@ -75,7 +75,7 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       const tasksToBackgroundFiles = await createBackgroundFiles(
-        body.metadata.fileContents,
+        body.metadata.sourceFiles,
         backgroundWorker,
         environment,
         this._prisma
@@ -401,7 +401,7 @@ export async function syncDeclarativeSchedules(
 }
 
 export async function createBackgroundFiles(
-  files: Array<BackgroundWorkerFileMetadata> | undefined,
+  files: Array<BackgroundWorkerSourceFileMetadata> | undefined,
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction

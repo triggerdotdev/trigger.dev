@@ -41,7 +41,7 @@ export class PrismaExtension implements BuildExtension {
     // Resolve the path to the prisma schema, relative to the config.directory
     this._resolvedSchemaPath = resolve(context.workingDir, this.options.schema);
 
-    console.log(`Resolved the prisma schema to: ${this._resolvedSchemaPath}`);
+    context.logger.debug(`Resolved the prisma schema to: ${this._resolvedSchemaPath}`);
 
     // Check that the prisma schema exists
     if (!existsSync(this._resolvedSchemaPath)) {
@@ -58,7 +58,7 @@ export class PrismaExtension implements BuildExtension {
 
     assert(this._resolvedSchemaPath, "Resolved schema path is not set");
 
-    console.log("Looking for @prisma/client in the externals", {
+    context.logger.debug("Looking for @prisma/client in the externals", {
       externals: manifest.externals,
     });
 
@@ -74,7 +74,7 @@ export class PrismaExtension implements BuildExtension {
       );
     }
 
-    console.log(`PrismaExtension is generating the Prisma client for version ${version}`);
+    context.logger.debug(`PrismaExtension is generating the Prisma client for version ${version}`);
 
     // Now we need to add a layer that:
     // Copies the prisma schema to the build outputPath
@@ -82,7 +82,7 @@ export class PrismaExtension implements BuildExtension {
     // Adds the `prisma generate` command, which generates the Prisma client
     const schemaDestinationPath = join(manifest.outputPath, "prisma", "schema.prisma");
     // Copy the prisma schema to the build output path
-    console.log(
+    context.logger.debug(
       `Copying the prisma schema from ${this._resolvedSchemaPath} to ${schemaDestinationPath}`
     );
 

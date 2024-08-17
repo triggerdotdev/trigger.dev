@@ -78,7 +78,7 @@ export type ResolveEnvironmentVariablesResult =
 
 export type ResolveEnvironmentVariablesParams = {
   projectRef: string;
-  environment: "dev" | "staging" | "prod";
+  environment: string;
   env: Record<string, string>;
 };
 

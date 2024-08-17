@@ -1,6 +1,12 @@
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 import { emitDecoratorMetadata } from "@trigger.dev/sdk/v3/extensions";
+
+export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
+  projectRef,
+  env,
+  environment,
+}) => {};
 
 export default defineConfig({
   project: "yubjwjsfkxnylobaqvqz",

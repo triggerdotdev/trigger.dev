@@ -89,6 +89,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     apiKey: runtimeEnv.apiKey,
     name: project.name,
     apiUrl: processEnv.APP_ORIGIN,
+    projectId: project.id,
   };
 
   return json(result);

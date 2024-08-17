@@ -94,6 +94,11 @@ export function createBuildContext(
     prependExtension(extension) {
       extensions.unshift(extension);
     },
+    logger: {
+      debug: (...args) => logger.debug(...args),
+      log: (...args) => logger.log(...args),
+      warn: (...args) => logger.warn(...args),
+    },
   };
 }
 
@@ -125,7 +130,24 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
 
   if (layer.deploy?.env) {
     manifest.deploy.env ??= {};
-    Object.assign(manifest.deploy.env, layer.deploy.env);
+
+    for (const [key, value] of Object.entries(layer.deploy.env)) {
+      if (!value) {
+        continue;
+      }
+
+      if (layer.deploy.override || manifest.deploy.env[key] === undefined) {
+        let needsSyncing = manifest.deploy.needsSyncing;
+        const existingValue = manifest.deploy.env[key];
+
+        if (existingValue !== value) {
+          needsSyncing = true;
+        }
+
+        manifest.deploy.env[key] = value;
+        manifest.deploy.needsSyncing = needsSyncing;
+      }
+    }
   }
 
   if (layer.dependencies) {

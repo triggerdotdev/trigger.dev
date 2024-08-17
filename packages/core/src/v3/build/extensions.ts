@@ -24,10 +24,17 @@ export interface BuildExtension {
   ) => Promise<undefined | void> | undefined | void;
 }
 
+export interface BuildLogger {
+  debug: (...args: unknown[]) => void;
+  log: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+}
+
 export interface BuildContext {
   target: BuildTarget;
   config: ResolvedConfig;
   workingDir: string;
+  logger: BuildLogger;
 
   addLayer(layer: BuildLayer): void;
   registerPlugin(plugin: Plugin, options?: RegisterPluginOptions): void;
@@ -47,6 +54,7 @@ export interface BuildLayer {
   };
   deploy?: {
     env?: Record<string, string | undefined>;
+    override?: boolean;
   };
   dependencies?: Record<string, string>;
 }

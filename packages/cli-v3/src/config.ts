@@ -241,6 +241,15 @@ function validateConfig(config: TriggerConfig, warn = true) {
     config.tsconfig = config.tsconfigPath;
   }
 
+  if ("resolveEnvVars" in config && typeof config.resolveEnvVars === "function") {
+    warn &&
+      logger.warn(
+        `The "resolveEnvVars" option is deprecated and will be removed. Use the "syncEnvVars" build extension instead. See https://trigger.dev/docs/trigger-config#syncEnvVars for more information.`
+      );
+
+    //
+  }
+
   if (config.runtime && config.runtime === "bun") {
     warn &&
       logger.warn(`The "bun" runtime is currently experimental and may not work as expected.`);

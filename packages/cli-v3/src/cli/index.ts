@@ -8,6 +8,7 @@ import { COMMAND_NAME } from "../consts.js";
 import { configureListProfilesCommand } from "../commands/list-profiles.js";
 import { configureUpdateCommand } from "../commands/update.js";
 import { VERSION } from "../version.js";
+import { configureDeployCommand } from "../commands/deploy.js";
 
 export const program = new Command();
 
@@ -19,6 +20,7 @@ program
 configureLoginCommand(program);
 configureInitCommand(program);
 configureDevCommand(program);
+configureDeployCommand(program);
 configureWhoamiCommand(program);
 configureLogoutCommand(program);
 configureListProfilesCommand(program);

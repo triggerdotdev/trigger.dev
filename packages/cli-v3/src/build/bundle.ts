@@ -9,6 +9,7 @@ import {
   deployEntryPoints,
   devEntryPoints,
   isDeployEntryPoint,
+  isDeployIndexerEntryPoint,
   isDevEntryPoint,
   isIndexerEntryPoint,
   isLoaderEntryPoint,
@@ -72,7 +73,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     platform: "node",
     sourcemap: true,
     sourcesContent: options.target === "dev",
-    conditions: ["taskhero", "node"],
+    conditions: ["trigger.dev", "node"],
     format: "esm",
     target: ["node20", "es2022"],
     loader: {
@@ -160,7 +161,7 @@ export async function getBundleResultFromBuild(
         loaderEntryPoint = $outputPath;
       } else if (isEntryPointForTarget(outputMeta.entryPoint, target)) {
         workerEntryPoint = $outputPath;
-      } else if (isIndexerEntryPoint(outputMeta.entryPoint)) {
+      } else if (isIndexerEntryPointForTarget(outputMeta.entryPoint, target)) {
         indexerEntryPoint = $outputPath;
       } else {
         if (
@@ -200,6 +201,14 @@ function isEntryPointForTarget(entryPoint: string, target: BuildTarget) {
 
 function isConfigEntryPoint(entryPoint: string) {
   return entryPoint.startsWith("trigger.config.ts");
+}
+
+function isIndexerEntryPointForTarget(entryPoint: string, target: BuildTarget) {
+  if (target === "dev") {
+    return isIndexerEntryPoint(entryPoint);
+  } else {
+    return isDeployIndexerEntryPoint(entryPoint);
+  }
 }
 
 async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {

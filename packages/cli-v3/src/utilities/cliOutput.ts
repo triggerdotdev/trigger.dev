@@ -2,6 +2,8 @@ import { log } from "@clack/prompts";
 import chalk from "chalk";
 import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
 
+export const isInteractive = process.stdin.isTTY;
+
 export const green = "#4FFF54";
 export const purple = "#735BF3";
 

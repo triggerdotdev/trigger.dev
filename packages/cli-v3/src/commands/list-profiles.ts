@@ -23,7 +23,6 @@ export function configureListProfilesCommand(program: Command) {
     .option("--skip-telemetry", "Opt-out of sending telemetry")
     .action(async (options) => {
       await handleTelemetry(async () => {
-        await printInitialBanner(true);
         await listProfilesCommand(options);
       });
     });
@@ -31,6 +30,7 @@ export function configureListProfilesCommand(program: Command) {
 
 export async function listProfilesCommand(options: unknown) {
   return await wrapCommandAction("listProfiles", ListProfilesOptions, options, async (opts) => {
+    await printInitialBanner(false);
     return await listProfiles(opts);
   });
 }

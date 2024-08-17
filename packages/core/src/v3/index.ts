@@ -57,3 +57,7 @@ export {
 } from "./utils/ioSerialization.js";
 
 export * from "./config.js";
+
+import { VERSION } from "../version.js";
+
+export { VERSION as CORE_VERSION };

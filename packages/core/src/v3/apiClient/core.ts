@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { fromZodError } from "zod-validation-error";
+import { fromZodError, ValidationError } from "zod-validation-error";
 import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { ApiConnectionError, ApiError } from "./errors.js";
+import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
 import { Attributes, Span } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
@@ -232,10 +232,21 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
       return { data: parsedResult.data, response };
     }
 
-    throw fromZodError(parsedResult.error);
+    const validationError = fromZodError(parsedResult.error);
+
+    throw new ApiSchemaValidationError({
+      status: response.status,
+      cause: validationError,
+      message: validationError.message,
+      rawBody: jsonBody,
+      headers: responseHeaders,
+    });
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
+    }
+
+    if (error instanceof ValidationError) {
     }
 
     if (options?.retry) {

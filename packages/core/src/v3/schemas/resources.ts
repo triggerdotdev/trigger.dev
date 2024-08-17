@@ -15,21 +15,21 @@ export const TaskResource = z.object({
 
 export type TaskResource = z.infer<typeof TaskResource>;
 
-export const BackgroundWorkerFileMetadata = z.object({
+export const BackgroundWorkerSourceFileMetadata = z.object({
   filePath: z.string(),
   contents: z.string(),
   contentHash: z.string(),
   taskIds: z.array(z.string()),
 });
 
-export type BackgroundWorkerFileMetadata = z.infer<typeof BackgroundWorkerFileMetadata>;
+export type BackgroundWorkerSourceFileMetadata = z.infer<typeof BackgroundWorkerSourceFileMetadata>;
 
 export const BackgroundWorkerMetadata = z.object({
   packageVersion: z.string(),
   contentHash: z.string(),
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
-  fileContents: z.array(BackgroundWorkerFileMetadata).optional(),
+  sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
 });
 
 export type BackgroundWorkerMetadata = z.infer<typeof BackgroundWorkerMetadata>;

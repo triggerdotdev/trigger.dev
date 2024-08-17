@@ -98,6 +98,11 @@ export type GetEnvOptions = {
 };
 
 export async function getProjectClient(options: GetEnvOptions) {
+  logger.debug(
+    `Initializing ${options.env} environment for project ${options.projectRef}`,
+    options.apiUrl
+  );
+
   const apiClient = new CliApiClient(options.apiUrl, options.accessToken);
 
   const projectEnv = await apiClient.getProjectEnv({
@@ -112,7 +117,7 @@ export async function getProjectClient(options: GetEnvOptions) {
       );
     } else {
       logger.error(
-        `Failed to initialize dev environment: ${projectEnv.error}. Using project ref ${options.projectRef}`
+        `Failed to initialize ${options.env} environment: ${projectEnv.error}. Using project ref ${options.projectRef}`
       );
     }
 
@@ -122,6 +127,7 @@ export async function getProjectClient(options: GetEnvOptions) {
   const client = new CliApiClient(projectEnv.data.apiUrl, projectEnv.data.apiKey);
 
   return {
+    id: projectEnv.data.projectId,
     name: projectEnv.data.name,
     client,
   };

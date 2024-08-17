@@ -9,7 +9,7 @@ import Dev from "../dev/dev.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { runtimeCheck } from "../utilities/runtimeCheck.js";
+import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, isLoggedIn, LoginResultOk } from "../utilities/session.js";
 import { updateTriggerPackages } from "./update.js";
 
@@ -42,17 +42,8 @@ export function configureDevCommand(program: Command) {
   });
 }
 
-const MINIMUM_NODE_MAJOR = 18;
-const MINIMUM_NODE_MINOR = 20;
-
 export async function devCommand(options: DevCommandOptions) {
-  try {
-    runtimeCheck(MINIMUM_NODE_MAJOR, MINIMUM_NODE_MINOR);
-  } catch (e) {
-    logger.log(`${chalkError("X Error:")} ${e}`);
-    process.exitCode = 1;
-    return;
-  }
+  runtimeChecks();
 
   const authorization = await isLoggedIn(options.profile);
 

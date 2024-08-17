@@ -19,10 +19,19 @@ export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
 export const BuildManifest = z.object({
   target: BuildTarget,
+  packageVersion: z.string(),
+  cliPackageVersion: z.string(),
   contentHash: z.string(),
   runtime: BuildRuntime,
+  environment: z.string(),
   config: ConfigManifest,
   files: z.array(TaskFile),
+  sources: z.record(
+    z.object({
+      contents: z.string(),
+      contentHash: z.string(),
+    })
+  ),
   outputPath: z.string(),
   indexerEntryPoint: z.string(),
   workerEntryPoint: z.string(),
@@ -35,6 +44,7 @@ export const BuildManifest = z.object({
   }),
   deploy: z.object({
     env: z.record(z.string()).optional(),
+    needsSyncing: z.boolean().optional(),
   }),
 });
 

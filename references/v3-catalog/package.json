@@ -2,6 +2,7 @@
   "name": "@references/v3-catalog",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "zenstack": {
     "schema": "./prisma/schema.zmodel"
   },

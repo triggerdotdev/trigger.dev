@@ -1,5 +1,5 @@
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildManifest } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { CliApiClient } from "../apiClient.js";
 import {
@@ -24,6 +24,11 @@ import { logger } from "../utilities/logger.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
+import { VERSION } from "../version.js";
+import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -172,8 +177,12 @@ async function createBuildManifestFromBundle(
   const buildManifest: BuildManifest = {
     contentHash: bundle.contentHash,
     runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+    cliPackageVersion: VERSION,
+    packageVersion: CORE_VERSION,
+    environment: "dev",
     target: "dev",
     files: bundle.files,
+    sources: await resolveFileSources(bundle.files, resolvedConfig.workingDir),
     externals: [],
     config: {
       project: resolvedConfig.project,
