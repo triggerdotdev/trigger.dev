@@ -1,12 +1,13 @@
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
-import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
+import { isFailedRunStatus, type FINAL_RUN_STATUSES } from "../taskStatus";
+import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 
 type BaseInput = {
   id: string;
-  status?: FINISHED_STATUSES;
+  status?: FINAL_RUN_STATUSES;
   expiredAt?: Date;
   completedAt?: Date;
 };
@@ -48,14 +49,16 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
-    //todo if it's a failed status ensure there's an error
-    //todo if it's canceled add the reason as an error
-
     const run = await this._prisma.taskRun.update({
       where: { id },
       data: { status, expiredAt, completedAt },
       ...(include ? { include } : {}),
     });
+
+    //enqueue alert
+    if (isFailedRunStatus(run.status)) {
+      await PerformTaskAttemptAlertsService.enqueue(run.id, this._prisma);
+    }
 
     return run as Output<T>;
   }

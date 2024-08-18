@@ -1,12 +1,11 @@
-import { Prisma, type TaskRunStatus, type TaskTriggerSource } from "@trigger.dev/database";
+import { Prisma, type TaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
 import { type Direction } from "~/components/runs/RunStatuses";
-import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { sqlDatabaseSchema } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { isCancellableRunStatus } from "~/v3/taskStatus";
-import { BasePresenter } from "./basePresenter.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
+import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
+import { BasePresenter } from "./basePresenter.server";
 
 export type RunListOptions = {
   userId?: string;
@@ -305,7 +304,7 @@ WHERE
           throw new Error(`Environment not found for TaskRun ${run.id}`);
         }
 
-        const hasFinished = FINISHED_STATUSES.includes(run.status);
+        const hasFinished = isFinalRunStatus(run.status);
 
         const startedAt = run.startedAt ?? run.lockedAt;
 
