@@ -1,6 +1,6 @@
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { ProjectAlertChannel } from "@trigger.dev/database";
+import { type ProjectAlertChannel } from "@trigger.dev/database";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { env } from "~/env.server";
 import {
