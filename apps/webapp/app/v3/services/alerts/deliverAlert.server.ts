@@ -119,7 +119,7 @@ export class DeliverAlertService extends BaseService {
     }
 
     if (alert.taskRun) {
-      const finishedAttempt = await this._replica.taskRunAttempt.findFirst({
+      const finishedAttempt = await this._prisma.taskRunAttempt.findFirst({
         select: {
           output: true,
           outputType: true,
