@@ -4,6 +4,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { isFailedRunStatus, type FINAL_RUN_STATUSES } from "../taskStatus";
 import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
+import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 
 type BaseInput = {
   id: string;
@@ -57,7 +58,7 @@ export class FinalizeTaskRunService extends BaseService {
 
     //enqueue alert
     if (isFailedRunStatus(run.status)) {
-      await PerformTaskAttemptAlertsService.enqueue(run.id, this._prisma);
+      await PerformTaskRunAlertsService.enqueue(run.id, this._prisma);
     }
 
     return run as Output<T>;
