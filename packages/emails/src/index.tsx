@@ -1,5 +1,6 @@
 import { render } from "@react-email/render";
 import { ReactElement } from "react";
+import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import AlertDeploymentFailureEmail, {
@@ -26,6 +27,7 @@ export const DeliverEmailSchema = z
       magicLink: z.string().url(),
     }),
     InviteEmailSchema,
+    AlertRunEmailSchema,
     AlertAttemptEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
@@ -100,6 +102,12 @@ export class EmailClient {
         return {
           subject: `Error on ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
           component: <AlertAttemptFailureEmail {...data} />,
+        };
+      }
+      case "alert-run": {
+        return {
+          subject: `Run ${data.runId} failed for ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          component: <AlertRunFailureEmail {...data} />,
         };
       }
       case "alert-deployment-failure": {

@@ -27,6 +27,7 @@ import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
+import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -46,6 +47,12 @@ type FoundAlert = Prisma.Result<
           backgroundWorker: true;
         };
       };
+      taskRun: {
+        include: {
+          lockedBy: true;
+          lockedToVersion: true;
+        };
+      };
       workerDeployment: {
         include: {
           worker: {
@@ -58,11 +65,17 @@ type FoundAlert = Prisma.Result<
     };
   },
   "findUniqueOrThrow"
->;
+> & {
+  failedAttempt?: Prisma.Result<
+    typeof prisma.taskRunAttempt,
+    { select: { output: true; outputType: true; error: true } },
+    "findFirst"
+  >;
+};
 
 export class DeliverAlertService extends BaseService {
   public async call(alertId: string) {
-    const alert = await this._prisma.projectAlert.findUnique({
+    const alert: FoundAlert | null = await this._prisma.projectAlert.findFirst({
       where: { id: alertId },
       include: {
         channel: true,
@@ -77,6 +90,12 @@ export class DeliverAlertService extends BaseService {
             taskRun: true,
             backgroundWorkerTask: true,
             backgroundWorker: true,
+          },
+        },
+        taskRun: {
+          include: {
+            lockedBy: true,
+            lockedToVersion: true,
           },
         },
         workerDeployment: {
@@ -97,6 +116,24 @@ export class DeliverAlertService extends BaseService {
 
     if (alert.status !== "PENDING") {
       return;
+    }
+
+    if (alert.taskRun) {
+      const finishedAttempt = await this._replica.taskRunAttempt.findFirst({
+        select: {
+          output: true,
+          outputType: true,
+          error: true,
+        },
+        where: {
+          status: { in: FINAL_ATTEMPT_STATUSES },
+          taskRunId: alert.taskRun.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      alert.failedAttempt = finishedAttempt;
     }
 
     switch (alert.channel.type) {
@@ -164,6 +201,30 @@ export class DeliverAlertService extends BaseService {
           });
         } else {
           logger.error("[DeliverAlert] Task run attempt not found", {
+            alert,
+          });
+        }
+
+        break;
+      }
+      case "TASK_RUN": {
+        if (alert.taskRun) {
+          const taskRunError = this.#getRunError(alert);
+
+          await sendAlertEmail({
+            email: "alert-run",
+            to: emailProperties.data.email,
+            runId: alert.taskRun.friendlyId,
+            taskIdentifier: alert.taskRun.taskIdentifier,
+            fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
+            exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
+            version: alert.taskRun.lockedToVersion?.version ?? "Unknown",
+            environment: alert.environment.slug,
+            error: createJsonErrorObject(taskRunError),
+            runLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
+          });
+        } else {
+          logger.error("[DeliverAlert] Task run not found", {
             alert,
           });
         }
@@ -296,6 +357,50 @@ export class DeliverAlertService extends BaseService {
           await this.#deliverWebhook(payload, webhookProperties.data);
         } else {
           logger.error("[DeliverAlert] Task run attempt not found", {
+            alert,
+          });
+        }
+
+        break;
+      }
+      case "TASK_RUN": {
+        if (alert.taskRun) {
+          const error = this.#getRunError(alert);
+
+          const payload = {
+            task: {
+              id: alert.taskRun.taskIdentifier,
+              fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
+              exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
+            },
+            run: {
+              id: alert.taskRun.friendlyId,
+              isTest: alert.taskRun.isTest,
+              createdAt: alert.taskRun.createdAt,
+              idempotencyKey: alert.taskRun.idempotencyKey,
+            },
+            environment: {
+              id: alert.environment.id,
+              type: alert.environment.type,
+              slug: alert.environment.slug,
+            },
+            organization: {
+              id: alert.project.organizationId,
+              slug: alert.project.organization.slug,
+              name: alert.project.organization.title,
+            },
+            project: {
+              id: alert.project.id,
+              ref: alert.project.externalRef,
+              slug: alert.project.slug,
+              name: alert.project.name,
+            },
+            error,
+          };
+
+          await this.#deliverWebhook(payload, webhookProperties.data);
+        } else {
+          logger.error("[DeliverAlert] Task run not found", {
             alert,
           });
         }
@@ -570,6 +675,118 @@ export class DeliverAlertService extends BaseService {
 
         break;
       }
+      case "TASK_RUN": {
+        if (alert.taskRun) {
+          // Find existing storage by the run ID
+          const storage = await this._prisma.projectAlertStorage.findFirst({
+            where: {
+              alertChannelId: alert.channel.id,
+              alertType: alert.type,
+              storageId: alert.taskRun.id,
+            },
+          });
+
+          const storageData = storage
+            ? ProjectAlertSlackStorage.safeParse(storage.storageData)
+            : undefined;
+
+          const thread_ts =
+            storageData && storageData.success ? storageData.data.message_ts : undefined;
+
+          const taskRunError = this.#getRunError(alert);
+          const error = createJsonErrorObject(taskRunError);
+
+          const exportName = alert.taskRun.lockedBy?.exportName ?? "Unknown";
+          const version = alert.taskRun.lockedToVersion?.version ?? "Unknown";
+          const environment = alert.environment.slug;
+          const taskIdentifier = alert.taskRun.taskIdentifier;
+          const timestamp = alert.taskRun.completedAt ?? new Date();
+          const runId = alert.taskRun.friendlyId;
+
+          const message = await this.#postSlackMessage(integration, {
+            thread_ts,
+            channel: slackProperties.data.channelId,
+            text: `Run ${runId} failed for ${taskIdentifier} [${version}.${environment}]`,
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `:rotating_light: Error in *${exportName}* _<!date^${Math.round(
+                    timestamp.getTime() / 1000
+                  )}^at {date_num} {time_secs}|${timestamp.toLocaleString()}>_`,
+                },
+              },
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                },
+              },
+              {
+                type: "context",
+                elements: [
+                  {
+                    type: "mrkdwn",
+                    text: `${runId} | ${taskIdentifier} | ${version}.${environment} | ${alert.project.name}`,
+                  },
+                ],
+              },
+              {
+                type: "divider",
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: {
+                      type: "plain_text",
+                      text: "Investigate",
+                    },
+                    url: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
+                  },
+                ],
+              },
+            ],
+          });
+
+          // Upsert the storage
+          if (message.ts) {
+            if (storage) {
+              await this._prisma.projectAlertStorage.update({
+                where: {
+                  id: storage.id,
+                },
+                data: {
+                  storageData: {
+                    message_ts: message.ts,
+                  },
+                },
+              });
+            } else {
+              await this._prisma.projectAlertStorage.create({
+                data: {
+                  alertChannelId: alert.channel.id,
+                  alertType: alert.type,
+                  storageId: alert.taskRun.id,
+                  storageData: {
+                    message_ts: message.ts,
+                  },
+                  projectId: alert.project.id,
+                },
+              });
+            }
+          }
+        } else {
+          logger.error("[DeliverAlert] Task run not found", {
+            alert,
+          });
+        }
+
+        break;
+      }
       case "DEPLOYMENT_FAILURE": {
         if (alert.workerDeployment) {
           const preparedError = DeploymentPresenter.prepareErrorData(
@@ -693,6 +910,9 @@ export class DeliverAlertService extends BaseService {
           return;
         }
       }
+      default: {
+        assertNever(alert.type);
+      }
     }
   }
 
@@ -792,6 +1012,31 @@ export class DeliverAlertService extends BaseService {
 
       throw error;
     }
+  }
+
+  #getRunError(alert: FoundAlert): TaskRunError {
+    if (alert.failedAttempt) {
+      const res = TaskRunError.safeParse(alert.failedAttempt.error);
+
+      if (!res.success) {
+        logger.error("[DeliverAlert] Failed to parse task run error", {
+          issues: res.error.issues,
+          taskAttemptError: alert.failedAttempt.error,
+        });
+
+        return {
+          type: "CUSTOM_ERROR",
+          raw: JSON.stringify(alert.failedAttempt.error ?? "Unknown error"),
+        };
+      }
+
+      return res.data;
+    }
+
+    return {
+      type: "CUSTOM_ERROR",
+      raw: "No error on attempt",
+    };
   }
 
   static async enqueue(
