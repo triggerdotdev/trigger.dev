@@ -1,13 +1,10 @@
 import { Span, SpanKind } from "@opentelemetry/api";
-import { $replica, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 
 export abstract class BaseService {
-  constructor(
-    protected readonly _prisma: PrismaClientOrTransaction = prisma,
-    protected readonly _replica: PrismaClientOrTransaction = $replica
-  ) {}
+  constructor(protected readonly _prisma: PrismaClientOrTransaction = prisma) {}
 
   protected async traceWithEnv<T>(
     trace: string,
