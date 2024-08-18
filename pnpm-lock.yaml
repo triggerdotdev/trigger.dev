@@ -562,8 +562,8 @@ importers:
         specifier: ^17.4.0
         version: 17.4.0(react-dom@18.2.0)(react@18.2.0)
       react-window-splitter:
-        specifier: ^0.2.3
-        version: 0.2.3(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^0.2.5
+        version: 0.2.5(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
       recharts:
         specifier: ^2.12.6
         version: 2.12.6(react-dom@18.2.0)(react@18.2.0)
@@ -18736,15 +18736,15 @@ packages:
       tslib: 2.6.2
     dev: false
 
-  /@window-splitter/state@0.2.3:
-    resolution: {integrity: sha512-jruhVNrGjTc/z/ETdR2pX8owD7VHiDigZ+vnUPtS4toOxSKgm/ga9QDc+Rcwie5HV+7/rLApZ1xl9pQpgImbWg==}
+  /@window-splitter/state@0.2.5:
+    resolution: {integrity: sha512-Dm9AIzbeqUTo/s6pqLHPrJSHgVBok2zUWsF7VBftpgH6nJ8H5PTOohLmyPNuBftblQ07PIB+itpnrYfEAINy6w==}
     engines: {node: '>=18.0.0'}
     dependencies:
       '@react-spring/rafz': 9.7.4
       '@types/invariant': 2.2.37
       big.js: 6.2.1
       invariant: 2.2.4
-      xstate: 5.17.1
+      xstate: 5.17.4
     dev: false
 
   /@xmldom/xmldom@0.8.6:
@@ -18756,7 +18756,7 @@ packages:
     resolution: {integrity: sha512-N8tkAACJx2ww8vFMneJmaAgmjAG1tnVBZJRLRcx061tmsLRZHSEZSLuGWnwPtunsSLvSqXQ2wfp7Mgqg1I+2dQ==}
     dev: false
 
-  /@xstate/react@4.1.1(@types/react@18.2.69)(react@18.2.0)(xstate@5.17.1):
+  /@xstate/react@4.1.1(@types/react@18.2.69)(react@18.2.0)(xstate@5.17.4):
     resolution: {integrity: sha512-pFp/Y+bnczfaZ0V8B4LOhx3d6Gd71YKAPbzerGqydC2nsYN/mp7RZu3q/w6/kvI2hwR/jeDeetM7xc3JFZH2NA==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
@@ -18768,7 +18768,7 @@ packages:
       react: 18.2.0
       use-isomorphic-layout-effect: 1.1.2(@types/react@18.2.69)(react@18.2.0)
       use-sync-external-store: 1.2.2(react@18.2.0)
-      xstate: 5.17.1
+      xstate: 5.17.4
     transitivePeerDependencies:
       - '@types/react'
     dev: false
@@ -32726,23 +32726,23 @@ packages:
       tslib: 2.5.0
     dev: false
 
-  /react-window-splitter@0.2.3(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-aWGd6ROi9+xAFgqhVCEeAuDWh6jPidghQmv25lc/67FlFMLpi/NB+NaZEeSANFQV8kLxMokUfN/vfz+uuz/fAA==}
+  /react-window-splitter@0.2.5(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-rTSJpoBsdJ9ovb2Kcp0YOMPr+JIT3v6mZ7vK3SiWvEQ/EGPjLrRgRNSe/8dhGMYn0capvy3Vf1U32yP1G8OW/A==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: '>=16'
       react-dom: '>=16'
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.0(@types/react@18.2.69)(react@18.2.0)
-      '@window-splitter/state': 0.2.3
-      '@xstate/react': 4.1.1(@types/react@18.2.69)(react@18.2.0)(xstate@5.17.1)
+      '@window-splitter/state': 0.2.5
+      '@xstate/react': 4.1.1(@types/react@18.2.69)(react@18.2.0)(xstate@5.17.4)
       invariant: 2.2.4
       react: 18.2.0
       react-aria: 3.34.1(react-dom@18.2.0)(react@18.2.0)
       react-dom: 18.2.0(react@18.2.0)
       reforest: 0.13.0(@types/react@18.2.69)(react@18.2.0)
       universal-cookie: 7.2.0
-      xstate: 5.17.1
+      xstate: 5.17.4
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -38516,8 +38516,8 @@ packages:
     engines: {node: '>=0.4.0'}
     dev: false
 
-  /xstate@5.17.1:
-    resolution: {integrity: sha512-RNwcXdth+kboWZg+Zhf6f6iNP6CtAAiS4z4qwyTd/fWBH9PHXRqko6OdW3xOTwP62f0mVD+jsPOSqY4Ar8nZKQ==}
+  /xstate@5.17.4:
+    resolution: {integrity: sha512-KM2FYVOUJ04HlOO4TY3wEXqoYPR/XsDu+ewm+IWw0vilXqND0jVfvv04tEFwp8Mkk7I/oHXM8t1Ex9xJyUS4ZA==}
     dev: false
 
   /xtend@4.0.2:
