@@ -1,6 +1,8 @@
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { logger } from "~/services/logger.server";
+import { filterOrphanedEnvironments } from "~/utils/environmentSort";
 import { getTimezones } from "~/utils/timezones.server";
 
 type EditScheduleOptions = {
@@ -68,9 +70,11 @@ export class EditSchedulePresenter {
       },
     });
 
-    const possibleEnvironments = project.environments.map((environment) => {
-      return displayableEnvironment(environment, userId);
-    });
+    const possibleEnvironments = filterOrphanedEnvironments(project.environments).map(
+      (environment) => {
+        return displayableEnvironment(environment, userId);
+      }
+    );
 
     return {
       possibleTasks: possibleTasks.map((task) => task.slug),
@@ -115,13 +119,16 @@ export class EditSchedulePresenter {
     return {
       ...schedule,
       cron: schedule.generatorExpression,
-      environments: schedule.instances.map((instance) => {
+      environments: schedule.instances.flatMap((instance) => {
         const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
         if (!environment) {
-          throw new Error(`Environment with id ${instance.environmentId} not found`);
+          logger.error(
+            `EditSchedulePresenter: environment with id ${instance.environmentId} not found`
+          );
+          return [];
         }
 
-        return environment;
+        return [environment];
       }),
     };
   }
