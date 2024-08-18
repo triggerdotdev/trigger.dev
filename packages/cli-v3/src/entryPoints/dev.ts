@@ -67,8 +67,6 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
-console.log("Node.js version", process.version);
-
 const sender = new ZodMessageSender({
   schema: childToWorkerMessages,
   sender: async (message) => {

@@ -958,8 +958,8 @@ importers:
         specifier: ^10.0.3
         version: 10.0.3
       partysocket:
-        specifier: ^0.0.17
-        version: 0.0.17
+        specifier: ^1.0.2
+        version: 1.0.2
       pkg-types:
         specifier: ^1.1.3
         version: 1.1.3
@@ -988,8 +988,8 @@ importers:
         specifier: ^0.1.4
         version: 0.1.4
       ws:
-        specifier: ^8.12.0
-        version: 8.12.0
+        specifier: ^8.18.0
+        version: 8.18.0
       xdg-app-paths:
         specifier: ^8.3.0
         version: 8.3.0
@@ -17527,6 +17527,11 @@ packages:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
 
+  /event-target-shim@6.0.2:
+    resolution: {integrity: sha512-8q3LsZjRezbFZ2PN+uP+Q7pnHUMmAOziU2vA2OwoFaKIXxlxl38IylhSSgUorWu/rf4er67w0ikBqjBFk/pomA==}
+    engines: {node: '>=10.13.0'}
+    dev: false
+
   /eventemitter3@3.1.2:
     resolution: {integrity: sha512-tvtQIeLVHjDkJYnzf2dgVMxfuSGJeM/7UCG17TT4EumTfNtF+0nebF/4zWOIkCreAbtNqhGEboB6BWrwqNaw4Q==}
     dev: false
@@ -19012,7 +19017,7 @@ packages:
       type-fest: 0.12.0
       widest-line: 4.0.1
       wrap-ansi: 8.1.0
-      ws: 8.16.0
+      ws: 8.18.0
       yoga-wasm-web: 0.3.3
     transitivePeerDependencies:
       - bufferutil
@@ -21246,7 +21251,7 @@ packages:
       stoppable: 1.1.0
       undici: 5.28.4
       workerd: 1.20240512.0
-      ws: 8.16.0
+      ws: 8.18.0
       youch: 3.3.3
       zod: 3.23.8
     transitivePeerDependencies:
@@ -22450,6 +22455,12 @@ packages:
 
   /partysocket@0.0.17:
     resolution: {integrity: sha512-8Re9nmgP2LzQhq+FBs9+BZNTjmMwoF4geEKlpH0lxW1JKp3FmplN74306afGH9EsOjdfcXqKY2VCZtc3iAHIow==}
+    dev: false
+
+  /partysocket@1.0.2:
+    resolution: {integrity: sha512-rAFOUKImaq+VBk2B+2RTBsWEvlnarEP53nchoUHzpVs8V6fG2/estihOTslTQUWHVuHEKDL5k8htG8K3TngyFA==}
+    dependencies:
+      event-target-shim: 6.0.2
     dev: false
 
   /pascalcase@0.1.1:
@@ -28290,6 +28301,7 @@ packages:
         optional: true
       utf-8-validate:
         optional: true
+    dev: false
 
   /ws@8.18.0:
     resolution: {integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==}
@@ -28302,7 +28314,6 @@ packages:
         optional: true
       utf-8-validate:
         optional: true
-    dev: false
 
   /xdg-app-paths@8.3.0:
     resolution: {integrity: sha512-mgxlWVZw0TNWHoGmXq+NC3uhCIc55dDpAlDkMQUaIAcQzysb0kxctwv//fvuW61/nAAeUBJMQ8mnZjMmuYwOcQ==}

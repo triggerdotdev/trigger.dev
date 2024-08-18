@@ -24,8 +24,8 @@ import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
+import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;

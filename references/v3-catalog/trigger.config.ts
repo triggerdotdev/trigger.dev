@@ -31,6 +31,7 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) =
 };
 
 export default defineConfig({
+  runtime: "bun",
   project: "yubjwjsfkxnylobaqvqz",
   machine: "small-2x",
   instrumentations: [new OpenAIInstrumentation()],

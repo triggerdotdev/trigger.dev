@@ -36,6 +36,7 @@ import {
   UnexpectedExitError,
   getFriendlyErrorMessage,
 } from "./errors.js";
+import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -277,6 +278,7 @@ export class BackgroundWorker {
             ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
             : process.env.NODE_OPTIONS,
         },
+        execPath: execPathForRuntime(this.build.runtime),
       });
 
       // Set a timeout to kill the child process if it doesn't respond

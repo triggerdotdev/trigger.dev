@@ -13,7 +13,7 @@ export const BuildTarget = z.enum(["dev", "deploy"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node20", "bun"]);
+export const BuildRuntime = z.enum(["node", "bun"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 

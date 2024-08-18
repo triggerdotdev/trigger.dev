@@ -12,7 +12,7 @@ import type { BuildRuntime, RetryOptions } from "./index.js";
 
 export type TriggerConfig = {
   /**
-   * @default "node20"
+   * @default "node"
    */
   runtime?: BuildRuntime;
   project: string;

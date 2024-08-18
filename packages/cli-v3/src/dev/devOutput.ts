@@ -54,11 +54,12 @@ export function startDevOutput(options: DevOutputOptions) {
     const testLink = chalkLink(cliLink("Test tasks", testUrl));
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
+    const runtime = chalkGrey(`[${worker.build.runtime}]`);
     const workerStarted = chalkGrey("Background worker ready");
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logger.log(
-      `${bullet} ${workerStarted} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
+      `${bullet} ${workerStarted} ${runtime} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
     );
   };
 

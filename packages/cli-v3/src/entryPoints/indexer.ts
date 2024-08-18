@@ -134,7 +134,7 @@ await sendMessageInCatalog(
       "TASKS_FAILED_TO_PARSE",
       { zodIssues: err.error.issues, tasks },
       async (msg) => {
-        process.send?.(msg);
+        await process.send?.(msg);
       }
     );
   } else {
@@ -142,6 +142,12 @@ await sendMessageInCatalog(
   }
 
   return;
+});
+
+await new Promise<void>((resolve) => {
+  setTimeout(() => {
+    resolve();
+  }, 10);
 });
 
 function getExportNames(module: any) {

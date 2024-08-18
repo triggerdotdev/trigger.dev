@@ -407,7 +407,7 @@ function extractImageDigest(outputs: string[]) {
 
 export async function generateContainerfile(buildManifest: BuildManifest) {
   switch (buildManifest.runtime) {
-    case "node20": {
+    case "node": {
       return await generateNodeContainerfile(buildManifest);
     }
     case "bun": {
