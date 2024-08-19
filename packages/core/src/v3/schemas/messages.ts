@@ -1,21 +1,20 @@
 import { z } from "zod";
+import { WorkerManifest } from "./build.js";
 import {
   MachinePreset,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
 } from "./common.js";
+import { TaskResource } from "./resources.js";
 import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
-  TaskRunExecutionPayload,
   WaitReason,
 } from "./schemas.js";
-import { TaskResource } from "./resources.js";
-import { BuildManifest, WorkerManifest } from "./build.js";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
@@ -108,32 +107,6 @@ export const clientWebsocketMessages = {
   }),
 };
 
-export const workerToChildMessages = {
-  INDEX: z.object({}),
-  EXECUTE_TASK_RUN: z.object({
-    version: z.literal("v1").default("v1"),
-    execution: TaskRunExecution,
-    traceContext: z.record(z.unknown()),
-    metadata: ServerBackgroundWorker,
-  }),
-  TASK_RUN_COMPLETED_NOTIFICATION: z.discriminatedUnion("version", [
-    z.object({
-      version: z.literal("v1"),
-      completion: TaskRunExecutionResult,
-      execution: TaskRunExecution,
-    }),
-    z.object({
-      version: z.literal("v2"),
-      completion: TaskRunExecutionResult,
-    }),
-  ]),
-  CLEANUP: z.object({
-    version: z.literal("v1").default("v1"),
-    flush: z.boolean().default(false),
-    kill: z.boolean().default(true),
-  }),
-};
-
 export const UncaughtExceptionMessage = z.object({
   version: z.literal("v1").default("v1"),
   error: z.object({
@@ -152,37 +125,6 @@ export const TaskMetadataFailedToParseData = z.object({
   }),
 });
 
-export const childToWorkerMessages = {
-  TASK_RUN_COMPLETED: z.object({
-    version: z.literal("v1").default("v1"),
-    execution: TaskRunExecution,
-    result: TaskRunExecutionResult,
-  }),
-  TASK_HEARTBEAT: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  TASK_RUN_HEARTBEAT: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  READY_TO_DISPOSE: z.undefined(),
-  WAIT_FOR_DURATION: z.object({
-    version: z.literal("v1").default("v1"),
-    ms: z.number(),
-  }),
-  WAIT_FOR_TASK: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  WAIT_FOR_BATCH: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-    runs: z.string().array(),
-  }),
-  UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
-};
-
 export const indexerToWorkerMessages = {
   INDEX_COMPLETE: z.object({
     version: z.literal("v1").default("v1"),
@@ -192,22 +134,13 @@ export const indexerToWorkerMessages = {
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 
-export const ProdChildToWorkerMessages = {
+export const WorkerToExecutorMessageCatalog = {
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
       result: TaskRunExecutionResult,
     }),
-  },
-  TASKS_READY: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      tasks: TaskManifest.array(),
-    }),
-  },
-  TASKS_FAILED_TO_PARSE: {
-    message: TaskMetadataFailedToParseData,
   },
   TASK_HEARTBEAT: {
     message: z.object({
@@ -244,7 +177,7 @@ export const ProdChildToWorkerMessages = {
   },
 };
 
-export const ProdWorkerToChildMessages = {
+export const ExecutorToWorkerMessageCatalog = {
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),

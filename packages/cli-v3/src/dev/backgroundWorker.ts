@@ -9,21 +9,16 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   WorkerManifest,
-  childToWorkerMessages,
   correctErrorStackTrace,
   indexerToWorkerMessages,
-  workerToChildMessages,
 } from "@trigger.dev/core/v3";
-import {
-  ZodMessageHandler,
-  ZodMessageSender,
-  parseMessageFromCatalog,
-} from "@trigger.dev/core/v3/zodMessageHandler";
+import { parseMessageFromCatalog } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
-import { ChildProcess, fork } from "node:child_process";
-import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
+import { fork } from "node:child_process";
 
+import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { join } from "node:path";
+import { TaskRunProcess, TaskRunProcessOptions } from "../executions/taskRunProcess.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
@@ -35,8 +30,7 @@ import {
   UncaughtExceptionError,
   UnexpectedExitError,
   getFriendlyErrorMessage,
-} from "./errors.js";
-import { execPathForRuntime } from "@trigger.dev/core/v3/build";
+} from "../executions/errors.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -212,7 +206,7 @@ export class BackgroundWorker {
   public serverWorker: ServerBackgroundWorker | undefined;
 
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
-  private _taskRunProcessesBeingKilled: Set<number> = new Set();
+  private _taskRunProcessesBeingKilled: Map<number, TaskRunProcess> = new Map();
 
   private _closed: boolean = false;
 
@@ -379,14 +373,10 @@ export class BackgroundWorker {
 
     const processOptions: TaskRunProcessOptions = {
       payload,
-      build: this.build,
       env: {
         ...this.params.env,
         ...payload.environment,
         TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
-        NODE_OPTIONS: this.build.loaderEntryPoint
-          ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
-          : process.env.NODE_OPTIONS ?? "",
       },
       serverWorker: this.serverWorker,
       workerManifest: this.manifest,
@@ -410,14 +400,18 @@ export class BackgroundWorker {
       }
     });
 
-    taskRunProcess.onIsBeingKilled.attach((pid) => {
-      if (pid) {
-        this._taskRunProcessesBeingKilled.add(pid);
+    taskRunProcess.onIsBeingKilled.attach((taskRunProcess) => {
+      if (taskRunProcess.pid) {
+        this._taskRunProcessesBeingKilled.set(taskRunProcess.pid, taskRunProcess);
       }
     });
 
     taskRunProcess.onTaskRunHeartbeat.attach((id) => {
       this.onTaskRunHeartbeat.post(id);
+    });
+
+    taskRunProcess.onReadyToDispose.attach(async () => {
+      await taskRunProcess.kill();
     });
 
     await taskRunProcess.initialize();
@@ -619,355 +613,5 @@ export class BackgroundWorker {
       ...error,
       stackTrace: correctErrorStackTrace(error.stackTrace, this.params.cwd),
     };
-  }
-}
-
-type TaskRunProcessOptions = {
-  payload: TaskRunExecutionPayload;
-  build: BuildManifest;
-  env: Record<string, string>;
-  cwd?: string;
-  // this is the "index" data
-  workerManifest: WorkerManifest;
-  // this is the worker on the server data
-  serverWorker: ServerBackgroundWorker;
-  messageId?: string;
-};
-
-class TaskRunProcess {
-  private _handler = new ZodMessageHandler({
-    schema: childToWorkerMessages,
-  });
-  private _sender: ZodMessageSender<typeof workerToChildMessages>;
-  private _child: ChildProcess | undefined;
-  private _childPid?: number;
-  private _attemptPromises: Map<
-    string,
-    { resolver: (value: TaskRunExecutionResult) => void; rejecter: (err?: any) => void }
-  > = new Map();
-  private _attemptStatuses: Map<string, "PENDING" | "REJECTED" | "RESOLVED"> = new Map();
-  private _currentExecution: TaskRunExecution | undefined;
-  private _isBeingKilled: boolean = false;
-  private _isBeingCancelled: boolean = false;
-  private _stderr: Array<string> = [];
-  /**
-   * @deprecated use onTaskRunHeartbeat instead
-   */
-  public onTaskHeartbeat: Evt<string> = new Evt();
-  public onTaskRunHeartbeat: Evt<string> = new Evt();
-  public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
-    new Evt();
-  public onIsBeingKilled: Evt<number | undefined> = new Evt();
-  private _debuggingPort: number | undefined;
-
-  constructor(public readonly options: TaskRunProcessOptions) {
-    this._sender = new ZodMessageSender({
-      schema: workerToChildMessages,
-      sender: async (message) => {
-        if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
-          this._child.send(message);
-        }
-      },
-    });
-  }
-
-  async cancel() {
-    this._isBeingCancelled = true;
-
-    await this.cleanup(true);
-  }
-
-  get runId() {
-    return this.options.payload.execution.run.id;
-  }
-
-  get isTest() {
-    return this.options.payload.execution.run.isTest;
-  }
-
-  get payload() {
-    return this.options.payload;
-  }
-
-  async initialize() {
-    const { env, build, cwd } = this.options;
-
-    const fullEnv = {
-      ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
-      ...env,
-    };
-
-    logger.debug(`[${this.runId}] initializing task run process`, {
-      env: fullEnv,
-      path: build.workerEntryPoint,
-      cwd,
-    });
-
-    this._child = fork(build.workerEntryPoint, {
-      stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-      cwd,
-      env: fullEnv,
-      execArgv: ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
-      execPath: execPathForRuntime(build.runtime),
-    });
-
-    this._childPid = this._child?.pid;
-
-    this._child.on("message", this.#handleMessage.bind(this));
-    this._child.on("exit", this.#handleExit.bind(this));
-    this._child.stdout?.on("data", this.#handleLog.bind(this));
-    this._child.stderr?.on("data", this.#handleStdErr.bind(this));
-  }
-
-  async cleanup(kill: boolean = false) {
-    if (kill && this._isBeingKilled) {
-      return;
-    }
-
-    if (kill) {
-      this._isBeingKilled = true;
-      this.onIsBeingKilled.post(this._child?.pid);
-    }
-
-    logger.debug(`[${this.runId}] cleaning up task run process`, { kill, pid: this.pid });
-
-    await this._sender.send("CLEANUP", {
-      flush: true,
-      kill,
-    });
-
-    // FIXME: Something broke READY_TO_DISPOSE. We never receive it, so we always have to kill the process after the timeout below.
-
-    if (!kill) {
-      return;
-    }
-
-    // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
-    setTimeout(() => {
-      if (this._child && !this._child.killed) {
-        logger.debug(`[${this.runId}] killing task run process after timeout`, { pid: this.pid });
-
-        this._child.kill();
-      }
-    }, 5000);
-  }
-
-  async execute(): Promise<TaskRunExecutionResult> {
-    let resolver: (value: TaskRunExecutionResult) => void;
-    let rejecter: (err?: any) => void;
-
-    const promise = new Promise<TaskRunExecutionResult>((resolve, reject) => {
-      resolver = resolve;
-      rejecter = reject;
-    });
-
-    this._attemptStatuses.set(this.payload.execution.attempt.id, "PENDING");
-
-    // @ts-expect-error - We know that the resolver and rejecter are defined
-    this._attemptPromises.set(this.payload.execution.attempt.id, { resolver, rejecter });
-
-    const { execution, traceContext } = this.payload;
-
-    this._currentExecution = execution;
-
-    await this._sender.send("EXECUTE_TASK_RUN", {
-      execution,
-      traceContext,
-      metadata: this.options.serverWorker,
-    });
-
-    const result = await promise;
-
-    this._currentExecution = undefined;
-
-    return result;
-  }
-
-  taskRunCompletedNotification(completion: TaskRunExecutionResult) {
-    if (!completion.ok && typeof completion.retry !== "undefined") {
-      return;
-    }
-
-    if (completion.id === this.runId) {
-      // We don't need to notify the task run process if it's the same as the one we're running
-      return;
-    }
-
-    logger.debug(`[${this.runId}] task run completed notification`, {
-      completion,
-    });
-
-    this._sender.send("TASK_RUN_COMPLETED_NOTIFICATION", {
-      version: "v2",
-      completion,
-    });
-  }
-
-  async #handleMessage(msg: any) {
-    const message = this._handler.parseMessage(msg);
-
-    if (!message.success) {
-      logger.error(`Dropping message: ${message.error}`, { message });
-      return;
-    }
-
-    switch (message.data.type) {
-      case "TASK_RUN_COMPLETED": {
-        const { result, execution } = message.data.payload;
-
-        logger.debug(`[${this.runId}] task run completed`, {
-          result,
-        });
-
-        const promiseStatus = this._attemptStatuses.get(execution.attempt.id);
-
-        if (promiseStatus !== "PENDING") {
-          return;
-        }
-
-        this._attemptStatuses.set(execution.attempt.id, "RESOLVED");
-
-        const attemptPromise = this._attemptPromises.get(execution.attempt.id);
-
-        if (!attemptPromise) {
-          return;
-        }
-
-        const { resolver } = attemptPromise;
-
-        resolver(result);
-
-        break;
-      }
-      case "READY_TO_DISPOSE": {
-        logger.debug(`[${this.runId}] task run process is ready to dispose`);
-
-        this.#kill();
-
-        break;
-      }
-      case "TASK_HEARTBEAT": {
-        if (this.options.messageId) {
-          this.onTaskRunHeartbeat.post(this.options.messageId);
-        } else {
-          this.onTaskHeartbeat.post(message.data.payload.id);
-        }
-
-        break;
-      }
-    }
-  }
-
-  async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
-    logger.debug(`[${this.runId}] handle task run process exit`, { code, signal, pid: this.pid });
-
-    // Go through all the attempts currently pending and reject them
-    for (const [id, status] of this._attemptStatuses.entries()) {
-      if (status === "PENDING") {
-        this._attemptStatuses.set(id, "REJECTED");
-
-        const attemptPromise = this._attemptPromises.get(id);
-
-        if (!attemptPromise) {
-          continue;
-        }
-
-        const { rejecter } = attemptPromise;
-
-        if (this._isBeingCancelled) {
-          rejecter(new CancelledProcessError());
-        } else if (this._isBeingKilled) {
-          rejecter(new CleanupProcessError());
-        } else {
-          rejecter(
-            new UnexpectedExitError(
-              code ?? -1,
-              signal,
-              this._stderr.length ? this._stderr.join("\n") : undefined
-            )
-          );
-        }
-      }
-    }
-
-    this.onExit.post({ code, signal, pid: this.pid });
-  }
-
-  #handleLog(data: Buffer) {
-    if (!this._currentExecution) {
-      logger.log(`${chalkGrey("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${data.toString()}`);
-
-      return;
-    }
-
-    const runId = chalkRun(
-      `${this._currentExecution.run.id}.${this._currentExecution.attempt.number}`
-    );
-
-    logger.log(
-      `${chalkGrey("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${data.toString()}`
-    );
-  }
-
-  #handleStdErr(data: Buffer) {
-    if (this._isBeingKilled) {
-      return;
-    }
-
-    if (!this._currentExecution) {
-      logger.log(`${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${data.toString()}`);
-
-      return;
-    }
-
-    const runId = chalkRun(
-      `${this._currentExecution.run.id}.${this._currentExecution.attempt.number}`
-    );
-
-    const errorLine = data.toString();
-
-    logger.log(
-      `${chalkError("○")} ${chalkGrey(prettyPrintDate(new Date()))} ${runId} ${errorLine}`
-    );
-
-    if (this._stderr.length > 100) {
-      this._stderr.shift();
-    }
-    this._stderr.push(errorLine);
-  }
-
-  #kill() {
-    logger.debug(`[${this.runId}] #kill()`, { pid: this.pid });
-
-    if (this._child && !this._child.killed) {
-      this._child?.kill();
-    }
-  }
-
-  async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
-    logger.debug(`[${this.runId}] killing task run process`, {
-      signal,
-      timeoutInMs,
-      pid: this.pid,
-    });
-
-    this._isBeingKilled = true;
-
-    const killTimeout = this.onExit.waitFor(timeoutInMs);
-
-    this.onIsBeingKilled.post(this._child?.pid);
-    this._child?.kill(signal);
-
-    if (timeoutInMs) {
-      await killTimeout;
-    }
-  }
-
-  get isBeingKilled() {
-    return this._isBeingKilled || this._child?.killed;
-  }
-
-  get pid() {
-    return this._childPid;
   }
 }

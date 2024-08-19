@@ -66,6 +66,9 @@ export type IndexMessage = z.infer<typeof IndexMessage>;
 export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
+  workerEntryPoint: z.string(),
+  loaderEntryPoint: z.string().optional(),
+  runtime: BuildRuntime,
 });
 
 export type WorkerManifest = z.infer<typeof WorkerManifest>;

@@ -122,6 +122,9 @@ await sendMessageInCatalog(
     manifest: {
       tasks,
       configPath: buildManifest.configPath,
+      runtime: buildManifest.runtime,
+      workerEntryPoint: buildManifest.workerEntryPoint,
+      loaderEntryPoint: buildManifest.loaderEntryPoint,
     },
   },
   async (msg) => {

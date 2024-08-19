@@ -11,6 +11,10 @@ import {
 import { z } from "zod";
 import { ZodSchemaParsedError } from "./zodMessageHandler.js";
 import { inspect } from "node:util";
+import {
+  ExecutorToWorkerMessageCatalog,
+  WorkerToExecutorMessageCatalog,
+} from "./schemas/messages.js";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
@@ -335,3 +339,13 @@ export class ZodIpcConnection<
     });
   }
 }
+
+export type WorkerToExecutorProcessConnection = ZodIpcConnection<
+  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog
+>;
+
+export type ExecutorToWorkerProcessConnection = ZodIpcConnection<
+  typeof ExecutorToWorkerMessageCatalog,
+  typeof WorkerToExecutorMessageCatalog
+>;

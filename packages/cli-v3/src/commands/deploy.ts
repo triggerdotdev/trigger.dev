@@ -355,6 +355,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     noCache: options.noCache,
     push: options.push,
     registryHost,
+    registry: options.registry,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,

@@ -1,7 +1,6 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
-  childToWorkerMessages,
   clock,
   type HandleErrorFunction,
   logger,
@@ -10,10 +9,11 @@ import {
   taskCatalog,
   TaskRunErrorCodes,
   TaskRunExecution,
+  WorkerToExecutorMessageCatalog,
   TriggerConfig,
   TriggerTracer,
   WorkerManifest,
-  workerToChildMessages,
+  ExecutorToWorkerMessageCatalog,
 } from "@trigger.dev/core/v3";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
 import {
@@ -29,7 +29,7 @@ import {
   TracingSDK,
   usage,
 } from "@trigger.dev/core/v3/workers";
-import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
@@ -65,13 +65,6 @@ process.on("uncaughtException", function (error, origin) {
         version: "v1",
       });
   }
-});
-
-const sender = new ZodMessageSender({
-  schema: childToWorkerMessages,
-  sender: async (message) => {
-    process.send?.(message);
-  },
 });
 
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
@@ -156,10 +149,12 @@ let _execution: TaskRunExecution | undefined;
 let _isRunning = false;
 let _tracingSDK: TracingSDK | undefined;
 
-const handler = new ZodMessageHandler({
-  schema: workerToChildMessages,
-  messages: {
-    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }) => {
+const zodIpc = new ZodIpcConnection({
+  listenSchema: ExecutorToWorkerMessageCatalog,
+  emitSchema: WorkerToExecutorMessageCatalog,
+  process,
+  handlers: {
+    EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
       if (_isRunning) {
         console.error("Worker is already running a task");
 
@@ -183,6 +178,8 @@ const handler = new ZodMessageHandler({
 
       const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
         await bootstrap();
+
+      _tracingSDK = tracingSDK;
 
       const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
 
@@ -300,7 +297,7 @@ const handler = new ZodMessageHandler({
         }
       }
     },
-    CLEANUP: async ({ flush, kill }) => {
+    CLEANUP: async ({ flush, kill }, sender) => {
       if (kill) {
         await _tracingSDK?.flush();
         // Now we need to exit the process
@@ -314,10 +311,6 @@ const handler = new ZodMessageHandler({
   },
 });
 
-process.on("message", async (msg: any) => {
-  await handler.handleMessage(msg);
-});
-
 process.title = "trigger-dev-worker";
 
 async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
@@ -325,7 +318,7 @@ async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeco
     while (true) {
       if (_isRunning && _execution) {
         try {
-          await sender.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
         } catch (err) {
           console.error("Failed to send HEARTBEAT message", err);
         }

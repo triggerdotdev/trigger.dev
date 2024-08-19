@@ -430,7 +430,7 @@ async function generateBunContainerfile(buildManifest: BuildManifest) {
     .join("\n");
 
   return `
-FROM oven/bun:1 AS base
+FROM imbios/bun-node:22-debian AS base
 RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM base AS install
@@ -484,6 +484,13 @@ FROM base AS final
 USER bun
 WORKDIR /app
 
+ARG TRIGGER_PROJECT_ID
+ARG TRIGGER_DEPLOYMENT_ID
+ARG TRIGGER_DEPLOYMENT_VERSION
+ARG TRIGGER_CONTENT_HASH
+ARG TRIGGER_PROJECT_REF
+ARG NODE_EXTRA_CA_CERTS
+
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
     TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
@@ -498,7 +505,7 @@ COPY --from=install --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "bun", "run", "${buildManifest.workerEntryPoint}" ]
+ENTRYPOINT [ "dumb-init", "node", "${buildManifest.workerEntryPoint}" ]
 CMD []
   `;
 }
@@ -575,6 +582,13 @@ FROM base AS final
 
 USER node
 WORKDIR /app
+
+ARG TRIGGER_PROJECT_ID
+ARG TRIGGER_DEPLOYMENT_ID
+ARG TRIGGER_DEPLOYMENT_VERSION
+ARG TRIGGER_CONTENT_HASH
+ARG TRIGGER_PROJECT_REF
+ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \

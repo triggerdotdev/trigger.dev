@@ -173,7 +173,13 @@ async function indexDeployment({
       });
     }
 
-    const workerManifest: WorkerManifest = { tasks, configPath: buildManifest.configPath };
+    const workerManifest: WorkerManifest = {
+      tasks,
+      configPath: buildManifest.configPath,
+      runtime: buildManifest.runtime,
+      workerEntryPoint: buildManifest.workerEntryPoint,
+      loaderEntryPoint: buildManifest.loaderEntryPoint,
+    };
 
     console.log("Writing index.json", process.cwd());
 
