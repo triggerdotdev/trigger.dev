@@ -5,7 +5,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
 export class ResumeBatchRunService extends BaseService {
-  public async call(batchRunId: string, sourceTaskAttemptId: string) {
+  public async call(batchRunId: string, sourceTaskAttemptId?: string) {
     const batchRun = await this._prisma.batchTaskRun.findFirst({
       where: {
         id: batchRunId,
@@ -41,34 +41,43 @@ export class ResumeBatchRunService extends BaseService {
       return;
     }
 
-    // We need to update the batchRun status so we don't resume it again
-    await this._prisma.batchTaskRun.update({
-      where: {
-        id: batchRun.id,
-      },
-      data: {
-        status: "COMPLETED",
-      },
-    });
-
     // This batch has a dependent attempt and just finalized, we should resume that attempt
     const environment = batchRun.dependentTaskAttempt.runtimeEnvironment;
 
     // If we are in development, we don't need to resume the dependent task (that will happen automatically)
     if (environment.type === "DEVELOPMENT") {
+      // We need to update the batchRun status so we don't resume it again
+      await this._prisma.batchTaskRun.update({
+        where: {
+          id: batchRun.id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+      });
       return;
     }
 
     const dependentRun = batchRun.dependentTaskAttempt.taskRun;
 
     if (batchRun.dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
+      // We need to update the batchRun status so we don't resume it again
+      await this._prisma.batchTaskRun.update({
+        where: {
+          id: batchRun.id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+      });
+
       await marqs?.enqueueMessage(
         environment,
         dependentRun.queue,
         dependentRun.id,
         {
           type: "RESUME",
-          completedAttemptIds: [sourceTaskAttemptId],
+          completedAttemptIds: sourceTaskAttemptId ? [sourceTaskAttemptId] : [],
           resumableAttemptId: batchRun.dependentTaskAttempt.id,
           checkpointEventId: batchRun.checkpointEventId,
           projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
@@ -86,18 +95,12 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
         });
       }
-
-      await marqs?.replaceMessage(dependentRun.id, {
-        type: "RESUME",
-        completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-        resumableAttemptId: batchRun.dependentTaskAttempt.id,
-      });
     }
   }
 
   static async enqueue(
     batchRunId: string,
-    sourceTaskAttemptId: string,
+    sourceTaskAttemptId: string | undefined,
     tx: PrismaClientOrTransaction,
     runAt?: Date
   ) {

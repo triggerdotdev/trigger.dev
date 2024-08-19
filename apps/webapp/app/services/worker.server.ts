@@ -131,7 +131,7 @@ const workerCatalog = {
   }),
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
-    sourceTaskAttemptId: z.string(),
+    sourceTaskAttemptId: z.string().optional(),
   }),
   "v3.resumeTaskDependency": z.object({
     dependencyId: z.string(),

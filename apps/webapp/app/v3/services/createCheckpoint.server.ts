@@ -7,6 +7,8 @@ import { marqs } from "~/v3/marqs/index.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { BaseService } from "./baseService.server";
 import { isFinalRunStatus, isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
+import { ResumeBatchRunService } from "./resumeBatchRun.server";
+import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -89,6 +91,9 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    //sleep for 20 seconds
+    // await new Promise((resolve) => setTimeout(resolve, 10_000));
+
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
         friendlyId: generateFriendlyId("checkpoint"),
@@ -154,10 +159,33 @@ export class CreateCheckpointService extends BaseService {
           batchDependencyFriendlyId: reason.batchFriendlyId,
         });
 
-        keepRunAlive = await this.#isBatchCompleted(reason.batchFriendlyId);
+        if (checkpointEvent) {
+          const batchRun = await this._prisma.batchTaskRun.findFirst({
+            select: {
+              id: true,
+            },
+            where: {
+              friendlyId: reason.batchFriendlyId,
+            },
+          });
 
-        if (!keepRunAlive) {
-          await marqs?.acknowledgeMessage(attempt.taskRunId);
+          if (!batchRun) {
+            logger.error("Batch not found", { friendlyId: reason.batchFriendlyId });
+            await marqs?.acknowledgeMessage(attempt.taskRunId);
+
+            return {
+              success: false,
+            };
+          }
+
+          await ResumeBatchRunService.enqueue(batchRun.id, undefined, this._prisma);
+
+          return {
+            success: true,
+            checkpoint,
+            event: checkpointEvent,
+            keepRunAlive: false,
+          };
         }
 
         break;

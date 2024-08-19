@@ -617,15 +617,15 @@ export class SharedQueueConsumer {
           return;
         }
 
-        if (messageBody.data.completedAttemptIds.length < 1) {
-          logger.error("No attempt IDs provided", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
+        // if (messageBody.data.completedAttemptIds.length < 1) {
+        //   logger.error("No attempt IDs provided", {
+        //     queueMessage: message.data,
+        //     messageId: message.messageId,
+        //   });
 
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
+        //   await this.#ackAndDoMoreWork(message.messageId);
+        //   return;
+        // }
 
         const resumableRun = await prisma.taskRun.findUnique({
           where: {
