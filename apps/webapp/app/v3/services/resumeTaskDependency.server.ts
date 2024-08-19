@@ -63,12 +63,6 @@ export class ResumeTaskDependencyService extends BaseService {
           dependentAttemptId: dependency.dependentAttempt.id,
         });
       }
-
-      await marqs?.replaceMessage(dependentRun.id, {
-        type: "RESUME",
-        completedAttemptIds: [sourceTaskAttemptId],
-        resumableAttemptId: dependency.dependentAttempt.id,
-      });
     }
   }
 

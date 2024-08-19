@@ -9,6 +9,7 @@ import { BaseService } from "./baseService.server";
 import { isFinalRunStatus, isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
+import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -91,8 +92,8 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
-    //sleep for 20 seconds
-    // await new Promise((resolve) => setTimeout(resolve, 10_000));
+    //sleep to test slow checkpoints
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
 
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
@@ -145,10 +146,60 @@ export class CreateCheckpointService extends BaseService {
           dependencyFriendlyRunId: reason.friendlyId,
         });
 
-        keepRunAlive = await this.#isRunCompleted(reason.friendlyId);
+        if (checkpointEvent) {
+          const dependency = await this._prisma.taskRunDependency.findFirst({
+            select: {
+              id: true,
+              dependentAttempt: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+            where: {
+              taskRun: {
+                friendlyId: reason.friendlyId,
+              },
+            },
+          });
 
-        if (!keepRunAlive) {
-          await marqs?.acknowledgeMessage(attempt.taskRunId);
+          logger.log("Created checkpoint WAIT_FOR_TASK", {
+            checkpointId: checkpoint.id,
+            runFriendlyId: reason.friendlyId,
+            dependencyId: dependency?.id,
+            dependentAttemptId: dependency?.dependentAttempt?.id,
+          });
+
+          if (!dependency) {
+            logger.error("Dependency not found", { friendlyId: reason.friendlyId });
+            await marqs?.acknowledgeMessage(attempt.taskRunId);
+
+            return {
+              success: false,
+            };
+          }
+
+          if (!dependency.dependentAttempt) {
+            logger.error("Dependent attempt not found", { dependencyId: dependency.id });
+            await marqs?.acknowledgeMessage(attempt.taskRunId);
+
+            return {
+              success: false,
+            };
+          }
+
+          await ResumeTaskDependencyService.enqueue(
+            dependency.id,
+            dependency.dependentAttempt.id,
+            this._prisma
+          );
+
+          return {
+            success: true,
+            checkpoint,
+            event: checkpointEvent,
+            keepRunAlive: false,
+          };
         }
 
         break;
