@@ -568,6 +568,10 @@ class TaskCoordinator {
 
           if (completion.retry.delay < this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
+
+            // Prevents runs that fail fast from never sending a heartbeat
+            this.#sendRunHeartbeat(socket.data.runId);
+
             return;
           }
 
