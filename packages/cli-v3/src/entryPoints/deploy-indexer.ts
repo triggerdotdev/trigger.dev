@@ -155,7 +155,23 @@ async function indexDeployment({
       throw new Error(`Failed to index task files:\n${errorMessages.join("\n")}`);
     }
 
-    const tasks = taskCatalog.listTaskManifests();
+    let tasks = taskCatalog.listTaskManifests();
+
+    if (typeof config.machine === "string") {
+      // Set the machine preset on all tasks that don't have it
+      tasks = tasks.map((task) => {
+        if (typeof task.machine?.preset !== "string") {
+          return {
+            ...task,
+            machine: {
+              preset: config.machine,
+            },
+          };
+        }
+
+        return task;
+      });
+    }
 
     const workerManifest: WorkerManifest = { tasks, configPath: buildManifest.configPath };
 
