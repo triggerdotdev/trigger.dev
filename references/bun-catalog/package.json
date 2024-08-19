@@ -1,0 +1,17 @@
+{
+  "name": "@references/bun-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:trigger": "triggerdev dev"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.6",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5.5.4"
+  }
+}

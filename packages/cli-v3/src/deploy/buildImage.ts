@@ -417,7 +417,90 @@ export async function generateContainerfile(buildManifest: BuildManifest) {
 }
 
 async function generateBunContainerfile(buildManifest: BuildManifest) {
-  return "";
+  const buildArgs = Object.entries(buildManifest.build.env || {})
+    .flatMap(([key]) => `ARG ${key}`)
+    .join("\n");
+
+  const buildEnvVars = Object.entries(buildManifest.build.env || {})
+    .flatMap(([key]) => `ENV ${key}=$${key}`)
+    .join("\n");
+
+  const postInstallCommands = (buildManifest.build.commands || [])
+    .map((cmd) => `RUN ${cmd}`)
+    .join("\n");
+
+  return `
+FROM oven/bun:1 AS base
+RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+FROM base AS install
+
+USER bun
+WORKDIR /app
+
+${buildArgs}
+
+${buildEnvVars}
+
+COPY --chown=bun:bun package.json ./
+RUN bun install --production --no-save
+
+# Now copy all the files
+# IMPORTANT: Do this after running npm install because npm i will wipe out the node_modules directory
+COPY --chown=bun:bun . .
+
+${postInstallCommands}
+
+from install as indexer
+
+USER bun
+WORKDIR /app
+
+ARG TRIGGER_PROJECT_ID
+ARG TRIGGER_DEPLOYMENT_ID
+ARG TRIGGER_DEPLOYMENT_VERSION
+ARG TRIGGER_CONTENT_HASH
+ARG TRIGGER_PROJECT_REF
+ARG NODE_EXTRA_CA_CERTS
+ARG TRIGGER_SECRET_KEY
+ARG TRIGGER_API_URL
+
+ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
+    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
+    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
+    TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
+    TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
+    TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
+    TRIGGER_API_URL=\${TRIGGER_API_URL} \
+    NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
+    NODE_ENV=production
+
+# Run the indexer
+RUN bun run ${buildManifest.indexerEntryPoint}
+
+# Development or production stage builds upon the base stage
+FROM base AS final
+
+USER bun
+WORKDIR /app
+
+ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
+    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
+    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
+    TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
+    TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
+    NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
+    NODE_ENV=production
+
+# Copy the files from the install stage
+COPY --from=install --chown=bun:bun /app ./
+
+# Copy the index.json file from the indexer stage
+COPY --from=indexer --chown=bun:bun /app/index.json ./
+
+ENTRYPOINT [ "dumb-init", "bun", "run", "${buildManifest.workerEntryPoint}" ]
+CMD []
+  `;
 }
 
 async function generateNodeContainerfile(buildManifest: BuildManifest) {

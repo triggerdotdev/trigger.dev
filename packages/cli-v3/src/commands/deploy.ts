@@ -358,6 +358,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
+    loadImage: options.loadImage,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,

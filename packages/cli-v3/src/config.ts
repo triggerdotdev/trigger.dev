@@ -100,7 +100,7 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
         options.build = {};
 
         // Remove export resolveEnvVars function as well
-        delete $mod.exports.resolveEnvVars;
+        $mod.exports.resolveEnvVars = undefined;
 
         const contents = generateCode($mod);
 

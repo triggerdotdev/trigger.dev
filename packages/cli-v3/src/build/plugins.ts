@@ -3,6 +3,7 @@ import { BuildTarget } from "@trigger.dev/core/v3/schemas";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { configPlugin } from "../config.js";
 import { logger } from "../utilities/logger.js";
+import { bunPlugin } from "../runtimes/bun.js";
 
 export async function buildPlugins(
   target: BuildTarget,
@@ -19,6 +20,10 @@ export async function buildPlugins(
   }
 
   plugins.push(polyshedPlugin());
+
+  if (resolvedConfig.runtime === "bun") {
+    plugins.push(bunPlugin());
+  }
 
   return plugins;
 }

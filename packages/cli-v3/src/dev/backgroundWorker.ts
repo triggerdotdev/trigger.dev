@@ -708,6 +708,7 @@ class TaskRunProcess {
       cwd,
       env: fullEnv,
       execArgv: ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
+      execPath: execPathForRuntime(build.runtime),
     });
 
     this._childPid = this._child?.pid;
