@@ -1,5 +1,12 @@
 # @trigger.dev/nextjs
 
+## 3.0.0-beta.54
+
+### Patch Changes
+
+- Updated dependencies [484512ac5]
+  - @trigger.dev/sdk@3.0.0-beta.54
+
 ## 3.0.0-beta.53
 
 ### Patch Changes

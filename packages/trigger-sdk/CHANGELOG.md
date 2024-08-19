@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.54
+
+### Patch Changes
+
+- 484512ac5: Rollback to 3.0.52
+  - @trigger.dev/core@3.0.0-beta.54
+  - @trigger.dev/core-backend@3.0.0-beta.54
+
 ## 3.0.0-beta.53
 
 ### Patch Changes
