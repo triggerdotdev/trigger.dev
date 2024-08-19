@@ -1,5 +1,12 @@
 # create-trigger
 
+## 3.0.0-beta.53
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.53
+- @trigger.dev/yalt@3.0.0-beta.53
+
 ## 3.0.0-beta.52
 
 ### Patch Changes
