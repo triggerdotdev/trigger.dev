@@ -99,7 +99,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
       ```ts app/api/actions.ts
         "use server";
 
-        import { helloWorldTask } from "@/trigger/example";
+        import type { helloWorldTask } from "@/trigger/example";
         import { tasks } from "@trigger.dev/sdk/v3";
 
         export async function myTask() {
