@@ -178,7 +178,7 @@ export class CreateCheckpointService extends BaseService {
             };
           }
 
-          await ResumeBatchRunService.enqueue(batchRun.id, undefined, this._prisma);
+          await ResumeBatchRunService.enqueue(batchRun.id, this._prisma);
 
           return {
             success: true,

@@ -131,7 +131,6 @@ const workerCatalog = {
   }),
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
-    sourceTaskAttemptId: z.string().optional(),
   }),
   "v3.resumeTaskDependency": z.object({
     dependencyId: z.string(),
@@ -550,7 +549,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new ResumeBatchRunService();
 
-          return await service.call(payload.batchRunId, payload.sourceTaskAttemptId);
+          return await service.call(payload.batchRunId);
         },
       },
       "v3.resumeTaskDependency": {

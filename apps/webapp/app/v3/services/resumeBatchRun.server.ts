@@ -5,7 +5,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
 export class ResumeBatchRunService extends BaseService {
-  public async call(batchRunId: string, sourceTaskAttemptId?: string) {
+  public async call(batchRunId: string) {
     const batchRun = await this._prisma.batchTaskRun.findFirst({
       where: {
         id: batchRunId,
@@ -77,7 +77,7 @@ export class ResumeBatchRunService extends BaseService {
         dependentRun.id,
         {
           type: "RESUME",
-          completedAttemptIds: sourceTaskAttemptId ? [sourceTaskAttemptId] : [],
+          completedAttemptIds: [],
           resumableAttemptId: batchRun.dependentTaskAttempt.id,
           checkpointEventId: batchRun.checkpointEventId,
           projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
@@ -98,17 +98,11 @@ export class ResumeBatchRunService extends BaseService {
     }
   }
 
-  static async enqueue(
-    batchRunId: string,
-    sourceTaskAttemptId: string | undefined,
-    tx: PrismaClientOrTransaction,
-    runAt?: Date
-  ) {
+  static async enqueue(batchRunId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
     return await workerQueue.enqueue(
       "v3.resumeBatchRun",
       {
         batchRunId,
-        sourceTaskAttemptId,
       },
       {
         tx,
