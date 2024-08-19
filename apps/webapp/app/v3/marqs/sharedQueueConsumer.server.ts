@@ -617,6 +617,16 @@ export class SharedQueueConsumer {
           return;
         }
 
+        // if (messageBody.data.completedAttemptIds.length < 1) {
+        //   logger.error("No attempt IDs provided", {
+        //     queueMessage: message.data,
+        //     messageId: message.messageId,
+        //   });
+
+        //   await this.#ackAndDoMoreWork(message.messageId);
+        //   return;
+        // }
+
         const resumableRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
@@ -681,6 +691,55 @@ export class SharedQueueConsumer {
           return;
         }
 
+        const completions: TaskRunExecutionResult[] = [];
+        const executions: TaskRunExecution[] = [];
+
+        for (const completedAttemptId of messageBody.data.completedAttemptIds) {
+          const completedAttempt = await prisma.taskRunAttempt.findUnique({
+            where: {
+              id: completedAttemptId,
+              taskRun: {
+                lockedAt: {
+                  not: null,
+                },
+                lockedById: {
+                  not: null,
+                },
+              },
+            },
+          });
+
+          if (!completedAttempt) {
+            logger.error("Completed attempt not found", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+            });
+
+            await this.#ackAndDoMoreWork(message.messageId);
+            return;
+          }
+
+          const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
+
+          if (!completion) {
+            await this.#ackAndDoMoreWork(message.messageId);
+            return;
+          }
+
+          completions.push(completion);
+
+          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
+            completedAttempt.id
+          );
+
+          if (!executionPayload) {
+            await this.#ackAndDoMoreWork(message.messageId);
+            return;
+          }
+
+          executions.push(executionPayload.execution);
+        }
+
         try {
           logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY", {
             runId: resumableAttempt.taskRunId,
@@ -693,8 +752,8 @@ export class SharedQueueConsumer {
             runId: resumableAttempt.taskRunId,
             attemptId: resumableAttempt.id,
             attemptFriendlyId: resumableAttempt.friendlyId,
-            completions: [],
-            executions: [],
+            completions,
+            executions,
           });
         } catch (e) {
           if (e instanceof Error) {
