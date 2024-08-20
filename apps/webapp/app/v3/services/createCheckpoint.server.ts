@@ -6,6 +6,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   FINAL_ATTEMPT_STATUSES,
+  isFinalAttemptStatus,
   isFinalRunStatus,
   isFreezableAttemptStatus,
   isFreezableRunStatus,
@@ -182,19 +183,63 @@ export class CreateCheckpointService extends BaseService {
             };
           }
 
-          const childAttempt = await this._prisma.taskRunAttempt.findFirst({
+          const childRun = await this._prisma.taskRun.findFirst({
             select: {
               id: true,
+              status: true,
             },
             where: {
-              taskRunId: dependency.taskRunId,
-              status: {
-                in: FINAL_ATTEMPT_STATUSES,
-              },
+              id: dependency.taskRunId,
             },
           });
 
-          if (!childAttempt) {
+          if (!childRun) {
+            logger.error("CreateCheckpointService: Dependency child run not found", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          const isFinished = isFinalRunStatus(childRun.status);
+          if (!isFinished) {
+            logger.debug("CreateCheckpointService: Dependency child run not finished", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+              childRunStatus: childRun.status,
+              childRunId: childRun.id,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: true,
+            };
+          }
+
+          const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
+            select: {
+              id: true,
+              status: true,
+            },
+            where: {
+              taskRunId: dependency.taskRunId,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
+
+          if (!lastAttempt) {
             logger.debug("CreateCheckpointService: Dependency child attempt not found", {
               taskRunId: dependency.taskRunId,
               runFriendlyId: reason.friendlyId,
@@ -208,7 +253,24 @@ export class CreateCheckpointService extends BaseService {
             };
           }
 
-          await ResumeTaskDependencyService.enqueue(dependency.id, childAttempt.id, this._prisma);
+          if (!isFinalAttemptStatus(lastAttempt.status)) {
+            logger.debug("CreateCheckpointService: Dependency child attempt not final", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+              lastAttemptId: lastAttempt.id,
+              lastAttemptStatus: lastAttempt.status,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id, this._prisma);
 
           return {
             success: true,
@@ -304,35 +366,5 @@ export class CreateCheckpointService extends BaseService {
       event: checkpointEvent,
       keepRunAlive,
     };
-  }
-
-  async #isBatchCompleted(friendlyId: string): Promise<boolean> {
-    const batch = await this._prisma.batchTaskRun.findUnique({
-      where: {
-        friendlyId,
-      },
-    });
-
-    if (!batch) {
-      logger.error("Batch not found", { friendlyId });
-      return false;
-    }
-
-    return batch.status === "COMPLETED";
-  }
-
-  async #isRunCompleted(friendlyId: string): Promise<boolean> {
-    const run = await this._prisma.taskRun.findUnique({
-      where: {
-        friendlyId,
-      },
-    });
-
-    if (!run) {
-      logger.error("Run not found", { friendlyId });
-      return false;
-    }
-
-    return isFinalRunStatus(run.status);
   }
 }
