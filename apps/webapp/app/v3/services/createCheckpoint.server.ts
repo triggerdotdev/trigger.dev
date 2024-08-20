@@ -222,7 +222,7 @@ export class CreateCheckpointService extends BaseService {
               success: true,
               checkpoint,
               event: checkpointEvent,
-              keepRunAlive: true,
+              keepRunAlive: false,
             };
           }
 
