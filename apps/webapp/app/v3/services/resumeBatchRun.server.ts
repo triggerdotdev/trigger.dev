@@ -87,14 +87,28 @@ export class ResumeBatchRunService extends BaseService {
         dependentRun.concurrencyKey ?? undefined
       );
     } else {
+      logger.debug("Batch run resume: Attempt is not paused or there's no checkpoint event", {
+        batchRunId: batchRun.id,
+        dependentTaskAttempt: batchRun.dependentTaskAttempt,
+        checkpointEventId: batchRun.checkpointEventId,
+        hasCheckpointEvent: !!batchRun.checkpointEventId,
+      });
+
       if (batchRun.dependentTaskAttempt.status === "PAUSED" && !batchRun.checkpointEventId) {
-        // In case of race conditions and other bugs, the status can be PAUSED without a checkpoint event
-        // The worker may still be up, so we will try to resume the dependent attempt by sending a message to the worker (on dequeue)
+        // In case of race conditions the status can be PAUSED without a checkpoint event
+        // When the checkpoint is created, it will continue the run
         logger.error("Batch run resume: Attempt is paused but there's no checkpoint event", {
           batchRunId: batchRun.id,
           dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
         });
+        return;
       }
+
+      await marqs?.replaceMessage(dependentRun.id, {
+        type: "RESUME",
+        completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
+        resumableAttemptId: batchRun.dependentTaskAttempt.id,
+      });
     }
   }
 
