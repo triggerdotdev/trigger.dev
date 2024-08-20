@@ -7,7 +7,7 @@ import {
 } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getLimit } from "~/services/platform.v3.server";
-import { sortEnvironments } from "~/utils/environmentSort";
+import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -55,7 +55,11 @@ export class ConcurrencyPresenter extends BasePresenter {
     }
 
     return {
-      environments: this.environmentConcurrency(project.id, userId, project.environments),
+      environments: this.environmentConcurrency(
+        project.id,
+        userId,
+        filterOrphanedEnvironments(project.environments)
+      ),
     };
   }
 
