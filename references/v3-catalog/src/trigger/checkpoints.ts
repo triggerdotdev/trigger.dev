@@ -1,4 +1,4 @@
-import { logger, task } from "@trigger.dev/sdk/v3";
+import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 type Payload = {
   count?: number;
@@ -34,30 +34,38 @@ export const nestedDependencies = task({
     depth = 0,
     maxDepth = 6,
     batchSize = 4,
+    waitSeconds = 1,
   }: {
     depth?: number;
     maxDepth?: number;
     batchSize?: number;
+    waitSeconds?: number;
   }) => {
     if (depth >= maxDepth) {
       return;
     }
 
-    logger.log(`${depth}/${maxDepth} depth`);
+    logger.log(`Started ${depth}/${maxDepth} depth`);
+
+    await wait.for({ seconds: waitSeconds });
 
     const triggerOrBatch = depth % 2 === 0;
 
-    await nestedDependencies.triggerAndWait({ depth: depth + 1, maxDepth });
-    logger.log(`Triggered complete`);
-    // if (triggerOrBatch) {
-    // } else {
-    //   await nestedDependencies.batchTriggerAndWait(
-    //     Array.from({ length: batchSize }, (_, i) => ({
-    //       payload: { depth: depth + 1, maxDepth, batchSize },
-    //     }))
-    //   );
-    //   logger.log(`Batch triggered complete`);
-    // }
+    if (triggerOrBatch) {
+      await nestedDependencies.triggerAndWait({ depth: depth + 1, maxDepth, waitSeconds });
+      logger.log(`Triggered complete`);
+    } else {
+      await nestedDependencies.batchTriggerAndWait(
+        Array.from({ length: batchSize }, (_, i) => ({
+          payload: { depth: depth + 1, maxDepth, batchSize, waitSeconds },
+        }))
+      );
+      logger.log(`Batch triggered complete`);
+    }
+
+    await wait.for({ seconds: waitSeconds });
+
+    logger.log(`Finished ${depth}/${maxDepth} depth`);
   },
 });
 
