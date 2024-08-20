@@ -76,6 +76,7 @@ export class ResumeTaskDependencyService extends BaseService {
         type: "RESUME",
         completedAttemptIds: [sourceTaskAttemptId],
         resumableAttemptId: dependency.dependentAttempt.id,
+        checkpointEventId: dependency.checkpointEventId ?? undefined,
       });
     }
   }

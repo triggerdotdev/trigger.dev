@@ -108,6 +108,7 @@ export class ResumeBatchRunService extends BaseService {
         type: "RESUME",
         completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
         resumableAttemptId: batchRun.dependentTaskAttempt.id,
+        checkpointEventId: batchRun.checkpointEventId ?? undefined,
       });
     }
   }

@@ -36,12 +36,14 @@ export const nestedDependencies = task({
     batchSize = 4,
     waitSeconds = 1,
     failAttemptChance = 0,
+    failParents = false,
   }: {
     depth?: number;
     maxDepth?: number;
     batchSize?: number;
     waitSeconds?: number;
     failAttemptChance?: number;
+    failParents?: boolean;
   }) => {
     if (depth >= maxDepth) {
       return;
@@ -59,20 +61,34 @@ export const nestedDependencies = task({
     const triggerOrBatch = depth % 2 === 0;
 
     if (triggerOrBatch) {
-      await nestedDependencies.triggerAndWait({
+      const result = await nestedDependencies.triggerAndWait({
         depth: depth + 1,
         maxDepth,
         waitSeconds,
         failAttemptChance,
       });
       logger.log(`Triggered complete`);
+
+      if (!result.ok && failParents) {
+        throw new Error(`Failed at ${depth}/${maxDepth} depth`);
+      }
     } else {
-      await nestedDependencies.batchTriggerAndWait(
+      const results = await nestedDependencies.batchTriggerAndWait(
         Array.from({ length: batchSize }, (_, i) => ({
-          payload: { depth: depth + 1, maxDepth, batchSize, waitSeconds, failAttemptChance },
+          payload: {
+            depth: depth + 1,
+            maxDepth,
+            batchSize,
+            waitSeconds,
+            failAttemptChance,
+          },
         }))
       );
       logger.log(`Batch triggered complete`);
+
+      if (results.runs.some((r) => !r.ok) && failParents) {
+        throw new Error(`Failed at ${depth}/${maxDepth} depth`);
+      }
     }
 
     logger.log(`Sleep for ${waitSeconds} seconds`);
