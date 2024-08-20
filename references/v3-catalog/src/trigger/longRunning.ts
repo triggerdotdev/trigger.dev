@@ -5,11 +5,11 @@ export const longRunning = task({
   run: async (payload: { message: string }, { ctx }) => {
     logger.info("Long running", { payload });
 
-    await new Promise((resolve) => setTimeout(resolve, 20000));
+    await new Promise((resolve) => setTimeout(resolve, 200000)); // 200 seconds
 
     await wait.for({ seconds: 10 });
 
-    await new Promise((resolve) => setTimeout(resolve, 20000));
+    await new Promise((resolve) => setTimeout(resolve, 200000)); // 200 seconds
   },
 });
 

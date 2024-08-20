@@ -734,6 +734,7 @@ class ProdWorker {
             env,
             serverWorker: execution.worker,
             payload: createAttempt.result.executionPayload,
+            messageId: message.lazyPayload.messageId,
           });
 
           this._taskRunProcess.onTaskRunHeartbeat.attach((heartbeatId) => {

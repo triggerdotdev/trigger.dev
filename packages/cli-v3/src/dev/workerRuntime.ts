@@ -213,46 +213,6 @@ class DevWorkerRuntime implements WorkerRuntime {
     eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
   }
 
-  async #fetchTaskFiles(
-    sources: Record<string, { contents: string; contentHash: string }>,
-    tasks: TaskManifest[]
-  ) {
-    const tasksGroupedByFile: Record<string, TaskManifest[]> = {};
-
-    for (const task of tasks) {
-      if (!tasksGroupedByFile[task.filePath]) {
-        tasksGroupedByFile[task.filePath] = [];
-      }
-
-      tasksGroupedByFile[task.filePath]!.push(task);
-    }
-
-    const taskFiles: Array<{
-      taskIds: string[];
-      contents: string;
-      contentHash: string;
-      filePath: string;
-    }> = [];
-
-    for (const [filePath, tasks] of Object.entries(tasksGroupedByFile)) {
-      const source = sources[filePath];
-
-      if (!source) {
-        continue;
-      }
-
-      const taskIds = tasks.map((task) => task.id);
-
-      taskFiles.push({
-        ...source,
-        taskIds,
-        filePath,
-      });
-    }
-
-    return taskFiles;
-  }
-
   async #getEnvVars(): Promise<Record<string, string>> {
     const environmentVariablesResponse = await this.options.client.getEnvironmentVariables(
       this.options.config.project

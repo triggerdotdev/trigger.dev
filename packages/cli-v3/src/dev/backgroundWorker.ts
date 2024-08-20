@@ -143,7 +143,7 @@ export class BackgroundWorkerCoordinator {
     this._backgroundWorkers.clear();
   }
 
-  async executeTaskRun(id: string, payload: TaskRunExecutionPayload, messageId?: string) {
+  async executeTaskRun(id: string, payload: TaskRunExecutionPayload, messageId: string) {
     const worker = this._backgroundWorkers.get(id);
 
     if (!worker) {
@@ -152,7 +152,7 @@ export class BackgroundWorkerCoordinator {
     }
 
     try {
-      const completion = await worker.executeTaskRun(payload);
+      const completion = await worker.executeTaskRun(payload, messageId);
 
       this.onTaskCompleted.post({
         completion,
@@ -351,7 +351,7 @@ export class BackgroundWorker {
 
   async #getFreshTaskRunProcess(
     payload: TaskRunExecutionPayload,
-    messageId?: string
+    messageId: string
   ): Promise<TaskRunProcess> {
     logger.debug(this.#prefixedMessage(payload, "getFreshTaskRunProcess()"));
 
@@ -494,7 +494,7 @@ export class BackgroundWorker {
   // We need to fork the process before we can execute any tasks
   async executeTaskRun(
     payload: TaskRunExecutionPayload,
-    messageId?: string
+    messageId: string
   ): Promise<TaskRunExecutionResult> {
     if (this._closed) {
       throw new Error("Worker is closed");
@@ -523,7 +523,7 @@ export class BackgroundWorker {
 
   async #doExecuteTaskRun(
     payload: TaskRunExecutionPayload,
-    messageId?: string
+    messageId: string
   ): Promise<TaskRunExecutionResult> {
     try {
       const taskRunProcess = await this.#getFreshTaskRunProcess(payload, messageId);

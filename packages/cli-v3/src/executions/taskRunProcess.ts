@@ -44,9 +44,9 @@ export type TaskRunProcessOptions = {
   serverWorker: ServerBackgroundWorker;
   env: Record<string, string>;
   payload: TaskRunExecutionPayload;
+  messageId: string;
 
   cwd?: string;
-  messageId?: string;
 };
 
 export class TaskRunProcess {
@@ -64,10 +64,7 @@ export class TaskRunProcess {
   private _isBeingCancelled: boolean = false;
   private _stderr: Array<string> = [];
   private _flushingProcess?: FlushingProcess;
-  /**
-   * @deprecated use onTaskRunHeartbeat instead
-   */
-  public onTaskHeartbeat: Evt<string> = new Evt();
+
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
     new Evt();
@@ -171,15 +168,7 @@ export class TaskRunProcess {
           this.onReadyToDispose.post(this);
         },
         TASK_HEARTBEAT: async (message) => {
-          if (messageId) {
-            this.onTaskRunHeartbeat.post(messageId);
-          } else {
-            logger.debug(
-              "No message id for task heartbeat, falling back to (deprecated) attempt heartbeat",
-              { id: message.id }
-            );
-            this.onTaskHeartbeat.post(message.id);
-          }
+          this.onTaskRunHeartbeat.post(messageId);
         },
         WAIT_FOR_TASK: async (message) => {
           this.onWaitForTask.post(message);

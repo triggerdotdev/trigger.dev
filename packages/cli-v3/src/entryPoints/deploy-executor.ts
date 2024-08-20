@@ -360,7 +360,7 @@ runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
 process.title = "trigger-dev-worker";
 
-for await (const _ of setInterval(15)) {
+for await (const _ of setInterval(15_000)) {
   if (_isRunning && _execution) {
     try {
       await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
