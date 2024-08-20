@@ -35,11 +35,13 @@ export const nestedDependencies = task({
     maxDepth = 6,
     batchSize = 4,
     waitSeconds = 1,
+    failAttemptChance = 0,
   }: {
     depth?: number;
     maxDepth?: number;
     batchSize?: number;
     waitSeconds?: number;
+    failAttemptChance?: number;
   }) => {
     if (depth >= maxDepth) {
       return;
@@ -47,25 +49,45 @@ export const nestedDependencies = task({
 
     logger.log(`Started ${depth}/${maxDepth} depth`);
 
+    const shouldFail = Math.random() < failAttemptChance;
+    if (shouldFail) {
+      throw new Error(`Failed at ${depth}/${maxDepth} depth`);
+    }
+
     await wait.for({ seconds: waitSeconds });
 
     const triggerOrBatch = depth % 2 === 0;
 
     if (triggerOrBatch) {
-      await nestedDependencies.triggerAndWait({ depth: depth + 1, maxDepth, waitSeconds });
+      await nestedDependencies.triggerAndWait({
+        depth: depth + 1,
+        maxDepth,
+        waitSeconds,
+        failAttemptChance,
+      });
       logger.log(`Triggered complete`);
     } else {
       await nestedDependencies.batchTriggerAndWait(
         Array.from({ length: batchSize }, (_, i) => ({
-          payload: { depth: depth + 1, maxDepth, batchSize, waitSeconds },
+          payload: { depth: depth + 1, maxDepth, batchSize, waitSeconds, failAttemptChance },
         }))
       );
       logger.log(`Batch triggered complete`);
     }
 
-    await wait.for({ seconds: waitSeconds });
+    logger.log(`Sleep for ${waitSeconds} seconds`);
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
 
     logger.log(`Finished ${depth}/${maxDepth} depth`);
+  },
+});
+
+export const fastWait = task({
+  id: "fast-wait",
+  run: async ({ seconds = 1 }: { seconds?: number }) => {
+    logger.log(`Going to wait for ${seconds} seconds`);
+    await wait.for({ seconds });
+    logger.log(`Waited for ${seconds} seconds`);
   },
 });
 
