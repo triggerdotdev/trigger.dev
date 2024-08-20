@@ -12,8 +12,8 @@ export interface EphemeralDirectory {
 }
 
 /**
- * Gets a temporary directory in the project's `.wrangler` folder with the
- * specified prefix. We create temporary directories in `.wrangler` as opposed
+ * Gets a temporary directory in the project's `.trigger` folder with the
+ * specified prefix. We create temporary directories in `.trigger` as opposed
  * to the OS's temporary directory to avoid issues with different drive letters
  * on Windows. For example, when `esbuild` outputs a file to a different drive
  * than the input sources, the generated source maps are incorrect.

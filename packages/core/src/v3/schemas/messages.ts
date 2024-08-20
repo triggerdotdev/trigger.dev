@@ -134,7 +134,7 @@ export const indexerToWorkerMessages = {
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 
-export const WorkerToExecutorMessageCatalog = {
+export const ExecutorToWorkerMessageCatalog = {
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -177,7 +177,7 @@ export const WorkerToExecutorMessageCatalog = {
   },
 };
 
-export const ExecutorToWorkerMessageCatalog = {
+export const WorkerToExecutorMessageCatalog = {
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -199,18 +199,16 @@ export const ExecutorToWorkerMessageCatalog = {
       }),
     ]),
   },
-  CLEANUP: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      flush: z.boolean().default(false),
-      kill: z.boolean().default(true),
-    }),
-    callback: z.void(),
-  },
   WAIT_COMPLETED_NOTIFICATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
     }),
+  },
+  FLUSH: {
+    message: z.object({
+      timeoutInMs: z.number(),
+    }),
+    callback: z.void(),
   },
 };
 

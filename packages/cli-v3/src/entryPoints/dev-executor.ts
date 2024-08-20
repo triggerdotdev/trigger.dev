@@ -150,8 +150,8 @@ let _isRunning = false;
 let _tracingSDK: TracingSDK | undefined;
 
 const zodIpc = new ZodIpcConnection({
-  listenSchema: ExecutorToWorkerMessageCatalog,
-  emitSchema: WorkerToExecutorMessageCatalog,
+  listenSchema: WorkerToExecutorMessageCatalog,
+  emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
@@ -297,16 +297,8 @@ const zodIpc = new ZodIpcConnection({
         }
       }
     },
-    CLEANUP: async ({ flush, kill }, sender) => {
-      if (kill) {
-        await _tracingSDK?.flush();
-        // Now we need to exit the process
-        await sender.send("READY_TO_DISPOSE", undefined);
-      } else {
-        if (flush) {
-          await _tracingSDK?.flush();
-        }
-      }
+    FLUSH: async ({ timeoutInMs }, sender) => {
+      await _tracingSDK?.flush();
     },
   },
 });

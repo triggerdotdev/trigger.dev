@@ -34,6 +34,7 @@ import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
+import { setTimeout, setInterval } from "node:timers/promises";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -45,25 +46,31 @@ process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: { name: error.name, message: error.message, stack: error.stack },
-          origin,
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: { name: error.name, message: error.message, stack: error.stack },
+            origin,
+          },
+          version: "v1",
         },
-        version: "v1",
       });
   } else {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: {
-            name: "Error",
-            message: typeof error === "string" ? error : JSON.stringify(error),
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: {
+              name: "Error",
+              message: typeof error === "string" ? error : JSON.stringify(error),
+            },
+            origin,
           },
-          origin,
+          version: "v1",
         },
-        version: "v1",
       });
   }
 });
@@ -160,8 +167,8 @@ let _isRunning = false;
 let _tracingSDK: TracingSDK | undefined;
 
 const zodIpc = new ZodIpcConnection({
-  listenSchema: ExecutorToWorkerMessageCatalog,
-  emitSchema: WorkerToExecutorMessageCatalog,
+  listenSchema: WorkerToExecutorMessageCatalog,
+  emitSchema: ExecutorToWorkerMessageCatalog,
   process,
   handlers: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
@@ -309,19 +316,41 @@ const zodIpc = new ZodIpcConnection({
     WAIT_COMPLETED_NOTIFICATION: async () => {
       prodRuntimeManager.resumeAfterDuration();
     },
-    CLEANUP: async ({ flush, kill }, sender) => {
-      if (kill) {
-        await _tracingSDK?.flush();
-        // Now we need to exit the process
-        await sender.send("READY_TO_DISPOSE", undefined);
-      } else {
-        if (flush) {
-          await _tracingSDK?.flush();
-        }
-      }
+    FLUSH: async ({ timeoutInMs }, sender) => {
+      await flushAll(timeoutInMs);
     },
   },
 });
+
+async function flushAll(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.all([flushUsage(timeoutInMs), flushTracingSDK(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed all in ${duration}ms`);
+}
+
+async function flushUsage(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([prodUsageManager.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed usage in ${duration}ms`);
+}
+
+async function flushTracingSDK(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([_tracingSDK?.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed tracingSDK in ${duration}ms`);
+}
 
 const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
   waitThresholdInMs: parseInt(process.env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),
@@ -331,28 +360,14 @@ runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
 process.title = "trigger-dev-worker";
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
-  async function _doHeartbeat() {
-    while (true) {
-      if (_isRunning && _execution) {
-        try {
-          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
-        } catch (err) {
-          console.error("Failed to send HEARTBEAT message", err);
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
+for await (const _ of setInterval(15)) {
+  if (_isRunning && _execution) {
+    try {
+      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+    } catch (err) {
+      console.error("Failed to send HEARTBEAT message", err);
     }
   }
-
-  // Wait for the initial delay
-  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
-
-  // Wait for 5 seconds before the next execution
-  return _doHeartbeat();
 }
 
 console.log(`[${new Date().toISOString()}] Executor started`);
-
-await asyncHeartbeat();

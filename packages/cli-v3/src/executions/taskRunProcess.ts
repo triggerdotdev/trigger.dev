@@ -1,12 +1,11 @@
 import {
+  ExecutorToWorkerMessageCatalog,
   ServerBackgroundWorker,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  WorkerToExecutorMessageCatalog,
-  ExecutorToWorkerMessageCatalog,
   WorkerManifest,
-  SemanticInternalAttributes,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import {
   type WorkerToExecutorProcessConnection,
@@ -17,25 +16,26 @@ import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
   CleanupProcessError,
   GracefulExitTimeoutError,
+  SigKillTimeoutProcessError,
   UnexpectedExitError,
 } from "./errors.js";
-import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 
 export type OnWaitForDurationMessage = InferSocketMessageSchema<
-  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog,
   "WAIT_FOR_DURATION"
 >;
 export type OnWaitForTaskMessage = InferSocketMessageSchema<
-  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog,
   "WAIT_FOR_TASK"
 >;
 export type OnWaitForBatchMessage = InferSocketMessageSchema<
-  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog,
   "WAIT_FOR_BATCH"
 >;
 
@@ -63,6 +63,7 @@ export class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
   private _stderr: Array<string> = [];
+  private _flushingProcess?: FlushingProcess;
   /**
    * @deprecated use onTaskRunHeartbeat instead
    */
@@ -82,7 +83,16 @@ export class TaskRunProcess {
   async cancel() {
     this._isBeingCancelled = true;
 
-    await this.cleanup(true);
+    await this.startFlushingProcess();
+    await this.kill();
+  }
+
+  async cleanup(kill = true) {
+    await this.startFlushingProcess();
+
+    if (kill) {
+      await this.kill("SIGKILL");
+    }
   }
 
   get runId() {
@@ -130,8 +140,8 @@ export class TaskRunProcess {
     this._childPid = this._child?.pid;
 
     this._ipc = new ZodIpcConnection({
-      listenSchema: WorkerToExecutorMessageCatalog,
-      emitSchema: ExecutorToWorkerMessageCatalog,
+      listenSchema: ExecutorToWorkerMessageCatalog,
+      emitSchema: WorkerToExecutorMessageCatalog,
       process: this._child,
       handlers: {
         TASK_RUN_COMPLETED: async (message) => {
@@ -188,53 +198,18 @@ export class TaskRunProcess {
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
   }
 
-  async cleanup(kill = false, gracefulExitTimeoutElapsed = false) {
-    logger.debug("cleanup()", { kill, gracefulExitTimeoutElapsed });
-
-    if (kill && this._isBeingKilled) {
+  async startFlushingProcess() {
+    if (this._flushingProcess) {
       return;
     }
 
-    if (kill) {
-      this._isBeingKilled = true;
-      this.onIsBeingKilled.post(this);
-    }
+    this._flushingProcess = new FlushingProcess(() => this.#flush());
+  }
 
-    logger.debug("Cleaning up task run process", {
-      kill,
-      childPid: this._childPid,
-      realChildPid: this._child?.pid,
-    });
+  async #flush(timeoutInMs: number = 5_000) {
+    logger.debug("flushing task run process", { pid: this.pid });
 
-    try {
-      await this._ipc?.sendWithAck(
-        "CLEANUP",
-        {
-          flush: true,
-          kill,
-        },
-        30_000
-      );
-    } catch (error) {
-      logger.debug("Error while cleaning up task run process", error);
-
-      if (kill) {
-        this.onReadyToDispose.post(this);
-      }
-    }
-
-    if (!kill) {
-      return;
-    }
-
-    // Set a timeout to kill the child process if it hasn't been killed within 5 seconds
-    setTimeout(() => {
-      if (this._child && !this._child.killed) {
-        logger.debug(`[${this.runId}] killing task run process after timeout`, { pid: this.pid });
-
-        this._child.kill();
-      }
-    }, 5000);
+    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
   }
 
   async execute(): Promise<TaskRunExecutionResult> {
@@ -300,6 +275,17 @@ export class TaskRunProcess {
     });
   }
 
+  waitCompletedNotification() {
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send wait completed notification"
+      );
+      return;
+    }
+
+    this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+  }
+
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
     logger.debug("handling child exit", { code, signal });
 
@@ -336,6 +322,8 @@ export class TaskRunProcess {
         }
       }
     }
+
+    logger.debug("Task run process exited, posting onExit", { code, signal, pid: this.pid });
 
     this.onExit.post({ code, signal, pid: this.pid });
   }
@@ -383,14 +371,6 @@ export class TaskRunProcess {
     this._stderr.push(errorLine);
   }
 
-  #kill() {
-    logger.debug(`[${this.runId}] #kill()`, { pid: this.pid });
-
-    if (this._child && !this._child.killed) {
-      this._child?.kill();
-    }
-  }
-
   async kill(signal?: number | NodeJS.Signals, timeoutInMs?: number) {
     logger.debug(`[${this.runId}] killing task run process`, {
       signal,
@@ -403,6 +383,13 @@ export class TaskRunProcess {
     const killTimeout = this.onExit.waitFor(timeoutInMs);
 
     this.onIsBeingKilled.post(this);
+
+    try {
+      await this._flushingProcess?.waitForCompletion();
+    } catch (err) {
+      logger.error("Error flushing task run process", { err });
+    }
+
     this._child?.kill(signal);
 
     if (timeoutInMs) {
@@ -421,4 +408,16 @@ export class TaskRunProcess {
 
 function executorArgs(workerManifest: WorkerManifest): string[] {
   return [];
+}
+
+class FlushingProcess {
+  private _flushPromise: Promise<void>;
+
+  constructor(private readonly doFlush: () => Promise<void>) {
+    this._flushPromise = this.doFlush();
+  }
+
+  waitForCompletion() {
+    return this._flushPromise;
+  }
 }

@@ -341,11 +341,11 @@ export class ZodIpcConnection<
 }
 
 export type WorkerToExecutorProcessConnection = ZodIpcConnection<
-  typeof WorkerToExecutorMessageCatalog,
-  typeof ExecutorToWorkerMessageCatalog
+  typeof ExecutorToWorkerMessageCatalog,
+  typeof WorkerToExecutorMessageCatalog
 >;
 
 export type ExecutorToWorkerProcessConnection = ZodIpcConnection<
-  typeof ExecutorToWorkerMessageCatalog,
-  typeof WorkerToExecutorMessageCatalog
+  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog
 >;
