@@ -1,0 +1,70 @@
+---
+title: "Replaying"
+description: "A replay is a copy of a run with the same payload but against the latest version in that environment. This is useful if something went wrong and you want to try again with the latest version of your code."
+---
+
+### Replaying from the UI
+
+<Tabs>
+  <Tab title="From a run">
+    <Steps>
+      <Step title="Click the Replay button in the top right">
+        ![Select a task, then in the bottom right
+        click "Replay"](/images/replay-run-action.png)
+      </Step>
+      <Step title="Confirm replay settings">
+        You can edit the payload <Icon icon="circle-1" iconType="solid" size={20} color="F43F47" /> (if available) and choose the environment <Icon icon="circle-2" iconType="solid" size={20} color="F43F47" /> to replay the run in.
+        
+        ![Select a task, then in the bottom right
+        click "Replay"](/images/replay-run-modal.png)
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Runs list">
+    <Steps>
+      <Step title="Click the action button on a run">
+        ![On the runs page, press the triple dot button](/images/replay-runs-list.png)
+      </Step>
+      <Step title="Click replay">![Click replay](/images/replay-runs-list-popover.png)</Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+### Replaying using the SDK
+
+You can replay a run using the SDK:
+
+```ts
+const replayedRun = await runs.replay(run.id);
+```
+
+When you call `trigger()` or `batchTrigger()` on a task you receive back a run handle which has an `id` property. You can use that `id` to replay the run.
+
+You can also access the run id from inside a run. You could write this to your database and then replay it later.
+
+```ts
+export const simpleChildTask = task({
+  id: "simple-child-task",
+  run: async (payload, { ctx }) => {
+    // the run ID (and other useful info) is in ctx
+    const runId = ctx.run.id;
+  },
+});
+```
+
+### Bulk replaying
+
+You can replay multiple runs at once by selecting them from the table on the Runs page using the checkbox on the left hand side of the row. Then click the "Replay runs" button from the bulk action bar that appears at the bottom of the screen.
+
+This is especially useful if you have lots of failed runs and want to run them all again. To do this, first filter the runs by the status you want, then select all the runs you want to replay and click the "Replay runs" button from the bulk action bar at the bottom of the page.
+
+<video
+  src="https://content.trigger.dev/bulk-replaying-runs.mp4"
+  preload="auto"
+  controls={true}
+  loop
+  muted
+  autoPlay={true}
+  width="100%"
+  height="100%"
+/>

@@ -3,7 +3,10 @@ title: "Common problems"
 description: "Some common problems you might experience and their solutions"
 ---
 
-import BundlePackages from '/snippets/bundle-packages.mdx';
+import NextjsTroubleshootingMissingApiKey from '/snippets/nextjs-missing-api-key.mdx';
+import NextjsTroubleshootingButtonSyntax from '/snippets/nextjs-button-syntax.mdx';
+import RateLimitHitUseBatchTrigger from '/snippets/rate-limit-hit-use-batchtrigger.mdx';
+import WorkerFailedToStartWhenRunningDevCommand from '/snippets/worker-failed-to-start.mdx';
 
 ## Development
 
@@ -97,9 +100,11 @@ Prisma uses code generation to create the client from your schema file. This mea
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
-### `Error: Prisma generate failed to find the specified schema at ../../path`
+### Rate limit exceeded
 
+<RateLimitHitUseBatchTrigger/>
 
+View the [rate limits](/limits) page for more information.
 
 ## Framework specific issues
 
@@ -146,3 +151,7 @@ Or change the tsconfig jsx setting:
   },
 }
 ```
+
+<NextjsTroubleshootingMissingApiKey/>
+<NextjsTroubleshootingButtonSyntax/>
+<WorkerFailedToStartWhenRunningDevCommand/>

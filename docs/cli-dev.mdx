@@ -51,31 +51,11 @@ yarn dlx trigger.dev@beta dev --debugger
 
 ### Concurrently running the terminal
 
-The concurrently package allows you to run multiple package.json scripts at the same time – in this case, your site and Trigger.dev.
+Install the concurrently package as a dev dependency:
 
-<Steps>
-
-<Step title="Install the concurrently package as a dev dependency">
-
-<CodeGroup>
-
-```bash npm
-npm i concurrently -D
+```ts
+concurrently --raw --kill-others npm:dev:remix npm:dev:trigger
 ```
-
-```bash pnpm
-pnpm i concurrently -D
-```
-
-```bash yarn
-yarn i concurrently -D
-```
-
-</CodeGroup>
-
-</Step>
-
-<Step title="Update your package.json">
 
 Then add something like this in your package.json scripts. This assumes you're running Next.js so swap that bit out if you're not:
 
@@ -87,7 +67,3 @@ Then add something like this in your package.json scripts. This assumes you're r
   //...
 }
 ```
-
-</Step>
-
-</Steps>

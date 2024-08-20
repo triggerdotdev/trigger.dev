@@ -87,7 +87,7 @@ We have a complete set of SDK functions (and REST API) you can use to directly m
 
 You could use the SDK functions above but it's much easier to use our `resolveEnvVars` function in your `trigger.config` file.
 
-In this example we're using env vars from Infisical.
+In this example we're using env vars from [Infisical](https://infisical.com).
 
 ```ts /trigger.config.ts
 import type { TriggerConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
@@ -136,13 +136,13 @@ export const config: TriggerConfig = {
 
 #### Local development
 
-When you [develop locally](/cli-dev) `resolveEnvVars()` will inject the env vars from Infisical into your local `process.env`.
+When you [develop locally](/cli-dev) `resolveEnvVars()` will inject the env vars from [Infisical](https://infisical.com) into your local `process.env`.
 
 #### Deploy
 
-When you run the [CLI deploy command](/cli-deploy) directly or using [GitHub Actions](/github-actions) it will sync the environment variables from Infisical to Trigger.dev. This means they'll appear on the Environment Variables page so you can confirm that it's worked.
+When you run the [CLI deploy command](/cli-deploy) directly or using [GitHub Actions](/github-actions) it will sync the environment variables from [Infisical](https://infisical.com) to Trigger.dev. This means they'll appear on the Environment Variables page so you can confirm that it's worked.
 
-This means that you need to redeploy your Trigger.dev tasks if you change the environment variables in Infisical.
+This means that you need to redeploy your Trigger.dev tasks if you change the environment variables in [Infisical](https://infisical.com).
 
 ### The variables return type
 
