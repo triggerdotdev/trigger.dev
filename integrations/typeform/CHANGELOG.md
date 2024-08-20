@@ -1,5 +1,13 @@
 # @trigger.dev/typeform
 
+## 3.0.0-beta.54
+
+### Patch Changes
+
+- Updated dependencies [728eeeff6]
+  - @trigger.dev/sdk@3.0.0-beta.54
+  - @trigger.dev/integration-kit@3.0.0-beta.54
+
 ## 3.0.0-beta.53
 
 ### Patch Changes

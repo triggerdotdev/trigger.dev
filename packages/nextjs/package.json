@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/nextjs",
-  "version": "3.0.0-beta.53",
+  "version": "3.0.0-beta.54",
   "description": "Trigger.dev Next.js integration",
   "license": "MIT",
   "main": "./dist/index.js",
@@ -41,7 +41,7 @@
     "build:tsup": "tsup"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^3.0.0-beta.53",
+    "@trigger.dev/sdk": "workspace:^3.0.0-beta.54",
     "next": ">=12.0.0"
   },
   "dependencies": {
