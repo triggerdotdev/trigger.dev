@@ -2,18 +2,17 @@ import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
-import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
-import { BaseService } from "./baseService.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   FINAL_ATTEMPT_STATUSES,
   isFinalRunStatus,
   isFreezableAttemptStatus,
   isFreezableRunStatus,
 } from "../taskStatus";
+import { BaseService } from "./baseService.server";
+import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 
 export class CreateCheckpointService extends BaseService {
@@ -238,11 +237,15 @@ export class CreateCheckpointService extends BaseService {
           });
 
           if (!batchRun) {
-            logger.error("Batch not found", { friendlyId: reason.batchFriendlyId });
-            await marqs?.acknowledgeMessage(attempt.taskRunId);
+            logger.error("CreateCheckpointService: Batch not found", {
+              friendlyId: reason.batchFriendlyId,
+            });
 
             return {
-              success: false,
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
             };
           }
 
