@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.0-beta.55
+
+### Patch Changes
+
+- 0591db5f2: Fixes for continuing after waits
+  - @trigger.dev/core@3.0.0-beta.55
+  - @trigger.dev/core-backend@3.0.0-beta.55
+
 ## 3.0.0-beta.54
 
 ### Patch Changes

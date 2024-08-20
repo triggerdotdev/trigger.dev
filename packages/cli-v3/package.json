@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "3.0.0-beta.54",
+  "version": "3.0.0-beta.55",
   "description": "A Command-Line Interface for Trigger.dev (v3) projects",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -87,7 +87,7 @@
     "@opentelemetry/sdk-trace-base": "^1.22.0",
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
-    "@trigger.dev/core": "workspace:3.0.0-beta.54",
+    "@trigger.dev/core": "workspace:3.0.0-beta.55",
     "@types/degit": "^2.8.3",
     "chalk": "^5.2.0",
     "chokidar": "^3.5.3",
