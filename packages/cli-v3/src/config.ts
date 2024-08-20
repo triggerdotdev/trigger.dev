@@ -9,6 +9,7 @@ import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig 
 import { generateCode, loadFile } from "./imports/magicast.js";
 import { logger } from "./utilities/logger.js";
 import { additionalFiles, additionalPackages, syncEnvVars } from "@trigger.dev/core/v3/extensions";
+import { prettyWarning } from "./utilities/cliOutput.js";
 
 export type ResolveConfigOptions = {
   cwd?: string;
@@ -199,7 +200,7 @@ async function autoDetectDirs(workingDir: string): Promise<string[]> {
 function validateConfig(config: TriggerConfig, warn = true) {
   if (config.additionalFiles && config.additionalFiles.length > 0) {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "additionalFiles" option is deprecated and will be removed. Use the "additionalFiles" build extension instead. See https://trigger.dev/docs/trigger-config#additionalFiles for more information.`
       );
 
@@ -210,7 +211,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
 
   if (config.additionalPackages && config.additionalPackages.length > 0) {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "additionalPackages" option is deprecated and will be removed. Use the "additionalPackages" build extension instead. See https://trigger.dev/docs/trigger-config#additionalPackages for more information.`
       );
 
@@ -221,7 +222,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
 
   if (config.triggerDirectories) {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "triggerDirectories" option is deprecated and will be removed. Use the "dirs" option instead.`
       );
 
@@ -230,14 +231,14 @@ function validateConfig(config: TriggerConfig, warn = true) {
 
   if (config.dependenciesToBundle) {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "dependenciesToBundle" option is deprecated and will be removed. Dependencies are now bundled by default. If you want to exclude some dependencies from the bundle, use the "build.external" option.`
       );
   }
 
   if (config.tsconfigPath) {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "tsconfigPath" option is deprecated and will be removed. Use the "tsconfig" option instead.`
       );
 
@@ -246,7 +247,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
 
   if ("resolveEnvVars" in config && typeof config.resolveEnvVars === "function") {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "resolveEnvVars" option is deprecated and will be removed. Use the "syncEnvVars" build extension instead. See https://trigger.dev/docs/trigger-config#syncEnvVars for more information.`
       );
 
@@ -259,7 +260,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
 
   if (config.runtime && config.runtime === "bun") {
     warn &&
-      logger.warn(
+      prettyWarning(
         `The "bun" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`
       );
   }
