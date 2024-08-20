@@ -34,7 +34,8 @@ export const BuildManifest = z.object({
   ),
   outputPath: z.string(),
   indexerEntryPoint: z.string(),
-  workerEntryPoint: z.string(),
+  executorEntryPoint: z.string(),
+  workerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
@@ -50,6 +51,12 @@ export const BuildManifest = z.object({
       })
       .optional(),
   }),
+  otelImportHook: z
+    .object({
+      include: z.array(z.string()).optional(),
+      exclude: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export type BuildManifest = z.infer<typeof BuildManifest>;
@@ -66,9 +73,16 @@ export type IndexMessage = z.infer<typeof IndexMessage>;
 export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
-  workerEntryPoint: z.string(),
+  executorEntryPoint: z.string(),
+  workerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
   runtime: BuildRuntime,
+  otelImportHook: z
+    .object({
+      include: z.array(z.string()).optional(),
+      exclude: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export type WorkerManifest = z.infer<typeof WorkerManifest>;

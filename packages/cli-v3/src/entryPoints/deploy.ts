@@ -23,7 +23,12 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { setTimeout as timeout } from "node:timers/promises";
-import { OnWaitForBatchMessage, OnWaitForTaskMessage } from "../executions/taskRunProcess.js";
+import { logger as cliLogger } from "../utilities/logger.js";
+import {
+  OnWaitForBatchMessage,
+  OnWaitForTaskMessage,
+  TaskRunProcess,
+} from "../executions/taskRunProcess.js";
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
@@ -36,6 +41,12 @@ const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
 const defaultBackoff = new ExponentialBackoff("FullJitter", {
   maxRetries: 5,
+});
+
+cliLogger.loggerLevel = "debug";
+
+cliLogger.debug("Starting prod worker", {
+  env: process.env,
 });
 
 class ProdWorker {
@@ -427,7 +438,7 @@ class ProdWorker {
       await timeout(delay.milliseconds);
 
       if (!this.readyForLazyAttemptReplay) {
-        logger.error("replay ready for lazy attempt cancelled, discarding", {
+        logger.log("replay ready for lazy attempt cancelled, discarding", {
           idempotencyKey,
         });
 
@@ -435,7 +446,7 @@ class ProdWorker {
       }
 
       if (idempotencyKey !== this.readyForLazyAttemptReplay.idempotencyKey) {
-        logger.error("replay ready for lazy attempt idempotency key mismatch, discarding", {
+        logger.log("replay ready for lazy attempt idempotency key mismatch, discarding", {
           idempotencyKey,
           newIdempotencyKey: this.readyForLazyAttemptReplay.idempotencyKey,
         });
@@ -673,7 +684,10 @@ class ProdWorker {
           this.executing = true;
 
           const createAttempt = await defaultBackoff.execute(async ({ retry }) => {
-            logger.log("Create task run attempt with backoff", { retry });
+            logger.log("Create task run attempt with backoff", {
+              retry,
+              runId: message.lazyPayload.runId,
+            });
 
             return await this.#coordinatorSocket.socket
               .timeout(15_000)
@@ -682,6 +696,8 @@ class ProdWorker {
                 runId: message.lazyPayload.runId,
               });
           });
+
+          logger.log("create attempt", { createAttempt });
 
           if (!createAttempt.success) {
             this.#failRun(
@@ -700,7 +716,40 @@ class ProdWorker {
           }
 
           const { execution } = createAttempt.result.executionPayload;
-          const { traceContext, environment } = message.lazyPayload;
+          const { environment } = message.lazyPayload;
+
+          const env = {
+            ...gatherProcessEnv(),
+            ...environment,
+          };
+
+          const taskRunProcess = new TaskRunProcess({
+            workerManifest: this.workerManifest,
+            env,
+            serverWorker: execution.worker,
+            payload: createAttempt.result.executionPayload,
+          });
+
+          logger.log("initializing task run process", {
+            workerManifest: this.workerManifest,
+            attemptId: execution.attempt.id,
+            runId: execution.run.id,
+          });
+
+          await taskRunProcess.initialize();
+
+          logger.log("executing task run process", {
+            attemptId: execution.attempt.id,
+            runId: execution.run.id,
+          });
+
+          const completion = await taskRunProcess.execute();
+
+          logger.log("completed", completion);
+
+          this.completed.add(execution.attempt.id);
+
+          await this.#submitAttemptCompletion(execution, completion);
 
           // TODO: execute the task run lazy attempt
           // try {
@@ -1085,21 +1134,17 @@ const workerManifest = await loadWorkerManifest();
 const prodWorker = new ProdWorker(HTTP_SERVER_PORT, workerManifest);
 await prodWorker.start();
 
-function gatherProcessEnv() {
+function gatherProcessEnv(): Record<string, string> {
   const env = {
     NODE_ENV: process.env.NODE_ENV ?? "production",
-    PATH: process.env.PATH,
-    USER: process.env.USER,
-    SHELL: process.env.SHELL,
-    LANG: process.env.LANG,
-    TERM: process.env.TERM,
-    NODE_PATH: process.env.NODE_PATH,
-    HOME: process.env.HOME,
     NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS,
+    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   };
 
   // Filter out undefined values
-  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+  return Object.fromEntries(
+    Object.entries(env).filter(([key, value]) => value !== undefined)
+  ) as Record<string, string>;
 }
 
 async function loadWorkerManifest() {

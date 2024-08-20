@@ -123,6 +123,7 @@ await sendMessageInCatalog(
       tasks,
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
+      executorEntryPoint: buildManifest.executorEntryPoint,
       workerEntryPoint: buildManifest.workerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
     },

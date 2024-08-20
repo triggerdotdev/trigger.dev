@@ -18,6 +18,7 @@ import {
 import { createExternalsBuildExtension } from "../build/externals.js";
 import {
   deployEntryPoint,
+  deployExecutorEntryPoint,
   deployIndexerEntryPoint,
   telemetryEntryPoint,
 } from "../build/packageModules.js";
@@ -50,6 +51,7 @@ import { VERSION } from "../version.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { loadDotEnvVars, resolveDotEnvVars } from "../utilities/dotEnv.js";
+import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -249,6 +251,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     },
     outputPath: destination.path,
     workerEntryPoint: bundleResult.workerEntryPoint ?? deployEntryPoint,
+    executorEntryPoint: bundleResult.executorEntryPoint ?? deployExecutorEntryPoint,
     indexerEntryPoint: bundleResult.indexerEntryPoint ?? deployIndexerEntryPoint,
     loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundleResult.configPath,
@@ -256,6 +259,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       env: serverEnvVars.success ? serverEnvVars.data.variables : {},
     },
     build: {},
+    otelImportHook: {
+      include: getInstrumentedPackageNames(resolvedConfig),
+    },
   };
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
@@ -478,8 +484,11 @@ function rewriteBuildManifestPaths(
     })),
     outputPath: rewriteOutputPath(destinationDir, buildManifest.outputPath),
     configPath: rewriteOutputPath(destinationDir, buildManifest.configPath),
-    workerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.workerEntryPoint),
+    executorEntryPoint: rewriteOutputPath(destinationDir, buildManifest.executorEntryPoint),
     indexerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.indexerEntryPoint),
+    workerEntryPoint: buildManifest.workerEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.workerEntryPoint)
+      : undefined,
     loaderEntryPoint: buildManifest.loaderEntryPoint
       ? rewriteOutputPath(destinationDir, buildManifest.loaderEntryPoint)
       : undefined,
@@ -541,7 +550,16 @@ function rewriteOutputPath(destinationDir: string, filePath: string) {
 }
 
 async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
-  const containerfile = await generateContainerfile(buildManifest);
+  if (!buildManifest.workerEntryPoint) {
+    throw new Error("No worker entry point found in build manifest");
+  }
+
+  const containerfile = await generateContainerfile({
+    runtime: buildManifest.runtime,
+    workerEntryPoint: buildManifest.workerEntryPoint,
+    build: buildManifest.build,
+    indexerEntryPoint: buildManifest.indexerEntryPoint,
+  });
 
   await writeFile(join(outputPath, "Containerfile"), containerfile);
 }

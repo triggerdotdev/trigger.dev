@@ -3,7 +3,7 @@ import { createTempDir, writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
-import { BuildManifest } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
 
 export interface BuildImageOptions {
   // Common options
@@ -405,29 +405,34 @@ function extractImageDigest(outputs: string[]) {
   return;
 }
 
-export async function generateContainerfile(buildManifest: BuildManifest) {
-  switch (buildManifest.runtime) {
+export type GenerateContainerfileOptions = {
+  runtime: BuildRuntime;
+  build: BuildManifest["build"];
+  indexerEntryPoint: string;
+  workerEntryPoint: string;
+};
+
+export async function generateContainerfile(options: GenerateContainerfileOptions) {
+  switch (options.runtime) {
     case "node": {
-      return await generateNodeContainerfile(buildManifest);
+      return await generateNodeContainerfile(options);
     }
     case "bun": {
-      return await generateBunContainerfile(buildManifest);
+      return await generateBunContainerfile(options);
     }
   }
 }
 
-async function generateBunContainerfile(buildManifest: BuildManifest) {
-  const buildArgs = Object.entries(buildManifest.build.env || {})
+async function generateBunContainerfile(options: GenerateContainerfileOptions) {
+  const buildArgs = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ARG ${key}`)
     .join("\n");
 
-  const buildEnvVars = Object.entries(buildManifest.build.env || {})
+  const buildEnvVars = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ENV ${key}=$${key}`)
     .join("\n");
 
-  const postInstallCommands = (buildManifest.build.commands || [])
-    .map((cmd) => `RUN ${cmd}`)
-    .join("\n");
+  const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
   return `
 FROM imbios/bun-node:22-debian AS base
@@ -476,7 +481,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_ENV=production
 
 # Run the indexer
-RUN bun run ${buildManifest.indexerEntryPoint}
+RUN bun run ${options.indexerEntryPoint}
 
 # Development or production stage builds upon the base stage
 FROM base AS final
@@ -505,23 +510,21 @@ COPY --from=install --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${buildManifest.workerEntryPoint}" ]
+ENTRYPOINT [ "dumb-init", "node", "${options.workerEntryPoint}" ]
 CMD []
   `;
 }
 
-async function generateNodeContainerfile(buildManifest: BuildManifest) {
-  const buildArgs = Object.entries(buildManifest.build.env || {})
+async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
+  const buildArgs = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ARG ${key}`)
     .join("\n");
 
-  const buildEnvVars = Object.entries(buildManifest.build.env || {})
+  const buildEnvVars = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ENV ${key}=$${key}`)
     .join("\n");
 
-  const postInstallCommands = (buildManifest.build.commands || [])
-    .map((cmd) => `RUN ${cmd}`)
-    .join("\n");
+  const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
   return `
 FROM node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170 AS base
@@ -570,12 +573,13 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_SECRET_KEY=\${TRIGGER_SECRET_KEY} \
     TRIGGER_API_URL=\${TRIGGER_API_URL} \
+    TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
     NODE_OPTIONS="--max_old_space_size=8192"
 
 # Run the indexer
-RUN node ${buildManifest.indexerEntryPoint}
+RUN node ${options.indexerEntryPoint}
 
 # Development or production stage builds upon the base stage
 FROM base AS final
@@ -605,7 +609,7 @@ COPY --from=install --chown=node:node /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${buildManifest.workerEntryPoint}" ]
+ENTRYPOINT [ "dumb-init", "node", "${options.workerEntryPoint}" ]
 CMD []
   `;
 }

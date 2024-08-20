@@ -177,8 +177,10 @@ async function indexDeployment({
       tasks,
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
+      executorEntryPoint: buildManifest.executorEntryPoint,
       workerEntryPoint: buildManifest.workerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
+      otelImportHook: buildManifest.otelImportHook,
     };
 
     console.log("Writing index.json", process.cwd());

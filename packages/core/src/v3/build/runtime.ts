@@ -23,6 +23,10 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
         return join(process.env.BUN_INSTALL, "bin", "bun");
       }
 
+      if (typeof process.env.BUN_INSTALL_BIN === "string") {
+        return join(process.env.BUN_INSTALL_BIN, "bun");
+      }
+
       return join("~", ".bin", "bin", "bun");
     default:
       throw new Error(`Unsupported runtime ${runtime}`);

@@ -8,11 +8,11 @@ import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
   devEntryPoints,
-  isDeployEntryPoint,
-  isDeployIndexerEntryPoint,
-  isDevEntryPoint,
-  isIndexerEntryPoint,
+  isConfigEntryPoint,
+  isExecutorEntryPointForTarget,
+  isIndexerEntryPointForTarget,
   isLoaderEntryPoint,
+  isWorkerEntryPointForTarget,
   shims,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
@@ -36,6 +36,7 @@ export type BundleResult = {
   loaderEntryPoint: string | undefined;
   workerEntryPoint: string | undefined;
   indexerEntryPoint: string | undefined;
+  executorEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -145,6 +146,7 @@ export async function getBundleResultFromBuild(
   let configPath: string | undefined;
   let loaderEntryPoint: string | undefined;
   let workerEntryPoint: string | undefined;
+  let executorEntryPoint: string | undefined;
   let indexerEntryPoint: string | undefined;
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
@@ -159,10 +161,12 @@ export async function getBundleResultFromBuild(
         configPath = $outputPath;
       } else if (isLoaderEntryPoint(outputMeta.entryPoint)) {
         loaderEntryPoint = $outputPath;
-      } else if (isEntryPointForTarget(outputMeta.entryPoint, target)) {
+      } else if (isWorkerEntryPointForTarget(outputMeta.entryPoint, target)) {
         workerEntryPoint = $outputPath;
       } else if (isIndexerEntryPointForTarget(outputMeta.entryPoint, target)) {
         indexerEntryPoint = $outputPath;
+      } else if (isExecutorEntryPointForTarget(outputMeta.entryPoint, target)) {
+        executorEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -186,29 +190,10 @@ export async function getBundleResultFromBuild(
     configPath: configPath,
     loaderEntryPoint,
     workerEntryPoint,
+    executorEntryPoint,
     indexerEntryPoint,
     contentHash: hasher.digest("hex"),
   };
-}
-
-function isEntryPointForTarget(entryPoint: string, target: BuildTarget) {
-  if (target === "dev") {
-    return isDevEntryPoint(entryPoint);
-  } else {
-    return isDeployEntryPoint(entryPoint);
-  }
-}
-
-function isConfigEntryPoint(entryPoint: string) {
-  return entryPoint.startsWith("trigger.config.ts");
-}
-
-function isIndexerEntryPointForTarget(entryPoint: string, target: BuildTarget) {
-  if (target === "dev") {
-    return isIndexerEntryPoint(entryPoint);
-  } else {
-    return isDeployIndexerEntryPoint(entryPoint);
-  }
 }
 
 async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {

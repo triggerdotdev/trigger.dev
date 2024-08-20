@@ -6,8 +6,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-console.log(await openai.models.retrieve("gpt-3.5-turbo"));
-
 export const openaiTask = task({
   id: "openai-task",
   retry: {

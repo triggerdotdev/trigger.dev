@@ -38,7 +38,7 @@ function getLoggerLevel(): LoggerLevel {
       .map((level) => `"${level}"`)
       .join(" | ");
     console.warn(
-      `Unrecognised WRANGLER_LOG value ${JSON.stringify(
+      `Unrecognised TRIGGER_LOG_LEVEL value ${JSON.stringify(
         fromEnv
       )}, expected ${expected}, defaulting to "log"...`
     );

@@ -1,5 +1,6 @@
+import { CORE_VERSION } from "@trigger.dev/core/v3";
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildManifest, TaskFile } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { CliApiClient } from "../apiClient.js";
 import {
@@ -17,18 +18,19 @@ import {
 } from "../build/extensions.js";
 import { createExternalsBuildExtension } from "../build/externals.js";
 import { copyManifestToDir } from "../build/manifests.js";
-import { devEntryPoint, indexerEntryPoint, telemetryEntryPoint } from "../build/packageModules.js";
+import {
+  devExecutorEntryPoint,
+  devIndexerEntryPoint,
+  telemetryEntryPoint,
+} from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
+import { VERSION } from "../version.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
-import { VERSION } from "../version.js";
-import { CORE_VERSION } from "@trigger.dev/core/v3";
-import { join } from "node:path";
-import { readFile } from "node:fs/promises";
-import { resolveFileSources } from "../utilities/sourceFiles.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -189,9 +191,9 @@ async function createBuildManifestFromBundle(
       dirs: resolvedConfig.dirs,
     },
     outputPath: destination,
-    workerEntryPoint: bundle.workerEntryPoint ?? devEntryPoint,
+    executorEntryPoint: bundle.executorEntryPoint ?? devExecutorEntryPoint,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
-    indexerEntryPoint: bundle.indexerEntryPoint ?? indexerEntryPoint,
+    indexerEntryPoint: bundle.indexerEntryPoint ?? devIndexerEntryPoint,
     configPath: bundle.configPath,
     deploy: {
       env: {},

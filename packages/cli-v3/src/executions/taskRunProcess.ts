@@ -6,6 +6,7 @@ import {
   WorkerToExecutorMessageCatalog,
   ExecutorToWorkerMessageCatalog,
   WorkerManifest,
+  SemanticInternalAttributes,
 } from "@trigger.dev/core/v3";
 import {
   type WorkerToExecutorProcessConnection,
@@ -102,6 +103,8 @@ export class TaskRunProcess {
     const fullEnv = {
       ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
       ...env,
+      OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
+      // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: workerManifest.loaderEntryPoint
         ? `--import=${workerManifest.loaderEntryPoint} ${
             env.NODE_OPTIONS ?? process.env.NODE_OPTIONS ?? ""
@@ -115,12 +118,13 @@ export class TaskRunProcess {
       cwd,
     });
 
-    this._child = fork(workerManifest.workerEntryPoint, {
+    this._child = fork(workerManifest.executorEntryPoint, executorArgs(workerManifest), {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd,
       env: fullEnv,
       execArgv: ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
       execPath: execPathForRuntime(workerManifest.runtime),
+      serialization: "json",
     });
 
     this._childPid = this._child?.pid;
@@ -252,6 +256,15 @@ export class TaskRunProcess {
     this._currentExecution = execution;
 
     if (this._child?.connected && !this._isBeingKilled && !this._child.killed) {
+      logger.debug(
+        `[${new Date().toISOString()}][${
+          this.runId
+        }] sending EXECUTE_TASK_RUN message to task run process`,
+        {
+          pid: this.pid,
+        }
+      );
+
       await this._ipc?.send("EXECUTE_TASK_RUN", {
         execution,
         traceContext,
@@ -404,4 +417,8 @@ export class TaskRunProcess {
   get pid() {
     return this._childPid;
   }
+}
+
+function executorArgs(workerManifest: WorkerManifest): string[] {
+  return [];
 }
