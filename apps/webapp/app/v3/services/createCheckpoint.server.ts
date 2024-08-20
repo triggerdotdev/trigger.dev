@@ -2,11 +2,19 @@ import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "~/v3/marqs/index.server";
-import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import {
+  FINAL_ATTEMPT_STATUSES,
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+  isFreezableAttemptStatus,
+  isFreezableRunStatus,
+} from "../taskStatus";
 import { BaseService } from "./baseService.server";
-import { isFinalRunStatus, isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
+import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
+import { ResumeBatchRunService } from "./resumeBatchRun.server";
+import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -89,6 +97,9 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    //sleep to test slow checkpoints
+    // await new Promise((resolve) => setTimeout(resolve, 60_000));
+
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
         friendlyId: generateFriendlyId("checkpoint"),
@@ -140,10 +151,133 @@ export class CreateCheckpointService extends BaseService {
           dependencyFriendlyRunId: reason.friendlyId,
         });
 
-        keepRunAlive = await this.#isRunCompleted(reason.friendlyId);
+        if (checkpointEvent) {
+          const dependency = await this._prisma.taskRunDependency.findFirst({
+            select: {
+              id: true,
+              taskRunId: true,
+            },
+            where: {
+              taskRun: {
+                friendlyId: reason.friendlyId,
+              },
+            },
+          });
 
-        if (!keepRunAlive) {
-          await marqs?.acknowledgeMessage(attempt.taskRunId);
+          logger.log("CreateCheckpointService: Created checkpoint WAIT_FOR_TASK", {
+            checkpointId: checkpoint.id,
+            runFriendlyId: reason.friendlyId,
+            dependencyId: dependency?.id,
+          });
+
+          if (!dependency) {
+            logger.error("CreateCheckpointService: Dependency not found", {
+              friendlyId: reason.friendlyId,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          const childRun = await this._prisma.taskRun.findFirst({
+            select: {
+              id: true,
+              status: true,
+            },
+            where: {
+              id: dependency.taskRunId,
+            },
+          });
+
+          if (!childRun) {
+            logger.error("CreateCheckpointService: Dependency child run not found", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          const isFinished = isFinalRunStatus(childRun.status);
+          if (!isFinished) {
+            logger.debug("CreateCheckpointService: Dependency child run not finished", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+              childRunStatus: childRun.status,
+              childRunId: childRun.id,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
+            select: {
+              id: true,
+              status: true,
+            },
+            where: {
+              taskRunId: dependency.taskRunId,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
+
+          if (!lastAttempt) {
+            logger.debug("CreateCheckpointService: Dependency child attempt not found", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency?.id,
+            });
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          if (!isFinalAttemptStatus(lastAttempt.status)) {
+            logger.debug("CreateCheckpointService: Dependency child attempt not final", {
+              taskRunId: dependency.taskRunId,
+              runFriendlyId: reason.friendlyId,
+              dependencyId: dependency.id,
+              lastAttemptId: lastAttempt.id,
+              lastAttemptStatus: lastAttempt.status,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id, this._prisma);
+
+          return {
+            success: true,
+            checkpoint,
+            event: checkpointEvent,
+            keepRunAlive: false,
+          };
         }
 
         break;
@@ -154,10 +288,37 @@ export class CreateCheckpointService extends BaseService {
           batchDependencyFriendlyId: reason.batchFriendlyId,
         });
 
-        keepRunAlive = await this.#isBatchCompleted(reason.batchFriendlyId);
+        if (checkpointEvent) {
+          const batchRun = await this._prisma.batchTaskRun.findFirst({
+            select: {
+              id: true,
+            },
+            where: {
+              friendlyId: reason.batchFriendlyId,
+            },
+          });
 
-        if (!keepRunAlive) {
-          await marqs?.acknowledgeMessage(attempt.taskRunId);
+          if (!batchRun) {
+            logger.error("CreateCheckpointService: Batch not found", {
+              friendlyId: reason.batchFriendlyId,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
+          await ResumeBatchRunService.enqueue(batchRun.id, this._prisma);
+
+          return {
+            success: true,
+            checkpoint,
+            event: checkpointEvent,
+            keepRunAlive: false,
+          };
         }
 
         break;
@@ -205,35 +366,5 @@ export class CreateCheckpointService extends BaseService {
       event: checkpointEvent,
       keepRunAlive,
     };
-  }
-
-  async #isBatchCompleted(friendlyId: string): Promise<boolean> {
-    const batch = await this._prisma.batchTaskRun.findUnique({
-      where: {
-        friendlyId,
-      },
-    });
-
-    if (!batch) {
-      logger.error("Batch not found", { friendlyId });
-      return false;
-    }
-
-    return batch.status === "COMPLETED";
-  }
-
-  async #isRunCompleted(friendlyId: string): Promise<boolean> {
-    const run = await this._prisma.taskRun.findUnique({
-      where: {
-        friendlyId,
-      },
-    });
-
-    if (!run) {
-      logger.error("Run not found", { friendlyId });
-      return false;
-    }
-
-    return isFinalRunStatus(run.status);
   }
 }

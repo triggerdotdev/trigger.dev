@@ -55,13 +55,21 @@ export class ResumeTaskDependencyService extends BaseService {
         dependentRun.concurrencyKey ?? undefined
       );
     } else {
+      logger.debug("Task dependency resume: Attempt is not paused or there's no checkpoint event", {
+        attemptId: dependency.id,
+        dependentAttempt: dependency.dependentAttempt,
+        checkpointEventId: dependency.checkpointEventId,
+        hasCheckpointEvent: !!dependency.checkpointEventId,
+      });
+
       if (dependency.dependentAttempt.status === "PAUSED" && !dependency.checkpointEventId) {
-        // In case of race conditions and other bugs, the status can be PAUSED without a checkpoint event
-        // The worker may still be up, so we will try to resume the dependent attempt by sending a message to the worker (on dequeue)
-        logger.warn("Task dependency resume: Attempt is paused but there's no checkpoint event", {
+        // In case of race conditions the status can be PAUSED without a checkpoint event
+        // When the checkpoint is created, it will continue the run
+        logger.error("Task dependency resume: Attempt is paused but there's no checkpoint event", {
           attemptId: dependency.id,
           dependentAttemptId: dependency.dependentAttempt.id,
         });
+        return;
       }
 
       await marqs?.replaceMessage(dependentRun.id, {
