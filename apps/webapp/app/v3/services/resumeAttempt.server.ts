@@ -152,9 +152,6 @@ export class ResumeAttemptService extends BaseService {
           break;
         }
       }
-
-      // Prevent infinite restores by failing runs that don't heartbeat after post-restore resume requests
-      await this.#replaceResumeWithFailMessage(attempt.taskRunId, params.type);
     });
   }
 
@@ -254,51 +251,5 @@ export class ResumeAttemptService extends BaseService {
         },
       },
     });
-  }
-
-  async #replaceResumeWithFailMessage(messageId: string, waitReason: WaitReason) {
-    const currentMessage = await marqs?.readMessage(messageId);
-
-    if (!currentMessage) {
-      logger.debug("No message to replace", { messageId, waitReason });
-      return;
-    }
-
-    const currentBody = SharedQueueMessageBody.safeParse(currentMessage.data);
-
-    if (!currentBody.success) {
-      logger.debug("Invalid message body", { messageId, waitReason, currentBody });
-      return;
-    }
-
-    const currentType = currentBody.data.type;
-
-    if (currentType !== "RESUME" && currentType !== "RESUME_AFTER_DURATION") {
-      logger.debug("Not a resume message", { messageId, waitReason, currentBody });
-      return;
-    }
-
-    let reason = "Worker unresponsive after restore";
-
-    switch (waitReason) {
-      case "WAIT_FOR_DURATION":
-        reason = "Worker unresponsive after waiting for duration";
-        break;
-      case "WAIT_FOR_TASK":
-        reason = "Worker unresponsive after waiting for task";
-        break;
-      case "WAIT_FOR_BATCH":
-        reason = "Worker unresponsive after waiting for batch task";
-        break;
-      default:
-        break;
-    }
-
-    const failMessage: SharedQueueMessageBody = {
-      type: "FAIL",
-      reason,
-    };
-
-    return await marqs?.replaceMessage(messageId, failMessage, undefined, true);
   }
 }
