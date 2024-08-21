@@ -909,6 +909,8 @@ model JobRun {
   subscriptions      JobRunSubscription[]
 
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
+  @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
+  @@index([versionId], map: "idx_jobrun_versionId")
 }
 
 enum JobRunStatus {
@@ -2065,6 +2067,8 @@ model BatchTaskRunItem {
   updatedAt DateTime @updatedAt
 
   @@unique([batchTaskRunId, taskRunId])
+  @@index([taskRunAttemptId], map: "idx_batchtaskrunitem_taskrunattempt")
+  @@index([taskRunId], map: "idx_batchtaskrunitem_taskrun")
 }
 
 enum BatchTaskRunItemStatus {

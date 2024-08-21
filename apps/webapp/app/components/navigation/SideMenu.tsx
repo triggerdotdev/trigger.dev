@@ -84,16 +84,7 @@ import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
-type SideMenuProject = Pick<
-  MatchedProject,
-  | "id"
-  | "name"
-  | "slug"
-  | "hasInactiveExternalTriggers"
-  | "jobCount"
-  | "httpEndpointCount"
-  | "version"
->;
+type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
 
 type SideMenuProps = {
   user: SideMenuUser;
@@ -168,7 +159,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 icon="integration"
                 to={organizationIntegrationsPath(organization)}
                 data-action="integrations"
-                hasWarning={organization.hasUnconfiguredIntegrations}
               />
             )}
             <SideMenuItem
@@ -521,7 +511,6 @@ function V2ProjectSideMenu({
         iconColor="text-amber-500"
         to={projectTriggersPath(organization, project)}
         data-action="triggers"
-        hasWarning={project.hasInactiveExternalTriggers}
       />
       <SideMenuItem
         name="Events"
