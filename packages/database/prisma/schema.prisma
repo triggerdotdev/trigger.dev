@@ -2067,6 +2067,7 @@ model BatchTaskRunItem {
   updatedAt DateTime @updatedAt
 
   @@unique([batchTaskRunId, taskRunId])
+  @@index([taskRunAttemptId], map: "idx_batchtaskrunitem_taskrunattempt")
 }
 
 enum BatchTaskRunItemStatus {
