@@ -34,6 +34,7 @@ export interface BuildImageOptions {
   extraCACerts?: string;
   apiUrl: string;
   apiKey: string;
+  buildEnvVars?: Record<string, string | undefined>;
 
   // Optional deployment spinner
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
@@ -62,6 +63,7 @@ export async function buildImage(options: BuildImageOptions) {
     extraCACerts,
     apiUrl,
     apiKey,
+    buildEnvVars,
   } = options;
 
   if (selfHosted) {
@@ -81,6 +83,7 @@ export async function buildImage(options: BuildImageOptions) {
       extraCACerts: extraCACerts,
       apiUrl,
       apiKey,
+      buildEnvVars,
     });
   }
 
@@ -109,6 +112,7 @@ export async function buildImage(options: BuildImageOptions) {
     extraCACerts,
     apiUrl,
     apiKey,
+    buildEnvVars,
   });
 }
 
@@ -131,6 +135,7 @@ export interface DepotBuildImageOptions {
   loadImage?: boolean;
   noCache?: boolean;
   extraCACerts?: string;
+  buildEnvVars?: Record<string, string | undefined>;
 }
 
 type BuildImageSuccess = {
@@ -156,6 +161,10 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     password: options.auth,
   });
 
+  const buildArgs = Object.entries(options.buildEnvVars || {})
+    .filter(([key, value]) => value)
+    .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
+
   const args = [
     "build",
     "-f",
@@ -179,6 +188,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     `TRIGGER_API_URL=${options.apiUrl}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
+    ...(buildArgs || []),
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
@@ -266,6 +276,7 @@ interface SelfHostedBuildImageOptions {
   apiKey: string;
   noCache?: boolean;
   extraCACerts?: string;
+  buildEnvVars?: Record<string, string | undefined>;
 }
 
 async function selfHostedBuildImage(
@@ -273,7 +284,11 @@ async function selfHostedBuildImage(
 ): Promise<BuildImageResults> {
   const imageRef = `${options.registryHost ? `${options.registryHost}/` : ""}${options.imageTag}`;
 
-  const buildArgs = [
+  const buildArgs = Object.entries(options.buildEnvVars || {})
+    .filter(([key, value]) => value)
+    .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
+
+  const args = [
     "build",
     "-f",
     "Containerfile",
@@ -294,6 +309,7 @@ async function selfHostedBuildImage(
     `TRIGGER_API_URL=${options.apiUrl}`,
     "--build-arg",
     `TRIGGER_SECRET_KEY=${options.apiKey}`,
+    ...(buildArgs || []),
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
@@ -302,7 +318,7 @@ async function selfHostedBuildImage(
     ".", // The build context
   ].filter(Boolean) as string[];
 
-  logger.debug(`docker ${buildArgs.join(" ")}`, {
+  logger.debug(`docker ${args.join(" ")}`, {
     cwd: options.cwd,
   });
 
@@ -310,7 +326,7 @@ async function selfHostedBuildImage(
   let digest: string | undefined;
 
   // Build the image
-  const buildProcess = x("docker", buildArgs, {
+  const buildProcess = x("docker", args, {
     nodeOptions: { cwd: options.cwd },
   });
 
@@ -408,9 +424,12 @@ function extractImageDigest(outputs: string[]) {
 export type GenerateContainerfileOptions = {
   runtime: BuildRuntime;
   build: BuildManifest["build"];
+  image: BuildManifest["image"];
   indexScript: string;
   entrypoint: string;
 };
+
+const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
@@ -434,9 +453,18 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
 
   const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
+  const baseInstructions = (options.image?.instructions || []).join("\n");
+  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
+    " "
+  );
+
   return `
 FROM imbios/bun-node:22-debian AS base
-RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+${baseInstructions}
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends ${packages} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM base AS build
 
@@ -530,10 +558,18 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
 
   const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
 
+  const baseInstructions = (options.image?.instructions || []).join("\n");
+  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
+    " "
+  );
+
   return `
 FROM node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170 AS base
+
+${baseInstructions}
+
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends ${packages} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM base AS build
 

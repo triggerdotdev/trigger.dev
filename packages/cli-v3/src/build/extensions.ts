@@ -126,43 +126,58 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
   let $manifest = { ...manifest };
 
   if (layer.commands) {
-    manifest.build.commands ??= [];
-    manifest.build.commands = manifest.build.commands.concat(layer.commands);
+    $manifest.build.commands ??= [];
+    $manifest.build.commands = $manifest.build.commands.concat(layer.commands);
   }
 
   if (layer.build?.env) {
-    manifest.build.env ??= {};
-    Object.assign(manifest.build.env, layer.build.env);
+    $manifest.build.env ??= {};
+    Object.assign($manifest.build.env, layer.build.env);
   }
 
   if (layer.deploy?.env) {
-    manifest.deploy.env ??= {};
-    manifest.deploy.sync ??= {};
-    manifest.deploy.sync.env ??= {};
+    $manifest.deploy.env ??= {};
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.env ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.env)) {
       if (!value) {
         continue;
       }
 
-      if (layer.deploy.override || manifest.deploy.env[key] === undefined) {
-        const existingValue = manifest.deploy.env[key];
+      if (layer.deploy.override || $manifest.deploy.env[key] === undefined) {
+        const existingValue = $manifest.deploy.env[key];
 
         if (existingValue !== value) {
-          manifest.deploy.sync.env[key] = value;
+          $manifest.deploy.sync.env[key] = value;
         }
       }
     }
   }
 
   if (layer.dependencies) {
-    const externals = manifest.externals ?? [];
+    const externals = $manifest.externals ?? [];
 
     for (const [name, version] of Object.entries(layer.dependencies)) {
       externals.push({ name, version });
     }
 
     $manifest.externals = externals;
+  }
+
+  if (layer.image) {
+    $manifest.image ??= {};
+    $manifest.image.instructions ??= [];
+    $manifest.image.pkgs ??= [];
+
+    if (layer.image.instructions) {
+      $manifest.image.instructions = $manifest.image.instructions.concat(layer.image.instructions);
+    }
+
+    if (layer.image.pkgs) {
+      $manifest.image.pkgs = $manifest.image.pkgs.concat(layer.image.pkgs);
+      $manifest.image.pkgs = Array.from(new Set($manifest.image.pkgs));
+    }
   }
 
   return $manifest;

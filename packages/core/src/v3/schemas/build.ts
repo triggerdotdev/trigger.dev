@@ -52,6 +52,12 @@ export const BuildManifest = z.object({
       })
       .optional(),
   }),
+  image: z
+    .object({
+      pkgs: z.array(z.string()).optional(),
+      instructions: z.array(z.string()).optional(),
+    })
+    .optional(),
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),

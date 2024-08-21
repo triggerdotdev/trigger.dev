@@ -378,6 +378,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     apiKey: projectClient.client.accessToken!,
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
+    buildEnvVars: buildManifest.build.env,
   });
 
   logger.debug("Build result", buildResult);
@@ -564,6 +565,7 @@ async function writeContainerfile(outputPath: string, buildManifest: BuildManife
     runtime: buildManifest.runtime,
     entrypoint: buildManifest.runControllerEntryPoint,
     build: buildManifest.build,
+    image: buildManifest.image,
     indexScript: buildManifest.indexControllerEntryPoint,
   });
 

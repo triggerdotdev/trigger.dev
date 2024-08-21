@@ -13,9 +13,10 @@
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
-    "postinstall": "echo 'package.json postinstall'"
+    "postinstall": "prisma generate --no-hints"
   },
   "dependencies": {
+    "@prisma/client": "5.18.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@infisical/sdk": "^2.1.9",
@@ -66,6 +67,7 @@
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "prisma": "5.18.0"
   }
 }

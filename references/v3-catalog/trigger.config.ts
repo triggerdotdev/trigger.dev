@@ -1,6 +1,10 @@
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-import { emitDecoratorMetadata } from "@trigger.dev/sdk/v3/extensions";
+import {
+  emitDecoratorMetadata,
+  audioWaveform,
+  prismaExtension,
+} from "@trigger.dev/sdk/v3/extensions";
 import { InfisicalClient } from "@infisical/sdk";
 
 export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
@@ -55,7 +59,15 @@ export default defineConfig({
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
   },
   build: {
-    extensions: [emitDecoratorMetadata()],
+    extensions: [
+      emitDecoratorMetadata(),
+      audioWaveform(),
+      prismaExtension({
+        schema: "prisma/schema/schema.prisma",
+        migrate: true,
+        directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
+      }),
+    ],
     external: ["@ffmpeg-installer/ffmpeg", "re2"],
   },
 });
