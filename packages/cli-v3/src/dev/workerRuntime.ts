@@ -128,11 +128,11 @@ class DevWorkerRuntime implements WorkerRuntime {
     this.websocket = new WebSocket(websocketUrl.href, [], {
       WebSocket: WebsocketFactory(this.options.client.accessToken!),
       connectionTimeout: 10000,
-      maxRetries: 10,
+      maxRetries: 64,
       minReconnectionDelay: 1000,
-      maxReconnectionDelay: 30000,
-      reconnectionDelayGrowFactor: 1.4, // This leads to the following retry times: 1, 1.4, 1.96, 2.74, 3.84, 5.38, 7.53, 10.54, 14.76, 20.66
-      maxEnqueuedMessages: 250,
+      maxReconnectionDelay: 5000,
+      reconnectionDelayGrowFactor: 1.4,
+      maxEnqueuedMessages: 1250,
     });
 
     this.websocket.addEventListener("open", async (event) => {
@@ -144,7 +144,7 @@ class DevWorkerRuntime implements WorkerRuntime {
     });
 
     this.websocket.addEventListener("error", (event) => {
-      logger.log(`${chalkError("WebSocketError:")} ${event.error.message}`);
+      logger.debug(`${chalkError("WebSocketError:")} ${event.error.message}`);
     });
 
     this.websocket.addEventListener("message", this.#handleWebsocketMessage.bind(this));
@@ -155,7 +155,16 @@ class DevWorkerRuntime implements WorkerRuntime {
   }
 
   async shutdown(): Promise<void> {
-    this.websocket.close();
+    try {
+      if (
+        this.websocket.readyState === WebSocket.OPEN ||
+        this.websocket.readyState === WebSocket.CONNECTING
+      ) {
+        this.websocket.close();
+      }
+    } catch (error) {
+      logger.debug("Error while shutting down worker runtime", { error });
+    }
   }
 
   async initializeWorker(manifest: BuildManifest, options?: { cwd?: string }): Promise<void> {

@@ -3,8 +3,7 @@
   "compilerOptions": {
     "isolatedDeclarations": false,
     "composite": true,
-    "sourceMap": true,
-    "jsx": "react-jsx"
+    "sourceMap": true
   },
   "include": ["./src/**/*.ts", "./src/**/*.tsx"]
 }

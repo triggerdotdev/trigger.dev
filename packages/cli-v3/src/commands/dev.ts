@@ -1,18 +1,16 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { Command } from "commander";
-import { render } from "ink";
-import React from "react";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
-import Dev from "../dev/dev.js";
+import { startDevSession } from "../dev/devSession.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
-import { getProjectClient, isLoggedIn, LoginResultOk } from "../utilities/session.js";
-import { updateTriggerPackages } from "./update.js";
+import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { login } from "./login.js";
+import { updateTriggerPackages } from "./update.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -74,8 +72,7 @@ export async function devCommand(options: DevCommandOptions) {
   try {
     const devInstance = await startDev({ ...options, cwd: process.cwd(), login: authorization });
     watcher = devInstance.watcher;
-    const { waitUntilExit } = devInstance.devReactElement;
-    await waitUntilExit();
+    await devInstance.waitUntilExit();
   } finally {
     await watcher?.stop();
   }
@@ -90,7 +87,6 @@ async function startDev(options: StartDevOptions) {
   logger.debug("Starting dev CLI", { options });
 
   let watcher: Awaited<ReturnType<typeof watchConfig>> | undefined;
-  let rerender: (node: React.ReactNode) => void | undefined;
 
   try {
     if (options.logLevel) {
@@ -111,7 +107,7 @@ async function startDev(options: StartDevOptions) {
       cwd: options.cwd,
       async onUpdate(config) {
         logger.debug("Updated config, rerendering", { config });
-        rerender(await getDevReactElement(config));
+        // rerender(await getDevReactElement(config));
       },
       overrides: {
         project: options.projectRef,
@@ -122,7 +118,7 @@ async function startDev(options: StartDevOptions) {
     logger.debug("Initial config", watcher.config);
 
     // eslint-disable-next-line no-inner-declarations
-    async function getDevReactElement(configParam: ResolvedConfig) {
+    async function bootDevSession(configParam: ResolvedConfig) {
       const projectClient = await getProjectClient({
         accessToken: options.login.auth.accessToken,
         apiUrl: options.login.auth.apiUrl,
@@ -135,29 +131,28 @@ async function startDev(options: StartDevOptions) {
         process.exit(1);
       }
 
-      return (
-        <Dev
-          name={projectClient.name}
-          rawArgs={options}
-          rawConfig={configParam}
-          initialMode="local"
-          showInteractiveDevSession={true}
-          client={projectClient.client}
-          dashboardUrl={options.login.dashboardUrl}
-        />
-      );
+      return startDevSession({
+        name: projectClient.name,
+        rawArgs: options,
+        rawConfig: configParam,
+        client: projectClient.client,
+        initialMode: "local",
+        dashboardUrl: options.login.dashboardUrl,
+        showInteractiveDevSession: true,
+      });
     }
 
-    const devReactElement = render(await getDevReactElement(watcher.config));
-    rerender = devReactElement.rerender;
+    const devSession = await bootDevSession(watcher.config);
+
+    const waitUntilExit = async () => {};
 
     return {
-      devReactElement,
       watcher,
       stop: async () => {
-        devReactElement.unmount();
+        devSession.stop();
         await watcher?.stop();
       },
+      waitUntilExit,
     };
   } catch (error) {
     await watcher?.stop();

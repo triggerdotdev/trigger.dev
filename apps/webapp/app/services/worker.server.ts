@@ -50,6 +50,10 @@ import { PerformTaskOperationService } from "./tasks/performTaskOperation.server
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
+import {
+  CancelDevSessionRunsService,
+  CancelDevSessionRunsServiceOptions,
+} from "~/v3/services/cancelDevSessionRuns.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -191,6 +195,7 @@ const workerCatalog = {
   "v3.cancelTaskAttemptDependencies": z.object({
     attemptId: z.string(),
   }),
+  "v3.cancelDevSessionRuns": CancelDevSessionRunsServiceOptions,
 };
 
 const executionWorkerCatalog = {
@@ -708,6 +713,15 @@ function getWorkerQueue() {
           const service = new CancelTaskAttemptDependenciesService();
 
           return await service.call(payload.attemptId);
+        },
+      },
+      "v3.cancelDevSessionRuns": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new CancelDevSessionRunsService();
+
+          return await service.call(payload);
         },
       },
     },
