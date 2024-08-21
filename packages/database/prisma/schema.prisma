@@ -910,6 +910,7 @@ model JobRun {
 
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
   @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
+  @@index([versionId], map: "idx_jobrun_versionId")
 }
 
 enum JobRunStatus {
