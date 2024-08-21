@@ -9,11 +9,12 @@ import {
   deployEntryPoints,
   devEntryPoints,
   isConfigEntryPoint,
-  isExecutorEntryPointForTarget,
-  isIndexerEntryPointForTarget,
+  isRunWorkerForTarget,
+  isIndexWorkerForTarget,
   isLoaderEntryPoint,
-  isWorkerEntryPointForTarget,
+  isRunControllerForTarget,
   shims,
+  isIndexControllerForTarget,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 
@@ -34,9 +35,10 @@ export type BundleResult = {
   files: TaskFile[];
   configPath: string;
   loaderEntryPoint: string | undefined;
-  workerEntryPoint: string | undefined;
-  indexerEntryPoint: string | undefined;
-  executorEntryPoint: string | undefined;
+  runWorkerEntryPoint: string | undefined;
+  runControllerEntryPoint: string | undefined;
+  indexWorkerEntryPoint: string | undefined;
+  indexControllerEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
 };
 
@@ -145,9 +147,10 @@ export async function getBundleResultFromBuild(
 
   let configPath: string | undefined;
   let loaderEntryPoint: string | undefined;
-  let workerEntryPoint: string | undefined;
-  let executorEntryPoint: string | undefined;
-  let indexerEntryPoint: string | undefined;
+  let runWorkerEntryPoint: string | undefined;
+  let runControllerEntryPoint: string | undefined;
+  let indexWorkerEntryPoint: string | undefined;
+  let indexControllerEntryPoint: string | undefined;
 
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
@@ -161,12 +164,14 @@ export async function getBundleResultFromBuild(
         configPath = $outputPath;
       } else if (isLoaderEntryPoint(outputMeta.entryPoint)) {
         loaderEntryPoint = $outputPath;
-      } else if (isWorkerEntryPointForTarget(outputMeta.entryPoint, target)) {
-        workerEntryPoint = $outputPath;
-      } else if (isIndexerEntryPointForTarget(outputMeta.entryPoint, target)) {
-        indexerEntryPoint = $outputPath;
-      } else if (isExecutorEntryPointForTarget(outputMeta.entryPoint, target)) {
-        executorEntryPoint = $outputPath;
+      } else if (isRunControllerForTarget(outputMeta.entryPoint, target)) {
+        runControllerEntryPoint = $outputPath;
+      } else if (isRunWorkerForTarget(outputMeta.entryPoint, target)) {
+        runWorkerEntryPoint = $outputPath;
+      } else if (isIndexControllerForTarget(outputMeta.entryPoint, target)) {
+        indexControllerEntryPoint = $outputPath;
+      } else if (isIndexWorkerForTarget(outputMeta.entryPoint, target)) {
+        indexWorkerEntryPoint = $outputPath;
       } else {
         if (
           !outputMeta.entryPoint.startsWith("..") &&
@@ -189,9 +194,10 @@ export async function getBundleResultFromBuild(
     files,
     configPath: configPath,
     loaderEntryPoint,
-    workerEntryPoint,
-    executorEntryPoint,
-    indexerEntryPoint,
+    runWorkerEntryPoint,
+    runControllerEntryPoint,
+    indexWorkerEntryPoint,
+    indexControllerEntryPoint,
     contentHash: hasher.digest("hex"),
   };
 }

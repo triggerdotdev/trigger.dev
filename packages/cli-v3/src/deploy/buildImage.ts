@@ -408,8 +408,8 @@ function extractImageDigest(outputs: string[]) {
 export type GenerateContainerfileOptions = {
   runtime: BuildRuntime;
   build: BuildManifest["build"];
-  indexerEntryPoint: string;
-  workerEntryPoint: string;
+  indexScript: string;
+  entrypoint: string;
 };
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
@@ -481,7 +481,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_ENV=production
 
 # Run the indexer
-RUN bun run ${options.indexerEntryPoint}
+RUN bun run ${options.indexScript}
 
 # Development or production stage builds upon the base stage
 FROM base AS final
@@ -510,7 +510,7 @@ COPY --from=install --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.workerEntryPoint}" ]
+ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
   `;
 }
@@ -579,7 +579,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_OPTIONS="--max_old_space_size=8192"
 
 # Run the indexer
-RUN node ${options.indexerEntryPoint}
+RUN node ${options.indexScript}
 
 # Development or production stage builds upon the base stage
 FROM base AS final
@@ -609,7 +609,7 @@ COPY --from=install --chown=node:node /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.workerEntryPoint}" ]
+ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
 CMD []
   `;
 }

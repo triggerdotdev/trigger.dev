@@ -13,6 +13,8 @@ import {
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
+import { registerTasks } from "../indexing/registerTasks.js";
+import { env } from "std-env";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -63,7 +65,7 @@ async function importConfig(
 }
 
 async function loadBuildManifest() {
-  const manifestContents = await readFile(process.env.TRIGGER_BUILD_MANIFEST_PATH!, "utf-8");
+  const manifestContents = await readFile(env.TRIGGER_BUILD_MANIFEST_PATH!, "utf-8");
   const raw = JSON.parse(manifestContents);
 
   return BuildManifest.parse(raw);
@@ -76,42 +78,23 @@ async function bootstrap() {
 
   // This needs to run or the PrismaInstrumentation will throw an error
   const tracingSDK = new TracingSDK({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+    url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
     instrumentations: config.instrumentations ?? [],
-    diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+    diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
   });
 
-  for (const file of buildManifest.files) {
-    const module = await import(file.out);
-
-    for (const exportName of getExportNames(module)) {
-      const task = module[exportName] ?? module.default?.[exportName];
-
-      if (!task) {
-        continue;
-      }
-
-      if (task[Symbol.for("trigger.dev/task")]) {
-        if (taskCatalog.taskExists(task.id)) {
-          taskCatalog.registerTaskFileMetadata(task.id, {
-            exportName,
-            filePath: file.entry,
-            entryPoint: file.out,
-          });
-        }
-      }
-    }
-  }
+  const importErrors = await registerTasks(buildManifest);
 
   return {
     tracingSDK,
     config,
     buildManifest,
+    importErrors,
   };
 }
 
-const { buildManifest } = await bootstrap();
+const { buildManifest, importErrors } = await bootstrap();
 
 const tasks = taskCatalog.listTaskManifests();
 
@@ -123,10 +106,11 @@ await sendMessageInCatalog(
       tasks,
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
-      executorEntryPoint: buildManifest.executorEntryPoint,
-      workerEntryPoint: buildManifest.workerEntryPoint,
+      workerEntryPoint: buildManifest.runWorkerEntryPoint,
+      controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
     },
+    importErrors,
   },
   async (msg) => {
     process.send?.(msg);
@@ -153,19 +137,3 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
-
-function getExportNames(module: any) {
-  const exports: string[] = [];
-
-  const exportKeys = Object.keys(module);
-
-  if (exportKeys.length === 0) {
-    return exports;
-  }
-
-  if (exportKeys.length === 1 && exportKeys[0] === "default") {
-    return Object.keys(module.default);
-  }
-
-  return exportKeys;
-}

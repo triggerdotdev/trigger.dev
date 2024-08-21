@@ -22,9 +22,9 @@ import {
   CancelledProcessError,
   CleanupProcessError,
   GracefulExitTimeoutError,
-  SigKillTimeoutProcessError,
   UnexpectedExitError,
-} from "./errors.js";
+} from "@trigger.dev/core/v3/errors";
+import { env } from "std-env";
 
 export type OnWaitForDurationMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
@@ -105,18 +105,18 @@ export class TaskRunProcess {
   }
 
   async initialize() {
-    const { env, workerManifest, cwd, messageId } = this.options;
+    const { env: $env, workerManifest, cwd, messageId } = this.options;
 
     const fullEnv = {
       ...(this.isTest ? { TRIGGER_LOG_LEVEL: "debug" } : {}),
-      ...env,
+      ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: workerManifest.loaderEntryPoint
         ? `--import=${workerManifest.loaderEntryPoint} ${
-            env.NODE_OPTIONS ?? process.env.NODE_OPTIONS ?? ""
+            env.NODE_OPTIONS ?? env.NODE_OPTIONS ?? ""
           }`
-        : env.NODE_OPTIONS ?? process.env.NODE_OPTIONS ?? "",
+        : env.NODE_OPTIONS ?? env.NODE_OPTIONS ?? "",
     };
 
     logger.debug(`[${this.runId}] initializing task run process`, {
@@ -125,7 +125,7 @@ export class TaskRunProcess {
       cwd,
     });
 
-    this._child = fork(workerManifest.executorEntryPoint, executorArgs(workerManifest), {
+    this._child = fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd,
       env: fullEnv,

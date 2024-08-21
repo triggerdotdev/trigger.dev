@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { resolve } from "node:path";
+import { env } from "std-env";
 
 export function resolveDotEnvVars(cwd?: string) {
   const result: { [key: string]: string } = {};
@@ -11,7 +12,7 @@ export function resolveDotEnvVars(cwd?: string) {
     ),
   });
 
-  process.env.TRIGGER_API_URL && (result.TRIGGER_API_URL = process.env.TRIGGER_API_URL);
+  env.TRIGGER_API_URL && (result.TRIGGER_API_URL = env.TRIGGER_API_URL);
 
   // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
   delete result.TRIGGER_API_URL;

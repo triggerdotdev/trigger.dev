@@ -11,11 +11,21 @@ import {
   chalkWarning,
   chalkWorker,
   cliLink,
+  prettyError,
   prettyPrintDate,
 } from "../utilities/cliOutput.js";
 import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
-import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
+import {
+  TaskMetadataFailedToParseData,
+  TaskRunError,
+  TaskRunErrorCodes,
+} from "@trigger.dev/core/v3/schemas";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import {
+  createTaskMetadataFailedErrorStack,
+  TaskIndexingImportError,
+  TaskMetadataParseError,
+} from "@trigger.dev/core/v3/errors";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -61,6 +71,29 @@ export function startDevOutput(options: DevOutputOptions) {
     logger.log(
       `${bullet} ${workerStarted} ${runtime} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
     );
+  };
+
+  const backgroundWorkerIndexingError = (
+    ...[buildManifest, error]: EventBusEventArgs<"backgroundWorkerIndexingError">
+  ) => {
+    if (error instanceof TaskIndexingImportError) {
+      for (const importError of error.importErrors) {
+        prettyError(`Could not import ${importError.file}`, importError.stack);
+      }
+    } else if (error instanceof TaskMetadataParseError) {
+      const errorStack = createTaskMetadataFailedErrorStack({
+        version: "v1",
+        zodIssues: error.zodIssues,
+        tasks: error.tasks,
+      });
+
+      prettyError(`Could not parse task metadata`, errorStack);
+    } else {
+      const errorText = error instanceof Error ? error.message : "Unknown error";
+      const stack = error instanceof Error ? error.stack : undefined;
+
+      prettyError(`Build failed: ${errorText}`, stack);
+    }
   };
 
   const runStarted = (...[worker, payload]: EventBusEventArgs<"runStarted">) => {
@@ -142,6 +175,7 @@ export function startDevOutput(options: DevOutputOptions) {
   eventBus.on("backgroundWorkerInitialized", backgroundWorkerInitialized);
   eventBus.on("runStarted", runStarted);
   eventBus.on("runCompleted", runCompleted);
+  eventBus.on("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
 
   return () => {
     eventBus.off("rebuildStarted", rebuildStarted);
@@ -150,6 +184,7 @@ export function startDevOutput(options: DevOutputOptions) {
     eventBus.off("backgroundWorkerInitialized", backgroundWorkerInitialized);
     eventBus.off("runStarted", runStarted);
     eventBus.off("runCompleted", runCompleted);
+    eventBus.off("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
   };
 }
 

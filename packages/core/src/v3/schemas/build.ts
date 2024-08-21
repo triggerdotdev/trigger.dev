@@ -33,9 +33,10 @@ export const BuildManifest = z.object({
     })
   ),
   outputPath: z.string(),
-  indexerEntryPoint: z.string(),
-  executorEntryPoint: z.string(),
-  workerEntryPoint: z.string().optional(),
+  runWorkerEntryPoint: z.string(), // Dev & Deploy has a runWorkerEntryPoint
+  runControllerEntryPoint: z.string().optional(), // Only deploy has a runControllerEntryPoint
+  indexWorkerEntryPoint: z.string(), // Dev & Deploy has a indexWorkerEntryPoint
+  indexControllerEntryPoint: z.string().optional(), // Only deploy has a indexControllerEntryPoint
   loaderEntryPoint: z.string().optional(),
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
@@ -73,8 +74,8 @@ export type IndexMessage = z.infer<typeof IndexMessage>;
 export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
-  executorEntryPoint: z.string(),
-  workerEntryPoint: z.string().optional(),
+  workerEntryPoint: z.string(),
+  controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
   runtime: BuildRuntime,
   otelImportHook: z
@@ -95,3 +96,16 @@ export const WorkerManifestMessage = z.object({
 });
 
 export type WorkerManifestMessage = z.infer<typeof WorkerManifestMessage>;
+
+export const ImportError = z.object({
+  message: z.string(),
+  file: z.string(),
+  stack: z.string().optional(),
+  name: z.string().optional(),
+});
+
+export type ImportError = z.infer<typeof ImportError>;
+
+export const ImportTaskFileErrors = z.array(ImportError);
+
+export type ImportTaskFileErrors = z.infer<typeof ImportTaskFileErrors>;

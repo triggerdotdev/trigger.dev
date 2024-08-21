@@ -18,11 +18,7 @@ import {
 } from "../build/extensions.js";
 import { createExternalsBuildExtension } from "../build/externals.js";
 import { copyManifestToDir } from "../build/manifests.js";
-import {
-  devExecutorEntryPoint,
-  devIndexerEntryPoint,
-  telemetryEntryPoint,
-} from "../build/packageModules.js";
+import { devIndexWorker, devRunWorker, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
@@ -31,6 +27,7 @@ import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { VERSION } from "../version.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
+import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -75,21 +72,25 @@ export async function startDevSession({
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   async function updateBundle(bundle: BundleResult, workerDir?: EphemeralDirectory) {
+    let buildManifest = await createBuildManifestFromBundle(
+      bundle,
+      destination.path,
+      rawConfig,
+      workerDir?.path
+    );
+
+    buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
+
     try {
-      let buildManifest = await createBuildManifestFromBundle(
-        bundle,
-        destination.path,
-        rawConfig,
-        workerDir?.path
-      );
-
-      buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
-
       logger.debug("Updated bundle", { bundle, buildManifest });
 
       await runtime.initializeWorker(buildManifest);
     } catch (error) {
-      logger.error("Error updating bundle", { error });
+      if (error instanceof Error) {
+        eventBus.emit("backgroundWorkerIndexingError", buildManifest, error);
+      } else {
+        logger.error("Error updating bundle", { error });
+      }
     }
   }
 
@@ -191,14 +192,17 @@ async function createBuildManifestFromBundle(
       dirs: resolvedConfig.dirs,
     },
     outputPath: destination,
-    executorEntryPoint: bundle.executorEntryPoint ?? devExecutorEntryPoint,
+    runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? devRunWorker,
+    indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
-    indexerEntryPoint: bundle.indexerEntryPoint ?? devIndexerEntryPoint,
     configPath: bundle.configPath,
     deploy: {
       env: {},
     },
     build: {},
+    otelImportHook: {
+      include: getInstrumentedPackageNames(resolvedConfig),
+    },
   };
 
   if (!workerDir) {

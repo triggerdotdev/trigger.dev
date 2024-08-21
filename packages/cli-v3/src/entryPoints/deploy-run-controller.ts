@@ -31,13 +31,14 @@ import {
   TaskRunProcess,
 } from "../executions/taskRunProcess.js";
 import { checkpointSafeTimeout, unboundedTimeout } from "@trigger.dev/core/v3/utils/timers";
+import { env } from "std-env";
 
-const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || getRandomPortNumber());
-const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
-const COORDINATOR_PORT = Number(process.env.COORDINATOR_PORT || 50080);
-const MACHINE_NAME = process.env.MACHINE_NAME || "local";
-const POD_NAME = process.env.POD_NAME || "some-pod";
-const SHORT_HASH = process.env.TRIGGER_CONTENT_HASH!.slice(0, 9);
+const HTTP_SERVER_PORT = Number(env.HTTP_SERVER_PORT || getRandomPortNumber());
+const COORDINATOR_HOST = env.COORDINATOR_HOST || "127.0.0.1";
+const COORDINATOR_PORT = Number(env.COORDINATOR_PORT || 50080);
+const MACHINE_NAME = env.MACHINE_NAME || "local";
+const POD_NAME = env.POD_NAME || "some-pod";
+const SHORT_HASH = env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
@@ -48,17 +49,17 @@ const defaultBackoff = new ExponentialBackoff("FullJitter", {
 cliLogger.loggerLevel = "debug";
 
 cliLogger.debug("Starting prod worker", {
-  env: process.env,
+  env,
 });
 
 class ProdWorker {
-  private contentHash = process.env.TRIGGER_CONTENT_HASH!;
-  private projectRef = process.env.TRIGGER_PROJECT_REF!;
-  private envId = process.env.TRIGGER_ENV_ID!;
-  private runId = process.env.TRIGGER_RUN_ID!;
-  private deploymentId = process.env.TRIGGER_DEPLOYMENT_ID!;
-  private deploymentVersion = process.env.TRIGGER_DEPLOYMENT_VERSION!;
-  private runningInKubernetes = !!process.env.KUBERNETES_PORT;
+  private contentHash = env.TRIGGER_CONTENT_HASH!;
+  private projectRef = env.TRIGGER_PROJECT_REF!;
+  private envId = env.TRIGGER_ENV_ID!;
+  private runId = env.TRIGGER_RUN_ID!;
+  private deploymentId = env.TRIGGER_DEPLOYMENT_ID!;
+  private deploymentVersion = env.TRIGGER_DEPLOYMENT_VERSION!;
+  private runningInKubernetes = !!env.KUBERNETES_PORT;
 
   private executing = false;
   private completed = new Set<string>();
@@ -1291,15 +1292,15 @@ const prodWorker = new ProdWorker(HTTP_SERVER_PORT, workerManifest);
 await prodWorker.start();
 
 function gatherProcessEnv(): Record<string, string> {
-  const env = {
-    NODE_ENV: process.env.NODE_ENV ?? "production",
-    NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS,
-    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+  const $env = {
+    NODE_ENV: env.NODE_ENV ?? "production",
+    NODE_EXTRA_CA_CERTS: env.NODE_EXTRA_CA_CERTS,
+    OTEL_EXPORTER_OTLP_ENDPOINT: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
   };
 
   // Filter out undefined values
   return Object.fromEntries(
-    Object.entries(env).filter(([key, value]) => value !== undefined)
+    Object.entries($env).filter(([key, value]) => value !== undefined)
   ) as Record<string, string>;
 }
 

@@ -280,3 +280,11 @@ export const BatchTaskRunExecutionResult = z.object({
 });
 
 export type BatchTaskRunExecutionResult = z.infer<typeof BatchTaskRunExecutionResult>;
+
+export const SerializedError = z.object({
+  message: z.string(),
+  name: z.string().optional(),
+  stackTrace: z.string().optional(),
+});
+
+export type SerializedError = z.infer<typeof SerializedError>;

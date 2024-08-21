@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources.js";
+import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
-import { SerializedError } from "../errors.js";
+import { SerializedError } from "./common.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -194,6 +194,8 @@ export const DeploymentErrorData = z.object({
   stack: z.string().optional(),
   stderr: z.string().optional(),
 });
+
+export type DeploymentErrorData = z.infer<typeof DeploymentErrorData>;
 
 export const FailDeploymentRequestBody = z.object({
   error: DeploymentErrorData,

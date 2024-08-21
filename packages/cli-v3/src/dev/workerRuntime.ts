@@ -26,6 +26,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
+import { env } from "std-env";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -316,13 +317,13 @@ function WebsocketFactory(apiKey: string) {
 }
 
 function gatherProcessEnv() {
-  const env = {
-    ...process.env,
+  const $env = {
+    ...env,
     NODE_ENV: "development",
   };
 
   // Filter out undefined values
-  return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined));
+  return Object.fromEntries(Object.entries($env).filter(([key, value]) => value !== undefined));
 }
 
 function validateWorkerManifest(manifest: WorkerManifest): string[] {

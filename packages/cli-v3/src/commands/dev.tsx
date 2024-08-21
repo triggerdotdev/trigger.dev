@@ -12,6 +12,7 @@ import { logger } from "../utilities/logger.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
 import { getProjectClient, isLoggedIn, LoginResultOk } from "../utilities/session.js";
 import { updateTriggerPackages } from "./update.js";
+import { login } from "./login.js";
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
@@ -45,7 +46,11 @@ export function configureDevCommand(program: Command) {
 export async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
 
-  const authorization = await isLoggedIn(options.profile);
+  const authorization = await login({
+    embedded: true,
+    defaultApiUrl: options.apiUrl,
+    profile: options.profile,
+  });
 
   if (!authorization.ok) {
     if (authorization.error === "fetch failed") {

@@ -41,7 +41,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Deploy CLI",
-      "command": "pnpm exec triggerdev deploy --self-hosted",
+      "command": "pnpm exec triggerdev deploy --self-hosted --load-image",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },

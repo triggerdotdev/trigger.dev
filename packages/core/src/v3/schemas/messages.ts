@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorkerManifest } from "./build.js";
+import { ImportTaskFileErrors, WorkerManifest } from "./build.js";
 import {
   MachinePreset,
   TaskRunExecution,
@@ -11,7 +11,6 @@ import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
-  TaskManifest,
   TaskRunExecutionLazyAttemptPayload,
   WaitReason,
 } from "./schemas.js";
@@ -129,6 +128,7 @@ export const indexerToWorkerMessages = {
   INDEX_COMPLETE: z.object({
     version: z.literal("v1").default("v1"),
     manifest: WorkerManifest,
+    importErrors: ImportTaskFileErrors,
   }),
   TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,

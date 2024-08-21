@@ -17,7 +17,14 @@ export async function copyManifestToDir(
 
   updatedManifest.configPath = updatedManifest.configPath.replace(source, destination);
   updatedManifest.loaderEntryPoint = updatedManifest.loaderEntryPoint?.replace(source, destination);
-  updatedManifest.workerEntryPoint = updatedManifest.workerEntryPoint?.replace(source, destination);
+  updatedManifest.runWorkerEntryPoint = updatedManifest.runWorkerEntryPoint.replace(
+    source,
+    destination
+  );
+  updatedManifest.indexWorkerEntryPoint = updatedManifest.indexWorkerEntryPoint.replace(
+    source,
+    destination
+  );
 
   updatedManifest.files = updatedManifest.files.map((file) => {
     return {

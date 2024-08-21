@@ -2,20 +2,22 @@ import { join } from "node:path";
 import { sourceDir } from "../sourceDir.js";
 import { BuildTarget } from "@trigger.dev/core/v3";
 
-export const devExecutorEntryPoint = join(sourceDir, "entryPoints", "dev-executor.js");
-export const devIndexerEntryPoint = join(sourceDir, "entryPoints", "dev-indexer.js");
+export const devRunWorker = join(sourceDir, "entryPoints", "dev-run-worker.js");
+export const devIndexWorker = join(sourceDir, "entryPoints", "dev-index-worker.js");
 
-export const deployEntryPoint = join(sourceDir, "entryPoints", "deploy.js");
-export const deployExecutorEntryPoint = join(sourceDir, "entryPoints", "deploy-executor.js");
-export const deployIndexerEntryPoint = join(sourceDir, "entryPoints", "deploy-indexer.js");
+export const deployRunController = join(sourceDir, "entryPoints", "deploy-run-controller.js");
+export const deployRunWorker = join(sourceDir, "entryPoints", "deploy-run-worker.js");
+export const deployIndexController = join(sourceDir, "entryPoints", "deploy-index-controller.js");
+export const deployIndexWorker = join(sourceDir, "entryPoints", "deploy-index-worker.js");
 
 export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");
 
-export const devEntryPoints = [devExecutorEntryPoint, devIndexerEntryPoint, telemetryEntryPoint];
+export const devEntryPoints = [devRunWorker, devIndexWorker, telemetryEntryPoint];
 export const deployEntryPoints = [
-  deployIndexerEntryPoint,
-  deployExecutorEntryPoint,
-  deployEntryPoint,
+  deployRunController,
+  deployRunWorker,
+  deployIndexController,
+  deployIndexWorker,
   telemetryEntryPoint,
 ];
 
@@ -23,41 +25,61 @@ export const esmShimPath = join(sourceDir, "shims", "esm.js");
 
 export const shims = [esmShimPath];
 
-function isDevExecutorEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-executor.js"));
+function isDevRunWorker(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-run-worker.js"));
 }
 
-function isDevIndexerEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-indexer.js"));
+function isDevIndexWorker(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-index-worker.js"));
 }
 
-function isDeployIndexerEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-indexer.js"));
+function isDeployIndexController(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-controller.js"));
 }
 
-function isDeployEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy.js"));
+function isDeployIndexWorker(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-worker.js"));
 }
 
-function isDeployExecutorEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-executor.js"));
+function isDeployRunController(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-controller.js"));
+}
+
+function isDeployRunWorker(entryPoint: string) {
+  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-worker.js"));
 }
 
 export function isLoaderEntryPoint(entryPoint: string) {
   return entryPoint.includes(join("dist", "esm", "entryPoints", "loader.js"));
 }
 
-export function isExecutorEntryPointForTarget(entryPoint: string, target: BuildTarget) {
+export function isRunWorkerForTarget(entryPoint: string, target: BuildTarget) {
   if (target === "dev") {
-    return isDevExecutorEntryPoint(entryPoint);
+    return isDevRunWorker(entryPoint);
   } else {
-    return isDeployExecutorEntryPoint(entryPoint);
+    return isDeployRunWorker(entryPoint);
   }
 }
 
-export function isWorkerEntryPointForTarget(entryPoint: string, target: BuildTarget) {
+export function isRunControllerForTarget(entryPoint: string, target: BuildTarget) {
   if (target === "deploy") {
-    return isDeployEntryPoint(entryPoint);
+    return isDeployRunController(entryPoint);
+  }
+
+  return false;
+}
+
+export function isIndexWorkerForTarget(entryPoint: string, target: BuildTarget) {
+  if (target === "dev") {
+    return isDevIndexWorker(entryPoint);
+  } else {
+    return isDeployIndexWorker(entryPoint);
+  }
+}
+
+export function isIndexControllerForTarget(entryPoint: string, target: BuildTarget) {
+  if (target === "deploy") {
+    return isDeployIndexController(entryPoint);
   }
 
   return false;
@@ -65,12 +87,4 @@ export function isWorkerEntryPointForTarget(entryPoint: string, target: BuildTar
 
 export function isConfigEntryPoint(entryPoint: string) {
   return entryPoint.startsWith("trigger.config.ts");
-}
-
-export function isIndexerEntryPointForTarget(entryPoint: string, target: BuildTarget) {
-  if (target === "dev") {
-    return isDevIndexerEntryPoint(entryPoint);
-  } else {
-    return isDeployIndexerEntryPoint(entryPoint);
-  }
 }

@@ -1,5 +1,5 @@
 import { intro, outro } from "@clack/prompts";
-import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { CORE_VERSION, prepareDeploymentError } from "@trigger.dev/core/v3";
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
@@ -16,10 +16,12 @@ import {
   resolvePluginsForContext,
 } from "../build/extensions.js";
 import { createExternalsBuildExtension } from "../build/externals.js";
+import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 import {
-  deployEntryPoint,
-  deployExecutorEntryPoint,
-  deployIndexerEntryPoint,
+  deployIndexController,
+  deployIndexWorker,
+  deployRunController,
+  deployRunWorker,
   telemetryEntryPoint,
 } from "../build/packageModules.js";
 import {
@@ -39,7 +41,8 @@ import {
   saveLogs,
 } from "../deploy/logs.js";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
-import { chalkError, cliLink } from "../utilities/cliOutput.js";
+import { chalkError, cliLink, prettyError } from "../utilities/cliOutput.js";
+import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
@@ -50,8 +53,6 @@ import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { loadDotEnvVars, resolveDotEnvVars } from "../utilities/dotEnv.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -250,9 +251,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       dirs: resolvedConfig.dirs,
     },
     outputPath: destination.path,
-    workerEntryPoint: bundleResult.workerEntryPoint ?? deployEntryPoint,
-    executorEntryPoint: bundleResult.executorEntryPoint ?? deployExecutorEntryPoint,
-    indexerEntryPoint: bundleResult.indexerEntryPoint ?? deployIndexerEntryPoint,
+    runControllerEntryPoint: bundleResult.runControllerEntryPoint ?? deployRunController,
+    runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
+    indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
+    indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
     loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundleResult.configPath,
     deploy: {
@@ -484,11 +486,14 @@ function rewriteBuildManifestPaths(
     })),
     outputPath: rewriteOutputPath(destinationDir, buildManifest.outputPath),
     configPath: rewriteOutputPath(destinationDir, buildManifest.configPath),
-    executorEntryPoint: rewriteOutputPath(destinationDir, buildManifest.executorEntryPoint),
-    indexerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.indexerEntryPoint),
-    workerEntryPoint: buildManifest.workerEntryPoint
-      ? rewriteOutputPath(destinationDir, buildManifest.workerEntryPoint)
+    runControllerEntryPoint: buildManifest.runControllerEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.runControllerEntryPoint)
       : undefined,
+    runWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.runWorkerEntryPoint),
+    indexControllerEntryPoint: buildManifest.indexControllerEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.indexControllerEntryPoint)
+      : undefined,
+    indexWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.indexWorkerEntryPoint),
     loaderEntryPoint: buildManifest.loaderEntryPoint
       ? rewriteOutputPath(destinationDir, buildManifest.loaderEntryPoint)
       : undefined,
@@ -550,15 +555,15 @@ function rewriteOutputPath(destinationDir: string, filePath: string) {
 }
 
 async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
-  if (!buildManifest.workerEntryPoint) {
-    throw new Error("No worker entry point found in build manifest");
+  if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
+    throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
   }
 
   const containerfile = await generateContainerfile({
     runtime: buildManifest.runtime,
-    workerEntryPoint: buildManifest.workerEntryPoint,
+    entrypoint: buildManifest.runControllerEntryPoint,
     build: buildManifest.build,
-    indexerEntryPoint: buildManifest.indexerEntryPoint,
+    indexScript: buildManifest.indexControllerEntryPoint,
   });
 
   await writeFile(join(outputPath, "Containerfile"), containerfile);
@@ -589,25 +594,94 @@ async function failDeploy(
 ) {
   $spinner.stop(`Failed to deploy project`);
 
-  // If there are logs, let's write it out to a temporary file and include the path in the error message
-  if (logs.trim() !== "") {
-    const logPath = await saveLogs(deployment.shortCode, logs);
+  const doOutputLogs = async (prefix: string = "Error") => {
+    if (logs.trim() !== "") {
+      const logPath = await saveLogs(deployment.shortCode, logs);
 
-    printWarnings(warnings);
-    printErrors(errors);
+      printWarnings(warnings);
+      printErrors(errors);
 
-    checkLogsForErrors(logs);
+      checkLogsForErrors(logs);
 
-    outro(
-      `${chalkError("Error:")} ${error.message}. Full build logs have been saved to ${logPath}`
-    );
+      outro(
+        `${chalkError(`${prefix}:`)} ${
+          error.message
+        }. Full build logs have been saved to ${logPath}`
+      );
+    } else {
+      outro(`${chalkError(`${prefix}:`)} ${error.message}.`);
+    }
+  };
+
+  const exitCommand = (message: string) => {
+    throw new SkipLoggingError(message);
+  };
+
+  const deploymentResponse = await client.getDeployment(deployment.id);
+
+  if (!deploymentResponse.success) {
+    logger.debug(`Failed to get deployment with worker: ${deploymentResponse.error}`);
   } else {
-    outro(`${chalkError("Error:")} ${error.message}.`);
+    const serverDeployment = deploymentResponse.data;
+
+    switch (serverDeployment.status) {
+      case "PENDING":
+      case "DEPLOYING":
+      case "BUILDING": {
+        await doOutputLogs();
+
+        await client.failDeployment(deployment.id, {
+          error,
+        });
+
+        exitCommand("Failed to deploy project");
+
+        break;
+      }
+      case "CANCELED": {
+        await doOutputLogs("Canceled");
+
+        exitCommand("Failed to deploy project");
+
+        break;
+      }
+      case "FAILED": {
+        const errorData = serverDeployment.errorData
+          ? prepareDeploymentError(serverDeployment.errorData)
+          : undefined;
+
+        if (errorData) {
+          prettyError(errorData.name, errorData.stack, errorData.stderr);
+
+          if (logs.trim() !== "") {
+            const logPath = await saveLogs(deployment.shortCode, logs);
+
+            outro(`Aborting deployment. Full build logs have been saved to ${logPath}`);
+          } else {
+            outro(`Aborting deployment`);
+          }
+        } else {
+          await doOutputLogs("Failed");
+        }
+
+        exitCommand("Failed to deploy project");
+
+        break;
+      }
+      case "DEPLOYED": {
+        await doOutputLogs("Deployed with errors");
+
+        exitCommand("Deployed with errors");
+
+        break;
+      }
+      case "TIMED_OUT": {
+        await doOutputLogs("TimedOut");
+
+        exitCommand("Timed out");
+
+        break;
+      }
+    }
   }
-
-  await client.failDeployment(deployment.id, {
-    error,
-  });
-
-  throw new SkipLoggingError(`Failed to deploy: ${error.message}`);
 }

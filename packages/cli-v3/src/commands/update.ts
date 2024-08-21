@@ -11,6 +11,7 @@ import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBa
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
+import { hasTTY } from "std-env";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -142,7 +143,7 @@ export async function updateTriggerPackages(
     );
   }
 
-  if (!process.stdout.isTTY) {
+  if (!hasTTY) {
     // Running in CI with version mismatch detected
     outro("Deploy failed");
 

@@ -10,27 +10,23 @@ import {
   TaskRunFailedExecutionResult,
   WorkerManifest,
   correctErrorStackTrace,
-  indexerToWorkerMessages,
 } from "@trigger.dev/core/v3";
-import { parseMessageFromCatalog } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
-import { fork } from "node:child_process";
 
-import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { join } from "node:path";
-import { TaskRunProcess, TaskRunProcessOptions } from "../executions/taskRunProcess.js";
-import { eventBus } from "../utilities/eventBus.js";
-import { writeJSONFile } from "../utilities/fileSystem.js";
-import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
   CleanupProcessError,
   SigKillTimeoutProcessError,
-  TaskMetadataParseError,
-  UncaughtExceptionError,
   UnexpectedExitError,
   getFriendlyErrorMessage,
-} from "../executions/errors.js";
+} from "@trigger.dev/core/v3/errors";
+import { TaskRunProcess, TaskRunProcessOptions } from "../executions/taskRunProcess.js";
+import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
+import { prettyError } from "../utilities/cliOutput.js";
+import { eventBus } from "../utilities/eventBus.js";
+import { writeJSONFile } from "../utilities/fileSystem.js";
+import { logger } from "../utilities/logger.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -254,87 +250,36 @@ export class BackgroundWorker {
       throw new Error("Worker already initialized");
     }
 
-    let resolved = false;
-
     // Write the build manifest to this.build.outputPath/build.json
     await writeJSONFile(this.buildManifestPath, this.build, true);
 
-    logger.debug("Initializing worker", { build: this.build, params: this.params });
+    logger.debug("indexing worker manifest", { build: this.build, params: this.params });
 
-    this.manifest = await new Promise<WorkerManifest>((resolve, reject) => {
-      const child = fork(this.build.indexerEntryPoint, {
-        stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
-        cwd: this.params.cwd,
-        env: {
-          ...this.params.env,
-          TRIGGER_BUILD_MANIFEST_PATH: this.buildManifestPath,
-          NODE_OPTIONS: this.build.loaderEntryPoint
-            ? `--import=${this.build.loaderEntryPoint} ${process.env.NODE_OPTIONS ?? ""}`
-            : process.env.NODE_OPTIONS,
-        },
-        execPath: execPathForRuntime(this.build.runtime),
-      });
-
-      // Set a timeout to kill the child process if it doesn't respond
-      const timeout = setTimeout(() => {
-        if (resolved) {
-          return;
+    this.manifest = await indexWorkerManifest({
+      runtime: this.build.runtime,
+      indexWorkerPath: this.build.indexWorkerEntryPoint,
+      buildManifestPath: this.buildManifestPath,
+      nodeOptions: this.build.loaderEntryPoint
+        ? `--import=${this.build.loaderEntryPoint}`
+        : undefined,
+      env: this.params.env,
+      cwd: this.params.cwd,
+      otelHookInclude: this.build.otelImportHook?.include,
+      otelHookExclude: this.build.otelImportHook?.exclude,
+      handleStdout(data) {
+        logger.debug(data);
+      },
+      handleStderr(data) {
+        if (!data.includes("Debugger attached")) {
+          prettyError(data.toString());
         }
-
-        resolved = true;
-        child.kill();
-        reject(new Error("Worker timed out"));
-      }, 20_000);
-
-      child.on("message", async (msg: any) => {
-        const message = parseMessageFromCatalog(msg, indexerToWorkerMessages);
-
-        switch (message.type) {
-          case "INDEX_COMPLETE": {
-            clearTimeout(timeout);
-            resolved = true;
-            resolve(message.payload.manifest);
-            child.kill();
-            break;
-          }
-          case "TASKS_FAILED_TO_PARSE": {
-            clearTimeout(timeout);
-            resolved = true;
-            reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
-            child.kill();
-            break;
-          }
-          case "UNCAUGHT_EXCEPTION": {
-            clearTimeout(timeout);
-            resolved = true;
-            reject(new UncaughtExceptionError(message.payload.error, message.payload.origin));
-            child.kill();
-            break;
-          }
-        }
-      });
-
-      child.on("exit", (code) => {
-        if (!resolved) {
-          clearTimeout(timeout);
-          resolved = true;
-          reject(new Error(`Worker exited with code ${code}`));
-        }
-      });
-
-      child.stdout?.on("data", (data) => {
-        logger.debug(`indexer: ${data.toString()}`);
-      });
-
-      child.stderr?.on("data", (data) => {
-        logger.debug(`indexer: ${data.toString()}`);
-      });
+      },
     });
 
     // Write the build manifest to this.build.outputPath/worker.json
     await writeJSONFile(this.workerManifestPath, this.manifest, true);
 
-    logger.debug("Worker initialized", { path: this.build.outputPath });
+    logger.debug("worker manifest indexed", { path: this.build.outputPath });
   }
 
   // We need to notify all the task run processes that a task run has completed,

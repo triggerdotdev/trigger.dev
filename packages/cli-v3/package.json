@@ -114,6 +114,7 @@
     "resolve": "^1.22.8",
     "signal-exit": "^4.1.0",
     "source-map-support": "0.5.21",
+    "std-env": "^3.7.0",
     "terminal-link": "^3.0.0",
     "tiny-invariant": "^1.2.0",
     "tinyexec": "^0.2.0",

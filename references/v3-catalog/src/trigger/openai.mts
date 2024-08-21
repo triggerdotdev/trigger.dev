@@ -1,9 +1,10 @@
+import { env } from "@/env.js";
 import { logger, task } from "@trigger.dev/sdk/v3";
 
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: env.OPENAI_API_KEY,
 });
 
 export const openaiTask = task({

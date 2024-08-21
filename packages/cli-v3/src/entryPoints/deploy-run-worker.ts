@@ -15,7 +15,7 @@ import {
   WorkerManifest,
   ExecutorToWorkerMessageCatalog,
 } from "@trigger.dev/core/v3";
-import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
+import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import {
   ConsoleInterceptor,
   DevUsageManager,
@@ -23,6 +23,7 @@ import {
   getEnvVar,
   logLevels,
   OtelTaskLogger,
+  ProdUsageManager,
   StandardTaskCatalog,
   TaskExecutor,
   TracingDiagnosticLogLevel,
@@ -33,6 +34,8 @@ import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
+import { setTimeout, setInterval } from "node:timers/promises";
+import { env } from "std-env";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -44,35 +47,50 @@ process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: { name: error.name, message: error.message, stack: error.stack },
-          origin,
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: { name: error.name, message: error.message, stack: error.stack },
+            origin,
+          },
+          version: "v1",
         },
-        version: "v1",
       });
   } else {
     process.send &&
       process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: {
-            name: "Error",
-            message: typeof error === "string" ? error : JSON.stringify(error),
+        type: "EVENT",
+        message: {
+          type: "UNCAUGHT_EXCEPTION",
+          payload: {
+            error: {
+              name: "Error",
+              message: typeof error === "string" ? error : JSON.stringify(error),
+            },
+            origin,
           },
-          origin,
+          version: "v1",
         },
-        version: "v1",
       });
   }
 });
 
+const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
+const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
+const triggerJWT = getEnvVar("TRIGGER_JWT");
+
+const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
+  heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
+  url: usageEventUrl,
+  jwt: triggerJWT,
+});
+
+usage.setGlobalUsageManager(prodUsageManager);
+
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
-usage.setGlobalUsageManager(new DevUsageManager());
-const devRuntimeManager = new DevRuntimeManager();
-runtime.setGlobalRuntimeManager(devRuntimeManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -90,7 +108,7 @@ async function importConfig(
 }
 
 async function loadWorkerManifest() {
-  const manifestContents = await readFile(process.env.TRIGGER_WORKER_MANIFEST_PATH!, "utf-8");
+  const manifestContents = await readFile("./index.json", "utf-8");
   const raw = JSON.parse(manifestContents);
 
   return WorkerManifest.parse(raw);
@@ -102,9 +120,9 @@ async function bootstrap() {
   const { config, handleError } = await importConfig(workerManifest.configPath);
 
   const tracingSDK = new TracingSDK({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+    url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
     instrumentations: config.instrumentations ?? [],
-    diagLogLevel: (process.env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
+    diagLogLevel: (env.OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
     forceFlushTimeoutMillis: 30_000,
   });
 
@@ -155,6 +173,8 @@ const zodIpc = new ZodIpcConnection({
   process,
   handlers: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
+      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+
       if (_isRunning) {
         console.error("Worker is already running a task");
 
@@ -205,7 +225,13 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
+        const beforeImport = performance.now();
         await import(taskManifest.entryPoint);
+        const durationMs = performance.now() - beforeImport;
+
+        console.log(
+          `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+        );
       } catch (err) {
         console.error(`Failed to import task ${execution.task.id}`, err);
 
@@ -286,45 +312,63 @@ const zodIpc = new ZodIpcConnection({
       }
     },
     TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {
-      switch (payload.version) {
-        case "v1": {
-          devRuntimeManager.resumeTask(payload.completion, payload.execution.run.id);
-          break;
-        }
-        case "v2": {
-          devRuntimeManager.resumeTask(payload.completion, payload.completion.id);
-          break;
-        }
-      }
+      prodRuntimeManager.resumeTask(payload.completion);
+    },
+    WAIT_COMPLETED_NOTIFICATION: async () => {
+      prodRuntimeManager.resumeAfterDuration();
     },
     FLUSH: async ({ timeoutInMs }, sender) => {
-      await _tracingSDK?.flush();
+      await flushAll(timeoutInMs);
     },
   },
 });
 
-process.title = "trigger-dev-worker";
+async function flushAll(timeoutInMs: number = 10_000) {
+  const now = performance.now();
 
-async function asyncHeartbeat(initialDelayInSeconds: number = 30, intervalInSeconds: number = 30) {
-  async function _doHeartbeat() {
-    while (true) {
-      if (_isRunning && _execution) {
-        try {
-          await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
-        } catch (err) {
-          console.error("Failed to send HEARTBEAT message", err);
-        }
-      }
+  await Promise.all([flushUsage(timeoutInMs), flushTracingSDK(timeoutInMs)]);
 
-      await new Promise((resolve) => setTimeout(resolve, 1000 * intervalInSeconds));
-    }
-  }
+  const duration = performance.now() - now;
 
-  // Wait for the initial delay
-  await new Promise((resolve) => setTimeout(resolve, 1000 * initialDelayInSeconds));
-
-  // Wait for 5 seconds before the next execution
-  return _doHeartbeat();
+  console.log(`Flushed all in ${duration}ms`);
 }
 
-await asyncHeartbeat();
+async function flushUsage(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([prodUsageManager.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed usage in ${duration}ms`);
+}
+
+async function flushTracingSDK(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([_tracingSDK?.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed tracingSDK in ${duration}ms`);
+}
+
+const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
+  waitThresholdInMs: parseInt(env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),
+});
+
+runtime.setGlobalRuntimeManager(prodRuntimeManager);
+
+process.title = "trigger-dev-worker";
+
+for await (const _ of setInterval(15_000)) {
+  if (_isRunning && _execution) {
+    try {
+      await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
+    } catch (err) {
+      console.error("Failed to send HEARTBEAT message", err);
+    }
+  }
+}
+
+console.log(`[${new Date().toISOString()}] Executor started`);

@@ -10,18 +10,19 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { logger } from "../utilities/logger.js";
 import { VERSION } from "../version.js";
+import { env } from "std-env";
 
 function initializeTracing(): NodeTracerProvider | undefined {
   if (
     process.argv.includes("--skip-telemetry") ||
-    process.env.TRIGGER_DEV_SKIP_TELEMETRY || // only for backwards compat
-    process.env.TRIGGER_TELEMETRY_DISABLED
+    env.TRIGGER_DEV_SKIP_TELEMETRY || // only for backwards compat
+    env.TRIGGER_TELEMETRY_DISABLED
   ) {
     logger.debug("📉 Telemetry disabled");
     return;
   }
 
-  if (process.env.OTEL_INTERNAL_DIAG_DEBUG) {
+  if (env.OTEL_INTERNAL_DIAG_DEBUG) {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   }
 
