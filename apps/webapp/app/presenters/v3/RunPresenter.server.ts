@@ -1,9 +1,9 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
-import { FINISHED_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { isFinalRunStatus } from "~/v3/taskStatus";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -77,7 +77,7 @@ export class RunPresenter {
           traceId: run.traceId,
           spanId: run.spanId,
           status: run.status,
-          isFinished: FINISHED_STATUSES.includes(run.status),
+          isFinished: isFinalRunStatus(run.status),
           completedAt: run.completedAt,
           logsDeletedAt: run.logsDeletedAt,
           environment: {
@@ -138,7 +138,7 @@ export class RunPresenter {
         traceId: run.traceId,
         spanId: run.spanId,
         status: run.status,
-        isFinished: FINISHED_STATUSES.includes(run.status),
+        isFinished: isFinalRunStatus(run.status),
         completedAt: run.completedAt,
         logsDeletedAt: run.logsDeletedAt,
         environment: {
