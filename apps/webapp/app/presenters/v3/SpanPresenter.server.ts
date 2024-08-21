@@ -1,8 +1,8 @@
 import { MachinePresetName, prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
-import { FINISHED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
+import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
@@ -258,7 +258,7 @@ export class SpanPresenter extends BasePresenter {
       costInCents: run.costInCents,
       totalCostInCents: run.costInCents + run.baseCostInCents,
       usageDurationMs: run.usageDurationMs,
-      isFinished: FINISHED_STATUSES.includes(run.status),
+      isFinished: isFinalRunStatus(run.status),
       isRunning: RUNNING_STATUSES.includes(run.status),
       payload,
       payloadType: run.payloadType,

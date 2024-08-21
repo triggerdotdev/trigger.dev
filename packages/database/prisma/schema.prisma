@@ -1675,6 +1675,8 @@ model TaskRun {
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
 
+  alerts ProjectAlert[]
+
   scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: SetNull)
   scheduleInstanceId String?
 
@@ -2390,6 +2392,9 @@ model ProjectAlert {
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunAttemptId String?
 
+  taskRun   TaskRun? @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String?
+
   workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerDeploymentId String?
 
@@ -2398,6 +2403,8 @@ model ProjectAlert {
 }
 
 enum ProjectAlertType {
+  TASK_RUN
+  /// deprecated, we don't send new alerts for this type
   TASK_RUN_ATTEMPT
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS

@@ -12,9 +12,9 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
+import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -50,7 +50,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
   AlertChannelListPresenter,
-  AlertChannelListPresenterRecord,
+  type AlertChannelListPresenterRecord,
 } from "~/presenters/v3/AlertChannelListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -486,6 +486,8 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
 
 export function alertTypeTitle(alertType: ProjectAlertType): string {
   switch (alertType) {
+    case "TASK_RUN":
+      return "Task run failure";
     case "TASK_RUN_ATTEMPT":
       return "Task attempt failure";
     case "DEPLOYMENT_FAILURE":

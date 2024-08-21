@@ -2,8 +2,8 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/router";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/router";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -20,7 +20,6 @@ import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
@@ -33,16 +32,16 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import {
-  CreateAlertChannelOptions,
+  type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
 
 const FormSchema = z
   .object({
     alertTypes: z
-      .array(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
+      .array(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
       .min(1)
-      .or(z.enum(["TASK_RUN_ATTEMPT", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
+      .or(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
     environmentTypes: z
       .array(z.enum(["STAGING", "PRODUCTION"]))
       .min(1)
@@ -365,14 +364,14 @@ export default function Page() {
               <div className="flex items-center gap-1">
                 <CheckboxWithLabel
                   name={alertTypes.name}
-                  id="TASK_RUN_ATTEMPT"
-                  value="TASK_RUN_ATTEMPT"
+                  id="TASK_RUN"
+                  value="TASK_RUN"
                   variant="simple/small"
-                  label="Task run attempts fail"
+                  label="Task runs fail"
                   defaultChecked
                   className="pr-0"
                 />
-                <InfoIconTooltip content="You'll receive an alert every time an attempt fails on a run." />
+                <InfoIconTooltip content="You'll receive an alert when a run completely fails." />
               </div>
 
               <CheckboxWithLabel

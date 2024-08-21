@@ -21,7 +21,6 @@ import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.se
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
-import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
@@ -206,10 +205,6 @@ export class CompleteAttemptService extends BaseService {
     });
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
-
-    if (environment.type !== "DEVELOPMENT") {
-      await PerformTaskAttemptAlertsService.enqueue(taskRunAttempt.id, this._prisma);
-    }
 
     if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
       const retryAt = new Date(completion.retry.timestamp);
