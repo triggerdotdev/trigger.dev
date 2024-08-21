@@ -56,6 +56,6 @@ export default defineConfig({
   },
   build: {
     extensions: [emitDecoratorMetadata()],
-    external: ["@ffmpeg-installer/ffmpeg"],
+    external: ["@ffmpeg-installer/ffmpeg", "re2"],
   },
 });

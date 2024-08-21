@@ -37,6 +37,7 @@ export type DevSessionOptions = {
   rawConfig: ResolvedConfig;
   rawArgs: DevCommandOptions;
   client: CliApiClient;
+  onErr?: (error: Error) => void;
 };
 
 export async function startDevSession({

@@ -438,7 +438,11 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
 FROM imbios/bun-node:22-debian AS base
 RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM base AS install
+FROM base AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER bun
 WORKDIR /app
@@ -456,7 +460,7 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
-from install as indexer
+from build as indexer
 
 USER bun
 WORKDIR /app
@@ -504,8 +508,8 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production
 
-# Copy the files from the install stage
-COPY --from=install --chown=bun:bun /app ./
+# Copy the files from the build stage
+COPY --from=build --chown=bun:bun /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
@@ -531,7 +535,12 @@ FROM node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f92
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends busybox ca-certificates dumb-init git openssl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM base AS install
+FROM base AS build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER node
 WORKDIR /app
@@ -552,7 +561,7 @@ COPY --chown=node:node . .
 
 ${postInstallCommands}
 
-from install as indexer
+from build as indexer
 
 USER node
 WORKDIR /app
@@ -604,7 +613,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     NODE_OPTIONS="--max_old_space_size=8192"
 
 # Copy the files from the install stage
-COPY --from=install --chown=node:node /app ./
+COPY --from=build --chown=node:node /app ./
 
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=node:node /app/index.json ./

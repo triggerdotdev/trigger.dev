@@ -529,6 +529,7 @@ async function writeProjectFiles(
     dependencies: {
       ...dependencies,
     },
+    trustedDependencies: Object.keys(dependencies),
     devDependencies: {},
     peerDependencies: {},
     scripts: {},
