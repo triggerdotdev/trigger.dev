@@ -1070,6 +1070,7 @@ model Task {
   attempts           TaskAttempt[]
 
   @@unique([runId, idempotencyKey])
+  @@index([parentId], map: "idx_task_parentId")
 }
 
 enum TaskStatus {
