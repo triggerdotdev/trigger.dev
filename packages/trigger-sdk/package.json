@@ -12,8 +12,8 @@
   ],
   "tshy": {
     "selfLink": false,
-    "main": false,
-    "module": false,
+    "main": true,
+    "module": true,
     "project": "./tsconfig.build.json",
     "exports": {
       "./package.json": "./package.json",
@@ -102,5 +102,8 @@
         "default": "./dist/commonjs/v3/extensions.js"
       }
     }
-  }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
 }
