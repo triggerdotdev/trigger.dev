@@ -168,7 +168,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 icon="integration"
                 to={organizationIntegrationsPath(organization)}
                 data-action="integrations"
-                hasWarning={organization.hasUnconfiguredIntegrations}
               />
             )}
             <SideMenuItem

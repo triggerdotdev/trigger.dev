@@ -186,28 +186,9 @@ export class OrganizationsPresenter {
             id: true,
             slug: true,
             name: true,
-            _count: {
-              select: {
-                jobs: {
-                  where: {
-                    internal: false,
-                    deletedAt: null,
-                  },
-                },
-              },
-            },
             version: true,
           },
           orderBy: { name: "asc" },
-        },
-        _count: {
-          select: {
-            integrations: {
-              where: {
-                setupStatus: "MISSING_FIELDS",
-              },
-            },
-          },
         },
       },
     });
@@ -221,10 +202,8 @@ export class OrganizationsPresenter {
           id: project.id,
           slug: project.slug,
           name: project.name,
-          jobCount: project._count.jobs,
           version: project.version,
         })),
-        hasUnconfiguredIntegrations: org._count.integrations > 0,
         runsEnabled: org.runsEnabled,
       };
     });
