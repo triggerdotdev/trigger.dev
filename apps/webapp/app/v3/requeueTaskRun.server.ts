@@ -59,6 +59,9 @@ export class RequeueTaskRunService extends BaseService {
       case "WAITING_TO_RESUME":
       case "PAUSED": {
         logger.debug("[RequeueTaskRunService] Requeueing task run", { taskRun });
+
+        await marqs?.nackMessage(taskRun.id);
+
         break;
       }
       case "SYSTEM_FAILURE":

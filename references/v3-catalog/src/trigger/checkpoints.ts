@@ -111,3 +111,40 @@ export const noop = task({
   id: "noop",
   run: async () => {},
 });
+
+export const fixedLengthTask = task({
+  id: "fixedLengthTask",
+  run: async ({ waitSeconds }: { waitSeconds: number }) => {
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+  },
+});
+
+export const permanentlyFrozen = task({
+  id: "permanently-frozen",
+  run: async ({ waitSeconds = 160, count = 1 }: { waitSeconds?: number; count?: number }) => {
+    for (let i = 0; i < count; i++) {
+      await fixedLengthTask.triggerAndWait({ waitSeconds });
+      logger.log(`Successfully complted task ${i}`);
+    }
+  },
+});
+
+//sending max concurrency of these at once will test the freeze + max concurrency logic
+export const bulkPermanentlyFrozen = task({
+  id: "bulk-permanently-frozen",
+  run: async ({
+    count = 1,
+    waitSeconds = 160,
+    grandChildCount = 1,
+  }: {
+    count?: number;
+    waitSeconds?: number;
+    grandChildCount?: number;
+  }) => {
+    await permanentlyFrozen.batchTrigger(
+      Array.from({ length: count }, (_, i) => ({
+        payload: { waitSeconds, count: grandChildCount },
+      }))
+    );
+  },
+});
