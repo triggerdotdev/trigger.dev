@@ -16,11 +16,12 @@
     "webapp",
     "emails",
     "proxy",
-    "yalt",
     "@trigger.dev/database",
     "coordinator",
     "docker-provider",
-    "kubernetes-provider"
+    "kubernetes-provider",
+    "@references/v3-catalog",
+    "@references/bun-catalog"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
