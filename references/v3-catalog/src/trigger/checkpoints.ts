@@ -61,16 +61,18 @@ export const nestedDependencies = task({
     const triggerOrBatch = depth % 2 === 0;
 
     if (triggerOrBatch) {
-      const result = await nestedDependencies.triggerAndWait({
-        depth: depth + 1,
-        maxDepth,
-        waitSeconds,
-        failAttemptChance,
-      });
-      logger.log(`Triggered complete`);
+      for (let i = 0; i < batchSize; i++) {
+        const result = await nestedDependencies.triggerAndWait({
+          depth: depth + 1,
+          maxDepth,
+          waitSeconds,
+          failAttemptChance,
+        });
+        logger.log(`Triggered complete ${i + 1}/${batchSize}`);
 
-      if (!result.ok && failParents) {
-        throw new Error(`Failed at ${depth}/${maxDepth} depth`);
+        if (!result.ok && failParents) {
+          throw new Error(`Failed at ${depth}/${maxDepth} depth`);
+        }
       }
     } else {
       const results = await nestedDependencies.batchTriggerAndWait(
