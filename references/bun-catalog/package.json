@@ -1,6 +1,5 @@
 {
-  "name": "@references/bun-catalog",
-  "version": "0.1.0",
+  "name": "references-bun-catalog",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,6 +1,5 @@
 {
-  "name": "@references/v3-catalog",
-  "version": "0.1.0",
+  "name": "references-v3-catalog",
   "private": true,
   "type": "module",
   "zenstack": {

@@ -19,7 +19,8 @@
     "@trigger.dev/database",
     "coordinator",
     "docker-provider",
-    "kubernetes-provider"
+    "kubernetes-provider",
+    "@trigger.dev/otlp-importer"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
