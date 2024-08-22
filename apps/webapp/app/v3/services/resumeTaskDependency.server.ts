@@ -48,6 +48,7 @@ export class ResumeTaskDependencyService extends BaseService {
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: dependency.dependentAttempt.id,
           checkpointEventId: dependency.checkpointEventId,
+          taskIdentifier: dependency.taskRun.taskIdentifier,
           projectId: dependency.taskRun.runtimeEnvironment.projectId,
           environmentId: dependency.taskRun.runtimeEnvironment.id,
           environmentType: dependency.taskRun.runtimeEnvironment.type,
@@ -77,6 +78,10 @@ export class ResumeTaskDependencyService extends BaseService {
         completedAttemptIds: [sourceTaskAttemptId],
         resumableAttemptId: dependency.dependentAttempt.id,
         checkpointEventId: dependency.checkpointEventId ?? undefined,
+        taskIdentifier: dependency.taskRun.taskIdentifier,
+        projectId: dependency.taskRun.runtimeEnvironment.projectId,
+        environmentId: dependency.taskRun.runtimeEnvironment.id,
+        environmentType: dependency.taskRun.runtimeEnvironment.type,
       });
     }
   }
