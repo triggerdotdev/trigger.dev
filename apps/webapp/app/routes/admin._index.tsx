@@ -113,6 +113,7 @@ export default function AdminDashboardRoute() {
                           to={`/admin/orgs?search=${encodeURIComponent(org.organization.slug)}`}
                         >
                           {org.organization.title} ({org.organization.slug})
+                          {org.organization.deletedAt ? " (☠️)" : ""}
                         </LinkButton>
                       ))}
                     </TableCell>

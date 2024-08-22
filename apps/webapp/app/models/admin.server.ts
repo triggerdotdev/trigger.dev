@@ -32,6 +32,7 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
             select: {
               title: true,
               slug: true,
+              deletedAt: true,
             },
           },
         },
@@ -120,6 +121,7 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
       title: true,
       v2Enabled: true,
       v3Enabled: true,
+      deletedAt: true,
       members: {
         select: {
           user: {
