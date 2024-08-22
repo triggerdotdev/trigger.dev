@@ -64,8 +64,7 @@
   },
   "scripts": {
     "typecheck": "tsc",
-    "prepare": "tshy && pnpm run update-version",
-    "build": "tshy",
+    "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "test": "vitest",
     "test:e2e": "vitest --run -c e2e/vite.config.js",

@@ -59,9 +59,8 @@
   "sideEffects": false,
   "scripts": {
     "clean": "rimraf dist",
-    "prepare": "tshy && pnpm run update-version",
     "update-version": "tsx ../../scripts/updateVersion.ts",
-    "build": "tshy",
+    "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "test": "vitest"

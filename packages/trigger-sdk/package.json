@@ -27,8 +27,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "prepare": "tshy && pnpm run update-version",
-    "build": "tshy",
+    "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
     "update-version": "tsx ../../scripts/updateVersion.ts"
