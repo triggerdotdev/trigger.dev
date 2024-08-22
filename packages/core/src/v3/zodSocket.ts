@@ -147,8 +147,7 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       };
     }
 
-    // @ts-expect-error
-    const schema = this.#schema[parsedMessage.data.type]["message"];
+    const schema = this.#schema[parsedMessage.data.type]?.["message"];
 
     if (!schema) {
       return {
@@ -267,8 +266,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     type: K,
     payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
   ): void {
-    // @ts-expect-error
-    const schema = this.#schema[type]["message"];
+    const schema = this.#schema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);
@@ -293,8 +291,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     type: K,
     payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
   ): Promise<z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>> {
-    // @ts-expect-error
-    const schema = this.#schema[type]["message"];
+    const schema = this.#schema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);

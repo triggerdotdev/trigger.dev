@@ -63,7 +63,7 @@
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "build": "tshy",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "test": "vitest"
   },
   "dependencies": {
@@ -84,7 +84,7 @@
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
     "tinyglobby": "^0.2.2",
-    "zod": "3.23.8",
+    "zod": "3.22.3",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0"
   },

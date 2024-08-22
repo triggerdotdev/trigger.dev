@@ -96,8 +96,7 @@ class ZodIpcMessageHandler<
     if (!parsedMessage.success) {
       throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
     }
-    // @ts-expect-error
-    const schema = this.#schema[parsedMessage.data.type]["message"];
+    const schema = this.#schema[parsedMessage.data.type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
@@ -265,8 +264,7 @@ export class ZodIpcConnection<
     type: K,
     payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
   ): Promise<void> {
-    // @ts-expect-error
-    const schema = this.opts.emitSchema[type]["message"];
+    const schema = this.opts.emitSchema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);
@@ -312,8 +310,7 @@ export class ZodIpcConnection<
 
       this.#acks.set(currentId, { resolve, reject, timeout });
 
-      // @ts-expect-error
-      const schema = this.opts.emitSchema[type]["message"];
+      const schema = this.opts.emitSchema[type]?.["message"];
 
       if (!schema) {
         clearTimeout(timeout);

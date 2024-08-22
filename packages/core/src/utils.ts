@@ -23,8 +23,7 @@ export function deepMergeFilters(...filters: EventFilter[]): EventFilter {
         ) {
           result[key] = deepMergeFilters(existingValue, filterValue);
         } else {
-          // @ts-expect-error
-          result[key] = filterValue;
+          result[key] = filterValue as any;
         }
       }
     }

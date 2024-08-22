@@ -104,24 +104,24 @@ export function unflattenAttributes(
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+
+      if (!part) {
+        continue;
+      }
+
       const nextPart = parts[i + 1];
-      // @ts-expect-error
-      const isArray = /^\d+$/.test(nextPart);
-      // @ts-expect-error
+      const isArray = nextPart && /^\d+$/.test(nextPart);
       if (isArray && !Array.isArray(current[part])) {
-        // @ts-expect-error
         current[part] = [];
-        // @ts-expect-error
       } else if (!isArray && current[part] === undefined) {
-        // @ts-expect-error
         current[part] = {};
       }
-      // @ts-expect-error
       current = current[part];
     }
     const lastPart = parts[parts.length - 1];
-    // @ts-expect-error
-    current[lastPart] = rehydrateNull(value);
+    if (lastPart) {
+      current[lastPart] = rehydrateNull(value);
+    }
   }
 
   // Convert the result to an array if all top-level keys are numeric indices
