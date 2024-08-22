@@ -1,7 +1,7 @@
 import { relative, join, posix, dirname } from "node:path";
 import { glob } from "tinyglobby";
 import { copyFile, mkdir } from "node:fs/promises";
-import { BuildExtension } from "../build/extensions.js";
+import { BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type AdditionalFilesOptions = {
   files: string[];

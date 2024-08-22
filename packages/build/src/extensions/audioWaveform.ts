@@ -1,5 +1,5 @@
-import { BuildContext, BuildExtension } from "../build/extensions.js";
-import { BuildManifest } from "../schemas/build.js";
+import { BuildManifest } from "@trigger.dev/core/v3";
+import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type AudioWaveformOptions = {
   version?: string;

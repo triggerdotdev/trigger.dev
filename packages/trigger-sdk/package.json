@@ -23,8 +23,7 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts",
-      "./v3": "./src/v3/index.ts",
-      "./v3/extensions": "./src/v3/extensions.ts"
+      "./v3": "./src/v3/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -93,17 +92,6 @@
       "require": {
         "types": "./dist/commonjs/v3/index.d.ts",
         "default": "./dist/commonjs/v3/index.js"
-      }
-    },
-    "./v3/extensions": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/extensions.ts",
-        "types": "./dist/esm/v3/extensions.d.ts",
-        "default": "./dist/esm/v3/extensions.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/extensions.d.ts",
-        "default": "./dist/commonjs/v3/extensions.js"
       }
     }
   },

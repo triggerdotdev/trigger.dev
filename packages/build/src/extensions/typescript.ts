@@ -1,8 +1,8 @@
-import * as esbuild from "esbuild";
+import { BuildExtension, createExtensionForPlugin } from "@trigger.dev/core/v3/build";
+import type { Plugin } from "esbuild";
 import { readFile } from "node:fs/promises";
 import { readTSConfig } from "pkg-types";
 import typescriptPkg from "typescript";
-import { BuildExtension, createExtensionForPlugin } from "../build/extensions.js";
 
 const { transpileModule, ModuleKind } = typescriptPkg;
 
@@ -16,7 +16,7 @@ export function emitDecoratorMetadata(options: EmitDecoratorMetadataOptions = {}
   return createExtensionForPlugin(plugin(options));
 }
 
-function plugin(options: EmitDecoratorMetadataOptions = {}): esbuild.Plugin {
+function plugin(options: EmitDecoratorMetadataOptions = {}): Plugin {
   return {
     name: "emitDecoratorMetadata",
     async setup(build) {

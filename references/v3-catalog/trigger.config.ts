@@ -1,11 +1,9 @@
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-import {
-  emitDecoratorMetadata,
-  audioWaveform,
-  prismaExtension,
-} from "@trigger.dev/sdk/v3/extensions";
 import { InfisicalClient } from "@infisical/sdk";
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
+import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 
 export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
   if (

@@ -1,10 +1,9 @@
+import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3";
+import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import assert from "node:assert";
 import { existsSync } from "node:fs";
 import { cp, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { BuildContext, BuildExtension } from "../build/extensions.js";
-import { binaryForRuntime } from "../build/runtime.js";
-import { BuildManifest, BuildTarget } from "../schemas/build.js";
 
 export type PrismaExtensionOptions = {
   schema: string;

@@ -8,7 +8,11 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
 import { generateCode, loadFile } from "./imports/magicast.js";
 import { logger } from "./utilities/logger.js";
-import { additionalFiles, additionalPackages, syncEnvVars } from "@trigger.dev/core/v3/extensions";
+import {
+  additionalFiles,
+  additionalPackages,
+  syncEnvVars,
+} from "@trigger.dev/build/extensions/core";
 import { prettyWarning } from "./utilities/cliOutput.js";
 
 export type ResolveConfigOptions = {

@@ -1,4 +1,4 @@
-import { BuildContext, BuildExtension } from "../build/extensions.js";
+import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type SyncEnvVarsBody = Record<string, string> | Array<{ name: string; value: string }>;
 

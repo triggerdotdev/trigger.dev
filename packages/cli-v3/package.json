@@ -58,7 +58,8 @@
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "typescript": "^5.5.4"
   },
   "scripts": {
     "typecheck": "tsc",
@@ -83,6 +84,7 @@
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
     "@trigger.dev/core": "workspace:3.0.0-beta.55",
+    "@trigger.dev/build": "workspace:3.0.0-beta.55",
     "c12": "^1.11.1",
     "chalk": "^5.2.0",
     "cli-table3": "^0.6.3",
@@ -115,8 +117,7 @@
     "ws": "^8.18.0",
     "xdg-app-paths": "^8.3.0",
     "zod": "3.22.3",
-    "zod-validation-error": "^1.5.0",
-    "typescript": "^5.5.4"
+    "zod-validation-error": "^1.5.0"
   },
   "engines": {
     "node": ">=18.20.0"

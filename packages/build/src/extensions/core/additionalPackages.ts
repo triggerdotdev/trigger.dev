@@ -1,6 +1,6 @@
+import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { dirname } from "node:path";
 import { readPackageJSON } from "pkg-types";
-import { BuildExtension } from "../build/extensions.js";
 
 export type AdditionalPackagesOptions = {
   packages: string[];
