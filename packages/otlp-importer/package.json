@@ -3,23 +3,18 @@
   "version": "3.0.0-beta.55",
   "description": "OpenTelemetry OTLP Importer for Node.js written in TypeScript",
   "license": "MIT",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "module": "./dist/index.mjs",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist"
-  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "module": "./src/index.ts",
+  "private": true,
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
+        "types": "./src/index.ts",
+        "default": "./src/index.ts"
       },
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
     },
     "./package.json": "./package.json"
   },
@@ -27,8 +22,7 @@
   "scripts": {
     "prepublishOnly": "npm run build",
     "clean": "rimraf dist",
-    "build": "npm run clean && npm run protos && npm run build:tsup",
-    "build:tsup": "tsup --dts-resolve",
+    "build": "npm run clean && npm run protos",
     "generate": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
@@ -37,16 +31,11 @@
     "test": "jest"
   },
   "devDependencies": {
-    "@trigger.dev/tsconfig": "workspace:*",
-    "@trigger.dev/tsup": "workspace:*",
     "@types/jest": "^29.5.3",
-    "@types/node": "^18",
-    "jest": "^29.6.2",
+    "@types/node": "^20",
     "rimraf": "^3.0.2",
-    "ts-jest": "^29.1.1",
     "ts-proto": "^1.167.3",
-    "tsup": "^8.0.1",
-    "typescript": "^5.3.0"
+    "typescript": "^5.5.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -12,7 +12,6 @@ module.exports = {
     "marked",
     "axios",
     "@trigger.dev/core",
-    "@trigger.dev/core-backend",
     "@trigger.dev/sdk",
     "@trigger.dev/platform",
     "@trigger.dev/yalt",

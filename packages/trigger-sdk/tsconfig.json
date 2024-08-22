@@ -6,5 +6,5 @@
     "sourceMap": true,
     "stripInternal": true
   },
-  "include": ["./src/**/*.ts"]
+  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts", "./test/**/*.ts"]
 }

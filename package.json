@@ -52,7 +52,6 @@
     "@types/node": "20.14.14",
     "typescript": "^5.5.4",
     "autoprefixer": "^10.4.12",
-    "eslint-config-custom": "workspace:*",
     "eslint-plugin-turbo": "^2.0.4",
     "prettier": "^3.0.0",
     "tsx": "^3.7.1",
@@ -71,7 +70,6 @@
   "pnpm": {
     "patchedDependencies": {
       "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch",
-      "tsup@8.0.1": "patches/tsup@8.0.1.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
       "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch"
     }
