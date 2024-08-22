@@ -58,7 +58,6 @@
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
-    "typescript": "^5.5.4",
     "vitest": "^1.6.0"
   },
   "scripts": {
@@ -116,7 +115,8 @@
     "ws": "^8.18.0",
     "xdg-app-paths": "^8.3.0",
     "zod": "3.22.3",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.20.0"
