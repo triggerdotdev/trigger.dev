@@ -14,18 +14,40 @@ const REQUIRED_MINIMUM_VERSIONS: RuntimeMinimumVersion[] = [
  * This function is used by the dev CLI to make sure that the runtime is compatible
  */
 export function runtimeChecks() {
-  try {
-    REQUIRED_MINIMUM_VERSIONS.forEach((version) => runtimeCheck(version));
-  } catch (e) {
-    logger.log(`${chalkError("X Error:")} ${e}`);
-    process.exit(1);
+  const checks = REQUIRED_MINIMUM_VERSIONS.map((version) => runtimeCheck(version));
+
+  // If any of the checks passed, we are good to go
+  if (checks.some((check) => check.ok)) {
+    return;
   }
+
+  // Get the first failed check
+  const failedCheck = checks.find((check) => !check.ok);
+
+  if (!failedCheck) {
+    return;
+  }
+
+  logger.log(`${chalkError("X Error:")} ${failedCheck.message}`);
+  process.exit(1);
 }
 
-function runtimeCheck(version: RuntimeMinimumVersion) {
+type CheckResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
+function runtimeCheck(version: RuntimeMinimumVersion): CheckResult {
   // Check if the runtime is Node.js
   if (typeof process === "undefined") {
-    throw "The dev CLI can only be run in a Node.js compatible environment";
+    return {
+      ok: false,
+      message: "The dev CLI can only be run in a Node.js compatible environment",
+    };
   }
 
   // Check if the runtime version is compatible
@@ -35,13 +57,21 @@ function runtimeCheck(version: RuntimeMinimumVersion) {
 
   if (major < version.major || (major === version.major && minor < version.minor)) {
     if (isBun) {
-      throw `The dev CLI requires at least Node.js ${version.major}.${version.minor}. You are running Bun ${process.versions.bun}, which is compatible with Node.js ${process.versions.node}`;
+      return {
+        ok: false,
+        message: `The dev CLI requires at least Node.js ${version.major}.${version.minor}. You are running Bun ${process.versions.bun}, which is compatible with Node.js ${process.versions.node}`,
+      };
     } else {
-      throw `The dev CLI requires at least Node.js ${version.major}.${version.minor}. You are running Node.js ${process.versions.node}`;
+      return {
+        ok: false,
+        message: `The dev CLI requires at least Node.js ${version.major}.${version.minor}. You are running Node.js ${process.versions.node}`,
+      };
     }
   }
 
   logger.debug(
     `Node.js version: ${process.versions.node}${isBun ? ` (Bun ${process.versions.bun})` : ""}`
   );
+
+  return { ok: true };
 }
