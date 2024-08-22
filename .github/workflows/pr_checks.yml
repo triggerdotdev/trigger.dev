@@ -23,7 +23,7 @@ jobs:
 
   preview-release:
     name: Preview Release
-    needs: [typescript, units]
+    needs: [typecheck, units]
     if: |
       github.repository == 'triggerdotdev/trigger.dev'
     runs-on: buildjet-8vcpu-ubuntu-2204
