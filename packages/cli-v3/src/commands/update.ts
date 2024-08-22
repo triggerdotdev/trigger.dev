@@ -88,6 +88,8 @@ export async function updateTriggerPackages(
     mismatches: Dependency[];
     isDowngrade: boolean;
   } {
+    logger.debug("Checking for version mismatches", { deps, targetVersion });
+
     const mismatches: Dependency[] = [];
 
     for (const dep of deps) {
@@ -125,6 +127,8 @@ export async function updateTriggerPackages(
   }
 
   const { mismatches, isDowngrade } = getVersionMismatches(triggerDependencies, cliVersion);
+
+  logger.debug("Version mismatches", { mismatches, isDowngrade });
 
   if (mismatches.length === 0) {
     if (!embedded) {

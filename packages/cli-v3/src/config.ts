@@ -93,10 +93,13 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
         const $mod = await loadFile(args.path);
 
         // Support for both bare object export and `defineConfig` wrapper
-        const options =
-          $mod.exports.default.$type === "function-call"
+        const options = $mod.exports.default
+          ? $mod.exports.default.$type === "function-call"
             ? $mod.exports.default.$args[0]
-            : $mod.exports.default;
+            : $mod.exports.default
+          : $mod.exports.config?.$type === "function-call"
+          ? $mod.exports.config.$args[0]
+          : $mod.exports.config;
 
         options.build = {};
 
@@ -130,9 +133,12 @@ async function resolveConfig(
 
   const workingDir = packageJsonPath ? dirname(packageJsonPath) : cwd;
 
-  validateConfig(result.config, warn);
+  const config =
+    "config" in result.config ? (result.config.config as TriggerConfig) : result.config;
 
-  let dirs = result.config.dirs ? result.config.dirs : await autoDetectDirs(workingDir);
+  validateConfig(config, warn);
+
+  let dirs = config.dirs ? config.dirs : await autoDetectDirs(workingDir);
 
   dirs = dirs.map((dir) => (isAbsolute(dir) ? relative(workingDir, dir) : dir));
 
@@ -146,7 +152,7 @@ async function resolveConfig(
       workspaceDir,
     },
     overrides,
-    result.config,
+    config,
     {
       dirs,
       runtime: DEFAULT_RUNTIME,
