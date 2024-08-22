@@ -5,7 +5,6 @@ import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
-  FINAL_ATTEMPT_STATUSES,
   isFinalAttemptStatus,
   isFinalRunStatus,
   isFreezableAttemptStatus,
@@ -135,13 +134,31 @@ export class CreateCheckpointService extends BaseService {
     const { reason } = params;
 
     let checkpointEvent: CheckpointRestoreEvent | undefined;
-    let keepRunAlive = false;
 
     switch (reason.type) {
       case "WAIT_FOR_DURATION": {
         checkpointEvent = await eventService.checkpoint({
           checkpointId: checkpoint.id,
         });
+
+        if (checkpointEvent) {
+          await marqs?.replaceMessage(
+            attempt.taskRunId,
+            {
+              type: "RESUME_AFTER_DURATION",
+              resumableAttemptId: attempt.id,
+              checkpointEventId: checkpointEvent.id,
+            },
+            reason.now + reason.ms
+          );
+
+          return {
+            success: true,
+            checkpoint,
+            event: checkpointEvent,
+            keepRunAlive: false,
+          };
+        }
 
         break;
       }
@@ -152,6 +169,9 @@ export class CreateCheckpointService extends BaseService {
         });
 
         if (checkpointEvent) {
+          //heartbeats will start again when the run resumes
+          await marqs?.cancelHeartbeat(attempt.taskRunId);
+
           const dependency = await this._prisma.taskRunDependency.findFirst({
             select: {
               id: true,
@@ -270,6 +290,7 @@ export class CreateCheckpointService extends BaseService {
             };
           }
 
+          //resume the dependent task
           await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id, this._prisma);
 
           return {
@@ -289,6 +310,9 @@ export class CreateCheckpointService extends BaseService {
         });
 
         if (checkpointEvent) {
+          //heartbeats will start again when the run resumes
+          await marqs?.cancelHeartbeat(attempt.taskRunId);
+
           const batchRun = await this._prisma.batchTaskRun.findFirst({
             select: {
               id: true,
@@ -348,23 +372,11 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
-    if (reason.type === "WAIT_FOR_DURATION") {
-      await marqs?.replaceMessage(
-        attempt.taskRunId,
-        {
-          type: "RESUME_AFTER_DURATION",
-          resumableAttemptId: attempt.id,
-          checkpointEventId: checkpointEvent.id,
-        },
-        reason.now + reason.ms
-      );
-    }
-
     return {
       success: true,
       checkpoint,
       event: checkpointEvent,
-      keepRunAlive,
+      keepRunAlive: false,
     };
   }
 }
