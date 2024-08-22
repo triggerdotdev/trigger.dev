@@ -170,6 +170,11 @@ export class CreateCheckpointService extends BaseService {
 
         if (checkpointEvent) {
           //heartbeats will start again when the run resumes
+          logger.log("CreateCheckpointService: Canceling heartbeat", {
+            attemptId: attempt.id,
+            taskRunId: attempt.taskRunId,
+            type: "WAIT_FOR_TASK",
+          });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
           const dependency = await this._prisma.taskRunDependency.findFirst({
@@ -311,6 +316,11 @@ export class CreateCheckpointService extends BaseService {
 
         if (checkpointEvent) {
           //heartbeats will start again when the run resumes
+          logger.log("CreateCheckpointService: Canceling heartbeat", {
+            attemptId: attempt.id,
+            taskRunId: attempt.taskRunId,
+            type: "WAIT_FOR_BATCH",
+          });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
           const batchRun = await this._prisma.batchTaskRun.findFirst({
