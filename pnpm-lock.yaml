@@ -912,6 +912,9 @@ importers:
       open:
         specifier: ^10.0.3
         version: 10.0.3
+      p-retry:
+        specifier: ^6.1.0
+        version: 6.1.0
       partysocket:
         specifier: ^1.0.2
         version: 1.0.2
@@ -979,9 +982,6 @@ importers:
       cpy-cli:
         specifier: ^5.0.0
         version: 5.0.0
-      p-retry:
-        specifier: ^6.1.0
-        version: 6.1.0
       rimraf:
         specifier: ^5.0.7
         version: 5.0.7
@@ -12854,7 +12854,7 @@ packages:
 
   /@types/retry@0.12.2:
     resolution: {integrity: sha512-XISRgDJ2Tc5q4TRqvgJtzsRkFYNJzZrhTdtMoGVBttwzzQJkPnS3WWTFc7kuDRoPtPakl+T+OfdEUjYJj7Jbow==}
-    dev: true
+    dev: false
 
   /@types/scheduler@0.16.2:
     resolution: {integrity: sha512-hppQEBDmlwhFAXKJX2KnWLYu5yMfi91yazPb2l+lbJiwW+wdo1gNeRA+3RgNSO39WYX2euey41KEwnqesU2Jew==}
@@ -18622,7 +18622,7 @@ packages:
   /is-network-error@1.0.0:
     resolution: {integrity: sha512-P3fxi10Aji2FZmHTrMPSNFbNC6nnp4U5juPAIjXPHkUNubi4+qK7vvdsaNpAUwXslhYm9oyjEYTxs1xd/+Ph0w==}
     engines: {node: '>=16'}
-    dev: true
+    dev: false
 
   /is-node-process@1.2.0:
     resolution: {integrity: sha512-Vg4o6/fqPxIjtxgUH5QLJhwZ7gW5diGCVlXpuUfELC62CuxM1iHcRe51f2W1FDy04Ai4KJkagKjx3XaqyfRKXw==}
@@ -20949,7 +20949,7 @@ packages:
       '@types/retry': 0.12.2
       is-network-error: 1.0.0
       retry: 0.13.1
-    dev: true
+    dev: false
 
   /p-timeout@3.2.0:
     resolution: {integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==}
@@ -23171,6 +23171,7 @@ packages:
   /retry@0.13.1:
     resolution: {integrity: sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg==}
     engines: {node: '>= 4'}
+    dev: false
 
   /reusify@1.0.4:
     resolution: {integrity: sha512-U9nH88a3fc/ekCF1l0/UP1IosiuIjyTh7hBvXVMHYgVcfGvt897Xguj2UOLDeI5BG2m7/uwyaLVT6fbtCwTyzw==}
