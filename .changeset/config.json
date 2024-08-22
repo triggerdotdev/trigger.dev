@@ -19,9 +19,7 @@
     "@trigger.dev/database",
     "coordinator",
     "docker-provider",
-    "kubernetes-provider",
-    "@references/v3-catalog",
-    "@references/bun-catalog"
+    "kubernetes-provider"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
