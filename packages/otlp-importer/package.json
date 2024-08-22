@@ -20,10 +20,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "prepublishOnly": "npm run build",
-    "clean": "rimraf dist",
-    "build": "npm run clean && npm run protos",
-    "generate": "npm run protos",
+    "generate:code": "npm run protos",
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
     "submodule": "node ./scripts/submodule.mjs",

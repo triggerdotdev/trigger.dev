@@ -44,16 +44,8 @@ jobs:
           node-version: 20.11.1
           cache: "pnpm"
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
-
-      - name: 📀 Generate Code
-        run: pnpm run generate
 
       - name: 🏗️ Build
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
