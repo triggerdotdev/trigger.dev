@@ -7,12 +7,19 @@ export async function registerTasks(buildManifest: BuildManifest): Promise<Impor
     const [error, module] = await tryImport(file.out);
 
     if (error) {
-      importErrors.push({
-        file: file.entry,
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
+      if (typeof error === "string") {
+        importErrors.push({
+          file: file.entry,
+          message: error,
+        });
+      } else {
+        importErrors.push({
+          file: file.entry,
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
+      }
 
       continue;
     }

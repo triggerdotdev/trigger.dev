@@ -1,6 +1,12 @@
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import {
+  createTaskMetadataFailedErrorStack,
+  TaskIndexingImportError,
+  TaskMetadataParseError,
+} from "@trigger.dev/core/v3/errors";
+import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
 import { DevCommandOptions } from "../commands/dev.js";
-import { logger } from "../utilities/logger.js";
 import {
   chalkError,
   chalkGrey,
@@ -15,17 +21,7 @@ import {
   prettyPrintDate,
 } from "../utilities/cliOutput.js";
 import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
-import {
-  TaskMetadataFailedToParseData,
-  TaskRunError,
-  TaskRunErrorCodes,
-} from "@trigger.dev/core/v3/schemas";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import {
-  createTaskMetadataFailedErrorStack,
-  TaskIndexingImportError,
-  TaskMetadataParseError,
-} from "@trigger.dev/core/v3/errors";
+import { logger } from "../utilities/logger.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -78,7 +74,10 @@ export function startDevOutput(options: DevOutputOptions) {
   ) => {
     if (error instanceof TaskIndexingImportError) {
       for (const importError of error.importErrors) {
-        prettyError(`Could not import ${importError.file}`, importError.stack);
+        prettyError(
+          `Could not import ${importError.file}`,
+          importError.stack ?? importError.message
+        );
       }
     } else if (error instanceof TaskMetadataParseError) {
       const errorStack = createTaskMetadataFailedErrorStack({
