@@ -1,10 +1,10 @@
 import * as esbuild from "esbuild";
 import { readFile } from "node:fs/promises";
 import { readTSConfig } from "pkg-types";
-import typescriptPkg, { ModuleKind } from "typescript";
+import typescriptPkg from "typescript";
 import { BuildExtension, createExtensionForPlugin } from "../build/extensions.js";
 
-const { transpileModule } = typescriptPkg;
+const { transpileModule, ModuleKind } = typescriptPkg;
 
 const decoratorMatcher = new RegExp(/((?<![(\s]\s*['"])@\w[.[\]\w\d]*\s*(?![;])[((?=\s)])/);
 
