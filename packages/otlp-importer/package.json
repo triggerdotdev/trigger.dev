@@ -27,11 +27,9 @@
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
     "submodule": "node ./scripts/submodule.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.3",
     "@types/node": "^20",
     "rimraf": "^3.0.2",
     "ts-proto": "^1.167.3",
