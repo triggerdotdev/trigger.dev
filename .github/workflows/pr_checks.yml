@@ -51,7 +51,7 @@ jobs:
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: ⚡ publish preview release
-        run: npx pkg-pr-new publish --no-template --compact $(ls -d ./packages/*)
+        run: npx pkg-pr-new publish --no-template $(ls -d ./packages/*)
 
   # e2e:
   #   uses: ./.github/workflows/e2e.yml
