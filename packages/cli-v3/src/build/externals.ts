@@ -59,6 +59,19 @@ async function isExternalResolvable(
       resolvedPath,
     });
 
+    if (!resolvedPath.includes(external.path)) {
+      logger.debug(
+        "[externals][isExternalResolvable] resolvedPath does not match the external.path",
+        {
+          resolveDir,
+          external,
+          resolvedPath,
+        }
+      );
+
+      return false;
+    }
+
     return true;
   } catch (e) {
     logger.debug("[externals][isExternalResolvable] Unable to resolve external", {
