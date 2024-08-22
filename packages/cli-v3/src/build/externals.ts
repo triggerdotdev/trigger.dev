@@ -6,7 +6,7 @@ import { readPackageJSON, resolvePackageJSON } from "pkg-types";
 import nodeResolve from "resolve";
 import { getInstrumentedPackageNames } from "./instrumentation.js";
 import { BuildTarget } from "@trigger.dev/core/v3/schemas";
-import { BuildExtension, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildExtension, BuildLogger, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { logger } from "../utilities/logger.js";
 
 const FORCED_EXTERNALS = ["import-in-the-middle"];
@@ -19,20 +19,23 @@ const FORCED_EXTERNALS = ["import-in-the-middle"];
  * This function will create a symbolic link from a place where the external is resolvable
  * to the actual resolved external path
  */
-async function linkUnresolvableExternals(externals: Array<CollectedExternal>, resolveDir: string) {
+async function linkUnresolvableExternals(
+  externals: Array<CollectedExternal>,
+  resolveDir: string,
+  logger: BuildLogger
+) {
   for (const external of externals) {
-    if (!(await isExternalResolvable(external, resolveDir))) {
-      logger.debug("External is not resolvable", { external });
-      await linkExternal(external, resolveDir);
+    if (!(await isExternalResolvable(external, resolveDir, logger))) {
+      await linkExternal(external, resolveDir, logger);
     }
   }
 }
 
-async function linkExternal(external: CollectedExternal, resolveDir: string) {
+async function linkExternal(external: CollectedExternal, resolveDir: string, logger: BuildLogger) {
   const destinationPath = join(resolveDir, "node_modules");
   await mkdir(destinationPath, { recursive: true });
 
-  logger.debug("Make a symbolic link", {
+  logger.debug("[externals] Make a symbolic link", {
     fromPath: external.path,
     destinationPath,
     external,
@@ -40,19 +43,30 @@ async function linkExternal(external: CollectedExternal, resolveDir: string) {
   await symlink(external.path, join(destinationPath, external.name), "dir");
 }
 
-async function isExternalResolvable(external: CollectedExternal, resolveDir: string) {
+async function isExternalResolvable(
+  external: CollectedExternal,
+  resolveDir: string,
+  logger: BuildLogger
+) {
   try {
     const resolvedPath = nodeResolve.sync(external.name, {
       basedir: resolveDir,
     });
 
-    logger.debug("Resolved external", {
+    logger.debug("[externals][isExternalResolvable] Resolved external", {
+      resolveDir,
       external,
       resolvedPath,
     });
 
     return true;
   } catch (e) {
+    logger.debug("[externals][isExternalResolvable] Unable to resolve external", {
+      resolveDir,
+      external,
+      error: e,
+    });
+
     return false;
   }
 }
@@ -76,8 +90,6 @@ function createExternalsCollector(
 
   const maybeExternals = discoverMaybeExternals(target, resolvedConfig);
 
-  logger.debug("Maybe externals", { maybeExternals });
-
   return {
     externals,
     plugin: {
@@ -88,16 +100,23 @@ function createExternalsCollector(
         });
 
         build.onEnd(async () => {
-          logger.debug("Collected externals", { externals });
+          logger.debug("[externals][onEnd] Collected externals", { externals });
         });
 
         maybeExternals.forEach((external) => {
           build.onResolve({ filter: external.filter, namespace: "file" }, async (args) => {
+            // Check if the external is already in the externals collection
+            if (externals.find((e) => e.name === external.raw)) {
+              return {
+                external: true,
+              };
+            }
+
             const resolvedPath = nodeResolve.sync(args.path, {
               basedir: args.resolveDir,
             });
 
-            logger.debug("Resolved external", {
+            logger.debug("[externals][onResolve] Resolved external", {
               external,
               resolvedPath,
               args,
@@ -109,7 +128,12 @@ function createExternalsCollector(
               return undefined;
             }
 
-            logger.debug("Found package.json", { packageJsonPath });
+            logger.debug("[externals][onResolve] Found package.json", {
+              packageJsonPath,
+              external,
+              resolvedPath,
+              args,
+            });
 
             const packageJson = await readPackageJSON(packageJsonPath);
 
@@ -118,18 +142,20 @@ function createExternalsCollector(
             }
 
             if (!external.filter.test(packageJson.name)) {
-              logger.debug("Package name does not match", {
+              logger.debug("[externals][onResolve] Package name does not match", {
                 external,
                 packageJson,
+                resolvedPath,
               });
 
               return undefined;
             }
 
             if (!packageJson.version) {
-              logger.debug("No version found in package.json", {
+              logger.debug("[externals][onResolve] No version found in package.json", {
                 external,
                 packageJson,
+                resolvedPath,
               });
 
               return undefined;
@@ -141,10 +167,15 @@ function createExternalsCollector(
               version: packageJson.version,
             });
 
-            logger.debug("Resolved external", {
+            logger.debug("[externals][onResolve] adding external to the externals collection", {
               external,
               resolvedPath,
               args,
+              resolvedExternal: {
+                name: packageJson.name,
+                path: dirname(packageJsonPath),
+                version: packageJson.version,
+              },
             });
 
             return {
@@ -240,7 +271,7 @@ export function createExternalsBuildExtension(
     },
     onBuildComplete: async (context, manifest) => {
       if (context.target === "dev") {
-        await linkUnresolvableExternals(externals, manifest.outputPath);
+        await linkUnresolvableExternals(externals, manifest.outputPath, context.logger);
       }
 
       context.addLayer({
