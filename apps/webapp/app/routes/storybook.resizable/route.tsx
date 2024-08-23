@@ -12,10 +12,11 @@ export default function Story() {
         <ResizableHandle id="1-split" />
         <ResizablePanel
           id={"1-right"}
-          // min="100px"
-          // max="250px"
           default="100px"
+          min="100px"
+          max="600px"
           className="bg-teal-500"
+          isStaticAtRest
         />
       </ResizablePanelGroup>
     </div>
