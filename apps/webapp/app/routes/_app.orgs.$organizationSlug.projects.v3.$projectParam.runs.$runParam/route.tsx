@@ -650,7 +650,7 @@ function TasksTreeView({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="grow @container">
           <div className="hidden items-center gap-4 @[42rem]:flex">
             <KeyboardShortcuts
