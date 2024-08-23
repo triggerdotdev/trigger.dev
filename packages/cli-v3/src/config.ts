@@ -27,6 +27,7 @@ export async function loadConfig({
   const result = await c12.loadConfig<TriggerConfig>({
     name: "trigger",
     cwd,
+    jitiOptions: { debug: logger.loggerLevel === "debug" },
   });
 
   return await resolveConfig(cwd, result);
@@ -58,6 +59,7 @@ export async function watchConfig({
     cwd,
     debounce,
     chokidarOptions: { ignoreInitial },
+    jitiOptions: { debug: logger.loggerLevel === "debug" },
     onUpdate: async ({ newConfig }) => {
       const resolvedConfig = await resolveConfig(cwd, newConfig, overrides, false);
 

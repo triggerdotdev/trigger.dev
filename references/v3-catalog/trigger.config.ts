@@ -5,6 +5,8 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 
+export { handleError } from "./src/handleError.js";
+
 export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
   if (
     process.env.INFISICAL_CLIENT_ID === undefined ||
