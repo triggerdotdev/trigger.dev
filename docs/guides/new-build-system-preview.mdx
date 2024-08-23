@@ -18,7 +18,7 @@ The main features of the new build sytem are:
 To use the new build system, you have to update to use our preview packages. Update the `@trigger.dev/sdk` package in your package.json:
 
 ```json
-"@trigger.dev/sdk": "https://pkg.pr.new/triggerdotdev/trigger.dev/@trigger.dev/sdk@1265"
+"@trigger.dev/sdk": "0.0.0-prerelease-20240823132052"
 ```
 
 You will also need to update your usage of the `trigger.dev` CLI to use the preview release. If you run the CLI via `npx` you can update to the preview release like so:
@@ -28,13 +28,13 @@ You will also need to update your usage of the `trigger.dev` CLI to use the prev
 npx trigger.dev@beta dev
 
 # using the preview release
-npx https://pkg.pr.new/triggerdotdev/trigger.dev@1265 dev
+npx trigger.dev@0.0.0-prerelease-20240823132052 dev
 ```
 
 If you've added the `trigger.dev` CLI to your `devDependencies`, then you should update the version to point to the preview release:
 
 ```json
-"trigger.dev": "https://pkg.pr.new/triggerdotdev/trigger.dev@1265"
+"trigger.dev": "0.0.0-prerelease-20240823132052"
 ```
 
 Once you do that make sure you re-install your dependencies using `npm i` or the equivalent with your preferred package manager.
@@ -83,7 +83,7 @@ The `additionalFiles` option has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add https://pkg.pr.new/triggerdotdev/trigger.dev/@trigger.dev/build@1265 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240823132052 -D
 ```
 
 Now you can import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
@@ -109,7 +109,7 @@ The `additionalPackages` option has been moved to our new build extension system
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add https://pkg.pr.new/triggerdotdev/trigger.dev/@trigger.dev/build@1265 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240823132052 -D
 ```
 
 Now you can import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
@@ -133,7 +133,7 @@ The `resolveEnvVars` export has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add https://pkg.pr.new/triggerdotdev/trigger.dev/@trigger.dev/build@1265 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240823132052 -D
 ```
 
 Now you can import the `syncEnvVars` build extension and use it in your `trigger.config.ts` file:
@@ -181,7 +181,7 @@ export default defineConfig({
 We've created a build extension to support using Prisma in your Trigger.dev tasks. To use this extension, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add https://pkg.pr.new/triggerdotdev/trigger.dev/@trigger.dev/build@1265 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240823132052 -D
 ```
 
 Then you can import the `prismaExtension` build extension and use it in your `trigger.config.ts` file, passing in the path to your Prisma schema file:
