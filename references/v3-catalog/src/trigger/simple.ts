@@ -1,6 +1,6 @@
 import "server-only";
 import { logger, task, tasks, wait } from "@trigger.dev/sdk/v3";
-import { traceAsync } from "@/telemetry";
+import { traceAsync } from "@/telemetry.js";
 
 export const fetchPostTask = task({
   id: "fetch-post-task",
@@ -122,6 +122,8 @@ export const parentTask = task({
       message: `${payload.message} - 2.a`,
       forceError: true,
     });
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     return {
       message: payload.message,
