@@ -60,6 +60,23 @@ export function UsageBar({
             />
           </motion.div>
         )}
+        <motion.div
+          initial={{ width: usagePercentage / startFactor + "%" }}
+          animate={{ width: usagePercentage + "%" }}
+          transition={{ duration: 1.5, type: "spring" }}
+          style={{ width: `${usagePercentage}%` }}
+          className={cn(
+            "absolute h-3 rounded-l-sm",
+            tierLimit && current > tierLimit ? "bg-green-700" : "bg-green-600"
+          )}
+        >
+          <Legend
+            text="Used:"
+            value={formatCurrency(current, false)}
+            position="topRow1"
+            percentage={usagePercentage}
+          />
+        </motion.div>
         {tierLimit !== undefined && (
           <motion.div
             initial={{ width: tierRunLimitPercentage / startFactor + "%" }}
@@ -92,23 +109,7 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        <motion.div
-          initial={{ width: usagePercentage / startFactor + "%" }}
-          animate={{ width: usagePercentage + "%" }}
-          transition={{ duration: 1.5, type: "spring" }}
-          style={{ width: `${usagePercentage}%` }}
-          className={cn(
-            "absolute h-3 rounded-l-sm",
-            tierLimit && current > tierLimit ? "bg-rose-600" : "bg-green-600"
-          )}
-        >
-          <Legend
-            text="Used:"
-            value={formatCurrency(current, false)}
-            position="topRow1"
-            percentage={usagePercentage}
-          />
-        </motion.div>
+
         <motion.div
           initial={{ width: usageCappedToLimitPercentage / startFactor + "%" }}
           animate={{ width: usageCappedToLimitPercentage + "%" }}
