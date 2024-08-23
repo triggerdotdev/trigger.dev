@@ -245,6 +245,33 @@ export default defineConfig({
 });
 ```
 
+### esbuild plugins
+
+You can now add esbuild plugins to customize the build process using the `esbuildPlugin` build extension. The example below shows how to automatically upload sourcemaps to Sentry using their esbuild plugin:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        // optional - only runs during the deploy command, and adds the plugin to the end of the list of plugins
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
+});
+```
+
 ## Known issues
 
 - Path aliases are not yet support in your `trigger.config.ts` file. To workaround this issue you'll need to rewrite path aliases to their relative paths. (See [this](https://github.com/unjs/jiti/issues/166) and [this](https://knip.dev/reference/known-issues#path-aliases-in-config-files)) for more info.

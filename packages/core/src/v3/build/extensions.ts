@@ -2,10 +2,7 @@ import { BuildManifest, BuildTarget } from "../schemas/build.js";
 import type { Plugin } from "esbuild";
 import { ResolvedConfig } from "./resolvedConfig.js";
 
-export function createExtensionForPlugin(
-  plugin: Plugin,
-  options: RegisterPluginOptions = {}
-): BuildExtension {
+export function esbuildPlugin(plugin: Plugin, options: RegisterPluginOptions = {}): BuildExtension {
   return {
     name: plugin.name,
     onBuildStart(context) {

@@ -1,9 +1,11 @@
 import { InfisicalClient } from "@infisical/sdk";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 
 export { handleError } from "./src/handleError.js";
 
@@ -67,6 +69,14 @@ export default defineConfig({
         migrate: true,
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
       }),
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: "triggerdev",
+          project: "taskhero-examples-basic",
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
     ],
     external: ["@ffmpeg-installer/ffmpeg", "re2"],
   },

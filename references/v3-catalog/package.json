@@ -16,13 +16,14 @@
     "postinstall": "prisma generate --no-hints"
   },
   "dependencies": {
-    "@prisma/client": "5.18.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@infisical/sdk": "^2.1.9",
     "@opentelemetry/api": "1.4.1",
+    "@prisma/client": "5.18.0",
     "@react-email/components": "^0.0.17",
     "@react-email/render": "^0.0.7",
+    "@sentry/esbuild-plugin": "^2.22.2",
     "@sindresorhus/slugify": "^2.2.1",
     "@t3-oss/env-core": "^0.11.0",
     "@t3-oss/env-nextjs": "^0.10.1",
@@ -60,15 +61,15 @@
     "@opentelemetry/sdk-trace-base": "^1.22.0",
     "@opentelemetry/sdk-trace-node": "^1.22.0",
     "@opentelemetry/semantic-conventions": "^1.22.0",
+    "@trigger.dev/build": "workspace:*",
     "@types/email-reply-parser": "^1.4.2",
     "@types/node": "20.4.2",
     "@types/react": "^18.3.1",
     "esbuild": "^0.19.11",
+    "prisma": "5.18.0",
     "trigger.dev": "workspace:*",
-    "@trigger.dev/build": "workspace:*",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.5.4",
-    "prisma": "5.18.0"
+    "typescript": "^5.5.4"
   }
 }
