@@ -44,6 +44,9 @@ jobs:
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 
+      - name: 🏗️ Build
+        run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
+
       - name: 🔎 Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
