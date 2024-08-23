@@ -521,6 +521,27 @@ export class MarQS {
     );
   }
 
+  public async cancelHeartbeat(messageId: string) {
+    return this.#trace(
+      "cancelHeartbeat",
+      async (span) => {
+        span.setAttributes({
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        });
+
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "cancelHeartbeat",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
   async #trace<T>(
     name: string,
     fn: (span: Span) => Promise<T>,
