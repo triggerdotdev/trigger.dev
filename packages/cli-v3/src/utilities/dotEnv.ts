@@ -2,14 +2,14 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { env } from "std-env";
 
+const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local"];
+
 export function resolveDotEnvVars(cwd?: string) {
   const result: { [key: string]: string } = {};
 
   dotenv.config({
     processEnv: result,
-    path: [".env", ".env.local", ".env.development.local"].map((p) =>
-      resolve(cwd ?? process.cwd(), p)
-    ),
+    path: ENVVAR_FILES.map((p) => resolve(cwd ?? process.cwd(), p)),
   });
 
   env.TRIGGER_API_URL && (result.TRIGGER_API_URL = env.TRIGGER_API_URL);
@@ -23,8 +23,6 @@ export function resolveDotEnvVars(cwd?: string) {
 
 export function loadDotEnvVars(cwd?: string) {
   dotenv.config({
-    path: [".env", ".env.local", ".env.development.local"].map((p) =>
-      resolve(cwd ?? process.cwd(), p)
-    ),
+    path: ENVVAR_FILES.map((p) => resolve(cwd ?? process.cwd(), p)),
   });
 }

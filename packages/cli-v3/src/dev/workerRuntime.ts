@@ -232,10 +232,20 @@ class DevWorkerRuntime implements WorkerRuntime {
     const dotEnvVars = resolveDotEnvVars();
     const OTEL_IMPORT_HOOK_INCLUDES = getInstrumentedPackageNames(this.options.config).join(",");
 
+    const stripEmptyValues = (obj: Record<string, string | undefined>) => {
+      return Object.fromEntries(
+        Object.entries(obj).filter(([, value]) =>
+          typeof value === "string" ? !!value.trim() : !!value
+        )
+      );
+    };
+
     return {
-      ...processEnv,
-      ...(environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}),
-      ...dotEnvVars,
+      ...stripEmptyValues(processEnv),
+      ...stripEmptyValues(
+        environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
+      ),
+      ...stripEmptyValues(dotEnvVars),
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
