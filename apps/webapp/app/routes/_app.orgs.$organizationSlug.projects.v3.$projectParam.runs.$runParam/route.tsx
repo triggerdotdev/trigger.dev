@@ -1142,7 +1142,7 @@ function ConnectedDevWarning() {
   return (
     <div
       className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
+        "mt-2.5 flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
         isVisible ? "opacity-100" : "h-0 opacity-0"
       )}
     >
