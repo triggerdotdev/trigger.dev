@@ -503,11 +503,10 @@ class ProdWorker {
     const taskRunCompleted = await defaultBackoff.execute(async ({ retry }) => {
       logger.log("Submit attempt completion with backoff", { retry });
 
-      // TODO: update this to use version: v2
       return await this.#coordinatorSocket.socket
         .timeout(20_000)
         .emitWithAck("TASK_RUN_COMPLETED", {
-          version: "v1",
+          version: "v2",
           execution,
           completion,
         });
