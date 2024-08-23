@@ -1,16 +1,13 @@
 import {
   DeploymentErrorData,
   ExternalBuildData,
-  TaskMetadataFailedToParseData,
-  groupTaskMetadataIssuesByTask,
+  prepareDeploymentError,
 } from "@trigger.dev/core/v3";
-import { WorkerDeployment, WorkerDeploymentStatus } from "@trigger.dev/database";
-import { z } from "zod";
+import { WorkerDeployment } from "@trigger.dev/database";
 import { PrismaClient, prisma } from "~/db.server";
 import { Organization } from "~/models/organization.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { safeJsonParse } from "~/utils/json";
 import { getUsername } from "~/utils/username";
 
 export type ErrorData = {
@@ -164,75 +161,12 @@ export class DeploymentPresenter {
       return;
     }
 
-    const parsedErrorData = DeploymentErrorData.safeParse(errorData);
+    const deploymentError = DeploymentErrorData.safeParse(errorData);
 
-    if (!parsedErrorData.success) {
+    if (!deploymentError.success) {
       return;
     }
 
-    if (parsedErrorData.data.name === "TaskMetadataParseError") {
-      const errorJson = safeJsonParse(parsedErrorData.data.stack);
-
-      if (errorJson) {
-        const parsedError = TaskMetadataFailedToParseData.safeParse(errorJson);
-
-        if (parsedError.success) {
-          return {
-            name: parsedErrorData.data.name,
-            message: parsedErrorData.data.message,
-            stack: createTaskMetadataFailedErrorStack(parsedError.data),
-            stderr: parsedErrorData.data.stderr,
-          };
-        } else {
-          return {
-            name: parsedErrorData.data.name,
-            message: parsedErrorData.data.message,
-            stderr: parsedErrorData.data.stderr,
-          };
-        }
-      } else {
-        return {
-          name: parsedErrorData.data.name,
-          message: parsedErrorData.data.message,
-          stderr: parsedErrorData.data.stderr,
-        };
-      }
-    }
-
-    return {
-      name: parsedErrorData.data.name,
-      message: parsedErrorData.data.message,
-      stack: parsedErrorData.data.stack,
-      stderr: parsedErrorData.data.stderr,
-    };
+    return prepareDeploymentError(deploymentError.data);
   }
-}
-
-function createTaskMetadataFailedErrorStack(
-  data: z.infer<typeof TaskMetadataFailedToParseData>
-): string {
-  const stack = [];
-
-  const groupedIssues = groupTaskMetadataIssuesByTask(data.tasks, data.zodIssues);
-
-  for (const key in groupedIssues) {
-    const taskWithIssues = groupedIssues[key];
-
-    if (!taskWithIssues) {
-      continue;
-    }
-
-    stack.push("\n");
-    stack.push(`  ❯ ${taskWithIssues.exportName} in ${taskWithIssues.filePath}`);
-
-    for (const issue of taskWithIssues.issues) {
-      if (issue.path) {
-        stack.push(`    x ${issue.path} ${issue.message}`);
-      } else {
-        stack.push(`    x ${issue.message}`);
-      }
-    }
-  }
-
-  return stack.join("\n");
 }

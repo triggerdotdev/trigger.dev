@@ -1,4 +1,4 @@
-import { ApiRequestOptions } from "../apiClient";
+import { type ApiRequestOptions } from "../apiClient/index.js";
 
 export type ApiClientConfiguration = {
   baseURL?: string;

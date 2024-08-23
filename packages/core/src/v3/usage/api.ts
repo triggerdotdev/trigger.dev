@@ -1,8 +1,8 @@
 const API_NAME = "usage";
 
-import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals";
-import type { UsageManager, UsageMeasurement, UsageSample } from "./types";
-import { NoopUsageManager } from "./noopUsageManager";
+import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
+import type { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import { NoopUsageManager } from "./noopUsageManager.js";
 
 const NOOP_USAGE_MANAGER = new NoopUsageManager();
 

@@ -1,8 +1,8 @@
 import type { ManagerOptions, Socket, SocketOptions } from "socket.io-client";
 import { io } from "socket.io-client";
 import { ZodError, z } from "zod";
-import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler";
-import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger";
+import { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler.js";
+import { LogLevel, SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger.js";
 import { fromZodError } from "zod-validation-error";
 
 export interface ZodSocketMessageCatalogSchema {
@@ -147,7 +147,7 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       };
     }
 
-    const schema = this.#schema[parsedMessage.data.type]["message"];
+    const schema = this.#schema[parsedMessage.data.type]?.["message"];
 
     if (!schema) {
       return {
@@ -266,7 +266,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     type: K,
     payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
   ): void {
-    const schema = this.#schema[type]["message"];
+    const schema = this.#schema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);
@@ -291,7 +291,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     type: K,
     payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
   ): Promise<z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>> {
-    const schema = this.#schema[type]["message"];
+    const schema = this.#schema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);

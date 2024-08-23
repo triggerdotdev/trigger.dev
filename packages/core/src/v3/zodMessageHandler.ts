@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { StructuredLogger } from "./utils/structuredLogger";
+import { StructuredLogger } from "./utils/structuredLogger.js";
 
 export class ZodSchemaParsedError extends Error {
   constructor(
@@ -35,6 +35,11 @@ export type MessageFromSchema<
   type: K;
   payload: z.input<TMessageCatalog[K]>;
 };
+
+export type MessagePayloadFromSchema<
+  K extends keyof TMessageCatalog,
+  TMessageCatalog extends ZodMessageCatalogSchema,
+> = z.output<TMessageCatalog[K]>;
 
 export type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSchema<K, TMessageCatalog>;
@@ -197,6 +202,34 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
   }
 }
 
+export function parseMessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema>(
+  message: unknown,
+  schema: TMessageCatalog
+): MessageFromCatalog<TMessageCatalog> {
+  const parsedMessage = ZodMessageSchema.safeParse(message);
+
+  if (!parsedMessage.success) {
+    throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
+  }
+
+  const messageSchema = schema[parsedMessage.data.type];
+
+  if (!messageSchema) {
+    throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
+  }
+
+  const parsedPayload = messageSchema.safeParse(parsedMessage.data.payload);
+
+  if (!parsedPayload.success) {
+    throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+  }
+
+  return {
+    type: parsedMessage.data.type,
+    payload: parsedPayload.data,
+  };
+}
+
 type ZodMessageSenderCallback<TMessageCatalog extends ZodMessageCatalogSchema> = (message: {
   type: keyof TMessageCatalog;
   payload: z.infer<TMessageCatalog[keyof TMessageCatalog]>;
@@ -269,6 +302,27 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
       console.error("[ZodMessageSender] Failed to forward message", error);
     }
   }
+}
+
+export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCatalogSchema>(
+  catalog: TMessageCatalog,
+  type: keyof TMessageCatalog,
+  payload: z.input<TMessageCatalog[keyof TMessageCatalog]>,
+  sender: ZodMessageSenderCallback<TMessageCatalog>
+) {
+  const schema = catalog[type];
+
+  if (!schema) {
+    throw new Error(`Unknown message type: ${type as string}`);
+  }
+
+  const parsedPayload = schema.safeParse(payload);
+
+  if (!parsedPayload.success) {
+    throw new ZodSchemaParsedError(parsedPayload.error, payload);
+  }
+
+  await sender({ type, payload, version: "v1" });
 }
 
 export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {

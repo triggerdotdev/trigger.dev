@@ -1,4 +1,4 @@
-import { DeserializedJson } from "./schemas";
+import { DeserializedJson } from "./schemas/index.js";
 
 export interface ExampleReplacement {
   marker: string;

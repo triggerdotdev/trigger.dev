@@ -15,13 +15,14 @@ import {
 } from "../cli/common.js";
 import { chalkLink, prettyError } from "../utilities/cliOutput.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
-import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { isLinuxServer } from "../utilities/linux.js";
+import { VERSION } from "../version.js";
+import { env } from "std-env";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -35,7 +36,7 @@ export function configureLoginCommand(program: Command) {
       .command("login")
       .description("Login with Trigger.dev so you can perform authenticated actions")
   )
-    .version(getVersion(), "-v, --version", "Display the version number")
+    .version(VERSION, "-v, --version", "Display the version number")
     .action(async (options) => {
       await handleTelemetry(async () => {
         await printInitialBanner(false);
@@ -74,12 +75,12 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         intro("Logging in to Trigger.dev");
       }
 
-      const accessTokenFromEnv = process.env.TRIGGER_ACCESS_TOKEN;
+      const accessTokenFromEnv = env.TRIGGER_ACCESS_TOKEN;
 
       if (accessTokenFromEnv) {
         const auth = {
           accessToken: accessTokenFromEnv,
-          apiUrl: process.env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
+          apiUrl: env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
         };
         const apiClient = new CliApiClient(auth.apiUrl, auth.accessToken);
         const userData = await apiClient.whoAmI();

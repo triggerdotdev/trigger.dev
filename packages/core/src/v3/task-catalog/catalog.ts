@@ -1,12 +1,12 @@
-import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
+import { TaskFileMetadata, TaskManifest } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
 
 export interface TaskCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void;
   updateTaskMetadata(id: string, task: Partial<TaskMetadataWithFunctions>): void;
   registerTaskFileMetadata(id: string, metadata: TaskFileMetadata): void;
-  getAllTaskMetadata(): Array<TaskMetadataWithFilePath>;
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined;
+  listTaskManifests(): Array<TaskManifest>;
+  getTaskManifest(id: string): TaskManifest | undefined;
   getTask(id: string): TaskMetadataWithFunctions | undefined;
   taskExists(id: string): boolean;
 }

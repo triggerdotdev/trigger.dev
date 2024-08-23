@@ -1,4 +1,8 @@
-import { CreateBackgroundWorkerRequestBody, TaskResource } from "@trigger.dev/core/v3";
+import {
+  BackgroundWorkerSourceFileMetadata,
+  CreateBackgroundWorkerRequestBody,
+  TaskResource,
+} from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -70,7 +74,19 @@ export class CreateBackgroundWorkerService extends BaseService {
         },
       });
 
-      await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      const tasksToBackgroundFiles = await createBackgroundFiles(
+        body.metadata.sourceFiles,
+        backgroundWorker,
+        environment,
+        this._prisma
+      );
+      await createBackgroundTasks(
+        body.metadata.tasks,
+        backgroundWorker,
+        environment,
+        this._prisma,
+        tasksToBackgroundFiles
+      );
       await syncDeclarativeSchedules(
         body.metadata.tasks,
         backgroundWorker,
@@ -121,7 +137,8 @@ export async function createBackgroundTasks(
   tasks: TaskResource[],
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
-  prisma: PrismaClientOrTransaction
+  prisma: PrismaClientOrTransaction,
+  tasksToBackgroundFiles?: Map<string, string>
 ) {
   for (const task of tasks) {
     try {
@@ -138,6 +155,7 @@ export async function createBackgroundTasks(
           queueConfig: task.queue,
           machineConfig: task.machine,
           triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
+          fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         },
       });
 
@@ -380,4 +398,54 @@ export async function syncDeclarativeSchedules(
       });
     }
   }
+}
+
+export async function createBackgroundFiles(
+  files: Array<BackgroundWorkerSourceFileMetadata> | undefined,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  // Maps from each taskId to the backgroundWorkerFileId
+  const results = new Map<string, string>();
+
+  if (!files) {
+    return results;
+  }
+
+  for (const file of files) {
+    const backgroundWorkerFile = await prisma.backgroundWorkerFile.upsert({
+      where: {
+        projectId_contentHash: {
+          projectId: environment.projectId,
+          contentHash: file.contentHash,
+        },
+      },
+      create: {
+        friendlyId: generateFriendlyId("file"),
+        projectId: environment.projectId,
+        contentHash: file.contentHash,
+        filePath: file.filePath,
+        contents: Buffer.from(file.contents),
+        backgroundWorkers: {
+          connect: {
+            id: worker.id,
+          },
+        },
+      },
+      update: {
+        backgroundWorkers: {
+          connect: {
+            id: worker.id,
+          },
+        },
+      },
+    });
+
+    for (const taskId of file.taskIds) {
+      results.set(taskId, backgroundWorkerFile.id);
+    }
+  }
+
+  return results;
 }

@@ -37,6 +37,7 @@ packages/\*\*/dist
 .vercel
 .cache
 .output
+.trigger
 apps/\*\*/public/build
 
 cypress/screenshots

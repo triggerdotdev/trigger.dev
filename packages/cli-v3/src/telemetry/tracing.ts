@@ -4,24 +4,25 @@ import { Resource, detectResourcesSync, processDetectorSync } from "@opentelemet
 import { NodeTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch";
 import { DiagConsoleLogger, DiagLogLevel, diag, trace } from "@opentelemetry/api";
-import * as packageJson from "../../package.json";
 import {
   SEMRESATTRS_SERVICE_NAME,
   SEMRESATTRS_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { logger } from "../utilities/logger";
+import { logger } from "../utilities/logger.js";
+import { VERSION } from "../version.js";
+import { env } from "std-env";
 
 function initializeTracing(): NodeTracerProvider | undefined {
   if (
     process.argv.includes("--skip-telemetry") ||
-    process.env.TRIGGER_DEV_SKIP_TELEMETRY || // only for backwards compat
-    process.env.TRIGGER_TELEMETRY_DISABLED
+    env.TRIGGER_DEV_SKIP_TELEMETRY || // only for backwards compat
+    env.TRIGGER_TELEMETRY_DISABLED
   ) {
     logger.debug("📉 Telemetry disabled");
     return;
   }
 
-  if (process.env.OTEL_INTERNAL_DIAG_DEBUG) {
+  if (env.OTEL_INTERNAL_DIAG_DEBUG) {
     diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   }
 
@@ -30,7 +31,7 @@ function initializeTracing(): NodeTracerProvider | undefined {
   }).merge(
     new Resource({
       [SEMRESATTRS_SERVICE_NAME]: "trigger.dev cli v3",
-      [SEMRESATTRS_SERVICE_VERSION]: packageJson.version,
+      [SEMRESATTRS_SERVICE_VERSION]: VERSION,
     })
   );
 
@@ -70,5 +71,5 @@ function initializeTracing(): NodeTracerProvider | undefined {
 export const provider = initializeTracing();
 
 export function getTracer() {
-  return trace.getTracer("trigger.dev cli v3", packageJson.version);
+  return trace.getTracer("trigger.dev cli v3", VERSION);
 }

@@ -1,26 +1,21 @@
 import { z } from "zod";
+import { ImportTaskFileErrors, WorkerManifest } from "./build.js";
 import {
   MachinePreset,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
-} from "./common";
+} from "./common.js";
+import { TaskResource } from "./resources.js";
 import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
-  TaskMetadataWithFilePath,
   TaskRunExecutionLazyAttemptPayload,
-  TaskRunExecutionPayload,
   WaitReason,
-} from "./schemas";
-import { TaskResource } from "./resources";
+} from "./schemas.js";
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("EXECUTE_RUNS"),
-    payloads: z.array(TaskRunExecutionPayload),
-  }),
   z.object({
     type: z.literal("CANCEL_ATTEMPT"),
     taskAttemptId: z.string(),
@@ -86,13 +81,13 @@ export const BackgroundWorkerClientMessages = z.discriminatedUnion("type", [
 
 export type BackgroundWorkerClientMessages = z.infer<typeof BackgroundWorkerClientMessages>;
 
-export const BackgroundWorkerProperties = z.object({
+export const ServerBackgroundWorker = z.object({
   id: z.string(),
   version: z.string(),
   contentHash: z.string(),
 });
 
-export type BackgroundWorkerProperties = z.infer<typeof BackgroundWorkerProperties>;
+export type ServerBackgroundWorker = z.infer<typeof ServerBackgroundWorker>;
 
 export const clientWebsocketMessages = {
   READY_FOR_TASKS: z.object({
@@ -108,31 +103,6 @@ export const clientWebsocketMessages = {
     version: z.literal("v1").default("v1"),
     backgroundWorkerId: z.string(),
     data: BackgroundWorkerClientMessages,
-  }),
-};
-
-export const workerToChildMessages = {
-  EXECUTE_TASK_RUN: z.object({
-    version: z.literal("v1").default("v1"),
-    execution: TaskRunExecution,
-    traceContext: z.record(z.unknown()),
-    metadata: BackgroundWorkerProperties,
-  }),
-  TASK_RUN_COMPLETED_NOTIFICATION: z.discriminatedUnion("version", [
-    z.object({
-      version: z.literal("v1"),
-      completion: TaskRunExecutionResult,
-      execution: TaskRunExecution,
-    }),
-    z.object({
-      version: z.literal("v2"),
-      completion: TaskRunExecutionResult,
-    }),
-  ]),
-  CLEANUP: z.object({
-    version: z.literal("v1").default("v1"),
-    flush: z.boolean().default(false),
-    kill: z.boolean().default(true),
   }),
 };
 
@@ -154,58 +124,23 @@ export const TaskMetadataFailedToParseData = z.object({
   }),
 });
 
-export const childToWorkerMessages = {
-  TASK_RUN_COMPLETED: z.object({
+export const indexerToWorkerMessages = {
+  INDEX_COMPLETE: z.object({
     version: z.literal("v1").default("v1"),
-    execution: TaskRunExecution,
-    result: TaskRunExecutionResult,
-  }),
-  TASKS_READY: z.object({
-    version: z.literal("v1").default("v1"),
-    tasks: TaskMetadataWithFilePath.array(),
+    manifest: WorkerManifest,
+    importErrors: ImportTaskFileErrors,
   }),
   TASKS_FAILED_TO_PARSE: TaskMetadataFailedToParseData,
-  TASK_HEARTBEAT: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  TASK_RUN_HEARTBEAT: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  READY_TO_DISPOSE: z.undefined(),
-  WAIT_FOR_DURATION: z.object({
-    version: z.literal("v1").default("v1"),
-    ms: z.number(),
-  }),
-  WAIT_FOR_TASK: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-  }),
-  WAIT_FOR_BATCH: z.object({
-    version: z.literal("v1").default("v1"),
-    id: z.string(),
-    runs: z.string().array(),
-  }),
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };
 
-export const ProdChildToWorkerMessages = {
+export const ExecutorToWorkerMessageCatalog = {
   TASK_RUN_COMPLETED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
       result: TaskRunExecutionResult,
     }),
-  },
-  TASKS_READY: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      tasks: TaskMetadataWithFilePath.array(),
-    }),
-  },
-  TASKS_FAILED_TO_PARSE: {
-    message: TaskMetadataFailedToParseData,
   },
   TASK_HEARTBEAT: {
     message: z.object({
@@ -242,13 +177,13 @@ export const ProdChildToWorkerMessages = {
   },
 };
 
-export const ProdWorkerToChildMessages = {
+export const WorkerToExecutorMessageCatalog = {
   EXECUTE_TASK_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
       traceContext: z.record(z.unknown()),
-      metadata: BackgroundWorkerProperties,
+      metadata: ServerBackgroundWorker,
     }),
   },
   TASK_RUN_COMPLETED_NOTIFICATION: {
@@ -264,18 +199,16 @@ export const ProdWorkerToChildMessages = {
       }),
     ]),
   },
-  CLEANUP: {
-    message: z.object({
-      version: z.literal("v1").default("v1"),
-      flush: z.boolean().default(false),
-      kill: z.boolean().default(true),
-    }),
-    callback: z.void(),
-  },
   WAIT_COMPLETED_NOTIFICATION: {
     message: z.object({
       version: z.literal("v1").default("v1"),
     }),
+  },
+  FLUSH: {
+    message: z.object({
+      timeoutInMs: z.number(),
+    }),
+    callback: z.void(),
   },
 };
 

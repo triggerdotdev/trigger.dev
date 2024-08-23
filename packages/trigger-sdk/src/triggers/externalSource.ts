@@ -12,14 +12,14 @@ import {
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { Logger } from "@trigger.dev/core-backend";
+import { Logger } from "@trigger.dev/core/logger";
 import type { Buffer } from "buffer";
-import { IOWithIntegrations, TriggerIntegration } from "../integrations";
-import { IO } from "../io";
-import { Job } from "../job";
-import { TriggerClient } from "../triggerClient";
-import type { EventSpecification, SchemaParser, Trigger, TriggerContext } from "../types";
-import { slugifyId } from "../utils";
+import { IOWithIntegrations, TriggerIntegration } from "../integrations.js";
+import { IO } from "../io.js";
+import { Job } from "../job.js";
+import { TriggerClient } from "../triggerClient.js";
+import type { EventSpecification, SchemaParser, Trigger, TriggerContext } from "../types.js";
+import { slugifyId } from "../utils.js";
 
 export type HttpSourceEvent = {
   url: string;

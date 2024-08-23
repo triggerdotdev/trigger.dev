@@ -1,6 +1,6 @@
 import { ConnectionAuth, IntegrationMetadata } from "@trigger.dev/core";
-import { IO } from "./io";
-import { Prettify } from "@trigger.dev/core";
+import { IO } from "./io.js";
+
 export type { ConnectionAuth } from "@trigger.dev/core";
 
 export interface TriggerIntegration {

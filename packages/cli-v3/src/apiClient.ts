@@ -17,15 +17,16 @@ import {
   ImportEnvironmentVariablesRequestBody,
   EnvironmentVariableResponseBody,
   TaskRunExecution,
+  FailDeploymentRequestBody,
+  FailDeploymentResponseBody,
+  FinalizeDeploymentRequestBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
 export class CliApiClient {
-  private readonly apiURL: string;
-
   constructor(
-    apiURL: string,
-    private readonly accessToken?: string
+    public readonly apiURL: string,
+    public readonly accessToken?: string
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
   }
@@ -121,13 +122,7 @@ export class CliApiClient {
     });
   }
 
-  async getProjectEnv({
-    projectRef,
-    env,
-  }: {
-    projectRef: string;
-    env: "dev" | "prod" | "staging";
-  }) {
+  async getProjectEnv({ projectRef, env }: { projectRef: string; env: string }) {
     if (!this.accessToken) {
       throw new Error("getProjectDevEnv: No access token");
     }
@@ -163,7 +158,7 @@ export class CliApiClient {
 
   async importEnvVars(
     projectRef: string,
-    slug: "dev" | "prod" | "staging",
+    slug: string,
     params: ImportEnvironmentVariablesRequestBody
   ) {
     if (!this.accessToken) {
@@ -197,6 +192,66 @@ export class CliApiClient {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  async createDeploymentBackgroundWorker(
+    deploymentId: string,
+    body: CreateBackgroundWorkerRequestBody
+  ) {
+    if (!this.accessToken) {
+      throw new Error("createDeploymentBackgroundWorker: No access token");
+    }
+
+    return wrapZodFetch(
+      CreateBackgroundWorkerResponse,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/background-workers`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async failDeployment(id: string, body: FailDeploymentRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("failDeployment: No access token");
+    }
+
+    return wrapZodFetch(
+      FailDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/${id}/fail`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async finalizeDeployment(id: string, body: FinalizeDeploymentRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("finalizeDeployment: No access token");
+    }
+
+    return wrapZodFetch(
+      FailDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/${id}/finalize`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
   }
 
   async startDeploymentIndexing(deploymentId: string, body: StartDeploymentIndexingRequestBody) {
@@ -253,7 +308,7 @@ async function wrapZodFetch<T extends z.ZodTypeAny>(
       retry: {
         minTimeoutInMs: 500,
         maxTimeoutInMs: 5000,
-        maxAttempts: 3,
+        maxAttempts: 5,
         factor: 2,
         randomize: false,
       },

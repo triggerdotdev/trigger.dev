@@ -154,11 +154,7 @@ const radius = "0.5rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./app/**/*.{ts,jsx,tsx}",
-    // include packages if not transpiling
-    "../../packages/**/*.{ts,tsx}",
-  ],
+  content: ["./app/**/*.{ts,jsx,tsx}"],
   theme: {
     container: {
       center: true,

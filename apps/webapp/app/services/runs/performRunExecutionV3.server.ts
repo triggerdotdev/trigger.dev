@@ -15,7 +15,7 @@ import {
   RunSourceContextSchema,
   supportsFeature,
 } from "@trigger.dev/core";
-import { BloomFilter } from "@trigger.dev/core-backend";
+import { BloomFilter } from "@trigger.dev/core/bloom";
 import { ConcurrencyLimitGroup, Job, JobRun, JobVersion } from "@trigger.dev/database";
 import { generateErrorMessage } from "zod-error";
 import { eventRecordToApiJson } from "~/api.server";

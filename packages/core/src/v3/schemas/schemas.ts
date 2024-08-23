@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { RequireKeys } from "../types";
-import { MachineConfig, MachinePreset, TaskRunExecution } from "./common";
+import { RequireKeys } from "../types/index.js";
+import { MachineConfig, MachinePreset, TaskRunExecution } from "./common.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -147,38 +147,42 @@ export const ScheduleMetadata = z.object({
   timezone: z.string(),
 });
 
-export const TaskMetadata = z.object({
+const taskMetadata = {
   id: z.string(),
-  packageVersion: z.string(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
-});
+};
+
+export const TaskMetadata = z.object(taskMetadata);
 
 export type TaskMetadata = z.infer<typeof TaskMetadata>;
 
-export const TaskFileMetadata = z.object({
+export const TaskFile = z.object({
+  entry: z.string(),
+  out: z.string(),
+});
+
+export type TaskFile = z.infer<typeof TaskFile>;
+
+const taskFileMetadata = {
   filePath: z.string(),
   exportName: z.string(),
-});
+  entryPoint: z.string(),
+};
+
+export const TaskFileMetadata = z.object(taskFileMetadata);
 
 export type TaskFileMetadata = z.infer<typeof TaskFileMetadata>;
 
-export const TaskMetadataWithFilePath = z.object({
-  id: z.string(),
-  packageVersion: z.string(),
-  queue: QueueOptions.optional(),
-  retry: RetryOptions.optional(),
-  machine: MachineConfig.optional(),
-  triggerSource: z.string().optional(),
-  schedule: ScheduleMetadata.optional(),
-  filePath: z.string(),
-  exportName: z.string(),
+export const TaskManifest = z.object({
+  ...taskMetadata,
+  ...taskFileMetadata,
 });
 
-export type TaskMetadataWithFilePath = z.infer<typeof TaskMetadataWithFilePath>;
+export type TaskManifest = z.infer<typeof TaskManifest>;
 
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;
