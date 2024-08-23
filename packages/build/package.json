@@ -36,7 +36,7 @@
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "update-version": "tsx ../../scripts/updateVersion.ts"
   },
   "dependencies": {
