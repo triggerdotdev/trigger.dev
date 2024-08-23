@@ -80,6 +80,7 @@ export class ResumeBatchRunService extends BaseService {
           completedAttemptIds: [],
           resumableAttemptId: batchRun.dependentTaskAttempt.id,
           checkpointEventId: batchRun.checkpointEventId,
+          taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
           projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
           environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
           environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
@@ -109,6 +110,10 @@ export class ResumeBatchRunService extends BaseService {
         completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
         resumableAttemptId: batchRun.dependentTaskAttempt.id,
         checkpointEventId: batchRun.checkpointEventId ?? undefined,
+        taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
+        projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
+        environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
+        environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
       });
     }
   }
