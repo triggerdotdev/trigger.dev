@@ -822,6 +822,7 @@ class ProdWorker {
         socket.emit("SET_STATE", {
           version: "v1",
           attemptFriendlyId: this.attemptFriendlyId,
+          attemptNumber: this.attemptNumber ? String(this.attemptNumber) : undefined,
         });
 
         try {
@@ -853,9 +854,21 @@ class ProdWorker {
               return;
             }
 
+            if (!this.attemptNumber) {
+              logger.error("Missing attempt number", { status: this.#status });
+
+              this.#emitUnrecoverableError(
+                "NoAttemptNumber",
+                "Attempt number not set while resuming from paused state"
+              );
+
+              return;
+            }
+
             socket.emit("READY_FOR_RESUME", {
-              version: "v1",
+              version: "v2",
               attemptFriendlyId: this.attemptFriendlyId,
+              attemptNumber: this.attemptNumber,
               type: this.nextResumeAfter,
             });
 
