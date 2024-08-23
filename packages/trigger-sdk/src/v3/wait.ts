@@ -1,5 +1,5 @@
 import { SemanticInternalAttributes, accessoryAttributes, runtime } from "@trigger.dev/core/v3";
-import { tracer } from "./tracer";
+import { tracer } from "./tracer.js";
 
 export type WaitOptions =
   | {

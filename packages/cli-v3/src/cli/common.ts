@@ -2,11 +2,11 @@ import { flattenAttributes } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import { Command } from "commander";
 import { z } from "zod";
-import { getTracer, provider } from "../telemetry/tracing";
+import { getTracer, provider } from "../telemetry/tracing.js";
 import { fromZodError } from "zod-validation-error";
-import { logger } from "../utilities/logger";
+import { logger } from "../utilities/logger.js";
 import { outro } from "@clack/prompts";
-import { chalkError } from "../utilities/cliOutput";
+import { chalkError } from "../utilities/cliOutput.js";
 
 export const CommonCommandOptions = z.object({
   apiUrl: z.string().optional(),
@@ -94,5 +94,15 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
 
       throw e;
     }
+  });
+}
+
+export function installExitHandler() {
+  process.on("SIGINT", () => {
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    process.exit(0);
   });
 }

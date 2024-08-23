@@ -1,6 +1,6 @@
-import { ApiClient } from "../apiClient";
-import { Json } from "../io";
-import { runLocalStorage } from "../runLocalStorage";
+import { ApiClient } from "../apiClient.js";
+import { Json } from "../io.js";
+import { runLocalStorage } from "../runLocalStorage.js";
 
 export class KeyValueStore {
   constructor(

@@ -1,6 +1,5 @@
 import { context, propagation } from "@opentelemetry/api";
 import { z } from "zod";
-import { version } from "../../../package.json";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
@@ -25,8 +24,8 @@ import {
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
   UpdateScheduleOptions,
-} from "../schemas";
-import { taskContext } from "../task-context-api";
+} from "../schemas/index.js";
+import { taskContext } from "../task-context-api.js";
 import {
   ApiRequestOptions,
   CursorPagePromise,
@@ -35,15 +34,16 @@ import {
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
-} from "./core";
-import { ApiError } from "./errors";
+} from "./core.js";
+import { ApiError } from "./errors.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
-} from "./types";
+} from "./types.js";
+import { VERSION } from "../../version.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -503,7 +503,7 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
-      "trigger-version": version,
+      "trigger-version": VERSION,
     };
 
     // Only inject the context if we are inside a task

@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 3.0.0-beta.55
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.55
+
+## 3.0.0-beta.54
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.0-beta.54
+
 ## 3.0.0-beta.53
 
 ### Patch Changes

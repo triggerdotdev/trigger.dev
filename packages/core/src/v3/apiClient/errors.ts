@@ -148,10 +148,38 @@ export class RateLimitError extends ApiError {
       // Add between 0 and 2000ms to the reset time to add jitter
       return Math.max(resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 2000), 0);
     }
+
+    return;
   }
 }
 
 export class InternalServerError extends ApiError {}
+
+export class ApiSchemaValidationError extends ApiError {
+  override readonly status: 200 = 200;
+  readonly rawBody: any;
+
+  constructor({
+    message,
+    cause,
+    status,
+    rawBody,
+    headers,
+  }: {
+    message?: string;
+    cause?: Error | undefined;
+    status: number;
+    rawBody: any;
+    headers: APIHeaders | undefined;
+  }) {
+    super(status, undefined, message || "Validation error.", headers);
+    // in some environments the 'cause' property is already declared
+    // @ts-ignore
+    if (cause) this.cause = cause;
+
+    this.rawBody = rawBody;
+  }
+}
 
 function castToError(err: any): Error {
   if (err instanceof Error) return err;

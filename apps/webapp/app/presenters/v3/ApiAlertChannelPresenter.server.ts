@@ -1,7 +1,7 @@
 import {
-  ProjectAlertChannel,
-  ProjectAlertChannelType,
-  ProjectAlertType,
+  type ProjectAlertChannel,
+  type ProjectAlertChannelType,
+  type ProjectAlertType,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
@@ -12,7 +12,12 @@ import {
 } from "~/models/projectAlert.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 
-export const ApiAlertType = z.enum(["attempt_failure", "deployment_failure", "deployment_success"]);
+export const ApiAlertType = z.enum([
+  "run_failure",
+  "attempt_failure",
+  "deployment_failure",
+  "deployment_success",
+]);
 
 export type ApiAlertType = z.infer<typeof ApiAlertType>;
 
@@ -72,6 +77,8 @@ export class ApiAlertChannelPresenter {
 
   public static alertTypeToApi(alertType: ProjectAlertType): ApiAlertType {
     switch (alertType) {
+      case "TASK_RUN":
+        return "run_failure";
       case "TASK_RUN_ATTEMPT":
         return "attempt_failure";
       case "DEPLOYMENT_FAILURE":
@@ -85,6 +92,8 @@ export class ApiAlertChannelPresenter {
 
   public static alertTypeFromApi(alertType: ApiAlertType): ProjectAlertType {
     switch (alertType) {
+      case "run_failure":
+        return "TASK_RUN";
       case "attempt_failure":
         return "TASK_RUN_ATTEMPT";
       case "deployment_failure":

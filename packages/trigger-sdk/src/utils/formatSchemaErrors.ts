@@ -1,5 +1,5 @@
 import type { SchemaError } from "@trigger.dev/core";
-import { SchemaParserIssue } from "../types";
+import { SchemaParserIssue } from "../types.js";
 
 export function formatSchemaErrors(errors: SchemaParserIssue[]): SchemaError[] {
   return errors.map((error) => {

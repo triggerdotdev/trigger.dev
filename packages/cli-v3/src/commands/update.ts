@@ -1,17 +1,17 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
-import { z } from "zod";
-import { readJSONFile, removeFile, writeJSONFile } from "../utilities/fileSystem.js";
-import { spinner } from "../utilities/windows.js";
-import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { Command } from "commander";
-import { logger } from "../utilities/logger.js";
-import { PackageJson } from "type-fest";
-import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBanner.js";
-import { join, resolve } from "path";
-import { JavascriptProject } from "../utilities/javascriptProject.js";
-import { PackageManager } from "../utilities/getUserPackageManager.js";
-import { getVersion } from "../utilities/getVersion.js";
+import { detectPackageManager, installDependencies } from "nypm";
+import { resolve } from "path";
+import { PackageJson, readPackageJSON, resolvePackageJSON } from "pkg-types";
+import { z } from "zod";
+import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
+import { removeFile, writeJSONFile } from "../utilities/fileSystem.js";
+import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
+import { spinner } from "../utilities/windows.js";
+import { VERSION } from "../version.js";
+import { hasTTY } from "std-env";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -66,7 +66,7 @@ export async function updateTriggerPackages(
     return false;
   }
 
-  const cliVersion = getVersion();
+  const cliVersion = VERSION;
   const newCliVersion = await updateCheck();
 
   if (newCliVersion) {
@@ -88,10 +88,12 @@ export async function updateTriggerPackages(
     mismatches: Dependency[];
     isDowngrade: boolean;
   } {
+    logger.debug("Checking for version mismatches", { deps, targetVersion });
+
     const mismatches: Dependency[] = [];
 
     for (const dep of deps) {
-      if (dep.version === targetVersion) {
+      if (dep.version === targetVersion || dep.version.startsWith("https://pkg.pr.new")) {
         continue;
       }
 
@@ -126,6 +128,8 @@ export async function updateTriggerPackages(
 
   const { mismatches, isDowngrade } = getVersionMismatches(triggerDependencies, cliVersion);
 
+  logger.debug("Version mismatches", { mismatches, isDowngrade });
+
   if (mismatches.length === 0) {
     if (!embedded) {
       outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
@@ -143,7 +147,7 @@ export async function updateTriggerPackages(
     );
   }
 
-  if (!process.stdout.isTTY) {
+  if (!hasTTY) {
     // Running in CI with version mismatch detected
     outro("Deploy failed");
 
@@ -233,16 +237,12 @@ export async function updateTriggerPackages(
 
   installSpinner.message("Installing new package versions");
 
-  const jsProject = new JavascriptProject(projectPath);
-
-  let packageManager: PackageManager | undefined;
+  const packageManager = await detectPackageManager(projectPath);
 
   try {
-    packageManager = await jsProject.getPackageManager();
-
     installSpinner.message(`Installing new package versions with ${packageManager}`);
 
-    await jsProject.install();
+    await installDependencies({ cwd: projectPath });
   } catch (error) {
     installSpinner.stop(
       `Failed to install new package versions${packageManager ? ` with ${packageManager}` : ""}`
@@ -351,9 +351,8 @@ async function updateConfirmation(depsToUpdate: Dependency[], targetVersion: str
 }
 
 export async function getPackageJson(absoluteProjectPath: string) {
-  const packageJsonPath = join(absoluteProjectPath, "package.json");
-
-  const readonlyPackageJson = Object.freeze((await readJSONFile(packageJsonPath)) as PackageJson);
+  const packageJsonPath = await resolvePackageJSON(absoluteProjectPath);
+  const readonlyPackageJson = await readPackageJSON(packageJsonPath);
 
   const packageJson = structuredClone(readonlyPackageJson);
 

@@ -49,6 +49,11 @@ import { DeliverWebhookRequestService } from "./sources/deliverWebhookRequest.se
 import { PerformTaskOperationService } from "./tasks/performTaskOperation.server";
 import { ProcessCallbackTimeoutService } from "./tasks/processCallbackTimeout.server";
 import { ResumeTaskService } from "./tasks/resumeTask.server";
+import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
+import {
+  CancelDevSessionRunsService,
+  CancelDevSessionRunsServiceOptions,
+} from "~/v3/services/cancelDevSessionRuns.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -131,7 +136,6 @@ const workerCatalog = {
   }),
   "v3.resumeBatchRun": z.object({
     batchRunId: z.string(),
-    sourceTaskAttemptId: z.string(),
   }),
   "v3.resumeTaskDependency": z.object({
     dependencyId: z.string(),
@@ -147,6 +151,9 @@ const workerCatalog = {
   }),
   "v3.triggerScheduledTask": z.object({
     instanceId: z.string(),
+  }),
+  "v3.performTaskRunAlerts": z.object({
+    runId: z.string(),
   }),
   "v3.performTaskAttemptAlerts": z.object({
     attemptId: z.string(),
@@ -188,6 +195,7 @@ const workerCatalog = {
   "v3.cancelTaskAttemptDependencies": z.object({
     attemptId: z.string(),
   }),
+  "v3.cancelDevSessionRuns": CancelDevSessionRunsServiceOptions,
 };
 
 const executionWorkerCatalog = {
@@ -550,7 +558,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new ResumeBatchRunService();
 
-          return await service.call(payload.batchRunId, payload.sourceTaskAttemptId);
+          return await service.call(payload.batchRunId);
         },
       },
       "v3.resumeTaskDependency": {
@@ -587,6 +595,14 @@ function getWorkerQueue() {
           const service = new TriggerScheduledTaskService();
 
           return await service.call(payload.instanceId, job.attempts === job.max_attempts);
+        },
+      },
+      "v3.performTaskRunAlerts": {
+        priority: 0,
+        maxAttempts: 3,
+        handler: async (payload, job) => {
+          const service = new PerformTaskRunAlertsService();
+          return await service.call(payload.runId);
         },
       },
       "v3.performTaskAttemptAlerts": {
@@ -697,6 +713,15 @@ function getWorkerQueue() {
           const service = new CancelTaskAttemptDependenciesService();
 
           return await service.call(payload.attemptId);
+        },
+      },
+      "v3.cancelDevSessionRuns": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new CancelDevSessionRunsService();
+
+          return await service.call(payload);
         },
       },
     },

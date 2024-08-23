@@ -74,6 +74,7 @@ export default function AdminDashboardRoute() {
               <TableHeaderCell>id</TableHeaderCell>
               <TableHeaderCell>v2?</TableHeaderCell>
               <TableHeaderCell>v3?</TableHeaderCell>
+              <TableHeaderCell>Deleted?</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHeader>
@@ -102,6 +103,7 @@ export default function AdminDashboardRoute() {
                     <TableCell>{org.id}</TableCell>
                     <TableCell>{org.v2Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
+                    <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell isSticky={true}> </TableCell>
                   </TableRow>
                 );

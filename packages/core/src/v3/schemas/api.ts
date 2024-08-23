@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { BackgroundWorkerMetadata, ImageDetailsMetadata } from "./resources";
-import { QueueOptions } from "./schemas";
-import { SerializedError } from "../errors";
+import { BackgroundWorkerMetadata } from "./resources.js";
+import { QueueOptions } from "./schemas.js";
+import { SerializedError } from "./common.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -35,6 +35,7 @@ export const GetProjectEnvResponse = z.object({
   apiKey: z.string(),
   name: z.string(),
   apiUrl: z.string(),
+  projectId: z.string(),
 });
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
@@ -153,6 +154,13 @@ export type StartDeploymentIndexingResponseBody = z.infer<
   typeof StartDeploymentIndexingResponseBody
 >;
 
+export const FinalizeDeploymentRequestBody = z.object({
+  imageReference: z.string(),
+  selfHosted: z.boolean().optional(),
+});
+
+export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
+
 export const ExternalBuildData = z.object({
   buildId: z.string(),
   buildToken: z.string(),
@@ -187,6 +195,20 @@ export const DeploymentErrorData = z.object({
   stderr: z.string().optional(),
 });
 
+export type DeploymentErrorData = z.infer<typeof DeploymentErrorData>;
+
+export const FailDeploymentRequestBody = z.object({
+  error: DeploymentErrorData,
+});
+
+export type FailDeploymentRequestBody = z.infer<typeof FailDeploymentRequestBody>;
+
+export const FailDeploymentResponseBody = z.object({
+  id: z.string(),
+});
+
+export type FailDeploymentResponseBody = z.infer<typeof FailDeploymentResponseBody>;
+
 export const GetDeploymentResponseBody = z.object({
   id: z.string(),
   status: z.enum([
@@ -201,8 +223,8 @@ export const GetDeploymentResponseBody = z.object({
   contentHash: z.string(),
   shortCode: z.string(),
   version: z.string(),
-  imageReference: z.string().optional(),
-  errorData: DeploymentErrorData.optional().nullable(),
+  imageReference: z.string().nullish(),
+  errorData: DeploymentErrorData.nullish(),
   worker: z
     .object({
       id: z.string(),

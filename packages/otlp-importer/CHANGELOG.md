@@ -1,5 +1,9 @@
 # @trigger.dev/otlp-importer
 
+## 3.0.0-beta.55
+
+## 3.0.0-beta.54
+
 ## 3.0.0-beta.53
 
 ## 3.0.0-beta.52

@@ -44,12 +44,12 @@ import {
   WebhookMetadata,
   WebhookSourceRequestHeadersSchema,
 } from "@trigger.dev/core";
-import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import EventEmitter from "node:events";
 import { env } from "node:process";
-import * as packageJson from "../package.json";
-import { ApiClient } from "./apiClient";
-import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit";
+import { version } from "../package.json";
+import { ApiClient } from "./apiClient.js";
+import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit.js";
 import {
   AutoYieldExecutionError,
   AutoYieldRateLimitError,
@@ -61,19 +61,19 @@ import {
   ResumeWithTaskError,
   RetryWithTaskError,
   YieldExecutionError,
-} from "./errors";
-import { EndpointOptions, HttpEndpoint, httpEndpoint } from "./httpEndpoint";
-import { TriggerIntegration } from "./integrations";
-import { IO, IOStats } from "./io";
-import { createIOWithIntegrations } from "./ioWithIntegrations";
-import { Job, JobOptions } from "./job";
-import { runLocalStorage } from "./runLocalStorage";
-import { KeyValueStore } from "./store/keyValueStore";
-import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic";
-import { EventTrigger } from "./triggers/eventTrigger";
-import { ExternalSource } from "./triggers/externalSource";
-import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled";
-import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook";
+} from "./errors.js";
+import { EndpointOptions, HttpEndpoint, httpEndpoint } from "./httpEndpoint.js";
+import { TriggerIntegration } from "./integrations.js";
+import { IO, IOStats } from "./io.js";
+import { createIOWithIntegrations } from "./ioWithIntegrations.js";
+import { Job, JobOptions } from "./job.js";
+import { runLocalStorage } from "./runLocalStorage.js";
+import { KeyValueStore } from "./store/keyValueStore.js";
+import { DynamicTrigger, DynamicTriggerOptions } from "./triggers/dynamic.js";
+import { EventTrigger } from "./triggers/eventTrigger.js";
+import { ExternalSource } from "./triggers/externalSource.js";
+import { DynamicIntervalOptions, DynamicSchedule } from "./triggers/scheduled.js";
+import { WebhookDeliveryContext, WebhookSource } from "./triggers/webhook.js";
 import {
   type EventSpecification,
   type NotificationsEventEmitter,
@@ -81,8 +81,8 @@ import {
   type TriggerContext,
   type TriggerPreprocessContext,
   type VerifyResult,
-} from "./types";
-import { formatSchemaErrors } from "./utils/formatSchemaErrors";
+} from "./types.js";
+import { formatSchemaErrors } from "./utils/formatSchemaErrors.js";
 
 const parseRequestPayload = (rawPayload: any) => {
   const result = RequestWithRawBodySchema.safeParse(rawPayload);
@@ -1610,7 +1610,7 @@ export class TriggerClient {
         const integration = integrations[key];
         const auth = (connections ?? {})[key];
 
-        const result = await this.#resolveConnection(ctx, integration, auth);
+        const result = await this.#resolveConnection(ctx, integration!, auth);
 
         if (result.ok) {
           return {
@@ -1650,7 +1650,7 @@ export class TriggerClient {
 
             const integration = integrations[result.key];
 
-            acc[result.key] = { id: integration.id, error: result.error };
+            acc[result.key] = { id: integration!.id, error: result.error };
 
             return acc;
           },
@@ -1766,7 +1766,7 @@ export class TriggerClient {
       (acc: Record<string, IntegrationConfig>, key) => {
         const integration = job.options.integrations![key];
 
-        acc[key] = this.#buildJobIntegration(integration);
+        acc[key] = this.#buildJobIntegration(integration!);
 
         return acc;
       },
@@ -1795,7 +1795,7 @@ export class TriggerClient {
   #standardResponseHeaders(start: number): Record<string, string> {
     return {
       "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
-      "Trigger-SDK-Version": packageJson.version,
+      "Trigger-SDK-Version": version,
       "X-Trigger-Request-Timing": `dur=${performance.now() - start / 1000.0}`,
     };
   }
@@ -1869,8 +1869,10 @@ function deepMergeOptions(obj1: Options, obj2: Options): Options {
   for (const key in obj2) {
     if (obj2.hasOwnProperty(key)) {
       if (key in mergedOptions) {
+        // @ts-expect-error
         mergedOptions[key] = [...mergedOptions[key], ...obj2[key]];
       } else {
+        // @ts-expect-error
         mergedOptions[key] = obj2[key];
       }
     }

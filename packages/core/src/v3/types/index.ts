@@ -1,8 +1,7 @@
-import { RetryOptions, TaskMetadata, TaskMetadataWithFilePath, TaskRunContext } from "../schemas";
-import { Prettify } from "./utils";
+import { RetryOptions, TaskMetadata, TaskManifest, TaskRunContext } from "../schemas/index.js";
+import { Prettify } from "./utils.js";
 
-export * from "./utils";
-export * from "./config";
+export * from "./utils.js";
 
 export type InitOutput = Record<string, any> | void | undefined;
 
@@ -79,7 +78,7 @@ export type ResolveEnvironmentVariablesResult =
 
 export type ResolveEnvironmentVariablesParams = {
   projectRef: string;
-  environment: "dev" | "staging" | "prod";
+  environment: string;
   env: Record<string, string>;
 };
 

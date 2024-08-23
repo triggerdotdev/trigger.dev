@@ -14,8 +14,6 @@ import { Job } from "@trigger.dev/database";
 import { BasePresenter } from "./v3/basePresenter.server";
 
 export class JobPresenter extends BasePresenter {
-  
-
   public async call({
     userId,
     jobSlug,
@@ -94,15 +92,6 @@ export class JobPresenter extends BasePresenter {
         project: {
           select: {
             slug: true,
-          },
-        },
-        _count: {
-          select: {
-            runs: {
-              where: {
-                isTest: false,
-              },
-            },
           },
         },
       },
@@ -196,9 +185,6 @@ export class JobPresenter extends BasePresenter {
 
     const projectRootPath = projectPath({ slug: organizationSlug }, { slug: projectSlug });
 
-    //we exclude test runs from this count
-    const hasRealRuns = job._count.runs > 0;
-
     return {
       id: job.id,
       slug: job.slug,
@@ -214,29 +200,11 @@ export class JobPresenter extends BasePresenter {
           ? `${projectRootPath}/${alias.version.triggerLink}`
           : undefined,
       },
-      noRunsHelp: hasRealRuns
-        ? undefined
-        : this.#getNoRunsHelp(alias.version.triggerHelp, projectRootPath),
       integrations,
       hasIntegrationsRequiringAction: integrations.some((i) => i.setupStatus === "MISSING_FIELDS"),
       lastRun,
       properties,
       environments,
     };
-  }
-
-  #getNoRunsHelp(data: Prisma.JsonValue, projectPath: string) {
-    const triggerHelp = TriggerHelpSchema.nullish().parse(data);
-    if (!triggerHelp) {
-      return undefined;
-    }
-
-    if (triggerHelp.noRuns) {
-      triggerHelp.noRuns.link = triggerHelp.noRuns.link
-        ? `${projectPath}/${triggerHelp.noRuns.link}`
-        : undefined;
-
-      return triggerHelp.noRuns;
-    }
   }
 }

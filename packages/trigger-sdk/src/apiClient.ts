@@ -39,12 +39,12 @@ import {
   assertExhaustive,
   urlWithSearchParams,
 } from "@trigger.dev/core";
-import { LogLevel, Logger } from "@trigger.dev/core-backend";
+import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import { env } from "node:process";
 
 import { z } from "zod";
-import { KeyValueStoreClient } from "./store/keyValueStoreClient";
-import { AutoYieldRateLimitError } from "./errors";
+import { KeyValueStoreClient } from "./store/keyValueStoreClient.js";
+import { AutoYieldRateLimitError } from "./errors.js";
 
 export type ApiClientOptions = {
   apiKey?: string;

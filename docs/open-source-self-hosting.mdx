@@ -277,3 +277,11 @@ By default, the Trigger.dev webapp sends telemetry data to our servers. This dat
 ```bash
 TRIGGER_TELEMETRY_DISABLED=1
 ```
+
+## Login via the CLI
+
+To avoid being redirected to the Cloud login page when using the CLI, you can specify the URL of your self-hosted instance with the `-a` flag. For example:
+
+```
+npx trigger.dev@beta login -a http://example.com
+```

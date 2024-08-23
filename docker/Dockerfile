@@ -40,8 +40,6 @@ FROM base AS builder
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
-# Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler
 
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .
 COPY --from=dev-deps --chown=node:node /triggerdotdev/ .
@@ -49,6 +47,8 @@ COPY --chown=node:node turbo.json turbo.json
 COPY --chown=node:node docker/scripts ./scripts
 RUN chmod +x ./scripts/wait-for-it.sh
 RUN chmod +x ./scripts/entrypoint.sh
+COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
+COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 

@@ -1,5 +1,4 @@
 ---
-"@trigger.dev/core-apps": patch
 "@trigger.dev/core": patch
 ---
 

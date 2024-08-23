@@ -1,5 +1,5 @@
 import { RedactSchema, StyleSchema } from "@trigger.dev/core";
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, prisma } from "~/db.server";
 import { mergeProperties } from "~/utils/mergeProperties.server";
 import { Redactor } from "~/utils/redactor";
 
@@ -16,7 +16,7 @@ export class TaskDetailsPresenter {
   }
 
   public async call({ id, userId }: DetailsProps) {
-    const task = await this.#prismaClient.task.findFirst({
+    const task = await $replica.task.findFirst({
       select: {
         id: true,
         displayKey: true,

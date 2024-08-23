@@ -28,22 +28,6 @@ export class ProjectPresenter {
         deletedAt: true,
         version: true,
         externalRef: true,
-        _count: {
-          select: {
-            sources: {
-              where: {
-                active: false,
-              },
-            },
-            jobs: {
-              where: {
-                internal: false,
-                deletedAt: null,
-              },
-            },
-            httpEndpoints: true,
-          },
-        },
         environments: {
           select: {
             id: true,
@@ -81,9 +65,6 @@ export class ProjectPresenter {
       updatedAt: project.updatedAt,
       deletedAt: project.deletedAt,
       version: project.version,
-      hasInactiveExternalTriggers: project._count.sources > 0,
-      jobCount: project._count.jobs,
-      httpEndpointCount: project._count.httpEndpoints,
       environments: sortEnvironments(
         project.environments.map((environment) => ({
           ...displayableEnvironment(environment, userId),

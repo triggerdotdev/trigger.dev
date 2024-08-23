@@ -10,8 +10,8 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getTextBody } from "@trigger.dev/core-apps/http";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
 
@@ -568,6 +568,15 @@ class TaskCoordinator {
 
           if (completion.retry.delay < this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
+
+            // Prevents runs that fail fast from never sending a heartbeat
+            this.#sendRunHeartbeat(socket.data.runId);
+
+            return;
+          }
+
+          if (message.version === "v2") {
+            completeWithoutCheckpoint(true);
             return;
           }
 

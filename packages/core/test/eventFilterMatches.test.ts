@@ -1,5 +1,5 @@
-import { EventFilter } from "../src";
-import { eventFilterMatches } from "../src/eventFilterMatches";
+import { type EventFilter } from "../src/index.js";
+import { eventFilterMatches } from "../src/eventFilterMatches.js";
 
 describe("eventFilterMatches", () => {
   it("should return true if the payload is undefined and the filter is empty", () => {
@@ -270,7 +270,7 @@ describe("eventFilterMatches", () => {
       hobbies: [{ $not: "gaming" }],
       age: [{ $not: 39 }],
       isAdmin: [{ $not: true }],
-      name: [{ $not: 'Test' }]
+      name: [{ $not: "Test" }],
     };
 
     expect(eventFilterMatches(payload, filter)).toBe(true);
@@ -294,7 +294,7 @@ describe("eventFilterMatches", () => {
       hobbies: [{ $not: "reading" }],
       age: [{ $not: 30 }],
       isAdmin: [{ $not: false }],
-      name: [{ $not: 'John' }]
+      name: [{ $not: "John" }],
     };
 
     expect(eventFilterMatches(payload, filter)).toBe(false);

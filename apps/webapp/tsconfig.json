@@ -24,8 +24,6 @@
       "@trigger.dev/sdk/*": ["../../packages/trigger-sdk/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/core-backend": ["../../packages/core-backend/src/index"],
-      "@trigger.dev/core-backend/*": ["../../packages/core-backend/src/*"],
       "@trigger.dev/database": ["../../packages/database/src/index"],
       "@trigger.dev/database/*": ["../../packages/database/src/*"],
       "@trigger.dev/yalt": ["../../packages/yalt/src/index"],

@@ -46,6 +46,40 @@ export const waitAminute = task({
   },
 });
 
+export const triggerAndWaitDep = task({
+  id: "trigger-and-wait-dep",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("logs before");
+    await waitAminute.triggerAndWait({ seconds: payload.seconds });
+    logger.log("logs after");
+  },
+});
+
+export const testingErrors = task({
+  id: "testing-errors",
+  run: async ({ numberOfFailures = 10 }: { numberOfFailures?: number }, { ctx }) => {
+    logger.log("logs before");
+
+    if (ctx.attempt.number < numberOfFailures) {
+      throw new Error(`Attempt ${ctx.attempt.number} failed`);
+    }
+
+    logger.log("logs after");
+  },
+});
+
+export const batchTriggerAndWaitDep = task({
+  id: "batch-trigger-and-wait-dep",
+  run: async (payload: { seconds?: number }) => {
+    logger.log("logs before");
+    await waitAminute.batchTriggerAndWait([
+      { payload: { seconds: payload.seconds } },
+      { payload: { seconds: payload.seconds } },
+    ]);
+    logger.log("logs after");
+  },
+});
+
 export const consecutiveDependencies = task({
   id: "consecutive-dependencies",
   run: async (payload: { seconds?: number }) => {

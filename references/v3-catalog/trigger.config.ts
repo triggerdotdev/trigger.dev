@@ -1,27 +1,29 @@
-import type { TriggerConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { AppDataSource } from "@/trigger/orm";
 import { InfisicalClient } from "@infisical/sdk";
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
+import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 
-export { handleError } from "./src/handleError";
+export { handleError } from "./src/handleError.js";
 
-export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
-  projectRef,
-  env,
-  environment,
-}) => {
-  if (env.INFISICAL_CLIENT_ID === undefined || env.INFISICAL_CLIENT_SECRET === undefined) {
+export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
+  if (
+    process.env.INFISICAL_CLIENT_ID === undefined ||
+    process.env.INFISICAL_CLIENT_SECRET === undefined ||
+    process.env.INFISICAL_PROJECT_ID === undefined
+  ) {
     return;
   }
 
   const client = new InfisicalClient({
-    clientId: env.INFISICAL_CLIENT_ID,
-    clientSecret: env.INFISICAL_CLIENT_SECRET,
+    clientId: process.env.INFISICAL_CLIENT_ID,
+    clientSecret: process.env.INFISICAL_CLIENT_SECRET,
   });
 
   const secrets = await client.listSecrets({
-    environment,
-    projectId: env.INFISICAL_PROJECT_ID!,
+    environment: ctx.environment,
+    projectId: process.env.INFISICAL_PROJECT_ID,
   });
 
   return {
@@ -32,34 +34,40 @@ export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
   };
 };
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  runtime: "node",
   project: "yubjwjsfkxnylobaqvqz",
   machine: "small-2x",
+  instrumentations: [new OpenAIInstrumentation()],
+  additionalFiles: ["wrangler/wrangler.toml"],
   retries: {
     enabledInDev: true,
     default: {
-      maxAttempts: 4,
-      minTimeoutInMs: 1000,
-      maxTimeoutInMs: 10000,
+      maxAttempts: 10,
+      minTimeoutInMs: 5_000,
+      maxTimeoutInMs: 30_000,
       factor: 2,
       randomize: true,
     },
   },
   enableConsoleLogging: false,
-  additionalPackages: ["wrangler@3.35.0", "pg@8.11.5"],
-  additionalFiles: ["./wrangler/wrangler.toml"],
-  dependenciesToBundle: [/@sindresorhus/, "escape-string-regexp", /@t3-oss/],
-  instrumentations: [new OpenAIInstrumentation()],
   logLevel: "info",
-  postInstall: "echo '========== config.postInstall'",
   onStart: async (payload, { ctx }) => {
-    if (ctx.organization.id === "clsylhs0v0002dyx75xx4pod1") {
-      console.log("Initializing the app data source");
-
-      await AppDataSource.initialize();
-    }
+    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
   },
-};
+  build: {
+    extensions: [
+      emitDecoratorMetadata(),
+      audioWaveform(),
+      prismaExtension({
+        schema: "prisma/schema/schema.prisma",
+        migrate: true,
+        directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
+      }),
+    ],
+    external: ["@ffmpeg-installer/ffmpeg", "re2"],
+  },
+});
