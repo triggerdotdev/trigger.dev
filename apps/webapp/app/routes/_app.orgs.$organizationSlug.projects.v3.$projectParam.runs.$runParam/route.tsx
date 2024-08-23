@@ -332,6 +332,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             id={resizableSettings.parent.inspector.id}
             default={resizableSettings.parent.inspector.default}
             min={resizableSettings.parent.inspector.min}
+            isStaticAtRest
           >
             <SpanView
               runParam={run.friendlyId}
@@ -424,6 +425,7 @@ function NoLogsView({ run, resizable }: LoaderData) {
           id={resizableSettings.parent.inspector.id}
           default={resizableSettings.parent.inspector.default}
           min={resizableSettings.parent.inspector.min}
+          isStaticAtRest
         >
           <SpanView runParam={run.friendlyId} spanId={run.spanId} />
         </ResizablePanel>
