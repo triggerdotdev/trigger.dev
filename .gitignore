@@ -12,7 +12,6 @@ coverage
 # next.js
 .next/
 out/
-build
 dist
 packages/**/dist
 
@@ -55,3 +54,4 @@ apps/**/public/build
 
 .cosine
 .trigger/
+.tshy*

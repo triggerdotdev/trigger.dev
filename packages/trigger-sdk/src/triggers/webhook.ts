@@ -6,18 +6,18 @@ import {
   TriggerMetadata,
   deepMergeFilters,
 } from "@trigger.dev/core";
-import { IOWithIntegrations, TriggerIntegration } from "../integrations";
-import { IO } from "../io";
-import { Job } from "../job";
-import { TriggerClient } from "../triggerClient";
+import { IOWithIntegrations, TriggerIntegration } from "../integrations.js";
+import { IO } from "../io.js";
+import { Job } from "../job.js";
+import { TriggerClient } from "../triggerClient.js";
 import type {
   EventSpecification,
   SchemaParser,
   Trigger,
   TriggerContext,
   VerifyResult,
-} from "../types";
-import { slugifyId } from "../utils";
+} from "../types.js";
+import { slugifyId } from "../utils.js";
 import { SerializableJson } from "@trigger.dev/core";
 import { Prettify } from "@trigger.dev/core";
 import { createHash } from "node:crypto";

@@ -1,6 +1,6 @@
 import { setInterval } from "node:timers/promises";
-import { UsageManager, UsageMeasurement, UsageSample } from "./types";
-import { UsageClient } from "./usageClient";
+import { UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import { UsageClient } from "./usageClient.js";
 
 export type ProdUsageManagerOptions = {
   heartbeatIntervalMs?: number;

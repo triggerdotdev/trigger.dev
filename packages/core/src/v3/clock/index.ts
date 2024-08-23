@@ -1,8 +1,8 @@
 const API_NAME = "clock";
 
-import { getGlobal, registerGlobal } from "../utils/globals";
-import type { Clock, ClockTime } from "./clock";
-import { SimpleClock } from "./simpleClock";
+import { getGlobal, registerGlobal } from "../utils/globals.js";
+import type { Clock, ClockTime } from "./clock.js";
+import { SimpleClock } from "./simpleClock.js";
 
 const SIMPLE_CLOCK = new SimpleClock();
 

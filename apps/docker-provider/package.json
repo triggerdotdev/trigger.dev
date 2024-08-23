@@ -17,7 +17,6 @@
   "license": "MIT",
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
-    "@trigger.dev/core-apps": "workspace:*",
     "execa": "^8.0.1"
   },
   "devDependencies": {

@@ -1,6 +1,9 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
 import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
+import { hasTTY } from "std-env";
+
+export const isInteractive = hasTTY;
 
 export const green = "#4FFF54";
 export const purple = "#735BF3";
@@ -79,7 +82,7 @@ export function prettyError(header: string, body?: string, footer?: string) {
       .map((line) => `${indent}${line}`)
       .join("\n");
 
-  const prettyBody = withIndents(body);
+  const prettyBody = withIndents(body?.trim());
   const prettyFooter = withIndents(footer);
 
   log.error(

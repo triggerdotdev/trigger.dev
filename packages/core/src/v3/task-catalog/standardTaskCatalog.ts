@@ -1,6 +1,6 @@
-import { TaskFileMetadata, TaskMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
-import { TaskCatalog } from "./catalog";
+import { TaskFileMetadata, TaskMetadata, TaskManifest } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskCatalog } from "./catalog.js";
 
 export class StandardTaskCatalog implements TaskCatalog {
   private _taskMetadata: Map<string, TaskMetadata> = new Map();
@@ -9,6 +9,10 @@ export class StandardTaskCatalog implements TaskCatalog {
 
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
     const { fns, ...metadata } = task;
+
+    if (!task.id) {
+      return;
+    }
 
     this._taskMetadata.set(task.id, metadata);
     this._taskFunctions.set(task.id, fns);
@@ -41,8 +45,8 @@ export class StandardTaskCatalog implements TaskCatalog {
   }
 
   // Return all the tasks, without the functions
-  getAllTaskMetadata(): Array<TaskMetadataWithFilePath> {
-    const result: Array<TaskMetadataWithFilePath> = [];
+  listTaskManifests(): Array<TaskManifest> {
+    const result: Array<TaskManifest> = [];
 
     for (const [id, metadata] of this._taskMetadata) {
       const fileMetadata = this._taskFileMetadata.get(id);
@@ -60,7 +64,7 @@ export class StandardTaskCatalog implements TaskCatalog {
     return result;
   }
 
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+  getTaskManifest(id: string): TaskManifest | undefined {
     const metadata = this._taskMetadata.get(id);
     const fileMetadata = this._taskFileMetadata.get(id);
 

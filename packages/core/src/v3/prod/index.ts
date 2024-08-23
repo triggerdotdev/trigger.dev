@@ -1,1 +1,1 @@
-export { ProdRuntimeManager } from "../runtime/prodRuntimeManager";
+export { ProdRuntimeManager } from "../runtime/prodRuntimeManager.js";

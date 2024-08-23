@@ -1,6 +1,6 @@
 import { logger, retry, runs, task, wait } from "@trigger.dev/sdk/v3";
-import { cache } from "./utils/cache";
-import { interceptor } from "./utils/interceptor";
+import { cache } from "./utils/cache.js";
+import { interceptor } from "./utils/interceptor.js";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 

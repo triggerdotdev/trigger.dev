@@ -2,10 +2,7 @@ import { DiagConsoleLogger, DiagLogLevel, TracerProvider, diag } from "@opentele
 import { logs } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import {
-  registerInstrumentations,
-  type InstrumentationOption,
-} from "@opentelemetry/instrumentation";
+import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
 import {
   DetectorSync,
   IResource,
@@ -27,6 +24,7 @@ import {
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
+import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
   OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT,
@@ -36,11 +34,13 @@ import {
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
   OTEL_SPAN_EVENT_COUNT_LIMIT,
-} from "../limits";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TaskContextLogProcessor, TaskContextSpanProcessor } from "../taskContext/otelProcessors";
-import { getEnvVar } from "../utils/getEnv";
-import { version } from "../../../package.json";
+} from "../limits.js";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import {
+  TaskContextLogProcessor,
+  TaskContextSpanProcessor,
+} from "../taskContext/otelProcessors.js";
+import { getEnvVar } from "../utils/getEnv.js";
 
 class AsyncResourceDetector implements DetectorSync {
   private _promise: Promise<ResourceAttributes>;
@@ -84,7 +84,7 @@ export type TracingSDKConfig = {
   url: string;
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
-  instrumentations?: InstrumentationOption[];
+  instrumentations?: Instrumentation[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
 
@@ -112,7 +112,7 @@ export class TracingSDK {
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
-          [SemanticInternalAttributes.CLI_VERSION]: version,
+          [SemanticInternalAttributes.CLI_VERSION]: VERSION,
         })
       )
       .merge(config.resource ?? new Resource({}))

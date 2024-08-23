@@ -4,12 +4,12 @@ import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3"
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
 import { Command } from "commander";
-import { ExecaError, Options as ExecaOptions, ResultPromise as ExecaResult, execa } from "execa";
-import { applyEdits, modify, findNodeAtLocation, parseTree, getNodeValue } from "jsonc-parser";
+import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { addDependency, detectPackageManager } from "nypm";
 import { z } from "zod";
-import { CliApiClient } from "../apiClient";
+import { CliApiClient } from "../apiClient.js";
 import {
   CommonCommandOptions,
   OutroCommandError,
@@ -20,18 +20,16 @@ import {
   tracer,
   wrapCommandAction,
 } from "../cli/common.js";
-import { readConfig } from "../utilities/configFiles.js";
-import { createFileFromTemplate } from "../utilities/createFileFromTemplate";
-import { createFile, pathExists, readFile } from "../utilities/fileSystem";
-import { PackageManager, getUserPackageManager } from "../utilities/getUserPackageManager";
+import { loadConfig } from "../config.js";
+import { CLOUD_API_URL } from "../consts.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { createFileFromTemplate } from "../utilities/createFileFromTemplate.js";
+import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { logger } from "../utilities/logger";
-import { cliRootPath } from "../utilities/resolveInternalFilePath";
-import { login } from "./login";
-import { spinner } from "../utilities/windows";
-import { CLOUD_API_URL } from "../consts";
-import * as packageJson from "../../package.json";
-import { cliLink, prettyError } from "../utilities/cliOutput";
+import { logger } from "../utilities/logger.js";
+import { cliRootPath } from "../utilities/resolveInternalFilePath.js";
+import { spinner } from "../utilities/windows.js";
+import { login } from "./login.js";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -56,7 +54,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        packageJson.version
+        "latest"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -112,11 +110,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   if (!options.overrideConfig) {
     try {
       // check to see if there is an existing trigger.dev config file in the project directory
-      const result = await readConfig(dir);
+      const result = await loadConfig({ cwd: dir });
 
       outro(
-        result.status === "file"
-          ? `Project already initialized: Found config file at ${result.path}. Pass --override-config to override`
+        result.configFile
+          ? `Project already initialized: Found config file at ${result.configFile}. Pass --override-config to override`
           : "Project already initialized"
       );
 
@@ -432,55 +430,21 @@ async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions)
 
 async function installPackages(dir: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("installPackages", async (span) => {
-    const installSpinner = spinner();
+    const projectDir = resolve(process.cwd(), dir);
 
-    let pkgManager: PackageManager | undefined;
+    const installSpinner = spinner();
+    const packageManager = await detectPackageManager(projectDir);
 
     try {
-      const projectDir = resolve(process.cwd(), dir);
-
-      pkgManager = await getUserPackageManager(projectDir);
-
       span.setAttributes({
         "cli.projectDir": projectDir,
-        "cli.packageManager": pkgManager,
+        "cli.packageManager": packageManager?.name,
         "cli.tag": options.tag,
       });
 
-      const userArgs = options.pkgArgs?.split(",") ?? [];
-      const execaOptions = { cwd: projectDir } satisfies ExecaOptions;
+      installSpinner.start(`Adding @trigger.dev/sdk@${options.tag}`);
 
-      let installProcess: ExecaResult<typeof execaOptions>;
-      let args: string[];
-
-      switch (pkgManager) {
-        case "npm": {
-          // --save-exact: pin version, e.g. 3.0.0-beta.20 instead of ^3.0.0-beta.20
-          args = ["install", "--save-exact", ...userArgs, `@trigger.dev/sdk@${options.tag}`];
-
-          break;
-        }
-        case "pnpm":
-        case "yarn": {
-          // pins version by default
-          args = ["add", ...userArgs, `@trigger.dev/sdk@${options.tag}`];
-
-          break;
-        }
-      }
-
-      installSpinner.start(`Running ${pkgManager} ${args.join(" ")}`);
-
-      installProcess = execa(pkgManager, args, execaOptions);
-
-      const handleProcessOutput = (data: Buffer) => {
-        logger.debug(data.toString());
-      };
-
-      installProcess.stderr?.on("data", handleProcessOutput);
-      installProcess.stdout?.on("data", handleProcessOutput);
-
-      await installProcess;
+      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir });
 
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
 
@@ -496,12 +460,6 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 
       if (!(e instanceof SkipCommandError)) {
         recordSpanException(span, e);
-      }
-
-      if (e instanceof ExecaError) {
-        if (pkgManager) {
-          e.message += ` \n\nNote: You can pass additional args to ${pkgManager} by using --pkg-args. For example: trigger.dev init --pkg-args="--workspace-root"`;
-        }
       }
 
       span.end();

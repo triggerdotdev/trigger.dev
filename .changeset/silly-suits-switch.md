@@ -1,5 +1,4 @@
 ---
-"@trigger.dev/otlp-importer": patch
 "trigger.dev": patch
 ---
 

@@ -1,10 +1,10 @@
-import { Form, useFetcher, useNavigation, useSubmit } from "@remix-run/react";
+import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useRef } from "react";
 import { UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
-import { DialogContent, DialogDescription, DialogHeader } from "~/components/primitives/Dialog";
+import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -27,7 +27,7 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
 
 function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   const fetcher = useTypedFetcher<typeof loader>();
-  const isLoading = fetcher.state !== "idle";
+  const isLoading = fetcher.state === "loading";
 
   useEffect(() => {
     fetcher.load(`/resources/taskruns/${runFriendlyId}/replay`);

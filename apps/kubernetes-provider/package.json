@@ -18,7 +18,6 @@
   "dependencies": {
     "@kubernetes/client-node": "^0.20.0",
     "@trigger.dev/core": "workspace:*",
-    "@trigger.dev/core-apps": "workspace:*",
     "p-queue": "^8.0.1"
   },
   "devDependencies": {

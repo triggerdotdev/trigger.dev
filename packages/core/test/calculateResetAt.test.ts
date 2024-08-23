@@ -1,4 +1,4 @@
-import { calculateResetAt } from "../src";
+import { calculateResetAt } from "../src/retry.js";
 
 describe("calculateResetAt", () => {
   it("Should be able to correctly calculate iso_8601_duration_openai_variant reset values", () => {

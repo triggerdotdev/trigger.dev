@@ -1,6 +1,6 @@
-import { IO } from "./io";
-import { TriggerContext } from "./types";
-import { TypedAsyncLocalStorage } from "./utils/typedAsyncLocalStorage";
+import { IO } from "./io.js";
+import { TriggerContext } from "./types.js";
+import { TypedAsyncLocalStorage } from "./utils/typedAsyncLocalStorage.js";
 
 export type RunStore = {
   io: IO;

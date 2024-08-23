@@ -33,7 +33,7 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Dev CLI",
-      "command": "pnpm exec triggerdev dev --log-level debug",
+      "command": "pnpm exec triggerdev dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },
@@ -41,7 +41,23 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Deploy CLI",
-      "command": "pnpm exec triggerdev deploy",
+      "command": "pnpm exec triggerdev deploy --self-hosted --load-image",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 list-profiles CLI",
+      "command": "pnpm exec triggerdev list-profiles --log-level debug",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 update CLI",
+      "command": "pnpm exec triggerdev update",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },

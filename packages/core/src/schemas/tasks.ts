@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { DisplayPropertySchema, StyleSchema } from "./properties";
-import { DeserializedJsonSchema } from "./json";
+import { DisplayPropertySchema, StyleSchema } from "./properties.js";
+import { DeserializedJsonSchema } from "./json.js";
 
 export const TaskStatusSchema = z.enum([
   "PENDING",
