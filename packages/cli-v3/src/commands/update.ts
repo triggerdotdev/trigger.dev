@@ -93,7 +93,7 @@ export async function updateTriggerPackages(
     const mismatches: Dependency[] = [];
 
     for (const dep of deps) {
-      if (dep.version === targetVersion) {
+      if (dep.version === targetVersion || dep.version.startsWith("https://pkg.pr.new")) {
         continue;
       }
 
