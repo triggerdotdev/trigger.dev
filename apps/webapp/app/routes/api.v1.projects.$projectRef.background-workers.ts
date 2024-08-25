@@ -58,7 +58,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { status: 200 }
     );
   } catch (e) {
-    logger.error("Failed to create background worker", { error: e });
+    logger.error("Failed to create background worker", { error: JSON.stringify(e) });
 
     if (e instanceof ServiceValidationError) {
       return json({ error: e.message }, { status: 400 });
