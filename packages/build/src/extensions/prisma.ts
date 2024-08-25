@@ -9,6 +9,34 @@ export type PrismaExtensionOptions = {
   schema: string;
   migrate?: boolean;
   version?: string;
+  /**
+   * The client generator to use. Set this param to prevent all generators in the prisma schema from being generated.
+   *
+   * @example
+   *
+   * ### Prisma schema
+   *
+   * ```prisma
+   * generator client {
+   *  provider = "prisma-client-js"
+   * }
+   *
+   * generator typegraphql {
+   *  provider = "typegraphql-prisma"
+   *  output = "./generated/type-graphql"
+   * }
+   * ```
+   *
+   * ### PrismaExtension
+   *
+   * ```ts
+   * prismaExtension({
+   *  schema: "./prisma/schema.prisma",
+   *  clientGenerator: "client"
+   * });
+   * ```
+   */
+  clientGenerator?: string;
   directUrlEnvVarName?: string;
 };
 
@@ -86,6 +114,10 @@ export class PrismaExtension implements BuildExtension {
 
     let prismaDir: string | undefined;
 
+    const generatorFlag = this.options.clientGenerator
+      ? `--generator=${this.options.clientGenerator}`
+      : "";
+
     if (usingSchemaFolder) {
       const schemaDir = dirname(this._resolvedSchemaPath);
 
@@ -116,7 +148,9 @@ export class PrismaExtension implements BuildExtension {
       }
 
       commands.push(
-        `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js generate` // Don't add the --schema flag or this will fail
+        `${binaryForRuntime(
+          manifest.runtime
+        )} node_modules/prisma/build/index.js generate ${generatorFlag}` // Don't add the --schema flag or this will fail
       );
     } else {
       prismaDir = dirname(this._resolvedSchemaPath);
@@ -135,7 +169,7 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma`
+        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma ${generatorFlag}`
       );
     }
 
