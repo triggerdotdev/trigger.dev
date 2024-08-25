@@ -986,8 +986,15 @@ export class MarQS {
   }
 
   async #callEnqueueMessage(message: MessagePayload) {
+    const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
+
     logger.debug("Calling enqueueMessage", {
       messagePayload: message,
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
       service: this.name,
     });
 
@@ -995,6 +1002,9 @@ export class MarQS {
       message.queue,
       message.parentQueue,
       this.keys.messageKey(message.messageId),
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
       message.queue,
       message.messageId,
       JSON.stringify(message),
@@ -1268,11 +1278,14 @@ export class MarQS {
 
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 3,
+      numberOfKeys: 6,
       lua: `
 local queue = KEYS[1]
 local parentQueue = KEYS[2]
 local messageKey = KEYS[3]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local orgCurrentConcurrencyKey = KEYS[6]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -1292,6 +1305,11 @@ if #earliestMessage == 0 then
 else
     redis.call('ZADD', parentQueue, earliestMessage[2], queueName)
 end
+
+-- Update the concurrency keys
+redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', orgCurrentConcurrencyKey, messageId)
       `,
     });
 
@@ -1621,6 +1639,9 @@ declare module "ioredis" {
       queue: string,
       parentQueue: string,
       messageKey: string,
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      orgConcurrencyKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
