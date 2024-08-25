@@ -107,6 +107,7 @@ export class TriggerTaskService extends BaseService {
                 select: {
                   id: true,
                   status: true,
+                  taskIdentifier: true,
                 },
               },
             },
@@ -143,6 +144,7 @@ export class TriggerTaskService extends BaseService {
                     select: {
                       id: true,
                       status: true,
+                      taskIdentifier: true,
                     },
                   },
                 },
@@ -390,6 +392,20 @@ export class TriggerTaskService extends BaseService {
             },
             this._prisma
           );
+
+          //release the concurrency for the env and org, if part of a (batch)triggerAndWait
+          if (dependentAttempt) {
+            const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
+          }
+          if (dependentBatchRun?.dependentTaskAttempt) {
+            const isSameTask =
+              dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(
+              dependentBatchRun.dependentTaskAttempt.taskRun.id,
+              isSameTask
+            );
+          }
 
           if (!run) {
             return;

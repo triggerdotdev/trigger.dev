@@ -542,6 +542,60 @@ export class MarQS {
     );
   }
 
+  public async releaseConcurrency(messageId: string, releaseForRun: boolean = false) {
+    return this.#trace(
+      "releaseConcurrency",
+      async (span) => {
+        span.setAttributes({
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        });
+
+        const message = await this.readMessage(messageId);
+
+        if (!message) {
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+        const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+        const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
+
+        logger.debug("Calling releaseConcurrency", {
+          messageId,
+          queue: message.queue,
+          concurrencyKey,
+          envConcurrencyKey,
+          orgConcurrencyKey,
+          service: this.name,
+          releaseForRun,
+        });
+
+        return this.redis.releaseConcurrency(
+          //don't release the for the run, it breaks concurrencyLimits
+          releaseForRun ? concurrencyKey : "",
+          envConcurrencyKey,
+          orgConcurrencyKey,
+          message.messageId
+        );
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "releaseConcurrency",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
   async #trace<T>(
     name: string,
     fn: (span: Span) => Promise<T>,
@@ -1488,6 +1542,24 @@ end
 `,
     });
 
+    this.redis.defineCommand("releaseConcurrency", {
+      numberOfKeys: 3,
+      lua: `
+local concurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local orgCurrentConcurrencyKey = KEYS[3]
+
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+if concurrencyKey ~= "" then
+  redis.call('SREM', concurrencyKey, messageId)
+end
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', orgCurrentConcurrencyKey, messageId)
+`,
+    });
+
     this.redis.defineCommand("heartbeatMessage", {
       numberOfKeys: 1,
       lua: `
@@ -1696,6 +1768,14 @@ declare module "ioredis" {
       messageId: string,
       currentTime: string,
       messageScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    releaseConcurrency(
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      orgConcurrencyKey: string,
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
