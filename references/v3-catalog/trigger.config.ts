@@ -68,6 +68,7 @@ export default defineConfig({
         schema: "prisma/schema/schema.prisma",
         migrate: true,
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
+        clientGenerator: "client",
       }),
       esbuildPlugin(
         sentryEsbuildPlugin({

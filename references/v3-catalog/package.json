@@ -13,7 +13,8 @@
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
-    "postinstall": "prisma generate --no-hints"
+    "generate": "prisma generate",
+    "postinstall": "pnpm run generate"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
@@ -32,6 +33,7 @@
     "dotenv": "^16.4.5",
     "email-reply-parser": "^1.8.0",
     "execa": "^8.0.1",
+    "kysely": "^0.27.4",
     "msw": "^2.2.1",
     "openai": "^4.47.0",
     "pg": "^8.11.5",
@@ -67,6 +69,7 @@
     "@types/react": "^18.3.1",
     "esbuild": "^0.19.11",
     "prisma": "5.18.0",
+    "prisma-kysely": "^1.8.0",
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",

@@ -229,6 +229,49 @@ export default defineConfig({
 });
 ```
 
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated:
+
+<CodeGroup>
+
+```prisma schema.prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// We only want to generate the prisma-client-js generator
+generator client {
+  provider        = "prisma-client-js"
+}
+
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../../src/kysely"
+  enumFileName = "enums.ts"
+  fileName     = "types.ts"
+}
+```
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        clientGenerator: "client",
+      }),
+    ],
+  },
+});
+```
+
+</CodeGroup>
+
 ### audioWaveform
 
 Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
