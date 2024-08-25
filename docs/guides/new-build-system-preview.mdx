@@ -39,6 +39,8 @@ If you've added the `trigger.dev` CLI to your `devDependencies`, then you should
 
 Once you do that make sure you re-install your dependencies using `npm i` or the equivalent with your preferred package manager.
 
+<Note>If you deploy using GitHub actions, make sure you update the version there too.</Note>
+
 ## Update your `trigger.config.ts`
 
 The new build system does not effect your trigger task files at all, so those can remain unchanged. However, you may need to make changes to your `trigger.config.ts` file.
@@ -229,6 +231,49 @@ export default defineConfig({
 });
 ```
 
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated:
+
+<CodeGroup>
+
+```prisma schema.prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// We only want to generate the prisma-client-js generator
+generator client {
+  provider        = "prisma-client-js"
+}
+
+generator kysely {
+  provider     = "prisma-kysely"
+  output       = "../../src/kysely"
+  enumFileName = "enums.ts"
+  fileName     = "types.ts"
+}
+```
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma",
+        clientGenerator: "client",
+      }),
+    ],
+  },
+});
+```
+
+</CodeGroup>
+
 ### audioWaveform
 
 Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
@@ -243,6 +288,115 @@ export default defineConfig({
     extensions: [audioWaveform()], // uses verson 1.1.0 of audiowaveform by default
   },
 });
+```
+
+### esbuild plugins
+
+You can now add esbuild plugins to customize the build process using the `esbuildPlugin` build extension. The example below shows how to automatically upload sourcemaps to Sentry using their esbuild plugin:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        // optional - only runs during the deploy command, and adds the plugin to the end of the list of plugins
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
+});
+```
+
+## Changes to the `trigger.dev` CLI
+
+### No more typechecking during deploy
+
+We no longer run typechecking during the deploy command. This was causing issues with some projects, and we found that it wasn't necessary to run typechecking during the deploy command. If you want to run typechecking before deploying to Trigger.dev, you can run the `tsc` command before running the `deploy` command.
+
+```sh
+tsc && npx trigger.dev@0.0.0-prerelease-20240823132052 deploy
+```
+
+Or if you are using GitHub actions, you can add an additional step to run the `tsc` command before deploying to Trigger.dev.
+
+```yaml
+- name: Install dependencies
+  run: npm install
+
+- name: Typecheck
+  run: npx tsc
+
+- name: 🚀 Deploy Trigger.dev
+  env:
+    TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+  run: |
+    npx trigger.dev@0.0.0-prerelease-20240823132052 deploy
+```
+
+### deploy --dry-run
+
+You can now inspect the build output of your project without actually deploying it to Trigger.dev by using the `--dry-run` flag:
+
+```sh
+npx trigger.dev@0.0.0-prerelease-20240823132052 deploy --dry-run
+```
+
+This will save the build output and print the path to the build output directory. If you face any issues with deploying, please include the build output in your issue report.
+
+### --env-file
+
+You can now pass the path to your local `.env` file using the `--env-file` flag during `dev` and `deploy` commands:
+
+```sh
+npx trigger.dev@0.0.0-prerelease-20240823132052 dev --env-file ../../.env
+npx trigger.dev@0.0.0-prerelease-20240823132052 deploy --env-file ../../.env
+```
+
+The `.env` file works slightly differently in `dev` vs `deploy`:
+
+- In `dev`, the `.env` file is loaded into the CLI's `process.env` and also into the environment variables of the Trigger.dev environment.
+- In `deploy`, the `.env` file is loaded into the CLI's `process.env` but not into the environment variables of the Trigger.dev environment. If you want to sync the environment variables from the `.env` file to the Trigger.dev environment variables, you can use the `syncEnvVars` build extension.
+
+### dev debugging in VS Code
+
+Debugging your tasks code in `dev` is now supported via VS Code, without having to pass in any additional flags. Create a launch configuration in `.vscode/launch.json`:
+
+```json launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Trigger.dev: Dev",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["trigger.dev@0.0.0-prerelease-20240823132052", "dev"],
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true
+    }
+  ]
+}
+```
+
+Then you can start debugging your tasks code by selecting the `Trigger.dev: Dev` configuration in the debug panel, and set breakpoints in your tasks code.
+
+### TRIGGER_ACCESS_TOKEN in dev
+
+You can now authenticate the `dev` command using the `TRIGGER_ACCESS_TOKEN` environment variable. Previously this was only supported in the `deploy` command.
+
+```sh
+TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-20240823132052 dev
 ```
 
 ## Known issues

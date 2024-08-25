@@ -69,6 +69,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
   noCache: z.boolean().default(false),
+  envFile: z.string().optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -99,6 +100,10 @@ export function configureDeployCommand(program: Command) {
       .option(
         "--skip-sync-env-vars",
         "Skip syncing environment variables when using the syncEnvVars extension."
+      )
+      .option(
+        "--env-file <env file>",
+        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
       )
   )
     .addOption(
@@ -209,7 +214,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   const serverEnvVars = await projectClient.client.getEnvironmentVariables(resolvedConfig.project);
-  loadDotEnvVars(resolvedConfig.workingDir);
+  loadDotEnvVars(resolvedConfig.workingDir, options.envFile);
 
   const destination = getTmpDir(resolvedConfig.workingDir, "build", options.dryRun);
   const externalsExtension = createExternalsBuildExtension("deploy", resolvedConfig);
