@@ -18,13 +18,16 @@ export const checkpointBatchResumer = task({
 /** Test that checkpoints and resuming works if the checkpoint isn't created before the resume */
 export const checkpointResumer = task({
   id: "checkpoint-resume",
+  queue: {
+    concurrencyLimit: 1,
+  },
   run: async ({ count = 1 }: Payload) => {
-    await noop.triggerAndWait();
-    logger.info(`Successfully 1/3 resumed`);
-    await noop.triggerAndWait();
-    logger.info(`Successfully 2/3 resumed`);
-    await noop.triggerAndWait();
-    logger.info(`Successfully 3/3 resumed`);
+    logger.info(`Starting ${count} runs`);
+
+    for (let i = 0; i < count; i++) {
+      await noop.triggerAndWait();
+      logger.info(`Successfully ${i + 1}/${count} resumed`);
+    }
   },
 });
 
