@@ -202,17 +202,6 @@ export class TaskExecutor {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
-          ...accessoryAttributes({
-            items: [
-              {
-                text: ctx.task.filePath,
-              },
-              {
-                text: `${ctx.task.exportName}.run()`,
-              },
-            ],
-            style: "codepath",
-          }),
         },
       },
       this._tracer.extractContext(traceContext)

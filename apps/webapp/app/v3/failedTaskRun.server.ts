@@ -1,4 +1,4 @@
-import { TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
+import { sanitizeError, TaskRunFailedExecutionResult } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
@@ -43,6 +43,24 @@ export class FailedTaskRunService extends BaseService {
       status: "SYSTEM_FAILURE",
       completedAt: new Date(),
     });
+
+    // Get the final attempt and add the error to it, if it's not already set
+    const finalAttempt = await this._prisma.taskRunAttempt.findFirst({
+      where: {
+        taskRunId: taskRun.id,
+      },
+      orderBy: { id: "desc" },
+    });
+
+    if (finalAttempt && !finalAttempt.error) {
+      // Haven't set the status because the attempt might still be running
+      await this._prisma.taskRunAttempt.update({
+        where: { id: finalAttempt.id },
+        data: {
+          error: sanitizeError(completion.error),
+        },
+      });
+    }
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRun.spanId, {
