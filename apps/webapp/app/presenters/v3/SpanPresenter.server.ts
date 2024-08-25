@@ -135,20 +135,24 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const finishedAttempt = await this._replica.taskRunAttempt.findFirst({
-      select: {
-        output: true,
-        outputType: true,
-        error: true,
-      },
-      where: {
-        status: { in: FINAL_ATTEMPT_STATUSES },
-        taskRunId: run.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const isFinished = isFinalRunStatus(run.status);
+
+    const finishedAttempt = isFinished
+      ? await this._replica.taskRunAttempt.findFirst({
+          select: {
+            output: true,
+            outputType: true,
+            error: true,
+          },
+          where: {
+            status: { in: FINAL_ATTEMPT_STATUSES },
+            taskRunId: run.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        })
+      : null;
 
     const output =
       finishedAttempt === null
@@ -258,7 +262,7 @@ export class SpanPresenter extends BasePresenter {
       costInCents: run.costInCents,
       totalCostInCents: run.costInCents + run.baseCostInCents,
       usageDurationMs: run.usageDurationMs,
-      isFinished: isFinalRunStatus(run.status),
+      isFinished,
       isRunning: RUNNING_STATUSES.includes(run.status),
       payload,
       payloadType: run.payloadType,
