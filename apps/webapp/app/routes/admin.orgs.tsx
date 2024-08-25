@@ -104,7 +104,15 @@ export default function AdminDashboardRoute() {
                     <TableCell>{org.v2Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
-                    <TableCell isSticky={true}> </TableCell>
+                    <TableCell isSticky={true}>
+                      <LinkButton
+                        to={`/@/orgs/${org.slug}`}
+                        className="mr-2"
+                        variant="tertiary/small"
+                      >
+                        Impersonate
+                      </LinkButton>
+                    </TableCell>
                   </TableRow>
                 );
               })

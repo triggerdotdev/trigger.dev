@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
-import { adminGetUsers } from "~/models/admin.server";
+import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
 import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
@@ -53,12 +53,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const payload = Object.fromEntries(await request.formData());
   const { id } = FormSchema.parse(payload);
 
-  const session = await setImpersonationId(id, request);
-
-  return redirect("/", {
-    headers: { "Set-Cookie": await commitImpersonationSession(session) },
-  });
+  return redirectWithImpersonation(request, id, "/");
 }
+
 export default function AdminDashboardRoute() {
   const user = useUser();
   const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();

@@ -1,4 +1,4 @@
-import { BuildExtension, createExtensionForPlugin } from "@trigger.dev/core/v3/build";
+import { BuildExtension, esbuildPlugin } from "@trigger.dev/core/v3/build";
 import type { Plugin } from "esbuild";
 import { readFile } from "node:fs/promises";
 import { readTSConfig } from "pkg-types";
@@ -13,7 +13,7 @@ export type EmitDecoratorMetadataOptions = {
 };
 
 export function emitDecoratorMetadata(options: EmitDecoratorMetadataOptions = {}): BuildExtension {
-  return createExtensionForPlugin(plugin(options));
+  return esbuildPlugin(plugin(options));
 }
 
 function plugin(options: EmitDecoratorMetadataOptions = {}): Plugin {

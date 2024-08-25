@@ -17,6 +17,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   config: z.string().optional(),
   projectRef: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
+  envFile: z.string().optional(),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -31,6 +32,10 @@ export function configureDevCommand(program: Command) {
       .option(
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
+      )
+      .option(
+        "--env-file <env file>",
+        "Path to the .env file to use for the dev session. Defaults to .env in the project directory."
       )
       .option("--debug-otel", "Enable OpenTelemetry debugging")
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")

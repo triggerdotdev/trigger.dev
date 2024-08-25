@@ -41,14 +41,16 @@ export function additionalPackages(options: AdditionalPackagesOptions): BuildExt
               continue;
             }
 
-            console.log("Resolved module path", { modulePath });
+            context.logger.debug("[additionalPackages] Resolved module path", { modulePath });
 
             const packageJSON = await readPackageJSON(dirname(modulePath));
 
             if (packageJSON.version) {
               dependencies[name] = packageJSON.version;
             } else {
-              console.warn(`Could not resolve version for package ${name}, defaulting to latest`);
+              context.logger.warn(
+                `Could not resolve version for package ${name}, defaulting to latest`
+              );
 
               dependencies[name] = "latest";
             }
