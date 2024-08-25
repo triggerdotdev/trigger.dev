@@ -229,7 +229,7 @@ class DevWorkerRuntime implements WorkerRuntime {
     );
 
     const processEnv = gatherProcessEnv();
-    const dotEnvVars = resolveDotEnvVars();
+    const dotEnvVars = resolveDotEnvVars(undefined, this.options.args.envFile);
     const OTEL_IMPORT_HOOK_INCLUDES = getInstrumentedPackageNames(this.options.config).join(",");
 
     const stripEmptyValues = (obj: Record<string, string | undefined>) => {
