@@ -1,7 +1,7 @@
 ---
-title: "Using Supabase edge functions with Trigger.dev"
+title: "Triggering tasks from Supabase edge functions"
 sidebarTitle: "Supabase"
-description: "This guide will show you how to setup Trigger.dev in your existing Supabase project, trigger an example task from a Supabase edge function, and then view the run."
+description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run."
 icon: "N"
 ---
 
@@ -16,15 +16,13 @@ import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 
-<Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
-
 This guide will show you how to use [Trigger.dev](http://Trigger.dev) with Supabase edge functions.
 
-- _A simple Hello World example_; a task is triggered when the edge function URL is accessed
+- A simple Hello World example; a task is triggered when the edge function URL is accessed
 
 ### Overview
 
-Supabase edge functions allow you to trigger tasks when an event is sent from a third party (e.g. Stripe payments, when a new user signs up etc), or when there are any changes / updates to your Supabase database.
+Supabase edge functions allow you to trigger tasks when an event is sent from a third party (e.g. a new Stripe payment is processed, a new user signs up, etc), or when there are any changes / updates to your Supabase database.
 
 ## Prerequisites
 
@@ -103,17 +101,17 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
 
 <Step title="Create a new edge function using the Supabase CLI">
 
-We will call this example `edge-function-simple`.
+We will call this example `hello-world`.
 
-`supabase functions new edge-function-simple`
+`supabase functions new hello-world`
 
 </Step>
 
 <Step title="Update the edge function code">
 
-Replace the `edge-function-simple` code with the following code:
+Replace the `hello-world` plceholder code with the following:
 
-```ts
+```ts hello-world/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
 // Import your task from your /trigger folder
@@ -149,228 +147,74 @@ Follow the CLI instructions and you should now see your new edge function deploy
 </Note>
 
 </Step>
+<Step title="Add your Trigger.dev secret key">
+
+Add your Trigger.dev secret key as an environment variable.
+
+First, go to your Trigger.dev project and copy the `DEV` secret key from the API keys page.
+
+![How to find your secret key](/images/api-keys.png)
+
+Then, navigate to your new edge function in the Supabase dashboard and add a new environment variable with the key `TRIGGER_SECRET_KEY` and the value of your Trigger.dev secret key.
+
+![Add environment variable in Supabase - step 1](/images/supabase-keys-1.png)
+![Add environment variable in Supabase - step 2](/images/supabase-keys-2.png)
+
+</Step>
+
+<Step title="Redeploy your edge function">
+
+Redeploy your edge function using the Supabase CLI to update the environment variable:
+
+`supabase functions serve hello-world --no-verify-jwt`
+
+Your new edge function is now ready to trigger your task.
+
+</Step>
+
 </Steps>
 
-## Triggering your task in Next.js
+## Triggering your task
 
-Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions. Alternatively, check out this repo for a [full working example](https://github.com/triggerdotdev/example-projects/tree/main/nextjs/server-actions/my-app) of a Next.js app with a Trigger.dev task triggered using a Server Action.
+<Steps>
 
-<Tabs>
+<Step title="Run Trigger.dev CLI `dev` command">
 
-  <Tab title="App Router">
+<CodeGroup>
 
-  <Steps>
+```bash npm
+npx trigger.dev@beta dev
+```
 
-  <Step title="Create a Route Handler">
+```bash pnpm
+pnpm dlx trigger.dev@beta dev
+```
 
-      Add a Route Handler by creating a `route.ts` file (or `route.js` file) in the `app/api` directory like this: `app/api/hello-world/route.ts`.
+```bash yarn
+yarn dlx trigger.dev@beta dev
+```
 
-  </Step>
+</CodeGroup>
 
-  <Step title="Add your task">
+</Step>
 
-      Add this code to your `route.ts` file which imports your task along with `NextResponse` to handle the API route response:
+<Step title="Trigger a run">
 
-      ```ts app/api/hello-world/route.ts
-      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
-      import type { helloWorldTask } from "@/trigger/example";
-      import { tasks } from "@trigger.dev/sdk/v3";
-      import { NextResponse } from "next/server";
+Check the `hello-world` task is triggered when your edge function URL is accessed. You can find this URL on the dashboard:
 
-      //tasks.trigger also works with the edge runtime
-      //export const runtime = "edge";
+![Edge function URL](/images/supabase-function-url.png)
 
-      export async function GET(request: Request) {
-        const handle = await tasks.trigger<typeof helloWorldTask>(
-          "hello-world",
-          "James"
-        );
+    1. Go to your edge function page, copy the URL, and paste it into your browser. You should see ‘OK’ on the screen.
+    2. Check in the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
 
-        return NextResponse.json(handle);
-      }
-      ```
+    Congratulations, you have run a simple hello world example from a Supabase edge function!
 
-    </Step>
+</Step>
+</Steps>
 
-    <Step title="Trigger your task">
+## Deploying your task
 
-    <TriggerTaskNextjs/>
-
-    </Step>
-
-    </Steps>
-
-    </Tab>
-
-    <Tab title="App Router (Server Actions)">
-
-    <Steps>
-
-    <Step title="Create an `actions.ts` file">
-
-      Create an `actions.ts` file in the `app/api` directory and add this code which imports your `helloWorldTask()` task. Make sure to include `"use server";` at the top of the file.
-
-      ```ts app/api/actions.ts
-        "use server";
-
-        import type { helloWorldTask } from "@/trigger/example";
-        import { tasks } from "@trigger.dev/sdk/v3";
-
-        export async function myTask() {
-          try {
-            const handle = await tasks.trigger<typeof helloWorldTask>(
-              "hello-world",
-              "James"
-            );
-
-            return { handle };
-          } catch (error) {
-            console.error(error);
-            return {
-              error: "something went wrong",
-            };
-          }
-        }
-      ```
-
-    </Step>
-
-    <Step title="Create a button to trigger your task">
-
-      For the purposes of this guide, we'll create a button with an `onClick` event that triggers your task. We'll add this to the `page.tsx` file so we can trigger the task by clicking the button. Make sure to import your task and include `"use client";` at the top of your file.
-
-      ```ts app/page.tsx
-      "use client";
-
-      import { myTask } from "./actions";
-
-      export default function Home() {
-        return (
-          <main className="flex min-h-screen flex-col items-center justify-center p-24">
-            <button
-              onClick={async () => {
-                await myTask();
-              }}
-            >
-              Trigger my task
-            </button>
-          </main>
-        );
-      }
-      ```
-    </Step>
-
-    <Step title="Trigger your task">
-
-    Run your Next.js app:
-
-    <CodeGroup>
-
-    ```bash npm
-    npm run dev
-    ```
-
-    ```bash pnpm
-    pnpm run dev
-    ```
-
-    ```bash yarn
-    yarn dev
-    ```
-
-    </CodeGroup>
-
-    Open your app in a browser, making sure the port number is the same as the one you're running your Next.js app on. For example, if you're running your Next.js app on port 3000, visit:
-
-    ```bash
-    http://localhost:3000
-    ```
-
-    Run the dev server from Step 2. of the [Initial Setup](/guides/frameworks/nextjs#initial-setup) section above if it's not already running:
-
-    <CodeGroup>
-
-    ```bash npm
-    npx trigger.dev@beta dev
-    ```
-
-    ```bash pnpm
-    pnpm dlx trigger.dev@beta dev
-    ```
-
-    ```bash yarn
-    yarn dlx trigger.dev@beta dev
-    ```
-
-    </CodeGroup>
-
-    Then click the button we created in your app to trigger the task. You should see the CLI log the task run with a link to view the logs.
-
-    ![Trigger.dev CLI showing a successful run](/images/trigger-cli-run-success.png)
-
-    Visit the [Trigger.dev dashboard](https://cloud.trigger.dev) to see your run.
-
-    </Step>
-
-    </Steps>
-
-    </Tab>
-
-    <Tab title="Pages Router">
-
-    <Steps>
-
-    <Step title="Create an API route">
-
-      Create an API route in the `pages/api` directory. Then create a `hello-world .ts` (or `hello-world.js`) file for your task and copy this code example:
-
-      ```ts pages/api/hello-world.ts
-      // Next.js API route support: https://nextjs.org/docs/api-routes/introduction
-      import { helloWorldTask } from "@/trigger/example";
-      import { tasks } from "@trigger.dev/sdk/v3";
-      import type { NextApiRequest, NextApiResponse } from "next";
-
-      export default async function handler(
-        req: NextApiRequest,
-        res: NextApiResponse<{ id: string }>
-      ) {
-        const handle = await tasks.trigger<typeof helloWorldTask>(
-        "hello-world",
-        "James"
-        );
-
-        res.status(200).json(handle);
-      }
-      ```
-    </Step>
-
-    <Step title="Trigger your task">
-
-    <TriggerTaskNextjs/>
-
-    </Step>
-
-    </Steps>
-
-    </Tab>
-
-</Tabs>
-
-## Add your environment variables (optional)
-
-If you have any environment variables in your tasks, be sure to add them in the dashboard so deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
-
-In the sidebar select the "Environment Variables" page, then press the "New environment variable"
-button. ![Environment variables page](/images/environment-variables-page.jpg)
-
-You can add values for your local dev environment, staging and prod. ![Environment variables
-page](/images/environment-variables-panel.jpg)
-
-You can also add environment variables in code by following the steps on the [Environment Variables page](/deploy-environment-variables#in-your-code).
-
-## Deploying your task in Next.js
-
-For this guide, we'll manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
+You can manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
 
 <CodeGroup>
 
@@ -387,6 +231,11 @@ yarn dlx trigger.dev@beta deploy
 ```
 
 </CodeGroup>
+
+<Note>
+  Update you `TRIGGER_SECRET_KEY` environment variable in Supabase with a new `PROD` secret key
+  after deploying.
+</Note>
 
 ### Other ways to deploy
 
@@ -405,11 +254,5 @@ We're working on adding an official [Vercel integration](/vercel-integration) wh
 </Tab>
 
 </Tabs>
-
-## Troubleshooting
-
-    <NextjsTroubleshootingMissingApiKey/>
-    <NextjsTroubleshootingButtonSyntax/>
-    <WorkerFailedToStartWhenRunningDevCommand/>
 
 <UsefulNextSteps />
