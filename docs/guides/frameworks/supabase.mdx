@@ -16,13 +16,11 @@ import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 
-This guide will show you how to use [Trigger.dev](http://Trigger.dev) with Supabase edge functions.
-
-- A simple Hello World example; a task is triggered when the edge function URL is accessed
-
 ### Overview
 
 Supabase edge functions allow you to trigger tasks when an event is sent from a third party (e.g. a new Stripe payment is processed, a new user signs up, etc), or when there are any changes / updates to your Supabase database.
+
+In this guide we will set up a simple example; a task is triggered when an edge function URL is accessed.
 
 ## Prerequisites
 
@@ -39,26 +37,9 @@ Supabase edge functions allow you to trigger tasks when an event is sent from a 
 
 The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
 
-Run this command in the root of your project to get started:
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@beta init
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@beta init
-```
-
-```bash yarn
-yarn dlx trigger.dev@beta init
-```
-
-</CodeGroup>
-
 <Note>
-If you are only using Deno, to install Trigger.dev you must add a tsconfig file with these settings to the root:
+If you are using Deno, to install Trigger.dev you must add a `tsconfig.json` file with these settings to the root directory:
+<Accordion title="tsconfig.json example file">
 ```json tsconfig.json
 {
   "compilerOptions": {
@@ -78,7 +59,28 @@ If you are only using Deno, to install Trigger.dev you must add a tsconfig file 
   "exclude": ["node_modules"]
 }
 ```
+</Accordion>
 </Note>
+
+Run this command in the root of your project to get started:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta init
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta init
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta init
+```
+
+</CodeGroup>
+
+
 
 It will do a few things:
 
