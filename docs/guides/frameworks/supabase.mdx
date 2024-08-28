@@ -20,7 +20,7 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 Supabase edge functions allow you to trigger tasks when an event is sent from a third party (e.g. a new Stripe payment is processed, a new user signs up, etc), or when there are any changes / updates to your Supabase database.
 
-In this guide we will set up a simple example; a task is triggered when an edge function URL is accessed.
+In this guide we will set up and deploy a simple edge function example; a Trigger.dev task will be triggered when an edge function URL is accessed.
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
 
 We will call this example function `hello-world`.
 
-```bash
+``` bash
 supabase functions new hello-world
 ```
 
@@ -135,13 +135,12 @@ Deno.serve(async (req) => {
 
 </Step>
 
-<Step title="Deploy your edge function">
+<Step title="Deploy your new edge function">
 
-Deploy your edge function using the Supabase CLI:
 
-`supabase functions serve hello-world --no-verify-jwt`
-
-Follow the CLI instructions and you should now see your new edge function deployment in the Supabase dashboard.
+``` bash
+supabase functions serve hello-world --no-verify-jwt
+```
 
 <Note>
   `--no-verify-jwt` removes the JSON Web Tokens requirement from the authorization header. By
@@ -149,10 +148,13 @@ Follow the CLI instructions and you should now see your new edge function deploy
   [here](https://supabase.com/docs/guides/auth/jwts).
 </Note>
 
+Follow the CLI instructions and you should now see your new edge function deployment in the Supabase dashboard.
+
+
 </Step>
 <Step title="Add your Trigger.dev secret key">
 
-Add your Trigger.dev secret key as an environment variable.
+Now your edge function has been added to your dashboard, you can add your Trigger.dev secret key as an environment variable.
 
 First, go to your Trigger.dev project and copy the `DEV` secret key from the API keys page.
 
@@ -169,19 +171,21 @@ Then, navigate to your new edge function in the Supabase dashboard and add a new
 
 Redeploy your edge function using the Supabase CLI to update the environment variable:
 
-`supabase functions serve hello-world --no-verify-jwt`
+``` bash
+supabase functions serve hello-world --no-verify-jwt
+```
 
-Your new edge function is now ready to trigger your task.
+Your new `hello-world` edge function is now ready to trigger your task.
 
 </Step>
 
 </Steps>
 
-## Triggering your task
+## Triggering your task from your edge function
 
 <Steps>
 
-<Step title="Run Trigger.dev CLI `dev` command">
+<Step title="Run the Trigger.dev CLI `dev` command">
 
 <CodeGroup>
 
@@ -201,16 +205,18 @@ yarn dlx trigger.dev@beta dev
 
 </Step>
 
-<Step title="Trigger a run">
+<Step title="Trigger a dev run">
 
-Check the `hello-world` task is triggered when your edge function URL is accessed. You can find this URL on the dashboard:
+Open the `hello-world` URL, you can find this on the dashboard:
 
 ![Edge function URL](/images/supabase-function-url.png)
 
-    1. Go to your edge function page, copy the URL, and paste it into your browser. You should see ‘OK’ on the screen.
-    2. Check in the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
+The task will be triggered when your edge function URL is accessed. 
 
-    Congratulations, you have run a simple hello world example from a Supabase edge function!
+    1. Go to your `hello-world` edge function page, copy the URL, and paste it into your browser. You should see ‘OK’ on the new screen.
+    2. Check the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
+
+    **Congratulations, you have run a simple Hello World example from a Supabase edge function!**
 
 </Step>
 </Steps>
@@ -236,8 +242,8 @@ yarn dlx trigger.dev@beta deploy
 </CodeGroup>
 
 <Note>
-  Update you `TRIGGER_SECRET_KEY` environment variable in Supabase with a new `PROD` secret key
-  after deploying.
+  Update the `TRIGGER_SECRET_KEY` environment variable in Supabase with a new `PROD` secret key
+  after deploying. This can be found on the API key page in the web app.
 </Note>
 
 ### Other ways to deploy
