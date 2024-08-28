@@ -38,8 +38,8 @@ In this guide we will set up a simple example; a task is triggered when an edge 
 The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
 
 <Note>
-If you are using Deno, to install Trigger.dev you must add a `tsconfig.json` file with these settings to the root directory:
-<Accordion title="tsconfig.json example file">
+If you are using Deno, to install Trigger.dev you must first add a `tsconfig.json` file with these settings to the root directory:
+<Accordion title="tsconfig.json file to add">
 ```json tsconfig.json
 {
   "compilerOptions": {
@@ -81,7 +81,6 @@ yarn dlx trigger.dev@beta init
 </CodeGroup>
 
 
-
 It will do a few things:
 
 1. Log you into the CLI if you're not already logged in.
@@ -103,15 +102,17 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
 
 <Step title="Create a new edge function using the Supabase CLI">
 
-We will call this example `hello-world`.
+We will call this example function `hello-world`.
 
-`supabase functions new hello-world`
+```bash
+supabase functions new hello-world
+```
 
 </Step>
 
 <Step title="Update the edge function code">
 
-Replace the `hello-world` plceholder code with the following:
+Replace the `hello-world` placeholder code with the following:
 
 ```ts hello-world/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -125,10 +126,10 @@ Deno.serve(async (req) => {
 });
 ```
 
-<Note>You can only import the `type` from the task</Note>
+<Note>You can only import the `type` from the task.</Note>
 <Note>
   Tasks in the `trigger` folder use Node, so must stay in there or they will not run, especially if
-  you are using a different runtime like Deno. And do not add `npm:` to imports inside your task
+  you are using a different runtime like Deno. Also do not add `npm:` to imports inside your task
   files, for the same reason.
 </Note>
 
