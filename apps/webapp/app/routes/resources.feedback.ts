@@ -1,7 +1,7 @@
 import { parse } from "@conform-to/zod";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
-import { inspect } from "util";
+import { inspect } from "node:util";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";

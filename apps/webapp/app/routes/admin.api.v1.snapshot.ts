@@ -1,9 +1,9 @@
 import { type DataFunctionArgs } from "@remix-run/node";
-import fs from "fs";
-import os from "os";
-import path from "path";
-import { PassThrough } from "stream";
-import v8 from "v8";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { PassThrough } from "node:stream";
+import v8 from "node:v8";
 import { requireUser } from "~/services/session.server";
 
 // Format date as yyyy-MM-dd HH_mm_ss_SSS

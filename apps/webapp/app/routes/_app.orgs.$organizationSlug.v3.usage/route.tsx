@@ -5,7 +5,7 @@ import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { URL } from "url";
+import { URL } from "node:url";
 import { UsageBar } from "~/components/billing/v3/UsageBar";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {

@@ -7,8 +7,8 @@ if (!filename) {
   process.exit(1);
 }
 
-import fs from "fs/promises";
-import util from "util";
+import fs from "node:fs/promises";
+import util from "node:util";
 
 (async () => {
   try {

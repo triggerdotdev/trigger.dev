@@ -1,7 +1,7 @@
 import { type DataFunctionArgs } from "@remix-run/node";
 import { PerformanceObserver } from "node:perf_hooks";
 import { runInNewContext } from "node:vm";
-import v8 from "v8";
+import v8 from "node:v8";
 import { requireUser } from "~/services/session.server";
 
 async function waitTillGcFinishes() {

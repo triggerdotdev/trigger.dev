@@ -13,7 +13,7 @@ import {
   deepMergeFilters,
 } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
-import type { Buffer } from "buffer";
+import type { Buffer } from "node:buffer";
 import { IOWithIntegrations, TriggerIntegration } from "../integrations.js";
 import { IO } from "../io.js";
 import { Job } from "../job.js";

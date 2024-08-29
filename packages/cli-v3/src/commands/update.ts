@@ -1,7 +1,7 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { PackageJson, readPackageJSON, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";

@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec } from "node:child_process";
 
 // Helper function to execute shell commands
 export const execPromise = (command) =>

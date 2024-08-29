@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { truncateSync } from "fs";
+import { truncateSync } from "node:fs";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";

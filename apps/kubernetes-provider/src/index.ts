@@ -14,7 +14,7 @@ import {
   PreStopCauses,
   EnvironmentType,
 } from "@trigger.dev/core/v3";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";

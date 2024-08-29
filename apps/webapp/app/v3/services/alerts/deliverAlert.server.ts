@@ -8,7 +8,7 @@ import {
 } from "@slack/web-api";
 import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
-import { subtle } from "crypto";
+import { subtle } from "node:crypto";
 import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {

@@ -1,5 +1,5 @@
-import fsSync from "fs";
-import fsModule, { writeFile } from "fs/promises";
+import fsSync from "node:fs";
+import fsModule, { writeFile } from "node:fs/promises";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import pathModule from "node:path";

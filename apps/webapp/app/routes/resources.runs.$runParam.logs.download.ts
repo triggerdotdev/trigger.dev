@@ -8,8 +8,8 @@ import {
   eventRepository,
   getDateFromNanoseconds,
 } from "~/v3/eventRepository.server";
-import { createGzip } from "zlib";
-import { Readable } from "stream";
+import { createGzip } from "node:zlib";
+import { Readable } from "node:stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {

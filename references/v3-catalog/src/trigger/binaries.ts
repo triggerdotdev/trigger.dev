@@ -1,7 +1,7 @@
 import { logger, task } from "@trigger.dev/sdk/v3";
 import { chmod, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { ReadableStream } from "stream/web";
+import { ReadableStream } from "node:stream/web";
 import { basename } from "node:path";
 import YTDlpWrap from "yt-dlp-wrap";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";

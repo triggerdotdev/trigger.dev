@@ -1,4 +1,4 @@
-import { IncomingMessage, ServerResponse } from "http";
+import { IncomingMessage, ServerResponse } from "node:http";
 import Redis, { RedisOptions } from "ioredis";
 import { RequestOptions, request as httpRequest } from "node:https";
 import { z } from "zod";
@@ -9,10 +9,10 @@ import { singleton } from "~/utils/singleton";
 import { jwtDecode } from "jwt-decode";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { mkdtemp } from "fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import { unlinkSync } from "fs";
+import { unlinkSync } from "node:fs";
 
 const TokenResponseBody = z.object({
   token: z.string(),
