@@ -9,7 +9,7 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useParams } from "@remix-run/react";
+import { useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -22,6 +22,7 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { ClientOnly } from "remix-utils/client-only";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -46,6 +47,7 @@ import {
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
 import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
@@ -78,9 +80,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { Spinner } from "~/components/primitives/Spinner";
-import { preloadShape } from "@electric-sql/react";
-import { ClientOnly } from "remix-utils/client-only";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 const resizableSettings = {
   parent: {
@@ -155,6 +155,9 @@ export default function Page() {
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
+
+  const { location, replaceSearchParam } = useReplaceLocation();
+  const selectedSpanId = getSpanId(location);
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
@@ -242,72 +245,65 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ClientOnly fallback={<LoadingTraceView run={run} resizable={resizable} />}>
-          {() => (
-            <>
-              {initialLoad ? (
-                <LoadingTraceView run={run} resizable={resizable} />
-              ) : trace ? (
-                <TraceView run={run} trace={trace} resizable={resizable} />
-              ) : (
-                <NoLogsView run={run} trace={trace} resizable={resizable} />
-              )}
-            </>
-          )}
-        </ClientOnly>
+        <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+          <ResizablePanelGroup
+            autosaveId={resizableSettings.parent.autosaveId}
+            snapshot={resizable.parent}
+            className="h-full max-h-full"
+          >
+            <ResizablePanel
+              id={resizableSettings.parent.main.id}
+              min={resizableSettings.parent.main.min}
+            >
+              <ClientOnly fallback={<></>}>
+                {() =>
+                  initialLoad ? (
+                    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
+                      <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
+                        <Spinner className="size-4" />
+                        <Paragraph variant="small" className="flex items-center gap-2">
+                          Loading logs
+                        </Paragraph>
+                      </div>
+                      <div></div>
+                    </div>
+                  ) : trace ? (
+                    <TraceView
+                      run={run}
+                      trace={trace}
+                      selectedSpanId={selectedSpanId}
+                      replaceSearchParam={replaceSearchParam}
+                    />
+                  ) : (
+                    <NoLogsView run={run} />
+                  )
+                }
+              </ClientOnly>
+            </ResizablePanel>
+            <ResizableHandle id={resizableSettings.parent.handleId} />
+            <ResizablePanel
+              id={resizableSettings.parent.inspector.id}
+              default={resizableSettings.parent.inspector.default}
+              min={resizableSettings.parent.inspector.min}
+              isStaticAtRest
+            >
+              <SpanView runParam={run.friendlyId} spanId={selectedSpanId ?? run.spanId} />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
       </PageBody>
     </>
   );
 }
 
-type TraceData = Pick<LoaderData, "run" | "resizable"> & {
-  trace?: Trace;
+type TraceData = {
+  run: LoaderData["run"];
+  trace: Trace;
+  selectedSpanId: string | undefined;
+  replaceSearchParam: (key: string, value?: string) => void;
 };
 
-function LoadingTraceView({ run, resizable }: TraceData) {
-  return (
-    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-      <ResizablePanelGroup
-        autosaveId={resizableSettings.parent.autosaveId}
-        snapshot={resizable.parent}
-        className="h-full max-h-full"
-      >
-        <ResizablePanel
-          id={resizableSettings.parent.main.id}
-          min={resizableSettings.parent.main.min}
-        >
-          <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-            <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
-              <Spinner className="size-4" />
-              <Paragraph variant="small" className="flex items-center gap-2">
-                Loading logs
-              </Paragraph>
-            </div>
-            <div></div>
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        <ResizablePanel
-          id={resizableSettings.parent.inspector.id}
-          default={resizableSettings.parent.inspector.default}
-          min={resizableSettings.parent.inspector.min}
-          isStaticAtRest
-        >
-          <SpanView runParam={run.friendlyId} spanId={run.spanId} />
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </div>
-  );
-}
-
-function TraceView({ run, trace, resizable }: TraceData) {
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
-
-  if (!trace) {
-    return <></>;
-  }
-
+function TraceView({ run, trace, selectedSpanId, replaceSearchParam }: TraceData) {
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
@@ -315,57 +311,29 @@ function TraceView({ run, trace, resizable }: TraceData) {
   }, 250);
 
   return (
-    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-      <ResizablePanelGroup
-        autosaveId={resizableSettings.parent.autosaveId}
-        snapshot={resizable.parent}
-        className="h-full max-h-full"
-      >
-        <ResizablePanel
-          id={resizableSettings.parent.main.id}
-          min={resizableSettings.parent.main.min}
-        >
-          <TasksTreeView
-            selectedId={selectedSpanId}
-            key={events[0]?.id ?? "-"}
-            events={events}
-            parentRunFriendlyId={parentRunFriendlyId}
-            onSelectedIdChanged={(selectedSpan) => {
-              //instantly close the panel if no span is selected
-              if (!selectedSpan) {
-                replaceSearchParam("span");
-                return;
-              }
+    <TasksTreeView
+      selectedId={selectedSpanId}
+      key={events[0]?.id ?? "-"}
+      events={events}
+      parentRunFriendlyId={parentRunFriendlyId}
+      onSelectedIdChanged={(selectedSpan) => {
+        //instantly close the panel if no span is selected
+        if (!selectedSpan) {
+          replaceSearchParam("span");
+          return;
+        }
 
-              changeToSpan(selectedSpan);
-            }}
-            totalDuration={duration}
-            rootSpanStatus={rootSpanStatus}
-            rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
-            environmentType={run.environment.type}
-          />
-        </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        {selectedSpanId && (
-          <ResizablePanel
-            id={resizableSettings.parent.inspector.id}
-            default={resizableSettings.parent.inspector.default}
-            min={resizableSettings.parent.inspector.min}
-            isStaticAtRest
-          >
-            <SpanView
-              runParam={run.friendlyId}
-              spanId={selectedSpanId}
-              closePanel={() => replaceSearchParam("span")}
-            />
-          </ResizablePanel>
-        )}
-      </ResizablePanelGroup>
-    </div>
+        changeToSpan(selectedSpan);
+      }}
+      totalDuration={duration}
+      rootSpanStatus={rootSpanStatus}
+      rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
+      environmentType={run.environment.type}
+    />
   );
 }
 
-function NoLogsView({ run, resizable }: TraceData) {
+function NoLogsView({ run }: { run: LoaderData["run"] }) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -382,73 +350,46 @@ function NoLogsView({ run, resizable }: TraceData) {
     daysSinceCompleted !== undefined && daysSinceCompleted <= logRetention;
 
   return (
-    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-      <ResizablePanelGroup
-        autosaveId={resizableSettings.parent.autosaveId}
-        snapshot={resizable.parent}
-        className="h-full max-h-full"
-      >
-        <ResizablePanel
-          id={resizableSettings.parent.main.id}
-          min={resizableSettings.parent.main.min}
+    <div className="grid h-full place-items-center">
+      {daysSinceCompleted === undefined ? (
+        <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
+          <Paragraph variant="small">
+            We tidy up older logs to keep things running smoothly.
+          </Paragraph>
+        </InfoPanel>
+      ) : isWithinLogRetention ? (
+        <InfoPanel variant="info" icon={InformationCircleIcon} title="These logs have been deleted">
+          <Paragraph variant="small">
+            Your log retention is {logRetention} days but these logs had already been deleted. From
+            now on only logs from runs that completed {logRetention} days ago will be deleted.
+          </Paragraph>
+        </InfoPanel>
+      ) : daysSinceCompleted <= 30 ? (
+        <InfoPanel
+          variant="upgrade"
+          icon={LockOpenIcon}
+          iconClassName="text-indigo-500"
+          title="Unlock longer log retention"
+          to={v3BillingPath(organization)}
+          buttonLabel="Upgrade"
         >
-          <div className="grid h-full place-items-center">
-            {daysSinceCompleted === undefined ? (
-              <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
-                <Paragraph variant="small">
-                  We tidy up older logs to keep things running smoothly.
-                </Paragraph>
-              </InfoPanel>
-            ) : isWithinLogRetention ? (
-              <InfoPanel
-                variant="info"
-                icon={InformationCircleIcon}
-                title="These logs have been deleted"
-              >
-                <Paragraph variant="small">
-                  Your log retention is {logRetention} days but these logs had already been deleted.
-                  From now on only logs from runs that completed {logRetention} days ago will be
-                  deleted.
-                </Paragraph>
-              </InfoPanel>
-            ) : daysSinceCompleted <= 30 ? (
-              <InfoPanel
-                variant="upgrade"
-                icon={LockOpenIcon}
-                iconClassName="text-indigo-500"
-                title="Unlock longer log retention"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
-              >
-                <Paragraph variant="small">
-                  The logs for this run have been deleted because the run completed{" "}
-                  {daysSinceCompleted} days ago.
-                </Paragraph>
-                <Paragraph variant="small">Upgrade your plan to keep logs for longer.</Paragraph>
-              </InfoPanel>
-            ) : (
-              <InfoPanel
-                variant="info"
-                icon={InformationCircleIcon}
-                title="These logs are more than 30 days old"
-              >
-                <Paragraph variant="small">
-                  We tidy up older logs to keep things running smoothly.
-                </Paragraph>
-              </InfoPanel>
-            )}
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        <ResizablePanel
-          id={resizableSettings.parent.inspector.id}
-          default={resizableSettings.parent.inspector.default}
-          min={resizableSettings.parent.inspector.min}
-          isStaticAtRest
+          <Paragraph variant="small">
+            The logs for this run have been deleted because the run completed {daysSinceCompleted}{" "}
+            days ago.
+          </Paragraph>
+          <Paragraph variant="small">Upgrade your plan to keep logs for longer.</Paragraph>
+        </InfoPanel>
+      ) : (
+        <InfoPanel
+          variant="info"
+          icon={InformationCircleIcon}
+          title="These logs are more than 30 days old"
         >
-          <SpanView runParam={run.friendlyId} spanId={run.spanId} />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <Paragraph variant="small">
+            We tidy up older logs to keep things running smoothly.
+          </Paragraph>
+        </InfoPanel>
+      )}
     </div>
   );
 }
