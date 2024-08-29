@@ -161,8 +161,8 @@ export default function Page() {
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
-  //todo loading state
   const initialLoad = !isUpToDate && !trace;
+  const inspectorSpanId = trace && !initialLoad ? selectedSpanId : run.spanId;
 
   return (
     <>
@@ -255,18 +255,10 @@ export default function Page() {
               id={resizableSettings.parent.main.id}
               min={resizableSettings.parent.main.min}
             >
-              <ClientOnly fallback={<></>}>
+              <ClientOnly fallback={<Loading />}>
                 {() =>
                   initialLoad ? (
-                    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-                      <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
-                        <Spinner className="size-4" />
-                        <Paragraph variant="small" className="flex items-center gap-2">
-                          Loading logs
-                        </Paragraph>
-                      </div>
-                      <div></div>
-                    </div>
+                    <Loading />
                   ) : trace ? (
                     <TraceView
                       run={run}
@@ -281,14 +273,20 @@ export default function Page() {
               </ClientOnly>
             </ResizablePanel>
             <ResizableHandle id={resizableSettings.parent.handleId} />
-            <ResizablePanel
-              id={resizableSettings.parent.inspector.id}
-              default={resizableSettings.parent.inspector.default}
-              min={resizableSettings.parent.inspector.min}
-              isStaticAtRest
-            >
-              <SpanView runParam={run.friendlyId} spanId={selectedSpanId ?? run.spanId} />
-            </ResizablePanel>
+            {inspectorSpanId ? (
+              <ResizablePanel
+                id={resizableSettings.parent.inspector.id}
+                default={resizableSettings.parent.inspector.default}
+                min={resizableSettings.parent.inspector.min}
+                isStaticAtRest
+              >
+                <SpanView
+                  runParam={run.friendlyId}
+                  spanId={inspectorSpanId}
+                  closePanel={trace ? () => replaceSearchParam("span") : undefined}
+                />
+              </ResizablePanel>
+            ) : null}
           </ResizablePanelGroup>
         </div>
       </PageBody>
@@ -1194,5 +1192,19 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
       value={value}
       onChange={(e) => updateValue(e.target.value)}
     />
+  );
+}
+
+export function Loading() {
+  return (
+    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
+      <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
+        <Spinner className="size-4" />
+        <Paragraph variant="small" className="flex items-center gap-2">
+          Loading logs
+        </Paragraph>
+      </div>
+      <div></div>
+    </div>
   );
 }
