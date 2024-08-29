@@ -86,7 +86,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
           <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
-            <ResizablePanel id="test-selector" min="100px" default="30%">
+            <ResizablePanel id="test-selector" min="225px" default="30%">
               <div className="grid h-full max-h-full grid-rows-[5.625rem_1fr] overflow-hidden">
                 <div className="mx-3 flex flex-col gap-1 border-b border-grid-dimmed">
                   <div className="flex h-10 items-center">
@@ -117,8 +117,8 @@ export default function Page() {
                     <Spinner />
                   </div>
                 ) : hasSelectedEnvironment ? (
-                  <div className="grid grid-rows-[2.5rem_1fr] overflow-hidden">
-                    <div className="mx-3 flex items-center border-b border-grid-dimmed">
+                  <div className="grid grid-rows-[2rem_1fr] overflow-hidden">
+                    <div className="mx-3 flex items-end">
                       <Header2>Select a task</Header2>
                     </div>
                     {!rest.tasks?.length ? (
