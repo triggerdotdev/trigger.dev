@@ -203,7 +203,7 @@
     },
     {
       "group": "Frameworks",
-      "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs", "guides/frameworks/remix"]
+      "pages": ["guides/frameworks/nextjs", "guides/frameworks/nodejs", "guides/frameworks/remix", "guides/frameworks/supabase"]
     },
     {
       "group": "Dashboard",
