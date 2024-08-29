@@ -580,6 +580,11 @@ class TaskCoordinator {
             return;
           }
 
+          if (message.version === "v2") {
+            completeWithoutCheckpoint(true);
+            return;
+          }
+
           const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
 
           const willCheckpointAndRestore = canCheckpoint || willSimulate;
