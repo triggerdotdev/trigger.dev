@@ -1,9 +1,20 @@
 import { Attributes } from "@opentelemetry/api";
-import { SpanEvents, TaskEventStyle, unflattenAttributes } from "@trigger.dev/core/v3";
+import {
+  millisecondsToNanoseconds,
+  SpanEvents,
+  TaskEventStyle,
+  unflattenAttributes,
+} from "@trigger.dev/core/v3";
 import { Prisma } from "@trigger.dev/database";
-import type { PreparedEvent, QueriedEvent, SpanSummary } from "~/v3/eventRepository.server";
+import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
+import type {
+  PreparedEvent,
+  QueriedEvent,
+  SpanSummary,
+  TraceSummary,
+} from "~/v3/eventRepository.server";
 
-export function prepareTrace(events: QueriedEvent[]) {
+export function prepareTrace(events: QueriedEvent[]): TraceSummary | undefined {
   let preparedEvents: Array<PreparedEvent> = [];
   let rootSpanId: string | undefined;
   const eventsBySpanId = new Map<string, PreparedEvent>();
@@ -79,6 +90,52 @@ export function prepareTrace(events: QueriedEvent[]) {
   return {
     rootSpan,
     spans,
+  };
+}
+
+export function createTraceTreeFromEvents(traceSummary: TraceSummary, spanId: string) {
+  //this tree starts at the passed in span (hides parent elements if there are any)
+  const tree = createTreeFromFlatItems(traceSummary.spans, spanId);
+
+  //we need the start offset for each item, and the total duration of the entire tree
+  const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
+  let totalDuration = tree?.data.duration ?? 0;
+  const events = tree
+    ? flattenTree(tree).map((n) => {
+        const offset = millisecondsToNanoseconds(n.data.startTime.getTime() - treeRootStartTimeMs);
+        totalDuration = Math.max(totalDuration, offset + n.data.duration);
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            //set partial nodes to null duration
+            duration: n.data.isPartial ? null : n.data.duration,
+            offset,
+            isRoot: n.id === traceSummary.rootSpan.id,
+          },
+        };
+      })
+    : [];
+
+  //total duration should be a minimum of 1ms
+  totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
+
+  let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
+  if (events[0]) {
+    if (events[0].data.isError) {
+      rootSpanStatus = "failed";
+    } else if (!events[0].data.isPartial) {
+      rootSpanStatus = "completed";
+    }
+  }
+
+  return {
+    rootSpanStatus,
+    events: events,
+    parentRunFriendlyId:
+      tree?.id === traceSummary.rootSpan.id ? undefined : traceSummary.rootSpan.runId,
+    duration: totalDuration,
+    rootStartedAt: tree?.data.startTime,
   };
 }
 
