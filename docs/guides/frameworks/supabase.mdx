@@ -2,7 +2,7 @@
 title: "Triggering tasks from Supabase edge functions"
 sidebarTitle: "Supabase"
 description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run."
-icon: "fa-solid fa-bolt"
+icon: {<Icon icon="fa-bolt" iconType="solid" size={20} color="F43F47" />}
 ---
 
 import Prerequisites from "/snippets/framework-prerequisites.mdx";
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
 
 First, go to your Trigger.dev project and copy the `dev` secret key from the API keys page.
 
-![How to find your secret key](/images/api-keys.png)
+![How to find your dev secret key](/images/api-key-dev.png)
 
 Then create an .env file in the functions folder, and add your `TRIGGER_SECRET_KEY`.
 
@@ -223,12 +223,11 @@ Now your edge function has been added to your dashboard, you can add your Trigge
 
 First, go to your Trigger.dev project and copy the `prod` secret key from the API keys page.
 
-![How to find your secret key](/images/api-keys.png)
+![How to find your prod secret key](/images/api-key-prod.png)
 
 Then, navigate to your edge function page in the Supabase dashboard and add a new environment variable with the key `TRIGGER_SECRET_KEY` and the value of your Trigger.dev `prod` secret key.
 
 ![Add environment variable in Supabase - step 1](/images/supabase-keys-1.png)
-![Add environment variable in Supabase - step 2](/images/supabase-keys-2.png)
 
 </Step>
 
