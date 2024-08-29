@@ -1,3 +1,4 @@
+import { useShape } from "@electric-sql/react";
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
@@ -80,8 +81,9 @@ import {
 } from "~/utils/pathBuilder";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-
-type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
+import { Trace, TraceEvent, useTrace } from "~/hooks/useTrace";
+import { trace } from "console";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -100,9 +102,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return json({
     run: result.run,
-    trace: result.trace,
-    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
     resizeSettings,
+    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
   });
 };
 
@@ -114,8 +115,15 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, trace, resizeSettings, maximumLiveReloadingSetting } =
-    useLoaderData<typeof loader>();
+  const { run, resizeSettings, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
+  const appOrigin = useAppOrigin();
+  const { location, replaceSearchParam } = useReplaceLocation();
+
+  const { isUpToDate, trace } = useTrace({
+    origin: appOrigin,
+    traceId: run.traceId,
+    spanId: getSpanId(location) ?? run.spanId,
+  });
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
@@ -223,7 +231,11 @@ export default function Page() {
   );
 }
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: LoaderData) {
+type TraceData = Pick<LoaderData, "run" | "maximumLiveReloadingSetting" | "resizeSettings"> & {
+  trace: Trace | undefined;
+};
+
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: TraceData) {
   const organization = useOrganization();
   const project = useProject();
   const { location, replaceSearchParam } = useReplaceLocation();
@@ -301,7 +313,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
   );
 }
 
-function NoLogsView({ run, resizeSettings }: LoaderData) {
+function NoLogsView({ run, resizeSettings }: TraceData) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 

@@ -231,6 +231,9 @@ importers:
       '@depot/sdk-node':
         specifier: ^0.5.0
         version: 0.5.0
+      '@electric-sql/react':
+        specifier: ^0.3.1
+        version: 0.3.1(react@18.2.0)
       '@headlessui/react':
         specifier: ^1.7.8
         version: 1.7.8(react-dom@18.2.0)(react@18.2.0)
@@ -4122,6 +4125,25 @@ packages:
       '@bufbuild/protobuf': 1.7.2
       '@connectrpc/connect': 0.13.2(@bufbuild/protobuf@1.7.2)
       '@connectrpc/connect-node': 0.13.2(@bufbuild/protobuf@1.7.2)
+    dev: false
+
+  /@electric-sql/client@0.3.2:
+    resolution: {integrity: sha512-DVOtrIfg7xlXpU95F53MnLXLeIn1eYkSRz01vj63NzZZ7bf6vLSHzNKvil0413C3U3769btfQytGNWmsb744WQ==}
+    optionalDependencies:
+      '@rollup/rollup-darwin-arm64': 4.21.1
+    dev: false
+
+  /@electric-sql/react@0.3.1(react@18.2.0):
+    resolution: {integrity: sha512-U+7ssfS+4UuGYXTyqGqXJGN04hrwjI8qKcv5l1br59EX93yfrFVVEfRsCQIe0mTiFTS/im9k+SUBIPrC/g8n2A==}
+    peerDependencies:
+      react: ^18.3.1
+    peerDependenciesMeta:
+      react:
+        optional: true
+    dependencies:
+      '@electric-sql/client': 0.3.2
+      react: 18.2.0
+      use-sync-external-store: 1.2.2(react@18.2.0)
     dev: false
 
   /@emotion/hash@0.9.0:
@@ -11588,6 +11610,14 @@ packages:
     os: [darwin]
     requiresBuild: true
     dev: true
+    optional: true
+
+  /@rollup/rollup-darwin-arm64@4.21.1:
+    resolution: {integrity: sha512-AH/wNWSEEHvs6t4iJ3RANxW5ZCK3fUnmf0gyMxWCesY1AlUj8jY7GC+rQE4wd3gwmZ9XDOpL0kcFnCjtN7FXlA==}
+    cpu: [arm64]
+    os: [darwin]
+    requiresBuild: true
+    dev: false
     optional: true
 
   /@rollup/rollup-darwin-x64@4.13.2:
