@@ -9,7 +9,7 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useLocation, useParams } from "@remix-run/react";
+import { useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -64,7 +64,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { Trace, TraceEvent, useTrace } from "~/hooks/useTrace";
+import { TraceEvent, useTrace } from "~/hooks/useTrace";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -80,7 +80,6 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 
 const resizableSettings = {
   parent: {
@@ -146,12 +145,7 @@ function getSpanId(location: Location<any>): string | undefined {
 
 export default function Page() {
   const { run, resizable } = useTypedLoaderData<typeof loader>();
-  const appOrigin = useAppOrigin();
-  const { isUpToDate, trace } = useTrace({
-    origin: appOrigin,
-    traceId: run.traceId,
-    spanId: run.spanId,
-  });
+
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
@@ -159,16 +153,13 @@ export default function Page() {
   const { location, replaceSearchParam } = useReplaceLocation();
   const selectedSpanId = getSpanId(location);
 
+  const inspectorSpanId = selectedSpanId
+    ? selectedSpanId
+    : run.logsDeletedAt
+    ? run.spanId
+    : undefined;
+
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
-
-  const initialLoad = !isUpToDate && !trace;
-
-  let inspectorSpanId = selectedSpanId;
-  if (!inspectorSpanId) {
-    if (initialLoad || !trace) {
-      inspectorSpanId = run.spanId;
-    }
-  }
 
   return (
     <>
@@ -262,20 +253,13 @@ export default function Page() {
               min={resizableSettings.parent.main.min}
             >
               <ClientOnly fallback={<Loading />}>
-                {() =>
-                  initialLoad ? (
-                    <Loading />
-                  ) : trace ? (
-                    <TraceView
-                      run={run}
-                      trace={trace}
-                      selectedSpanId={selectedSpanId}
-                      replaceSearchParam={replaceSearchParam}
-                    />
-                  ) : (
-                    <NoLogsView run={run} />
-                  )
-                }
+                {() => (
+                  <TraceView
+                    run={run}
+                    selectedSpanId={selectedSpanId}
+                    replaceSearchParam={replaceSearchParam}
+                  />
+                )}
               </ClientOnly>
             </ResizablePanel>
             <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -289,7 +273,7 @@ export default function Page() {
                 <SpanView
                   runParam={run.friendlyId}
                   spanId={inspectorSpanId}
-                  closePanel={trace ? () => replaceSearchParam("span") : undefined}
+                  closePanel={!run.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
                 />
               </ResizablePanel>
             ) : null}
@@ -300,19 +284,44 @@ export default function Page() {
   );
 }
 
+function View({ resizable, run }: LoaderData) {}
+
 type TraceData = {
   run: LoaderData["run"];
-  trace: Trace;
   selectedSpanId: string | undefined;
   replaceSearchParam: (key: string, value?: string) => void;
 };
 
-function TraceView({ run, trace, selectedSpanId, replaceSearchParam }: TraceData) {
-  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
+function TraceView({ run, selectedSpanId, replaceSearchParam }: TraceData) {
+  const appOrigin = useAppOrigin();
+  const { isUpToDate, trace } = useTrace({
+    origin: appOrigin,
+    traceId: run.traceId,
+    spanId: run.spanId,
+  });
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
   }, 250);
+
+  if (!isUpToDate) {
+    return <Loading />;
+  }
+
+  if (!trace) {
+    return <NoLogsView run={run} />;
+  }
+
+  const initialLoad = !isUpToDate && !trace;
+
+  let inspectorSpanId = selectedSpanId;
+  if (!inspectorSpanId) {
+    if (initialLoad || !trace) {
+      inspectorSpanId = run.spanId;
+    }
+  }
+
+  const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
 
   return (
     <TasksTreeView
@@ -1206,7 +1215,7 @@ export function Loading() {
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
         <Spinner className="size-4" />
-        <Paragraph variant="small" className="flex items-center gap-2">
+        <Paragraph variant="extra-small" className="flex items-center gap-2">
           Loading logs
         </Paragraph>
       </div>
