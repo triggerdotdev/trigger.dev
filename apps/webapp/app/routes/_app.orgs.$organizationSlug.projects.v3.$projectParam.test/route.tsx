@@ -117,7 +117,7 @@ export default function Page() {
                     <Spinner />
                   </div>
                 ) : hasSelectedEnvironment ? (
-                  <div className="grid grid-rows-[2.5rem_1fr]  overflow-hidden">
+                  <div className="grid grid-rows-[2.5rem_1fr] overflow-hidden">
                     <div className="mx-3 flex items-center border-b border-grid-dimmed">
                       <Header2>Select a task</Header2>
                     </div>
@@ -136,7 +136,7 @@ export default function Page() {
               </div>
             </ResizablePanel>
             <ResizableHandle id="test-handle" />
-            <ResizablePanel id="test-main" min="100px">
+            <ResizablePanel id="test-main" min="225px">
               <Outlet key={taskParam} />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -157,7 +157,7 @@ function TaskSelector({
 
   return (
     <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className="px-2 pb-2">
+      <div className="p-2">
         <Input
           placeholder="Search tasks"
           variant="medium"
