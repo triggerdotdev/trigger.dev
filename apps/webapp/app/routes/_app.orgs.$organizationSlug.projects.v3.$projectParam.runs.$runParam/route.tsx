@@ -78,6 +78,9 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { Spinner } from "~/components/primitives/Spinner";
+import { preloadShape } from "@electric-sql/react";
+import { ClientOnly } from "remix-utils/client-only";
 
 const resizableSettings = {
   parent: {
@@ -239,19 +242,57 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {trace ? (
-          <TraceView run={run} trace={trace} resizable={resizable} />
-        ) : (
-          <NoLogsView run={run} trace={trace} resizable={resizable} />
-        )}
+        <ClientOnly>
+          {() => (
+            <>
+              {initialLoad ? (
+                <LoadingTraceView run={run} resizable={resizable} />
+              ) : trace ? (
+                <TraceView run={run} trace={trace} resizable={resizable} />
+              ) : (
+                <NoLogsView run={run} trace={trace} resizable={resizable} />
+              )}
+            </>
+          )}
+        </ClientOnly>
       </PageBody>
     </>
   );
 }
 
 type TraceData = Pick<LoaderData, "run" | "resizable"> & {
-  trace: Trace | undefined;
+  trace?: Trace;
 };
+
+function LoadingTraceView({ run, resizable }: TraceData) {
+  return (
+    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+      <ResizablePanelGroup
+        autosaveId={resizableSettings.parent.autosaveId}
+        snapshot={resizable.parent}
+        className="h-full max-h-full"
+      >
+        <ResizablePanel
+          id={resizableSettings.parent.main.id}
+          min={resizableSettings.parent.main.min}
+        >
+          <div className="grid h-full place-items-center">
+            <Spinner />
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id={resizableSettings.parent.handleId} />
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          isStaticAtRest
+        >
+          <SpanView runParam={run.friendlyId} spanId={run.spanId} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
+  );
+}
 
 function TraceView({ run, trace, resizable }: TraceData) {
   const { location, replaceSearchParam } = useReplaceLocation();
