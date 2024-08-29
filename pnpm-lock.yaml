@@ -550,8 +550,8 @@ importers:
         specifier: ^17.4.0
         version: 17.4.0(react-dom@18.2.0)(react@18.2.0)
       react-window-splitter:
-        specifier: ^0.4.0
-        version: 0.4.0(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^0.4.1
+        version: 0.4.1(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0)
       recharts:
         specifier: ^2.12.6
         version: 2.12.6(react-dom@18.2.0)(react@18.2.0)
@@ -15039,14 +15039,15 @@ packages:
       tslib: 2.6.2
     dev: false
 
-  /@window-splitter/state@0.4.0:
-    resolution: {integrity: sha512-fZOGk1m2lLhLWGC7Y8Qxhwlh59xH4zmTrRYebQ/iom9yehIitZcpalbViSLDA00Izvx9CrSEFAdjTlMjVIMvpg==}
+  /@window-splitter/state@0.4.1:
+    resolution: {integrity: sha512-JbsCYEWFXs79Gxudtv+XTYE2tdidPg8oGoIbUyh9QtdYUNUO/QKI2ORk2WFNIkk2ZzTWMXquI92s1nj4sAhZ+w==}
     engines: {node: '>=18.0.0'}
     dependencies:
       '@react-spring/rafz': 9.7.4
       '@types/invariant': 2.2.37
       big.js: 6.2.1
       invariant: 2.2.4
+      universal-cookie: 7.2.0
       xstate: 5.17.4
     dev: false
 
@@ -24706,8 +24707,8 @@ packages:
       tslib: 2.5.0
     dev: false
 
-  /react-window-splitter@0.4.0(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-yO9QjQ5WrJhnmxS78vEcdti6jNRtCKfDAt16O8fGT5/iz1OwfBJI6fYRW6o7tBUwRheELlQDWSw2s86v8wq4BA==}
+  /react-window-splitter@0.4.1(@types/react@18.2.69)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-7XjNxlsBqOySyPEf32GZXLIA7gIPLWqswnOwM4Aw15qiMChMm8einkz40RbLfvrD11EKHIU35vcUH1RDA+we9w==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: '>=16'
@@ -24715,14 +24716,13 @@ packages:
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.0(@types/react@18.2.69)(react@18.2.0)
       '@testing-library/jest-dom': 6.4.8
-      '@window-splitter/state': 0.4.0
+      '@window-splitter/state': 0.4.1
       '@xstate/react': 4.1.1(@types/react@18.2.69)(react@18.2.0)(xstate@5.17.4)
       invariant: 2.2.4
       react: 18.2.0
       react-aria: 3.34.3(react-dom@18.2.0)(react@18.2.0)
       react-dom: 18.2.0(react@18.2.0)
       reforest: 0.13.0(@types/react@18.2.69)(react@18.2.0)
-      universal-cookie: 7.2.0
       xstate: 5.17.4
     transitivePeerDependencies:
       - '@types/react'
