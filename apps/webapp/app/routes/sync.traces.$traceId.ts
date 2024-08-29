@@ -3,7 +3,6 @@ import { env } from "~/env.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const { table } = params;
   const originUrl = new URL(`${env.ELECTRIC_ORIGIN}/v1/shape/public."TaskEvent"`);
   url.searchParams.forEach((value, key) => {
     originUrl.searchParams.set(key, value);
