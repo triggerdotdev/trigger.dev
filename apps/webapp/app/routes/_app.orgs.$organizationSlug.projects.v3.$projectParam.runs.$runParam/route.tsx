@@ -242,7 +242,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ClientOnly>
+        <ClientOnly fallback={<LoadingTraceView run={run} resizable={resizable} />}>
           {() => (
             <>
               {initialLoad ? (
@@ -276,8 +276,14 @@ function LoadingTraceView({ run, resizable }: TraceData) {
           id={resizableSettings.parent.main.id}
           min={resizableSettings.parent.main.min}
         >
-          <div className="grid h-full place-items-center">
-            <Spinner />
+          <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
+            <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
+              <Spinner className="size-4" />
+              <Paragraph variant="small" className="flex items-center gap-2">
+                Loading logs
+              </Paragraph>
+            </div>
+            <div></div>
           </div>
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
