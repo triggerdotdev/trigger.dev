@@ -180,86 +180,31 @@ And then in the second terminal run this command:
 supabase functions serve edge-function-trigger
 ```
 
-Then click the link to open the preview URL, making sure to add your function name to the end:
- 
+Then click the link provided to open the preview URL, making sure to add your function name to the end:
 
+`http://127.0.0.1:54321/functions/v1/<function-name>`
 
+So in this case:
 
+`http://127.0.0.1:54321/functions/v1/edge-function-trigger`
 
-</Step>
-<Step title="Add your Trigger.dev secret key">
+When the URL is opened, you `hello-world` task should be triggered, and you should see "OK" in your browser.
 
-Now your edge function has been added to your dashboard, you can add your Trigger.dev secret key as an environment variable.
-
-First, go to your Trigger.dev project and copy the `DEV` secret key from the API keys page.
-
-![How to find your secret key](/images/api-keys.png)
-
-Then, navigate to your new edge function in the Supabase dashboard and add a new environment variable with the key `TRIGGER_SECRET_KEY` and the value of your Trigger.dev secret key.
-
-![Add environment variable in Supabase - step 1](/images/supabase-keys-1.png)
-![Add environment variable in Supabase - step 2](/images/supabase-keys-2.png)
+Check the terminal to see if the task has run successfully. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) runs dashboard.
 
 </Step>
-
-<Step title="Redeploy your edge function">
-
-Redeploy your edge function using the Supabase CLI to update the environment variable:
-
-``` bash
-supabase functions serve edge-function-trigger --no-verify-jwt
-```
-
-Your new `edge-function-trigger` edge function is now ready to trigger your task.
-
-</Step>
-
 </Steps>
 
-## Create and deploy a new Supabase edge function
+## Deploy your new Supabase edge function and Trigger.dev task
+
+Now that your edge function is working in dev, you can deploy it to production.
 
 <Steps>
 
-<Step title="Create a new edge function using the Supabase CLI">
-
-We will call this example function `edge-function-trigger`.
+<Step title="Deploy your edge function using the Supabase CLI">
 
 ``` bash
-supabase functions new edge-function-trigger
-```
-
-</Step>
-
-<Step title="Update the edge function code">
-
-Replace the `edge-function-trigger` placeholder code with the following:
-
-```ts edge-function-trigger/index.ts
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
-// Import your task from your /trigger folder
-import type { helloWorldTask } from "../../../src/trigger/example.ts";
-
-Deno.serve(async (req) => {
-  await tasks.trigger<typeof helloWorldTask>("edge-function-trigger", "hello");
-  return new Response("OK");
-});
-```
-
-<Note>You can only import the `type` from the task.</Note>
-<Note>
-  Tasks in the `trigger` folder use Node, so must stay in there or they will not run, especially if
-  you are using a different runtime like Deno. Also do not add `npm:` to imports inside your task
-  files, for the same reason.
-</Note>
-
-</Step>
-
-<Step title="Deploy your new edge function">
-
-
-``` bash
-supabase functions serve edge-function-trigger --no-verify-jwt
+supabase functions deploy edge-function-trigger --no-verify-jwt
 ```
 
 <Note>
@@ -268,19 +213,18 @@ supabase functions serve edge-function-trigger --no-verify-jwt
   [here](https://supabase.com/docs/guides/auth/jwts).
 </Note>
 
-Follow the CLI instructions and you should now see your new edge function deployment in the Supabase dashboard.
-
+Follow the CLI instructions and once complete you should now see your new edge function deployment in your Supabase dashboard.
 
 </Step>
-<Step title="Add your Trigger.dev secret key">
+<Step title="Add your prod Trigger.dev secret key">
 
 Now your edge function has been added to your dashboard, you can add your Trigger.dev secret key as an environment variable.
 
-First, go to your Trigger.dev project and copy the `DEV` secret key from the API keys page.
+First, go to your Trigger.dev project and copy the `prod` secret key from the API keys page.
 
 ![How to find your secret key](/images/api-keys.png)
 
-Then, navigate to your new edge function in the Supabase dashboard and add a new environment variable with the key `TRIGGER_SECRET_KEY` and the value of your Trigger.dev secret key.
+Then, navigate to your new edge function in the Supabase dashboard and add a new environment variable with the key `TRIGGER_SECRET_KEY` and the value of your Trigger.dev `prod` secret key.
 
 ![Add environment variable in Supabase - step 1](/images/supabase-keys-1.png)
 ![Add environment variable in Supabase - step 2](/images/supabase-keys-2.png)
@@ -299,51 +243,8 @@ Your new `edge-function-trigger` edge function is now ready to trigger your task
 
 </Step>
 
-</Steps>
 
-## Triggering your task from your edge function
-
-<Steps>
-
-<Step title="Run the Trigger.dev CLI `dev` command">
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@beta dev
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@beta dev
-```
-
-```bash yarn
-yarn dlx trigger.dev@beta dev
-```
-
-</CodeGroup>
-
-</Step>
-
-<Step title="Trigger a dev run">
-
-Open the `edge-function-trigger` URL, you can find this on the dashboard:
-
-![Edge function URL](/images/supabase-function-url.png)
-
-The task will be triggered when your edge function URL is accessed. 
-
-    1. Go to your `edge-function-trigger` edge function page, copy the URL, and paste it into your browser. You should see ‘OK’ on the new screen.
-    2. Check the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
-
-    **Congratulations, you have run a simple Hello World example from a Supabase edge function!**
-
-</Step>
-</Steps>
-
-## Deploying your task
-
-You can manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
+<Step title="Deploy your Trigger.dev hello-world task">
 
 <CodeGroup>
 
@@ -361,27 +262,22 @@ yarn dlx trigger.dev@beta deploy
 
 </CodeGroup>
 
-<Note>
-  Update the `TRIGGER_SECRET_KEY` environment variable in Supabase with a new `PROD` secret key
-  after deploying. This can be found on the API key page in the web app.
-</Note>
+</Step>
 
-### Other ways to deploy
+<Step title="Trigger a prod run from your deployed edge function">
 
-<Tabs>
+Open the `edge-function-trigger` URL, you can find this on the dashboard:
 
-<Tab title="GitHub Actions">
+![Edge function URL](/images/supabase-function-url.png)
 
-Use GitHub Actions to automatically deploy your tasks whenever new code is pushed and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
+The task will be triggered when your edge function URL is accessed. 
 
-</Tab>
+    1. On your Supabase dashboard, go to your `edge-function-trigger` edge function page, copy the URL, and paste it into your browser. Once loaded you should see ‘OK’ on the new screen.
+    2. Check the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
 
-<Tab title="Vercel Integration">
+    **Congratulations, you have run a simple Hello World example from a Supabase edge function!**
 
-We're working on adding an official [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
-
-</Tab>
-
-</Tabs>
+</Step>
+</Steps>
 
 <UsefulNextSteps />
