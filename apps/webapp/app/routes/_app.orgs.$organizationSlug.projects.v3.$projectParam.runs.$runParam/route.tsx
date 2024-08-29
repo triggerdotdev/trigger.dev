@@ -1,7 +1,5 @@
-import { useShape } from "@electric-sql/react";
 import {
   ArrowUturnLeftIcon,
-  BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -11,7 +9,7 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
+import { useLoaderData, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -49,7 +47,6 @@ import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
 import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
@@ -57,14 +54,14 @@ import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
-import { env } from "~/env.server";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useDebounce } from "~/hooks/useDebounce";
-import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Trace, TraceEvent, useTrace } from "~/hooks/useTrace";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableRunSettings, setResizableRunSettings } from "~/services/resizablePanel";
@@ -76,14 +73,11 @@ import {
   v3RunParamsSchema,
   v3RunPath,
   v3RunSpanPath,
-  v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Trace, TraceEvent, useTrace } from "~/hooks/useTrace";
-import { trace } from "console";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { Spinner } from "~/components/primitives/Spinner";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -103,7 +97,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return json({
     run: result.run,
     resizeSettings,
-    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
   });
 };
 
@@ -115,20 +108,21 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, resizeSettings, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
+  const { run, resizeSettings } = useLoaderData<typeof loader>();
   const appOrigin = useAppOrigin();
-  const { location, replaceSearchParam } = useReplaceLocation();
-
   const { isUpToDate, trace } = useTrace({
     origin: appOrigin,
     traceId: run.traceId,
-    spanId: getSpanId(location) ?? run.spanId,
+    spanId: run.spanId,
   });
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
+
+  //todo loading state
+  const initialLoad = !isUpToDate && !trace;
 
   return (
     <>
@@ -212,32 +206,20 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         {trace ? (
-          <TraceView
-            run={run}
-            trace={trace}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizeSettings={resizeSettings}
-          />
+          <TraceView run={run} trace={trace} resizeSettings={resizeSettings} />
         ) : (
-          <NoLogsView
-            run={run}
-            trace={trace}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            resizeSettings={resizeSettings}
-          />
+          <NoLogsView run={run} trace={trace} resizeSettings={resizeSettings} />
         )}
       </PageBody>
     </>
   );
 }
 
-type TraceData = Pick<LoaderData, "run" | "maximumLiveReloadingSetting" | "resizeSettings"> & {
+type TraceData = Pick<LoaderData, "run" | "resizeSettings"> & {
   trace: Trace | undefined;
 };
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: TraceData) {
-  const organization = useOrganization();
-  const project = useProject();
+function TraceView({ run, trace, resizeSettings }: TraceData) {
   const { location, replaceSearchParam } = useReplaceLocation();
   const selectedSpanId = getSpanId(location);
 
@@ -246,23 +228,10 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
-  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
   }, 250);
-
-  const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
-    event: "message",
-    disabled: !shouldLiveReload,
-  });
-  useEffect(() => {
-    if (streamedEvents !== null) {
-      revalidator.revalidate();
-    }
-    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
-  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -294,8 +263,6 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizeSettings }: 
             rootSpanStatus={rootSpanStatus}
             rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
             environmentType={run.environment.type}
-            shouldLiveReload={shouldLiveReload}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -405,8 +372,6 @@ type TasksTreeViewProps = {
   rootSpanStatus: "executing" | "completed" | "failed";
   rootStartedAt: Date | undefined;
   environmentType: RuntimeEnvironmentType;
-  shouldLiveReload: boolean;
-  maximumLiveReloadingSetting: number;
 };
 
 function TasksTreeView({
@@ -418,8 +383,6 @@ function TasksTreeView({
   rootSpanStatus,
   rootStartedAt,
   environmentType,
-  shouldLiveReload,
-  maximumLiveReloadingSetting,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -494,11 +457,7 @@ function TasksTreeView({
                   This is the root task
                 </Paragraph>
               )}
-              <LiveReloadingStatus
-                rootSpanCompleted={rootSpanStatus !== "executing"}
-                isLiveReloading={shouldLiveReload}
-                settingValue={maximumLiveReloadingSetting}
-              />
+              <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
             </div>
             <TreeView
               parentRef={parentRef}
@@ -965,40 +924,16 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   );
 }
 
-function LiveReloadingStatus({
-  rootSpanCompleted,
-  isLiveReloading,
-  settingValue,
-}: {
-  rootSpanCompleted: boolean;
-  isLiveReloading: boolean;
-  settingValue: number;
-}) {
+function LiveReloadingStatus({ rootSpanCompleted }: { rootSpanCompleted: boolean }) {
   if (rootSpanCompleted) return null;
 
   return (
-    <>
-      {isLiveReloading ? (
-        <div className="flex items-center gap-1">
-          <PulsingDot />
-          <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-            Live reloading
-          </Paragraph>
-        </div>
-      ) : (
-        <SimpleTooltip
-          content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
-          button={
-            <div className="flex items-center gap-1">
-              <BoltSlashIcon className="size-3.5 text-text-dimmed" />
-              <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
-                Live reloading disabled
-              </Paragraph>
-            </div>
-          }
-        ></SimpleTooltip>
-      )}
-    </>
+    <div className="flex items-center gap-1">
+      <PulsingDot />
+      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+        Live reloading
+      </Paragraph>
+    </div>
   );
 }
 

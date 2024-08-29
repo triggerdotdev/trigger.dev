@@ -65,34 +65,6 @@ export class RunPresenter {
       },
     });
 
-    // get the events
-    const traceSummary = await eventRepository.getTraceSummary(run.traceId);
-
-    if (!traceSummary) {
-      return {
-        run: {
-          id: run.id,
-          number: run.number,
-          friendlyId: run.friendlyId,
-          traceId: run.traceId,
-          spanId: run.spanId,
-          status: run.status,
-          isFinished: isFinalRunStatus(run.status),
-          completedAt: run.completedAt,
-          logsDeletedAt: run.logsDeletedAt,
-          environment: {
-            id: run.runtimeEnvironment.id,
-            organizationId: run.runtimeEnvironment.organizationId,
-            type: run.runtimeEnvironment.type,
-            slug: run.runtimeEnvironment.slug,
-            userId: run.runtimeEnvironment.orgMember?.user.id,
-            userName: getUsername(run.runtimeEnvironment.orgMember?.user),
-          },
-        },
-        trace: undefined,
-      };
-    }
-
     return {
       run: {
         id: run.id,
@@ -113,7 +85,6 @@ export class RunPresenter {
           userName: getUsername(run.runtimeEnvironment.orgMember?.user),
         },
       },
-      trace: createTraceTreeFromEvents(traceSummary, run.spanId),
     };
   }
 }
