@@ -162,7 +162,13 @@ export default function Page() {
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
   const initialLoad = !isUpToDate && !trace;
-  const inspectorSpanId = trace && !initialLoad ? selectedSpanId : run.spanId;
+
+  let inspectorSpanId = selectedSpanId;
+  if (!inspectorSpanId) {
+    if (initialLoad || !trace) {
+      inspectorSpanId = run.spanId;
+    }
+  }
 
   return (
     <>
