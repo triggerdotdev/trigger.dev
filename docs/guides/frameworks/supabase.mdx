@@ -2,7 +2,7 @@
 title: "Triggering tasks from Supabase edge functions"
 sidebarTitle: "Supabase"
 description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run."
-icon: "N"
+icon: "bolt"
 ---
 
 import Prerequisites from "/snippets/framework-prerequisites.mdx";
@@ -20,7 +20,7 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 Supabase edge functions allow you to trigger tasks when an event is sent from a third party (e.g. a new Stripe payment is processed, a new user signs up, etc), or when there are any changes / updates to your Supabase database.
 
-This guide shows how to set up and deploy a simple Supabase edge function example; it will trigger a task when an edge function URL is accessed. 
+This guide shows how to set up and deploy a simple Supabase edge function example; it will trigger a task when an edge function URL is accessed.
 
 ## Prerequisites
 
@@ -80,13 +80,12 @@ yarn dlx trigger.dev@beta init
 
 </CodeGroup>
 
-
 It will do a few things:
 
 1. Log you into the CLI if you're not already logged in.
-2. Create a `trigger.config.ts` file in the root of your project. 
+2. Create a `trigger.config.ts` file in the root of your project.
 3. Ask where you'd like to create the `/trigger` directory.
-4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`. 
+4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
 
 Install the "Hello World" example task when prompted. We'll use this task to test the setup.
 
@@ -104,7 +103,7 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
 
 We will call this example edge function `edge-function-trigger`.
 
-``` bash
+```bash
 supabase functions new edge-function-trigger
 ```
 
@@ -129,9 +128,9 @@ Deno.serve(async (req) => {
 
 <Note>You can only import the `type` from the task.</Note>
 <Note>
-  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run, especially if
-  you are using a different runtime like Deno. Also do not add "`npm:`" to imports inside your task
-  files, for the same reason.
+  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run,
+  especially if you are using a different runtime like Deno. Also do not add "`npm:`" to imports
+  inside your task files, for the same reason.
 </Note>
 
 </Step>
@@ -142,13 +141,15 @@ First, go to your Trigger.dev project and copy the `dev` secret key from the API
 
 ![How to find your secret key](/images/api-keys.png)
 
-Then create an .env file in the functions folder, and add your `TRIGGER_SECRET_KEY`. 
+Then create an .env file in the functions folder, and add your `TRIGGER_SECRET_KEY`.
 
 ```ts functions/.env
-TRIGGER_SECRET_KEY="your-secret-key"
+TRIGGER_SECRET_KEY = "your-secret-key";
 ```
 
-<Warning>Make sure to include `.env` in your `gitignore` file before committing any files to GitHub.</Warning>
+<Warning>
+  Make sure to include `.env` in your `gitignore` file before committing any files to GitHub.
+</Warning>
 
 </Step>
 
@@ -176,7 +177,7 @@ The CLI `dev` command runs a server for your tasks. It will watches for changes 
 
 And then in the second terminal run this command:
 
-``` bash
+```bash
 supabase functions serve edge-function-trigger
 ```
 
@@ -203,7 +204,7 @@ Now that your edge function is working in dev, you can deploy it to production.
 
 <Step title="Deploy your edge function using the Supabase CLI">
 
-``` bash
+```bash
 supabase functions deploy edge-function-trigger --no-verify-jwt
 ```
 
@@ -235,7 +236,7 @@ Then, navigate to your edge function page in the Supabase dashboard and add a ne
 
 Once the key has been added, redeploy your edge function using the Supabase CLI to update the environment variable:
 
-``` bash
+```bash
 supabase functions serve edge-function-trigger --no-verify-jwt
 ```
 
@@ -273,7 +274,7 @@ On your Supabase dashboard, go to your `edge-function-trigger` edge function pag
 
 ![Edge function URL](/images/supabase-function-url.png)
 
-The task will be triggered when your edge function URL is accessed. 
+The task will be triggered when your edge function URL is accessed.
 
 Check the terminal to see if the task has run. You can also check the [cloud.trigger.dev](http://cloud.trigger.dev) dashboard.
 
