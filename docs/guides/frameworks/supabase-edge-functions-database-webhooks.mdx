@@ -18,11 +18,9 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 ## Overview
 
-Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table.
+Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table e.g. when a row is inserted, updated, or deleted, or when a specific column is updated.
 
-This could be when a new row is inserted, updated, or deleted, or when a specific column is updated.
-
-This guide shows you how to set up and deploy a simple Supabase edge function that triggers a task every time a new row is added to your database.
+This guide shows you how to set up and deploy a simple Supabase edge function that triggers a task every time a new row is inserted to your database.
 
 ## Prerequisites
 
@@ -97,7 +95,7 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
   <CliViewRunStep />
 </Steps>
 
-## Create and deploy a new Supabase edge function
+## Create and deploy a new Supabase edge function and database webhook 
 
 <Steps>
 
@@ -178,6 +176,12 @@ Call the hook `edge-function-hook`:
 
 </Step>
 
+</Steps>
+
+## Deploy your 'Hello World' task and trigger it from your new `database-webhook` edge function
+
+<Steps>
+
 <Step title="Deploy your 'Hello World' task">
 
 Go back to your project and deploy your `hello-world` task to [Trigger.dev cloud](https://cloud.trigger.dev).
@@ -202,7 +206,7 @@ yarn dlx trigger.dev@beta deploy
 
 <Step title="Trigger your new database webhook edge function">
 
-Go back to your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
+In your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
 
 Click 'insert', and add a new item under `name`, with the value `Sarah Connor`.
 
@@ -214,7 +218,7 @@ Go back to your edge function dashboard, and you should see a new run of your ed
 
 Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you should see a succesful `hello-world` task.
 
-Congratulations, you have successfully triggered a task from a Supabase edge function using a database webhook!
+**Congratulations, you have successfully triggered a task from a Supabase edge function using a database webhook!**
 
 </Step>
 
