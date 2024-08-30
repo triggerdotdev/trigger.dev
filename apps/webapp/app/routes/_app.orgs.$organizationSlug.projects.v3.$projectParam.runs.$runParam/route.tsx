@@ -373,7 +373,7 @@ type TraceData = {
 function TraceView({ run, environmentType, trace, selectedSpanId, replaceSearchParam }: TraceData) {
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
-  }, 250);
+  }, 50);
 
   if (!trace) {
     return <NoLogsView run={run} />;
