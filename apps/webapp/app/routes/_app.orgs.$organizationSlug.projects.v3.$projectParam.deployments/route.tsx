@@ -2,16 +2,12 @@ import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
   BookOpenIcon,
-  CommandLineIcon,
-  ServerIcon,
   ServerStackIcon,
 } from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Fragment } from "react/jsx-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { BlankstateInstructions } from "~/components/BlankstateInstructions";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
