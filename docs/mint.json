@@ -203,7 +203,18 @@
     },
     {
       "group": "Frameworks",
-      "pages": ["guides/frameworks/nextjs", "guides/frameworks/nodejs", "guides/frameworks/remix", "guides/frameworks/supabase"]
+      "pages": [
+        "guides/frameworks/nextjs",
+        "guides/frameworks/nodejs",
+        "guides/frameworks/remix",
+        {
+          "group": "Supabase",
+          "pages": [
+            "guides/frameworks/supabase-edge-functions-basic",
+            "guides/frameworks/supabase-edge-functions-database-webhooks"
+          ]
+        }
+      ]
     },
     {
       "group": "Dashboard",
