@@ -1,6 +1,6 @@
 ---
-title: "Triggering tasks from Supabase edge functions"
-sidebarTitle: "Supabase"
+title: "Triggering tasks from Supabase database webhooks"
+sidebarTitle: "Supabase edge functions - database webhooks"
 description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run."
 icon: "bolt"
 ---
@@ -144,18 +144,19 @@ First, go to your Trigger.dev project and copy the `dev` secret key from the API
 Then create an `.env` file in the functions folder, and add your `TRIGGER_SECRET_KEY`.
 
 ```ts functions/.env
-TRIGGER_SECRET_KEY="your-secret-key";
+TRIGGER_SECRET_KEY = "your-secret-key";
 ```
 
 <Warning>
-  If you are using GitHub - make sure to include `.env` in your `.gitignore` file before committing any files to GitHub.
+  If you are using GitHub - make sure to include `.env` in your `.gitignore` file before committing
+  any files to GitHub.
 </Warning>
 
 </Step>
 
 <Step title="Test your new edge function locally">
 
-To do this, open up two terminal windows in your project. 
+To do this, open up two terminal windows in your project.
 
 In the first terminal window run:
 
@@ -210,7 +211,7 @@ Go to your Trigger.dev project and copy the `prod` secret key from the API keys 
 
 ![How to find your prod secret key](/images/api-key-prod.png)
 
-Then, in Supabase, navigate to your settings page, click 'Edge functions' in the configurations menu, and then click the 'Add new secret' button. 
+Then, in Supabase, navigate to your settings page, click 'Edge functions' in the configurations menu, and then click the 'Add new secret' button.
 
 Add `TRIGGER_SECRET_KEY` with the pasted value of your Trigger.dev `prod` secret key.
 
@@ -264,7 +265,7 @@ yarn dlx trigger.dev@beta deploy
 
 To do this all you need to do is simply open the `edge-function-trigger` URL.
 
-On your Supabase dashboard, go to your Edge function dashboard, copy the URL, and paste it into your browser. 
+On your Supabase dashboard, go to your Edge function dashboard, copy the URL, and paste it into your browser.
 
 Once loaded you should see ‘OK’ on the new screen.
 
