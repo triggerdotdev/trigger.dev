@@ -95,9 +95,23 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
   <CliViewRunStep />
 </Steps>
 
-## Create and deploy a new Supabase edge function and database webhook 
+## Create and deploy a new Supabase edge function and database webhook
 
 <Steps>
+
+<Step title="Add your Trigger.dev prod secret key in Supabase">
+
+First, go to your Trigger.dev project and copy the `prod` secret key from the API keys page.
+
+![How to find your prod secret key](/images/api-key-prod.png)
+
+Then, in Supabase, navigate to your settings page, click 'Edge functions' in the configurations menu, and then click the 'Add new secret' button.
+
+Add `TRIGGER_SECRET_KEY` with the pasted value of your Trigger.dev `prod` secret key.
+
+![Add secret key in Supabase](/images/supabase-keys-1.png)
+
+</Step>
 
 <Step title="Create a new edge function using the Supabase CLI">
 
@@ -116,6 +130,7 @@ Replace the `database-webhook` placeholder code with the following:
 ```ts database-webhook/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
+// Import your task type from your /trigger folder
 import { helloWorldTask } from "../../../src/trigger/example.ts";
 
 console.log("Hello from 'database-webhook' function!");
@@ -139,9 +154,21 @@ Deno.serve(async (req) => {
 
 </Step>
 
+<Step title="Deploy your edge function using the Supabase CLI">
+
+Go back to your project, and deploy your edge function with the following command:
+
+```bash
+supabase functions deploy edge-function-trigger
+```
+
+Follow the CLI instructions and once complete you should now see your new edge function deployment in your Supabase edge functions dashboard.
+
+</Step>
+
 <Step title="Create a new database">
 
-In your Supabase dashboard, click on 'Table Editor' in the left-hand menu.
+Next, in your Supabase dashboard, click on 'Table Editor' in the left-hand menu.
 
 [How to create a new table]()
 
@@ -149,13 +176,15 @@ Create a new table called `skynet`.
 
 Add a new column called `name` with the type `text`.
 
+[How to add a new column]()
+
 </Step>
 
 <Step title="Configure JWT settings">
 
 By default, Supabase edge functions require a JSON Web Token (JWT) in the authorization header. This is to ensure that only authorized users can access your edge functions.
 
-First, go to your Supabase dashboard, click 'Project settings', 'API' tab, and copy the `anon` `public` API key from the table.
+Go to your Supabase dashboard, click 'Project settings', 'API' tab, and copy the `anon` `public` API key from the table.
 
 [How to find your Supabase API keys]()
 
