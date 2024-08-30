@@ -169,11 +169,11 @@ Follow the CLI instructions and once complete you should see your new edge funct
 
 Next, in your Supabase dashboard, click on 'Table Editor' in the left-hand menu and create a new table. In this example we will call our table `skynet`.
 
-[How to create a new table](/images/supabase-new-table-1.png)
+![How to create a new table](/images/supabase-new-table-1.png)
 
 Add a new column called `name` with the type `text`.
 
-[How to add a new column](/images/supabase-new-table-2.png)
+![How to add a new column](/images/supabase-new-table-2.png)
 
 </Step>
 
@@ -183,11 +183,11 @@ By default, Supabase edge functions require a JSON Web Token (JWT) in the author
 
 In your Supabase dashboard, click 'Project settings', then the 'API' tab, and copy the `anon` `public` API key from the table.
 
-[How to find your Supabase API keys](/images/supabase-api-key.png)
+![How to find your Supabase API keys](/images/supabase-api-key.png)
 
 Then, go to 'Database' click on 'Webhooks', and then click 'Create a new hook'.
 
-[How to create a new webhook](/images/supabase-create-webhook-1.png)
+![How to create a new webhook](/images/supabase-create-webhook-1.png)
 
 Call the hook `edge-function-hook`:
 
@@ -198,8 +198,8 @@ Call the hook `edge-function-hook`:
 5. Under 'Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
 6. Click 'Create webhook'.
 
-[How to create a new webhook 2](/images/supabase-create-webhook-2.png)
-[How to create a new webhook 3](/images/supabase-create-webhook-3.png)
+![How to create a new webhook 2](/images/supabase-create-webhook-2.png)
+![How to create a new webhook 3](/images/supabase-create-webhook-3.png)
 
 </Step>
 
@@ -235,15 +235,15 @@ yarn dlx trigger.dev@beta deploy
 
 Back in your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
 
-[How to insert a new row 1](/images/supabase-new-table-3.png)
+![How to insert a new row 1](/images/supabase-new-table-3.png)
 
 Click 'insert', and add a new item under `name`, with the value `Sarah Connor`.
 
-[How to insert a new row 2](/images/supabase-new-table-4.png)
+![How to insert a new row 2](/images/supabase-new-table-4.png)
 
 Go back to your edge function dashboard, and you should see a new run of your `database-webhook` edge function, under 'Logs'.
 
-[How to view the logs](/images/supabase-logs.png)
+![How to view the logs](/images/supabase-logs.png)
 
 Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you should see a succesful `hello-world` task.
 
