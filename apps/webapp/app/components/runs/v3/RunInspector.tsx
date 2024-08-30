@@ -375,8 +375,16 @@ export function RunInspector({
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
               </div>
               <RunTimeline run={run} />
-              {run.payload !== undefined && (
-                <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
+              {clientRunData ? (
+                clientRunData.payload !== undefined && (
+                  <PacketDisplay
+                    data={clientRunData.payload}
+                    dataType={clientRunData.payloadType}
+                    title="Payload"
+                  />
+                )
+              ) : (
+                <PropertyLoading />
               )}
               {clientRunData ? (
                 clientRunData.error !== undefined ? (
