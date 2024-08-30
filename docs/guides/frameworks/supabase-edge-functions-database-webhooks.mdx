@@ -105,7 +105,7 @@ First, go to your Trigger.dev project and copy the `prod` secret key from the AP
 
 ![How to find your prod secret key](/images/api-key-prod.png)
 
-Then, in Supabase, navigate to your settings page, click 'Edge functions' in the configurations menu, and then click the 'Add new secret' button.
+Then, in Supabase, navigate to your 'Project settings' page, click 'Edge functions' in the configurations menu, and then click the 'Add new secret' button.
 
 Add `TRIGGER_SECRET_KEY` with the pasted value of your Trigger.dev `prod` secret key.
 
@@ -115,7 +115,7 @@ Add `TRIGGER_SECRET_KEY` with the pasted value of your Trigger.dev `prod` secret
 
 <Step title="Create a new edge function using the Supabase CLI">
 
-We will call this example edge function `database-webhook`.
+Go back to your project, and create a new edge function. We will call it `database-webhook`.
 
 ```bash
 supabase functions new database-webhook
@@ -127,7 +127,7 @@ supabase functions new database-webhook
 
 Replace the `database-webhook` placeholder code with the following:
 
-```ts database-webhook/index.ts
+```ts /database-webhook/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
 // Import your task type from your /trigger folder
@@ -137,7 +137,6 @@ console.log("Hello from 'database-webhook' function!");
 
 Deno.serve(async (req) => {
   const payload = await req.json();
-
   await tasks.trigger<typeof helloWorldTask>("hello-world", "hello");
   console.log(payload ?? "No name provided");
 
@@ -156,23 +155,23 @@ Deno.serve(async (req) => {
 
 <Step title="Deploy your edge function using the Supabase CLI">
 
-Go back to your project, and deploy your edge function with the following command:
+Now deploy your edge function with the following command:
 
 ```bash
 supabase functions deploy edge-function-trigger
 ```
 
-Follow the CLI instructions and once complete you should now see your new edge function deployment in your Supabase edge functions dashboard.
+Follow the CLI instructions and once complete you should see your new edge function deployment in your Supabase edge functions dashboard.
 
 </Step>
 
 <Step title="Create a new database">
 
-Next, in your Supabase dashboard, click on 'Table Editor' in the left-hand menu.
+Next, in your Supabase dashboard, click on 'Table Editor' in the left-hand menu and create a new table. In this example we will call our table `skynet`.
+
 
 [How to create a new table]()
 
-Create a new table called `skynet`.
 
 Add a new column called `name` with the type `text`.
 
@@ -184,17 +183,17 @@ Add a new column called `name` with the type `text`.
 
 By default, Supabase edge functions require a JSON Web Token (JWT) in the authorization header. This is to ensure that only authorized users can access your edge functions.
 
-Go to your Supabase dashboard, click 'Project settings', 'API' tab, and copy the `anon` `public` API key from the table.
+In your Supabase dashboard, click 'Project settings', then the 'API' tab, and copy the `anon` `public` API key from the table.
 
 [How to find your Supabase API keys]()
 
-Then, go to 'Database' in the Supabase dashboard, click on 'Webhooks', and then click 'Create a new hook'.
+Then, go to 'Database' click on 'Webhooks', and then click 'Create a new hook'.
 
 [How to create a new webhook]()
 
 Call the hook `edge-function-hook`:
 
-1. Select the new table you have created: `public``skynet`.
+1. Select the new table you have created: `public` `skynet`.
 2. Choose the `insert` event.
 3. Under 'Webhook configuration', select 'Supabase Edge functions'
 4. Under 'Edge function', choose `POST` and select the edge function you have created: `database-webhook`.
@@ -235,13 +234,13 @@ yarn dlx trigger.dev@beta deploy
 
 <Step title="Trigger your new database webhook edge function">
 
-In your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
+Back in your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
 
 Click 'insert', and add a new item under `name`, with the value `Sarah Connor`.
 
 [How to insert a new row]()
 
-Go back to your edge function dashboard, and you should see a new run of your edge function, under 'Logs'.
+Go back to your edge function dashboard, and you should see a new run of your `database-webhook` edge function, under 'Logs'.
 
 [How to view the logs]()
 
