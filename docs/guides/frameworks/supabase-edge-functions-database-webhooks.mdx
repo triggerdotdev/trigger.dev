@@ -189,14 +189,13 @@ Then, go to 'Database' click on 'Webhooks', and then click 'Create a new hook'.
 
 ![How to create a new webhook](/images/supabase-create-webhook-1.png)
 
-Call the hook `edge-function-hook`:
-
-1. Select the new table you have created: `public` `skynet`.
-2. Choose the `insert` event.
-3. Under 'Webhook configuration', select 'Supabase Edge functions'
-4. Under 'Edge function', choose `POST` and select the edge function you have created: `database-webhook`.
-5. Under 'Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
-6. Click 'Create webhook'.
+1. Call the hook `edge-function-hook`:
+2. Select the new table you have created: `public` `skynet`.
+3. Choose the `insert` event.
+4. Under 'Webhook configuration', select 'Supabase Edge functions'
+5. Under 'Edge function', choose `POST` and select the edge function you have created: `database-webhook`.
+6. Under 'Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
+7. Click 'Create webhook'.
 
 ![How to create a new webhook 2](/images/supabase-create-webhook-2.png)
 ![How to create a new webhook 3](/images/supabase-create-webhook-3.png)
