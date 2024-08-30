@@ -118,13 +118,17 @@ Replace the `database-webhook` placeholder code with the following:
 ```ts database-webhook/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
-// Import your task type from your /trigger folder
-import type { helloWorldTask } from "../../../src/trigger/example.ts";
+import { helloWorldTask } from "../../../src/trigger/example.ts";
+
+console.log("Hello from 'database-webhook' function!");
 
 Deno.serve(async (req) => {
-  // @ts-expect-error: Ignoring Task type mismatch and RunHandle incompatibility
-  await tasks.trigger<typeof helloWorldTask>("database-webhook", "hello");
-  return new Response("OK");
+  const payload = await req.json();
+
+  await tasks.trigger<typeof helloWorldTask>("hello-world", "hello");
+  console.log(payload ?? "No name provided");
+
+  return new Response("ok");
 });
 ```
 
@@ -173,6 +177,29 @@ Call the hook `edge-function-hook`:
 [How to configure the webhook]()
 
 </Step>
+
+<Step title="Deploy your 'Hello World' task">
+
+Go back to your project and deploy your `hello-world` task to [Trigger.dev cloud](https://cloud.trigger.dev).
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta deploy
+```
+
+</CodeGroup>
+
+</Step>
+
 <Step title="Trigger your new database webhook edge function">
 
 Go back to your Supabase dashboard, click on 'Table Editor' in the left-hand menu, and then click on the `skynet` table.
@@ -184,6 +211,8 @@ Click 'insert', and add a new item under `name`, with the value `Sarah Connor`.
 Go back to your edge function dashboard, and you should see a new run of your edge function, under 'Logs'.
 
 [How to view the logs]()
+
+Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you should see a succesful `hello-world` task.
 
 Congratulations, you have successfully triggered a task from a Supabase edge function using a database webhook!
 
