@@ -260,6 +260,7 @@ type InspectorState =
   | {
       type: "run";
       run?: RawRun;
+      span?: TraceSpan;
     }
   | undefined;
 
@@ -293,10 +294,12 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
     if (selectedSpanId) {
       if (runs && runs.length > 0) {
         const spanRun = runs.find((r) => r.spanId === selectedSpanId);
-        if (spanRun) {
+        if (spanRun && events) {
+          const span = createSpanFromEvents(events, selectedSpanId);
           return {
             type: "run",
             run: spanRun,
+            span,
           };
         }
       }

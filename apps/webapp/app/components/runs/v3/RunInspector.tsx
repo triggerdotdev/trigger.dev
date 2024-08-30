@@ -5,8 +5,7 @@ import {
   nanosecondsToMilliseconds,
   TaskRunError,
 } from "@trigger.dev/core/v3";
-import { TaskRun } from "@trigger.dev/database";
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
@@ -19,7 +18,7 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -33,11 +32,18 @@ import {
   v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
+  v3SchedulePath,
   v3TraceSpanPath,
 } from "~/utils/pathBuilder";
 import { SpanLink } from "~/v3/eventRepository.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
+import { useTypedFetcher } from "remix-typedjson";
+import { RunInspectorData } from "~/routes/resources.runs.$runParam";
+import { loader } from "~/routes/resources.runs.$runParam";
+import { Link } from "@remix-run/react";
+import { RunTag } from "./RunTag";
+import { TraceSpan } from "~/utils/taskEvent";
 
 /**
  * The RunInspector displays live information about a run.
@@ -45,10 +51,12 @@ import { TaskRunStatusCombo } from "./TaskRunStatus";
  */
 export function RunInspector({
   run,
+  span,
   runParam,
   closePanel,
 }: {
   run?: RawRun;
+  span?: TraceSpan;
   runParam: string;
   closePanel?: () => void;
 }) {
@@ -56,6 +64,13 @@ export function RunInspector({
   const project = useProject();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
+
+  const fetcher = useTypedFetcher<typeof loader>();
+
+  useEffect(() => {
+    if (run?.friendlyId === undefined) return;
+    fetcher.load(`/resources/runs/${run.friendlyId}`);
+  }, [run?.friendlyId, run?.updatedAt]);
 
   if (!run) {
     return (
@@ -82,6 +97,7 @@ export function RunInspector({
   }
 
   const environment = project.environments.find((e) => e.id === run.runtimeEnvironmentId);
+  const clientRunData = fetcher.state === "idle" ? fetcher.data : undefined;
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -169,35 +185,43 @@ export function RunInspector({
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Version</Property.Label>
-                  {/* <Property.Value>
-                    {run.version ? (
-                      run.version
+                  <Property.Value>
+                    {clientRunData ? (
+                      clientRunData?.version ? (
+                        clientRunData.version
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <span>Never started</span>
+                          <InfoIconTooltip
+                            content={"Runs get locked to the latest version when they start."}
+                            contentClassName="normal-case tracking-normal"
+                          />
+                        </span>
+                      )
                     ) : (
-                      <span className="flex items-center gap-1">
-                        <span>Never started</span>
-                        <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
-                          contentClassName="normal-case tracking-normal"
-                        />
-                      </span>
+                      <PropertyLoading />
                     )}
-                  </Property.Value> */}
+                  </Property.Value>
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>SDK version</Property.Label>
-                  {/* <Property.Value>
-                    {run.sdkVersion ? (
-                      run.sdkVersion
+                  <Property.Value>
+                    {clientRunData ? (
+                      clientRunData?.sdkVersion ? (
+                        clientRunData.sdkVersion
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <span>Never started</span>
+                          <InfoIconTooltip
+                            content={"Runs get locked to the latest version when they start."}
+                            contentClassName="normal-case tracking-normal"
+                          />
+                        </span>
+                      )
                     ) : (
-                      <span className="flex items-center gap-1">
-                        <span>Never started</span>
-                        <InfoIconTooltip
-                          content={"Runs get locked to the latest version when they start."}
-                          contentClassName="normal-case tracking-normal"
-                        />
-                      </span>
+                      <PropertyLoading />
                     )}
-                  </Property.Value> */}
+                  </Property.Value>
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Test run</Property.Label>
@@ -213,35 +237,55 @@ export function RunInspector({
                     </Property.Value>
                   </Property.Item>
                 )}
-                {/* {run.schedule && (
-                  <Property.Item>
-                    <Property.Label>Schedule</Property.Label>
-                    <Property.Value>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono">{run.schedule.generatorExpression}</span>
-                          <span>({run.schedule.timezone})</span>
+
+                <Property.Item>
+                  <Property.Label>Schedule</Property.Label>
+                  <Property.Value>
+                    {clientRunData ? (
+                      clientRunData.schedule ? (
+                        <div>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono">
+                              {clientRunData.schedule.generatorExpression}
+                            </span>
+                            <span>({clientRunData.schedule.timezone})</span>
+                          </div>
+                          <SimpleTooltip
+                            button={
+                              <TextLink
+                                to={v3SchedulePath(organization, project, clientRunData.schedule)}
+                              >
+                                {clientRunData.schedule.description}
+                              </TextLink>
+                            }
+                            content={`Go to schedule ${clientRunData.schedule.friendlyId}`}
+                          />
                         </div>
-                        <SimpleTooltip
-                          button={
-                            <TextLink to={v3SchedulePath(organization, project, run.schedule)}>
-                              {run.schedule.description}
-                            </TextLink>
-                          }
-                          content={`Go to schedule ${run.schedule.friendlyId}`}
-                        />
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )} */}
+                      ) : (
+                        "No schedule"
+                      )
+                    ) : (
+                      <PropertyLoading />
+                    )}
+                  </Property.Value>
+                </Property.Item>
                 <Property.Item>
                   <Property.Label>Queue</Property.Label>
-                  {/* <Property.Value>
-                    <div>Name: {run.queue.name}</div>
-                    <div>
-                      Concurrency key: {run.queue.concurrencyKey ? run.queue.concurrencyKey : "–"}
-                    </div>
-                  </Property.Value> */}
+                  <Property.Value>
+                    {clientRunData ? (
+                      <>
+                        <div>Name: {clientRunData.queue.name}</div>
+                        <div>
+                          Concurrency key:{" "}
+                          {clientRunData.queue.concurrencyKey
+                            ? clientRunData.queue.concurrencyKey
+                            : "–"}
+                        </div>
+                      </>
+                    ) : (
+                      <PropertyLoading />
+                    )}
+                  </Property.Value>
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Time to live (TTL)</Property.Label>
@@ -249,38 +293,42 @@ export function RunInspector({
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Tags</Property.Label>
-                  {/* <Property.Value>
-                    {run.tags.length === 0 ? (
-                      "–"
+                  <Property.Value>
+                    {clientRunData ? (
+                      clientRunData.tags.length === 0 ? (
+                        "–"
+                      ) : (
+                        <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                          {clientRunData.tags.map((tag) => (
+                            <SimpleTooltip
+                              key={tag}
+                              button={
+                                <Link to={v3RunsPath(organization, project, { tags: [tag] })}>
+                                  <RunTag tag={tag} />
+                                </Link>
+                              }
+                              content={`Filter runs by ${tag}`}
+                            />
+                          ))}
+                        </div>
+                      )
                     ) : (
-                      <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-                        {run.tags.map((tag) => (
-                          <SimpleTooltip
-                            key={tag}
-                            button={
-                              <Link to={v3RunsPath(organization, project, { tags: [tag] })}>
-                                <RunTag tag={tag} />
-                              </Link>
-                            }
-                            content={`Filter runs by ${tag}`}
-                          />
-                        ))}
-                      </div>
+                      <PropertyLoading />
                     )}
-                  </Property.Value> */}
+                  </Property.Value>
                 </Property.Item>
-                {/* {run.links && run.links.length > 0 && (
+                {span?.links && span.links.length > 0 && (
                   <Property.Item>
                     <Property.Label>Links</Property.Label>
                     <Property.Value>
                       <div className="space-y-1">
-                        {run.links.map((link, index) => (
+                        {span.links.map((link, index) => (
                           <SpanLinkElement key={index} link={link} />
                         ))}
                       </div>
                     </Property.Value>
                   </Property.Item>
-                )} */}
+                )}
                 <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
@@ -315,7 +363,11 @@ export function RunInspector({
             </div>
           ) : tab === "context" ? (
             <div className="flex flex-col gap-4 py-3">
-              {/* <CodeBlock code={run.context} showLineNumbers={false} /> */}
+              {clientRunData ? (
+                <CodeBlock code={clientRunData.context} showLineNumbers={false} />
+              ) : (
+                <PropertyLoading />
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
@@ -326,11 +378,19 @@ export function RunInspector({
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {/* {run.error !== undefined ? (
-                <RunError error={run.error} />
-              ) : run.output !== undefined ? (
-                <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
-              ) : null} */}
+              {clientRunData ? (
+                clientRunData.error !== undefined ? (
+                  <RunError error={clientRunData.error} />
+                ) : clientRunData.output !== undefined ? (
+                  <PacketDisplay
+                    data={clientRunData.output}
+                    dataType={clientRunData.outputType}
+                    title="Output"
+                  />
+                ) : null
+              ) : (
+                <PropertyLoading />
+              )}
             </div>
           )}
         </div>
