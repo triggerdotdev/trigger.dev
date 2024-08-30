@@ -302,7 +302,14 @@ function walkSpanAncestors(
 }
 
 function getSpanEvent(events: TaskEvent[], spanId: string) {
-  return events.find((e) => e.spanId === spanId);
+  const spans = events.filter((e) => e.spanId === spanId);
+  const completedSpan = spans.find((s) => !s.isPartial);
+
+  if (completedSpan) {
+    return completedSpan;
+  }
+
+  return spans.at(0);
 }
 
 export function prepareEvent(event: TaskEvent): PreparedEvent {
