@@ -1,20 +1,29 @@
-import { Attributes } from "@opentelemetry/api";
+import { Attributes, Link } from "@opentelemetry/api";
 import {
+  correctErrorStackTrace,
+  ExceptionEventProperties,
+  isExceptionSpanEvent,
   millisecondsToNanoseconds,
+  NULL_SENTINEL,
+  SemanticInternalAttributes,
+  SpanEvent,
   SpanEvents,
+  SpanMessagingEvent,
   TaskEventStyle,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, TaskEvent } from "@trigger.dev/database";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import type {
   PreparedEvent,
-  QueriedEvent,
+  SpanLink,
   SpanSummary,
   TraceSummary,
 } from "~/v3/eventRepository.server";
 
-export function prepareTrace(events: QueriedEvent[]): TraceSummary | undefined {
+export type TraceSpan = NonNullable<ReturnType<typeof createSpanFromEvents>>;
+
+export function prepareTrace(events: TaskEvent[]): TraceSummary | undefined {
   let preparedEvents: Array<PreparedEvent> = [];
   let rootSpanId: string | undefined;
   const eventsBySpanId = new Map<string, PreparedEvent>();
@@ -139,7 +148,164 @@ export function createTraceTreeFromEvents(traceSummary: TraceSummary, spanId: st
   };
 }
 
-export function prepareEvent(event: QueriedEvent): PreparedEvent {
+export function createSpanFromEvents(events: TaskEvent[], spanId: string) {
+  const spanEvent = getSpanEvent(events, spanId);
+
+  if (!spanEvent) {
+    return;
+  }
+
+  const preparedEvent = prepareEvent(spanEvent);
+  const span = createSpanFromEvent(events, preparedEvent);
+
+  const output = rehydrateJson(spanEvent.output);
+  const payload = rehydrateJson(spanEvent.payload);
+
+  const show = rehydrateShow(spanEvent.properties);
+
+  const properties = sanitizedAttributes(spanEvent.properties);
+
+  const messagingEvent = SpanMessagingEvent.optional().safeParse((properties as any)?.messaging);
+
+  const links: SpanLink[] = [];
+
+  if (messagingEvent.success && messagingEvent.data) {
+    if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
+      if (messagingEvent.data.message.id.startsWith("run_")) {
+        links.push({
+          type: "run",
+          icon: "runs",
+          title: `Run ${messagingEvent.data.message.id}`,
+          runId: messagingEvent.data.message.id,
+        });
+      }
+    }
+  }
+
+  const backLinks = spanEvent.links as any as Link[] | undefined;
+
+  if (backLinks && backLinks.length > 0) {
+    backLinks.forEach((l) => {
+      const title = String(l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by");
+
+      links.push({
+        type: "span",
+        icon: "trigger",
+        title,
+        traceId: l.context.traceId,
+        spanId: l.context.spanId,
+      });
+    });
+  }
+
+  const spanEvents = transformEvents(
+    preparedEvent.events,
+    spanEvent.metadata as Attributes,
+    spanEvent.environmentType === "DEVELOPMENT"
+  );
+
+  return {
+    ...spanEvent,
+    ...span.data,
+    payload,
+    output,
+    events: spanEvents,
+    show,
+    links,
+    properties: properties ? JSON.stringify(properties, null, 2) : undefined,
+    showActionBar: show?.actions === true,
+  };
+}
+
+function createSpanFromEvent(events: TaskEvent[], event: PreparedEvent) {
+  let ancestorCancelled = false;
+  let duration = event.duration;
+
+  if (!event.isCancelled && event.isPartial) {
+    walkSpanAncestors(events, event, (ancestorEvent, level) => {
+      if (level >= 8) {
+        return { stop: true };
+      }
+
+      if (ancestorEvent.isCancelled) {
+        ancestorCancelled = true;
+
+        // We need to get the cancellation time from the cancellation span event
+        const cancellationEvent = ancestorEvent.events.find(
+          (event) => event.name === "cancellation"
+        );
+
+        if (cancellationEvent) {
+          duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+        }
+
+        return { stop: true };
+      }
+
+      return { stop: false };
+    });
+  }
+
+  const span = {
+    recordId: event.id,
+    id: event.spanId,
+    parentId: event.parentId ?? undefined,
+    runId: event.runId,
+    idempotencyKey: event.idempotencyKey,
+    data: {
+      message: event.message,
+      style: event.style,
+      duration,
+      isError: event.isError,
+      isPartial: ancestorCancelled ? false : event.isPartial,
+      isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+      startTime: getDateFromNanoseconds(event.startTime),
+      level: event.level,
+      events: event.events,
+      environmentType: event.environmentType,
+    },
+  };
+
+  return span;
+}
+
+function walkSpanAncestors(
+  events: TaskEvent[],
+  event: PreparedEvent,
+  callback: (event: PreparedEvent, level: number) => { stop: boolean }
+) {
+  const parentId = event.parentId;
+  if (!parentId) {
+    return;
+  }
+
+  let parentEvent = getSpanEvent(events, parentId);
+  let level = 1;
+
+  while (parentEvent) {
+    const preparedParentEvent = prepareEvent(parentEvent);
+
+    const result = callback(preparedParentEvent, level);
+
+    if (result.stop) {
+      return;
+    }
+
+    if (!preparedParentEvent.parentId) {
+      return;
+    }
+
+    parentEvent = getSpanEvent(events, preparedParentEvent.parentId);
+
+    level++;
+  }
+}
+
+function getSpanEvent(events: TaskEvent[], spanId: string) {
+  return events.find((e) => e.spanId === spanId);
+}
+
+export function prepareEvent(event: TaskEvent): PreparedEvent {
   return {
     ...event,
     duration: Number(event.duration),
@@ -264,4 +430,134 @@ export function getDateFromNanoseconds(nanoseconds: bigint) {
 
 export function getNowInNanoseconds(): bigint {
   return BigInt(new Date().getTime() * 1_000_000);
+}
+
+export function rehydrateJson(json: Prisma.JsonValue): any {
+  if (json === null) {
+    return undefined;
+  }
+
+  if (json === NULL_SENTINEL) {
+    return null;
+  }
+
+  if (typeof json === "string") {
+    return json;
+  }
+
+  if (typeof json === "number") {
+    return json;
+  }
+
+  if (typeof json === "boolean") {
+    return json;
+  }
+
+  if (Array.isArray(json)) {
+    return json.map((item) => rehydrateJson(item));
+  }
+
+  if (typeof json === "object") {
+    return unflattenAttributes(json as Attributes);
+  }
+
+  return null;
+}
+
+export function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const actions = properties[SemanticInternalAttributes.SHOW_ACTIONS];
+
+  if (typeof actions === "boolean") {
+    return { actions };
+  }
+
+  return;
+}
+
+function sanitizedAttributes(json: Prisma.JsonValue) {
+  if (json === null || json === undefined) {
+    return;
+  }
+
+  const withoutPrivateProperties = removePrivateProperties(json as Attributes);
+  if (!withoutPrivateProperties) {
+    return;
+  }
+
+  return unflattenAttributes(withoutPrivateProperties);
+}
+// removes keys that start with a $ sign. If there are no keys left, return undefined
+function removePrivateProperties(
+  attributes: Attributes | undefined | null
+): Attributes | undefined {
+  if (!attributes) {
+    return undefined;
+  }
+
+  const result: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key.startsWith("$")) {
+      continue;
+    }
+
+    result[key] = value;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return undefined;
+  }
+
+  return result;
+}
+
+function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
+  return (events ?? []).map((event) => transformEvent(event, properties, isDev));
+}
+
+function transformEvent(event: SpanEvent, properties: Attributes, isDev: boolean): SpanEvent {
+  if (isExceptionSpanEvent(event)) {
+    return {
+      ...event,
+      properties: {
+        exception: transformException(event.properties.exception, properties, isDev),
+      },
+    };
+  }
+
+  return event;
+}
+
+function transformException(
+  exception: ExceptionEventProperties,
+  properties: Attributes,
+  isDev: boolean
+): ExceptionEventProperties {
+  const projectDirAttributeValue = properties[SemanticInternalAttributes.PROJECT_DIR];
+
+  if (projectDirAttributeValue !== undefined && typeof projectDirAttributeValue !== "string") {
+    return exception;
+  }
+
+  return {
+    ...exception,
+    stacktrace: exception.stacktrace
+      ? correctErrorStackTrace(exception.stacktrace, projectDirAttributeValue, {
+          removeFirstLine: true,
+          isDev,
+        })
+      : undefined,
+  };
 }

@@ -17,9 +17,9 @@ import {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, TaskRun } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ClientOnly } from "remix-utils/client-only";
@@ -64,7 +64,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { TraceEvent, useTrace } from "~/hooks/useTrace";
+import { Trace, TraceEvent } from "~/hooks/useSyncTrace";
 import { useUser } from "~/hooks/useUser";
 import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -80,6 +80,9 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
+import { SpanInspector } from "~/components/runs/v3/SpanInspector";
+import { createSpanFromEvents, createTraceTreeFromEvents, prepareTrace } from "~/utils/taskEvent";
+import { useSyncRunPage } from "~/hooks/useSyncRunPage";
 
 const resizableSettings = {
   parent: {
@@ -149,15 +152,6 @@ export default function Page() {
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
-
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
-
-  const inspectorSpanId = selectedSpanId
-    ? selectedSpanId
-    : run.logsDeletedAt
-    ? run.spanId
-    : undefined;
 
   const usernameForEnv = user.id !== run.environment.userId ? run.environment.userName : undefined;
 
@@ -243,82 +237,104 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-          <ResizablePanelGroup
-            autosaveId={resizableSettings.parent.autosaveId}
-            snapshot={resizable.parent}
-            className="h-full max-h-full"
-          >
-            <ResizablePanel
-              id={resizableSettings.parent.main.id}
-              min={resizableSettings.parent.main.min}
-            >
-              <ClientOnly fallback={<Loading />}>
-                {() => (
-                  <TraceView
-                    run={run}
-                    selectedSpanId={selectedSpanId}
-                    replaceSearchParam={replaceSearchParam}
-                  />
-                )}
-              </ClientOnly>
-            </ResizablePanel>
-            <ResizableHandle id={resizableSettings.parent.handleId} />
-            {inspectorSpanId ? (
-              <ResizablePanel
-                id={resizableSettings.parent.inspector.id}
-                default={resizableSettings.parent.inspector.default}
-                min={resizableSettings.parent.inspector.min}
-                isStaticAtRest
-              >
-                <SpanView
-                  runParam={run.friendlyId}
-                  spanId={inspectorSpanId}
-                  closePanel={!run.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
-                />
-              </ResizablePanel>
-            ) : null}
-          </ResizablePanelGroup>
+          <ClientOnly fallback={<Loading />}>
+            {() => <Panels run={run} resizable={resizable} />}
+          </ClientOnly>
         </div>
       </PageBody>
     </>
   );
 }
 
-function View({ resizable, run }: LoaderData) {}
+function Panels({ resizable, run: originalRun }: LoaderData) {
+  const { location, replaceSearchParam } = useReplaceLocation();
+  const selectedSpanId = getSpanId(location);
+
+  const appOrigin = useAppOrigin();
+  const { isUpToDate, events, run } = useSyncRunPage({
+    origin: appOrigin,
+    runId: originalRun.id,
+    traceId: originalRun.traceId,
+    spanId: originalRun.spanId,
+  });
+
+  const initialLoad = !isUpToDate || !run;
+
+  console.log(run);
+
+  const trace = useMemo(() => {
+    if (!events) return undefined;
+    const preparedEvents = prepareTrace(events);
+    if (!preparedEvents) return undefined;
+    return createTraceTreeFromEvents(preparedEvents, originalRun.spanId);
+  }, [events]);
+
+  const inspectorSpanId = selectedSpanId
+    ? selectedSpanId
+    : originalRun.logsDeletedAt
+    ? originalRun.spanId
+    : undefined;
+
+  const selectedSpan = useMemo(() => {
+    if (!selectedSpanId || !events) return undefined;
+    return createSpanFromEvents(events, selectedSpanId);
+  }, [selectedSpanId]);
+
+  return (
+    <ResizablePanelGroup
+      autosaveId={resizableSettings.parent.autosaveId}
+      snapshot={resizable.parent}
+      className="h-full max-h-full"
+    >
+      <ResizablePanel id={resizableSettings.parent.main.id} min={resizableSettings.parent.main.min}>
+        {initialLoad ? (
+          <Loading />
+        ) : (
+          <TraceView
+            run={run}
+            environmentType={originalRun.environment.type}
+            trace={trace}
+            selectedSpanId={selectedSpanId}
+            replaceSearchParam={replaceSearchParam}
+          />
+        )}
+      </ResizablePanel>
+      <ResizableHandle id={resizableSettings.parent.handleId} />
+      {inspectorSpanId ? (
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          isStaticAtRest
+        >
+          {selectedSpan && run ? (
+            <SpanInspector
+              runParam={run.friendlyId}
+              span={selectedSpan}
+              closePanel={!run.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
+            />
+          ) : null}
+        </ResizablePanel>
+      ) : null}
+    </ResizablePanelGroup>
+  );
+}
 
 type TraceData = {
-  run: LoaderData["run"];
+  run: TaskRun;
+  environmentType: RuntimeEnvironmentType;
+  trace?: Trace;
   selectedSpanId: string | undefined;
   replaceSearchParam: (key: string, value?: string) => void;
 };
 
-function TraceView({ run, selectedSpanId, replaceSearchParam }: TraceData) {
-  const appOrigin = useAppOrigin();
-  const { isUpToDate, trace } = useTrace({
-    origin: appOrigin,
-    traceId: run.traceId,
-    spanId: run.spanId,
-  });
-
+function TraceView({ run, environmentType, trace, selectedSpanId, replaceSearchParam }: TraceData) {
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
   }, 250);
 
-  if (!isUpToDate) {
-    return <Loading />;
-  }
-
   if (!trace) {
     return <NoLogsView run={run} />;
-  }
-
-  const initialLoad = !isUpToDate && !trace;
-
-  let inspectorSpanId = selectedSpanId;
-  if (!inspectorSpanId) {
-    if (initialLoad || !trace) {
-      inspectorSpanId = run.spanId;
-    }
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
@@ -341,12 +357,12 @@ function TraceView({ run, selectedSpanId, replaceSearchParam }: TraceData) {
       totalDuration={duration}
       rootSpanStatus={rootSpanStatus}
       rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
-      environmentType={run.environment.type}
+      environmentType={environmentType}
     />
   );
 }
 
-function NoLogsView({ run }: { run: LoaderData["run"] }) {
+function NoLogsView({ run }: { run: TaskRun }) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
