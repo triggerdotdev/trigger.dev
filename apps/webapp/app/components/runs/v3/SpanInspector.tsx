@@ -28,7 +28,7 @@ export function SpanInspector({
   runParam,
   closePanel,
 }: {
-  span: TraceSpan;
+  span?: TraceSpan;
   runParam?: string;
   closePanel?: () => void;
 }) {
@@ -39,6 +39,10 @@ export function SpanInspector({
 
   if (tab === "context") {
     tab = "overview";
+  }
+
+  if (span === undefined) {
+    return null;
   }
 
   return (

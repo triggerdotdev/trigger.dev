@@ -1,14 +1,20 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getUserId } from "~/services/session.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 
+const Params = z.object({
+  traceId: z.string(),
+});
+
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await getUserId(request);
+  const { traceId } = Params.parse(params);
 
-  logger.log(`/sync/runs/${params.runId}`, { userId });
+  logger.log(`/sync/runs/${traceId}`, { userId });
 
   if (!userId) {
     return new Response("No user found in cookie", { status: 401 });
@@ -23,7 +29,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
     },
     where: {
-      id: params.runId,
+      traceId,
     },
   });
 
@@ -48,7 +54,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     originUrl.searchParams.set(key, value);
   });
 
-  originUrl.searchParams.set("where", `"id"='${params.runId}'`);
+  originUrl.searchParams.set("where", `"traceId"='${traceId}'`);
 
   return longPollingFetch(originUrl.toString());
 }

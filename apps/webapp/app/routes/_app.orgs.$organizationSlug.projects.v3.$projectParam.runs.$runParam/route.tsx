@@ -17,7 +17,7 @@ import {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "@trigger.dev/core/v3";
-import { RuntimeEnvironmentType, TaskRun } from "@trigger.dev/database";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -55,6 +55,8 @@ import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
+import { RunInspector } from "~/components/runs/v3/RunInspector";
+import { SpanInspector } from "~/components/runs/v3/SpanInspector";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
@@ -64,9 +66,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useSyncRunPage } from "~/hooks/useSyncRunPage";
 import { Trace, TraceEvent } from "~/hooks/useSyncTrace";
+import { RawRun } from "~/hooks/useSyncTraceRuns";
 import { useUser } from "~/hooks/useUser";
-import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -78,11 +82,13 @@ import {
   v3RunSpanPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import {
+  TraceSpan,
+  createSpanFromEvents,
+  createTraceTreeFromEvents,
+  prepareTrace,
+} from "~/utils/taskEvent";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
-import { SpanInspector } from "~/components/runs/v3/SpanInspector";
-import { createSpanFromEvents, createTraceTreeFromEvents, prepareTrace } from "~/utils/taskEvent";
-import { useSyncRunPage } from "~/hooks/useSyncRunPage";
 
 const resizableSettings = {
   parent: {
@@ -246,21 +252,28 @@ export default function Page() {
   );
 }
 
+type InspectorState =
+  | {
+      type: "span";
+      span?: TraceSpan;
+    }
+  | {
+      type: "run";
+      run?: RawRun;
+    }
+  | undefined;
+
 function Panels({ resizable, run: originalRun }: LoaderData) {
   const { location, replaceSearchParam } = useReplaceLocation();
   const selectedSpanId = getSpanId(location);
 
   const appOrigin = useAppOrigin();
-  const { isUpToDate, events, run } = useSyncRunPage({
+  const { isUpToDate, events, runs } = useSyncRunPage({
     origin: appOrigin,
-    runId: originalRun.id,
     traceId: originalRun.traceId,
-    spanId: originalRun.spanId,
   });
 
-  const initialLoad = !isUpToDate || !run;
-
-  console.log(run);
+  const initialLoad = !isUpToDate || !runs;
 
   const trace = useMemo(() => {
     if (!events) return undefined;
@@ -269,16 +282,39 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
     return createTraceTreeFromEvents(preparedEvents, originalRun.spanId);
   }, [events]);
 
-  const inspectorSpanId = selectedSpanId
-    ? selectedSpanId
-    : originalRun.logsDeletedAt
-    ? originalRun.spanId
-    : undefined;
+  const inspectorState = useMemo<InspectorState>(() => {
+    if (originalRun.logsDeletedAt) {
+      return {
+        type: "run",
+        run: runs?.find((r) => r.friendlyId === originalRun.friendlyId),
+      };
+    }
 
-  const selectedSpan = useMemo(() => {
-    if (!selectedSpanId || !events) return undefined;
-    return createSpanFromEvents(events, selectedSpanId);
-  }, [selectedSpanId]);
+    if (selectedSpanId) {
+      if (runs && runs.length > 0) {
+        const spanRun = runs.find((r) => r.spanId === selectedSpanId);
+        if (spanRun) {
+          return {
+            type: "run",
+            run: spanRun,
+          };
+        }
+      }
+
+      if (!events) {
+        return {
+          type: "span",
+          span: undefined,
+        };
+      }
+
+      const span = createSpanFromEvents(events, selectedSpanId);
+      return {
+        type: "span",
+        span,
+      };
+    }
+  }, [selectedSpanId, runs, events]);
 
   return (
     <ResizablePanelGroup
@@ -291,7 +327,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
           <Loading />
         ) : (
           <TraceView
-            run={run}
+            run={originalRun}
             environmentType={originalRun.environment.type}
             trace={trace}
             selectedSpanId={selectedSpanId}
@@ -300,18 +336,24 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
         )}
       </ResizablePanel>
       <ResizableHandle id={resizableSettings.parent.handleId} />
-      {inspectorSpanId ? (
+      {inspectorState ? (
         <ResizablePanel
           id={resizableSettings.parent.inspector.id}
           default={resizableSettings.parent.inspector.default}
           min={resizableSettings.parent.inspector.min}
           isStaticAtRest
         >
-          {selectedSpan && run ? (
+          {inspectorState.type === "span" ? (
             <SpanInspector
-              runParam={run.friendlyId}
-              span={selectedSpan}
-              closePanel={!run.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
+              runParam={originalRun.friendlyId}
+              span={inspectorState.span}
+              closePanel={!originalRun.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
+            />
+          ) : inspectorState.type === "run" ? (
+            <RunInspector
+              runParam={originalRun.friendlyId}
+              run={inspectorState.run}
+              closePanel={!originalRun.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
             />
           ) : null}
         </ResizablePanel>
@@ -321,7 +363,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
 }
 
 type TraceData = {
-  run: TaskRun;
+  run: Run;
   environmentType: RuntimeEnvironmentType;
   trace?: Trace;
   selectedSpanId: string | undefined;
@@ -362,7 +404,7 @@ function TraceView({ run, environmentType, trace, selectedSpanId, replaceSearchP
   );
 }
 
-function NoLogsView({ run }: { run: TaskRun }) {
+function NoLogsView({ run }: { run: Run }) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 

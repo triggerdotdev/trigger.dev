@@ -72,6 +72,7 @@ export class RunPresenter {
         isFinished: isFinalRunStatus(run.status),
         completedAt: run.completedAt,
         logsDeletedAt: run.logsDeletedAt,
+
         environment: {
           id: run.runtimeEnvironment.id,
           organizationId: run.runtimeEnvironment.organizationId,

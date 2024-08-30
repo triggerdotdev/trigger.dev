@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { getUserId, requireUserId } from "~/services/session.server";
+import { getUserId } from "~/services/session.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
