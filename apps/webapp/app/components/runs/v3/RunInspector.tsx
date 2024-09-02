@@ -4,7 +4,7 @@ import { formatDuration, formatDurationMilliseconds, TaskRunError } from "@trigg
 import { useEffect } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { CodeBlock } from "~/components/code/CodeBlock";
+import { CodeBlock, TitleRow } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -370,30 +370,42 @@ export function RunInspector({
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
               </div>
               <RunTimeline run={run} />
-              {clientRunData ? (
-                clientRunData.payload !== undefined && (
-                  <PacketDisplay
-                    data={clientRunData.payload}
-                    dataType={clientRunData.payloadType}
-                    title="Payload"
-                  />
-                )
-              ) : (
-                <PropertyLoading />
-              )}
-              {clientRunData ? (
-                clientRunData.error !== undefined ? (
-                  <RunError error={clientRunData.error} />
-                ) : clientRunData.output !== undefined ? (
-                  <PacketDisplay
-                    data={clientRunData.output}
-                    dataType={clientRunData.outputType}
-                    title="Output"
-                  />
-                ) : null
-              ) : (
-                <PropertyLoading />
-              )}
+              <>
+                {clientRunData ? (
+                  <>
+                    {clientRunData.payload !== undefined && (
+                      <PacketDisplay
+                        data={clientRunData.payload}
+                        dataType={clientRunData.payloadType}
+                        title="Payload"
+                      />
+                    )}
+                    {clientRunData.error !== undefined ? (
+                      <RunError error={clientRunData.error} />
+                    ) : clientRunData.output !== undefined ? (
+                      <PacketDisplay
+                        data={clientRunData.output}
+                        dataType={clientRunData.outputType}
+                        title="Output"
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="relative overflow-hidden rounded-md border border-grid-bright">
+                    <TitleRow
+                      title={
+                        <Paragraph
+                          variant="small/bright"
+                          className="flex items-center justify-between gap-2"
+                        >
+                          Payload loading…
+                          <PropertyLoading />
+                        </Paragraph>
+                      }
+                    />
+                  </div>
+                )}
+              </>
             </div>
           )}
         </div>
@@ -435,7 +447,7 @@ export function RunInspector({
 }
 
 function PropertyLoading() {
-  return <Spinner className="size-4" color="muted" />;
+  return <Spinner className="mt-1 size-4" color="muted" />;
 }
 
 function RunTimeline({ run }: { run: RawRun }) {
