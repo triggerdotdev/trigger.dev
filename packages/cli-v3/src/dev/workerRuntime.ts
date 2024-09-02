@@ -337,7 +337,7 @@ function WebsocketFactory(apiKey: string) {
 
 function gatherProcessEnv() {
   const $env = {
-    ...env,
+    ...process.env,
     NODE_ENV: "development",
   };
 
