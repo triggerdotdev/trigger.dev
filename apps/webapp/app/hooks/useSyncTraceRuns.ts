@@ -1,7 +1,6 @@
-import { useShape } from "@electric-sql/react";
+import { Prettify } from "@trigger.dev/core";
 import { TaskRun } from "@trigger.dev/database";
 import { SyncedShapeData, useSyncedShape } from "./useSyncedShape";
-import { Prettify } from "@trigger.dev/core";
 
 type Params = {
   origin: string;

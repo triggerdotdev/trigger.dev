@@ -4,7 +4,7 @@ export type ShapeInput = Parameters<typeof useShape>[0];
 export type ShapeOutput<S> = {
   isError: boolean;
   isUpToDate: boolean;
-  data: S[];
+  data: S[] | undefined;
 };
 
 export type SyncedShapeData<T> = {
@@ -27,7 +27,9 @@ export function useSyncedShape<S>(props: ShapeInput): ShapeOutput<SyncedShapeDat
   return {
     isError: output.isError,
     isUpToDate: output.isUpToDate,
-    data: transformInput(output.data as InputObject) as SyncedShapeData<S>[],
+    data: output.data
+      ? (transformInput(output.data as InputObject) as SyncedShapeData<S>[])
+      : undefined,
   };
 }
 
