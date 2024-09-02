@@ -361,7 +361,16 @@ export function RunInspector({
               {clientRunData ? (
                 <CodeBlock code={clientRunData.context} showLineNumbers={false} />
               ) : (
-                <PropertyLoading />
+                <div className="relative overflow-hidden rounded-md border border-grid-bright">
+                  <TitleRow
+                    title={
+                      <span className="flex items-center justify-between gap-2 text-sm text-text-bright">
+                        Context loading…
+                        <PropertyLoading />
+                      </span>
+                    }
+                  />
+                </div>
               )}
             </div>
           ) : (
@@ -394,13 +403,10 @@ export function RunInspector({
                   <div className="relative overflow-hidden rounded-md border border-grid-bright">
                     <TitleRow
                       title={
-                        <Paragraph
-                          variant="small/bright"
-                          className="flex items-center justify-between gap-2"
-                        >
+                        <span className="flex items-center justify-between gap-2 text-sm text-text-bright">
                           Payload loading…
                           <PropertyLoading />
-                        </Paragraph>
+                        </span>
                       }
                     />
                   </div>
