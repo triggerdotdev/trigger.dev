@@ -80,6 +80,8 @@ export async function startDevSession({
       workerDir?.path
     );
 
+    logger.debug("Created build manifest from bundle", { buildManifest });
+
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
     try {
@@ -197,6 +199,7 @@ async function createBuildManifestFromBundle(
     indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundle.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
       env: {},
     },

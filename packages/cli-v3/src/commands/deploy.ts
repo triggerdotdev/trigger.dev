@@ -262,6 +262,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
     loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundleResult.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
       env: serverEnvVars.success ? serverEnvVars.data.variables : {},
     },

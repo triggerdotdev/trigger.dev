@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { BuildRuntime } from "../schemas/build.js";
+import { BuildManifest, BuildRuntime } from "../schemas/build.js";
 
 export const DEFAULT_RUNTIME: BuildRuntime = "node";
 
@@ -30,5 +30,30 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
       return join("~", ".bin", "bin", "bun");
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
+  }
+}
+
+export type ExecOptions = {
+  loaderEntryPoint?: string;
+  customConditions?: string[];
+};
+
+export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOptions): string {
+  switch (runtime) {
+    case "node": {
+      const importEntryPoint = options.loaderEntryPoint
+        ? `--import=${options.loaderEntryPoint}`
+        : undefined;
+
+      const conditions = options.customConditions?.map((condition) => `--conditions=${condition}`);
+
+      return [importEntryPoint, conditions, process.env.NODE_OPTIONS]
+        .filter(Boolean)
+        .flat()
+        .join(" ");
+    }
+    case "bun": {
+      return "";
+    }
   }
 }

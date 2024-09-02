@@ -71,12 +71,12 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 export default defineConfig({
   project: "<project ref>",
   build: {
-    externals: ["native-module"],
+    external: ["native-module"],
   },
 });
 ```
 
-`externals` is an array of strings, where each string is the name of a dependency that should be made external. Glob expressions are also supported and use the [minimatch](https://github.com/isaacs/minimatch) matcher.
+`external` is an array of strings, where each string is the name of a dependency that should be made external. Glob expressions are also supported and use the [minimatch](https://github.com/isaacs/minimatch) matcher.
 
 ### `additionalFiles`
 

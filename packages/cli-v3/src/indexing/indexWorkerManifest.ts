@@ -49,7 +49,7 @@ export async function indexWorkerManifest({
         OTEL_IMPORT_HOOK_INCLUDES: otelHookInclude?.join(","),
         OTEL_IMPORT_HOOK_EXCLUDES: otelHookExclude?.join(","),
         TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
-        NODE_OPTIONS: nodeOptions ? `${env.NODE_OPTIONS ?? ""} ${nodeOptions}` : env.NODE_OPTIONS,
+        NODE_OPTIONS: nodeOptions,
       },
       execPath: execPathForRuntime(runtime),
     });

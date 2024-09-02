@@ -8,13 +8,12 @@ import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
   devEntryPoints,
-  isConfigEntryPoint,
-  isRunWorkerForTarget,
+  isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
   isRunControllerForTarget,
+  isRunWorkerForTarget,
   shims,
-  isIndexControllerForTarget,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 
@@ -63,6 +62,10 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     },
   };
 
+  const customConditions = options.resolvedConfig.build?.conditions ?? [];
+
+  const conditions = [...customConditions, "trigger.dev", "module", "node"];
+
   const buildOptions: esbuild.BuildOptions & { metafile: true } = {
     entryPoints,
     outdir: options.destination,
@@ -76,7 +79,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     platform: "node",
     sourcemap: true,
     sourcesContent: options.target === "dev",
-    conditions: ["trigger.dev", "node"],
+    conditions,
     format: "esm",
     target: ["node20", "es2022"],
     loader: {

@@ -40,7 +40,20 @@ async function linkExternal(external: CollectedExternal, resolveDir: string, log
     destinationPath,
     external,
   });
-  await symlink(external.path, join(destinationPath, external.name), "dir");
+
+  const symbolicLinkPath = join(destinationPath, external.name);
+
+  // Make sure the symbolic link does not exist
+  try {
+    await symlink(external.path, symbolicLinkPath, "dir");
+  } catch (e) {
+    logger.debug("[externals] Unable to create symbolic link", {
+      error: e,
+      fromPath: external.path,
+      destinationPath,
+      external,
+    });
+  }
 }
 
 async function isExternalResolvable(
@@ -125,75 +138,92 @@ function createExternalsCollector(
               };
             }
 
-            const resolvedPath = nodeResolve.sync(args.path, {
-              basedir: args.resolveDir,
-            });
+            const packageName = packageNameForImportPath(args.path);
 
-            logger.debug("[externals][onResolve] Resolved external", {
-              external,
-              resolvedPath,
-              args,
-            });
-
-            const packageJsonPath = await resolvePackageJSON(dirname(resolvedPath));
-
-            if (!packageJsonPath) {
-              return undefined;
-            }
-
-            logger.debug("[externals][onResolve] Found package.json", {
-              packageJsonPath,
-              external,
-              resolvedPath,
-              args,
-            });
-
-            const packageJson = await readPackageJSON(packageJsonPath);
-
-            if (!packageJson || !packageJson.name) {
-              return undefined;
-            }
-
-            if (!external.filter.test(packageJson.name)) {
-              logger.debug("[externals][onResolve] Package name does not match", {
-                external,
-                packageJson,
-                resolvedPath,
+            try {
+              const resolvedPath = nodeResolve.sync(packageName, {
+                basedir: args.resolveDir,
               });
 
-              return undefined;
-            }
-
-            if (!packageJson.version) {
-              logger.debug("[externals][onResolve] No version found in package.json", {
+              logger.debug("[externals][onResolve] Resolved external", {
                 external,
-                packageJson,
                 resolvedPath,
+                args,
+                packageName,
               });
 
-              return undefined;
-            }
+              const packageJsonPath = await resolvePackageJSON(dirname(resolvedPath));
 
-            externals.push({
-              name: packageJson.name,
-              path: dirname(packageJsonPath),
-              version: packageJson.version,
-            });
+              if (!packageJsonPath) {
+                return undefined;
+              }
 
-            logger.debug("[externals][onResolve] adding external to the externals collection", {
-              external,
-              resolvedPath,
-              args,
-              resolvedExternal: {
-                name: packageJson.name,
+              logger.debug("[externals][onResolve] Found package.json", {
+                packageJsonPath,
+                external,
+                resolvedPath,
+                args,
+                packageName,
+              });
+
+              const packageJson = await readPackageJSON(packageJsonPath);
+
+              if (!packageJson || !packageJson.name) {
+                return undefined;
+              }
+
+              if (!external.filter.test(packageJson.name)) {
+                logger.debug("[externals][onResolve] Package name does not match", {
+                  external,
+                  packageJson,
+                  resolvedPath,
+                  packageName,
+                });
+
+                return undefined;
+              }
+
+              if (!packageJson.version) {
+                logger.debug("[externals][onResolve] No version found in package.json", {
+                  external,
+                  packageJson,
+                  resolvedPath,
+                });
+
+                return undefined;
+              }
+
+              externals.push({
+                name: packageName,
                 path: dirname(packageJsonPath),
                 version: packageJson.version,
-              },
-            });
+              });
 
-            return {
-              external: true,
-            };
+              logger.debug("[externals][onResolve] adding external to the externals collection", {
+                external,
+                resolvedPath,
+                args,
+                packageName,
+                resolvedExternal: {
+                  name: packageJson.name,
+                  path: dirname(packageJsonPath),
+                  version: packageJson.version,
+                },
+              });
+
+              return {
+                external: true,
+              };
+            } catch (error) {
+              logger.debug("[externals][onResolve] Unable to resolve external", {
+                external,
+                error,
+                args,
+                packageName,
+              });
+
+              return undefined;
+            }
           });
         });
       },
@@ -221,7 +251,7 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
 
   if (config.build?.external) {
     for (const externalName of config.build?.external) {
-      const externalRegex = makeRe(externalName);
+      const externalRegex = makeExternalRegexp(externalName);
 
       if (!externalRegex) {
         continue;
@@ -235,7 +265,7 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
   }
 
   for (const externalName of getInstrumentedPackageNames(config)) {
-    const externalRegex = makeRe(externalName);
+    const externalRegex = makeExternalRegexp(externalName);
 
     if (!externalRegex) {
       continue;
@@ -243,7 +273,7 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
 
     external.push({
       raw: externalName,
-      filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
+      filter: externalRegex,
     });
   }
 
@@ -251,7 +281,7 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
     const moduleExternals = buildExtension.externalsForTarget?.(target);
 
     for (const externalName of moduleExternals ?? []) {
-      const externalRegex = makeRe(externalName);
+      const externalRegex = makeExternalRegexp(externalName);
 
       if (!externalRegex) {
         continue;
@@ -259,7 +289,7 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
 
       external.push({
         raw: externalName,
-        filter: new RegExp(`^${externalName}$|${externalRegex.source}`),
+        filter: externalRegex,
       });
     }
   }
@@ -299,4 +329,31 @@ export function createExternalsBuildExtension(
       });
     },
   };
+}
+
+function makeExternalRegexp(packageName: string): RegExp {
+  // Escape special regex characters in the package name
+  const escapedPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Create the regex pattern
+  const pattern = `^${escapedPkg}(?:/[^'"]*)?$`;
+
+  return new RegExp(pattern);
+}
+
+function packageNameForImportPath(importPath: string): string {
+  // Remove any leading '@' to handle it separately
+  const withoutAtSign = importPath.replace(/^@/, "");
+
+  // Split the path by '/'
+  const parts = withoutAtSign.split("/");
+
+  // Handle scoped packages
+  if (importPath.startsWith("@")) {
+    // Return '@org/package' for scoped packages
+    return "@" + parts.slice(0, 2).join("/");
+  } else {
+    // Return just the first part for non-scoped packages
+    return parts[0] as string;
+  }
 }

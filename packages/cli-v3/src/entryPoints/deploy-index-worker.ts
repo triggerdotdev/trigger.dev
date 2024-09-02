@@ -109,6 +109,7 @@ await sendMessageInCatalog(
       workerEntryPoint: buildManifest.runWorkerEntryPoint,
       controllerEntryPoint: buildManifest.runControllerEntryPoint,
       loaderEntryPoint: buildManifest.loaderEntryPoint,
+      customConditions: buildManifest.customConditions,
     },
     importErrors,
   },

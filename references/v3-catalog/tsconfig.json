@@ -7,7 +7,7 @@
     "strict": true,
     "outDir": "dist",
     "skipLibCheck": true,
-    "customConditions": ["@triggerdotdev/source"],
+    "customConditions": ["@triggerdotdev/source", "react-server"],
     "jsx": "preserve",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,

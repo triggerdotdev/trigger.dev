@@ -15,7 +15,7 @@ import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
-import { execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
@@ -112,9 +112,7 @@ export class TaskRunProcess {
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
-      NODE_OPTIONS: workerManifest.loaderEntryPoint
-        ? `--import=${workerManifest.loaderEntryPoint} ${env.NODE_OPTIONS ?? ""}`
-        : env.NODE_OPTIONS ?? "",
+      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
     };
 
     logger.debug(`[${this.runId}] initializing task run process`, {

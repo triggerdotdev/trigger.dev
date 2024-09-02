@@ -27,6 +27,7 @@ import { prettyError } from "../utilities/cliOutput.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
+import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -259,9 +260,7 @@ export class BackgroundWorker {
       runtime: this.build.runtime,
       indexWorkerPath: this.build.indexWorkerEntryPoint,
       buildManifestPath: this.buildManifestPath,
-      nodeOptions: this.build.loaderEntryPoint
-        ? `--import=${this.build.loaderEntryPoint}`
-        : undefined,
+      nodeOptions: execOptionsForRuntime(this.build.runtime, this.build),
       env: this.params.env,
       cwd: this.params.cwd,
       otelHookInclude: this.build.otelImportHook?.include,

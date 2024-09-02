@@ -171,6 +171,7 @@ async function resolveConfig(
         },
         extensions: [],
         external: [],
+        conditions: [],
       },
     }
   );
