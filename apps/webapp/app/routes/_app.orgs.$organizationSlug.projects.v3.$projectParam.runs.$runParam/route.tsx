@@ -281,7 +281,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
     const preparedEvents = prepareTrace(events);
     if (!preparedEvents) return undefined;
     return createTraceTreeFromEvents(preparedEvents, originalRun.spanId);
-  }, [events]);
+  }, [events, originalRun.spanId]);
 
   const inspectorState = useMemo<InspectorState>(() => {
     if (originalRun.logsDeletedAt) {
@@ -376,7 +376,7 @@ type TraceData = {
 function TraceView({ run, environmentType, trace, selectedSpanId, replaceSearchParam }: TraceData) {
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
-  }, 50);
+  }, 100);
 
   if (!trace) {
     return <NoLogsView run={run} />;
