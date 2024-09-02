@@ -678,7 +678,7 @@ function TasksTreeView({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="grow @container">
           <div className="hidden items-center gap-4 @[42rem]:flex">
             <KeyboardShortcuts
@@ -1138,7 +1138,7 @@ function ConnectedDevWarning() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(true);
-    }, 3000);
+    }, 6000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -1146,14 +1146,14 @@ function ConnectedDevWarning() {
   return (
     <div
       className={cn(
-        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
+        "mt-2 flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
         isVisible ? "opacity-100" : "h-0 opacity-0"
       )}
     >
       <Callout variant="info">
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
-            Runs usually start within 1 second in{" "}
+            Runs usually start within 2 seconds in{" "}
             <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />. Check you're running the
             CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@beta dev</InlineCode>
           </Paragraph>
