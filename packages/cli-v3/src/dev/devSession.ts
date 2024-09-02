@@ -96,7 +96,7 @@ export async function startDevSession({
   }
 
   async function updateBuild(build: esbuild.BuildResult, workerDir: EphemeralDirectory) {
-    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, build);
+    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, rawConfig, build);
 
     if (bundle) {
       await updateBundle({ ...bundle, stop: undefined }, workerDir);
