@@ -1,16 +1,12 @@
-import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
-import { ReactNode } from "react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import * as Property from "~/components/primitives/PropertyTable";
-import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
@@ -22,6 +18,10 @@ import { cn } from "~/utils/cn";
 import { v3RunPath, v3RunsPath, v3TraceSpanPath } from "~/utils/pathBuilder";
 import { TraceSpan } from "~/utils/taskEvent";
 import { SpanLink } from "~/v3/eventRepository.server";
+import { RunTimelineEvent, RunTimelineLine } from "./InspectorTimeline";
+import { Spinner } from "~/components/primitives/Spinner";
+import { LiveTimer } from "./LiveTimer";
+import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 
 export function SpanInspector({
   span,
@@ -234,67 +234,6 @@ export function SpanInspector({
   );
 }
 
-type RunTimelineItemProps = {
-  title: ReactNode;
-  subtitle?: ReactNode;
-  state: "complete" | "error";
-};
-
-function RunTimelineEvent({ title, subtitle, state }: RunTimelineItemProps) {
-  return (
-    <div className="grid h-5 grid-cols-[1.125rem_1fr] text-sm">
-      <div className="flex items-center justify-center">
-        <div
-          className={cn(
-            "size-[0.3125rem] rounded-full",
-            state === "complete" ? "bg-success" : "bg-error"
-          )}
-        ></div>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="font-medium text-text-bright">{title}</span>
-        {subtitle ? <span className="text-xs text-text-dimmed">{subtitle}</span> : null}
-      </div>
-    </div>
-  );
-}
-
-type RunTimelineLineProps = {
-  title: ReactNode;
-  state: "complete" | "delayed" | "inprogress";
-};
-
-function RunTimelineLine({ title, state }: RunTimelineLineProps) {
-  return (
-    <div className="grid h-6 grid-cols-[1.125rem_1fr] text-xs">
-      <div className="flex items-stretch justify-center">
-        <div
-          className={cn(
-            "w-px",
-            state === "complete" ? "bg-success" : state === "delayed" ? "bg-text-dimmed" : ""
-          )}
-          style={
-            state === "inprogress"
-              ? {
-                  width: "1px",
-                  height: "100%",
-                  background:
-                    "repeating-linear-gradient(to bottom, #3B82F6 0%, #3B82F6 50%, transparent 50%, transparent 100%)",
-                  backgroundSize: "1px 6px",
-                  maskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
-                }
-              : undefined
-          }
-        ></div>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-text-dimmed">{title}</span>
-      </div>
-    </div>
-  );
-}
-
 type TimelineProps = {
   startTime: Date;
   duration: number;
@@ -302,9 +241,7 @@ type TimelineProps = {
   isError: boolean;
 };
 
-type TimelineState = "error" | "pending" | "complete";
-
-function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProps) {
+export function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProps) {
   const state = isError ? "error" : inProgress ? "pending" : "complete";
   return (
     <>
@@ -349,20 +286,6 @@ function SpanTimeline({ startTime, duration, inProgress, isError }: TimelineProp
       </div>
     </>
   );
-}
-
-function classNameForState(state: TimelineState) {
-  switch (state) {
-    case "pending": {
-      return "bg-pending";
-    }
-    case "complete": {
-      return "bg-success";
-    }
-    case "error": {
-      return "bg-error";
-    }
-  }
 }
 
 function SpanLinkElement({ link }: { link: SpanLink }) {
