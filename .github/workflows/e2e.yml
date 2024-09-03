@@ -9,12 +9,13 @@ on:
         type: string
 jobs:
   cli-v3:
-    name: "🧪 CLI v3 tests"
+    name: "🧪 CLI v3 tests (${{ matrix.os }} - ${{ matrix.package-manager }})"
     if: inputs.package == 'cli-v3' || inputs.package == ''
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [buildjet-8vcpu-ubuntu-2204, windows-latest]
         package-manager: ["npm", "pnpm", "yarn"]
     steps:
       - name: ⬇️ Checkout repo
@@ -46,8 +47,10 @@ jobs:
         run: corepack enable
 
       - name: Run E2E Tests
+        shell: bash
         run: |
           PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
+
   webapp:
     name: "🧪 Webapp tests"
     if: inputs.package == 'webapp' || inputs.package == ''

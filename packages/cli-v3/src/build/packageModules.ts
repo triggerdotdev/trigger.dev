@@ -26,31 +26,52 @@ export const esmShimPath = join(sourceDir, "shims", "esm.js");
 export const shims = [esmShimPath];
 
 function isDevRunWorker(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-run-worker.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "dev-run-worker.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "dev-run-worker.ts"))
+  );
 }
 
 function isDevIndexWorker(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "dev-index-worker.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "dev-index-worker.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "dev-index-worker.ts"))
+  );
 }
 
 function isDeployIndexController(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-controller.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-controller.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "deploy-index-controller.ts"))
+  );
 }
 
 function isDeployIndexWorker(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-worker.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-index-worker.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "deploy-index-worker.ts"))
+  );
 }
 
 function isDeployRunController(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-controller.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-controller.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "deploy-run-controller.ts"))
+  );
 }
 
 function isDeployRunWorker(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-worker.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "deploy-run-worker.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "deploy-run-worker.ts"))
+  );
 }
 
 export function isLoaderEntryPoint(entryPoint: string) {
-  return entryPoint.includes(join("dist", "esm", "entryPoints", "loader.js"));
+  return (
+    entryPoint.includes(join("dist", "esm", "entryPoints", "loader.js")) ||
+    entryPoint.includes(join("src", "entryPoints", "loader.ts"))
+  );
 }
 
 export function isRunWorkerForTarget(entryPoint: string, target: BuildTarget) {

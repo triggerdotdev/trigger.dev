@@ -76,6 +76,14 @@
       "port": 9229,
       "restart": true,
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug CLI e2e tests",
+      "command": "PM=yarn pnpm run test:e2e",
+      "cwd": "${workspaceFolder}/packages/cli-v3",
+      "sourceMaps": true
     }
   ]
 }

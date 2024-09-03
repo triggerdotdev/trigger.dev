@@ -1,0 +1,207 @@
+import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
+import { VERSION } from "../version.js";
+import { BundleResult, bundleWorker } from "./bundle.js";
+import {
+  createBuildContext,
+  notifyExtensionOnBuildComplete,
+  notifyExtensionOnBuildStart,
+  resolvePluginsForContext,
+} from "./extensions.js";
+import { createExternalsBuildExtension } from "./externals.js";
+import { getInstrumentedPackageNames } from "./instrumentation.js";
+import {
+  deployIndexController,
+  deployIndexWorker,
+  deployRunController,
+  deployRunWorker,
+  telemetryEntryPoint,
+} from "./packageModules.js";
+import { join, relative } from "node:path";
+import { generateContainerfile } from "../deploy/buildImage.js";
+import { writeFile } from "node:fs/promises";
+import { buildManifestToJSON } from "../utilities/buildManifest.js";
+import { readPackageJSON, writePackageJSON } from "pkg-types";
+import { writeJSONFile } from "../utilities/fileSystem.js";
+
+export type BuildWorkerEventListener = {
+  onBundleStart?: () => void;
+  onBundleComplete?: (result: BundleResult) => void;
+};
+
+export type BuildWorkerOptions = {
+  destination: string;
+  target: BuildTarget;
+  environment: string;
+  resolvedConfig: ResolvedConfig;
+  listener?: BuildWorkerEventListener;
+  envVars?: Record<string, string>;
+  rewritePaths?: boolean;
+};
+
+export async function buildWorker(options: BuildWorkerOptions) {
+  const resolvedConfig = options.resolvedConfig;
+
+  const externalsExtension = createExternalsBuildExtension(options.target, resolvedConfig);
+  const buildContext = createBuildContext("deploy", resolvedConfig);
+  buildContext.prependExtension(externalsExtension);
+  await notifyExtensionOnBuildStart(buildContext);
+  const pluginsFromExtensions = resolvePluginsForContext(buildContext);
+
+  options.listener?.onBundleStart?.();
+
+  const bundleResult = await bundleWorker({
+    target: options.target,
+    cwd: resolvedConfig.workingDir,
+    destination: options.destination,
+    watch: false,
+    resolvedConfig,
+    plugins: [...pluginsFromExtensions],
+    jsxFactory: resolvedConfig.build.jsx.factory,
+    jsxFragment: resolvedConfig.build.jsx.fragment,
+    jsxAutomatic: resolvedConfig.build.jsx.automatic,
+  });
+
+  options.listener?.onBundleComplete?.(bundleResult);
+
+  let buildManifest: BuildManifest = {
+    contentHash: bundleResult.contentHash,
+    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+    environment: options.environment,
+    packageVersion: CORE_VERSION,
+    cliPackageVersion: VERSION,
+    target: "deploy",
+    files: bundleResult.files,
+    sources: await resolveFileSources(bundleResult.files, resolvedConfig.workingDir),
+    config: {
+      project: resolvedConfig.project,
+      dirs: resolvedConfig.dirs,
+    },
+    outputPath: options.destination,
+    runControllerEntryPoint: bundleResult.runControllerEntryPoint ?? deployRunController,
+    runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
+    indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
+    indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
+    loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
+    configPath: bundleResult.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
+    deploy: {
+      env: options.envVars ? options.envVars : {},
+    },
+    build: {},
+    otelImportHook: {
+      include: getInstrumentedPackageNames(resolvedConfig),
+    },
+  };
+
+  buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
+
+  if (options.target === "deploy") {
+    buildManifest = options.rewritePaths
+      ? rewriteBuildManifestPaths(buildManifest, options.destination)
+      : buildManifest;
+
+    await writeDeployFiles(buildManifest, resolvedConfig, options.destination);
+  }
+
+  return buildManifest;
+}
+
+function rewriteBuildManifestPaths(
+  buildManifest: BuildManifest,
+  destinationDir: string
+): BuildManifest {
+  return {
+    ...buildManifest,
+    files: buildManifest.files.map((file) => ({
+      ...file,
+      entry: cleanEntryPath(file.entry),
+      out: rewriteOutputPath(destinationDir, file.out),
+    })),
+    outputPath: rewriteOutputPath(destinationDir, buildManifest.outputPath),
+    configPath: rewriteOutputPath(destinationDir, buildManifest.configPath),
+    runControllerEntryPoint: buildManifest.runControllerEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.runControllerEntryPoint)
+      : undefined,
+    runWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.runWorkerEntryPoint),
+    indexControllerEntryPoint: buildManifest.indexControllerEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.indexControllerEntryPoint)
+      : undefined,
+    indexWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.indexWorkerEntryPoint),
+    loaderEntryPoint: buildManifest.loaderEntryPoint
+      ? rewriteOutputPath(destinationDir, buildManifest.loaderEntryPoint)
+      : undefined,
+  };
+}
+// Remove any query parameters from the entry path
+// For example, src/trigger/ai.ts?sentryProxyModule=true -> src/trigger/ai.ts
+function cleanEntryPath(entry: string): string {
+  return entry.split("?")[0]!;
+}
+
+function rewriteOutputPath(destinationDir: string, filePath: string) {
+  return `/app/${relative(destinationDir, filePath)}`;
+}
+
+async function writeDeployFiles(
+  buildManifest: BuildManifest,
+  resolvedConfig: ResolvedConfig,
+  outputPath: string
+) {
+  // Step 1. Read the package.json file
+  const packageJson = await readProjectPackageJson(resolvedConfig.packageJsonPath);
+
+  if (!packageJson) {
+    throw new Error("Could not read the package.json file");
+  }
+
+  const dependencies =
+    buildManifest.externals?.reduce(
+      (acc, external) => {
+        acc[external.name] = external.version;
+
+        return acc;
+      },
+      {} as Record<string, string>
+    ) ?? {};
+
+  // Step 3: Write the resolved dependencies to the package.json file
+  await writePackageJSON(join(outputPath, "package.json"), {
+    ...packageJson,
+    name: packageJson.name ?? "trigger-project",
+    dependencies: {
+      ...dependencies,
+    },
+    trustedDependencies: Object.keys(dependencies),
+    devDependencies: {},
+    peerDependencies: {},
+    scripts: {},
+  });
+
+  await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
+  await writeContainerfile(outputPath, buildManifest);
+}
+
+async function readProjectPackageJson(packageJsonPath: string) {
+  const packageJson = await readPackageJSON(packageJsonPath);
+
+  return packageJson;
+}
+
+async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
+  if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
+    throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
+  }
+
+  const containerfile = await generateContainerfile({
+    runtime: buildManifest.runtime,
+    entrypoint: buildManifest.runControllerEntryPoint,
+    build: buildManifest.build,
+    image: buildManifest.image,
+    indexScript: buildManifest.indexControllerEntryPoint,
+  });
+
+  await writeFile(join(outputPath, "Containerfile"), containerfile);
+}
