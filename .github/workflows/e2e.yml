@@ -49,7 +49,7 @@ jobs:
       - name: Run E2E Tests
         shell: bash
         run: |
-          PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
+          LOG=debug PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
 
   webapp:
     name: "🧪 Webapp tests"

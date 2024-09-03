@@ -1,3 +1,6 @@
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
+import { isWindows } from "std-env";
 //@ts-ignore - Have to ignore because TSC thinks this is ESM
-export const sourceDir = fileURLToPath(pathToFileURL(__dirname));
+export const sourceDir = isWindows
+  ? pathToFileURL(__dirname).href
+  : pathToFileURL(__dirname).toString();
