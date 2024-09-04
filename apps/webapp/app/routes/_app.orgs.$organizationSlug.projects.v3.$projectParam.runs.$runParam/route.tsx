@@ -322,7 +322,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
   return (
     <ResizablePanelGroup
       autosaveId={resizableSettings.parent.autosaveId}
-      snapshot={resizable.parent}
+      // snapshot={resizable.parent}
       className="h-full max-h-full"
     >
       <ResizablePanel id={resizableSettings.parent.main.id} min={resizableSettings.parent.main.min}>
