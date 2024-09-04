@@ -1,4 +1,5 @@
 import { BuildManifest, ImportTaskFileErrors, taskCatalog } from "@trigger.dev/core/v3";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 export async function registerTasks(buildManifest: BuildManifest): Promise<ImportTaskFileErrors> {
   const importErrors: ImportTaskFileErrors = [];
@@ -50,7 +51,7 @@ type Result<T> = [Error | null, T | null];
 
 async function tryImport(path: string): Promise<Result<any>> {
   try {
-    const module = await import(path);
+    const module = await import(normalizeImportPath(path));
 
     return [null, module];
   } catch (error) {

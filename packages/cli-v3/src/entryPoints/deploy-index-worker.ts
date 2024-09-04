@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerTasks } from "../indexing/registerTasks.js";
 import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -74,7 +75,7 @@ async function loadBuildManifest() {
 async function bootstrap() {
   const buildManifest = await loadBuildManifest();
 
-  const { config } = await importConfig(buildManifest.configPath);
+  const { config } = await importConfig(normalizeImportPath(buildManifest.configPath));
 
   // This needs to run or the PrismaInstrumentation will throw an error
   const tracingSDK = new TracingSDK({

@@ -36,6 +36,7 @@ import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
 import { setTimeout, setInterval } from "node:timers/promises";
 import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -117,7 +118,9 @@ async function loadWorkerManifest() {
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
 
-  const { config, handleError } = await importConfig(workerManifest.configPath);
+  const { config, handleError } = await importConfig(
+    normalizeImportPath(workerManifest.configPath)
+  );
 
   const tracingSDK = new TracingSDK({
     url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
@@ -227,7 +230,7 @@ const zodIpc = new ZodIpcConnection({
 
         try {
           const beforeImport = performance.now();
-          await import(taskManifest.entryPoint);
+          await import(normalizeImportPath(taskManifest.entryPoint));
           const durationMs = performance.now() - beforeImport;
 
           console.log(
