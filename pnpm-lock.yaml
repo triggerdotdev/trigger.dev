@@ -232,8 +232,8 @@ importers:
         specifier: ^0.5.0
         version: 0.5.0
       '@electric-sql/react':
-        specifier: ^0.3.1
-        version: 0.3.1(react@18.2.0)
+        specifier: ^0.3.3
+        version: 0.3.3(react@18.2.0)
       '@headlessui/react':
         specifier: ^1.7.8
         version: 1.7.8(react-dom@18.2.0)(react@18.2.0)
@@ -4140,21 +4140,21 @@ packages:
       '@connectrpc/connect-node': 0.13.2(@bufbuild/protobuf@1.7.2)
     dev: false
 
-  /@electric-sql/client@0.3.2:
-    resolution: {integrity: sha512-DVOtrIfg7xlXpU95F53MnLXLeIn1eYkSRz01vj63NzZZ7bf6vLSHzNKvil0413C3U3769btfQytGNWmsb744WQ==}
+  /@electric-sql/client@0.3.3:
+    resolution: {integrity: sha512-fOSTaLZPqa8R9etMm1/rprSIcEQMy1X09XMrn/Yh09rr5z0Da7YdUwjCxiPZD0+B7zkbwi3B7wQS9JFkNugw+Q==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.1
     dev: false
 
-  /@electric-sql/react@0.3.1(react@18.2.0):
-    resolution: {integrity: sha512-U+7ssfS+4UuGYXTyqGqXJGN04hrwjI8qKcv5l1br59EX93yfrFVVEfRsCQIe0mTiFTS/im9k+SUBIPrC/g8n2A==}
+  /@electric-sql/react@0.3.3(react@18.2.0):
+    resolution: {integrity: sha512-oC4Nj7KXxdhLDvTAckB25yy3UsWgUEyNuzqRzcu05yy62fkYgySC3DBMDWwslLblM4ItEG3a+BrJ2JN4hEl3kw==}
     peerDependencies:
       react: ^18.3.1
     peerDependenciesMeta:
       react:
         optional: true
     dependencies:
-      '@electric-sql/client': 0.3.2
+      '@electric-sql/client': 0.3.3
       react: 18.2.0
       use-sync-external-store: 1.2.2(react@18.2.0)
     dev: false
