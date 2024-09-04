@@ -219,10 +219,12 @@ describe.concurrent("buildWorker", async () => {
               otelHookInclude: buildManifest!.otelImportHook?.include,
               handleStdout(data) {
                 stdout.push(data);
+                logger.debug(data);
               },
               handleStderr(data) {
                 if (!data.includes("DeprecationWarning")) {
                   stderr.push(data);
+                  logger.debug(data);
                 }
               },
             });
