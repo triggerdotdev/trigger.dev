@@ -57,7 +57,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
     originUrl.searchParams.set("where", `"traceId"='${traceId}'`);
 
-    return longPollingFetch(originUrl.toString());
+    const finalUrl = originUrl.toString();
+
+    logger.log("Fetching trace runs data", { url: finalUrl });
+
+    return longPollingFetch(finalUrl);
   } catch (error) {
     if (error instanceof Response) {
       // Error responses from longPollingFetch
