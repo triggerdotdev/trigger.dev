@@ -248,6 +248,8 @@ describe.concurrent("buildWorker", async () => {
           expect(workerManifest!).toBeTruthy();
         }
 
+        logger.debug("Worker manifest", workerManifest!);
+
         if (runs && runs.length > 0) {
           await writeJSONFile(path.join(destination.path, "index.json"), workerManifest!);
         }

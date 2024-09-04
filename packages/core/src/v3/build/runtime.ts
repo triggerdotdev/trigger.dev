@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { BuildManifest, BuildRuntime } from "../schemas/build.js";
+import { pathToFileURL } from "url";
+import { BuildRuntime } from "../schemas/build.js";
 
 export const DEFAULT_RUNTIME: BuildRuntime = "node";
 
@@ -42,7 +43,7 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
   switch (runtime) {
     case "node": {
       const importEntryPoint = options.loaderEntryPoint
-        ? `--import=${options.loaderEntryPoint}`
+        ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;
 
       const conditions = options.customConditions?.map((condition) => `--conditions=${condition}`);
