@@ -75,6 +75,13 @@ async function loadBuildManifest() {
 async function bootstrap() {
   const buildManifest = await loadBuildManifest();
 
+  console.log("Build manifest loaded", buildManifest);
+  console.log("Importing config from", buildManifest.configPath);
+  console.log(
+    "Importing config from normalized path",
+    normalizeImportPath(buildManifest.configPath)
+  );
+
   const { config } = await importConfig(normalizeImportPath(buildManifest.configPath));
 
   // This needs to run or the PrismaInstrumentation will throw an error
