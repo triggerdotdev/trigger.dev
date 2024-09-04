@@ -1078,7 +1078,7 @@ function SpanWithDuration({
         )}
         <div
           className={cn(
-            "sticky left-0 z-10 transition group-hover:opacity-100",
+            "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
         >
