@@ -198,6 +198,8 @@ describe.concurrent("buildWorker", async () => {
           expect(buildManifest!).toBeTruthy();
         }
 
+        logger.debug("Build manifest", buildManifest!);
+
         const stdout: string[] = [];
         const stderr: string[] = [];
 
