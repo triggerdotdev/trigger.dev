@@ -12,6 +12,7 @@ import { getTmpDir } from "../src/utilities/tempDirectories.js";
 import { fixturesConfig, TestCase } from "./fixtures.js";
 import { E2EOptions, E2EOptionsSchema } from "./schemas.js";
 import { executeTestCaseRun, runTsc } from "./utils.js";
+import { normalizeImportPath } from "../src/utilities/normalizeImportPath.js";
 import { installFixtureDeps, LOCKFILES, PackageManager, parsePackageManager } from "./utils.js";
 
 const TIMEOUT = 120_000;
@@ -212,18 +213,20 @@ describe.concurrent("buildWorker", async () => {
               indexWorkerPath: buildManifest!.indexWorkerEntryPoint,
               buildManifestPath: path.join(destination.path, "build.json"),
               nodeOptions: buildManifest!.loaderEntryPoint
-                ? `--import=${buildManifest!.loaderEntryPoint}`
+                ? `--import=${normalizeImportPath(buildManifest!.loaderEntryPoint)}`
                 : undefined,
               env: {},
               otelHookExclude: buildManifest!.otelImportHook?.exclude,
               otelHookInclude: buildManifest!.otelImportHook?.include,
               handleStdout(data) {
                 stdout.push(data);
+                logger.debug("indexWorkerManifest handleStdout");
                 logger.debug(data);
               },
               handleStderr(data) {
                 if (!data.includes("DeprecationWarning")) {
                   stderr.push(data);
+                  logger.debug("indexWorkerManifest handleStderr");
                   logger.debug(data);
                 }
               },

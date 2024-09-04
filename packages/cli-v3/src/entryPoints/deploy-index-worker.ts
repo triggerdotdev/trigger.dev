@@ -75,7 +75,6 @@ async function loadBuildManifest() {
 async function bootstrap() {
   const buildManifest = await loadBuildManifest();
 
-  console.log("Build manifest loaded", buildManifest);
   console.log("Importing config from", buildManifest.configPath);
   console.log(
     "Importing config from normalized path",
