@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { sourceDir } from "../sourceDir.js";
 import { BuildTarget } from "@trigger.dev/core/v3";
+import { logger } from "../utilities/logger.js";
 
 export const devRunWorker = join(sourceDir, "entryPoints", "dev-run-worker.js");
 export const devIndexWorker = join(sourceDir, "entryPoints", "dev-index-worker.js");
@@ -68,6 +69,8 @@ function isDeployRunWorker(entryPoint: string) {
 }
 
 export function isLoaderEntryPoint(entryPoint: string) {
+  logger.debug("isLoaderEntryPoint", entryPoint, join("src", "entryPoints", "loader.ts"));
+
   return (
     entryPoint.includes(join("dist", "esm", "entryPoints", "loader.js")) ||
     entryPoint.includes(join("src", "entryPoints", "loader.ts"))
