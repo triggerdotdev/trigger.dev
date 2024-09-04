@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
 import * as path from "node:path";
 import { rimraf } from "rimraf";
-import { buildWorker } from "../src/build/buildWorker.js";
+import { buildWorker, rewriteBuildManifestPaths } from "../src/build/buildWorker.js";
 import { loadConfig } from "../src/config.js";
 import { indexWorkerManifest } from "../src/indexing/indexWorkerManifest.js";
 import { writeJSONFile } from "../src/utilities/fileSystem.js";
@@ -200,6 +200,13 @@ describe.concurrent("buildWorker", async () => {
         }
 
         logger.debug("Build manifest", buildManifest!);
+
+        const rewrittenManifest = rewriteBuildManifestPaths(buildManifest!, destination.path);
+
+        expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+        expect(rewrittenManifest.indexWorkerEntryPoint).toBe(
+          "/app/src/entryPoints/deploy-index-worker.mjs"
+        );
 
         const stdout: string[] = [];
         const stderr: string[] = [];

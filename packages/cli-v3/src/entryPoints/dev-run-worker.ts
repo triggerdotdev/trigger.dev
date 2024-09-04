@@ -34,6 +34,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
 import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -80,7 +81,7 @@ const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 async function importConfig(
   configPath: string
 ): Promise<{ config: TriggerConfig; handleError?: HandleErrorFunction }> {
-  const configModule = await import(configPath);
+  const configModule = await import(normalizeImportPath(configPath));
 
   const config = configModule?.default ?? configModule?.config;
 
@@ -206,7 +207,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       try {
-        await import(taskManifest.entryPoint);
+        await import(normalizeImportPath(taskManifest.entryPoint));
       } catch (err) {
         console.error(`Failed to import task ${execution.task.id}`, err);
 

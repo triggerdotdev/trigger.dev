@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerTasks } from "../indexing/registerTasks.js";
 import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -54,7 +55,7 @@ taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 async function importConfig(
   configPath: string
 ): Promise<{ config: TriggerConfig; handleError?: HandleErrorFunction }> {
-  const configModule = await import(configPath);
+  const configModule = await import(normalizeImportPath(configPath));
 
   const config = configModule?.default ?? configModule?.config;
 

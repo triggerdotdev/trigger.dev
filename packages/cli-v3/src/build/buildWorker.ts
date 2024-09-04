@@ -19,12 +19,14 @@ import {
   deployRunWorker,
   telemetryEntryPoint,
 } from "./packageModules.js";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
 import { readPackageJSON, writePackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
+import { isWindows } from "std-env";
+import { pathToFileURL } from "node:url";
 
 export type BuildWorkerEventListener = {
   onBundleStart?: () => void;
@@ -109,7 +111,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
   return buildManifest;
 }
 
-function rewriteBuildManifestPaths(
+export function rewriteBuildManifestPaths(
   buildManifest: BuildManifest,
   destinationDir: string
 ): BuildManifest {
@@ -142,7 +144,16 @@ function cleanEntryPath(entry: string): string {
 }
 
 function rewriteOutputPath(destinationDir: string, filePath: string) {
-  return `/app/${relative(destinationDir, filePath)}`;
+  if (isWindows) {
+    return `/app/${relative(
+      pathToFileURL(destinationDir).pathname,
+      pathToFileURL(filePath).pathname
+    )
+      .split(sep)
+      .join("/")}`;
+  } else {
+    return `/app/${relative(destinationDir, filePath)}`;
+  }
 }
 
 async function writeDeployFiles(
