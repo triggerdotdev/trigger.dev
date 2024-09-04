@@ -29,12 +29,20 @@
       "@triggerdotdev/source"
     ]
   },
+  "typesVersions": {
+    "*": {
+      "v3": [
+        "dist/commonjs/v3/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
-    "update-version": "tsx ../../scripts/updateVersion.ts"
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
@@ -54,6 +62,7 @@
     "zod": "3.22.3"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.15.4",
     "@types/debug": "^4.1.7",
     "@types/node": "20.14.14",
     "@types/slug": "^5.0.3",
@@ -63,9 +72,9 @@
     "msw": "^2.2.1",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
+    "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4",
-    "tsx": "4.17.0"
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.20.0"

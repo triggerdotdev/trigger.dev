@@ -28,6 +28,7 @@
     "test": "turbo run test",
     "test:dev": "turbo run test:dev",
     "start": "turbo run start",
+    "check-exports": "turbo run check-exports",
     "clean": "turbo run clean",
     "clean:node_modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
     "typecheck": "turbo run typecheck",

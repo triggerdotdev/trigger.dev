@@ -56,3 +56,4 @@ apps/**/public/build
 .trigger
 .tshy*
 .yarn
+*.tsbuildinfo
