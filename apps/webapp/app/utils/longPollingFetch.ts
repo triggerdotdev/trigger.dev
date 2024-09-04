@@ -12,7 +12,8 @@ export async function longPollingFetch(url: string, options?: RequestInit) {
 
     // Check if the response is ok (status in the range 200-299)
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const body = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}. ${body}`);
     }
 
     if (response.headers.get(`content-encoding`)) {
