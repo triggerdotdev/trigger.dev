@@ -1338,6 +1338,16 @@ importers:
         specifier: ^5.5.4
         version: 5.5.4
 
+  references/init-shell-js:
+    dependencies:
+      '@trigger.dev/sdk':
+        specifier: 0.0.0-prerelease-20240825150620
+        version: 0.0.0-prerelease-20240825150620(typescript@5.5.4)
+    devDependencies:
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+
   references/v3-catalog:
     dependencies:
       '@ffmpeg-installer/ffmpeg':
@@ -6247,7 +6257,7 @@ packages:
       '@types/long': 4.0.2
       lodash.camelcase: 4.3.0
       long: 4.0.0
-      protobufjs: 7.2.6
+      protobufjs: 7.3.2
       yargs: 17.7.2
 
   /@hapi/boom@10.0.1:
@@ -14257,10 +14267,65 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
+  /@trigger.dev/core@0.0.0-prerelease-20240825150620:
+    resolution: {integrity: sha512-lFlYRMygi8T3i8qnx+hzmd5u2HnoA4lkmeA7e1ESTBgD8b/TsHIkwfcNk6eLmlnspvE2dQp7x7Am0Ss/g7L4fw==}
+    engines: {node: '>=18.20.0'}
+    dependencies:
+      '@google-cloud/precise-date': 4.0.0
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@opentelemetry/exporter-logs-otlp-http': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-logs': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-node': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/semantic-conventions': 1.25.1
+      execa: 8.0.1
+      humanize-duration: 3.27.3
+      socket.io-client: 4.7.5
+      superjson: 2.2.1
+      zod: 3.22.3
+      zod-error: 1.5.0
+      zod-validation-error: 1.5.0(zod@3.22.3)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /@trigger.dev/platform@1.0.12:
     resolution: {integrity: sha512-pOB9S2XG+TmTdlYtF9xuQoFz1aRlRGWSVCXuv3Vj2ArzU6Zz3ukvK24qlTd0PJB1otX71Ho/NfViGKEzCyRb5Q==}
     dependencies:
       zod: 3.22.3
+    dev: false
+
+  /@trigger.dev/sdk@0.0.0-prerelease-20240825150620(typescript@5.5.4):
+    resolution: {integrity: sha512-cKCZ0/ZOaozkWo0bBjGZ5TWpok2lMc/KeUKLfefPUYgb04GoMGUCHzWdQeKgJwXursvDn9/dXxCWA1RuOQRmMQ==}
+    engines: {node: '>=18.20.0'}
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@opentelemetry/semantic-conventions': 1.25.1
+      '@trigger.dev/core': 0.0.0-prerelease-20240825150620
+      chalk: 5.3.0
+      cronstrue: 2.21.0
+      debug: 4.3.6
+      evt: 2.4.13
+      msw: 2.3.5(typescript@5.5.4)
+      slug: 6.1.0
+      terminal-link: 3.0.0
+      ulid: 2.3.0
+      uuid: 9.0.0
+      ws: 8.18.0
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - typescript
+      - utf-8-validate
     dev: false
 
   /@trigger.dev/yalt@2.3.19:
@@ -18052,7 +18117,7 @@ packages:
     resolution: {integrity: sha512-9Z0qLB0NIisTRt1DZ/8U2k12RJn8yls/nXMZLn+/N8hANT3TcYjKFKcwbw5zFQiN4NTde3TSY9zb79e1ij6j9Q==}
     dependencies:
       '@socket.io/component-emitter': 3.1.0
-      debug: 4.3.4
+      debug: 4.3.6
       engine.io-parser: 5.2.2(patch_hash=e6nctogrhpxoivwiwy37ersfu4)
       ws: 8.11.0
       xmlhttprequest-ssl: 2.0.0
@@ -25619,7 +25684,7 @@ packages:
       remix-auth: ^3.6.0
     dependencies:
       '@remix-run/server-runtime': 2.1.0(typescript@5.2.2)
-      debug: 4.3.4
+      debug: 4.3.6
       remix-auth: 3.6.0(@remix-run/react@2.1.0)(@remix-run/server-runtime@2.1.0)
     transitivePeerDependencies:
       - supports-color
@@ -28564,7 +28629,7 @@ packages:
     hasBin: true
     dependencies:
       cac: 6.7.14
-      debug: 4.3.4
+      debug: 4.3.6
       pathe: 1.1.2
       picocolors: 1.0.0
       vite: 5.2.7(@types/node@20.14.14)
@@ -29590,7 +29655,7 @@ packages:
     engines: {node: '>=10'}
     dependencies:
       cliui: 7.0.4
-      escalade: 3.1.1
+      escalade: 3.2.0
       get-caller-file: 2.0.5
       require-directory: 2.1.1
       string-width: 4.2.3

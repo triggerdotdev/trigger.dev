@@ -161,11 +161,13 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     log.info("Skipping package installation");
   }
 
+  const language = tsconfigPath ? "typescript" : "javascript";
+
   // Create the trigger dir
-  const triggerDir = await createTriggerDir(dir, options);
+  const triggerDir = await createTriggerDir(dir, options, language);
 
   // Create the config file
-  await writeConfigFile(dir, selectedProject, options, triggerDir);
+  await writeConfigFile(dir, selectedProject, options, triggerDir, language);
 
   // Add trigger.config.ts to tsconfig.json
   if (tsconfigPath) {
@@ -203,7 +205,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   outro(`Project initialized successfully. Happy coding!`);
 }
 
-async function createTriggerDir(dir: string, options: InitCommandOptions) {
+async function createTriggerDir(
+  dir: string,
+  options: InitCommandOptions,
+  language: "typescript" | "javascript"
+) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
       const defaultValue = join(dir, "src", "trigger");
@@ -263,8 +269,11 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return { location, isCustomValue: location !== defaultValue };
       }
 
-      const templateUrl = generateTemplateUrl(`examples/${example}.ts`, options.gitRef);
-      const outputPath = join(triggerDir, "example.ts");
+      const templateUrl = generateTemplateUrl(
+        `examples/${example}.${language === "typescript" ? "ts" : "mjs"}`,
+        options.gitRef
+      );
+      const outputPath = join(triggerDir, `example.${language === "typescript" ? "ts" : "mjs"}`);
 
       await createFileFromTemplate({
         templateUrl,
@@ -448,7 +457,8 @@ async function writeConfigFile(
   dir: string,
   project: GetProjectResponseBody,
   options: InitCommandOptions,
-  triggerDir: { location: string; isCustomValue: boolean }
+  triggerDir: { location: string; isCustomValue: boolean },
+  language: "typescript" | "javascript"
 ) {
   return await tracer.startActiveSpan("writeConfigFile", async (span) => {
     try {
@@ -456,8 +466,14 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const outputPath = join(projectDir, "trigger.config.ts");
-      const templateUrl = generateTemplateUrl("trigger.config.ts", options.gitRef);
+      const outputPath = join(
+        projectDir,
+        `trigger.config.${language === "typescript" ? "ts" : "mjs"}`
+      );
+      const templateUrl = generateTemplateUrl(
+        `trigger.config.${language === "typescript" ? "ts" : "mjs"}`,
+        options.gitRef
+      );
 
       span.setAttributes({
         "cli.projectDir": projectDir,
