@@ -2,6 +2,7 @@ import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import { TaskEventStyle } from "@trigger.dev/core/v3";
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
+import { RunEvent } from "~/presenters/v3/RunPresenter.server";
 import { cn } from "~/utils/cn";
 
 type SpanTitleProps = {
@@ -106,15 +107,9 @@ function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "l
   }
 }
 
-type RunEvent = {
-  isError: boolean;
-  style: TaskEventStyle;
-  level: TaskEventLevel;
-  isPartial: boolean;
-  isCancelled: boolean;
-};
-
-export function eventBackgroundClassName(event: RunEvent) {
+export function eventBackgroundClassName(
+  event: Pick<RunEvent["data"], "isError" | "style" | "level" | "isPartial" | "isCancelled">
+) {
   if (event.isError) {
     return "bg-error";
   }

@@ -2,11 +2,15 @@ import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
-import { PreparedEvent, RunPreparedEvent, eventRepository } from "~/v3/eventRepository.server";
+import {
+  PreparedEvent,
+  RunPreparedEvent,
+  eventRepository,
+  getDateFromNanoseconds,
+} from "~/v3/eventRepository.server";
 import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import { getDateFromNanoseconds } from "~/utils/taskEvent";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);

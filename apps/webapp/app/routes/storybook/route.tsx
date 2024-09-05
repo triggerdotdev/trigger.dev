@@ -73,10 +73,6 @@ const stories: Story[] = [
     slug: "radio-group",
   },
   {
-    name: "Resizable",
-    slug: "resizable",
-  },
-  {
     name: "Segemented control",
     slug: "segmented-control",
   },

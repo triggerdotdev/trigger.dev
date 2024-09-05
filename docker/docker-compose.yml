@@ -24,11 +24,6 @@ services:
       - app_network
     ports:
       - 5432:5432
-    command:
-      - -c
-      - listen_addresses=*
-      - -c
-      - wal_level=logical
 
   pgadmin:
     container_name: pgadmin
@@ -58,15 +53,3 @@ services:
       - app_network
     ports:
       - 6379:6379
-
-  electric:
-    image: electricsql/electric
-    restart: always
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres
-    networks:
-      - app_network
-    ports:
-      - "3060:3000"
-    depends_on:
-      - database
