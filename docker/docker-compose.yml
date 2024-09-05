@@ -24,7 +24,11 @@ services:
       - app_network
     ports:
       - 5432:5432
-
+    command:
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
   pgadmin:
     container_name: pgadmin
     image: dpage/pgadmin4:8
