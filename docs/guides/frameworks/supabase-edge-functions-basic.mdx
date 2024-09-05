@@ -1,8 +1,7 @@
 ---
 title: "Triggering tasks from Supabase edge functions"
-sidebarTitle: "Supabase edge functions - basic"
+sidebarTitle: "Edge functions - basic"
 description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run."
-icon: "bolt"
 ---
 
 import Prerequisites from "/snippets/framework-prerequisites.mdx";
@@ -18,13 +17,13 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 ## Overview
 
-Supabase edge functions allow you to trigger tasks either when an event is sent from a third party (e.g. when a new Stripe payment is processed, when a new user signs up to a service, etc), or when there are any changes / updates to your Supabase database.
+Supabase edge functions allow you to trigger tasks either when an event is sent from a third party (e.g. when a new Stripe payment is processed, when a new user signs up to a service, etc), or when there are any changes or updates to your Supabase database.
 
 This guide shows you how to set up and deploy a simple Supabase edge function example that triggers a task when an edge function URL is accessed.
 
 ## Prerequisites
 
-- Setup a project in [Supabase](https://supabase.com/) and have the Supabase CLI installed
+- Setup a new [Supabase project](https://supabase.com/docs/guides/getting-started) and have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
 - [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
@@ -95,13 +94,13 @@ Install the "Hello World" example task when prompted. We'll use this task to tes
   <CliViewRunStep />
 </Steps>
 
-## Create and a new Supabase edge function and trigger a dev run
+## Create a new Supabase edge function and trigger a dev run
 
 <Steps>
 
-<Step title="Create a new edge function using the Supabase CLI">
+<Step title="Create a new Supabase edge function">
 
-We will call this example edge function `edge-function-trigger`.
+We'll call this example `edge-function-trigger`. In your terminal, run the following command:
 
 ```bash
 supabase functions new edge-function-trigger
@@ -111,16 +110,15 @@ supabase functions new edge-function-trigger
 
 <Step title="Update the edge function code">
 
-Replace the `edge-function-trigger` placeholder code with the following:
+Replace the placeholder code in your `edge-function-trigger/index.ts` file with the following:
 
-```ts edge-function-trigger/index.ts
+```ts supabase/edge-function-trigger/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@3.0.0-beta.55/v3";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
 
 Deno.serve(async (req) => {
-  // @ts-expect-error: Ignoring Task type mismatch and RunHandle incompatibility
   await tasks.trigger<typeof helloWorldTask>("edge-function-trigger", "hello");
   return new Response("OK");
 });

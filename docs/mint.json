@@ -209,6 +209,8 @@
         "guides/frameworks/remix",
         {
           "group": "Supabase",
+          "icon": "bolt",
+          "iconType": "solid",
           "pages": [
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
