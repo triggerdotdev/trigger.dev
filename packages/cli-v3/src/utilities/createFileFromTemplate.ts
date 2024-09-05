@@ -25,8 +25,6 @@ export async function createFileFromTemplate(params: {
     }
     const template = await response.text();
 
-    let $outputPath = params.outputPath;
-
     if ((await pathExists(params.outputPath)) && !params.override) {
       return {
         success: true,
