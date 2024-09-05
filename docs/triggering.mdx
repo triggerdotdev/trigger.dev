@@ -1,20 +1,24 @@
 ---
 title: "Triggering"
-description: "Tasks need to be triggered to run."
+description: "Tasks need to be triggered in order to run."
 ---
 
-These are the different ways you can trigger tasks:
+Trigger your tasks **from your backend**:
 
-| Function                         | Where does this work? | What it does                                                                                                                       |
-| -------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result.                      |
-| `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     |
-| `yourTask.triggerAndWait()`      | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      |
-| `yourTask.batchTriggerAndWait()` | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
-| `tasks.trigger()`                | Anywhere              | Triggers a task and gets a handle you can use to fetch and manage the run.                                                         |
-| `tasks.batchTrigger()`           | Anywhere              | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs.                                         |
-| `tasks.triggerAndWait()`         | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with                                       |
-| `tasks.batchTriggerAndWait()`    | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. |
+| Function                         | This works            | What it does                                                                                                                                                              |
+| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks.trigger()`                | Anywhere              | Triggers a task and gets a handle you can use to fetch and manage the run. [Read more](#tasks-trigger)                                                                    |
+| `tasks.batchTrigger()`           | Anywhere              | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger)                                               |
+| `tasks.triggerAndPoll()`         | Anywhere              | Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll) |
+
+Trigger your tasks **from inside a run**:
+
+| Function                         | This works            | What it does                                                                                                                                                              |
+| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#task-trigger)                                  |
+| `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#task-batchtrigger)            |
+| `yourTask.triggerAndWait()`      | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#task-triggerandwait)                                           |
+| `yourTask.batchTriggerAndWait()` | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#task-batchtriggerandwait) |
 
 Additionally, [scheduled tasks](/tasks-scheduled) get automatically triggered on their schedule and webhooks when receiving a webhook.
 
@@ -26,7 +30,146 @@ You should attach one or more schedules to your `schedules.task()` to trigger it
 
 When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
 
-## Task instance methods
+## Triggering from your backend
+
+You can trigger any task from your backend code using the `tasks.trigger()` or `tasks.batchTrigger()` SDK functions.
+
+<Note>
+  Do not trigger tasks directly from your frontend. If you do, you will leak your private
+  Trigger.dev API key.
+</Note>
+
+You can use Next.js Server Actions but [you need to be careful with bundling](#next-js-server-actions).
+
+### tasks.trigger()
+
+Triggers a single run of a task with the payload you pass in, and any options you specify, without needing to import the task.
+
+<Note>
+  Why would you use this instead of the `Task.trigger()` instance method? Tasks can import
+  dependencies/modules that you might not want included in your application code or cause problems
+  with building.
+</Note>
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
+  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  //return a success response with the handle
+  return Response.json(handle);
+}
+```
+
+```ts Remix
+import { tasks } from "@trigger.dev/sdk/v3";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method.toUpperCase() !== "POST") {
+    return json("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  // The generic argument is optional, but recommended for full type checking
+  const handle = await tasks.trigger("email-sequence", {
+    to: data.email,
+    name: data.name,
+  });
+
+  //return a success response with the handle
+  return json(handle);
+}
+```
+
+</CodeGroup>
+
+<Tip>
+  By importing the task with the type modifier, the import of `"~/trigger/emails"` is a type-only
+  import. This means that the task code is not included in your application at build time.
+</Tip>
+
+### tasks.batchTrigger()
+
+Triggers multiples runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
+  const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
+    "email-sequence",
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+  );
+
+  //return a success response with the handle
+  return Response.json(batchHandle);
+}
+```
+
+</CodeGroup>
+
+### tasks.triggerAndPoll()
+
+Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
+
+<CodeGroup>
+
+```ts Next.js API route
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
+  const result = await tasks.triggerAndPoll<typeof emailSequence>(
+    "email-sequence",
+    {
+      to: data.email,
+      name: data.name,
+    },
+    { pollIntervalMs: 5000 }
+  );
+
+  //return a success response with the result
+  return Response.json(result);
+}
+```
+
+</CodeGroup>
+
+<Note>
+  The above code is just a demonstration of the API and is not recommended to use in an API route
+  this way as it will block the request until the task is complete.
+</Note>
+
+## Triggering from inside a run
 
 Task instance methods are available on the `Task` object you receive when you define a task. They can be called from your backend code or from inside another task.
 
@@ -282,145 +425,6 @@ export const batchParentTask = task({
   },
 });
 ```
-
-## SDK functions
-
-You can trigger any task from your backend code using the `tasks.trigger()` or `tasks.batchTrigger()` SDK functions.
-
-<Note>
-  Do not trigger tasks directly from your frontend. If you do, you will leak your private
-  Trigger.dev API key.
-</Note>
-
-You can use Next.js Server Actions but [you need to be careful with bundling](#next-js-server-actions).
-
-### tasks.trigger()
-
-Triggers a single run of a task with the payload you pass in, and any options you specify, without needing to import the task.
-
-<Note>
-  Why would you use this instead of the `Task.trigger()` instance method? Tasks can import
-  dependencies/modules that you might not want included in your application code or cause problems
-  with building.
-</Note>
-
-<CodeGroup>
-
-```ts Next.js API route
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-//     👆 **type-only** import
-
-//app/email/route.ts
-export async function POST(request: Request) {
-  //get the JSON from the request
-  const data = await request.json();
-
-  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
-  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
-    to: data.email,
-    name: data.name,
-  });
-
-  //return a success response with the handle
-  return Response.json(handle);
-}
-```
-
-```ts Remix
-import { tasks } from "@trigger.dev/sdk/v3";
-
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "POST") {
-    return json("Method Not Allowed", { status: 405 });
-  }
-
-  //get the JSON from the request
-  const data = await request.json();
-
-  // The generic argument is optional, but recommended for full type checking
-  const handle = await tasks.trigger("email-sequence", {
-    to: data.email,
-    name: data.name,
-  });
-
-  //return a success response with the handle
-  return json(handle);
-}
-```
-
-</CodeGroup>
-
-<Tip>
-  By importing the task with the type modifier, the import of `"~/trigger/emails"` is a type-only
-  import. This means that the task code is not included in your application at build time.
-</Tip>
-
-### tasks.batchTrigger()
-
-Triggers multiples runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
-
-<CodeGroup>
-
-```ts Next.js API route
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-//     👆 **type-only** import
-
-//app/email/route.ts
-export async function POST(request: Request) {
-  //get the JSON from the request
-  const data = await request.json();
-
-  // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
-  const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
-    "email-sequence",
-    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
-  );
-
-  //return a success response with the handle
-  return Response.json(batchHandle);
-}
-```
-
-</CodeGroup>
-
-### tasks.triggerAndPoll()
-
-Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
-
-<CodeGroup>
-
-```ts Next.js API route
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
-
-//app/email/route.ts
-export async function POST(request: Request) {
-  //get the JSON from the request
-  const data = await request.json();
-
-  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
-  const result = await tasks.triggerAndPoll<typeof emailSequence>(
-    "email-sequence",
-    {
-      to: data.email,
-      name: data.name,
-    },
-    { pollIntervalMs: 5000 }
-  );
-
-  //return a success response with the result
-  return Response.json(result);
-}
-```
-
-</CodeGroup>
-
-<Note>
-  The above code is just a demonstration of the API and is not recommended to use in an API route
-  this way as it will block the request until the task is complete.
-</Note>
 
 ## Options
 
