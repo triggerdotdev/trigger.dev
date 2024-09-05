@@ -35,6 +35,7 @@ export const AlertRunEmailSchema = z.object({
 type AlertRunEmailProps = z.infer<typeof AlertRunEmailSchema>;
 
 const previewDefaults: AlertRunEmailProps = {
+  email: "alert-run",
   runId: "run_12345678",
   project: "my-project",
   taskIdentifier: "my-task",
