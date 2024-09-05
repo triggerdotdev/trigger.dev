@@ -18,6 +18,7 @@ import React from "react";
 export const AlertRunEmailSchema = z.object({
   email: z.literal("alert-run"),
   runId: z.string(),
+  project: z.string(),
   taskIdentifier: z.string(),
   fileName: z.string(),
   exportName: z.string(),
@@ -31,8 +32,11 @@ export const AlertRunEmailSchema = z.object({
   runLink: z.string().url(),
 });
 
-const previewDefaults = {
+type AlertRunEmailProps = z.infer<typeof AlertRunEmailSchema>;
+
+const previewDefaults: AlertRunEmailProps = {
   runId: "run_12345678",
+  project: "my-project",
   taskIdentifier: "my-task",
   fileName: "other.ts",
   exportName: "myTask",
@@ -46,8 +50,18 @@ const previewDefaults = {
   runLink: "https://trigger.dev",
 };
 
-export default function Email(props: z.infer<typeof AlertRunEmailSchema>) {
-  const { runId, taskIdentifier, fileName, exportName, version, environment, error, runLink } = {
+export default function Email(props: AlertRunEmailProps) {
+  const {
+    runId,
+    project,
+    taskIdentifier,
+    fileName,
+    exportName,
+    version,
+    environment,
+    error,
+    runLink,
+  } = {
     ...previewDefaults,
     ...props,
   };
@@ -59,6 +73,7 @@ export default function Email(props: z.infer<typeof AlertRunEmailSchema>) {
       <Body style={main}>
         <Container style={container}>
           <Text style={h1}>Run `{runId}` failed</Text>
+          <Text style={paragraphTight}>Project: {project}</Text>
           <Text style={paragraphTight}>Task ID: {taskIdentifier}</Text>
           <Text style={paragraphTight}>Filename: {fileName}</Text>
           <Text style={paragraphTight}>Function: {exportName}()</Text>
