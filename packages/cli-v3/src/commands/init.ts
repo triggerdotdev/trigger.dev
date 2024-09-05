@@ -3,11 +3,12 @@ import { context, trace } from "@opentelemetry/api";
 import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
+import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {
@@ -22,7 +23,7 @@ import {
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { CLOUD_API_URL } from "../consts.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { cliLink } from "../utilities/cliOutput.js";
 import {
   createFileFromTemplate,
   generateTemplateUrl,
@@ -30,10 +31,8 @@ import {
 import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { cliRootPath } from "../utilities/resolveInternalFilePath.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
-import { resolveTSConfig } from "pkg-types";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -41,6 +40,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   tag: z.string().default("beta"),
   skipPackageInstall: z.boolean().default(false),
   pkgArgs: z.string().optional(),
+  gitRef: z.string().default("main"),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -66,12 +66,19 @@ export function configureInitCommand(program: Command) {
         "--pkg-args <args>",
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
-  ).action(async (path, options) => {
-    await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true);
-      await initCommand(path, options);
+  )
+    .addOption(
+      new CommandOption(
+        "--git-ref <git ref>",
+        "The git ref to use when fetching templates from GitHub"
+      ).hideHelp()
+    )
+    .action(async (path, options) => {
+      await handleTelemetry(async () => {
+        await printStandloneInitialBanner(true);
+        await initCommand(path, options);
+      });
     });
-  });
 }
 
 export async function initCommand(dir: string, options: unknown) {
@@ -227,6 +234,7 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         message: `Choose an example to create in the ${location} directory`,
         options: [
           { value: "simple", label: "Simple (Hello World)" },
+          { value: "schedule", label: "Scheduled Task" },
           {
             value: "none",
             label: "None",
@@ -255,7 +263,7 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return { location, isCustomValue: location !== defaultValue };
       }
 
-      const templateUrl = generateTemplateUrl(`examples/${example}.ts`);
+      const templateUrl = generateTemplateUrl(`examples/${example}.ts`, options.gitRef);
       const outputPath = join(triggerDir, "example.ts");
 
       await createFileFromTemplate({
@@ -449,7 +457,7 @@ async function writeConfigFile(
 
       const projectDir = resolve(process.cwd(), dir);
       const outputPath = join(projectDir, "trigger.config.ts");
-      const templateUrl = generateTemplateUrl("trigger.config.ts");
+      const templateUrl = generateTemplateUrl("trigger.config.ts", options.gitRef);
 
       span.setAttributes({
         "cli.projectDir": projectDir,

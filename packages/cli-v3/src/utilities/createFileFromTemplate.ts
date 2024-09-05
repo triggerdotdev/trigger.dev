@@ -65,6 +65,6 @@ export function replaceAll(input: string, replacements: Record<string, string>) 
   return output;
 }
 
-export function generateTemplateUrl(templateName: string) {
-  return `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/main/packages/cli-v3/templates/${templateName}.template`;
+export function generateTemplateUrl(templateName: string, ref: string = "main") {
+  return `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/${ref}/packages/cli-v3/templates/${templateName}.template`;
 }
