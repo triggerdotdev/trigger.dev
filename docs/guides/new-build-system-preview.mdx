@@ -18,7 +18,7 @@ The main features of the new build sytem are:
 To use the new build system, you have to update to use our preview packages. Update the `@trigger.dev/sdk` package in your package.json:
 
 ```json
-"@trigger.dev/sdk": "0.0.0-prerelease-20240825150620"
+"@trigger.dev/sdk": "0.0.0-prerelease-20240905123715"
 ```
 
 You will also need to update your usage of the `trigger.dev` CLI to use the preview release. If you run the CLI via `npx` you can update to the preview release like so:
@@ -28,13 +28,13 @@ You will also need to update your usage of the `trigger.dev` CLI to use the prev
 npx trigger.dev@beta dev
 
 # using the preview release
-npx trigger.dev@0.0.0-prerelease-20240825150620 dev --skip-update-check
+npx trigger.dev@0.0.0-prerelease-20240905123715 dev
 ```
 
 If you've added the `trigger.dev` CLI to your `devDependencies`, then you should update the version to point to the preview release:
 
 ```json
-"trigger.dev": "0.0.0-prerelease-20240825150620"
+"trigger.dev": "0.0.0-prerelease-20240905123715"
 ```
 
 Once you do that make sure you re-install your dependencies using `npm i` or the equivalent with your preferred package manager.
@@ -85,7 +85,7 @@ The `additionalFiles` option has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240825150620 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240905123715 -D
 ```
 
 Now you can import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
@@ -111,7 +111,7 @@ The `additionalPackages` option has been moved to our new build extension system
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240825150620 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240905123715 -D
 ```
 
 Now you can import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
@@ -135,7 +135,7 @@ The `resolveEnvVars` export has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240825150620 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240905123715 -D
 ```
 
 Now you can import the `syncEnvVars` build extension and use it in your `trigger.config.ts` file:
@@ -183,7 +183,7 @@ export default defineConfig({
 We've created a build extension to support using Prisma in your Trigger.dev tasks. To use this extension, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240825150620 -D
+npm add @trigger.dev/build@0.0.0-prerelease-20240905123715 -D
 ```
 
 Then you can import the `prismaExtension` build extension and use it in your `trigger.config.ts` file, passing in the path to your Prisma schema file:
@@ -324,7 +324,7 @@ export default defineConfig({
 We no longer run typechecking during the deploy command. This was causing issues with some projects, and we found that it wasn't necessary to run typechecking during the deploy command. If you want to run typechecking before deploying to Trigger.dev, you can run the `tsc` command before running the `deploy` command.
 
 ```sh
-tsc && npx trigger.dev@0.0.0-prerelease-20240825150620 deploy
+tsc && npx trigger.dev@0.0.0-prerelease-20240905123715 deploy
 ```
 
 Or if you are using GitHub actions, you can add an additional step to run the `tsc` command before deploying to Trigger.dev.
@@ -340,7 +340,7 @@ Or if you are using GitHub actions, you can add an additional step to run the `t
   env:
     TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
   run: |
-    npx trigger.dev@0.0.0-prerelease-20240825150620 deploy
+    npx trigger.dev@0.0.0-prerelease-20240905123715 deploy
 ```
 
 ### deploy --dry-run
@@ -348,7 +348,7 @@ Or if you are using GitHub actions, you can add an additional step to run the `t
 You can now inspect the build output of your project without actually deploying it to Trigger.dev by using the `--dry-run` flag:
 
 ```sh
-npx trigger.dev@0.0.0-prerelease-20240825150620 deploy --dry-run
+npx trigger.dev@0.0.0-prerelease-20240905123715 deploy --dry-run
 ```
 
 This will save the build output and print the path to the build output directory. If you face any issues with deploying, please include the build output in your issue report.
@@ -358,8 +358,8 @@ This will save the build output and print the path to the build output directory
 You can now pass the path to your local `.env` file using the `--env-file` flag during `dev` and `deploy` commands:
 
 ```sh
-npx trigger.dev@0.0.0-prerelease-20240825150620 dev --env-file ../../.env
-npx trigger.dev@0.0.0-prerelease-20240825150620 deploy --env-file ../../.env
+npx trigger.dev@0.0.0-prerelease-20240905123715 dev --env-file ../../.env
+npx trigger.dev@0.0.0-prerelease-20240905123715 deploy --env-file ../../.env
 ```
 
 The `.env` file works slightly differently in `dev` vs `deploy`:
@@ -381,7 +381,7 @@ Debugging your tasks code in `dev` is now supported via VS Code, without having 
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["trigger.dev@0.0.0-prerelease-20240825150620", "dev"],
+      "runtimeArgs": ["trigger.dev@0.0.0-prerelease-20240905123715", "dev"],
       "skipFiles": ["<node_internals>/**"],
       "sourceMaps": true
     }
@@ -396,7 +396,7 @@ Then you can start debugging your tasks code by selecting the `Trigger.dev: Dev`
 You can now authenticate the `dev` command using the `TRIGGER_ACCESS_TOKEN` environment variable. Previously this was only supported in the `deploy` command.
 
 ```sh
-TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-20240825150620 dev
+TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-20240905123715 dev
 ```
 
 ## Known issues
