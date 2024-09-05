@@ -21,9 +21,15 @@ jobs:
     uses: ./.github/workflows/unit-tests.yml
     secrets: inherit
 
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    with:
+      package: cli-v3
+    secrets: inherit
+
   preview-release:
     name: Preview Release
-    needs: [typecheck, units]
+    needs: [typecheck, units, e2e]
     if: |
       github.repository == 'triggerdotdev/trigger.dev'
     runs-on: buildjet-8vcpu-ubuntu-2204
@@ -52,9 +58,3 @@ jobs:
 
       - name: ⚡ publish preview release
         run: npx pkg-pr-new publish --no-template $(ls -d ./packages/*)
-
-  # e2e:
-  #   uses: ./.github/workflows/e2e.yml
-  #   with:
-  #     package: webapp
-  #   secrets: inherit

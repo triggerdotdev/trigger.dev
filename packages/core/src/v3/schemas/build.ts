@@ -44,6 +44,7 @@ export const BuildManifest = z.object({
     env: z.record(z.string()).optional(),
     commands: z.array(z.string()).optional(),
   }),
+  customConditions: z.array(z.string()).optional(),
   deploy: z.object({
     env: z.record(z.string()).optional(),
     sync: z
@@ -84,6 +85,7 @@ export const WorkerManifest = z.object({
   controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),
   runtime: BuildRuntime,
+  customConditions: z.array(z.string()).optional(),
   otelImportHook: z
     .object({
       include: z.array(z.string()).optional(),

@@ -2,19 +2,18 @@ import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
   devEntryPoints,
-  isConfigEntryPoint,
-  isRunWorkerForTarget,
+  isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
   isRunControllerForTarget,
+  isRunWorkerForTarget,
   shims,
-  isIndexControllerForTarget,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 
@@ -63,6 +62,10 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     },
   };
 
+  const customConditions = options.resolvedConfig.build?.conditions ?? [];
+
+  const conditions = [...customConditions, "trigger.dev", "module", "node"];
+
   const buildOptions: esbuild.BuildOptions & { metafile: true } = {
     entryPoints,
     outdir: options.destination,
@@ -76,7 +79,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     platform: "node",
     sourcemap: true,
     sourcesContent: options.target === "dev",
-    conditions: ["trigger.dev", "node"],
+    conditions,
     format: "esm",
     target: ["node20", "es2022"],
     loader: {
@@ -121,7 +124,12 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     stop = async function () {};
   }
 
-  const bundleResult = await getBundleResultFromBuild(options.target, options.cwd, result);
+  const bundleResult = await getBundleResultFromBuild(
+    options.target,
+    options.cwd,
+    options.resolvedConfig,
+    result
+  );
 
   if (!bundleResult) {
     throw new Error("Failed to get bundle result");
@@ -133,6 +141,7 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
 export async function getBundleResultFromBuild(
   target: BuildTarget,
   workingDir: string,
+  resolvedConfig: ResolvedConfig,
   result: esbuild.BuildResult<{ metafile: true; write: false }>
 ): Promise<Omit<BundleResult, "stop"> | undefined> {
   const hasher = createHash("md5");
@@ -152,6 +161,10 @@ export async function getBundleResultFromBuild(
   let indexWorkerEntryPoint: string | undefined;
   let indexControllerEntryPoint: string | undefined;
 
+  const configEntryPoint = resolvedConfig.configFile
+    ? relative(resolvedConfig.workingDir, resolvedConfig.configFile)
+    : "trigger.config.ts";
+
   for (const [outputPath, outputMeta] of Object.entries(result.metafile.outputs)) {
     if (outputPath.endsWith(".mjs")) {
       const $outputPath = resolve(workingDir, outputPath);
@@ -160,7 +173,7 @@ export async function getBundleResultFromBuild(
         continue;
       }
 
-      if (isConfigEntryPoint(outputMeta.entryPoint)) {
+      if (outputMeta.entryPoint.startsWith(configEntryPoint)) {
         configPath = $outputPath;
       } else if (isLoaderEntryPoint(outputMeta.entryPoint)) {
         loaderEntryPoint = $outputPath;

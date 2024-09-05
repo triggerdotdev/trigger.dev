@@ -13,21 +13,25 @@ type Result =
     };
 
 export async function createFileFromTemplate(params: {
-  templatePath: string;
+  templateUrl: string;
   replacements: Record<string, string>;
   outputPath: string;
   override?: boolean;
 }): Promise<Result> {
-  let template = await readFile(params.templatePath);
-
-  if ((await pathExists(params.outputPath)) && !params.override) {
-    return {
-      success: true,
-      alreadyExisted: true,
-    };
-  }
-
   try {
+    const response = await fetch(params.templateUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch template: ${response.statusText}`);
+    }
+    const template = await response.text();
+
+    if ((await pathExists(params.outputPath)) && !params.override) {
+      return {
+        success: true,
+        alreadyExisted: true,
+      };
+    }
+
     const output = replaceAll(template, params.replacements);
 
     const directoryName = path.dirname(params.outputPath);
@@ -59,4 +63,8 @@ export function replaceAll(input: string, replacements: Record<string, string>) 
     output = output.replace(new RegExp(`\\$\\{${key}\\}`, "g"), value);
   }
   return output;
+}
+
+export function generateTemplateUrl(templateName: string, ref: string = "main") {
+  return `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/${ref}/packages/cli-v3/templates/${templateName}.template`;
 }

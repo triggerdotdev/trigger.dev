@@ -33,12 +33,32 @@
       "@triggerdotdev/source"
     ]
   },
+  "typesVersions": {
+    "*": {
+      "extensions": [
+        "dist/commonjs/extensions/index.d.ts"
+      ],
+      "extensions/core": [
+        "dist/commonjs/extensions/core.d.ts"
+      ],
+      "extensions/prisma": [
+        "dist/commonjs/extensions/prisma.d.ts"
+      ],
+      "extensions/audioWaveform": [
+        "dist/commonjs/extensions/audioWaveform.d.ts"
+      ],
+      "extensions/typescript": [
+        "dist/commonjs/extensions/typescript.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
-    "update-version": "tsx ../../scripts/updateVersion.ts"
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:3.0.0-beta.56",
@@ -51,7 +71,8 @@
     "tshy": "^3.0.2",
     "typescript": "^5.5.4",
     "tsx": "4.17.0",
-    "esbuild": "^0.23.0"
+    "esbuild": "^0.23.0",
+    "@arethetypeswrong/cli": "^0.15.4"
   },
   "engines": {
     "node": ">=18.20.0"

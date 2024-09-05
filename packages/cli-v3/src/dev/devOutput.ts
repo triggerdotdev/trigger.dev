@@ -17,6 +17,7 @@ import {
   chalkWarning,
   chalkWorker,
   cliLink,
+  isLinksSupported,
   prettyError,
   prettyPrintDate,
 } from "../utilities/cliOutput.js";
@@ -50,12 +51,16 @@ export function startDevOutput(options: DevOutputOptions) {
   const backgroundWorkerInitialized = (
     ...[worker]: EventBusEventArgs<"backgroundWorkerInitialized">
   ) => {
+    const logParts: string[] = [];
+
     const testUrl = `${dashboardUrl}/projects/v3/${config.project}/test?environment=dev`;
     const runsUrl = `${dashboardUrl}/projects/v3/${config.project}/runs?envSlug=dev`;
 
     const pipe = chalkGrey("|");
     const bullet = chalkGrey("○");
     const arrow = chalkGrey("->");
+
+    logParts.push(bullet);
 
     const testLink = chalkLink(cliLink("Test tasks", testUrl));
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
@@ -64,9 +69,13 @@ export function startDevOutput(options: DevOutputOptions) {
     const workerStarted = chalkGrey("Background worker ready");
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
-    logger.log(
-      `${bullet} ${workerStarted} ${runtime} ${arrow} ${workerVersion} ${pipe} ${testLink} ${pipe} ${runsLink}`
-    );
+    logParts.push(workerStarted, runtime, arrow, workerVersion);
+
+    if (isLinksSupported) {
+      logParts.push(pipe, testLink, pipe, runsLink);
+    }
+
+    logger.log(logParts.join(" "));
   };
 
   const backgroundWorkerIndexingError = (
@@ -113,9 +122,9 @@ export function startDevOutput(options: DevOutputOptions) {
     const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
 
     logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
+      `${bullet} ${timestampPrefix} ${chalkGrey("->")} ${
+        isLinksSupported ? `${link} ${pipe}` : ""
+      } ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId}`
     );
   };
 
@@ -162,9 +171,9 @@ export function startDevOutput(options: DevOutputOptions) {
     const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);
 
     logger.log(
-      `${bullet} ${timestampPrefix} ${chalkGrey(
-        "->"
-      )} ${link} ${pipe} ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
+      `${bullet} ${timestampPrefix} ${chalkGrey("->")} ${
+        isLinksSupported ? `${link} ${pipe}` : ""
+      } ${workerPrefix} ${pipe} ${taskPrefix} ${pipe} ${runId} ${pipe} ${resultText} ${elapsedText}${errorText}`
     );
   };
 

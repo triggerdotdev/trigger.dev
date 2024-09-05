@@ -36,6 +36,7 @@ import sourceMapSupport from "source-map-support";
 import { VERSION } from "../version.js";
 import { setTimeout, setInterval } from "node:timers/promises";
 import { env } from "std-env";
+import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -117,7 +118,9 @@ async function loadWorkerManifest() {
 async function bootstrap() {
   const workerManifest = await loadWorkerManifest();
 
-  const { config, handleError } = await importConfig(workerManifest.configPath);
+  const { config, handleError } = await importConfig(
+    normalizeImportPath(workerManifest.configPath)
+  );
 
   const tracingSDK = new TracingSDK({
     url: env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
@@ -196,44 +199,123 @@ const zodIpc = new ZodIpcConnection({
         return;
       }
 
-      const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
-        await bootstrap();
+      try {
+        const { tracer, tracingSDK, consoleInterceptor, config, handleErrorFn, workerManifest } =
+          await bootstrap();
 
-      _tracingSDK = tracingSDK;
+        _tracingSDK = tracingSDK;
 
-      const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
+        const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
 
-      if (!taskManifest) {
-        console.error(`Could not find task ${execution.task.id}`);
+        if (!taskManifest) {
+          console.error(`Could not find task ${execution.task.id}`);
 
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+              },
+              usage: {
+                durationMs: 0,
+              },
             },
-            usage: {
-              durationMs: 0,
+          });
+
+          return;
+        }
+
+        try {
+          const beforeImport = performance.now();
+          await import(normalizeImportPath(taskManifest.entryPoint));
+          const durationMs = performance.now() - beforeImport;
+
+          console.log(
+            `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
+          );
+        } catch (err) {
+          console.error(`Failed to import task ${execution.task.id}`, err);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+              },
+              usage: {
+                durationMs: 0,
+              },
             },
-          },
+          });
+
+          return;
+        }
+
+        process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
+
+        // Import the task module
+        const task = taskCatalog.getTask(execution.task.id);
+
+        if (!task) {
+          console.error(`Could not find task ${execution.task.id}`);
+
+          await sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+              },
+              usage: {
+                durationMs: 0,
+              },
+            },
+          });
+
+          return;
+        }
+
+        const executor = new TaskExecutor(task, {
+          tracer,
+          tracingSDK,
+          consoleInterceptor,
+          config,
+          handleErrorFn,
         });
 
-        return;
-      }
+        try {
+          _execution = execution;
+          _isRunning = true;
 
-      try {
-        const beforeImport = performance.now();
-        await import(taskManifest.entryPoint);
-        const durationMs = performance.now() - beforeImport;
+          const measurement = usage.start();
 
-        console.log(
-          `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
-        );
+          const { result } = await executor.execute(execution, metadata, traceContext, measurement);
+
+          const usageSample = usage.stop(measurement);
+
+          return sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ...result,
+              usage: {
+                durationMs: usageSample.cpuTime,
+              },
+            },
+          });
+        } finally {
+          _execution = undefined;
+          _isRunning = false;
+        }
       } catch (err) {
-        console.error(`Failed to import task ${execution.task.id}`, err);
+        console.error("Failed to execute task", err);
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -242,73 +324,13 @@ const zodIpc = new ZodIpcConnection({
             id: execution.run.id,
             error: {
               type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+              code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
             },
             usage: {
               durationMs: 0,
             },
           },
         });
-
-        return;
-      }
-
-      process.title = `trigger-dev-worker: ${execution.task.id} ${execution.run.id}`;
-
-      // Import the task module
-      const task = taskCatalog.getTask(execution.task.id);
-
-      if (!task) {
-        console.error(`Could not find task ${execution.task.id}`);
-
-        await sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ok: false,
-            id: execution.run.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
-            },
-            usage: {
-              durationMs: 0,
-            },
-          },
-        });
-
-        return;
-      }
-
-      const executor = new TaskExecutor(task, {
-        tracer,
-        tracingSDK,
-        consoleInterceptor,
-        config,
-        handleErrorFn,
-      });
-
-      try {
-        _execution = execution;
-        _isRunning = true;
-
-        const measurement = usage.start();
-
-        const { result } = await executor.execute(execution, metadata, traceContext, measurement);
-
-        const usageSample = usage.stop(measurement);
-
-        return sender.send("TASK_RUN_COMPLETED", {
-          execution,
-          result: {
-            ...result,
-            usage: {
-              durationMs: usageSample.cpuTime,
-            },
-          },
-        });
-      } finally {
-        _execution = undefined;
-        _isRunning = false;
       }
     },
     TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {

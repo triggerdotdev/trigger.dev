@@ -1,0 +1,9 @@
+{
+  "name": "references-init-shell",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*",
+    "typescript": "^5.5.4"
+  }
+}

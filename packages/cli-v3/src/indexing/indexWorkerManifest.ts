@@ -1,17 +1,16 @@
 import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 import {
+  TaskIndexingImportError,
+  TaskMetadataParseError,
+  UncaughtExceptionError,
+} from "@trigger.dev/core/v3/errors";
+import {
   BuildRuntime,
   indexerToWorkerMessages,
   WorkerManifest,
 } from "@trigger.dev/core/v3/schemas";
 import { parseMessageFromCatalog } from "@trigger.dev/core/v3/zodMessageHandler";
 import { fork } from "node:child_process";
-import { env } from "std-env";
-import {
-  TaskIndexingImportError,
-  TaskMetadataParseError,
-  UncaughtExceptionError,
-} from "@trigger.dev/core/v3/errors";
 
 export type IndexWorkerManifestOptions = {
   runtime: BuildRuntime;
@@ -49,7 +48,7 @@ export async function indexWorkerManifest({
         OTEL_IMPORT_HOOK_INCLUDES: otelHookInclude?.join(","),
         OTEL_IMPORT_HOOK_EXCLUDES: otelHookExclude?.join(","),
         TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
-        NODE_OPTIONS: nodeOptions ? `${env.NODE_OPTIONS ?? ""} ${nodeOptions}` : env.NODE_OPTIONS,
+        NODE_OPTIONS: nodeOptions,
       },
       execPath: execPathForRuntime(runtime),
     });

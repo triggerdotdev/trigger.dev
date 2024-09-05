@@ -61,6 +61,7 @@ export default defineConfig({
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
   },
   build: {
+    conditions: ["react-server"],
     extensions: [
       emitDecoratorMetadata(),
       audioWaveform(),

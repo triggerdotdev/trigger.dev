@@ -80,6 +80,8 @@ export async function startDevSession({
       workerDir?.path
     );
 
+    logger.debug("Created build manifest from bundle", { buildManifest });
+
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
     try {
@@ -96,7 +98,7 @@ export async function startDevSession({
   }
 
   async function updateBuild(build: esbuild.BuildResult, workerDir: EphemeralDirectory) {
-    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, build);
+    const bundle = await getBundleResultFromBuild("dev", rawConfig.workingDir, rawConfig, build);
 
     if (bundle) {
       await updateBundle({ ...bundle, stop: undefined }, workerDir);
@@ -197,6 +199,7 @@ async function createBuildManifestFromBundle(
     indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
     loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
     configPath: bundle.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
       env: {},
     },

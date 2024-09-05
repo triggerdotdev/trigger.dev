@@ -1,5 +1,6 @@
 import { env } from "@/env.js";
 import { logger, task } from "@trigger.dev/sdk/v3";
+import { createStreamableValue } from "ai/rsc";
 
 import OpenAI from "openai";
 
@@ -13,6 +14,8 @@ export const openaiTask = task({
     maxAttempts: 1,
   },
   run: async (payload: { prompt: string }) => {
+    const streamableStatus = createStreamableValue("thread.init");
+
     const chatCompletion = await openai.chat.completions.create({
       messages: [{ role: "user", content: payload.prompt }],
       model: "gpt-3.5-turbo",

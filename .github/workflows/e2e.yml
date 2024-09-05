@@ -9,12 +9,13 @@ on:
         type: string
 jobs:
   cli-v3:
-    name: "🧪 CLI v3 tests"
+    name: "🧪 CLI v3 tests (${{ matrix.os }} - ${{ matrix.package-manager }})"
     if: inputs.package == 'cli-v3' || inputs.package == ''
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [buildjet-8vcpu-ubuntu-2204, windows-latest]
         package-manager: ["npm", "pnpm", "yarn"]
     steps:
       - name: ⬇️ Checkout repo
@@ -46,71 +47,8 @@ jobs:
         run: corepack enable
 
       - name: Run E2E Tests
+        shell: bash
         run: |
-          PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
-  webapp:
-    name: "🧪 Webapp tests"
-    if: inputs.package == 'webapp' || inputs.package == ''
-    runs-on: buildjet-16vcpu-ubuntu-2204
-    steps:
-      - name: 🐳 Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN || vars.DOCKERHUB_TOKEN }}
+          LOG=debug PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
 
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          submodules: recursive
 
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 8.15.5
-
-      - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
-        with:
-          node-version: 20.11.1
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: Run Playwright tests
-        run: |
-          # Setup environment variables
-          cp ./.env.example ./.env
-          cp ./references/nextjs-test/.env.example ./references/nextjs-test/.env.local
-
-          # Build packages
-          pnpm run build --filter @references/nextjs-test^...
-          cd apps/webapp && pnpm run build:server
-          cd ../..
-          pnpm --filter @trigger.dev/database generate
-          pnpm --filter @trigger.dev/otlp-importer generate
-
-          # Move trigger-cli bin to correct place
-          pnpm install --frozen-lockfile
-
-          # Execute tests
-          pnpm run docker
-          pnpm run db:migrate
-          pnpm run db:seed
-          pnpm run test:e2e
-
-          # Cleanup
-          pnpm run docker:stop
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30

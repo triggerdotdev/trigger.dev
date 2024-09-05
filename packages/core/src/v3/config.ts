@@ -42,6 +42,16 @@ export type TriggerConfig = {
    */
   enableConsoleLogging?: boolean;
   build?: {
+    /**
+     * Add custom conditions to the esbuild build. For example, if you are importing `ai/rsc`, you'll need to add "react-server" condition.
+     *
+     * By default we add the following conditions:
+     *
+     * - "trigger.dev"
+     * - "module"
+     * - "node"
+     */
+    conditions?: string[];
     extensions?: BuildExtension[];
     external?: string[];
     jsx?: {

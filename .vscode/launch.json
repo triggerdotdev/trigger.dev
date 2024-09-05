@@ -32,6 +32,14 @@
     {
       "type": "node-terminal",
       "request": "launch",
+      "name": "Debug V3 init CLI",
+      "command": "pnpm exec triggerdev init",
+      "cwd": "${workspaceFolder}/references/init-shell",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
       "name": "Debug V3 Dev CLI",
       "command": "pnpm exec triggerdev dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
@@ -76,6 +84,14 @@
       "port": 9229,
       "restart": true,
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug CLI e2e tests",
+      "command": "PM=yarn pnpm run test:e2e",
+      "cwd": "${workspaceFolder}/packages/cli-v3",
+      "sourceMaps": true
     }
   ]
 }
