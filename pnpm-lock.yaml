@@ -1329,6 +1329,19 @@ importers:
         specifier: ^5.5.4
         version: 5.5.4
 
+  references/hello-world:
+    dependencies:
+      '@trigger.dev/sdk':
+        specifier: 0.0.0-prerelease-20240825150620
+        version: 0.0.0-prerelease-20240825150620(typescript@5.5.4)
+    devDependencies:
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
+
   references/init-shell:
     devDependencies:
       trigger.dev:
@@ -14263,10 +14276,65 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
+  /@trigger.dev/core@0.0.0-prerelease-20240825150620:
+    resolution: {integrity: sha512-lFlYRMygi8T3i8qnx+hzmd5u2HnoA4lkmeA7e1ESTBgD8b/TsHIkwfcNk6eLmlnspvE2dQp7x7Am0Ss/g7L4fw==}
+    engines: {node: '>=18.20.0'}
+    dependencies:
+      '@google-cloud/precise-date': 4.0.0
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@opentelemetry/exporter-logs-otlp-http': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-logs': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-node': 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node': 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/semantic-conventions': 1.25.1
+      execa: 8.0.1
+      humanize-duration: 3.27.3
+      socket.io-client: 4.7.5
+      superjson: 2.2.1
+      zod: 3.22.3
+      zod-error: 1.5.0
+      zod-validation-error: 1.5.0(zod@3.22.3)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /@trigger.dev/platform@1.0.12:
     resolution: {integrity: sha512-pOB9S2XG+TmTdlYtF9xuQoFz1aRlRGWSVCXuv3Vj2ArzU6Zz3ukvK24qlTd0PJB1otX71Ho/NfViGKEzCyRb5Q==}
     dependencies:
       zod: 3.22.3
+    dev: false
+
+  /@trigger.dev/sdk@0.0.0-prerelease-20240825150620(typescript@5.5.4):
+    resolution: {integrity: sha512-cKCZ0/ZOaozkWo0bBjGZ5TWpok2lMc/KeUKLfefPUYgb04GoMGUCHzWdQeKgJwXursvDn9/dXxCWA1RuOQRmMQ==}
+    engines: {node: '>=18.20.0'}
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      '@opentelemetry/api-logs': 0.52.1
+      '@opentelemetry/semantic-conventions': 1.25.1
+      '@trigger.dev/core': 0.0.0-prerelease-20240825150620
+      chalk: 5.3.0
+      cronstrue: 2.21.0
+      debug: 4.3.6
+      evt: 2.4.13
+      msw: 2.3.5(typescript@5.5.4)
+      slug: 6.1.0
+      terminal-link: 3.0.0
+      ulid: 2.3.0
+      uuid: 9.0.0
+      ws: 8.18.0
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - typescript
+      - utf-8-validate
     dev: false
 
   /@trigger.dev/yalt@2.3.19:

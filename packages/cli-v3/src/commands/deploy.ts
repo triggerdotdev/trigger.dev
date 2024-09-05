@@ -26,7 +26,7 @@ import {
   saveLogs,
 } from "../deploy/logs.js";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
-import { chalkError, cliLink, prettyError } from "../utilities/cliOutput.js";
+import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -303,7 +303,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $spinner = spinner();
 
-  $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+  if (isLinksSupported) {
+    $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+  } else {
+    $spinner.start(`Deploying version ${version}`);
+  }
 
   const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
   const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
@@ -419,9 +423,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
   outro(
-    `Version ${version} deployed with ${taskCount} detected task${
-      taskCount === 1 ? "" : "s"
-    } | ${deploymentLink} | ${testLink}`
+    `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
+      isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
+    }`
   );
 }
 
