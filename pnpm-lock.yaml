@@ -1110,6 +1110,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(zod@3.22.3)
     devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1
