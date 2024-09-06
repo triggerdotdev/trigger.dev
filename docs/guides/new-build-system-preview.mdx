@@ -399,6 +399,16 @@ You can now authenticate the `dev` command using the `TRIGGER_ACCESS_TOKEN` envi
 TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-20240905123715 dev
 ```
 
+### Better deploy support for self-hosters
+
+You can now specify a custom registry and namespace when deploying via a self-hosted instance of Trigger.dev:
+
+```sh
+npx trigger.dev@0.0.0-prerelease-20240905123715 deploy --self-hosted --load-image --push --registry docker.io --namespace mydockerhubusername
+```
+
+All you have to do is create a repository in dockerhub that matches the project ref of your Trigger.dev project (e.g. `proj_rrkpdguyagvsoktglnod`)
+
 ## Known issues
 
 - Path aliases are not yet support in your `trigger.config.ts` file. To workaround this issue you'll need to rewrite path aliases to their relative paths. (See [this](https://github.com/unjs/jiti/issues/166) and [this](https://knip.dev/reference/known-issues#path-aliases-in-config-files)) for more info.

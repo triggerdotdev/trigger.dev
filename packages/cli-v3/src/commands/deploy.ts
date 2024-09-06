@@ -43,6 +43,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  namespace: z.string().optional(),
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   push: z.boolean().default(false),
@@ -117,6 +118,12 @@ export function configureDeployCommand(program: Command) {
       new CommandOption(
         "--tag <tag>",
         "(Coming soon) Specify the tag to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(
+      new CommandOption(
+        "--namespace <namespace>",
+        "Specify the namespace to use when pushing the image to the registry"
       ).hideHelp()
     )
     .addOption(
@@ -232,6 +239,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
+    selfHosted: options.selfHosted,
+    registryHost: options.registry,
+    namespace: options.namespace,
   });
 
   if (!deploymentResponse.success) {
