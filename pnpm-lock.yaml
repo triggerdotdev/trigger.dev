@@ -229,8 +229,8 @@ importers:
         specifier: ^0.6.1
         version: 0.6.1(@conform-to/dom@0.6.1)(zod@3.22.3)
       '@depot/sdk-node':
-        specifier: ^0.5.0
-        version: 0.5.0
+        specifier: ^1.0.0
+        version: 1.0.0
       '@headlessui/react':
         specifier: ^1.7.8
         version: 1.7.8(react-dom@18.2.0)(react@18.2.0)
@@ -3828,8 +3828,8 @@ packages:
       '@babel/helper-validator-identifier': 7.24.7
       to-fast-properties: 2.0.0
 
-  /@bufbuild/protobuf@1.7.2:
-    resolution: {integrity: sha512-i5GE2Dk5ekdlK1TR7SugY4LWRrKSfb5T1Qn4unpIMbfxoeGKERKQ59HG3iYewacGD10SR7UzevfPnh6my4tNmQ==}
+  /@bufbuild/protobuf@1.10.0:
+    resolution: {integrity: sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag==}
     dev: false
 
   /@bundled-es-modules/cookie@2.0.0:
@@ -4315,23 +4315,24 @@ packages:
       zod: 3.22.3
     dev: false
 
-  /@connectrpc/connect-node@0.13.2(@bufbuild/protobuf@1.7.2):
-    resolution: {integrity: sha512-dAoBuQ+fYFw22KYgZXPw1t19i6TRwNmk6c6XsOYLhBl1Y5vzXoMfMX2jm7lmkmLQFIcM9Xc2EYoUKtjNXH5bjw==}
+  /@connectrpc/connect-node@1.4.0(@bufbuild/protobuf@1.10.0)(@connectrpc/connect@1.4.0):
+    resolution: {integrity: sha512-0ANnrr6SvsjevsWEgdzHy7BaHkluZyS6s4xNoVt7RBHFR5V/kT9lPokoIbYUOU9JHzdRgTaS3x5595mwUsu15g==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
-      '@bufbuild/protobuf': ^1.2.1
+      '@bufbuild/protobuf': ^1.4.2
+      '@connectrpc/connect': 1.4.0
     dependencies:
-      '@bufbuild/protobuf': 1.7.2
-      '@connectrpc/connect': 0.13.2(@bufbuild/protobuf@1.7.2)
+      '@bufbuild/protobuf': 1.10.0
+      '@connectrpc/connect': 1.4.0(@bufbuild/protobuf@1.10.0)
       undici: 5.28.4
     dev: false
 
-  /@connectrpc/connect@0.13.2(@bufbuild/protobuf@1.7.2):
-    resolution: {integrity: sha512-KZg6EH8gYnQZm/d2IXXMVB2mom/A1dCD8+7JScm2tKN9OQyQSeCJOLqtv/M4M5XVS0Y9JM2/VCbiUwfhl9Rqmg==}
+  /@connectrpc/connect@1.4.0(@bufbuild/protobuf@1.10.0):
+    resolution: {integrity: sha512-vZeOkKaAjyV4+RH3+rJZIfDFJAfr+7fyYr6sLDKbYX3uuTVszhFe9/YKf5DNqrDb5cKdKVlYkGn6DTDqMitAnA==}
     peerDependencies:
-      '@bufbuild/protobuf': ^1.2.1
+      '@bufbuild/protobuf': ^1.4.2
     dependencies:
-      '@bufbuild/protobuf': 1.7.2
+      '@bufbuild/protobuf': 1.10.0
     dev: false
 
   /@cspotcode/source-map-support@0.8.1:
@@ -4438,12 +4439,12 @@ packages:
       '@depot/cli-win32-x64': 0.0.1-cli.2.73.0
     dev: false
 
-  /@depot/sdk-node@0.5.0:
-    resolution: {integrity: sha512-Pl9Yji00B6uQpMm5xZU4/eZbzaBo72N6c534ZqLI6nbOEIPH0VX27TVF9lFF3Fl3GHFZ+6X9laJtDn2DrLS2DQ==}
+  /@depot/sdk-node@1.0.0:
+    resolution: {integrity: sha512-zq1xqesqGhp58Rh0bTXhsjoC8X+L+LwZABLlQh7Rm45770nGtAABa3GtU1n/776YTMI1gIAhzc++Jxae3H0J4w==}
     dependencies:
-      '@bufbuild/protobuf': 1.7.2
-      '@connectrpc/connect': 0.13.2(@bufbuild/protobuf@1.7.2)
-      '@connectrpc/connect-node': 0.13.2(@bufbuild/protobuf@1.7.2)
+      '@bufbuild/protobuf': 1.10.0
+      '@connectrpc/connect': 1.4.0(@bufbuild/protobuf@1.10.0)
+      '@connectrpc/connect-node': 1.4.0(@bufbuild/protobuf@1.10.0)(@connectrpc/connect@1.4.0)
     dev: false
 
   /@emotion/hash@0.9.0:
