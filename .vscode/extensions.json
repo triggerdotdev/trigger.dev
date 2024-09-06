@@ -1,6 +1,5 @@
 {
 	"recommendations": [
-        "astro-build.astro-vscode",
         "denoland.vscode-deno"
     ],
 	"unwantedRecommendations": [
