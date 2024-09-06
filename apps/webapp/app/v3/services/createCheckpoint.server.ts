@@ -178,7 +178,7 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          const resumeService = new ResumeDependentParentsService();
+          const resumeService = new ResumeDependentParentsService(this._prisma);
           const result = await resumeService.call({ id: attempt.taskRunId });
 
           if (result.success) {
