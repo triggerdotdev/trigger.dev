@@ -28,6 +28,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
+import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -318,8 +319,9 @@ export class BackgroundWorker {
     const processOptions: TaskRunProcessOptions = {
       payload,
       env: {
-        ...this.params.env,
-        ...payload.environment,
+        ...sanitizeEnvVars(this.params.env),
+        // TODO: this needs the stripEmptyValues stuff too
+        ...sanitizeEnvVars(payload.environment ?? {}),
         TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
       },
       serverWorker: this.serverWorker,
