@@ -134,7 +134,7 @@ export class DeliverScheduledEventService {
           id,
         },
         data: {
-          workerJobId: workerJob.id,
+          workerJobId: workerJob?.id,
           nextEventTimestamp: runAt,
         },
       });
