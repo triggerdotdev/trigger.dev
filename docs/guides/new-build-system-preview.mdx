@@ -409,7 +409,14 @@ npx trigger.dev@0.0.0-prerelease-20240905123715 deploy --self-hosted --load-imag
 
 All you have to do is create a repository in dockerhub that matches the project ref of your Trigger.dev project (e.g. `proj_rrkpdguyagvsoktglnod`)
 
+<Note>
+  Docker Hub will automatically create a repository the first time you push, which is public by
+  default. If you want to keep these images private, make sure you create the repository before you
+  first run the `deploy` command
+</Note>
+
 ## Known issues
 
 - Path aliases are not yet support in your `trigger.config.ts` file. To workaround this issue you'll need to rewrite path aliases to their relative paths. (See [this](https://github.com/unjs/jiti/issues/166) and [this](https://knip.dev/reference/known-issues#path-aliases-in-config-files)) for more info.
 - Some events in the run trace view may get permanently stuck in a loading state. This is a known issue and we're working on a fix.
+- `*.test.ts` and `.spec.ts` files inside the trigger dirs will be bundled and could cause issues. You'll need to move these files outside of the trigger dirs to avoid this issue.

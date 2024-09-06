@@ -21,12 +21,13 @@ export const parentTask = task({
   id: "parent",
   run: async (payload: any, { ctx }) => {
     await childTask.triggerAndWait({ message: "Hello, world!" });
+    logger.log("Hello, world from the parent", { payload });
   },
 });
 
 export const childTask = task({
   id: "child",
   run: async (payload: any, { ctx }) => {
-    process.exit(1);
+    logger.info("Hello, world from the child", { payload });
   },
 });
