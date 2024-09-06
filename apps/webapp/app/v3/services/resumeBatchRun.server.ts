@@ -38,6 +38,12 @@ export class ResumeBatchRunService extends BaseService {
     });
 
     if (!batchRun || !batchRun.dependentTaskAttempt) {
+      logger.error(
+        "ResumeBatchRunService: Batch run is already completed, not found, or doesn't have a dependent attempt",
+        {
+          batchRun,
+        }
+      );
       return;
     }
 
@@ -61,9 +67,19 @@ export class ResumeBatchRunService extends BaseService {
     const dependentRun = batchRun.dependentTaskAttempt.taskRun;
 
     if (batchRun.dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
+      logger.debug("ResumeBatchRunService: Attempt is paused and has a checkpoint event", {
+        batchRunId: batchRun.id,
+        dependentTaskAttempt: batchRun.dependentTaskAttempt,
+        checkpointEventId: batchRun.checkpointEventId,
+      });
+
       // We need to update the batchRun status so we don't resume it again
       const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
       if (wasUpdated) {
+        logger.debug("ResumeBatchRunService: Resuming dependent run with checkpoint", {
+          batchRunId: batchRun.id,
+          dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
+        });
         await marqs?.enqueueMessage(
           environment,
           dependentRun.queue,
@@ -81,7 +97,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentRun.concurrencyKey ?? undefined
         );
       } else {
-        logger.debug("Batch run resume with checkpoint: was already completed", {
+        logger.debug("ResumeBatchRunService: with checkpoint was already completed", {
           batchRunId: batchRun.id,
           dependentTaskAttempt: batchRun.dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
@@ -89,7 +105,7 @@ export class ResumeBatchRunService extends BaseService {
         });
       }
     } else {
-      logger.debug("Batch run resume: Attempt is not paused or there's no checkpoint event", {
+      logger.debug("ResumeBatchRunService: attempt is not paused or there's no checkpoint event", {
         batchRunId: batchRun.id,
         dependentTaskAttempt: batchRun.dependentTaskAttempt,
         checkpointEventId: batchRun.checkpointEventId,
@@ -99,7 +115,7 @@ export class ResumeBatchRunService extends BaseService {
       if (batchRun.dependentTaskAttempt.status === "PAUSED" && !batchRun.checkpointEventId) {
         // In case of race conditions the status can be PAUSED without a checkpoint event
         // When the checkpoint is created, it will continue the run
-        logger.error("Batch run resume: Attempt is paused but there's no checkpoint event", {
+        logger.error("ResumeBatchRunService: attempt is paused but there's no checkpoint event", {
           batchRunId: batchRun.id,
           dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
         });
@@ -109,6 +125,10 @@ export class ResumeBatchRunService extends BaseService {
       // We need to update the batchRun status so we don't resume it again
       const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
       if (wasUpdated) {
+        logger.debug("ResumeBatchRunService: Resuming dependent run without checkpoint", {
+          batchRunId: batchRun.id,
+          dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
+        });
         await marqs?.replaceMessage(dependentRun.id, {
           type: "RESUME",
           completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
@@ -120,7 +140,7 @@ export class ResumeBatchRunService extends BaseService {
           environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
         });
       } else {
-        logger.debug("Batch run resume without checkpoint: was already completed", {
+        logger.debug("ResumeBatchRunService: without checkpoint was already completed", {
           batchRunId: batchRun.id,
           dependentTaskAttempt: batchRun.dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,

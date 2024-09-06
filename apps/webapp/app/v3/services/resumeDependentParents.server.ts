@@ -190,6 +190,49 @@ export class ResumeDependentParentsService extends BaseService {
       };
     }
 
+    const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
+      select: {
+        id: true,
+        status: true,
+      },
+      where: {
+        taskRunId: dependency.taskRunId,
+      },
+      orderBy: {
+        id: "desc",
+      },
+    });
+
+    if (!lastAttempt) {
+      logger.error(
+        "ResumeDependentParentsService.singleRunDependency(): dependency child attempt not found",
+        {
+          dependency,
+        }
+      );
+
+      //todo create an attempt here?
+
+      return {
+        success: false,
+        error: `Dependency child attempt not found for run ${dependency.taskRunId}`,
+      };
+    }
+
+    //todo update the batchRunItem to COMPLETED and pointed at the parent attempt
+    await this._prisma.batchTaskRunItem.update({
+      where: {
+        batchTaskRunId_taskRunId: {
+          batchTaskRunId: dependency.dependentBatchRun.id,
+          taskRunId: dependency.taskRunId,
+        },
+      },
+      data: {
+        status: "COMPLETED",
+        taskRunAttemptId: lastAttempt.id,
+      },
+    });
+
     await ResumeBatchRunService.enqueue(dependency.dependentBatchRun.id, this._prisma);
 
     return {
