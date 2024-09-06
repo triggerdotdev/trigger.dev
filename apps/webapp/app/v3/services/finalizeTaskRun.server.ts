@@ -71,7 +71,7 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     //resume any dependencies
-    const resumeService = new ResumeDependentParentsService();
+    const resumeService = new ResumeDependentParentsService(this._prisma);
     const result = await resumeService.call({ id: run.id });
 
     if (result.success) {
