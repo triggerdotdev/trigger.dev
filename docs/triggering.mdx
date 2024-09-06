@@ -3,7 +3,7 @@ title: "Triggering"
 description: "Tasks need to be triggered in order to run."
 ---
 
-Trigger your tasks **from your backend**:
+Trigger tasks **from your backend**:
 
 | Function                         | This works            | What it does                                                                                                                                                              |
 | -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -11,7 +11,7 @@ Trigger your tasks **from your backend**:
 | `tasks.batchTrigger()`           | Anywhere              | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger)                                               |
 | `tasks.triggerAndPoll()`         | Anywhere              | Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll) |
 
-Trigger your tasks **from inside a run**:
+Trigger tasks **from inside a run**:
 
 | Function                         | This works            | What it does                                                                                                                                                              |
 | -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -404,6 +404,55 @@ export const loopTask = task({
     }
   },
 });
+```
+
+</CodeGroup>
+
+</Accordion>
+
+<Accordion title="How to handle run failures">
+  
+  When using `batchTriggerAndWait`, you have full control over how to handle failures within the batch. The method returns an array of run results, allowing you to inspect each run's outcome individually and implement custom error handling.
+
+  Here's how you can manage run failures:
+
+  1. **Inspect individual run results**: Each run in the returned array has an `ok` property indicating success or failure.
+
+  2. **Access error information**: For failed runs, you can examine the `error` property to get details about the failure.
+
+  3. **Choose your failure strategy**: You have two main options:
+     - **Fail the entire batch**: Throw an error if any run fails, causing the parent task to reattempt.
+     - **Continue despite failures**: Process the results without throwing an error, allowing the parent task to continue.
+
+  4. **Implement custom logic**: You can create sophisticated handling based on the number of failures, types of errors, or other criteria.
+
+  Here's an example of how you might handle run failures:
+
+<CodeGroup>
+
+```ts /trigger/batchTriggerAndWait.ts
+  const result = await batchChildTask.batchTriggerAndWait([
+    { payload: "item1" },
+    { payload: "item2" },
+    { payload: "item3" },
+  ]);
+
+  // Result will contain the finished runs. 
+  // They're only finished if they have succeeded or failed.
+  // "Failed" means all attempts failed
+
+  for (const run of result.runs) {
+
+    // Check if the run succeeded
+    if (run.ok) {
+      logger.info("Batch task run succeeded", { output: run.output });
+    } else {
+      logger.error("Batch task run error", { error: run.error });
+
+      //You can choose if you want to throw an error and fail the entire run
+      throw new Error(`Fail the entire run because ${run.id} failed`);
+    }
+  }
 ```
 
 </CodeGroup>
