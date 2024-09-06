@@ -23,6 +23,7 @@ export type ResolveConfigOptions = {
 
 export async function loadConfig({
   cwd = process.cwd(),
+  overrides,
 }: ResolveConfigOptions = {}): Promise<ResolvedConfig> {
   const result = await c12.loadConfig<TriggerConfig>({
     name: "trigger",
@@ -30,7 +31,7 @@ export async function loadConfig({
     jitiOptions: { debug: logger.loggerLevel === "debug" },
   });
 
-  return await resolveConfig(cwd, result);
+  return await resolveConfig(cwd, result, overrides);
 }
 
 type ResolveWatchConfigOptions = ResolveConfigOptions & {

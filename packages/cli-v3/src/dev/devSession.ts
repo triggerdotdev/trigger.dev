@@ -40,13 +40,17 @@ export type DevSessionOptions = {
   onErr?: (error: Error) => void;
 };
 
+export type DevSessionInstance = {
+  stop: () => void;
+};
+
 export async function startDevSession({
   rawConfig,
   name,
   rawArgs,
   client,
   dashboardUrl,
-}: DevSessionOptions) {
+}: DevSessionOptions): Promise<DevSessionInstance> {
   const destination = getTmpDir(rawConfig.workingDir, "build");
 
   const runtime = await startWorkerRuntime({
