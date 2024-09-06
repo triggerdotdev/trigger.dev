@@ -62,31 +62,32 @@ export class ResumeBatchRunService extends BaseService {
 
     if (batchRun.dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
       // We need to update the batchRun status so we don't resume it again
-      await this._prisma.batchTaskRun.update({
-        where: {
-          id: batchRun.id,
-        },
-        data: {
-          status: "COMPLETED",
-        },
-      });
-
-      await marqs?.enqueueMessage(
-        environment,
-        dependentRun.queue,
-        dependentRun.id,
-        {
-          type: "RESUME",
-          completedAttemptIds: [],
-          resumableAttemptId: batchRun.dependentTaskAttempt.id,
+      const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+      if (wasUpdated) {
+        await marqs?.enqueueMessage(
+          environment,
+          dependentRun.queue,
+          dependentRun.id,
+          {
+            type: "RESUME",
+            completedAttemptIds: [],
+            resumableAttemptId: batchRun.dependentTaskAttempt.id,
+            checkpointEventId: batchRun.checkpointEventId,
+            taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
+            projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
+            environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
+            environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
+          },
+          dependentRun.concurrencyKey ?? undefined
+        );
+      } else {
+        logger.debug("Batch run resume with checkpoint: was already completed", {
+          batchRunId: batchRun.id,
+          dependentTaskAttempt: batchRun.dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
-          taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
-          projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
-          environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
-          environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
-        },
-        dependentRun.concurrencyKey ?? undefined
-      );
+          hasCheckpointEvent: !!batchRun.checkpointEventId,
+        });
+      }
     } else {
       logger.debug("Batch run resume: Attempt is not paused or there's no checkpoint event", {
         batchRunId: batchRun.id,
@@ -105,16 +106,49 @@ export class ResumeBatchRunService extends BaseService {
         return;
       }
 
-      await marqs?.replaceMessage(dependentRun.id, {
-        type: "RESUME",
-        completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-        resumableAttemptId: batchRun.dependentTaskAttempt.id,
-        checkpointEventId: batchRun.checkpointEventId ?? undefined,
-        taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
-        projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
-        environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
-        environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
-      });
+      // We need to update the batchRun status so we don't resume it again
+      const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+      if (wasUpdated) {
+        await marqs?.replaceMessage(dependentRun.id, {
+          type: "RESUME",
+          completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
+          resumableAttemptId: batchRun.dependentTaskAttempt.id,
+          checkpointEventId: batchRun.checkpointEventId ?? undefined,
+          taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
+          projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
+          environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
+          environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
+        });
+      } else {
+        logger.debug("Batch run resume without checkpoint: was already completed", {
+          batchRunId: batchRun.id,
+          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          checkpointEventId: batchRun.checkpointEventId,
+          hasCheckpointEvent: !!batchRun.checkpointEventId,
+        });
+      }
+    }
+  }
+
+  async #setBatchToCompletedOnce(batchRunId: string) {
+    const result = await this._prisma.batchTaskRun.updateMany({
+      where: {
+        id: batchRunId,
+        status: {
+          not: "COMPLETED", // Ensure the status is not already "COMPLETED"
+        },
+      },
+      data: {
+        status: "COMPLETED",
+      },
+    });
+
+    // Check if any records were updated
+    if (result.count > 0) {
+      // The status was changed, so we return true
+      return true;
+    } else {
+      return false;
     }
   }
 
