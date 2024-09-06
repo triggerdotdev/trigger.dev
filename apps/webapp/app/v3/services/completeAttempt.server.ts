@@ -76,6 +76,12 @@ export class CompleteAttemptService extends BaseService {
         id: run.id,
         status: "SYSTEM_FAILURE",
         completedAt: new Date(),
+        attemptStatus: "FAILED",
+        error: {
+          type: "INTERNAL_ERROR",
+          code: "TASK_EXECUTION_FAILED",
+          message: "Tried to complete attempt but it doesn't exist",
+        },
       });
 
       // No attempt, so there's no message to ACK

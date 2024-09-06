@@ -61,13 +61,15 @@ export class CancelAttemptService extends BaseService {
           },
         });
 
+        const isCancellable = isCancellableRunStatus(taskRunAttempt.taskRun.status);
+
         const finalizeService = new FinalizeTaskRunService(tx);
         await finalizeService.call({
           id: taskRunId,
-          status: isCancellableRunStatus(taskRunAttempt.taskRun.status) ? "INTERRUPTED" : undefined,
-          completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-            ? cancelledAt
-            : undefined,
+          status: isCancellable ? "INTERRUPTED" : undefined,
+          completedAt: isCancellable ? cancelledAt : undefined,
+          attemptStatus: isCancellable ? "CANCELED" : undefined,
+          error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
         });
       });
 

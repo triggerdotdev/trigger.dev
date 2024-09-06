@@ -145,8 +145,9 @@ export class ResumeDependentParentsService extends BaseService {
     }
 
     if (!isFinalAttemptStatus(lastAttempt.status)) {
-      logger.debug(
-        "ResumeDependentParentsService.singleRunDependency(): dependency child attempt not final",
+      //We still want to continue if this happens because the run is final but log it
+      logger.error(
+        "ResumeDependentParentsService.singleRunDependency(): dependency child attempt not final, but the run is.",
         {
           dependency,
           lastAttempt,
@@ -154,8 +155,8 @@ export class ResumeDependentParentsService extends BaseService {
       );
 
       return {
-        success: true,
-        action: "not-finished",
+        success: false,
+        error: `Dependency child attempt not final, but the run is`,
       };
     }
 

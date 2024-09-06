@@ -76,6 +76,11 @@ export class CancelTaskRunService extends BaseService {
         runtimeEnvironment: true,
         lockedToVersion: true,
       },
+      attemptStatus: "CANCELED",
+      error: {
+        type: "STRING_ERROR",
+        raw: opts.reason,
+      },
     });
 
     const inProgressEvents = await eventRepository.queryIncompleteEvents({

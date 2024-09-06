@@ -796,6 +796,12 @@ function RunTimelineLine({ title, state }: RunTimelineLineProps) {
 function RunError({ error }: { error: TaskRunError }) {
   switch (error.type) {
     case "STRING_ERROR":
+      return (
+        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
+          <Header3 className="text-rose-500">Error</Header3>
+          <Callout variant="error">{error.raw}</Callout>
+        </div>
+      );
     case "CUSTOM_ERROR": {
       return (
         <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">

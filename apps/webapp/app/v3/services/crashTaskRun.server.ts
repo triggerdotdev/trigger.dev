@@ -69,6 +69,13 @@ export class CrashTaskRunService extends BaseService {
           },
         },
       },
+      attemptStatus: "FAILED",
+      error: {
+        type: "INTERNAL_ERROR",
+        code: "TASK_RUN_CRASHED",
+        message: opts.reason,
+        stackTrace: opts.logs,
+      },
     });
 
     const inProgressEvents = await eventRepository.queryIncompleteEvents(
