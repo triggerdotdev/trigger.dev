@@ -183,6 +183,10 @@
       ]
     },
     {
+      "group": "CLI",
+      "pages": ["cli-commands"]
+    },
+    {
       "group": "Open source",
       "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
     },
