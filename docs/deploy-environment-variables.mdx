@@ -175,3 +175,55 @@ return {
 ```
 
 This should mean that for most secret services you won't need to convert the data into a different format.
+
+### Using Google credential JSON files
+
+securely pass a Google credential JSON file to your Trigger.dev task using environment variables. This method is recommended for handling sensitive credentials in a Docker environment, especially when using GitHub Actions and Secrets.
+
+<Steps>
+
+<Step title="Convert the Google credential file to base64">
+
+  In your terminal, run the following command and copy the resulting base64 string:
+
+  ```
+  base64 path/to/your/service-account-file.json
+  ```
+
+</Step>
+
+<Step title="Set up the environment variable in Trigger.dev">
+
+Follow [these steps](/deploy-environment-variables) to set a new environment variable using the base64 string as the value.
+
+```
+GOOGLE_CREDENTIALS_BASE64="<your base64 string>"
+```
+
+</Step>
+
+<Step title="Use the environment variable in your code">
+
+Add the following code to your Trigger.dev task:
+
+```ts
+const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString('utf8'));
+
+const { google } = require('googleapis');
+const auth = new google.auth.GoogleAuth({
+  credentials,
+  scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+});
+
+const client = await auth.getClient();
+```
+
+</Step>
+
+<Step title="Use the client in your code">
+
+You can now use the `client` object to make authenticated requests to Google APIs
+
+</Step>
+
+</Steps>
