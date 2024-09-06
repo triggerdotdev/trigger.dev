@@ -10,6 +10,7 @@ import {
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
 
 type BaseInput = {
   id: string;
@@ -66,34 +67,7 @@ export class FinalizeTaskRunService extends BaseService {
     });
 
     if (attemptStatus || error) {
-      const latestAttempt = await this._prisma.taskRunAttempt.findFirst({
-        where: { taskRunId: id },
-        orderBy: { id: "desc" },
-        take: 1,
-      });
-
-      if (latestAttempt) {
-        logger.debug("Finalizing run attempt", {
-          id: latestAttempt.id,
-          status: attemptStatus,
-          error,
-        });
-
-        await this._prisma.taskRunAttempt.update({
-          where: { id: latestAttempt.id },
-          data: { status: attemptStatus, error: error ? sanitizeError(error) : undefined },
-        });
-      } else {
-        logger.debug("Finalizing run no attempt found", {
-          id,
-          status,
-          expiredAt,
-          completedAt,
-          attemptStatus,
-        });
-
-        //todo maybe we should create a final attempt here?
-      }
+      await this.finalizeAttempt({ attemptStatus, error, run });
     }
 
     //resume any dependencies
@@ -112,5 +86,86 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     return run as Output<T>;
+  }
+
+  async finalizeAttempt({
+    attemptStatus,
+    error,
+    run,
+  }: {
+    attemptStatus?: FINAL_ATTEMPT_STATUSES;
+    error?: TaskRunError;
+    run: TaskRun;
+  }) {
+    if (attemptStatus || error) {
+      const latestAttempt = await this._prisma.taskRunAttempt.findFirst({
+        where: { taskRunId: run.id },
+        orderBy: { id: "desc" },
+        take: 1,
+      });
+
+      if (latestAttempt) {
+        logger.debug("Finalizing run attempt", {
+          id: latestAttempt.id,
+          status: attemptStatus,
+          error,
+        });
+
+        await this._prisma.taskRunAttempt.update({
+          where: { id: latestAttempt.id },
+          data: { status: attemptStatus, error: error ? sanitizeError(error) : undefined },
+        });
+      } else {
+        logger.debug("Finalizing run no attempt found", {
+          runId: run.id,
+          attemptStatus,
+          error,
+        });
+
+        const workerTask = await this._prisma.backgroundWorkerTask.findFirst({
+          select: {
+            id: true,
+            workerId: true,
+            runtimeEnvironmentId: true,
+          },
+          where: {
+            id: run.lockedById!,
+          },
+        });
+
+        if (!workerTask) {
+          logger.error("FinalizeTaskRunService: No worker task found", { runId: run.id });
+          return;
+        }
+
+        const queue = await this._prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: workerTask.runtimeEnvironmentId,
+              name: run.queue,
+            },
+          },
+        });
+
+        if (!queue) {
+          logger.error("FinalizeTaskRunService: No queue found", { runId: run.id });
+          return;
+        }
+
+        await this._prisma.taskRunAttempt.create({
+          data: {
+            number: 1,
+            friendlyId: generateFriendlyId("attempt"),
+            taskRunId: run.id,
+            backgroundWorkerId: workerTask?.workerId,
+            backgroundWorkerTaskId: workerTask?.id,
+            queueId: queue.id,
+            runtimeEnvironmentId: workerTask.runtimeEnvironmentId,
+            status: attemptStatus,
+            error: error ? sanitizeError(error) : undefined,
+          },
+        });
+      }
+    }
   }
 }
