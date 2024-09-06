@@ -1794,9 +1794,11 @@ model TaskRunTag {
   @@index([name, id])
 }
 
+/// This is used for triggerAndWait and batchTriggerAndWait. The taskRun is the child task, it points at a parent attempt or a batch
 model TaskRunDependency {
   id String @id @default(cuid())
 
+  /// The child run
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String  @unique
 
