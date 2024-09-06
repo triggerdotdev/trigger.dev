@@ -211,15 +211,12 @@ export class ResumeDependentParentsService extends BaseService {
         }
       );
 
-      //todo create an attempt here?
-
       return {
         success: false,
         error: `Dependency child attempt not found for run ${dependency.taskRunId}`,
       };
     }
 
-    //todo update the batchRunItem to COMPLETED and pointed at the parent attempt
     await this._prisma.batchTaskRunItem.update({
       where: {
         batchTaskRunId_taskRunId: {
