@@ -502,7 +502,7 @@ export class BackgroundWorker {
     } catch (e) {
       if (e instanceof CancelledProcessError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -514,7 +514,7 @@ export class BackgroundWorker {
 
       if (e instanceof CleanupProcessError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -526,7 +526,7 @@ export class BackgroundWorker {
 
       if (e instanceof UnexpectedExitError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -539,7 +539,7 @@ export class BackgroundWorker {
       }
 
       return {
-        id: payload.execution.attempt.id,
+        id: payload.execution.run.id,
         ok: false,
         retry: undefined,
         error: {

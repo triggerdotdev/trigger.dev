@@ -16,3 +16,17 @@ export const helloWorldTask = task({
     };
   },
 });
+
+export const parentTask = task({
+  id: "parent",
+  run: async (payload: any, { ctx }) => {
+    await childTask.triggerAndWait({ message: "Hello, world!" });
+  },
+});
+
+export const childTask = task({
+  id: "child",
+  run: async (payload: any, { ctx }) => {
+    process.exit(1);
+  },
+});

@@ -23,15 +23,6 @@
     {
       "type": "node-terminal",
       "request": "launch",
-      "name": "Debug v2 job catalog",
-      "command": "pnpm run byo-auth",
-      "envFile": "${workspaceFolder}/references/job-catalog/.env",
-      "cwd": "${workspaceFolder}/references/job-catalog",
-      "sourceMaps": true
-    },
-    {
-      "type": "node-terminal",
-      "request": "launch",
       "name": "Debug V3 init CLI",
       "command": "pnpm exec triggerdev init",
       "cwd": "${workspaceFolder}/references/init-shell",
@@ -91,6 +82,14 @@
       "name": "Debug CLI e2e tests",
       "command": "PM=yarn pnpm run test:e2e",
       "cwd": "${workspaceFolder}/packages/cli-v3",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "debug v3 hello-world dev",
+      "command": "pnpm exec triggerdev dev",
+      "cwd": "${workspaceFolder}/references/hello-world",
       "sourceMaps": true
     }
   ]
