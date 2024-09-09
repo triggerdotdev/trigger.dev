@@ -187,6 +187,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef },
+    configFile: options.config,
   });
 
   logger.debug("Resolved config", resolvedConfig);
