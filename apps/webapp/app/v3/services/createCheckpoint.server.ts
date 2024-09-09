@@ -4,16 +4,10 @@ import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import {
-  isFinalAttemptStatus,
-  isFinalRunStatus,
-  isFreezableAttemptStatus,
-  isFreezableRunStatus,
-} from "../taskStatus";
+import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
-import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 
 export class CreateCheckpointService extends BaseService {

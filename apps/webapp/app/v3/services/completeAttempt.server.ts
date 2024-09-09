@@ -17,7 +17,6 @@ import { createExceptionPropertiesFromError, eventRepository } from "../eventRep
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
@@ -154,10 +153,6 @@ export class CompleteAttemptService extends BaseService {
         outputType: completion.outputType,
       },
     });
-
-    if (!env || env.type !== "DEVELOPMENT") {
-      await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
-    }
 
     return "COMPLETED";
   }
@@ -359,10 +354,6 @@ export class CompleteAttemptService extends BaseService {
           status: "COMPLETED_WITH_ERRORS",
           completedAt: new Date(),
         });
-      }
-
-      if (!env || env.type !== "DEVELOPMENT") {
-        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
       }
 
       return "COMPLETED";

@@ -5,7 +5,6 @@ import { eventRepository } from "../eventRepository.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -86,10 +85,6 @@ export class CancelAttemptService extends BaseService {
           return eventRepository.cancelEvent(event, cancelledAt, reason);
         })
       );
-
-      if (environment?.type !== "DEVELOPMENT") {
-        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
-      }
     });
   }
 }
