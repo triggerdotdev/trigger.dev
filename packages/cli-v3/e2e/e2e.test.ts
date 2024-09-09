@@ -270,10 +270,22 @@ describe.concurrent("buildWorker", async () => {
             contentHash: buildManifest!.contentHash,
           });
 
+          logger.debug("Task run result", result);
+
           expect(result.ok).toBe(taskRun.result.ok);
 
-          if (taskRun.result.durationMs) {
-            expect(totalDurationMs).toBeGreaterThanOrEqual(taskRun.result.durationMs);
+          if (result.ok) {
+            if (taskRun.result.durationMs) {
+              expect(totalDurationMs).toBeGreaterThanOrEqual(taskRun.result.durationMs);
+            }
+
+            if (taskRun.result.output) {
+              expect(result.output).toEqual(taskRun.result.output);
+            }
+
+            if (taskRun.result.outputType) {
+              expect(result.outputType).toEqual(taskRun.result.outputType);
+            }
           }
         }
       }

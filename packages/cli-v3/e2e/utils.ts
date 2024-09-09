@@ -163,6 +163,10 @@ export async function runTsc(
   }
 
   try {
+    logger.debug(`Running TypeScript compiler: ${tscPath} --project ${tsconfigPath} --noEmit`, {
+      cwd,
+    });
+
     const result = await execa(tscPath, ["--project", tsconfigPath, "--noEmit"], {
       cwd,
       reject: false,
@@ -170,6 +174,9 @@ export async function runTsc(
 
     const success = result.exitCode === 0;
     const errors = success ? [] : parseTypeScriptErrors(result.stderr);
+
+    logger.debug(result.stdout);
+    logger.debug(result.stderr);
 
     return {
       success,
