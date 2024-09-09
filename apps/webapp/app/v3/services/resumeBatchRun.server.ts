@@ -4,22 +4,13 @@ import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 
+const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
+
 export class ResumeBatchRunService extends BaseService {
   public async call(batchRunId: string) {
     const batchRun = await this._prisma.batchTaskRun.findFirst({
       where: {
         id: batchRunId,
-        dependentTaskAttemptId: {
-          not: null,
-        },
-        status: "PENDING",
-        items: {
-          every: {
-            taskRunAttemptId: {
-              not: null,
-            },
-          },
-        },
       },
       include: {
         dependentTaskAttempt: {
@@ -39,11 +30,25 @@ export class ResumeBatchRunService extends BaseService {
 
     if (!batchRun || !batchRun.dependentTaskAttempt) {
       logger.error(
-        "ResumeBatchRunService: Batch run is already completed, not found, or doesn't have a dependent attempt",
+        "ResumeBatchRunService: Batch run doesn't exist or doesn't have a dependent attempt",
         {
           batchRun,
         }
       );
+      return;
+    }
+
+    if (batchRun.status === "COMPLETED") {
+      logger.debug("ResumeBatchRunService: Batch run is already completed", {
+        batchRun: batchRun,
+      });
+      return;
+    }
+
+    if (batchRun.items.some((item) => !finishedBatchRunStatuses.includes(item.status))) {
+      logger.debug("ResumeBatchRunService: All items aren't yet completed", {
+        batchRun: batchRun,
+      });
       return;
     }
 
