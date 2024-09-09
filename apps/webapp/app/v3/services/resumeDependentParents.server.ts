@@ -17,7 +17,12 @@ type Input =
 type Output =
   | {
       success: true;
-      action: "resume-scheduled" | "batch-resume-scheduled" | "no-dependencies" | "not-finished";
+      action:
+        | "resume-scheduled"
+        | "batch-resume-scheduled"
+        | "no-dependencies"
+        | "not-finished"
+        | "dev";
     }
   | {
       success: false;
@@ -38,7 +43,11 @@ export class ResumeDependentParentsService extends BaseService {
     try {
       const dependency = await this._prisma.taskRunDependency.findFirst({
         include: {
-          taskRun: true,
+          taskRun: {
+            include: {
+              runtimeEnvironment: true,
+            },
+          },
           dependentAttempt: true,
           dependentBatchRun: true,
         },
@@ -84,6 +93,18 @@ export class ResumeDependentParentsService extends BaseService {
         return {
           success: true,
           action: "not-finished",
+        };
+      }
+
+      if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+        logger.debug("ResumeDependentParentsService: runs are resumed on device for DEV runs.", {
+          run: input,
+          dependency,
+        });
+
+        return {
+          success: true,
+          action: "dev",
         };
       }
 
