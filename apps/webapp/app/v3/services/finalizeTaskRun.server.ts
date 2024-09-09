@@ -1,7 +1,7 @@
 import { sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import {
   isFailedRunStatus,
   type FINAL_ATTEMPT_STATUSES,
@@ -142,7 +142,7 @@ export class FinalizeTaskRunService extends BaseService {
           where: {
             runtimeEnvironmentId_name: {
               runtimeEnvironmentId: workerTask.runtimeEnvironmentId,
-              name: run.queue,
+              name: sanitizeQueueName(run.queue),
             },
           },
         });
