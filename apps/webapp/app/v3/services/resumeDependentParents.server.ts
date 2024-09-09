@@ -139,22 +139,6 @@ export class ResumeDependentParentsService extends BaseService {
       }
     );
 
-    const isFinished = isFinalRunStatus(dependency.taskRun.status);
-    if (!isFinished) {
-      logger.debug(
-        "ResumeDependentParentsService.singleRunDependency(): dependency child run not finished yet.",
-        {
-          dependency,
-        }
-      );
-
-      // the child run isn't finished yet, so we can't resume the parent yet.
-      return {
-        success: true,
-        action: "not-finished",
-      };
-    }
-
     const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
       select: {
         id: true,
