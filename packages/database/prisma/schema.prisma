@@ -441,6 +441,8 @@ model Project {
 
   version ProjectVersion @default(V2)
 
+  builderProjectId String?
+
   environments           RuntimeEnvironment[]
   endpoints              Endpoint[]
   jobs                   Job[]
