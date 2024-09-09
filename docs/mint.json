@@ -184,7 +184,7 @@
     },
     {
       "group": "CLI",
-      "pages": ["cli-commands"]
+      "pages": ["cli-introduction", "cli-development-commands", "cli-deployment-commands"]
     },
     {
       "group": "Open source",
