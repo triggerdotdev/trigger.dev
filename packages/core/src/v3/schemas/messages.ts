@@ -208,6 +208,7 @@ export const WorkerToExecutorMessageCatalog = {
     message: z.object({
       timeoutInMs: z.number(),
     }),
+    callback: z.void(),
   },
 };
 
