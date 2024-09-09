@@ -6,14 +6,6 @@ import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 import { $transaction } from "~/db.server";
 
-type Input =
-  | {
-      id: string;
-    }
-  | {
-      friendlyId: string;
-    };
-
 type Output =
   | {
       success: true;
@@ -39,7 +31,7 @@ type Dependency = Prisma.TaskRunDependencyGetPayload<{
 
 /** This will resume a dependent (parent) run if there is one and it makes sense. */
 export class ResumeDependentParentsService extends BaseService {
-  public async call(input: Input): Promise<Output> {
+  public async call({ id }: { id: string }): Promise<Output> {
     try {
       const dependency = await this._prisma.taskRunDependency.findFirst({
         include: {
@@ -52,25 +44,18 @@ export class ResumeDependentParentsService extends BaseService {
           dependentBatchRun: true,
         },
         where: {
-          taskRun:
-            "friendlyId" in input
-              ? {
-                  friendlyId: input.friendlyId,
-                }
-              : {
-                  id: input.id,
-                },
+          taskRunId: id,
         },
       });
 
       logger.log("ResumeDependentParentsService: tried to find dependency", {
-        run: input,
+        runId: id,
         dependency: dependency,
       });
 
       if (!dependency) {
         logger.log("ResumeDependentParentsService: dependency not found", {
-          run: input,
+          runId: id,
         });
 
         //no dependency, that's fine most runs won't have one.
@@ -84,7 +69,7 @@ export class ResumeDependentParentsService extends BaseService {
         logger.debug(
           "ResumeDependentParentsService: run not finished yet, can't resume parent yet",
           {
-            run: input,
+            runId: id,
             dependency,
           }
         );
@@ -98,7 +83,7 @@ export class ResumeDependentParentsService extends BaseService {
 
       if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
         logger.debug("ResumeDependentParentsService: runs are resumed on device for DEV runs.", {
-          run: input,
+          runId: id,
           dependency,
         });
 
@@ -114,7 +99,7 @@ export class ResumeDependentParentsService extends BaseService {
         return this.#batchRunDependency(dependency);
       } else {
         logger.error("ResumeDependentParentsService: dependency has no dependencies", {
-          run: input,
+          runId: id,
           dependency,
         });
 
