@@ -4,16 +4,11 @@ import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import {
-  isFinalAttemptStatus,
-  isFinalRunStatus,
-  isFreezableAttemptStatus,
-  isFreezableRunStatus,
-} from "../taskStatus";
+import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
-import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
+import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -177,126 +172,14 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          const dependency = await this._prisma.taskRunDependency.findFirst({
-            select: {
-              id: true,
-              taskRunId: true,
-            },
-            where: {
-              taskRun: {
-                friendlyId: reason.friendlyId,
-              },
-            },
-          });
+          const resumeService = new ResumeDependentParentsService(this._prisma);
+          const result = await resumeService.call({ id: attempt.taskRunId });
 
-          logger.log("CreateCheckpointService: Created checkpoint WAIT_FOR_TASK", {
-            checkpointId: checkpoint.id,
-            runFriendlyId: reason.friendlyId,
-            dependencyId: dependency?.id,
-          });
-
-          if (!dependency) {
-            logger.error("CreateCheckpointService: Dependency not found", {
-              friendlyId: reason.friendlyId,
-            });
-
-            return {
-              success: true,
-              checkpoint,
-              event: checkpointEvent,
-              keepRunAlive: false,
-            };
+          if (result.success) {
+            logger.log("CreateCheckpointService: Resumed dependent parents", result);
+          } else {
+            logger.error("CreateCheckpointService: Failed to resume dependent parents", result);
           }
-
-          const childRun = await this._prisma.taskRun.findFirst({
-            select: {
-              id: true,
-              status: true,
-            },
-            where: {
-              id: dependency.taskRunId,
-            },
-          });
-
-          if (!childRun) {
-            logger.error("CreateCheckpointService: Dependency child run not found", {
-              taskRunId: dependency.taskRunId,
-              runFriendlyId: reason.friendlyId,
-              dependencyId: dependency.id,
-            });
-
-            return {
-              success: true,
-              checkpoint,
-              event: checkpointEvent,
-              keepRunAlive: false,
-            };
-          }
-
-          const isFinished = isFinalRunStatus(childRun.status);
-          if (!isFinished) {
-            logger.debug("CreateCheckpointService: Dependency child run not finished", {
-              taskRunId: dependency.taskRunId,
-              runFriendlyId: reason.friendlyId,
-              dependencyId: dependency.id,
-              childRunStatus: childRun.status,
-              childRunId: childRun.id,
-            });
-
-            return {
-              success: true,
-              checkpoint,
-              event: checkpointEvent,
-              keepRunAlive: false,
-            };
-          }
-
-          const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
-            select: {
-              id: true,
-              status: true,
-            },
-            where: {
-              taskRunId: dependency.taskRunId,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          });
-
-          if (!lastAttempt) {
-            logger.debug("CreateCheckpointService: Dependency child attempt not found", {
-              taskRunId: dependency.taskRunId,
-              runFriendlyId: reason.friendlyId,
-              dependencyId: dependency?.id,
-            });
-            return {
-              success: true,
-              checkpoint,
-              event: checkpointEvent,
-              keepRunAlive: false,
-            };
-          }
-
-          if (!isFinalAttemptStatus(lastAttempt.status)) {
-            logger.debug("CreateCheckpointService: Dependency child attempt not final", {
-              taskRunId: dependency.taskRunId,
-              runFriendlyId: reason.friendlyId,
-              dependencyId: dependency.id,
-              lastAttemptId: lastAttempt.id,
-              lastAttemptStatus: lastAttempt.status,
-            });
-
-            return {
-              success: true,
-              checkpoint,
-              event: checkpointEvent,
-              keepRunAlive: false,
-            };
-          }
-
-          //resume the dependent task
-          await ResumeTaskDependencyService.enqueue(dependency.id, lastAttempt.id, this._prisma);
 
           return {
             success: true,

@@ -4,7 +4,6 @@ import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 import { sanitizeError } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
@@ -68,6 +67,13 @@ export class CrashTaskRunService extends BaseService {
             project: true,
           },
         },
+      },
+      attemptStatus: "FAILED",
+      error: {
+        type: "INTERNAL_ERROR",
+        code: "TASK_RUN_CRASHED",
+        message: opts.reason,
+        stackTrace: opts.logs,
       },
     });
 
@@ -146,12 +152,6 @@ export class CrashTaskRunService extends BaseService {
           }),
         },
       });
-
-      if (environment.type === "DEVELOPMENT") {
-        return;
-      }
-
-      await ResumeTaskRunDependenciesService.enqueue(attempt.id, this._prisma);
     });
   }
 }

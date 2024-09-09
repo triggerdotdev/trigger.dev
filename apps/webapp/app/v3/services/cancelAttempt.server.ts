@@ -5,7 +5,6 @@ import { eventRepository } from "../eventRepository.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 
 export class CancelAttemptService extends BaseService {
   public async call(
@@ -61,13 +60,15 @@ export class CancelAttemptService extends BaseService {
           },
         });
 
+        const isCancellable = isCancellableRunStatus(taskRunAttempt.taskRun.status);
+
         const finalizeService = new FinalizeTaskRunService(tx);
         await finalizeService.call({
           id: taskRunId,
-          status: isCancellableRunStatus(taskRunAttempt.taskRun.status) ? "INTERRUPTED" : undefined,
-          completedAt: isCancellableRunStatus(taskRunAttempt.taskRun.status)
-            ? cancelledAt
-            : undefined,
+          status: isCancellable ? "INTERRUPTED" : undefined,
+          completedAt: isCancellable ? cancelledAt : undefined,
+          attemptStatus: isCancellable ? "CANCELED" : undefined,
+          error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
         });
       });
 
@@ -84,10 +85,6 @@ export class CancelAttemptService extends BaseService {
           return eventRepository.cancelEvent(event, cancelledAt, reason);
         })
       );
-
-      if (environment?.type !== "DEVELOPMENT") {
-        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
-      }
     });
   }
 }

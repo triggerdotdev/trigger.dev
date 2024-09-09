@@ -3,7 +3,7 @@ import { logger, schedules, task } from "@trigger.dev/sdk/v3";
 export const firstScheduledTask = schedules.task({
   id: "first-scheduled-task",
   //every other minute
-  cron: "0 */2 * * *",
+  // cron: "0 */2 * * *",
   run: async (payload, { ctx }) => {
     const distanceInMs =
       payload.timestamp.getTime() - (payload.lastTimestamp ?? new Date()).getTime();
@@ -22,10 +22,10 @@ export const firstScheduledTask = schedules.task({
 
 export const secondScheduledTask = schedules.task({
   id: "second-scheduled-task",
-  cron: {
-    pattern: "0 5 * * *",
-    timezone: "Asia/Tokyo",
-  },
+  // cron: {
+  //   pattern: "0 5 * * *",
+  //   timezone: "Asia/Tokyo",
+  // },
   run: async (payload) => {},
 });
 

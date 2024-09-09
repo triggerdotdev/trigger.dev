@@ -399,7 +399,7 @@ class FlushingProcess {
   private _flushPromise: Promise<void>;
 
   constructor(private readonly doFlush: () => Promise<void>) {
-    this._flushPromise = this.doFlush();
+    this._flushPromise = this.doFlush().catch(() => {});
   }
 
   waitForCompletion() {
