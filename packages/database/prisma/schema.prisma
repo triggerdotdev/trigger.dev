@@ -1880,6 +1880,7 @@ model TaskRunAttempt {
   alerts                 ProjectAlert[]
 
   @@unique([taskRunId, number])
+  @@index([taskRunId])
 }
 
 enum TaskRunAttemptStatus {
