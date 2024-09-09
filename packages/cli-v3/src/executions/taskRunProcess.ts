@@ -194,7 +194,7 @@ export class TaskRunProcess {
   async #flush(timeoutInMs: number = 5_000) {
     logger.debug("flushing task run process", { pid: this.pid });
 
-    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
+    await this._ipc?.send("FLUSH", { timeoutInMs });
   }
 
   async execute(): Promise<TaskRunExecutionResult> {
@@ -399,7 +399,7 @@ class FlushingProcess {
   private _flushPromise: Promise<void>;
 
   constructor(private readonly doFlush: () => Promise<void>) {
-    this._flushPromise = this.doFlush();
+    this._flushPromise = this.doFlush().catch(() => {});
   }
 
   waitForCompletion() {
