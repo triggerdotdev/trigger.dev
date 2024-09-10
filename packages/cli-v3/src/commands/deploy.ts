@@ -36,6 +36,7 @@ import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import { resolveAlwaysExternal } from "../build/externals.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -211,6 +212,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $buildSpinner = spinner();
 
+  const forcedExternals = await resolveAlwaysExternal(projectClient.client);
+
   const buildManifest = await buildWorker({
     target: "deploy",
     environment: options.env,
@@ -218,6 +221,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig,
     rewritePaths: true,
     envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+    forcedExternals,
     listener: {
       onBundleStart() {
         $buildSpinner.start("Building project");

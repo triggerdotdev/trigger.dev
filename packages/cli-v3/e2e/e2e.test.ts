@@ -14,6 +14,7 @@ import { E2EOptions, E2EOptionsSchema } from "./schemas.js";
 import { executeTestCaseRun, runTsc } from "./utils.js";
 import { normalizeImportPath } from "../src/utilities/normalizeImportPath.js";
 import { installFixtureDeps, LOCKFILES, PackageManager, parsePackageManager } from "./utils.js";
+import { alwaysExternal } from "@trigger.dev/core/v3/build";
 
 const TIMEOUT = 120_000;
 
@@ -187,6 +188,7 @@ describe.concurrent("buildWorker", async () => {
               destination: destination.path,
               resolvedConfig: resolvedConfig!,
               rewritePaths: false,
+              forcedExternals: alwaysExternal,
             });
           })(),
           wantBuildWorkerError ? "does not build" : "builds"

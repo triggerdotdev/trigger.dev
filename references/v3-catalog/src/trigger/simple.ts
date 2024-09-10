@@ -1,12 +1,27 @@
 import "server-only";
 import { logger, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry.js";
+import { HeaderGenerator } from "header-generator";
+
+let headerGenerator = new HeaderGenerator({
+  browsers: [{ name: "firefox", minVersion: 90 }, { name: "chrome", minVersion: 110 }, "safari"],
+  devices: ["desktop"],
+  operatingSystems: ["windows"],
+});
 
 export const fetchPostTask = task({
   id: "fetch-post-task",
   run: async (payload: { url: string }) => {
+    const headers = headerGenerator.getHeaders({
+      operatingSystems: ["linux"],
+      locales: ["en-US", "en"],
+    });
+
+    logger.log("fetch-post-task", { headers });
+
     const response = await fetch(payload.url, {
       method: "GET",
+      headers,
     });
 
     return response.json() as Promise<{ url: string; method: string }>;

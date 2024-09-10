@@ -6,10 +6,14 @@ import { readPackageJSON, resolvePackageJSON } from "pkg-types";
 import nodeResolve from "resolve";
 import { getInstrumentedPackageNames } from "./instrumentation.js";
 import { BuildTarget } from "@trigger.dev/core/v3/schemas";
-import { BuildExtension, BuildLogger, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import {
+  alwaysExternal,
+  BuildExtension,
+  BuildLogger,
+  ResolvedConfig,
+} from "@trigger.dev/core/v3/build";
 import { logger } from "../utilities/logger.js";
-
-const FORCED_EXTERNALS = ["import-in-the-middle"];
+import { CliApiClient } from "../apiClient.js";
 
 /**
  * externals in dev might not be resolvable from the worker directory
@@ -110,11 +114,12 @@ export type ExternalsCollector = {
 
 function createExternalsCollector(
   target: BuildTarget,
-  resolvedConfig: ResolvedConfig
+  resolvedConfig: ResolvedConfig,
+  forcedExternal: string[] = []
 ): ExternalsCollector {
   const externals: Array<CollectedExternal> = [];
 
-  const maybeExternals = discoverMaybeExternals(target, resolvedConfig);
+  const maybeExternals = discoverMaybeExternals(target, resolvedConfig, forcedExternal);
 
   return {
     externals,
@@ -233,10 +238,14 @@ function createExternalsCollector(
 
 type MaybeExternal = { raw: string; filter: RegExp };
 
-function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Array<MaybeExternal> {
+function discoverMaybeExternals(
+  target: BuildTarget,
+  config: ResolvedConfig,
+  forcedExternal: string[] = []
+): Array<MaybeExternal> {
   const external: Array<MaybeExternal> = [];
 
-  for (const externalName of FORCED_EXTERNALS) {
+  for (const externalName of forcedExternal) {
     const externalRegex = makeRe(externalName);
 
     if (!externalRegex) {
@@ -299,9 +308,10 @@ function discoverMaybeExternals(target: BuildTarget, config: ResolvedConfig): Ar
 
 export function createExternalsBuildExtension(
   target: BuildTarget,
-  config: ResolvedConfig
+  config: ResolvedConfig,
+  forcedExternal: string[] = []
 ): BuildExtension {
-  const { externals, plugin } = createExternalsCollector(target, config);
+  const { externals, plugin } = createExternalsCollector(target, config, forcedExternal);
 
   return {
     name: "externals",
@@ -355,5 +365,23 @@ function packageNameForImportPath(importPath: string): string {
   } else {
     // Return just the first part for non-scoped packages
     return parts[0] as string;
+  }
+}
+
+export async function resolveAlwaysExternal(client: CliApiClient): Promise<string[]> {
+  try {
+    const response = await client.retrieveExternals();
+
+    if (response.success) {
+      return response.data.externals;
+    }
+
+    return alwaysExternal;
+  } catch (error) {
+    logger.debug("[externals][resolveAlwaysExternal] Unable to retrieve externals", {
+      error,
+    });
+
+    return alwaysExternal;
   }
 }

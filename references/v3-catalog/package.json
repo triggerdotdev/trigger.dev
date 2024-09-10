@@ -34,6 +34,7 @@
     "dotenv": "^16.4.5",
     "email-reply-parser": "^1.8.0",
     "execa": "^8.0.1",
+    "header-generator": "^2.1.55",
     "kysely": "^0.27.4",
     "msw": "^2.2.1",
     "openai": "^4.47.0",

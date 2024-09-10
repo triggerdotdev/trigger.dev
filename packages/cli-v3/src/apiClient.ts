@@ -63,6 +63,18 @@ export class CliApiClient {
     });
   }
 
+  async retrieveExternals() {
+    return wrapZodFetch(
+      z.object({ externals: z.array(z.string()) }),
+      `${this.apiURL}/api/v1/externals`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+
   async getProject(projectRef: string) {
     if (!this.accessToken) {
       throw new Error("getProject: No access token");

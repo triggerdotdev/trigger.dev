@@ -16,7 +16,7 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "../build/extensions.js";
-import { createExternalsBuildExtension } from "../build/externals.js";
+import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
 import { copyManifestToDir } from "../build/manifests.js";
 import { devIndexWorker, devRunWorker, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
@@ -68,9 +68,15 @@ export async function startDevSession({
     args: rawArgs,
   });
 
-  logger.debug("Starting dev session", { destination: destination.path, rawConfig });
+  const alwaysExternal = await resolveAlwaysExternal(client);
 
-  const externalsExtension = createExternalsBuildExtension("dev", rawConfig);
+  logger.debug("Starting dev session", {
+    destination: destination.path,
+    rawConfig,
+    alwaysExternal,
+  });
+
+  const externalsExtension = createExternalsBuildExtension("dev", rawConfig, alwaysExternal);
   const buildContext = createBuildContext("dev", rawConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);

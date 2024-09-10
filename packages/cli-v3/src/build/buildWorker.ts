@@ -27,6 +27,7 @@ import { readPackageJSON, writePackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
+import { logger } from "../utilities/logger.js";
 
 export type BuildWorkerEventListener = {
   onBundleStart?: () => void;
@@ -41,12 +42,21 @@ export type BuildWorkerOptions = {
   listener?: BuildWorkerEventListener;
   envVars?: Record<string, string>;
   rewritePaths?: boolean;
+  forcedExternals?: string[];
 };
 
 export async function buildWorker(options: BuildWorkerOptions) {
+  logger.debug("Starting buildWorker", {
+    options,
+  });
+
   const resolvedConfig = options.resolvedConfig;
 
-  const externalsExtension = createExternalsBuildExtension(options.target, resolvedConfig);
+  const externalsExtension = createExternalsBuildExtension(
+    options.target,
+    resolvedConfig,
+    options.forcedExternals
+  );
   const buildContext = createBuildContext("deploy", resolvedConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
