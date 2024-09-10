@@ -169,21 +169,43 @@ export class CreateCheckpointService extends BaseService {
             attemptId: attempt.id,
             taskRunId: attempt.taskRunId,
             type: "WAIT_FOR_TASK",
+            reason,
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
+          const childRun = await this._prisma.taskRun.findFirst({
+            where: {
+              friendlyId: reason.friendlyId,
+            },
+          });
+
+          if (!childRun) {
+            logger.error("CreateCheckpointService: WAIT_FOR_TASK child run not found", {
+              friendlyId: reason.friendlyId,
+            });
+
+            return {
+              success: true,
+              checkpoint,
+              event: checkpointEvent,
+              keepRunAlive: false,
+            };
+          }
+
           const resumeService = new ResumeDependentParentsService(this._prisma);
-          const result = await resumeService.call({ id: attempt.taskRunId });
+          const result = await resumeService.call({ id: childRun.id });
 
           if (result.success) {
             logger.log("CreateCheckpointService: Resumed dependent parents", {
               result,
+              childRun,
               attempt,
               checkpointEvent,
             });
           } else {
             logger.error("CreateCheckpointService: Failed to resume dependent parents", {
               result,
+              childRun,
               attempt,
               checkpointEvent,
             });
