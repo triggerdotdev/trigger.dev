@@ -41,12 +41,12 @@ __metadata:
   linkType: hard
 
 "@grpc/grpc-js@npm:^1.7.1":
-  version: 1.11.1
-  resolution: "@grpc/grpc-js@npm:1.11.1"
+  version: 1.11.2
+  resolution: "@grpc/grpc-js@npm:1.11.2"
   dependencies:
     "@grpc/proto-loader": "npm:^0.7.13"
     "@js-sdsl/ordered-map": "npm:^4.4.2"
-  checksum: 10c0/1b15112d91b0f99e4843b068572935ecdc3e22a330a1b2ec81be84aeefad703b29f8e557088e448a6f696a1fccf10edf37166f0a533119f7db03aae4cedd34df
+  checksum: 10c0/d69a1db3726d7a09a54394971bd54c77dfc2e8f48b23384771a2074ecc947b240ea065b4f1d74300e76fd47d7914071460d98702bd1512b7a9d6085eac6a6012
   languageName: node
   linkType: hard
 
@@ -525,9 +525,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@trigger.dev/core@npm:0.0.0-prerelease-20240825150620":
-  version: 0.0.0-prerelease-20240825150620
-  resolution: "@trigger.dev/core@npm:0.0.0-prerelease-20240825150620"
+"@trigger.dev/core@npm:0.0.0-cli-e2e-20240910161832":
+  version: 0.0.0-cli-e2e-20240910161832
+  resolution: "@trigger.dev/core@npm:0.0.0-cli-e2e-20240910161832"
   dependencies:
     "@google-cloud/precise-date": "npm:^4.0.0"
     "@opentelemetry/api": "npm:1.9.0"
@@ -548,18 +548,18 @@ __metadata:
     zod: "npm:3.22.3"
     zod-error: "npm:1.5.0"
     zod-validation-error: "npm:^1.5.0"
-  checksum: 10c0/66a5700835a9d758a26eeabb77e8c98cca6f002642c25643ddbfd15ff9cb562156a43613b7325f52d3fbe6e11cd7c9291efbcfd28b1b8c48c822676ed67dea31
+  checksum: 10c0/d82b59aa782256adc951d3760edd4c202bb0f98a4c3c5030e913575cca5dac66683cea719081d708a5f1d6c0a71aee67cf0059c5380c06489d74cab84c8d7ef7
   languageName: node
   linkType: hard
 
-"@trigger.dev/sdk@npm:0.0.0-prerelease-20240825150620":
-  version: 0.0.0-prerelease-20240825150620
-  resolution: "@trigger.dev/sdk@npm:0.0.0-prerelease-20240825150620"
+"@trigger.dev/sdk@npm:0.0.0-cli-e2e-20240910161832":
+  version: 0.0.0-cli-e2e-20240910161832
+  resolution: "@trigger.dev/sdk@npm:0.0.0-cli-e2e-20240910161832"
   dependencies:
     "@opentelemetry/api": "npm:1.9.0"
     "@opentelemetry/api-logs": "npm:0.52.1"
     "@opentelemetry/semantic-conventions": "npm:1.25.1"
-    "@trigger.dev/core": "npm:0.0.0-prerelease-20240825150620"
+    "@trigger.dev/core": "npm:0.0.0-cli-e2e-20240910161832"
     chalk: "npm:^5.2.0"
     cronstrue: "npm:^2.21.0"
     debug: "npm:^4.3.4"
@@ -571,7 +571,7 @@ __metadata:
     uuid: "npm:^9.0.0"
     ws: "npm:^8.11.0"
     zod: "npm:3.22.3"
-  checksum: 10c0/aafe995e9bf99d373101e563a14df55ab895b5e7590837b876621fd6c835c286a64bc4bb2382ec22e65e0983abc88b7fd778dfb53800935ce4a89899123989db
+  checksum: 10c0/763da613a6f192e823857027e3d50d06de4061ce548df077000145f4ce573f601ac39dd9c6c6f1d4dc9cc78ed596e9e2d268c2f21196d327b14e6ccc2b9dea4a
   languageName: node
   linkType: hard
 
@@ -698,9 +698,9 @@ __metadata:
   linkType: hard
 
 "cjs-module-lexer@npm:^1.2.2":
-  version: 1.4.0
-  resolution: "cjs-module-lexer@npm:1.4.0"
-  checksum: 10c0/b5ef03e10297c24f0db56b13d7d2f92e377499c83d7bf9352ec73df544b5310e024dfb1779a6b810e7a06eb18caa6a0e2da5f11df8116af73306f362e67fb61a
+  version: 1.4.1
+  resolution: "cjs-module-lexer@npm:1.4.1"
+  checksum: 10c0/5a7d8279629c9ba8ccf38078c2fed75b7737973ced22b9b5a54180efa57fb2fe2bb7bec6aec55e3b8f3f5044f5d7b240347ad9bd285e7c3d0ee5b0a1d0504dfc
   languageName: node
   linkType: hard
 
@@ -782,14 +782,14 @@ __metadata:
   linkType: hard
 
 "debug@npm:^4.3.4, debug@npm:^4.3.5, debug@npm:~4.3.1, debug@npm:~4.3.2":
-  version: 4.3.6
-  resolution: "debug@npm:4.3.6"
+  version: 4.3.7
+  resolution: "debug@npm:4.3.7"
   dependencies:
-    ms: "npm:2.1.2"
+    ms: "npm:^2.1.3"
   peerDependenciesMeta:
     supports-color:
       optional: true
-  checksum: 10c0/3293416bff072389c101697d4611c402a6bacd1900ac20c0492f61a9cdd6b3b29750fc7f5e299f8058469ef60ff8fb79b86395a30374fbd2490113c1c7112285
+  checksum: 10c0/1471db19c3b06d485a622d62f65947a19a23fbd0dd73f7fd3eafb697eec5360cde447fb075919987899b1a2096e85d35d4eb5a4de09a57600ac9cf7e6c8e768b
   languageName: node
   linkType: hard
 
@@ -903,7 +903,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "hello-world@workspace:."
   dependencies:
-    "@trigger.dev/sdk": "npm:0.0.0-prerelease-20240825150620"
+    "@trigger.dev/sdk": "npm:0.0.0-cli-e2e-20240910161832"
     typescript: "npm:5.5.4"
   languageName: unknown
   linkType: soft
@@ -1027,10 +1027,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ms@npm:2.1.2":
-  version: 2.1.2
-  resolution: "ms@npm:2.1.2"
-  checksum: 10c0/a437714e2f90dbf881b5191d35a6db792efbca5badf112f87b9e1c712aace4b4b9b742dd6537f3edf90fd6f684de897cec230abde57e87883766712ddda297cc
+"ms@npm:^2.1.3":
+  version: 2.1.3
+  resolution: "ms@npm:2.1.3"
+  checksum: 10c0/d924b57e7312b3b63ad21fc5b3dc0af5e78d61a1fc7cfb5457edaf26326bf62be5307cc87ffb6862ef1c2b33b0233cdb5d4f01c4c958cc0d660948b65a287a48
   languageName: node
   linkType: hard
 

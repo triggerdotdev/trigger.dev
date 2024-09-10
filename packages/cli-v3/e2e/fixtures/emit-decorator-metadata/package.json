@@ -10,11 +10,11 @@
     "packages/*"
   ],
   "dependencies": {
-    "@trigger.dev/sdk": "0.0.0-prerelease-20240825150620",
+    "@trigger.dev/sdk": "0.0.0-cli-e2e-20240910161832",
     "reflect-metadata": "0.2.2"
   },
   "devDependencies": {
-    "@trigger.dev/build": "0.0.0-prerelease-20240825150620",
+    "@trigger.dev/build": "0.0.0-cli-e2e-20240910161832",
     "@types/node": "22.5.4",
     "typescript": "5.5.4"
   }

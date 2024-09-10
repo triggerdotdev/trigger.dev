@@ -1286,7 +1286,7 @@ __metadata:
   resolution: "@repo/trigger@workspace:packages/trigger"
   dependencies:
     "@repo/email": "workspace:*"
-    "@trigger.dev/sdk": "npm:0.0.0-prerelease-20240905123715"
+    "@trigger.dev/sdk": "npm:0.0.0-cli-e2e-20240910161832"
     typescript: "npm:5.5.4"
   languageName: unknown
   linkType: soft
@@ -1325,9 +1325,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@trigger.dev/core@npm:0.0.0-prerelease-20240905123715":
-  version: 0.0.0-prerelease-20240905123715
-  resolution: "@trigger.dev/core@npm:0.0.0-prerelease-20240905123715"
+"@trigger.dev/core@npm:0.0.0-cli-e2e-20240910161832":
+  version: 0.0.0-cli-e2e-20240910161832
+  resolution: "@trigger.dev/core@npm:0.0.0-cli-e2e-20240910161832"
   dependencies:
     "@google-cloud/precise-date": "npm:^4.0.0"
     "@opentelemetry/api": "npm:1.9.0"
@@ -1348,18 +1348,18 @@ __metadata:
     zod: "npm:3.22.3"
     zod-error: "npm:1.5.0"
     zod-validation-error: "npm:^1.5.0"
-  checksum: 10c0/be21135961a0399c53cadbba407fe271b8a9c6acde903d247cc12c0f328837de88a71e5d3143c66fc3bd624bf9dd7ed071bdf5e88e5decca7ab9d4869869e473
+  checksum: 10c0/d82b59aa782256adc951d3760edd4c202bb0f98a4c3c5030e913575cca5dac66683cea719081d708a5f1d6c0a71aee67cf0059c5380c06489d74cab84c8d7ef7
   languageName: node
   linkType: hard
 
-"@trigger.dev/sdk@npm:0.0.0-prerelease-20240905123715":
-  version: 0.0.0-prerelease-20240905123715
-  resolution: "@trigger.dev/sdk@npm:0.0.0-prerelease-20240905123715"
+"@trigger.dev/sdk@npm:0.0.0-cli-e2e-20240910161832":
+  version: 0.0.0-cli-e2e-20240910161832
+  resolution: "@trigger.dev/sdk@npm:0.0.0-cli-e2e-20240910161832"
   dependencies:
     "@opentelemetry/api": "npm:1.9.0"
     "@opentelemetry/api-logs": "npm:0.52.1"
     "@opentelemetry/semantic-conventions": "npm:1.25.1"
-    "@trigger.dev/core": "npm:0.0.0-prerelease-20240905123715"
+    "@trigger.dev/core": "npm:0.0.0-cli-e2e-20240910161832"
     chalk: "npm:^5.2.0"
     cronstrue: "npm:^2.21.0"
     debug: "npm:^4.3.4"
@@ -1371,7 +1371,7 @@ __metadata:
     uuid: "npm:^9.0.0"
     ws: "npm:^8.11.0"
     zod: "npm:3.22.3"
-  checksum: 10c0/209c3010155246ed4eb05ad5e12f027cbf7dbe5a0eaf162e1958fe08521416e4c2920b138be71fa99b4c14aaf4fed0abee68716a2a6026bcf90f9002eb60af16
+  checksum: 10c0/763da613a6f192e823857027e3d50d06de4061ce548df077000145f4ce573f601ac39dd9c6c6f1d4dc9cc78ed596e9e2d268c2f21196d327b14e6ccc2b9dea4a
   languageName: node
   linkType: hard
 

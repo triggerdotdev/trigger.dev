@@ -9,15 +9,15 @@ importers:
   .:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: 0.0.0-prerelease-20240825150620
-        version: 0.0.0-prerelease-20240825150620(typescript@5.5.4)
+        specifier: 0.0.0-cli-e2e-20240910161832
+        version: 0.0.0-cli-e2e-20240910161832(typescript@5.5.4)
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
     devDependencies:
       '@trigger.dev/build':
-        specifier: 0.0.0-prerelease-20240825150620
-        version: 0.0.0-prerelease-20240825150620
+        specifier: 0.0.0-cli-e2e-20240910161832
+        version: 0.0.0-cli-e2e-20240910161832(typescript@5.5.4)
       '@types/node':
         specifier: 22.5.4
         version: 22.5.4
@@ -419,21 +419,23 @@ packages:
   /@socket.io/component-emitter@3.1.2:
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
 
-  /@trigger.dev/build@0.0.0-prerelease-20240825150620:
-    resolution: {integrity: sha512-3VF+PQpxMrSO93TKHdgvgWPraemRoCu7ttHBSGpPopxIhdllCghGsBRNZ3CbqKtaWNB4tsuY9cLEPnodidfvoQ==}
+  /@trigger.dev/build@0.0.0-cli-e2e-20240910161832(typescript@5.5.4):
+    resolution: {integrity: sha512-NneWMxcZbwc4TFr8aIlNnXDTIl52YfbwrO7GGd825uG2qsa8I87Nmowg7P1+VFd9pzw8DKsRJz3BelDJ46Z6/Q==}
     engines: {node: '>=18.20.0'}
     dependencies:
-      '@trigger.dev/core': 0.0.0-prerelease-20240825150620
+      '@trigger.dev/core': 0.0.0-cli-e2e-20240910161832
       pkg-types: 1.2.0
       tinyglobby: 0.2.6
+      tsconfck: 3.1.3(typescript@5.5.4)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
+      - typescript
       - utf-8-validate
     dev: true
 
-  /@trigger.dev/core@0.0.0-prerelease-20240825150620:
-    resolution: {integrity: sha512-lFlYRMygi8T3i8qnx+hzmd5u2HnoA4lkmeA7e1ESTBgD8b/TsHIkwfcNk6eLmlnspvE2dQp7x7Am0Ss/g7L4fw==}
+  /@trigger.dev/core@0.0.0-cli-e2e-20240910161832:
+    resolution: {integrity: sha512-YuBuP2Te6YCI5QVEU3gw5z1qTHnKStJIrsi5xVbtjYTwTCcmxdnf2TCGz08gc3Ug8e3g0j9HuyISDtuILXTadg==}
     engines: {node: '>=18.20.0'}
     dependencies:
       '@google-cloud/precise-date': 4.0.0
@@ -460,14 +462,14 @@ packages:
       - supports-color
       - utf-8-validate
 
-  /@trigger.dev/sdk@0.0.0-prerelease-20240825150620(typescript@5.5.4):
-    resolution: {integrity: sha512-cKCZ0/ZOaozkWo0bBjGZ5TWpok2lMc/KeUKLfefPUYgb04GoMGUCHzWdQeKgJwXursvDn9/dXxCWA1RuOQRmMQ==}
+  /@trigger.dev/sdk@0.0.0-cli-e2e-20240910161832(typescript@5.5.4):
+    resolution: {integrity: sha512-MgzaZkxplLdsr1QyZAbFfoLLW3Ui/XjwTLv38eeo98StCdPwJe1zEc4R4IR/BsPi5m67PbLPK3qjuwMDz9lIFQ==}
     engines: {node: '>=18.20.0'}
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.52.1
       '@opentelemetry/semantic-conventions': 1.25.1
-      '@trigger.dev/core': 0.0.0-prerelease-20240825150620
+      '@trigger.dev/core': 0.0.0-cli-e2e-20240910161832
       chalk: 5.3.0
       cronstrue: 2.50.0
       debug: 4.3.6
@@ -1075,6 +1077,19 @@ packages:
   /tsafe@1.7.2:
     resolution: {integrity: sha512-dAPfQLhCfCRre5qs+Z5Q2a7s2CV7RxffZUmvj7puGaePYjECzWREJFd3w4XSFe/T5tbxgowfItA/JSSZ6Ma3dA==}
     dev: false
+
+  /tsconfck@3.1.3(typescript@5.5.4):
+    resolution: {integrity: sha512-ulNZP1SVpRDesxeMLON/LtWM8HIgAJEIVpVVhBM6gsmvQ8+Rh+ZG7FWGvHh7Ah3pRABwVJWklWCr/BTZSv0xnQ==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
+    peerDependencies:
+      typescript: ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.5.4
+    dev: true
 
   /type-fest@0.21.3:
     resolution: {integrity: sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w==}

@@ -3,7 +3,7 @@
   "private": true,
   "dependencies": {
     "@repo/email": "workspace:*",
-    "@trigger.dev/sdk": "0.0.0-prerelease-20240905123715"
+    "@trigger.dev/sdk": "0.0.0-cli-e2e-20240910161832"
   },
   "devDependencies": {
     "typescript": "5.5.4"

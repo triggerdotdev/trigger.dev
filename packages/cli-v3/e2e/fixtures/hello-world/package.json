@@ -10,7 +10,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@trigger.dev/sdk": "0.0.0-prerelease-20240825150620"
+    "@trigger.dev/sdk": "0.0.0-cli-e2e-20240910161832"
   },
   "devDependencies": {
     "typescript": "5.5.4"
