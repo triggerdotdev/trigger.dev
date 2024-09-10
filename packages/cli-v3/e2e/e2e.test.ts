@@ -127,6 +127,8 @@ describe.concurrent("buildWorker", async () => {
         id,
         tempDir,
         tsconfig,
+        packageManager,
+        fixtureDir,
         workspaceDir,
         wantConfigInvalidError,
         wantConfigNotFoundError,
@@ -164,7 +166,11 @@ describe.concurrent("buildWorker", async () => {
         expect(resolvedConfig!).toBeTruthy();
 
         if (tsconfig) {
-          const tscResult = await runTsc(workspaceDir, tsconfig);
+          const tscResult = await runTsc(
+            workspaceDir,
+            tsconfig,
+            packageManager === "yarn" ? fixtureDir : undefined
+          );
 
           expect(tscResult.success).toBe(true);
         }

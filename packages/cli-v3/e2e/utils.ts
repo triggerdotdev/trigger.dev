@@ -150,10 +150,11 @@ export interface TscResult {
 
 export async function runTsc(
   cwd: string,
-  tsconfigName: string = "tsconfig.json"
+  tsconfigName: string = "tsconfig.json",
+  binBasePath: string = cwd
 ): Promise<TscResult> {
   const tsconfigPath = nodePath.join(cwd, tsconfigName);
-  const tscPath = nodePath.join(cwd, "node_modules", ".bin", "tsc");
+  const tscPath = nodePath.join(binBasePath, "node_modules", ".bin", "tsc");
 
   // Ensure the tsconfig file exists
   try {
