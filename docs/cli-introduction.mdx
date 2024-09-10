@@ -1,9 +1,9 @@
 ---
 title: "Introduction"
-description: "The Trigger.dev CLI has a number of commands to help you develop locally and deploy your tasks."
+description: "The Trigger.dev CLI has a number of options and commands to help you develop locally, self host, and deploy your tasks."
 ---
 
-## Options
+## Standard options
 
 <ParamField body="Help" type="--help | -h">
   Displays a list of all help commands.
@@ -28,7 +28,7 @@ description: "The Trigger.dev CLI has a number of commands to help you develop l
 
 ## Deploy
 
-| Command                                                  | Description                                                                                        |
+| Option                                                   | Description                                                                                        |
 | :------------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
 | [Environment](/cli-deployment-commands)                  | Defaults to `prod` but you can specify `staging`.                                                  |
 | [Skip typecheck](/cli-deployment-commands)               | Skips the pre-build typecheck step.                                                                |
@@ -39,7 +39,7 @@ description: "The Trigger.dev CLI has a number of commands to help you develop l
 
 ## Self-hosting
 
-| Command                                                    | Description                                                                                                                                                                                                    |
+| Option                                                     | Description                                                                                                                                                                                                    |
 | :--------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Skip deploying the image](/cli-self-hosting-commands)     | Load the built image into your local docker.                                                                                                                                                                   |
 | [Self-hosted (builds locally)](/cli-self-hosting-commands) | Builds and loads the image using your local docker. Use the `--registry` option to specify the registry to push the image to when using `--self-hosted`, or just use `--push` to push to the default registry. |
