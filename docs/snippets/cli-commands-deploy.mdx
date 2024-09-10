@@ -1,51 +1,23 @@
-### Environment `--env` or `-e`
+<ParamField body="Environment" type="--env | -e">
+  Defaults to `prod` but you can specify `staging`.
+</ParamField>
 
-Defaults to `prod` but you can specify `staging`.
+<ParamField body="Skip typecheck" type="--skip-typecheck | -T">
+  Skips the pre-build typecheck step.
+</ParamField>
 
-### Skip typecheck `--skip-typecheck` or `-T`
+<ParamField body="Build platform" type="--build-platform">
+  The platform to build the deployment image for. Defaults to `linux/amd64`.
+</ParamField>
 
-Skips the pre-build typecheck step.
+<ParamField body="Log level" type="--log-level | -l">
+  The log level to use (debug, info, log, warn, error, none). Defaults to `log`.
+</ParamField>
 
-### Build platform `--build-platform`
+<ParamField body="Set config filename" type="--config | -c">
+  The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
+</ParamField>
 
-The platform to build the deployment image for. Defaults to `linux/amd64`.
-
-### Log level `--log-level` or `-l`
-
-The log level to use (debug, info, log, warn, error, none). Defaults to `log`.
-
-### Set config filename `--config` or `-c`
-
-The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
-
-### Set the projectRef `--project-ref` or `-p`
-
-The project ref. Required if there is no config file.
-
-### Self-hosted options
-
-These options are usually only relevant to self-hosters or for local development.
-
-### Skip deploying the image `--skip-deploy` or `-D`
-
-Load the built image into your local docker.
-
-### Self-hosted (builds locally) `--self-hosted`
-
-Builds and loads the image using your local docker. Use the `--registry` option to specify the registry to push the image to when using `--self-hosted`, or just use `--push` to push to the default registry.
-
-### Registry `--registry`
-
-<ComingSoon />
-
-The registry to push the image to when using --self-hosted.
-
-### Push image `--push`
-
-When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)
-
-### Tag the image `--tag`
-
-<ComingSoon />
-
-Specify the tag to use when pushing the image to the registry.
+<ParamField body="Set the projectRef" type="--project-ref | -p">
+  The project ref. Required if there is no config file.
+</ParamField>

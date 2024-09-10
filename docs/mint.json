@@ -184,7 +184,12 @@
     },
     {
       "group": "CLI",
-      "pages": ["cli-introduction", "cli-development-commands", "cli-deployment-commands"]
+      "pages": [
+        "cli-introduction",
+        "cli-development-commands",
+        "cli-deployment-commands",
+        "cli-self-hosting-commands"
+      ]
     },
     {
       "group": "Open source",

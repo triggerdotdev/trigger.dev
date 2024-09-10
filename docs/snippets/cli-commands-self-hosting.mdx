@@ -1,0 +1,19 @@
+<ParamField body="Skip deploying the image" type="--skip-deploy | -D">
+  Load the built image into your local docker.
+</ParamField>
+
+<ParamField body="Self-hosted (builds locally)" type="--self-hosted">
+  Builds and loads the image using your local docker. Use the `--registry` option to specify the registry to push the image to when using `--self-hosted`, or just use `--push` to push to the default registry.
+</ParamField>
+
+<ParamField body="Registry" type="--registry">
+  **This option is coming soon.** The registry to push the image to when using --self-hosted.
+</ParamField>
+
+<ParamField body="Push image" type="--push">
+  When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)
+</ParamField>
+
+<ParamField body="Tag the image" type="--tag">
+  **This option is coming soon.** Specify the tag to use when pushing the image to the registry.
+</ParamField>
