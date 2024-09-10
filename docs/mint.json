@@ -206,11 +206,15 @@
       "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs", "guides/frameworks/remix"]
     },
     {
+      "group": "Examples",
+      "pages": ["guides/examples/generate-image-with-dall-e3"]
+    },
+    {
       "group": "Dashboard",
       "pages": ["guides/dashboard/creating-a-project"]
     },
     {
-      "group": "Use cases",
+      "group": "Migration",
       "pages": ["guides/use-cases/upgrading-from-v2"]
     }
   ],
