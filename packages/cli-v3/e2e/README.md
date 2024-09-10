@@ -124,7 +124,44 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
    > This is necessary to typecheck the project during the test suite.
 
-8. To run the test suite against multiple package manager, we need to generate the other lockfiles.
+8. Add a tsconfig.json file similar to the one below:
+
+   ```json tsconfig.json
+   {
+     "include": ["src/**/*.ts", "trigger.config.ts"],
+     "compilerOptions": {
+       "target": "es2022",
+       "lib": ["ES2022", "DOM", "DOM.Iterable"],
+       "module": "NodeNext",
+       "moduleResolution": "NodeNext",
+       "moduleDetection": "force",
+       "verbatimModuleSyntax": false,
+       "jsx": "react",
+       "strict": true,
+       "alwaysStrict": true,
+       "strictPropertyInitialization": false,
+       "skipLibCheck": true,
+       "forceConsistentCasingInFileNames": true,
+       "noUnusedLocals": false,
+       "noUnusedParameters": false,
+       "noImplicitAny": true,
+       "noImplicitReturns": true,
+       "noImplicitThis": true,
+       "noFallthroughCasesInSwitch": true,
+       "resolveJsonModule": true,
+       "removeComments": false,
+       "esModuleInterop": true,
+       "emitDecoratorMetadata": false,
+       "experimentalDecorators": false,
+       "downlevelIteration": true,
+       "isolatedModules": true,
+       "noUncheckedIndexedAccess": true,
+       "pretty": true
+     }
+   }
+   ```
+
+9. To run the test suite against multiple package manager, we need to generate the other lockfiles.
 
    ```sh
    cd packages/cli-v3/e2e/fixtures/<fixture-name>
@@ -136,22 +173,22 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
    > Do it in this order, otherwise `npm install` will update the existing `yarn.lock` file with legacy version 1.
 
-9. Create a new `packages/cli-v3/e2e/fixtures/trigger` folder, and create a trigger task in it.
+10. Create a new `packages/cli-v3/e2e/fixtures/trigger` folder, and create a trigger task in it.
 
-   Here is an example:
+    Here is an example:
 
-   ```javascript
-   import { task } from "@trigger.dev/sdk/v3";
+    ```javascript
+    import { task } from "@trigger.dev/sdk/v3";
 
-   export const helloWorldTask = task({
-     id: "hello-world",
-     run: async (payload) => {
-       console.log("Hello, World!", payload);
-     },
-   });
-   ```
+    export const helloWorldTask = task({
+      id: "hello-world",
+      run: async (payload) => {
+        console.log("Hello, World!", payload);
+      },
+    });
+    ```
 
-10. Add a trigger configuration file.
+11. Add a trigger configuration file.
 
     The configuration file is mandatory here, the E2E suite does not execute `trigger.dev` commands.
 
@@ -164,9 +201,9 @@ This will test your fixture project, and generate outputs in the `packages/cli-v
 
     > The project reference can be anything here, as the suite runs locally without connecting to the platform.
 
-11. Commit your changes.
+12. Commit your changes.
 
-12. Add your fixture test configuration in `fixtures.config.js`.
+13. Add your fixture test configuration in `fixtures.config.js`.
 
     ```javascript fixtures.config.js
     export const fixturesConfig = [

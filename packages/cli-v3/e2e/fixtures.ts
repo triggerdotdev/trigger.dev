@@ -71,6 +71,40 @@ export const fixturesConfig: TestCase[] = [
     tsconfig: "tsconfig.json",
   },
   {
+    id: "emit-decorator-metadata",
+    buildManifestMatcher: {
+      runtime: "node",
+      externals: [
+        {
+          name: "import-in-the-middle",
+          version: "1.11.0",
+        },
+      ],
+      files: [{ entry: "src/trigger/decorators.ts" }],
+    },
+    workerManifestMatcher: {
+      tasks: [
+        {
+          id: "decoratorsTask",
+          filePath: "src/trigger/decorators.ts",
+          exportName: "decoratorsTask",
+        },
+      ],
+    },
+    runs: [
+      {
+        task: {
+          id: "decoratorsTask",
+          filePath: "src/trigger/decorators.ts",
+          exportName: "decoratorsTask",
+        },
+        payload: "{}",
+        result: { ok: true, durationMs: 1 },
+      },
+    ],
+    tsconfig: "tsconfig.json",
+  },
+  {
     id: "monorepo-react-email",
     workspaceRelativeDir: "packages/trigger",
     tsconfig: "tsconfig.json",
