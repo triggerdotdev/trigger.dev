@@ -414,6 +414,10 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
+          logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+            messageId,
+            service: this.name,
+          });
           return;
         }
 
@@ -553,6 +557,11 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
+          logger.log(`[${this.name}].releaseConcurrency() message not found`, {
+            messageId,
+            releaseForRun,
+            service: this.name,
+          });
           return;
         }
 
@@ -641,6 +650,12 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
+          logger.log(`[${this.name}].nackMessage() message not found`, {
+            messageId,
+            retryAt,
+            updates,
+            service: this.name,
+          });
           return;
         }
 

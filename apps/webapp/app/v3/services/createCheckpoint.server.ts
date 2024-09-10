@@ -176,9 +176,17 @@ export class CreateCheckpointService extends BaseService {
           const result = await resumeService.call({ id: attempt.taskRunId });
 
           if (result.success) {
-            logger.log("CreateCheckpointService: Resumed dependent parents", result);
+            logger.log("CreateCheckpointService: Resumed dependent parents", {
+              result,
+              attempt,
+              checkpointEvent,
+            });
           } else {
-            logger.error("CreateCheckpointService: Failed to resume dependent parents", result);
+            logger.error("CreateCheckpointService: Failed to resume dependent parents", {
+              result,
+              attempt,
+              checkpointEvent,
+            });
           }
 
           return {
