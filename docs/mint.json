@@ -43,7 +43,7 @@
   },
   "topbarLinks": [
     {
-      "name": "v2 docs",
+      "name": "Switch to v2 docs",
       "url": "https://v2docs.trigger.dev/documentation/introduction"
     },
     {
@@ -79,6 +79,11 @@
       "name": "Guides",
       "icon": "book",
       "url": "guides"
+    },
+    {
+      "name": "Examples",
+      "icon": "code",
+      "url": "examples"
     }
   ],
   "navigation": [
@@ -229,8 +234,12 @@
       "pages": ["guides/dashboard/creating-a-project"]
     },
     {
-      "group": "Use cases",
+      "group": "Migrations",
       "pages": ["guides/use-cases/upgrading-from-v2"]
+    },
+    {
+      "group": "Examples",
+      "pages": ["examples/generate-image-with-dall-e3"]
     }
   ],
   "footerSocials": {
