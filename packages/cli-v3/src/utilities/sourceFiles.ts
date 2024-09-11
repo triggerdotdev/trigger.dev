@@ -1,3 +1,4 @@
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import type {
   BackgroundWorkerSourceFileMetadata,
   TaskFile,
@@ -5,28 +6,70 @@ import type {
 } from "@trigger.dev/core/v3/schemas";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import * as zlib from "node:zlib";
+import { logger } from "./logger.js";
 
-export async function resolveFileSources(files: TaskFile[], baseDir: string) {
-  const sources: Record<string, { contents: string; contentHash: string }> = {};
+export type FileSource = { contents: string; contentHash: string };
+export type FileSources = Record<string, FileSource>;
+
+export async function resolveFileSources(
+  files: TaskFile[],
+  resolvedConfig: ResolvedConfig
+): Promise<FileSources> {
+  const sources: FileSources = {};
 
   for (const file of files) {
-    const fullPath = join(baseDir, file.entry);
-    const content = await readFile(fullPath, "utf-8");
-    const hasher = createHash("md5");
-    hasher.update(content);
+    const fullPath = join(resolvedConfig.workingDir, file.entry);
+    const fileSource = await resolveFileSource(fullPath);
 
-    sources[file.entry] = {
-      contents: compressContent(content),
-      contentHash: hasher.digest("hex"),
-    };
+    if (!fileSource) {
+      continue;
+    }
+
+    sources[file.entry] = fileSource;
   }
+
+  await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.configFile);
+  await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.tsconfig);
+  await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.packageJsonPath);
 
   return sources;
 }
 
-export function resolveTaskSourceFiles(
+async function resolveConfigSource(sources: FileSources, workingDir: string, filePath?: string) {
+  if (!filePath) {
+    return;
+  }
+
+  const configSource = await resolveFileSource(filePath);
+
+  if (configSource) {
+    sources[relative(workingDir, filePath)] = configSource;
+  }
+}
+
+async function resolveFileSource(filePath: string): Promise<FileSource | undefined> {
+  try {
+    const content = await readFile(filePath, "utf-8");
+    const hasher = createHash("md5");
+    hasher.update(content);
+
+    return {
+      contents: compressContent(content),
+      contentHash: hasher.digest("hex"),
+    };
+  } catch (e) {
+    logger.debug("Failed to read file", {
+      filePath,
+      error: e,
+    });
+
+    return;
+  }
+}
+
+export function resolveSourceFiles(
   sources: Record<string, { contents: string; contentHash: string }>,
   tasks: TaskManifest[]
 ): Array<BackgroundWorkerSourceFileMetadata> {
@@ -42,12 +85,8 @@ export function resolveTaskSourceFiles(
 
   const taskFiles: Array<BackgroundWorkerSourceFileMetadata> = [];
 
-  for (const [filePath, tasks] of Object.entries(tasksGroupedByFile)) {
-    const source = sources[filePath];
-
-    if (!source) {
-      continue;
-    }
+  for (const [filePath, source] of Object.entries(sources)) {
+    const tasks = tasksGroupedByFile[filePath] ?? [];
 
     const taskIds = tasks.map((task) => task.id);
 

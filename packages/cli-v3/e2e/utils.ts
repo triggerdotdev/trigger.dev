@@ -150,10 +150,11 @@ export interface TscResult {
 
 export async function runTsc(
   cwd: string,
-  tsconfigName: string = "tsconfig.json"
+  tsconfigName: string = "tsconfig.json",
+  binBasePath: string = cwd
 ): Promise<TscResult> {
   const tsconfigPath = nodePath.join(cwd, tsconfigName);
-  const tscPath = nodePath.join(cwd, "node_modules", ".bin", "tsc");
+  const tscPath = nodePath.join(binBasePath, "node_modules", ".bin", "tsc");
 
   // Ensure the tsconfig file exists
   try {
@@ -163,6 +164,10 @@ export async function runTsc(
   }
 
   try {
+    logger.debug(`Running TypeScript compiler: ${tscPath} --project ${tsconfigPath} --noEmit`, {
+      cwd,
+    });
+
     const result = await execa(tscPath, ["--project", tsconfigPath, "--noEmit"], {
       cwd,
       reject: false,
@@ -170,6 +175,9 @@ export async function runTsc(
 
     const success = result.exitCode === 0;
     const errors = success ? [] : parseTypeScriptErrors(result.stderr);
+
+    logger.debug(result.stdout);
+    logger.debug(result.stderr);
 
     return {
       success,
@@ -215,6 +223,16 @@ export type ExecuteTaskRunResult = {
   result: TaskRunExecutionResult;
   usageReports: Array<ExecuteTaskRunUsageReport>;
   totalDurationMs: number;
+  spans: Array<ExecuteTaskTraceEvent>;
+};
+
+export type ExecuteTaskTraceEvent = {
+  name: string;
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  durationMs: number;
+  attributes?: { [key: string]: string | number | boolean | undefined };
 };
 
 export async function executeTestCaseRun({
@@ -225,6 +243,7 @@ export async function executeTestCaseRun({
   contentHash,
 }: ExecuteTaskCaseRunOptions): Promise<ExecuteTaskRunResult> {
   const usageReports: Array<ExecuteTaskRunUsageReport> = [];
+  const spans: Array<ExecuteTaskTraceEvent> = [];
 
   // Create a disposable "server" instance.
   const server = await createTestHttpServer({
@@ -239,12 +258,39 @@ export async function executeTestCaseRun({
         return Response.json({});
       });
       router.post("/v1/traces", async ({ req }) => {
+        const jsonBody = await req.json();
+
+        spans.push(...parseTraceBodyIntoEvents(jsonBody));
         // TODO: Implement trace endpoint
         return Response.json({});
       });
       router.post("/v1/logs", () => {
         // TODO: Implement logs endpoint
         return Response.json({});
+      });
+      router.post("/v1/chat/completions", async ({ req }) => {
+        return Response.json({
+          id: "chatcmpl-7XYZ123ABC456DEF789GHI",
+          object: "chat.completion",
+          created: 1631619199,
+          model: "gpt-3.5-turbo-0613",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content:
+                  "The capital of France is Paris. Paris is not only the political capital but also the cultural and economic center of France. It's known for its iconic landmarks such as the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral.",
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: {
+            prompt_tokens: 29,
+            completion_tokens: 48,
+            total_tokens: 77,
+          },
+        });
       });
     },
   });
@@ -260,6 +306,8 @@ export async function executeTestCaseRun({
         TRIGGER_SECRET_KEY: "test-secret",
         TRIGGER_API_URL: server.http.url().origin,
         USAGE_HEARTBEAT_INTERVAL_MS: "500",
+        OPENAI_API_KEY: "api-key",
+        OPENAI_BASE_URL: server.http.url().origin + "/v1",
       },
       serverWorker: {
         id: "test",
@@ -330,8 +378,99 @@ export async function executeTestCaseRun({
       result,
       usageReports,
       totalDurationMs: usageReports.reduce((acc, report) => acc + report.durationMs, 0),
+      spans,
     };
   } finally {
     await server.close();
   }
+}
+
+function parseTraceBodyIntoEvents(body: any): ExecuteTaskTraceEvent[] {
+  return body.resourceSpans.flatMap(parseResourceSpanIntoEvents);
+}
+
+function parseResourceSpanIntoEvents(resourceSpan: any): ExecuteTaskTraceEvent[] {
+  return resourceSpan.scopeSpans.flatMap((scopeSpan: any) =>
+    parseScopeSpanIntoEvents(scopeSpan, resourceSpan.resource)
+  );
+}
+
+function parseScopeSpanIntoEvents(scopeSpan: any, resource: any): ExecuteTaskTraceEvent[] {
+  return scopeSpan.spans.flatMap((span: any) => parseSpanInEvent(span, resource));
+}
+
+function parseSpanInEvent(span: any, resource: any): ExecuteTaskTraceEvent {
+  return {
+    name: span.name,
+    traceId: span.traceId,
+    spanId: span.spanId,
+    parentSpanId: span.parentSpanId,
+    durationMs: calculateSpanDurationMs(span),
+    attributes: {
+      ...parseAttributes(resource.attributes),
+      ...parseAttributes(span.attributes),
+    },
+  };
+}
+
+function calculateSpanDurationMs(span: any): number {
+  return Number(BigInt(span.endTimeUnixNano) - BigInt(span.startTimeUnixNano) / BigInt(1e6));
+}
+
+function parseAttributes(attributes: any): ExecuteTaskTraceEvent["attributes"] {
+  if (!attributes) return {};
+
+  return attributes.reduce((acc: any, attribute: any) => {
+    acc[attribute.key] = isStringValue(attribute.value)
+      ? attribute.value.stringValue
+      : isIntValue(attribute.value)
+      ? Number(attribute.value.intValue)
+      : isDoubleValue(attribute.value)
+      ? attribute.value.doubleValue
+      : isBoolValue(attribute.value)
+      ? attribute.value.boolValue
+      : isBytesValue(attribute.value)
+      ? binaryToHex(attribute.value.bytesValue)
+      : undefined;
+
+    return acc;
+  }, {});
+}
+
+function isBoolValue(value: any | undefined): value is { boolValue: boolean } {
+  if (!value) return false;
+
+  return typeof value.boolValue === "boolean";
+}
+
+function isStringValue(value: any | undefined): value is { stringValue: string } {
+  if (!value) return false;
+
+  return typeof value.stringValue === "string";
+}
+
+function isIntValue(value: any | undefined): value is { intValue: bigint } {
+  if (!value) return false;
+
+  return typeof value.intValue === "number";
+}
+
+function isDoubleValue(value: any | undefined): value is { doubleValue: number } {
+  if (!value) return false;
+
+  return typeof value.doubleValue === "number";
+}
+
+function isBytesValue(value: any | undefined): value is { bytesValue: Buffer } {
+  if (!value) return false;
+
+  return Buffer.isBuffer(value.bytesValue);
+}
+function binaryToHex(buffer: Buffer | string): string;
+function binaryToHex(buffer: Buffer | string | undefined): string | undefined;
+function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
+  if (!buffer) return undefined;
+  if (typeof buffer === "string") return buffer;
+
+  return Buffer.from(Array.from(buffer)).toString("hex");
 }

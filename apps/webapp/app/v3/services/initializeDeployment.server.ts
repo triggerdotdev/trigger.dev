@@ -29,7 +29,9 @@ export class InitializeDeploymentService extends BaseService {
       const nextVersion = calculateNextBuildVersion(latestDeployment?.version);
 
       // Try and create a depot build and get back the external build data
-      const externalBuildData = await createRemoteImageBuild(environment.project);
+      const externalBuildData = !!payload.selfHosted
+        ? await createRemoteImageBuild(environment.project)
+        : undefined;
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findUnique({
@@ -65,7 +67,9 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + 180_000) // 3 minutes
       );
 
-      const imageTag = `${env.DEPLOY_REGISTRY_NAMESPACE}/${environment.project.externalRef}:${deployment.version}.${environment.slug}`;
+      const imageTag = `${payload.namespace ?? env.DEPLOY_REGISTRY_NAMESPACE}/${
+        environment.project.externalRef
+      }:${deployment.version}.${environment.slug}`;
 
       return { deployment, imageTag };
     });

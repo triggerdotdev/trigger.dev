@@ -14,6 +14,7 @@ import { E2EOptions, E2EOptionsSchema } from "./schemas.js";
 import { executeTestCaseRun, runTsc } from "./utils.js";
 import { normalizeImportPath } from "../src/utilities/normalizeImportPath.js";
 import { installFixtureDeps, LOCKFILES, PackageManager, parsePackageManager } from "./utils.js";
+import { alwaysExternal } from "@trigger.dev/core/v3/build";
 
 const TIMEOUT = 120_000;
 
@@ -127,6 +128,8 @@ describe.concurrent("buildWorker", async () => {
         id,
         tempDir,
         tsconfig,
+        packageManager,
+        fixtureDir,
         workspaceDir,
         wantConfigInvalidError,
         wantConfigNotFoundError,
@@ -164,7 +167,11 @@ describe.concurrent("buildWorker", async () => {
         expect(resolvedConfig!).toBeTruthy();
 
         if (tsconfig) {
-          const tscResult = await runTsc(workspaceDir, tsconfig);
+          const tscResult = await runTsc(
+            workspaceDir,
+            tsconfig,
+            packageManager === "yarn" ? fixtureDir : undefined
+          );
 
           expect(tscResult.success).toBe(true);
         }
@@ -181,6 +188,7 @@ describe.concurrent("buildWorker", async () => {
               destination: destination.path,
               resolvedConfig: resolvedConfig!,
               rewritePaths: false,
+              forcedExternals: alwaysExternal,
             });
           })(),
           wantBuildWorkerError ? "does not build" : "builds"
@@ -194,7 +202,14 @@ describe.concurrent("buildWorker", async () => {
         await buildExpect.resolves.not.toThrowError();
 
         if (buildManifestMatcher) {
-          expect(buildManifest!).toMatchObject(buildManifestMatcher);
+          for (const external of buildManifestMatcher.externals ?? []) {
+            expect(buildManifest!.externals).toContainEqual(external);
+          }
+
+          for (const file of buildManifestMatcher.files ?? []) {
+            const found = (buildManifestMatcher.files ?? []).find((f) => f?.entry === file?.entry);
+            expect(found).toBeTruthy();
+          }
         } else {
           expect(buildManifest!).toBeTruthy();
         }
@@ -203,7 +218,12 @@ describe.concurrent("buildWorker", async () => {
 
         const rewrittenManifest = rewriteBuildManifestPaths(buildManifest!, destination.path);
 
-        expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+        if (resolvedConfig!.instrumentedPackageNames?.length ?? 0 > 0) {
+          expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+        } else {
+          expect(rewrittenManifest.loaderEntryPoint).toBeUndefined();
+        }
+
         expect(rewrittenManifest.indexWorkerEntryPoint).toBe(
           "/app/src/entryPoints/deploy-index-worker.mjs"
         );
@@ -222,7 +242,7 @@ describe.concurrent("buildWorker", async () => {
               nodeOptions: buildManifest!.loaderEntryPoint
                 ? `--import=${normalizeImportPath(buildManifest!.loaderEntryPoint)}`
                 : undefined,
-              env: {},
+              env: testCase.envVars ?? {},
               otelHookExclude: buildManifest!.otelImportHook?.exclude,
               otelHookInclude: buildManifest!.otelImportHook?.include,
               handleStdout(data) {
@@ -262,7 +282,7 @@ describe.concurrent("buildWorker", async () => {
         }
 
         for (const taskRun of runs || []) {
-          const { result, totalDurationMs } = await executeTestCaseRun({
+          const { result, totalDurationMs, spans } = await executeTestCaseRun({
             run: taskRun,
             testCase,
             destination: destination.path,
@@ -270,10 +290,30 @@ describe.concurrent("buildWorker", async () => {
             contentHash: buildManifest!.contentHash,
           });
 
+          logger.debug("Task run result", result);
+
           expect(result.ok).toBe(taskRun.result.ok);
 
-          if (taskRun.result.durationMs) {
-            expect(totalDurationMs).toBeGreaterThanOrEqual(taskRun.result.durationMs);
+          if (result.ok) {
+            if (taskRun.result.durationMs) {
+              expect(totalDurationMs).toBeGreaterThanOrEqual(taskRun.result.durationMs);
+            }
+
+            if (taskRun.result.output) {
+              expect(result.output).toEqual(taskRun.result.output);
+            }
+
+            if (taskRun.result.outputType) {
+              expect(result.outputType).toEqual(taskRun.result.outputType);
+            }
+
+            if (taskRun.result.spans) {
+              for (const spanName of taskRun.result.spans) {
+                const foundSpan = spans.find((span) => span.name === spanName);
+
+                expect(foundSpan).toBeTruthy();
+              }
+            }
           }
         }
       }

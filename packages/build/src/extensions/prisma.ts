@@ -10,6 +10,10 @@ export type PrismaExtensionOptions = {
   migrate?: boolean;
   version?: string;
   /**
+   * Adds the `--sql` flag to the `prisma generate` command. This will generate the SQL files for the Prisma schema. Requires the `typedSql preview feature and prisma 5.19.0 or later.
+   */
+  typedSql?: boolean;
+  /**
    * The client generator to use. Set this param to prevent all generators in the prisma schema from being generated.
    *
    * @example
@@ -114,9 +118,40 @@ export class PrismaExtension implements BuildExtension {
 
     let prismaDir: string | undefined;
 
-    const generatorFlag = this.options.clientGenerator
-      ? `--generator=${this.options.clientGenerator}`
-      : "";
+    const generatorFlags: string[] = [];
+
+    if (this.options.clientGenerator) {
+      generatorFlags.push(`--generator=${this.options.clientGenerator}`);
+    }
+
+    if (this.options.typedSql) {
+      generatorFlags.push(`--sql`);
+
+      const schemaDir = dirname(this._resolvedSchemaPath);
+      const prismaDir = dirname(schemaDir);
+
+      context.logger.debug(`Using typedSql`);
+
+      // Find all the files prisma/sql/*.sql
+      const sqlFiles = await readdir(join(prismaDir, "sql")).then((files) =>
+        files.filter((file) => file.endsWith(".sql"))
+      );
+
+      context.logger.debug(`Found sql files`, {
+        sqlFiles,
+      });
+
+      const sqlDestinationPath = join(manifest.outputPath, "prisma", "sql");
+
+      for (const file of sqlFiles) {
+        const destination = join(sqlDestinationPath, file);
+        const source = join(prismaDir, "sql", file);
+
+        context.logger.debug(`Copying the sql from ${source} to ${destination}`);
+
+        await cp(source, destination);
+      }
+    }
 
     if (usingSchemaFolder) {
       const schemaDir = dirname(this._resolvedSchemaPath);
@@ -150,7 +185,7 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlag}` // Don't add the --schema flag or this will fail
+        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
       );
     } else {
       prismaDir = dirname(this._resolvedSchemaPath);
@@ -169,7 +204,9 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma ${generatorFlag}`
+        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema.prisma ${generatorFlags.join(
+          " "
+        )}`
       );
     }
 
