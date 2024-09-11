@@ -20,7 +20,7 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table e.g. when a row is inserted, updated, or deleted, or when a specific column is updated.
 
-This guide shows you how to set up and deploy a simple Supabase edge function that triggers a "Hello world" task every time a new row is inserted into your database.
+This guide shows you how to set up a Supabase database webhook and deploy a simple edge function that triggers a "Hello world" task every time a new row is inserted into your table.
 
 ## Prerequisites
 
@@ -125,7 +125,7 @@ There will be a link to the dashboard in your terminal output, or you can find i
 
 </Step>
 
-<Step title="Create a new database">
+<Step title="Create a new table">
 
 Next, in your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu and create a new table. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
 
@@ -178,7 +178,7 @@ Your database webhook is now ready to use.
 
 </Steps>
 
-## Deploy your 'Hello World' task and trigger it from your new `database-webhook` edge function
+## Deploy your task and trigger it from your new `database-webhook` edge function
 
 <Steps>
 
@@ -206,13 +206,15 @@ yarn dlx trigger.dev@beta deploy
 
 </Step>
 
-<Step title="Trigger your new database webhook edge function">
+<Step title="Trigger the task from your edge function">
 
-Back in your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu, click on the `skynet` table <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> , and then click 'Insert', 'Insert Row' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+Your `database-webhook` edge function is now set up to trigger the `hello-world` task every time a new row is inserted into your `skynet` table.
+
+To do this, go back to your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu, click on the `skynet` table <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> , and then click 'Insert', 'Insert Row' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
 
 ![How to insert a new row 1](/images/supabase-new-table-3.png)
 
-Add a new item under `name`, with the value `Sarah Connor`. <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
+Add a new item under `name`, with the value `Sarah Connor` (this can be any string). <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
 
 ![How to insert a new row 2](/images/supabase-new-table-4.png)
 
@@ -220,7 +222,7 @@ Go back to your edge function dashboard <Icon icon="circle-1" iconType="solid" s
 
 ![How to view the logs](/images/supabase-logs.png)
 
-Then, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' table <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a succesful `hello-world` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the `name` `Sarah Connor` to your `skynet` Supabase table.
+Then, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a successful `hello-world` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the `name` `Sarah Connor` to your `skynet` Supabase table.
 
 ![How to insert a new row 2](/images/supabase-trigger-screenshot.png)
 
