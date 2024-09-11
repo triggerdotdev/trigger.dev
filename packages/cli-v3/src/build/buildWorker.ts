@@ -86,7 +86,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     cliPackageVersion: VERSION,
     target: "deploy",
     files: bundleResult.files,
-    sources: await resolveFileSources(bundleResult.files, resolvedConfig.workingDir),
+    sources: await resolveFileSources(bundleResult.files, resolvedConfig),
     config: {
       project: resolvedConfig.project,
       dirs: resolvedConfig.dirs,

@@ -24,7 +24,7 @@ import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 
@@ -193,7 +193,7 @@ class DevWorkerRuntime implements WorkerRuntime {
       return;
     }
 
-    const sourceFiles = resolveTaskSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
+    const sourceFiles = resolveSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,

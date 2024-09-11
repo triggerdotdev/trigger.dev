@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { env } from "std-env";
 import { CliApiClient } from "../apiClient.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
-import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 
 async function loadBuildManifest() {
   const manifestContents = await readFile("./build.json", "utf-8");
@@ -87,7 +87,7 @@ async function indexDeployment({
 
     await writeFile(join(process.cwd(), "index.json"), JSON.stringify(workerManifest, null, 2));
 
-    const sourceFiles = resolveTaskSourceFiles(buildManifest.sources, workerManifest.tasks);
+    const sourceFiles = resolveSourceFiles(buildManifest.sources, workerManifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,

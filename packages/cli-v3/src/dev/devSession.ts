@@ -198,7 +198,7 @@ async function createBuildManifestFromBundle(
     environment: "dev",
     target: "dev",
     files: bundle.files,
-    sources: await resolveFileSources(bundle.files, resolvedConfig.workingDir),
+    sources: await resolveFileSources(bundle.files, resolvedConfig),
     externals: [],
     config: {
       project: resolvedConfig.project,
