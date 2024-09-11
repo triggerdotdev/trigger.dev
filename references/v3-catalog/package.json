@@ -13,8 +13,7 @@
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
-    "generate": "prisma generate --sql",
-    "postinstall": "pnpm run generate"
+    "generate": "prisma generate --sql"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
