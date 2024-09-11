@@ -57,3 +57,16 @@ services:
       - app_network
     ports:
       - 6379:6379
+
+  # otel-collector:
+  #   container_name: otel-collector
+  #   image: otel/opentelemetry-collector-contrib:latest
+  #   restart: always
+  #   command: ["--config", "/etc/otel-collector-config.yaml"]
+  #   volumes:
+  #     - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+  #   ports:
+  #     - "55680:55680"
+  #     - "55681:55681"
+  #     - "4317:4317" # OTLP gRPC receiver
+  #     - "4318:4318" # OTLP http receiver
