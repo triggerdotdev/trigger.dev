@@ -63,7 +63,6 @@ export class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
   private _stderr: Array<string> = [];
-  private _flushingProcess?: FlushingProcess;
 
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
@@ -80,12 +79,21 @@ export class TaskRunProcess {
   async cancel() {
     this._isBeingCancelled = true;
 
-    await this.startFlushingProcess();
+    try {
+      await this.#flush();
+    } catch (err) {
+      logger.error("Error flushing task run process", { err });
+    }
+
     await this.kill();
   }
 
   async cleanup(kill = true) {
-    await this.startFlushingProcess();
+    try {
+      await this.#flush();
+    } catch (err) {
+      logger.error("Error flushing task run process", { err });
+    }
 
     if (kill) {
       await this.kill("SIGKILL");
@@ -181,14 +189,6 @@ export class TaskRunProcess {
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
-  }
-
-  async startFlushingProcess() {
-    if (this._flushingProcess) {
-      return;
-    }
-
-    this._flushingProcess = new FlushingProcess(() => this.#flush());
   }
 
   async #flush(timeoutInMs: number = 5_000) {
@@ -369,12 +369,6 @@ export class TaskRunProcess {
 
     this.onIsBeingKilled.post(this);
 
-    try {
-      await this._flushingProcess?.waitForCompletion();
-    } catch (err) {
-      logger.error("Error flushing task run process", { err });
-    }
-
     this._child?.kill(signal);
 
     if (timeoutInMs) {
@@ -393,16 +387,4 @@ export class TaskRunProcess {
 
 function executorArgs(workerManifest: WorkerManifest): string[] {
   return [];
-}
-
-class FlushingProcess {
-  private _flushPromise: Promise<void>;
-
-  constructor(private readonly doFlush: () => Promise<void>) {
-    this._flushPromise = this.doFlush();
-  }
-
-  waitForCompletion() {
-    return this._flushPromise;
-  }
 }

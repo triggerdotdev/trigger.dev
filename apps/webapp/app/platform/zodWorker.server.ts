@@ -318,7 +318,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     identifier: K,
     payload: z.infer<TMessageCatalog[K]>,
     options?: ZodWorkerEnqueueOptions
-  ): Promise<GraphileJob> {
+  ): Promise<GraphileJob | undefined> {
     const task = this.#tasks[identifier];
 
     const optionsWithoutTx = removeUndefinedKeys(omit(options ?? {}, ["tx"]));
@@ -439,11 +439,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
         identifier,
         payload,
         spec,
+        error: JSON.stringify(rows.error),
       });
-
-      throw new Error(
-        `Failed to add job to queue, zod parsing error: ${JSON.stringify(rows.error)}`
-      );
+      return { job: undefined, durationInMs: Math.floor(durationInMs) };
     }
 
     const job = rows.data[0];

@@ -9,6 +9,7 @@ import {
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { logger } from "~/services/logger.server";
 
 export class CreateDeploymentBackgroundWorkerService extends BaseService {
   public async call(

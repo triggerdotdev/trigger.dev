@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@trigger.dev/sdk':
-        specifier: 0.0.0-prerelease-20240825150620
-        version: 0.0.0-prerelease-20240825150620(typescript@5.5.4)
+        specifier: 0.0.0-cli-e2e-20240910161832
+        version: 0.0.0-cli-e2e-20240910161832(typescript@5.5.4)
     devDependencies:
       typescript:
         specifier: 5.5.4
@@ -447,8 +447,8 @@ packages:
     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
     dev: false
 
-  /@trigger.dev/core@0.0.0-prerelease-20240825150620:
-    resolution: {integrity: sha512-lFlYRMygi8T3i8qnx+hzmd5u2HnoA4lkmeA7e1ESTBgD8b/TsHIkwfcNk6eLmlnspvE2dQp7x7Am0Ss/g7L4fw==}
+  /@trigger.dev/core@0.0.0-cli-e2e-20240910161832:
+    resolution: {integrity: sha512-YuBuP2Te6YCI5QVEU3gw5z1qTHnKStJIrsi5xVbtjYTwTCcmxdnf2TCGz08gc3Ug8e3g0j9HuyISDtuILXTadg==}
     engines: {node: '>=18.20.0'}
     dependencies:
       '@google-cloud/precise-date': 4.0.0
@@ -476,14 +476,14 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@trigger.dev/sdk@0.0.0-prerelease-20240825150620(typescript@5.5.4):
-    resolution: {integrity: sha512-cKCZ0/ZOaozkWo0bBjGZ5TWpok2lMc/KeUKLfefPUYgb04GoMGUCHzWdQeKgJwXursvDn9/dXxCWA1RuOQRmMQ==}
+  /@trigger.dev/sdk@0.0.0-cli-e2e-20240910161832(typescript@5.5.4):
+    resolution: {integrity: sha512-MgzaZkxplLdsr1QyZAbFfoLLW3Ui/XjwTLv38eeo98StCdPwJe1zEc4R4IR/BsPi5m67PbLPK3qjuwMDz9lIFQ==}
     engines: {node: '>=18.20.0'}
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.52.1
       '@opentelemetry/semantic-conventions': 1.25.1
-      '@trigger.dev/core': 0.0.0-prerelease-20240825150620
+      '@trigger.dev/core': 0.0.0-cli-e2e-20240910161832
       chalk: 5.3.0
       cronstrue: 2.50.0
       debug: 4.3.6

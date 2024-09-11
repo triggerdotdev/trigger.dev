@@ -14,7 +14,6 @@ import {
   PreStopCauses,
   EnvironmentType,
 } from "@trigger.dev/core/v3";
-import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
@@ -41,7 +40,7 @@ type Namespace = {
   };
 };
 
-type ComputeResources = {
+type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
 
@@ -166,15 +165,7 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              resources: {
-                requests: {
-                  ...this.#defaultResourceRequests,
-                },
-                limits: {
-                  ...this.#defaultResourceLimits,
-                  ...this.#getResourcesFromMachineConfig(opts.machine),
-                },
-              },
+              resources: this.#getResourcesForMachine(opts.machine),
               lifecycle: {
                 preStop: {
                   exec: {
@@ -265,15 +256,7 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              resources: {
-                requests: {
-                  ...this.#defaultResourceRequests,
-                },
-                limits: {
-                  ...this.#defaultResourceLimits,
-                  ...this.#getResourcesFromMachineConfig(opts.machine),
-                },
-              },
+              resources: this.#getResourcesForMachine(opts.machine),
               lifecycle: {
                 postStart: {
                   exec: {
@@ -414,13 +397,13 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  get #defaultResourceRequests(): ComputeResources {
+  get #defaultResourceRequests(): ResourceQuantities {
     return {
       "ephemeral-storage": "2Gi",
     };
   }
 
-  get #defaultResourceLimits(): ComputeResources {
+  get #defaultResourceLimits(): ResourceQuantities {
     return {
       "ephemeral-storage": "10Gi",
     };
@@ -486,10 +469,30 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  #getResourcesFromMachineConfig(preset: MachinePreset): ComputeResources {
+  #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
+    return {
+      cpu: `${preset.cpu * 0.75}`,
+      memory: `${preset.memory}G`,
+    };
+  }
+
+  #getResourceLimitsForMachine(preset: MachinePreset): ResourceQuantities {
     return {
       cpu: `${preset.cpu}`,
       memory: `${preset.memory}G`,
+    };
+  }
+
+  #getResourcesForMachine(preset: MachinePreset): k8s.V1ResourceRequirements {
+    return {
+      requests: {
+        ...this.#defaultResourceRequests,
+        ...this.#getResourceRequestsForMachine(preset),
+      },
+      limits: {
+        ...this.#defaultResourceLimits,
+        ...this.#getResourceLimitsForMachine(preset),
+      },
     };
   }
 

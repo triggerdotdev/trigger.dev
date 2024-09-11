@@ -226,6 +226,7 @@ export class EventRepository {
     const events = await this.queryIncompleteEvents({ spanId });
 
     if (events.length === 0) {
+      logger.warn("No incomplete events found for spanId", { spanId, options });
       return;
     }
 

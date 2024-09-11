@@ -1,0 +1,20 @@
+{
+  "name": "otel-telemetry-loader",
+  "private": true,
+  "packageManager": "yarn@4.2.2+sha256.1aa43a5304405be7a7cb9cb5de7b97de9c4e8ddd3273e4dad00d6ae3eb39f0ef",
+  "engines": {
+    "pnpm": "8.15.5",
+    "yarn": "4.2.2"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@trigger.dev/sdk": "0.0.0-cli-e2e-20240910161832",
+    "openai": "4.47.0"
+  },
+  "devDependencies": {
+    "@traceloop/instrumentation-openai": "^0.10.0",
+    "typescript": "5.5.4"
+  }
+}

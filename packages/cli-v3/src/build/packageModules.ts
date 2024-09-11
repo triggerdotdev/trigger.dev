@@ -12,13 +12,12 @@ export const deployIndexWorker = join(sourceDir, "entryPoints", "deploy-index-wo
 
 export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");
 
-export const devEntryPoints = [devRunWorker, devIndexWorker, telemetryEntryPoint];
+export const devEntryPoints = [devRunWorker, devIndexWorker];
 export const deployEntryPoints = [
   deployRunController,
   deployRunWorker,
   deployIndexController,
   deployIndexWorker,
-  telemetryEntryPoint,
 ];
 
 export const esmShimPath = join(sourceDir, "shims", "esm.js");

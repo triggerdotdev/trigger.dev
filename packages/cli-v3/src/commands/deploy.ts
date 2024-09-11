@@ -36,6 +36,7 @@ import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import { resolveAlwaysExternal } from "../build/externals.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -43,6 +44,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  namespace: z.string().optional(),
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   push: z.boolean().default(false),
@@ -120,6 +122,12 @@ export function configureDeployCommand(program: Command) {
       ).hideHelp()
     )
     .addOption(
+      new CommandOption(
+        "--namespace <namespace>",
+        "Specify the namespace to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(
       new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
     )
     .addOption(
@@ -180,6 +188,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef },
+    configFile: options.config,
   });
 
   logger.debug("Resolved config", resolvedConfig);
@@ -203,6 +212,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $buildSpinner = spinner();
 
+  const forcedExternals = await resolveAlwaysExternal(projectClient.client);
+
   const buildManifest = await buildWorker({
     target: "deploy",
     environment: options.env,
@@ -210,6 +221,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     resolvedConfig,
     rewritePaths: true,
     envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+    forcedExternals,
     listener: {
       onBundleStart() {
         $buildSpinner.start("Building project");
@@ -232,6 +244,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
+    selfHosted: options.selfHosted,
+    registryHost: options.registry,
+    namespace: options.namespace,
   });
 
   if (!deploymentResponse.success) {

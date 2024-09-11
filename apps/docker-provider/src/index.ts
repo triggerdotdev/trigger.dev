@@ -14,6 +14,7 @@ import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
+const DOCKER_NETWORK = process.env.DOCKER_NETWORK || "host";
 
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://0.0.0.0:4318";
@@ -90,7 +91,7 @@ class DockerTaskOperations implements TaskOperations {
     logger.debug(
       await execa("docker", [
         "run",
-        "--network=host",
+        `--network=${DOCKER_NETWORK}`,
         "--rm",
         `--env=INDEX_TASKS=true`,
         `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
@@ -113,7 +114,7 @@ class DockerTaskOperations implements TaskOperations {
 
     const runArgs = [
       "run",
-      "--network=host",
+      `--network=${DOCKER_NETWORK}`,
       "--detach",
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runId}`,

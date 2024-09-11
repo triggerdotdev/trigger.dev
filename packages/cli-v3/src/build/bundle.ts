@@ -14,6 +14,7 @@ import {
   isRunControllerForTarget,
   isRunWorkerForTarget,
   shims,
+  telemetryEntryPoint,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 
@@ -226,6 +227,10 @@ async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
     projectEntryPoints.push(...devEntryPoints);
   } else {
     projectEntryPoints.push(...deployEntryPoints);
+  }
+
+  if (config.instrumentedPackageNames?.length ?? 0 > 0) {
+    projectEntryPoints.push(telemetryEntryPoint);
   }
 
   return projectEntryPoints;

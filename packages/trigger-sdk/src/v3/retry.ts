@@ -16,14 +16,12 @@ import {
   accessoryAttributes,
   calculateNextRetryDelay,
   calculateResetAt,
+  defaultFetchRetryOptions,
   defaultRetryOptions,
   eventFilterMatches,
   flattenAttributes,
   runtime,
 } from "@trigger.dev/core/v3";
-import { defaultFetchRetryOptions } from "@trigger.dev/core/v3";
-import type { HttpHandler } from "msw";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { tracer } from "./tracer.js";
 
 export type { RetryOptions };
@@ -138,34 +136,6 @@ const normalizeHttpMethod = (input: RequestInfo | URL | string, init?: RequestIn
   }
 
   return (input.method ?? init?.method ?? "GET").toUpperCase();
-};
-
-const fetchHttpHandlerStorage = new AsyncLocalStorage<Array<HttpHandler>>();
-
-const fetchWithInterceptors = async (
-  input: RequestInfo | URL,
-  init?: RequestInit
-): Promise<Response> => {
-  const handlers = fetchHttpHandlerStorage.getStore();
-
-  if (handlers) {
-    try {
-      const { getResponse } = await import("msw");
-
-      const request = new Request(input, init);
-
-      const response = await getResponse(handlers, request);
-
-      if (response) {
-        return response;
-      }
-    } catch (e) {
-      // Do nothing
-      return fetch(input, init);
-    }
-  }
-
-  return fetch(input, init);
 };
 
 class FetchErrorWithSpan extends Error {
@@ -383,7 +353,7 @@ const doFetchRequest = async (
   });
 
   try {
-    const response = await fetchWithInterceptors(input, {
+    const response = await fetch(input, {
       ...init,
       headers: {
         ...init?.headers,
@@ -570,21 +540,6 @@ const safeJsonParse = (json: string): unknown => {
   }
 };
 
-const interceptFetch = (...handlers: Array<HttpHandler>) => {
-  return {
-    run: async <T>(fn: (...args: any[]) => Promise<T>): Promise<T> => {
-      const current = fetchHttpHandlerStorage.getStore();
-
-      if (current) {
-        current.push(...handlers);
-        return fn();
-      } else {
-        return fetchHttpHandlerStorage.run(handlers, fn);
-      }
-    },
-  };
-};
-
 // This function will resolve the defaults of a property within an options object.
 // If the options object is undefined, it will return the defaults for that property (passed in as the 3rd arg).
 // if the options object is defined, and the property exists, then it will return the defaults if the value of the property is undefined or null
@@ -662,5 +617,4 @@ const createFetchRetryOptionsAttributes = (retry?: FetchRetryOptions): Attribute
 export const retry = {
   onThrow,
   fetch: retryFetch,
-  interceptFetch,
 };

@@ -11,8 +11,5 @@
     "lib": ["DOM", "DOM.Iterable"],
     "noEmit": true
   },
-  "include": [
-    "./src/**/*.ts",
-    "trigger.config.ts"
-  ]
+  "include": ["./src/**/*.ts", "trigger.config.ts"]
 }

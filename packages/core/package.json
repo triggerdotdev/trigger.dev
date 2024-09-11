@@ -16,8 +16,8 @@
   ],
   "tshy": {
     "selfLink": false,
-    "main": false,
-    "module": false,
+    "main": true,
+    "module": true,
     "project": "./tsconfig.src.json",
     "exports": {
       "./package.json": "./package.json",
@@ -60,6 +60,109 @@
       "@triggerdotdev/source"
     ]
   },
+  "typesVersions": {
+    "*": {
+      "logger": [
+        "dist/commonjs/logger.d.ts"
+      ],
+      "bloom": [
+        "dist/commonjs/bloom.d.ts"
+      ],
+      "eventFilterMatches": [
+        "dist/commonjs/eventFilterMatches.d.ts"
+      ],
+      "replacements": [
+        "dist/commonjs/replacements.d.ts"
+      ],
+      "requestFilterMatches": [
+        "dist/commonjs/requestFilterMatches.d.ts"
+      ],
+      "retry": [
+        "dist/commonjs/retry.d.ts"
+      ],
+      "utils": [
+        "dist/commonjs/utils.d.ts"
+      ],
+      "schemas": [
+        "dist/commonjs/schemas/index.d.ts"
+      ],
+      "types": [
+        "dist/commonjs/types.d.ts"
+      ],
+      "versions": [
+        "dist/commonjs/versions.d.ts"
+      ],
+      "v3": [
+        "dist/commonjs/v3/index.d.ts"
+      ],
+      "v3/build": [
+        "dist/commonjs/v3/build/index.d.ts"
+      ],
+      "v3/apps": [
+        "dist/commonjs/v3/apps/index.d.ts"
+      ],
+      "v3/errors": [
+        "dist/commonjs/v3/errors.d.ts"
+      ],
+      "v3/logger-api": [
+        "dist/commonjs/v3/logger-api.d.ts"
+      ],
+      "v3/otel": [
+        "dist/commonjs/v3/otel/index.d.ts"
+      ],
+      "v3/semanticInternalAttributes": [
+        "dist/commonjs/v3/semanticInternalAttributes.d.ts"
+      ],
+      "v3/utils/durations": [
+        "dist/commonjs/v3/utils/durations.d.ts"
+      ],
+      "v3/utils/flattenAttributes": [
+        "dist/commonjs/v3/utils/flattenAttributes.d.ts"
+      ],
+      "v3/utils/ioSerialization": [
+        "dist/commonjs/v3/utils/ioSerialization.d.ts"
+      ],
+      "v3/utils/omit": [
+        "dist/commonjs/v3/utils/omit.d.ts"
+      ],
+      "v3/utils/retries": [
+        "dist/commonjs/v3/utils/retries.d.ts"
+      ],
+      "v3/utils/structuredLogger": [
+        "dist/commonjs/v3/utils/structuredLogger.d.ts"
+      ],
+      "v3/zodfetch": [
+        "dist/commonjs/v3/zodfetch.d.ts"
+      ],
+      "v3/zodMessageHandler": [
+        "dist/commonjs/v3/zodMessageHandler.d.ts"
+      ],
+      "v3/zodNamespace": [
+        "dist/commonjs/v3/zodNamespace.d.ts"
+      ],
+      "v3/zodSocket": [
+        "dist/commonjs/v3/zodSocket.d.ts"
+      ],
+      "v3/zodIpc": [
+        "dist/commonjs/v3/zodIpc.d.ts"
+      ],
+      "v3/utils/timers": [
+        "dist/commonjs/v3/utils/timers.d.ts"
+      ],
+      "v3/dev": [
+        "dist/commonjs/v3/dev/index.d.ts"
+      ],
+      "v3/prod": [
+        "dist/commonjs/v3/prod/index.d.ts"
+      ],
+      "v3/workers": [
+        "dist/commonjs/v3/workers/index.d.ts"
+      ],
+      "v3/schemas": [
+        "dist/commonjs/v3/schemas/index.d.ts"
+      ]
+    }
+  },
   "sideEffects": false,
   "scripts": {
     "clean": "rimraf dist",
@@ -67,7 +170,8 @@
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
-    "test": "vitest"
+    "test": "vitest",
+    "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@google-cloud/precise-date": "^4.0.0",
@@ -91,6 +195,7 @@
     "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.15.4",
     "@types/humanize-duration": "^3.27.1",
     "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
@@ -484,5 +589,8 @@
       }
     }
   },
-  "type": "module"
+  "type": "module",
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
 }

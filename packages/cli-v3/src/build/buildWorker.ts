@@ -11,7 +11,6 @@ import {
   resolvePluginsForContext,
 } from "./extensions.js";
 import { createExternalsBuildExtension } from "./externals.js";
-import { getInstrumentedPackageNames } from "./instrumentation.js";
 import {
   deployIndexController,
   deployIndexWorker,
@@ -27,6 +26,7 @@ import { readPackageJSON, writePackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
+import { logger } from "../utilities/logger.js";
 
 export type BuildWorkerEventListener = {
   onBundleStart?: () => void;
@@ -41,12 +41,21 @@ export type BuildWorkerOptions = {
   listener?: BuildWorkerEventListener;
   envVars?: Record<string, string>;
   rewritePaths?: boolean;
+  forcedExternals?: string[];
 };
 
 export async function buildWorker(options: BuildWorkerOptions) {
+  logger.debug("Starting buildWorker", {
+    options,
+  });
+
   const resolvedConfig = options.resolvedConfig;
 
-  const externalsExtension = createExternalsBuildExtension(options.target, resolvedConfig);
+  const externalsExtension = createExternalsBuildExtension(
+    options.target,
+    resolvedConfig,
+    options.forcedExternals
+  );
   const buildContext = createBuildContext("deploy", resolvedConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
@@ -76,7 +85,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     cliPackageVersion: VERSION,
     target: "deploy",
     files: bundleResult.files,
-    sources: await resolveFileSources(bundleResult.files, resolvedConfig.workingDir),
+    sources: await resolveFileSources(bundleResult.files, resolvedConfig),
     config: {
       project: resolvedConfig.project,
       dirs: resolvedConfig.dirs,
@@ -86,7 +95,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
     indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
     indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
-    loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
+    loaderEntryPoint: bundleResult.loaderEntryPoint,
     configPath: bundleResult.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
@@ -94,7 +103,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     },
     build: {},
     otelImportHook: {
-      include: getInstrumentedPackageNames(resolvedConfig),
+      include: resolvedConfig.instrumentedPackageNames ?? [],
     },
   };
 

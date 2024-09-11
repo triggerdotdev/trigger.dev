@@ -16,7 +16,7 @@ import {
   notifyExtensionOnBuildStart,
   resolvePluginsForContext,
 } from "../build/extensions.js";
-import { createExternalsBuildExtension } from "../build/externals.js";
+import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
 import { copyManifestToDir } from "../build/manifests.js";
 import { devIndexWorker, devRunWorker, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
@@ -27,7 +27,6 @@ import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { VERSION } from "../version.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -40,13 +39,17 @@ export type DevSessionOptions = {
   onErr?: (error: Error) => void;
 };
 
+export type DevSessionInstance = {
+  stop: () => void;
+};
+
 export async function startDevSession({
   rawConfig,
   name,
   rawArgs,
   client,
   dashboardUrl,
-}: DevSessionOptions) {
+}: DevSessionOptions): Promise<DevSessionInstance> {
   const destination = getTmpDir(rawConfig.workingDir, "build");
 
   const runtime = await startWorkerRuntime({
@@ -64,9 +67,15 @@ export async function startDevSession({
     args: rawArgs,
   });
 
-  logger.debug("Starting dev session", { destination: destination.path, rawConfig });
+  const alwaysExternal = await resolveAlwaysExternal(client);
 
-  const externalsExtension = createExternalsBuildExtension("dev", rawConfig);
+  logger.debug("Starting dev session", {
+    destination: destination.path,
+    rawConfig,
+    alwaysExternal,
+  });
+
+  const externalsExtension = createExternalsBuildExtension("dev", rawConfig, alwaysExternal);
   const buildContext = createBuildContext("dev", rawConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
@@ -188,7 +197,7 @@ async function createBuildManifestFromBundle(
     environment: "dev",
     target: "dev",
     files: bundle.files,
-    sources: await resolveFileSources(bundle.files, resolvedConfig.workingDir),
+    sources: await resolveFileSources(bundle.files, resolvedConfig),
     externals: [],
     config: {
       project: resolvedConfig.project,
@@ -197,7 +206,7 @@ async function createBuildManifestFromBundle(
     outputPath: destination,
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? devRunWorker,
     indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
-    loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
+    loaderEntryPoint: bundle.loaderEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
@@ -205,7 +214,7 @@ async function createBuildManifestFromBundle(
     },
     build: {},
     otelImportHook: {
-      include: getInstrumentedPackageNames(resolvedConfig),
+      include: resolvedConfig.instrumentedPackageNames ?? [],
     },
   };
 

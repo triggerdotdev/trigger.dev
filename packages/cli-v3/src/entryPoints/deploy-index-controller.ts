@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { env } from "std-env";
 import { CliApiClient } from "../apiClient.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
-import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
+import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 
 async function loadBuildManifest() {
   const manifestContents = await readFile("./build.json", "utf-8");
@@ -67,9 +68,7 @@ async function indexDeployment({
       runtime: buildManifest.runtime,
       indexWorkerPath: buildManifest.indexWorkerEntryPoint,
       buildManifestPath: "./build.json",
-      nodeOptions: buildManifest.loaderEntryPoint
-        ? `--import=${buildManifest.loaderEntryPoint}`
-        : undefined,
+      nodeOptions: execOptionsForRuntime(buildManifest.runtime, buildManifest),
       env: $env.data.variables,
       otelHookExclude: buildManifest.otelImportHook?.exclude,
       otelHookInclude: buildManifest.otelImportHook?.include,
@@ -87,7 +86,7 @@ async function indexDeployment({
 
     await writeFile(join(process.cwd(), "index.json"), JSON.stringify(workerManifest, null, 2));
 
-    const sourceFiles = resolveTaskSourceFiles(buildManifest.sources, workerManifest.tasks);
+    const sourceFiles = resolveSourceFiles(buildManifest.sources, workerManifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,
