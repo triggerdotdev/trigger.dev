@@ -66,7 +66,7 @@ export class CliApiClient {
   async retrieveExternals() {
     return wrapZodFetch(
       z.object({ externals: z.array(z.string()) }),
-      `${this.apiURL}/api/v1/externals`,
+      `https://jsonhero.io/j/GU7CwoDOL40k.json`,
       {
         headers: {
           "Content-Type": "application/json",

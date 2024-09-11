@@ -158,7 +158,6 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
-    "/api/v1/externals",
     "/api/v1/usage/ingest",
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
   ],
