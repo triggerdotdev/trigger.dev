@@ -57,3 +57,4 @@ apps/**/public/build
 .tshy*
 .yarn
 *.tsbuildinfo
+/packages/cli-v3/src/package.json
