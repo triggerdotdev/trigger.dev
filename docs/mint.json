@@ -219,7 +219,7 @@
       "pages": ["guides/use-cases/upgrading-from-v2"]
     },
     {
-      "group": "AI and LLMs",
+      "group": "Examples",
       "pages": ["examples/generate-image-with-dall-e3"]
     }
   ],
