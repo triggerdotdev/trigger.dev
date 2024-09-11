@@ -1,11 +1,9 @@
 import { tasks, runs, TaskOutput, TaskPayload, TaskIdentifier } from "@trigger.dev/sdk/v3";
-import { createJsonHeroDoc } from "./trigger/simple";
-import { TaskOutputHandle } from "@trigger.dev/sdk/v3/shared";
+import { createJsonHeroDoc } from "./trigger/simple.js";
 
 type createJsonHeroDocPayload = TaskPayload<typeof createJsonHeroDoc>; // retrieves the payload type of the task
 type createJsonHeroDocOutput = TaskOutput<typeof createJsonHeroDoc>; // retrieves the output type of the task
 type createJsonHeroDocIdentifier = TaskIdentifier<typeof createJsonHeroDoc>; // retrieves the identifier of the task
-type createJsonHeroDocHandle = TaskOutputHandle<typeof createJsonHeroDoc>; // retrieves the handle of the task
 
 async function main() {
   const anyHandle = await tasks.trigger(
