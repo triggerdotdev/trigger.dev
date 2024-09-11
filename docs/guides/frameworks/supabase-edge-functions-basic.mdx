@@ -25,7 +25,6 @@ This guide shows you how to set up and deploy a simple Supabase edge function ex
 ## Prerequisites
 
 - Ensure you have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
-- [Create a Supabase project](https://supabase.com/docs/guides/functions/quickstart#initialize-a-project) on your local machine
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
 - [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
@@ -157,6 +156,10 @@ yarn dlx trigger.dev@beta deploy
 <Step title="Trigger a prod run from your deployed edge function">
 
 To do this all you need to do is simply open the `edge-function-trigger` URL.
+
+`https://supabase.com/dashboard/project/<your-project-id>/functions`
+
+<Note>Replace `your-project-id` with your actual project ID.</Note>
 
 In your Supabase project, go to your Edge function dashboard, find `edge-function-trigger`, copy the URL, and paste it into a new window in your browser.
 
