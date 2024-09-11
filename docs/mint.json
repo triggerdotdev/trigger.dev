@@ -186,9 +186,19 @@
       "group": "CLI",
       "pages": [
         "cli-introduction",
-        "cli-development-commands",
-        "cli-deployment-commands",
-        "cli-self-hosting-commands"
+        {
+          "group": "Commands",
+          "pages": [
+            "cli-login-commands",
+            "cli-init-commands",
+            "cli-dev-commands",
+            "cli-deploy-commands",
+            "cli-whoami-commands",
+            "cli-logout-commands",
+            "cli-list-profiles-commands",
+            "cli-update-commands"
+          ]
+        }
       ]
     },
     {

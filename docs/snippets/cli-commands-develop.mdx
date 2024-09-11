@@ -1,31 +1,102 @@
-<ParamField body="Login" type="login">
-  Login with Trigger.dev so you can perform authenticated actions.
+This runs a server on your machine that can execute Trigger.dev tasks:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta dev
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta dev
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta dev
+```
+
+</CodeGroup>
+
+It will first perform an update check to prevent version mismatches, failed deploys, and other errors. You will always be prompted first.
+
+You will see in the terminal that the server is running and listening for requests. When you run a task, you will see it in the terminal along with a link to view it in the dashboard.
+
+It is worth noting that each task runs in a separate Node process. This means that if you have a long-running task, it will not block other tasks from running.
+
+## Options
+
+<ParamField body="Config file" type="--config | -c">
+  The name of the config file, found at [path].
 </ParamField>
 
-<ParamField body="Init" type="init">
-  Initialize your existing project for development with Trigger.dev.
+<ParamField body="Project ref" type="--project-ref | -p">
+  The project ref. Required if there is no config file.
 </ParamField>
 
-<ParamField body="Dev" type="dev">
-  Run your Trigger.dev tasks locally.
+<ParamField body="Debugger" type="--debugger">
+  You can use this flag to run the server in debug mode. This will allow you to attach a debugger to the server and debug your tasks.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta dev --debugger
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta dev --debugger
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta dev --debugger
+```
+
+</CodeGroup>
 </ParamField>
 
-<ParamField body="Deploy" type="deploy">
-  Deploy your Trigger.dev v3 project to the cloud.
+<ParamField body="Debug OpenTelemetry" type="--debug-otel">
+  Enable OpenTelemetry debugging.
 </ParamField>
 
-<ParamField body="Whoami" type="whoami">
-  Display the current logged in user and project details.
+<ParamField body="Skip update check" type="--skip-update-check">
+  Skip checking for `@trigger.dev` package updates.
 </ParamField>
 
-<ParamField body="Logout" type="logout">
-  Logout of Trigger.dev.
+<ParamField body="Login profile" type="--profile">
+  The login profile to use. Defaults to `default`.
 </ParamField>
 
-<ParamField body="List-profiles" type="list-profiles">
-  List all of your CLI profiles.
+<ParamField body="API URL" type="--api-url | -a">
+  Override the API URL. Defaults to `https://api.trigger.dev`.
 </ParamField>
 
-<ParamField body="Update" type="update">
-  Updates all `@trigger.dev/*` packages to match the CLI version.
+<ParamField body="Log level" type="--log-level | -l">
+  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This does not affect the log level of your trigger.dev tasks. Defaults to `log`.
 </ParamField>
+
+<ParamField body="Skip telemetry" type="--skip-telemetry">
+  Opt-out of sending telemetry data.
+</ParamField>
+
+## Standard options
+
+<ParamField body="Help" type="--help | -h">
+  Shows the help information for the command.
+</ParamField>
+
+## Concurrently running the terminal
+
+Install the concurrently package as a dev dependency:
+
+```ts
+concurrently --raw --kill-others npm:dev:remix npm:dev:trigger
+```
+
+Then add something like this in your package.json scripts. This assumes you're running Next.js so swap that bit out if you're not:
+
+```json
+"scripts": {
+  "dev": "concurrently --raw --kill-others npm:dev:*",
+  "dev:next": "next dev",
+  "dev:trigger": "npx trigger.dev@beta dev",
+  //...
+}
+```
