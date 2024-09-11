@@ -183,6 +183,25 @@
       ]
     },
     {
+      "group": "CLI",
+      "pages": [
+        "cli-introduction",
+        {
+          "group": "Commands",
+          "pages": [
+            "cli-login-commands",
+            "cli-init-commands",
+            "cli-dev-commands",
+            "cli-deploy-commands",
+            "cli-whoami-commands",
+            "cli-logout-commands",
+            "cli-list-profiles-commands",
+            "cli-update-commands"
+          ]
+        }
+      ]
+    },
+    {
       "group": "Open source",
       "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
     },
