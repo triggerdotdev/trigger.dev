@@ -13,7 +13,7 @@
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
-    "generate": "prisma generate",
+    "generate": "prisma generate --sql",
     "postinstall": "pnpm run generate"
   },
   "dependencies": {
@@ -21,7 +21,7 @@
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@infisical/sdk": "^2.1.9",
     "@opentelemetry/api": "1.4.1",
-    "@prisma/client": "5.18.0",
+    "@prisma/client": "5.19.0",
     "@react-email/components": "0.0.24",
     "@react-email/render": "1.0.1",
     "@sentry/esbuild-plugin": "^2.22.2",
@@ -70,7 +70,7 @@
     "@types/node": "20.4.2",
     "@types/react": "^18.3.1",
     "esbuild": "^0.19.11",
-    "prisma": "5.18.0",
+    "prisma": "5.19.0",
     "prisma-kysely": "^1.8.0",
     "trigger.dev": "workspace:*",
     "ts-node": "^10.9.2",

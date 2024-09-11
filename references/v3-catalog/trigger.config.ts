@@ -70,6 +70,7 @@ export default defineConfig({
         migrate: true,
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
         clientGenerator: "client",
+        typedSql: true,
       }),
       esbuildPlugin(
         sentryEsbuildPlugin({
