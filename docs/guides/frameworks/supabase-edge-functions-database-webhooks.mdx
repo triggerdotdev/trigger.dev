@@ -5,6 +5,7 @@ description: "This guide will show you how to trigger a task from a Supabase edg
 ---
 
 import Prerequisites from "/snippets/framework-prerequisites.mdx";
+import SupabasePrerequisites from "/snippets/supabase-prerequisites.mdx";
 import CliInitStep from "/snippets/step-cli-init.mdx";
 import CliDevStep from "/snippets/step-cli-dev.mdx";
 import CliRunTestStep from "/snippets/step-run-test.mdx";
@@ -19,11 +20,12 @@ import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to
 
 Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table e.g. when a row is inserted, updated, or deleted, or when a specific column is updated.
 
-This guide shows you how to set up and deploy a simple Supabase edge function that triggers a task every time a new row is inserted to your database.
+This guide shows you how to set up and deploy a simple Supabase edge function that triggers a "Hello world" task every time a new row is inserted into your database.
 
 ## Prerequisites
 
-- Setup a project in [Supabase](https://supabase.com/) and have the Supabase CLI installed
+- Ensure you have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
+- [Create a Supabase project](https://supabase.com/docs/guides/functions/quickstart#initialize-a-project) on your local machine
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
 - [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
@@ -31,64 +33,8 @@ This guide shows you how to set up and deploy a simple Supabase edge function th
 ## Initial setup
 
 <Steps>
-
-<Step title="Run the CLI `init` command">
-
-The easiest way to get started it to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
-
-<Note>
-If you are using Deno, to install Trigger.dev you must first add a `tsconfig.json` file with these settings to the root directory:
-<Accordion title="tsconfig.json file to add">
-```json tsconfig.json
-{
-  "compilerOptions": {
-    "allowJs": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "inlineSourceMap": true,
-    "isolatedModules": true,
-    "jsx": "react",
-    "lib": ["esnext"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "target": "esnext",
-    "useDefineForClassFields": true
-  },
-  "exclude": ["node_modules"]
-}
-```
-</Accordion>
-</Note>
-
-Run this command in the root of your project to get started:
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@beta init
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@beta init
-```
-
-```bash yarn
-yarn dlx trigger.dev@beta init
-```
-
-</CodeGroup>
-
-It will do a few things:
-
-1. Log you into the CLI if you're not already logged in.
-2. Create a `trigger.config.ts` file in the root of your project.
-3. Ask where you'd like to create the `/trigger` directory.
-4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
-
-Install the "Hello World" example task when prompted. We'll use this task to test the setup.
-
-</Step>
+  <SupabasePrerequisites />
+  <CliInitStep />
   <CliDevStep />
   <CliRunTestStep />
   <CliViewRunStep />
