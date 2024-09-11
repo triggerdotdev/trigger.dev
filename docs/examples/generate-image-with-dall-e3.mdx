@@ -1,7 +1,7 @@
 ---
 title: "Generate an image using DALL·E 3"
 sidebarTitle: "Generate image using DALL·E"
-description: "This example will show you how to generate an image using DALL·E 3 and Trigger.dev."
+description: "This example will show you how to generate an image using DALL·E 3 and text using GPT-4o with Trigger.dev."
 ---
 
 ## Overview
@@ -29,6 +29,7 @@ export const generateContent = task({
     maxAttempts: 3, // Retry up to 3 times
   },
   run: async ({ theme, description }: Payload) => {
+
     // Generate text
     const textResult = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -55,17 +56,11 @@ export const generateContent = task({
     };
   },
 });
-```
 
-### Other functions called from elsewhere in your codebase
-
-```ts generateTextPrompt.ts
 function generateTextPrompt(theme: string, description: string): any {
   return `Theme: ${theme}\n\nDescription: ${description}`;
 }
-```
 
-```ts generateImagePrompt.ts
 function generateImagePrompt(theme: string, description: string): any {
   return `Theme: ${theme}\n\nDescription: ${description}`;
 }
