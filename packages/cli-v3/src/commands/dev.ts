@@ -3,7 +3,7 @@ import { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { watchConfig } from "../config.js";
-import { startDevSession } from "../dev/devSession.js";
+import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
@@ -106,13 +106,20 @@ async function startDev(options: StartDevOptions) {
       displayedUpdateMessage = await updateTriggerPackages(options.cwd, { ...options }, true, true);
     }
 
+    let devInstance: DevSessionInstance | undefined;
+
     printDevBanner(displayedUpdateMessage);
 
     watcher = await watchConfig({
       cwd: options.cwd,
       async onUpdate(config) {
         logger.debug("Updated config, rerendering", { config });
-        // rerender(await getDevReactElement(config));
+
+        if (devInstance) {
+          devInstance.stop();
+        }
+
+        devInstance = await bootDevSession(config);
       },
       overrides: {
         project: options.projectRef,
@@ -147,14 +154,14 @@ async function startDev(options: StartDevOptions) {
       });
     }
 
-    const devSession = await bootDevSession(watcher.config);
+    devInstance = await bootDevSession(watcher.config);
 
     const waitUntilExit = async () => {};
 
     return {
       watcher,
       stop: async () => {
-        devSession.stop();
+        devInstance?.stop();
         await watcher?.stop();
       },
       waitUntilExit,

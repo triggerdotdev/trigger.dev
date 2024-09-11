@@ -153,7 +153,7 @@ class ProdWorker {
     if (this._taskRunProcess) {
       this._taskRunProcess.onTaskRunHeartbeat.detach();
       this._taskRunProcess.onWaitForDuration.detach();
-      await this._taskRunProcess.cleanup(true);
+      await this._taskRunProcess.kill();
     }
 
     if (!gracefulExitTimeoutElapsed) {
@@ -362,16 +362,8 @@ class ProdWorker {
   }
 
   // MARK: RETRY PREP
-  async #prepareForRetry(shouldExit: boolean, exitCode?: number) {
-    logger.log("prepare for retry", { shouldExit, exitCode });
-
-    // Graceful shutdown on final attempt
-    if (shouldExit) {
-      await this.#exitGracefully(false, exitCode);
-      return;
-    }
-
-    // Clear state for next execution
+  async #prepareForRetry() {
+    // Clear state for retrying
     this.paused = false;
     this.waitForPostStart = false;
     this.executing = false;
@@ -534,7 +526,13 @@ class ProdWorker {
         ? EXIT_CODE_CHILD_NONZERO
         : 0;
 
-    await this.#prepareForRetry(shouldExit, exitCode);
+    if (shouldExit) {
+      // Exit after completion, without any retrying
+      await this.#exitGracefully(false, exitCode);
+    } else {
+      // We aren't exiting, so we need to prepare for the next attempt
+      await this.#prepareForRetry();
+    }
 
     if (willCheckpointAndRestore) {
       logger.error("This worker should never be checkpointed between attempts. This is a bug.");
@@ -772,7 +770,13 @@ class ProdWorker {
 
             this.completed.add(execution.attempt.id);
 
-            await this._taskRunProcess.startFlushingProcess();
+            try {
+              await this._taskRunProcess.cleanup(true);
+            } catch (error) {
+              logger.error("Failed to cleanup task run process, submitting completion anyway", {
+                error,
+              });
+            }
 
             await this.#submitAttemptCompletion(execution, completion);
           } catch (error) {
@@ -1140,7 +1144,7 @@ class ProdWorker {
 
     const currentTaskRunProcess = this._taskRunProcess;
 
-    await currentTaskRunProcess.cleanup();
+    await currentTaskRunProcess.kill();
   }
 
   // MARK: HTTP SERVER

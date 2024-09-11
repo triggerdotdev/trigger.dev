@@ -41,6 +41,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   skipPackageInstall: z.boolean().default(false),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
+  javascript: z.boolean().default(false),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -55,6 +56,7 @@ export function configureInitCommand(program: Command) {
         "-p, --project-ref <project ref>",
         "The project ref to use when initializing the project"
       )
+      .option("--javascript", "Initialize the project with JavaScript instead of TypeScript", false)
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
@@ -161,7 +163,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     log.info("Skipping package installation");
   }
 
-  const language = tsconfigPath ? "typescript" : "javascript";
+  const language = options.javascript ? "javascript" : "typescript";
 
   // Create the trigger dir
   const triggerDir = await createTriggerDir(dir, options, language);
@@ -170,7 +172,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   await writeConfigFile(dir, selectedProject, options, triggerDir, language);
 
   // Add trigger.config.ts to tsconfig.json
-  if (tsconfigPath) {
+  if (tsconfigPath && language === "typescript") {
     await addConfigFileToTsConfig(tsconfigPath, options);
   }
 
@@ -428,7 +430,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 
       installSpinner.start(`Adding @trigger.dev/sdk@${options.tag}`);
 
-      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir });
+      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir, silent: true });
 
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
 

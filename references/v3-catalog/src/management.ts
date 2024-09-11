@@ -1,11 +1,9 @@
-import { configure, envvars, runs, schedules, ApiError } from "@trigger.dev/sdk/v3";
+import { configure, envvars, runs, schedules } from "@trigger.dev/sdk/v3";
 import dotenv from "dotenv";
-import { createReadStream } from "node:fs";
-import { firstScheduledTask } from "./trigger/scheduled";
-import { simpleChildTask } from "./trigger/subtasks";
-import { taskThatErrors } from "./trigger/retries";
-import { unfriendlyIdTask } from "./trigger/other";
-import { spamRateLimiter } from "./trigger/retries";
+import { unfriendlyIdTask } from "./trigger/other.js";
+import { spamRateLimiter, taskThatErrors } from "./trigger/retries.js";
+import { firstScheduledTask } from "./trigger/scheduled.js";
+import { simpleChildTask } from "./trigger/subtasks.js";
 
 dotenv.config();
 

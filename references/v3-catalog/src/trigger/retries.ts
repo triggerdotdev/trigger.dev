@@ -1,6 +1,5 @@
 import { logger, retry, runs, task, wait } from "@trigger.dev/sdk/v3";
 import { cache } from "./utils/cache.js";
-import { interceptor } from "./utils/interceptor.js";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -65,9 +64,6 @@ function initializeConnection() {
 
 export const taskWithFetchRetries = task({
   id: "task-with-fetch-retries",
-  middleware: (payload: any, { next }) => {
-    return interceptor.run(next);
-  },
   run: async (payload: any, { ctx }) => {
     logger.info("Fetching data", { foo: [1, 2, 3], bar: [{ hello: "world" }] });
 

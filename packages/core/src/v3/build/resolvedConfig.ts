@@ -25,5 +25,6 @@ export type ResolvedConfig = Prettify<
     lockfilePath: string;
     configFile?: string;
     resolveEnvVars?: ResolveEnvironmentVariablesFunction;
+    instrumentedPackageNames?: string[];
   }
 >;
