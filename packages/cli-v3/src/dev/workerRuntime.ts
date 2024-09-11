@@ -18,7 +18,6 @@ import { ClientRequestArgs } from "node:http";
 import { WebSocket } from "partysocket";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { CliApiClient } from "../apiClient.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 import { DevCommandOptions } from "../commands/dev.js";
 import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
@@ -230,7 +229,9 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const processEnv = gatherProcessEnv();
     const dotEnvVars = resolveDotEnvVars(undefined, this.options.args.envFile);
-    const OTEL_IMPORT_HOOK_INCLUDES = getInstrumentedPackageNames(this.options.config).join(",");
+    const OTEL_IMPORT_HOOK_INCLUDES = (this.options.config.instrumentedPackageNames ?? []).join(
+      ","
+    );
 
     return {
       ...sanitizeEnvVars(processEnv),

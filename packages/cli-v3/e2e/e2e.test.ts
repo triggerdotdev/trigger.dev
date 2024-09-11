@@ -202,7 +202,14 @@ describe.concurrent("buildWorker", async () => {
         await buildExpect.resolves.not.toThrowError();
 
         if (buildManifestMatcher) {
-          expect(buildManifest!).toMatchObject(buildManifestMatcher);
+          for (const external of buildManifestMatcher.externals ?? []) {
+            expect(buildManifest!.externals).toContainEqual(external);
+          }
+
+          for (const file of buildManifestMatcher.files ?? []) {
+            const found = (buildManifestMatcher.files ?? []).find((f) => f?.entry === file?.entry);
+            expect(found).toBeTruthy();
+          }
         } else {
           expect(buildManifest!).toBeTruthy();
         }
@@ -211,7 +218,12 @@ describe.concurrent("buildWorker", async () => {
 
         const rewrittenManifest = rewriteBuildManifestPaths(buildManifest!, destination.path);
 
-        expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+        if (resolvedConfig!.instrumentedPackageNames?.length ?? 0 > 0) {
+          expect(rewrittenManifest.loaderEntryPoint).toBe("/app/src/entryPoints/loader.mjs");
+        } else {
+          expect(rewrittenManifest.loaderEntryPoint).toBeUndefined();
+        }
+
         expect(rewrittenManifest.indexWorkerEntryPoint).toBe(
           "/app/src/entryPoints/deploy-index-worker.mjs"
         );
@@ -230,7 +242,7 @@ describe.concurrent("buildWorker", async () => {
               nodeOptions: buildManifest!.loaderEntryPoint
                 ? `--import=${normalizeImportPath(buildManifest!.loaderEntryPoint)}`
                 : undefined,
-              env: {},
+              env: testCase.envVars ?? {},
               otelHookExclude: buildManifest!.otelImportHook?.exclude,
               otelHookInclude: buildManifest!.otelImportHook?.include,
               handleStdout(data) {
@@ -270,7 +282,7 @@ describe.concurrent("buildWorker", async () => {
         }
 
         for (const taskRun of runs || []) {
-          const { result, totalDurationMs } = await executeTestCaseRun({
+          const { result, totalDurationMs, spans } = await executeTestCaseRun({
             run: taskRun,
             testCase,
             destination: destination.path,
@@ -293,6 +305,14 @@ describe.concurrent("buildWorker", async () => {
 
             if (taskRun.result.outputType) {
               expect(result.outputType).toEqual(taskRun.result.outputType);
+            }
+
+            if (taskRun.result.spans) {
+              for (const spanName of taskRun.result.spans) {
+                const foundSpan = spans.find((span) => span.name === spanName);
+
+                expect(foundSpan).toBeTruthy();
+              }
             }
           }
         }

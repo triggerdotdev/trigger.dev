@@ -27,7 +27,6 @@ import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { VERSION } from "../version.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -207,7 +206,7 @@ async function createBuildManifestFromBundle(
     outputPath: destination,
     runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? devRunWorker,
     indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
-    loaderEntryPoint: bundle.loaderEntryPoint ?? telemetryEntryPoint,
+    loaderEntryPoint: bundle.loaderEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
@@ -215,7 +214,7 @@ async function createBuildManifestFromBundle(
     },
     build: {},
     otelImportHook: {
-      include: getInstrumentedPackageNames(resolvedConfig),
+      include: resolvedConfig.instrumentedPackageNames ?? [],
     },
   };
 

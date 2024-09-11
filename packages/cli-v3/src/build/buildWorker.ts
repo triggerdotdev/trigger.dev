@@ -11,7 +11,6 @@ import {
   resolvePluginsForContext,
 } from "./extensions.js";
 import { createExternalsBuildExtension } from "./externals.js";
-import { getInstrumentedPackageNames } from "./instrumentation.js";
 import {
   deployIndexController,
   deployIndexWorker,
@@ -96,7 +95,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
     indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
     indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
-    loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
+    loaderEntryPoint: bundleResult.loaderEntryPoint,
     configPath: bundleResult.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
     deploy: {
@@ -104,7 +103,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     },
     build: {},
     otelImportHook: {
-      include: getInstrumentedPackageNames(resolvedConfig),
+      include: resolvedConfig.instrumentedPackageNames ?? [],
     },
   };
 

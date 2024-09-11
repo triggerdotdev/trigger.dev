@@ -19,6 +19,7 @@ export interface TestCaseRun {
     durationMs?: number;
     output?: string;
     outputType?: string;
+    spans?: string[];
   };
 }
 
@@ -37,6 +38,7 @@ export interface TestCase {
   workerManifestMatcher?: DeepPartial<WorkerManifest>;
   runs?: TestCaseRun[];
   tsconfig?: string;
+  envVars?: { [key: string]: string };
 }
 
 export const fixturesConfig: TestCase[] = [
@@ -69,6 +71,43 @@ export const fixturesConfig: TestCase[] = [
       },
     ],
     tsconfig: "tsconfig.json",
+  },
+  {
+    id: "otel-telemetry-loader",
+    buildManifestMatcher: {
+      runtime: "node",
+      externals: [
+        {
+          name: "openai",
+          version: "4.47.0",
+        },
+        {
+          name: "import-in-the-middle",
+          version: "1.11.0",
+        },
+      ],
+      files: [{ entry: "src/trigger/ai.ts" }],
+    },
+    workerManifestMatcher: {
+      tasks: [
+        {
+          id: "ai",
+          filePath: "src/trigger/ai.ts",
+          exportName: "aiTask",
+        },
+      ],
+    },
+    runs: [
+      {
+        task: { id: "ai", filePath: "src/trigger/ai.ts", exportName: "aiTask" },
+        payload: '{"prompt":"be funny"}',
+        result: { ok: true, durationMs: 1 },
+      },
+    ],
+    tsconfig: "tsconfig.json",
+    envVars: {
+      OPENAI_API_KEY: "my-api-key",
+    },
   },
   {
     id: "emit-decorator-metadata",

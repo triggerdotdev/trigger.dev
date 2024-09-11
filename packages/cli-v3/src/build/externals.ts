@@ -4,7 +4,6 @@ import { mkdir, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readPackageJSON, resolvePackageJSON } from "pkg-types";
 import nodeResolve from "resolve";
-import { getInstrumentedPackageNames } from "./instrumentation.js";
 import { BuildTarget } from "@trigger.dev/core/v3/schemas";
 import {
   alwaysExternal,
@@ -273,7 +272,7 @@ function discoverMaybeExternals(
     }
   }
 
-  for (const externalName of getInstrumentedPackageNames(config)) {
+  for (const externalName of config.instrumentedPackageNames ?? []) {
     const externalRegex = makeExternalRegexp(externalName);
 
     if (!externalRegex) {

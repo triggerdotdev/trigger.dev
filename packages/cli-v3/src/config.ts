@@ -14,6 +14,8 @@ import {
   syncEnvVars,
 } from "@trigger.dev/build/extensions/core";
 import { prettyWarning } from "./utilities/cliOutput.js";
+import type { InstrumentationModuleDefinition } from "@opentelemetry/instrumentation";
+import { builtinModules } from "node:module";
 
 export type ResolveConfigOptions = {
   cwd?: string;
@@ -182,6 +184,7 @@ async function resolveConfig(
   return {
     ...mergedConfig,
     dirs: Array.from(new Set(mergedConfig.dirs)),
+    instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
   };
 }
 
@@ -297,4 +300,28 @@ function adaptResolveEnvVarsToSyncEnvVarsExtension(
     },
     { override: true }
   );
+}
+
+function getInstrumentedPackageNames(config: ResolvedConfig): Array<string> {
+  const packageNames = [];
+
+  if (config.instrumentations) {
+    for (const instrumentation of config.instrumentations) {
+      const moduleDefinitions = (
+        instrumentation as any
+      ).getModuleDefinitions?.() as Array<InstrumentationModuleDefinition>;
+
+      if (!Array.isArray(moduleDefinitions)) {
+        continue;
+      }
+
+      for (const moduleDefinition of moduleDefinitions) {
+        if (!builtinModules.includes(moduleDefinition.name)) {
+          packageNames.push(moduleDefinition.name);
+        }
+      }
+    }
+  }
+
+  return packageNames;
 }
