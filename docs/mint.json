@@ -256,7 +256,7 @@
         "examples/generate-image-with-dall-e3",
         "examples/ffmpeg-compress-video",
         "examples/ffmpeg-extract-audio",
-        "examples/ffmpeg-generate-thumbnail.mdx"
+        "examples/ffmpeg-generate-thumbnail"
       ]
     }
   ],
