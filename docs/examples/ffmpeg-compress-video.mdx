@@ -1,0 +1,113 @@
+---
+title: "Compress a video using FFmpeg"
+sidebarTitle: "Compress a video with FFmpeg"
+description: "This example shows you how to compress a video using FFmpeg with Trigger.dev."
+---
+
+## Overview
+
+This task uses FFmpeg to compress a video, reducing its file size while attempting to maintain reasonable quality.
+
+## Key Features:
+
+- Fetches a video from a given URL
+- Uses the H.264 codec for video compression
+- Sets the Constant Rate Factor (CRF) to 28 for a good balance between quality and file size
+- Uses the "veryslow" preset for the best compression
+- Scales the video resolution to 50% of the original width and height
+- Uses AAC codec for audio with a bitrate of 64kbps and converts to mono
+- Handles temporary file management by creating and cleaning up input and output files
+- Returns the compressed video buffer, the file path of the compressed video, the original file size, the compressed file size, and the compression ratio
+
+## Task code
+
+```ts trigger/ffmpeg-compress-video.ts
+import fetch from "node-fetch";
+import fs from "fs/promises";
+import path from "path";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+
+export const ffmpegCompressVideo = task({
+  id: "ffmpeg-compress-video",
+  run: async (payload: { videoUrl: string }, { ctx }) => {
+    if (ctx.environment.type !== "DEVELOPMENT") {
+      ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
+      ffmpeg.setFfprobePath("/usr/bin/ffprobe");
+    }
+    const { videoUrl } = payload;
+
+    // Generate temporary file names
+    const tempInputPath = path.join("/tmp", `input_${Date.now()}.mp4`);
+    const outputPath = path.join("/tmp", `output_${Date.now()}.mp4`);
+
+    try {
+      // Fetch the video
+      const response = await fetch(videoUrl);
+      const buffer = await response.buffer();
+      await fs.writeFile(tempInputPath, buffer);
+
+      // Compress the video
+      await new Promise((resolve, reject) => {
+        ffmpeg(tempInputPath)
+          .outputOptions([
+            "-c:v libx264", // Use H.264 codec
+            "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
+            "-preset veryslow", // Slowest preset for best compression
+            "-vf scale=iw/2:ih/2", // Reduce resolution to 320p width (height auto-calculated)
+            "-c:a aac", // Use AAC for audio
+            "-b:a 64k", // Reduce audio bitrate to 64k
+            "-ac 1", // Convert to mono audio
+          ])
+          .output(outputPath)
+          .on("end", resolve)
+          .on("error", reject)
+          .run();
+      });
+
+      // Read the compressed video
+      const compressedVideo = await fs.readFile(outputPath);
+
+      // Get file sizes for comparison
+      const originalSize = buffer.length;
+      const compressedSize = compressedVideo.length;
+
+      // Clean up temporary files
+      await fs.unlink(tempInputPath);
+
+      // Log compression results
+      logger.log(`Original video size: ${originalSize} bytes`);
+      logger.log(`Compressed video size: ${compressedSize} bytes`);
+      logger.log(`Compression ratio: ${((1 - compressedSize / originalSize) * 100).toFixed(2)}%`);
+      logger.log(`Compressed video saved at: ${outputPath}`);
+
+      // Return the compressed video buffer, file path, and compression stats
+      return {
+        compressedVideoBuffer: compressedVideo,
+        compressedVideoPath: outputPath,
+        originalSize,
+        compressedSize,
+        compressionRatio: ((1 - compressedSize / originalSize) * 100).toFixed(2),
+      };
+    } catch (error) {
+      logger.error("Error compressing video:", { error });
+      // Clean up files in case of error
+      try {
+        await fs.unlink(tempInputPath);
+        await fs.unlink(outputPath);
+      } catch (cleanupError) {
+        logger.error("Error during cleanup:", { cleanupError });
+      }
+      throw error;
+    }
+  },
+});
+```
+
+## Example payload
+
+You can test this task by providing a video URL in the payload. For example:
+
+```json
+  "videoUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"
+```

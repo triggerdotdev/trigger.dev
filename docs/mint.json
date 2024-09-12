@@ -252,7 +252,7 @@
     },
     {
       "group": "Examples",
-      "pages": ["examples/generate-image-with-dall-e3"]
+      "pages": ["examples/generate-image-with-dall-e3", "examples/ffmpeg-compress-video"]
     }
   ],
   "footerSocials": {
