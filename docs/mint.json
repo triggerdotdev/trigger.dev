@@ -252,7 +252,12 @@
     },
     {
       "group": "Examples",
-      "pages": ["examples/generate-image-with-dall-e3", "examples/react-pdf"]
+      "pages": [
+        "examples/generate-image-with-dall-e3",
+        "examples/react-pdf",
+        "examples/open-ai-with-retrying",
+        "examples/resend-email-sequence"
+      ]
     }
   ],
   "footerSocials": {
