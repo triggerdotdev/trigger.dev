@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
-import { simpleChildTask } from "./trigger/subtasks";
-import { wait } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
+import { simpleChildTask } from "./trigger/subtasks.js";
 
 dotenv.config();
 

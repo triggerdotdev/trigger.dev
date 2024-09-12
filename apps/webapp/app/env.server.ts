@@ -115,6 +115,7 @@ const EnvironmentSchema = z.object({
   DEPOT_TOKEN: z.string().optional(),
   DEPOT_PROJECT_ID: z.string().optional(),
   DEPOT_ORG_ID: z.string().optional(),
+  DEPOT_REGION: z.string().default("us-east-1"),
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),

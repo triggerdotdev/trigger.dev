@@ -177,15 +177,22 @@ export class DeliverAlertService extends BaseService {
     switch (alert.type) {
       case "TASK_RUN_ATTEMPT": {
         if (alert.taskRunAttempt) {
-          const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
+          const parseError = TaskRunError.safeParse(alert.taskRunAttempt.error);
 
-          if (!taskRunError.success) {
-            logger.error("[DeliverAlert] Failed to parse task run error", {
-              issues: taskRunError.error.issues,
+          let taskRunError: TaskRunError;
+
+          if (!parseError.success) {
+            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
+              issues: parseError.error.issues,
               taskAttemptError: alert.taskRunAttempt.error,
             });
 
-            return;
+            taskRunError = {
+              type: "STRING_ERROR" as const,
+              raw: "No error on task",
+            };
+          } else {
+            taskRunError = parseError.data;
           }
 
           await sendAlertEmail({
@@ -196,7 +203,7 @@ export class DeliverAlertService extends BaseService {
             exportName: alert.taskRunAttempt.backgroundWorkerTask.exportName,
             version: alert.taskRunAttempt.backgroundWorker.version,
             environment: alert.environment.slug,
-            error: createJsonErrorObject(taskRunError.data),
+            error: createJsonErrorObject(taskRunError),
             attemptLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
           });
         } else {
@@ -219,6 +226,7 @@ export class DeliverAlertService extends BaseService {
             fileName: alert.taskRun.lockedBy?.filePath ?? "Unknown",
             exportName: alert.taskRun.lockedBy?.exportName ?? "Unknown",
             version: alert.taskRun.lockedToVersion?.version ?? "Unknown",
+            project: alert.project.name,
             environment: alert.environment.slug,
             error: createJsonErrorObject(taskRunError),
             runLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
@@ -307,7 +315,7 @@ export class DeliverAlertService extends BaseService {
           const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
 
           if (!taskRunError.success) {
-            logger.error("[DeliverAlert] Failed to parse task run error", {
+            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
               issues: taskRunError.error.issues,
               taskAttemptError: alert.taskRunAttempt.error,
             });
@@ -573,7 +581,7 @@ export class DeliverAlertService extends BaseService {
           const taskRunError = TaskRunError.safeParse(alert.taskRunAttempt.error);
 
           if (!taskRunError.success) {
-            logger.error("[DeliverAlert] Failed to parse task run error", {
+            logger.error("[DeliverAlert] Attempt: Failed to parse task run error", {
               issues: taskRunError.error.issues,
               taskAttemptError: alert.taskRunAttempt.error,
             });
@@ -1019,7 +1027,7 @@ export class DeliverAlertService extends BaseService {
       const res = TaskRunError.safeParse(alert.failedAttempt.error);
 
       if (!res.success) {
-        logger.error("[DeliverAlert] Failed to parse task run error", {
+        logger.error("[DeliverAlert] Failed to parse task run error, sending with unknown error", {
           issues: res.error.issues,
           taskAttemptError: alert.failedAttempt.error,
         });

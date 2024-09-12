@@ -9,7 +9,13 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    return await reportComputeUsage(request);
+    const result = await reportComputeUsage(request);
+
+    if (result === undefined) {
+      return new Response(null, { status: 500 });
+    }
+
+    return result;
   } catch (e) {
     logger.error("Error reporting compute usage", { error: e });
     return new Response(null, { status: 500 });

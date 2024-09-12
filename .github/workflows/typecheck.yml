@@ -29,4 +29,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🔎 Type check
-        run: pnpm run typecheck --filter webapp
+        run: pnpm run typecheck
+      
+      - name: 🔎 Check exports
+        run: pnpm run check-exports

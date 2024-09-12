@@ -1,6 +1,6 @@
 import { InfisicalClient } from "@infisical/sdk";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
-import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
@@ -61,6 +61,7 @@ export default defineConfig({
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
   },
   build: {
+    conditions: ["react-server"],
     extensions: [
       emitDecoratorMetadata(),
       audioWaveform(),
@@ -69,6 +70,7 @@ export default defineConfig({
         migrate: true,
         directUrlEnvVarName: "DATABASE_URL_UNPOOLED",
         clientGenerator: "client",
+        typedSql: true,
       }),
       esbuildPlugin(
         sentryEsbuildPlugin({

@@ -1,0 +1,40 @@
+---
+title: "CLI list profiles command"
+sidebarTitle: "List profiles"
+description: "Use these options when using the `list-profiles` CLI command."
+---
+
+Run the command like this:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta list-profiles
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta list-profiles
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta list-profiles
+```
+
+</CodeGroup>
+
+## Options
+
+<ParamField body="Log level" type="--log-level | -l">
+  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This does not affect the log level of your trigger.dev tasks. Defaults to `log`.
+</ParamField>
+
+<ParamField body="Skip telemetry" type="--skip-telemetry">
+  Opt-out of sending telemetry data.
+</ParamField>
+
+
+## Standard options
+
+<ParamField body="Help" type="--help | -h">
+  Shows the help information for the command.
+</ParamField>

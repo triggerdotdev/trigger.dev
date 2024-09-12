@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "3.0.0-beta.55",
+  "version": "3.0.0-beta.56",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -29,23 +29,30 @@
       "@triggerdotdev/source"
     ]
   },
+  "typesVersions": {
+    "*": {
+      "v3": [
+        "dist/commonjs/v3/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
-    "update-version": "tsx ../../scripts/updateVersion.ts"
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
   },
   "dependencies": {
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/api-logs": "0.52.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
-    "@trigger.dev/core": "workspace:3.0.0-beta.55",
+    "@trigger.dev/core": "workspace:3.0.0-beta.56",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
     "evt": "^2.4.13",
-    "msw": "^2.3.5",
     "slug": "^6.0.0",
     "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
@@ -54,18 +61,18 @@
     "zod": "3.22.3"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.15.4",
     "@types/debug": "^4.1.7",
     "@types/node": "20.14.14",
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
     "encoding": "^0.1.13",
-    "msw": "^2.2.1",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
+    "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4",
-    "tsx": "4.17.0"
+    "typescript": "^5.5.4"
   },
   "engines": {
     "node": ">=18.20.0"

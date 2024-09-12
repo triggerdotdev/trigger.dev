@@ -105,18 +105,18 @@ export class UsagePresenter extends BasePresenter {
     //usage by task
     const tasks = this._replica.$queryRaw<TaskUsageItem[]>`
     SELECT
-      tr."taskIdentifier",
-      COUNT(*) AS "runCount",
-      AVG(tr."usageDurationMs") AS "averageDuration",
-      SUM(tr."usageDurationMs") AS "totalDuration",
-      AVG(tr."costInCents") / 100.0 AS "averageCost",
-      SUM(tr."costInCents") / 100.0 AS "totalCost",
-      SUM(tr."baseCostInCents") / 100.0 AS "totalBaseCost"
+    tr."taskIdentifier",
+    COUNT(*) AS "runCount",
+    AVG(tr."usageDurationMs") AS "averageDuration",
+    SUM(tr."usageDurationMs") AS "totalDuration",
+    AVG(tr."costInCents") / 100.0 AS "averageCost",
+    SUM(tr."costInCents") / 100.0 AS "totalCost",
+    SUM(tr."baseCostInCents") / 100.0 AS "totalBaseCost"
   FROM
       ${sqlDatabaseSchema}."TaskRun" tr
       JOIN ${sqlDatabaseSchema}."Project" pr ON pr.id = tr."projectId"
       JOIN ${sqlDatabaseSchema}."Organization" org ON org.id = pr."organizationId"
-      JOIN ${sqlDatabaseSchema}."RuntimeEnvironment" env ON env."projectId" = pr.id
+      JOIN ${sqlDatabaseSchema}."RuntimeEnvironment" env ON env."id" = tr."runtimeEnvironmentId"
   WHERE
       env.type <> 'DEVELOPMENT'
       AND tr."createdAt" > ${startOfMonth}
@@ -132,7 +132,7 @@ export class UsagePresenter extends BasePresenter {
           averageDuration: Number(item.averageDuration),
           averageCost: Number(item.averageCost) + env.CENTS_PER_RUN / 100,
           totalDuration: Number(item.totalDuration),
-          totalCost: Number(item.totalCost + item.totalBaseCost),
+          totalCost: Number(item.totalCost) + Number(item.totalBaseCost),
         }))
         .sort((a, b) => b.totalCost - a.totalCost);
     });

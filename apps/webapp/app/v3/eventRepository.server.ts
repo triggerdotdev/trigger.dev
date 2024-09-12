@@ -217,11 +217,7 @@ export class EventRepository {
   }
 
   async insertImmediate(event: CreatableEvent) {
-    await this.db.taskEvent.create({
-      data: event as Prisma.TaskEventCreateInput,
-    });
-
-    this.#publishToRedis([event]);
+    await this.#flushBatch([event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
@@ -236,6 +232,7 @@ export class EventRepository {
     const events = await this.queryIncompleteEvents({ spanId });
 
     if (events.length === 0) {
+      logger.warn("No incomplete events found for spanId", { spanId, options });
       return;
     }
 

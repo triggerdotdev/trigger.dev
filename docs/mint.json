@@ -43,7 +43,7 @@
   },
   "topbarLinks": [
     {
-      "name": "v2 docs",
+      "name": "Switch to v2 docs",
       "url": "https://v2docs.trigger.dev/documentation/introduction"
     },
     {
@@ -79,6 +79,11 @@
       "name": "Guides",
       "icon": "book",
       "url": "guides"
+    },
+    {
+      "name": "Examples",
+      "icon": "code",
+      "url": "examples"
     }
   ],
   "navigation": [
@@ -183,6 +188,25 @@
       ]
     },
     {
+      "group": "CLI",
+      "pages": [
+        "cli-introduction",
+        {
+          "group": "Commands",
+          "pages": [
+            "cli-login-commands",
+            "cli-init-commands",
+            "cli-dev-commands",
+            "cli-deploy-commands",
+            "cli-whoami-commands",
+            "cli-logout-commands",
+            "cli-list-profiles-commands",
+            "cli-update-commands"
+          ]
+        }
+      ]
+    },
+    {
       "group": "Open source",
       "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
     },
@@ -203,15 +227,32 @@
     },
     {
       "group": "Frameworks",
-      "pages": ["guides/frameworks/nodejs", "guides/frameworks/nextjs", "guides/frameworks/remix"]
+      "pages": [
+        "guides/frameworks/nodejs",
+        "guides/frameworks/nextjs",
+        "guides/frameworks/remix",
+        {
+          "group": "Supabase",
+          "icon": "bolt",
+          "iconType": "solid",
+          "pages": [
+            "guides/frameworks/supabase-edge-functions-basic",
+            "guides/frameworks/supabase-edge-functions-database-webhooks"
+          ]
+        }
+      ]
     },
     {
       "group": "Dashboard",
       "pages": ["guides/dashboard/creating-a-project"]
     },
     {
-      "group": "Use cases",
+      "group": "Migrations",
       "pages": ["guides/use-cases/upgrading-from-v2"]
+    },
+    {
+      "group": "Examples",
+      "pages": ["examples/generate-image-with-dall-e3"]
     }
   ],
   "footerSocials": {

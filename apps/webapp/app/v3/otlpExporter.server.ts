@@ -693,7 +693,7 @@ function isStringValue(value: AnyValue | undefined): value is { stringValue: str
 function isIntValue(value: AnyValue | undefined): value is { intValue: bigint } {
   if (!value) return false;
 
-  return typeof value.intValue === "number";
+  return typeof value.intValue === "number" || typeof value.intValue === "bigint";
 }
 
 function isDoubleValue(value: AnyValue | undefined): value is { doubleValue: number } {

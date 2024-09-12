@@ -200,8 +200,11 @@ In this complicated example:
 - If there are no Response headers we let the normal retrying logic handle it (return undefined).
 - If we've run out of requests or tokens we retry at the time specified in the headers.
 
-```ts
+<CodeGroup>
+
+```ts tasks.ts
 import { task } from "@trigger.dev/sdk/v3";
+import { calculateISO8601DurationOpenAIVariantResetAt, openai } from "./openai.js";
 
 export const openaiTask = task({
   id: "openai-task",
@@ -256,6 +259,48 @@ export const openaiTask = task({
   },
 });
 ```
+
+```ts openai.ts
+import { OpenAI } from "openai";
+
+export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+export function calculateISO8601DurationOpenAIVariantResetAt(
+  resets: string,
+  now: Date = new Date()
+): Date | undefined {
+  // Check if the input is null or undefined
+  if (!resets) return undefined;
+
+  // Regular expression to match the duration string pattern
+  const pattern = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?(?:(\d+)ms)?$/;
+  const match = resets.match(pattern);
+
+  // If the string doesn't match the expected format, return undefined
+  if (!match) return undefined;
+
+  // Extract days, hours, minutes, seconds, and milliseconds from the string
+  const days = parseInt(match[1] ?? "0", 10) || 0;
+  const hours = parseInt(match[2] ?? "0", 10) || 0;
+  const minutes = parseInt(match[3] ?? "0", 10) || 0;
+  const seconds = parseFloat(match[4] ?? "0") || 0;
+  const milliseconds = parseInt(match[5] ?? "0", 10) || 0;
+
+  // Calculate the future date based on the current date plus the extracted time
+  const resetAt = new Date(now);
+  resetAt.setDate(resetAt.getDate() + days);
+  resetAt.setHours(resetAt.getHours() + hours);
+  resetAt.setMinutes(resetAt.getMinutes() + minutes);
+  resetAt.setSeconds(resetAt.getSeconds() + Math.floor(seconds));
+  resetAt.setMilliseconds(
+    resetAt.getMilliseconds() + (seconds - Math.floor(seconds)) * 1000 + milliseconds
+  );
+
+  return resetAt;
+}
+```
+
+</CodeGroup>
 
 ## Preventing retries
 

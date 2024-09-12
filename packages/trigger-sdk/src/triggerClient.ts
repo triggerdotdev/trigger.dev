@@ -1,7 +1,6 @@
 import {
   API_VERSIONS,
   ConnectionAuth,
-  DELIVER_WEBHOOK_REQUEST,
   DeserializedJson,
   EphemeralEventDispatcherRequestBody,
   ErrorWithStackSchema,
@@ -47,7 +46,6 @@ import {
 import { LogLevel, Logger } from "@trigger.dev/core/logger";
 import EventEmitter from "node:events";
 import { env } from "node:process";
-import { version } from "../package.json";
 import { ApiClient } from "./apiClient.js";
 import { ConcurrencyLimit, ConcurrencyLimitOptions } from "./concurrencyLimit.js";
 import {
@@ -83,6 +81,7 @@ import {
   type VerifyResult,
 } from "./types.js";
 import { formatSchemaErrors } from "./utils/formatSchemaErrors.js";
+import { VERSION } from "./version.js";
 
 const parseRequestPayload = (rawPayload: any) => {
   const result = RequestWithRawBodySchema.safeParse(rawPayload);
@@ -1795,7 +1794,7 @@ export class TriggerClient {
   #standardResponseHeaders(start: number): Record<string, string> {
     return {
       "Trigger-Version": API_VERSIONS.LAZY_LOADED_CACHED_TASKS,
-      "Trigger-SDK-Version": version,
+      "Trigger-SDK-Version": VERSION,
       "X-Trigger-Request-Timing": `dur=${performance.now() - start / 1000.0}`,
     };
   }

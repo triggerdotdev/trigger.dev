@@ -4,6 +4,7 @@ import terminalLink, { Options as TerminalLinkOptions } from "terminal-link";
 import { hasTTY } from "std-env";
 
 export const isInteractive = hasTTY;
+export const isLinksSupported = terminalLink.isSupported;
 
 export const green = "#4FFF54";
 export const purple = "#735BF3";

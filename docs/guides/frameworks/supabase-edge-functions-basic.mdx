@@ -1,0 +1,180 @@
+---
+title: "Triggering tasks from Supabase edge functions"
+sidebarTitle: "Edge function hello world"
+description: "This guide will show you how to trigger a task from a Supabase edge function, and then view the run in our dashboard."
+---
+
+import Prerequisites from "/snippets/framework-prerequisites.mdx";
+import SupabasePrerequisites from "/snippets/supabase-prerequisites.mdx";
+import CliInitStep from "/snippets/step-cli-init.mdx";
+import CliDevStep from "/snippets/step-cli-dev.mdx";
+import CliRunTestStep from "/snippets/step-run-test.mdx";
+import CliViewRunStep from "/snippets/step-view-run.mdx";
+import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
+import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
+import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
+import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
+import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
+
+## Overview
+
+Supabase edge functions allow you to trigger tasks either when an event is sent from a third party (e.g. when a new Stripe payment is processed, when a new user signs up to a service, etc), or when there are any changes or updates to your Supabase database.
+
+This guide shows you how to set up and deploy a simple Supabase edge function example that triggers a task when an edge function URL is accessed.
+
+## Prerequisites
+
+- Ensure you have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
+- Ensure TypeScript is installed
+- [Create a Trigger.dev account](https://cloud.trigger.dev)
+- [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+
+## Initial setup
+
+<Steps>
+  <SupabasePrerequisites />
+  <CliInitStep />
+  <CliDevStep />
+  <CliRunTestStep />
+  <CliViewRunStep />
+</Steps>
+
+## Create a new Supabase edge function and deploy it
+
+<Steps>
+
+<Step title="Create a new Supabase edge function">
+
+We'll call this example `edge-function-trigger`.
+
+In your project, run the following command in the terminal using the Supabase CLI:
+
+```bash
+supabase functions new edge-function-trigger
+```
+
+</Step>
+
+<Step title="Update the edge function code">
+
+Replace the placeholder code in your `edge-function-trigger/index.ts` file with the following:
+
+```ts functions/edge-function-trigger/index.ts
+// Setup type definitions for built-in Supabase Runtime APIs
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0-beta.55". You can find this in your package.json file.
+import { tasks } from "npm:@trigger.dev/sdk@<your-sdk-version>/v3";
+// Import your task type from your /trigger folder
+import type { helloWorldTask } from "../../../src/trigger/example.ts";
+//     👆 **type-only** import
+
+Deno.serve(async () => {
+  await tasks.trigger<typeof helloWorldTask>(
+    // Your task id
+    "hello-world",
+    // Your task payload
+    "Hello from a Supabase Edge Function!"
+  );
+  return new Response("OK");
+});
+```
+
+<Note>You can only import the `type` from the task.</Note>
+<Note>
+  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run,
+  especially if you are using a different runtime like Deno. Also do not add "`npm:`" to imports
+  inside your task files, for the same reason.
+</Note>
+
+</Step>
+
+<Step title="Deploy your edge function using the Supabase CLI">
+
+You can now deploy your edge function with the following command in your terminal:
+
+```bash
+supabase functions deploy edge-function-trigger --no-verify-jwt
+```
+
+<Note>
+  `--no-verify-jwt` removes the JSON Web Tokens requirement from the authorization header. By
+  default this should be on, but it is not required for this example. Learn more about JWTs
+  [here](https://supabase.com/docs/guides/auth/jwts).
+</Note>
+
+Follow the CLI instructions and once complete you should now see your new edge function deployment in your Supabase edge functions dashboard.
+
+There will be a link to the dashboard in your terminal output, or you can find it at this URL:
+
+`https://supabase.com/dashboard/project/<your-project-id>/functions`
+
+<Note>Replace `your-project-id` with your actual project ID.</Note>
+
+</Step>
+
+</Steps>
+
+## Set your Trigger.dev prod secret key in the Supabase dashboard
+
+To trigger a task from your edge function, you need to set your Trigger.dev secret key in the Supabase dashboard.
+
+To do this, first go to your Trigger.dev [project dashboard](https://cloud.trigger.dev) and copy the `prod` secret key from the API keys page.
+
+![How to find your prod secret key](/images/api-key-prod.png)
+
+Then, in [Supabase](https://supabase.com/dashboard/projects), select your project, navigate to 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, click 'Edge functions' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> in the configurations menu, and then click the 'Add new secret' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> button.
+
+Add `TRIGGER_SECRET_KEY` <Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> with the pasted value of your Trigger.dev `prod` secret key.
+
+![Add secret key in Supabase](/images/supabase-keys-1.png)
+
+## Deploy your task and trigger it from your edge function
+
+<Steps>
+
+<Step title="Deploy your 'Hello World' task">
+
+Next, deploy your `hello-world` task to [Trigger.dev cloud](https://cloud.trigger.dev).
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@beta deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@beta deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@beta deploy
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Trigger a prod run from your deployed edge function">
+
+To do this all you need to do is simply open the `edge-function-trigger` URL.
+
+`https://supabase.com/dashboard/project/<your-project-id>/functions`
+
+<Note>Replace `your-project-id` with your actual project ID.</Note>
+
+In your Supabase project, go to your Edge function dashboard, find `edge-function-trigger`, copy the URL, and paste it into a new window in your browser.
+
+Once loaded you should see ‘OK’ on the new screen.
+
+![Edge function URL](/images/supabase-function-url.png)
+
+The task will be triggered when your edge function URL is accessed.
+
+Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you should see a succesful `hello-world` task.
+
+    **Congratulations, you have run a simple Hello World task from a Supabase edge function!**
+
+</Step>
+</Steps>
+
+<UsefulNextSteps />

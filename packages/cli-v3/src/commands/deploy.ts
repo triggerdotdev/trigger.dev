@@ -1,6 +1,6 @@
 import { intro, outro } from "@clack/prompts";
-import { CORE_VERSION, prepareDeploymentError } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { prepareDeploymentError } from "@trigger.dev/core/v3";
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { writeFile } from "node:fs/promises";
@@ -8,22 +8,7 @@ import { join, relative, resolve } from "node:path";
 import { readPackageJSON, writePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
-import { bundleWorker } from "../build/bundle.js";
-import {
-  createBuildContext,
-  notifyExtensionOnBuildComplete,
-  notifyExtensionOnBuildStart,
-  resolvePluginsForContext,
-} from "../build/extensions.js";
-import { createExternalsBuildExtension } from "../build/externals.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
-import {
-  deployIndexController,
-  deployIndexWorker,
-  deployRunController,
-  deployRunWorker,
-  telemetryEntryPoint,
-} from "../build/packageModules.js";
+import { buildWorker } from "../build/buildWorker.js";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -41,18 +26,17 @@ import {
   saveLogs,
 } from "../deploy/logs.js";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
-import { chalkError, cliLink, prettyError } from "../utilities/cliOutput.js";
+import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { getProjectClient } from "../utilities/session.js";
-import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
-import { VERSION } from "../version.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import { resolveAlwaysExternal } from "../build/externals.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -60,6 +44,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   env: z.enum(["prod", "staging"]),
   loadImage: z.boolean().default(false),
   buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  namespace: z.string().optional(),
   selfHosted: z.boolean().default(false),
   registry: z.string().optional(),
   push: z.boolean().default(false),
@@ -137,6 +122,12 @@ export function configureDeployCommand(program: Command) {
       ).hideHelp()
     )
     .addOption(
+      new CommandOption(
+        "--namespace <namespace>",
+        "Specify the namespace to use when pushing the image to the registry"
+      ).hideHelp()
+    )
+    .addOption(
       new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
     )
     .addOption(
@@ -197,6 +188,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef },
+    configFile: options.config,
   });
 
   logger.debug("Resolved config", resolvedConfig);
@@ -217,64 +209,30 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   loadDotEnvVars(resolvedConfig.workingDir, options.envFile);
 
   const destination = getTmpDir(resolvedConfig.workingDir, "build", options.dryRun);
-  const externalsExtension = createExternalsBuildExtension("deploy", resolvedConfig);
-  const buildContext = createBuildContext("deploy", resolvedConfig);
-  buildContext.prependExtension(externalsExtension);
-  await notifyExtensionOnBuildStart(buildContext);
-  const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   const $buildSpinner = spinner();
-  $buildSpinner.start("Building project");
 
-  const bundleResult = await bundleWorker({
+  const forcedExternals = await resolveAlwaysExternal(projectClient.client);
+
+  const buildManifest = await buildWorker({
     target: "deploy",
-    cwd: resolvedConfig.workingDir,
-    destination: destination.path,
-    watch: false,
-    resolvedConfig,
-    plugins: [...pluginsFromExtensions],
-    jsxFactory: resolvedConfig.build.jsx.factory,
-    jsxFragment: resolvedConfig.build.jsx.fragment,
-    jsxAutomatic: resolvedConfig.build.jsx.automatic,
-  });
-
-  $buildSpinner.stop("Successfully built project");
-
-  logger.debug("Bundle result", bundleResult);
-
-  let buildManifest: BuildManifest = {
-    contentHash: bundleResult.contentHash,
-    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
     environment: options.env,
-    packageVersion: CORE_VERSION,
-    cliPackageVersion: VERSION,
-    target: "deploy",
-    files: bundleResult.files,
-    sources: await resolveFileSources(bundleResult.files, resolvedConfig.workingDir),
-    config: {
-      project: resolvedConfig.project,
-      dirs: resolvedConfig.dirs,
-    },
-    outputPath: destination.path,
-    runControllerEntryPoint: bundleResult.runControllerEntryPoint ?? deployRunController,
-    runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
-    indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
-    indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
-    loaderEntryPoint: bundleResult.loaderEntryPoint ?? telemetryEntryPoint,
-    configPath: bundleResult.configPath,
-    deploy: {
-      env: serverEnvVars.success ? serverEnvVars.data.variables : {},
-    },
-    build: {},
-    otelImportHook: {
-      include: getInstrumentedPackageNames(resolvedConfig),
-    },
-  };
+    destination: destination.path,
+    resolvedConfig,
+    rewritePaths: true,
+    envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+    forcedExternals,
+    listener: {
+      onBundleStart() {
+        $buildSpinner.start("Building project");
+      },
+      onBundleComplete(result) {
+        $buildSpinner.stop("Successfully built project");
 
-  buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
-  buildManifest = rewriteBuildManifestPaths(buildManifest, destination.path);
-
-  await writeProjectFiles(buildManifest, resolvedConfig, destination.path);
+        logger.debug("Bundle result", result);
+      },
+    },
+  });
 
   logger.debug("Successfully built project to", destination.path);
 
@@ -286,6 +244,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
+    selfHosted: options.selfHosted,
+    registryHost: options.registry,
+    namespace: options.namespace,
   });
 
   if (!deploymentResponse.success) {
@@ -357,7 +318,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const $spinner = spinner();
 
-  $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+  if (isLinksSupported) {
+    $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+  } else {
+    $spinner.start(`Deploying version ${version}`);
+  }
 
   const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
   const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
@@ -473,9 +438,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
   outro(
-    `Version ${version} deployed with ${taskCount} detected task${
-      taskCount === 1 ? "" : "s"
-    } | ${deploymentLink} | ${testLink}`
+    `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
+      isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
+    }`
   );
 }
 

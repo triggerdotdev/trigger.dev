@@ -18,15 +18,14 @@ import { ClientRequestArgs } from "node:http";
 import { WebSocket } from "partysocket";
 import { ClientOptions, WebSocket as wsWebSocket } from "ws";
 import { CliApiClient } from "../apiClient.js";
-import { getInstrumentedPackageNames } from "../build/instrumentation.js";
 import { DevCommandOptions } from "../commands/dev.js";
 import { chalkError, chalkTask } from "../utilities/cliOutput.js";
 import { resolveDotEnvVars } from "../utilities/dotEnv.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { resolveTaskSourceFiles } from "../utilities/sourceFiles.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
-import { env } from "std-env";
+import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -193,7 +192,7 @@ class DevWorkerRuntime implements WorkerRuntime {
       return;
     }
 
-    const sourceFiles = resolveTaskSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
+    const sourceFiles = resolveSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,
@@ -230,22 +229,16 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const processEnv = gatherProcessEnv();
     const dotEnvVars = resolveDotEnvVars(undefined, this.options.args.envFile);
-    const OTEL_IMPORT_HOOK_INCLUDES = getInstrumentedPackageNames(this.options.config).join(",");
-
-    const stripEmptyValues = (obj: Record<string, string | undefined>) => {
-      return Object.fromEntries(
-        Object.entries(obj).filter(([, value]) =>
-          typeof value === "string" ? !!value.trim() : !!value
-        )
-      );
-    };
+    const OTEL_IMPORT_HOOK_INCLUDES = (this.options.config.instrumentedPackageNames ?? []).join(
+      ","
+    );
 
     return {
-      ...stripEmptyValues(processEnv),
-      ...stripEmptyValues(
+      ...sanitizeEnvVars(processEnv),
+      ...sanitizeEnvVars(
         environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
       ),
-      ...stripEmptyValues(dotEnvVars),
+      ...sanitizeEnvVars(dotEnvVars),
       TRIGGER_API_URL: this.options.client.apiURL,
       TRIGGER_SECRET_KEY: this.options.client.accessToken!,
       OTEL_EXPORTER_OTLP_COMPRESSION: "none",
@@ -337,7 +330,7 @@ function WebsocketFactory(apiKey: string) {
 
 function gatherProcessEnv() {
   const $env = {
-    ...env,
+    ...process.env,
     NODE_ENV: "development",
   };
 

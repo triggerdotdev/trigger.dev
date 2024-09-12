@@ -1,5 +1,5 @@
-import { prisma } from "@/db.js";
-import { task } from "@trigger.dev/sdk/v3";
+import { getUsersWithPosts, prisma } from "@/db.js";
+import { logger, task } from "@trigger.dev/sdk/v3";
 
 export const prismaTask = task({
   id: "prisma-task",
@@ -11,6 +11,10 @@ export const prismaTask = task({
         name: "Alice",
       },
     });
+
+    const usersWithPosts = await prisma.$queryRawTyped(getUsersWithPosts());
+
+    logger.info("Users with posts", { usersWithPosts });
 
     return users;
   },

@@ -3,11 +3,12 @@ import { context, trace } from "@opentelemetry/api";
 import { GetProjectResponseBody, flattenAttributes } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
-import { Command } from "commander";
+import { Command, Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
+import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {
@@ -22,12 +23,14 @@ import {
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { CLOUD_API_URL } from "../consts.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
-import { createFileFromTemplate } from "../utilities/createFileFromTemplate.js";
+import { cliLink } from "../utilities/cliOutput.js";
+import {
+  createFileFromTemplate,
+  generateTemplateUrl,
+} from "../utilities/createFileFromTemplate.js";
 import { createFile, pathExists, readFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { cliRootPath } from "../utilities/resolveInternalFilePath.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 
@@ -37,6 +40,8 @@ const InitCommandOptions = CommonCommandOptions.extend({
   tag: z.string().default("beta"),
   skipPackageInstall: z.boolean().default(false),
   pkgArgs: z.string().optional(),
+  gitRef: z.string().default("main"),
+  javascript: z.boolean().default(false),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -51,10 +56,11 @@ export function configureInitCommand(program: Command) {
         "-p, --project-ref <project ref>",
         "The project ref to use when initializing the project"
       )
+      .option("--javascript", "Initialize the project with JavaScript instead of TypeScript", false)
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        "latest"
+        "beta"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -62,12 +68,19 @@ export function configureInitCommand(program: Command) {
         "--pkg-args <args>",
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
-  ).action(async (path, options) => {
-    await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true);
-      await initCommand(path, options);
+  )
+    .addOption(
+      new CommandOption(
+        "--git-ref <git ref>",
+        "The git ref to use when fetching templates from GitHub"
+      ).hideHelp()
+    )
+    .action(async (path, options) => {
+      await handleTelemetry(async () => {
+        await printStandloneInitialBanner(true);
+        await initCommand(path, options);
+      });
     });
-  });
 }
 
 export async function initCommand(dir: string, options: unknown) {
@@ -81,8 +94,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   intro("Initializing project");
 
-  // Detect tsconfig.json and exit if not found
-  await detectTsConfig(dir, options);
+  const cwd = resolve(process.cwd(), dir);
 
   const authorization = await login({
     embedded: true,
@@ -107,18 +119,22 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     "cli.config.profile": authorization.profile,
   });
 
+  const tsconfigPath = await tryResolveTsConfig(cwd);
+
   if (!options.overrideConfig) {
     try {
       // check to see if there is an existing trigger.dev config file in the project directory
-      const result = await loadConfig({ cwd: dir });
+      const result = await loadConfig({ cwd });
 
-      outro(
-        result.configFile
-          ? `Project already initialized: Found config file at ${result.configFile}. Pass --override-config to override`
-          : "Project already initialized"
-      );
+      if (result.configFile && result.configFile !== "trigger.config") {
+        outro(
+          result.configFile
+            ? `Project already initialized: Found config file at ${result.configFile}. Pass --override-config to override`
+            : "Project already initialized"
+        );
 
-      return;
+        return;
+      }
     } catch (e) {
       // continue
     }
@@ -147,14 +163,18 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     log.info("Skipping package installation");
   }
 
+  const language = options.javascript ? "javascript" : "typescript";
+
   // Create the trigger dir
-  const triggerDir = await createTriggerDir(dir, options);
+  const triggerDir = await createTriggerDir(dir, options, language);
 
   // Create the config file
-  await writeConfigFile(dir, selectedProject, options, triggerDir);
+  await writeConfigFile(dir, selectedProject, options, triggerDir, language);
 
   // Add trigger.config.ts to tsconfig.json
-  await addConfigFileToTsConfig(dir, options);
+  if (tsconfigPath && language === "typescript") {
+    await addConfigFileToTsConfig(tsconfigPath, options);
+  }
 
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
@@ -175,7 +195,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);
   log.info(
-    `   3. Head over to our ${cliLink("v3 docs", "https://trigger.dev/docs/v3")} to learn more.`
+    `   3. Head over to our ${cliLink("v3 docs", "https://trigger.dev/docs")} to learn more.`
   );
   log.info(
     `   4. Need help? Join our ${cliLink(
@@ -187,7 +207,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   outro(`Project initialized successfully. Happy coding!`);
 }
 
-async function createTriggerDir(dir: string, options: InitCommandOptions) {
+async function createTriggerDir(
+  dir: string,
+  options: InitCommandOptions,
+  language: "typescript" | "javascript"
+) {
   return await tracer.startActiveSpan("createTriggerDir", async (span) => {
     try {
       const defaultValue = join(dir, "src", "trigger");
@@ -218,6 +242,7 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         message: `Choose an example to create in the ${location} directory`,
         options: [
           { value: "simple", label: "Simple (Hello World)" },
+          { value: "schedule", label: "Scheduled Task" },
           {
             value: "none",
             label: "None",
@@ -246,11 +271,14 @@ async function createTriggerDir(dir: string, options: InitCommandOptions) {
         return { location, isCustomValue: location !== defaultValue };
       }
 
-      const templatePath = join(cliRootPath(), "templates", "examples", `${example}.ts.template`);
-      const outputPath = join(triggerDir, "example.ts");
+      const templateUrl = generateTemplateUrl(
+        `examples/${example}.${language === "typescript" ? "ts" : "mjs"}`,
+        options.gitRef
+      );
+      const outputPath = join(triggerDir, `example.${language === "typescript" ? "ts" : "mjs"}`);
 
       await createFileFromTemplate({
-        templatePath,
+        templateUrl,
         outputPath,
         replacements: {},
       });
@@ -324,52 +352,10 @@ async function gitIgnoreDotTriggerDir(dir: string, options: InitCommandOptions) 
   });
 }
 
-async function detectTsConfig(dir: string, options: InitCommandOptions) {
-  return await tracer.startActiveSpan("detectTsConfig", async (span) => {
-    try {
-      const projectDir = resolve(process.cwd(), dir);
-      const tsconfigPath = join(projectDir, "tsconfig.json");
-
-      span.setAttributes({
-        "cli.projectDir": projectDir,
-        "cli.tsconfigPath": tsconfigPath,
-      });
-
-      const tsconfigExists = await pathExists(tsconfigPath);
-
-      if (!tsconfigExists) {
-        prettyError(
-          "No tsconfig.json found",
-          `The init command needs to be run in a TypeScript project. You can create one like this:`,
-          `npm install typescript --save-dev\nnpx tsc --init\n`
-        );
-
-        throw new Error("TypeScript required");
-      }
-
-      logger.debug("tsconfig.json exists", { tsconfigPath });
-
-      span.end();
-    } catch (e) {
-      if (!(e instanceof SkipCommandError)) {
-        recordSpanException(span, e);
-      }
-
-      span.end();
-
-      throw e;
-    }
-  });
-}
-
-async function addConfigFileToTsConfig(dir: string, options: InitCommandOptions) {
+async function addConfigFileToTsConfig(tsconfigPath: string, options: InitCommandOptions) {
   return await tracer.startActiveSpan("addConfigFileToTsConfig", async (span) => {
     try {
-      const projectDir = resolve(process.cwd(), dir);
-      const tsconfigPath = join(projectDir, "tsconfig.json");
-
       span.setAttributes({
-        "cli.projectDir": projectDir,
         "cli.tsconfigPath": tsconfigPath,
       });
 
@@ -444,7 +430,7 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 
       installSpinner.start(`Adding @trigger.dev/sdk@${options.tag}`);
 
-      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir });
+      await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir, silent: true });
 
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
 
@@ -473,7 +459,8 @@ async function writeConfigFile(
   dir: string,
   project: GetProjectResponseBody,
   options: InitCommandOptions,
-  triggerDir: { location: string; isCustomValue: boolean }
+  triggerDir: { location: string; isCustomValue: boolean },
+  language: "typescript" | "javascript"
 ) {
   return await tracer.startActiveSpan("writeConfigFile", async (span) => {
     try {
@@ -481,22 +468,28 @@ async function writeConfigFile(
       spnnr.start("Creating config file");
 
       const projectDir = resolve(process.cwd(), dir);
-      const templatePath = join(cliRootPath(), "templates", "trigger.config.ts.template");
-      const outputPath = join(projectDir, "trigger.config.ts");
+      const outputPath = join(
+        projectDir,
+        `trigger.config.${language === "typescript" ? "ts" : "mjs"}`
+      );
+      const templateUrl = generateTemplateUrl(
+        `trigger.config.${language === "typescript" ? "ts" : "mjs"}`,
+        options.gitRef
+      );
 
       span.setAttributes({
         "cli.projectDir": projectDir,
-        "cli.templatePath": templatePath,
+        "cli.templatePath": templateUrl,
         "cli.outputPath": outputPath,
       });
 
       const result = await createFileFromTemplate({
-        templatePath,
+        templateUrl,
         replacements: {
           projectRef: project.externalRef,
           triggerDirectoriesOption: triggerDir.isCustomValue
-            ? `\n  triggerDirectories: ["${triggerDir.location}"],`
-            : "",
+            ? `\n  dirs: ["${triggerDir.location}"],`
+            : `\n  dirs: ["/src/trigger"],`,
         },
         outputPath,
         override: options.overrideConfig,
@@ -607,4 +600,13 @@ async function selectProject(apiClient: CliApiClient, dashboardUrl: string, proj
       throw e;
     }
   });
+}
+
+async function tryResolveTsConfig(cwd: string) {
+  try {
+    const tsconfigPath = await resolveTSConfig(cwd);
+    return tsconfigPath;
+  } catch (e) {
+    return;
+  }
 }

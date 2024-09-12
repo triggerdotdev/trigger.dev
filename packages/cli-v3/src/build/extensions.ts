@@ -36,12 +36,16 @@ export async function notifyExtensionOnBuildComplete(
 
   for (const extension of context.getExtensions()) {
     if (extension.onBuildComplete) {
-      await extension.onBuildComplete(context, $manifest);
-      logger.debug(`Applying extension ${extension.name} to manifest`, {
-        context,
-        manifest,
-      });
-      $manifest = applyContextLayersToManifest(context, $manifest);
+      try {
+        await extension.onBuildComplete(context, $manifest);
+        logger.debug(`Applying extension ${extension.name} to manifest`, {
+          context,
+          manifest,
+        });
+        $manifest = applyContextLayersToManifest(context, $manifest);
+      } catch (error) {
+        logger.error(`Failed to apply extension ${extension.name} onBuildComplete`, error);
+      }
     }
   }
 

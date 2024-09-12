@@ -1,5 +1,5 @@
 import { tasks, runs } from "@trigger.dev/sdk/v3";
-import { anyPayloadTask } from "./trigger/simple";
+import { anyPayloadTask } from "./trigger/simple.js";
 
 async function main() {
   const payload = createLargePayload(100000);

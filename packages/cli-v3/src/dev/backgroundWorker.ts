@@ -27,6 +27,8 @@ import { prettyError } from "../utilities/cliOutput.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
+import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
+import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 
 export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
 export class BackgroundWorkerCoordinator {
@@ -259,9 +261,7 @@ export class BackgroundWorker {
       runtime: this.build.runtime,
       indexWorkerPath: this.build.indexWorkerEntryPoint,
       buildManifestPath: this.buildManifestPath,
-      nodeOptions: this.build.loaderEntryPoint
-        ? `--import=${this.build.loaderEntryPoint}`
-        : undefined,
+      nodeOptions: execOptionsForRuntime(this.build.runtime, this.build),
       env: this.params.env,
       cwd: this.params.cwd,
       otelHookInclude: this.build.otelImportHook?.include,
@@ -319,8 +319,9 @@ export class BackgroundWorker {
     const processOptions: TaskRunProcessOptions = {
       payload,
       env: {
-        ...this.params.env,
-        ...payload.environment,
+        ...sanitizeEnvVars(this.params.env),
+        // TODO: this needs the stripEmptyValues stuff too
+        ...sanitizeEnvVars(payload.environment ?? {}),
         TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
       },
       serverWorker: this.serverWorker,
@@ -501,7 +502,7 @@ export class BackgroundWorker {
     } catch (e) {
       if (e instanceof CancelledProcessError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -513,7 +514,7 @@ export class BackgroundWorker {
 
       if (e instanceof CleanupProcessError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -525,7 +526,7 @@ export class BackgroundWorker {
 
       if (e instanceof UnexpectedExitError) {
         return {
-          id: payload.execution.attempt.id,
+          id: payload.execution.run.id,
           ok: false,
           retry: undefined,
           error: {
@@ -538,7 +539,7 @@ export class BackgroundWorker {
       }
 
       return {
-        id: payload.execution.attempt.id,
+        id: payload.execution.run.id,
         ok: false,
         retry: undefined,
         error: {

@@ -1,6 +1,6 @@
 import { getTeamMembersAndInvites } from "~/models/member.server";
-import { BasePresenter } from "./v3/basePresenter.server";
 import { getLimit } from "~/services/platform.v3.server";
+import { BasePresenter } from "./v3/basePresenter.server";
 
 export class TeamPresenter extends BasePresenter {
   public async call({ userId, organizationId }: { userId: string; organizationId: string }) {
@@ -13,7 +13,7 @@ export class TeamPresenter extends BasePresenter {
       return;
     }
 
-    const limit = await getLimit(organizationId, "teamMembers", 25);
+    const limit = await getLimit(organizationId, "teamMembers", 100_000_000);
 
     return {
       ...result,

@@ -52,6 +52,11 @@ export async function updateTriggerPackages(
   requireUpdate?: boolean
 ): Promise<boolean> {
   let hasOutput = false;
+  const cliVersion = VERSION;
+
+  if (cliVersion.startsWith("0.0.0")) {
+    return false;
+  }
 
   if (!embedded) {
     intro("Updating packages");
@@ -66,7 +71,6 @@ export async function updateTriggerPackages(
     return false;
   }
 
-  const cliVersion = VERSION;
   const newCliVersion = await updateCheck();
 
   if (newCliVersion) {
@@ -93,7 +97,11 @@ export async function updateTriggerPackages(
     const mismatches: Dependency[] = [];
 
     for (const dep of deps) {
-      if (dep.version === targetVersion || dep.version.startsWith("https://pkg.pr.new")) {
+      if (
+        dep.version === targetVersion ||
+        dep.version.startsWith("https://pkg.pr.new") ||
+        dep.version.startsWith("0.0.0")
+      ) {
         continue;
       }
 

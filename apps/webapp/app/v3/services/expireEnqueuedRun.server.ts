@@ -45,6 +45,11 @@ export class ExpireEnqueuedRunService extends BaseService {
       status: "EXPIRED",
       expiredAt: new Date(),
       completedAt: new Date(),
+      attemptStatus: "FAILED",
+      error: {
+        type: "STRING_ERROR",
+        raw: `Run expired because the TTL (${run.ttl}) was reached`,
+      },
     });
 
     await eventRepository.completeEvent(run.spanId, {

@@ -53,5 +53,8 @@ apps/**/public/build
 /playwright/.cache/
 
 .cosine
-.trigger/
+.trigger
 .tshy*
+.yarn
+*.tsbuildinfo
+/packages/cli-v3/src/package.json

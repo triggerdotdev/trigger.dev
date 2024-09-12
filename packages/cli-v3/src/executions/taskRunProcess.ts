@@ -15,7 +15,7 @@ import { Evt } from "evt";
 import { ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
-import { execPathForRuntime } from "@trigger.dev/core/v3/build";
+import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
@@ -63,7 +63,6 @@ export class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
   private _stderr: Array<string> = [];
-  private _flushingProcess?: FlushingProcess;
 
   public onTaskRunHeartbeat: Evt<string> = new Evt();
   public onExit: Evt<{ code: number | null; signal: NodeJS.Signals | null; pid?: number }> =
@@ -80,12 +79,21 @@ export class TaskRunProcess {
   async cancel() {
     this._isBeingCancelled = true;
 
-    await this.startFlushingProcess();
+    try {
+      await this.#flush();
+    } catch (err) {
+      logger.error("Error flushing task run process", { err });
+    }
+
     await this.kill();
   }
 
   async cleanup(kill = true) {
-    await this.startFlushingProcess();
+    try {
+      await this.#flush();
+    } catch (err) {
+      logger.error("Error flushing task run process", { err });
+    }
 
     if (kill) {
       await this.kill("SIGKILL");
@@ -112,9 +120,7 @@ export class TaskRunProcess {
       ...$env,
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
-      NODE_OPTIONS: workerManifest.loaderEntryPoint
-        ? `--import=${workerManifest.loaderEntryPoint} ${env.NODE_OPTIONS ?? ""}`
-        : env.NODE_OPTIONS ?? "",
+      NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
     };
 
     logger.debug(`[${this.runId}] initializing task run process`, {
@@ -183,14 +189,6 @@ export class TaskRunProcess {
     this._child.on("exit", this.#handleExit.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
-  }
-
-  async startFlushingProcess() {
-    if (this._flushingProcess) {
-      return;
-    }
-
-    this._flushingProcess = new FlushingProcess(() => this.#flush());
   }
 
   async #flush(timeoutInMs: number = 5_000) {
@@ -371,12 +369,6 @@ export class TaskRunProcess {
 
     this.onIsBeingKilled.post(this);
 
-    try {
-      await this._flushingProcess?.waitForCompletion();
-    } catch (err) {
-      logger.error("Error flushing task run process", { err });
-    }
-
     this._child?.kill(signal);
 
     if (timeoutInMs) {
@@ -395,16 +387,4 @@ export class TaskRunProcess {
 
 function executorArgs(workerManifest: WorkerManifest): string[] {
   return [];
-}
-
-class FlushingProcess {
-  private _flushPromise: Promise<void>;
-
-  constructor(private readonly doFlush: () => Promise<void>) {
-    this._flushPromise = this.doFlush();
-  }
-
-  waitForCompletion() {
-    return this._flushPromise;
-  }
 }
