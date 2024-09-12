@@ -275,19 +275,6 @@ export class TriggerTaskService extends BaseService {
                 },
               });
 
-              if (payloadPacket.data) {
-                if (
-                  payloadPacket.dataType === "application/json" ||
-                  payloadPacket.dataType === "application/super+json"
-                ) {
-                  event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
-                } else {
-                  event.setAttribute("payload", payloadPacket.data);
-                }
-
-                event.setAttribute("payloadType", payloadPacket.dataType);
-              }
-
               event.setAttribute("runId", taskRun.friendlyId);
               span.setAttribute("runId", taskRun.friendlyId);
 
