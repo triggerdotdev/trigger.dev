@@ -264,7 +264,10 @@ export type TaskRunResult<TOutput = any> =
     };
 
 export class SubtaskUnwrapError extends Error {
-  constructor(taskId: string, subtaskError: unknown) {
+  public readonly taskId: string;
+  public readonly runId: string;
+
+  constructor(taskId: string, runId: string, subtaskError: unknown) {
     if (subtaskError instanceof Error) {
       super(`Error in ${taskId}: ${subtaskError.message}`, { cause: subtaskError });
       this.name = "SubtaskUnwrapError";
@@ -272,6 +275,9 @@ export class SubtaskUnwrapError extends Error {
       super(`Error in ${taskId}`, { cause: subtaskError });
       this.name = "SubtaskUnwrapError";
     }
+
+    this.taskId = taskId;
+    this.runId = runId;
   }
 }
 
@@ -291,7 +297,7 @@ export class TaskRunPromise<T> extends Promise<TaskRunResult<T>> {
       if (result.ok) {
         return result.output;
       } else {
-        throw new SubtaskUnwrapError(this.taskId, result.error);
+        throw new SubtaskUnwrapError(this.taskId, result.id, result.error);
       }
     });
   }

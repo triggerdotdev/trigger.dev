@@ -31,13 +31,17 @@ export const fetchPostTask = task({
 export const anyPayloadTask = task({
   id: "any-payload-task",
   run: async (payload: any) => {
-    const { url, method } = await tasks
-      .triggerAndWait<typeof fetchPostTask>("fetch-post-task", {
-        url: "https://jsonplaceholder.typicode.comasdqdasd/posts/1",
-      })
-      .unwrap();
+    try {
+      const { url, method } = await tasks
+        .triggerAndWait<typeof fetchPostTask>("fetch-post-task", {
+          url: "https://jsonplaceholder.typicode.comasdqdasd/posts/1",
+        })
+        .unwrap();
 
-    console.log("Result from fetch-post-task 211111sss", { output: { url, method } });
+      console.log("Result from fetch-post-task 211111sss", { output: { url, method } });
+    } catch (error) {
+      console.error("Error in fetch-post-task", { error });
+    }
 
     return {
       payload,
