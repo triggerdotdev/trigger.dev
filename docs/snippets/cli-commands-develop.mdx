@@ -3,15 +3,15 @@ This runs a server on your machine that can execute Trigger.dev tasks:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta dev
+npx trigger.dev@latest dev
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta dev
+pnpm dlx trigger.dev@latest dev
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta dev
+yarn dlx trigger.dev@latest dev
 ```
 
 </CodeGroup>
@@ -38,15 +38,15 @@ It is worth noting that each task runs in a separate Node process. This means th
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta dev --debugger
+npx trigger.dev@latest dev --debugger
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta dev --debugger
+pnpm dlx trigger.dev@latest dev --debugger
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta dev --debugger
+yarn dlx trigger.dev@latest dev --debugger
 ```
 
 </CodeGroup>
@@ -69,7 +69,8 @@ yarn dlx trigger.dev@beta dev --debugger
 </ParamField>
 
 <ParamField body="Log level" type="--log-level | -l">
-  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This does not affect the log level of your trigger.dev tasks. Defaults to `log`.
+  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This
+  does not affect the log level of your trigger.dev tasks. Defaults to `log`.
 </ParamField>
 
 <ParamField body="Skip telemetry" type="--skip-telemetry">
@@ -95,7 +96,7 @@ Then add something like this in your package.json scripts:
 ```json
 "scripts": {
   "dev": "concurrently --raw --kill-others npm:dev:*",
-  "dev:trigger": "npx trigger.dev@beta dev",
+  "dev:trigger": "npx trigger.dev@latest dev",
   // Add your framework-specific dev script here, for example:
   // "dev:next": "next dev",
   // "dev:remix": "remix dev",

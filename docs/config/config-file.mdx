@@ -4,7 +4,7 @@ sidebarTitle: "trigger.config file"
 description: "This file is used to configure your project and how it's bundled."
 ---
 
-import BundlePackages from '/snippets/bundle-packages.mdx';
+import BundlePackages from "/snippets/bundle-packages.mdx";
 
 Let's take a look at a basic `trigger.config.ts` file. This is generated for you when you follow [the quick start guide](/quick-start). This file is used to configure your project and how it's bundled.
 
@@ -112,7 +112,7 @@ You can sync environment variables from another service using the `resolveEnvVar
 
 We'll let you know when running the CLI dev command if this is a problem. Some packages are ESM-only so they don't work directly from CJS when using Node.js. In that case you need to add them to the `dependenciesToBundle` array in your `trigger.config.ts` file.
 
-<BundlePackages/>
+<BundlePackages />
 
 ## Prisma (and other generators)
 

@@ -1,0 +1,387 @@
+---
+title: "How it works"
+sidebarTitle: "How it works"
+description: "Understand how Trigger.dev works and how it can help you."
+---
+
+Trigger.dev v3 allows you to embed long-running async tasks into your application and run them in the background. This allows you to offload tasks that take a long time to complete, such as sending emails, processing videos, or running long chains of AI tasks.
+
+For example, the below task processes a video with `ffmpeg` and sends the results to an s3 bucket, then updates a database with the results and sends an email to the user.
+
+```ts /trigger/video.ts
+import { task, logger } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import { Readable } from "node:stream";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { updateDatabase } from "./database";
+import { sendEmail } from "./email";
+
+// Initialize S3 client
+const s3Client = new S3Client({ region: process.env.AWS_REGION }); // Replace with your preferred region
+
+export const convertVideo = task({
+  id: "convert-video",
+  run: async (payload: { videoUrl: string; videoId: string; userId: string }) => {
+    const { videoUrl, videoId, userId } = payload;
+
+    const outputPath = path.join("/tmp", `output_${Date.now()}.mp4`);
+
+    // Fetch the video
+    const response = await fetch(videoUrl);
+
+    // Process the video
+    await new Promise((resolve, reject) => {
+      ffmpeg(Readable.fromWeb(response.body))
+        .videoFilters("scale=iw/2:ih/2") // This halves both width and height
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
+
+    // Upload the video to S3
+    const s3Key = `processed-videos/${path.basename(outputPath)}`;
+
+    try {
+      const fileContent = await fs.readFile(outputPath);
+      const uploadParams = {
+        Bucket: process.env.S3_BUCKET,
+        Key: s3Key,
+        Body: fileContent,
+      };
+
+      await s3Client.send(new PutObjectCommand(uploadParams));
+
+      logger.info("Video uploaded successfully to S3");
+
+      // Generate the S3 URL
+      const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+
+      // Update the database with the S3 URL
+      await updateDatabase(videoId, s3Url);
+
+      logger.info("Database updated with S3 URL");
+
+      // Send an email to the user
+      await sendEmail(
+        userId,
+        "Video Processing Complete",
+        `Your video has been processed and is available at: ${s3Url}`
+      );
+
+      logger.info("Email sent to user");
+
+      // Clean up the temporary file
+      await fs.unlink(outputPath);
+
+      return { success: true, s3Url };
+    } catch (error) {
+      logger.error("Error processing video:", error);
+      throw error;
+    }
+  },
+});
+```
+
+Now in your application, you can trigger this task by calling:
+
+```ts
+import { NextResponse } from "next/server";
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { convertVideo } from "./trigger/video";
+//     👆 **type-only** import
+
+export async function POST(request: Request) {
+  const body = await request.json();
+
+  const handle = await tasks.trigger<typeof convertVideo>("convert-video", body);
+
+  return NextResponse.json(handle);
+}
+```
+
+This will schedule the task to run in the background and return a handle that you can use to check the status of the task. This allows your backend application to respond quickly to the user and offload the long-running task to Trigger.dev.
+
+## Trigger.dev architecture
+
+Trigger.dev implements a serverless architecture (without timeouts!) that allows you to run your tasks in a scalable and reliable way. When you run `npx trigger.dev@latest deploy`, we build and deploy your task code to your Trigger.dev instance. Then, when you trigger a task from your application, it's run in a secure, isolated environment with the resources you need to complete the task. A simplified diagram for a task execution looks like this:
+
+```mermaid
+sequenceDiagram
+  participant App
+  participant Trigger.dev
+  participant Task Worker
+
+  App->>Trigger.dev: Trigger task
+  Trigger.dev-->>App: Task handle
+  Trigger.dev->>Task Worker: Run task
+  Task Worker-->>Trigger.dev: Task completed
+```
+
+In reality there are many more components involved, such as the task queue, the task scheduler, and the task worker pool, logging (etc.), but this diagram gives you a high-level overview of how Trigger.dev works.
+
+## The Checkpoint-Resume System
+
+Trigger.dev implements a powerful Checkpoint-Resume System that enables efficient execution of long-running background tasks in a serverless-like environment. This system allows tasks to pause, checkpoint their state, and resume seamlessly, optimizing resource usage and enabling complex workflows.
+
+Here's how the Checkpoint-Resume System works:
+
+1. **Task Execution**: When a task is triggered, it runs in an isolated environment with all necessary resources.
+
+2. **Subtask Handling**: If a task needs to trigger a subtask, it can do so and wait for its completion using `triggerAndWait`
+
+3. **State Checkpointing**: While waiting for a subtask or during a programmed pause (e.g., `wait.for({ seconds: 30 })`), the system uses CRIU (Checkpoint/Restore In Userspace) to create a checkpoint of the task's entire state, including memory, CPU registers, and open file descriptors.
+
+4. **Resource Release**: After checkpointing, the parent task's resources are released, freeing up the execution environment.
+
+5. **Efficient Storage**: The checkpoint is efficiently compressed and stored on disk, ready to be restored when needed.
+
+6. **Event-Driven Resumption**: When a subtask completes or a wait period ends, Trigger.dev's event system triggers the restoration process.
+
+7. **State Restoration**: The checkpoint is loaded back into a new execution environment, restoring the task to its exact state before suspension.
+
+8. **Seamless Continuation**: The task resumes execution from where it left off, with any subtask results or updated state seamlessly integrated.
+
+This approach allows Trigger.dev to manage resources efficiently, handle complex task dependencies, and provide a virtually limitless execution time for your tasks, all while maintaining the simplicity and scalability of a serverless architecture.
+
+Example of a parent and child task using the Checkpoint-Resume System:
+
+```ts
+import { task, wait } from "@trigger.dev/sdk/v3";
+
+const parentTask = task({
+  id: "parent-task",
+  run: async () => {
+    console.log("Starting parent task");
+
+    // This will cause the parent task to be checkpointed and suspended
+    const result = await childTask.triggerAndWait({ data: "some data" });
+
+    console.log("Child task result:", result);
+
+    // This will also cause the task to be checkpointed and suspended
+    await wait.for({ seconds: 30 });
+
+    console.log("Resumed after 30 seconds");
+
+    return "Parent task completed";
+  },
+});
+
+const childTask = task({
+  id: "child-task",
+  run: async (payload: { data: string }) => {
+    console.log("Starting child task with data:", payload.data);
+
+    // Simulate some work
+    await sleep(5);
+
+    return "Child task result";
+  },
+});
+```
+
+The diagram below illustrates the flow of the parent and child tasks using the Checkpoint-Resume System:
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Trigger.dev
+    participant Parent Task
+    participant Child Task
+    participant CR System
+    participant Storage
+
+    App->>Trigger.dev: Trigger parent task
+    Trigger.dev->>Parent Task: Start execution
+    Parent Task->>Child Task: Trigger child task
+    Parent Task->>CR System: Request snapshot
+    CR System->>Storage: Store snapshot
+    CR System-->>Parent Task: Confirm snapshot stored
+    Parent Task->>Trigger.dev: Release resources
+
+    Child Task->>Trigger.dev: Complete execution
+    Trigger.dev->>CR System: Request parent task restoration
+    CR System->>Storage: Retrieve snapshot
+    CR System->>Parent Task: Restore state
+    Parent Task->>Trigger.dev: Resume execution
+    Parent Task->>Trigger.dev: Complete execution
+```
+
+<Note>
+  This is why, in the Trigger.dev Cloud, we don't charge for the time waiting for subtasks or the
+  time spent in a paused state.
+</Note>
+
+## Durable execution
+
+Trigger.dev's Checkpoint-Resume System, combined with idempotency keys, enables durable execution of complex workflows. This approach allows for efficient retries and caching of results, ensuring that work is not unnecessarily repeated in case of failures.
+
+### How it works
+
+1. **Task breakdown**: Complex workflows are broken down into smaller, independent subtasks.
+2. **Idempotency keys**: Each subtask is assigned a unique idempotency key.
+3. **Result caching**: The output of each subtask is cached based on its idempotency key.
+4. **Intelligent retries**: If a failure occurs, only the failed subtask and subsequent tasks are retried.
+
+### Example: Video processing workflow
+
+Let's rewrite the `convert-video` task above to be more durable:
+
+<CodeGroup>
+
+```ts /trigger/video.ts
+import { task, logger } from "@trigger.dev/sdk/v3";
+import { processVideo, uploadToS3, sendUserEmail } from "./tasks.js";
+import { updateDatabase } from "./database.js";
+
+export const convertVideo = task({
+  id: "convert-video",
+  retries: {
+    maxAttempts: 10,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 10000,
+    factor: 2,
+  },
+  run: async (payload: { videoUrl: string; videoId: string; userId: string }) => {
+    const { videoUrl, userId, videoId } = payload;
+
+    // Process video
+    const { processedContent } = await processVideo
+      .triggerAndWait({ videoUrl, videoId }, { idempotencyKey: ["process", videoId] })
+      .unwrap(); // Calling unwrap will return the output of the subtask, or throw an error if the subtask failed
+
+    // Upload to S3
+    const { s3Url } = await uploadToS3
+      .triggerAndWait({ processedContent, videoId }, { idempotencyKey: ["upload", videoId] })
+      .unwrap();
+
+    // Update database
+    await updateDatabase(videoId, s3Url);
+
+    // Send email, we don't need to wait for this to finish
+    await sendUserEmail.trigger({ userId, s3Url }, { idempotencyKey: ["email", videoId] });
+
+    return { success: true, s3Url };
+  },
+});
+```
+
+```ts /trigger/tasks.ts
+import { task, logger } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import { Readable } from "node:stream";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { sendEmail } from "./email";
+
+// Initialize S3 client
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
+
+export const processVideo = task({
+  id: "process-video",
+  run: async (payload: { videoUrl: string; videoId: string }) => {
+    const { videoUrl, videoId } = payload;
+    const outputPath = path.join("/tmp", `output_${videoId}.mp4`);
+    const response = await fetch(videoUrl);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(Readable.fromWeb(response.body))
+        .videoFilters("scale=iw/2:ih/2")
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
+
+    const processedContent = await fs.readFile(outputPath);
+    await fs.unlink(outputPath); // Clean up the temporary file
+
+    return { processedContent: processedContent.toString("base64") };
+  },
+});
+
+export const uploadToS3 = task({
+  id: "upload-to-s3",
+  run: async (payload: { processedContent: string; videoId: string }) => {
+    const { processedContent, videoId } = payload;
+    const s3Key = `processed-videos/output_${videoId}.mp4`;
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: Buffer.from(processedContent, "base64"),
+    };
+
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+
+    return { s3Url };
+  },
+});
+
+export const sendUserEmail = task({
+  id: "send-user-email",
+  run: async (payload: { userId: string; s3Url: string }) => {
+    const { userId, s3Url } = payload;
+    await sendEmail(
+      userId,
+      "Video Processing Complete",
+      `Your video has been processed and is available at: ${s3Url}`
+    );
+  },
+});
+```
+
+</CodeGroup>
+
+### How retries work
+
+Let's say the email sending fails in our video processing workflow. Here's how the retry process works:
+
+1. The main task throws an error and is scheduled for retry.
+2. When retried, it starts from the beginning, but leverages cached results for completed subtasks.
+
+Here's a sequence diagram illustrating this process:
+
+```mermaid
+sequenceDiagram
+  participant Main as Main Task
+  participant Process as Process Video
+  participant Upload as Upload to S3
+  participant DB as Update Database
+  participant Email as Send Email
+
+  Main->>Process: triggerAndWait (1st attempt)
+  Process-->>Main: Return result
+  Main->>Upload: triggerAndWait (1st attempt)
+  Upload-->>Main: Return result
+  Main->>DB: Update
+  Main->>Email: triggerAndWait (1st attempt)
+  Email--xMain: Fail
+  Main-->>Main: Schedule retry
+
+  Main->>Process: triggerAndWait (2nd attempt)
+  Process-->>Main: Return cached result
+  Main->>Upload: triggerAndWait (2nd attempt)
+  Upload-->>Main: Return cached result
+  Main->>DB: Update (idempotent)
+  Main->>Email: triggerAndWait (2nd attempt)
+  Email-->>Main: Success
+```
+
+## The build system
+
+When you run `npx trigger.dev@latest deploy` or `npx trigger.dev@latest dev`, we build your task code using our build system, which is powered by esbuild. When deploying, the code is packaged up into a Docker image and deployed to your Trigger.dev instance. When running in development mode, the code is built and run locally on your machine. Some features of our build system include:
+
+- **Bundled by default**: Code + dependencies are bundled and tree-shaked by default.
+- **Build extensions**: Use and write custom build extensions to transform your code or the resulting docker image.
+- **ESM ouput**: We output to ESM, which allows tree-shaking and better performance.
+
+You can learn more about working with our build system in the [configuration docs](/config/config-file).
+
+## OpenTelemetry
+
+The Trigger.dev logging and task dashboard is powered by OpenTelemetry traces and logs, which allows you to trace your tasks and auto-instrument your code.

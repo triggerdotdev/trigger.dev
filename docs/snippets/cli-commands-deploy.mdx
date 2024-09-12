@@ -3,20 +3,23 @@ Run the command like this:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta deploy
+npx trigger.dev@latest deploy
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta deploy
+pnpm dlx trigger.dev@latest deploy
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta deploy
+yarn dlx trigger.dev@latest deploy
 ```
 
 </CodeGroup>
 
-<Warning>This will fail in CI if any version mismatches are detected. Ensure everything runs locally first using the [dev](/cli-dev) command and don't bypass the version checks!</Warning>
+<Warning>
+  This will fail in CI if any version mismatches are detected. Ensure everything runs locally first
+  using the [dev](/cli-dev) command and don't bypass the version checks!
+</Warning>
 
 It performs a few steps to deploy:
 
@@ -68,7 +71,9 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 </ParamField>
 
 <ParamField body="Self-hosted (builds locally)" type="--self-hosted">
-  Builds and loads the image using your local docker. Use the `--registry` option to specify the registry to push the image to when using `--self-hosted`, or just use `--push` to push to the default registry.
+  Builds and loads the image using your local docker. Use the `--registry` option to specify the
+  registry to push the image to when using `--self-hosted`, or just use `--push` to push to the
+  default registry.
 </ParamField>
 
 <ParamField body="Registry" type="--registry">
@@ -76,7 +81,8 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 </ParamField>
 
 <ParamField body="Push image" type="--push">
-  When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)
+  When using the --self-hosted flag, push the image to the default registry. (defaults to false when
+  not using --registry)
 </ParamField>
 
 <ParamField body="Tag the image" type="--tag">

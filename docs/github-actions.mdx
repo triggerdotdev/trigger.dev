@@ -41,7 +41,7 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.dev@beta deploy
+          npx trigger.dev@latest deploy
 ```
 
 ```yaml .github/workflows/release-trigger-staging.yml
@@ -70,7 +70,7 @@ jobs:
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
         run: |
-          npx trigger.dev@beta deploy --env staging
+          npx trigger.dev@latest deploy --env staging
 ```
 
 </CodeGroup>
@@ -81,15 +81,21 @@ If you already have a GitHub action file, you can just add the final step "🚀 
 
 <Steps>
 
-<Step title="Create a new access token">Go to your profile page and click on the ["Personal Access Tokens"](https://cloud.trigger.dev/account/tokens) tab.</Step>
+<Step title="Create a new access token">
+  Go to your profile page and click on the ["Personal Access
+  Tokens"](https://cloud.trigger.dev/account/tokens) tab.
+</Step>
 
-<Step title="Go to your repository on GitHub.">Click on 'Settings' -> 'Secrets and variables' -> 'Actions' -> 'New repository secret'</Step>
+<Step title="Go to your repository on GitHub.">
+  Click on 'Settings' -> 'Secrets and variables' -> 'Actions' -> 'New repository secret'
+</Step>
 
-<Step title="Add the TRIGGER_ACCESS_TOKEN">Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token. ![Add TRIGGER_ACCESS_TOKEN in GitHub](/images/github-access-token.png)</Step>
+<Step title="Add the TRIGGER_ACCESS_TOKEN">
+  Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token. ![Add TRIGGER_ACCESS_TOKEN
+  in GitHub](/images/github-access-token.png)
+</Step>
 
 </Steps>
-
-
 
 ## Version pinning
 
@@ -104,6 +110,7 @@ Tip: add the deploy command to your `package.json` file to keep versions managed
   }
 }
 ```
+
 Your workflow file will follow the version specified in the `package.json` script, like so:
 
 ```yaml .github/workflows/release-trigger.yml
