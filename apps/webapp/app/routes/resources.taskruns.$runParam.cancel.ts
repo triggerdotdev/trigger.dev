@@ -2,7 +2,7 @@ import { parse } from "@conform-to/zod";
 import { ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 
@@ -49,12 +49,18 @@ export const action: ActionFunction = async ({ request, params }) => {
           stack: error.stack,
         },
       });
-      submission.error = { runParam: error.message };
-      return json(submission);
+      return redirectWithErrorMessage(
+        submission.value.redirectUrl,
+        request,
+        `Failed to cancel run, ${error.message}`
+      );
     } else {
       logger.error("Failed to cancel run", { error });
-      submission.error = { runParam: JSON.stringify(error) };
-      return json(submission);
+      return redirectWithErrorMessage(
+        submission.value.redirectUrl,
+        request,
+        `Failed to cancel run, ${JSON.stringify(error)}`
+      );
     }
   }
 };
