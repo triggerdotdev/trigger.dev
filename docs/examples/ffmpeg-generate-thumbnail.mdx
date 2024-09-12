@@ -1,6 +1,6 @@
 ---
 title: "Generate a thumbnail from a video using FFmpeg"
-sidebarTitle: "Generate thumbnail with FFmpeg"
+sidebarTitle: "Generate a thumbnail with FFmpeg"
 description: "This example shows you how to generate a thumbnail from a video using FFmpeg with Trigger.dev."
 ---
 
@@ -18,17 +18,16 @@ This task uses FFmpeg to generate a thumbnail from a video at a specific time po
 
 ## Task code
 
-````ts trigger/ffmpeg-extract-audio.ts
-
-```ts trigger/ffmpeg-compress-video.ts
+```ts trigger/ffmpeg-extract-audio.ts
+import os from "os";
 import fetch from "node-fetch";
 import fs from "fs/promises";
 import path from "path";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
 
-export const ffmpegCompressVideo = task({
-  id: "ffmpeg-compress-video",
+export const ffmpegGenerateThumbnail = task({
+  id: "ffmpeg-generate-thumbnail",
   run: async (payload: { videoUrl: string }, { ctx }) => {
     if (ctx.environment.type !== "DEVELOPMENT") {
       ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
@@ -37,8 +36,9 @@ export const ffmpegCompressVideo = task({
     const { videoUrl } = payload;
 
     // Generate temporary file names
-    const tempInputPath = path.join("/tmp", `input_${Date.now()}.mp4`);
-    const outputPath = path.join("/tmp", `output_${Date.now()}.mp4`);
+    const tempDirectory = os.tmpdir();
+    const tempInputPath = path.join(tempDirectory, `input_${Date.now()}.mp4`);
+    const outputPath = path.join(tempDirectory, `thumbnail_${Date.now()}.jpg`);
 
     try {
       // Fetch the video
@@ -46,50 +46,44 @@ export const ffmpegCompressVideo = task({
       const buffer = await response.buffer();
       await fs.writeFile(tempInputPath, buffer);
 
-      // Compress the video
+      // Generate the thumbnail
       await new Promise((resolve, reject) => {
         ffmpeg(tempInputPath)
-          .outputOptions([
-            "-c:v libx264", // Use H.264 codec
-            "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
-            "-preset veryslow", // Slowest preset for best compression
-            "-vf scale=iw/2:ih/2", // Reduce resolution to 320p width (height auto-calculated)
-            "-c:a aac", // Use AAC for audio
-            "-b:a 64k", // Reduce audio bitrate to 64k
-            "-ac 1", // Convert to mono audio
-          ])
-          .output(outputPath)
+          .screenshots({
+            count: 1,
+            folder: "/tmp",
+            filename: path.basename(outputPath),
+            size: "320x240",
+            timemarks: ["50%"],
+          })
           .on("end", resolve)
-          .on("error", reject)
-          .run();
+          .on("error", reject);
       });
 
-      // Read the compressed video
-      const compressedVideo = await fs.readFile(outputPath);
+      // Read the generated thumbnail
+      const thumbnail = await fs.readFile(outputPath);
 
       // Get file sizes for comparison
       const originalSize = buffer.length;
-      const compressedSize = compressedVideo.length;
+      const thumbnailSize = thumbnail.length;
 
       // Clean up temporary files
       await fs.unlink(tempInputPath);
 
-      // Log compression results
+      // Log thumbnail generation results
       logger.log(`Original video size: ${originalSize} bytes`);
-      logger.log(`Compressed video size: ${compressedSize} bytes`);
-      logger.log(`Compression ratio: ${((1 - compressedSize / originalSize) * 100).toFixed(2)}%`);
-      logger.log(`Compressed video saved at: ${outputPath}`);
+      logger.log(`Thumbnail size: ${thumbnailSize} bytes`);
+      logger.log(`Thumbnail saved at: ${outputPath}`);
 
-      // Return the compressed video buffer, file path, and compression stats
+      // Return the thumbnail buffer, file path, and sizes
       return {
-        compressedVideoBuffer: compressedVideo,
-        compressedVideoPath: outputPath,
+        thumbnailBuffer: thumbnail,
+        thumbnailPath: outputPath,
         originalSize,
-        compressedSize,
-        compressionRatio: ((1 - compressedSize / originalSize) * 100).toFixed(2),
+        thumbnailSize,
       };
     } catch (error) {
-      logger.error("Error compressing video:", { error });
+      logger.error("Error generating thumbnail:", { error });
       // Clean up files in case of error
       try {
         await fs.unlink(tempInputPath);
@@ -101,4 +95,4 @@ export const ffmpegCompressVideo = task({
     }
   },
 });
-````
+```

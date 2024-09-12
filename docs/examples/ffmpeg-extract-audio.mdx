@@ -23,17 +23,16 @@ This task uses FFmpeg to extract audio from a video and convert it to the WAV fo
   audio, the task will fail.
 </Warning>
 
-````ts trigger/ffmpeg-extract-audio.ts
-
-```ts trigger/ffmpeg-compress-video.ts
+```ts trigger/ffmpeg-extract-audio.ts
 import fetch from "node-fetch";
 import fs from "fs/promises";
 import path from "path";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
+import os from "os";
 
-export const ffmpegCompressVideo = task({
-  id: "ffmpeg-compress-video",
+export const ffmpegExtractAudio = task({
+  id: "ffmpeg-extract-audio",
   run: async (payload: { videoUrl: string }, { ctx }) => {
     if (ctx.environment.type !== "DEVELOPMENT") {
       ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
@@ -41,60 +40,51 @@ export const ffmpegCompressVideo = task({
     }
     const { videoUrl } = payload;
 
-    // Generate temporary file names
-    const tempInputPath = path.join("/tmp", `input_${Date.now()}.mp4`);
-    const outputPath = path.join("/tmp", `output_${Date.now()}.mp4`);
+    // Generate temporary and output file names
+    const tempDirectory = os.tmpdir();
+
+    const tempInputPath = path.join(tempDirectory, `input_${Date.now()}.mp4`);
+    const outputPath = path.join(tempDirectory, `output_${Date.now()}.wav`);
 
     try {
       // Fetch the video
       const response = await fetch(videoUrl);
-      const buffer = await response.buffer();
-      await fs.writeFile(tempInputPath, buffer);
+      const buffer = await response.arrayBuffer();
+      const videoBuffer = Buffer.from(buffer);
 
-      // Compress the video
+      // Save the video buffer to a temporary file
+      await fs.writeFile(tempInputPath, videoBuffer);
+
+      // Convert the video to WAV
       await new Promise((resolve, reject) => {
         ffmpeg(tempInputPath)
-          .outputOptions([
-            "-c:v libx264", // Use H.264 codec
-            "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
-            "-preset veryslow", // Slowest preset for best compression
-            "-vf scale=iw/2:ih/2", // Reduce resolution to 320p width (height auto-calculated)
-            "-c:a aac", // Use AAC for audio
-            "-b:a 64k", // Reduce audio bitrate to 64k
-            "-ac 1", // Convert to mono audio
-          ])
-          .output(outputPath)
-          .on("end", resolve)
-          .on("error", reject)
-          .run();
+          .toFormat("wav")
+          .save(outputPath)
+          .on("end", () => {
+            logger.log(`WAV file saved to ${outputPath}`);
+            resolve(outputPath);
+          })
+          .on("error", (err) => {
+            reject(err);
+          });
       });
 
-      // Read the compressed video
-      const compressedVideo = await fs.readFile(outputPath);
-
-      // Get file sizes for comparison
-      const originalSize = buffer.length;
-      const compressedSize = compressedVideo.length;
+      // Read the WAV file
+      const wavBuffer = await fs.readFile(outputPath);
 
       // Clean up temporary files
       await fs.unlink(tempInputPath);
 
-      // Log compression results
-      logger.log(`Original video size: ${originalSize} bytes`);
-      logger.log(`Compressed video size: ${compressedSize} bytes`);
-      logger.log(`Compression ratio: ${((1 - compressedSize / originalSize) * 100).toFixed(2)}%`);
-      logger.log(`Compressed video saved at: ${outputPath}`);
+      // Log the output file path
+      logger.log(`Converted video saved at: ${outputPath}`);
 
-      // Return the compressed video buffer, file path, and compression stats
+      // Return the WAV buffer and file path
       return {
-        compressedVideoBuffer: compressedVideo,
-        compressedVideoPath: outputPath,
-        originalSize,
-        compressedSize,
-        compressionRatio: ((1 - compressedSize / originalSize) * 100).toFixed(2),
+        wavBuffer,
+        wavFilePath: outputPath,
       };
     } catch (error) {
-      logger.error("Error compressing video:", { error });
+      logger.error("Error converting video to WAV:", { error });
       // Clean up files in case of error
       try {
         await fs.unlink(tempInputPath);
@@ -106,4 +96,4 @@ export const ffmpegCompressVideo = task({
     }
   },
 });
-````
+```
