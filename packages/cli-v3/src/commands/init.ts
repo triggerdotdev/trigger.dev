@@ -7,7 +7,7 @@ import { Command, Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import { addDependency, detectPackageManager } from "nypm";
+import { addDependency, addDevDependency, detectPackageManager } from "nypm";
 import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
@@ -433,6 +433,15 @@ async function installPackages(dir: string, options: InitCommandOptions) {
       await addDependency(`@trigger.dev/sdk@${options.tag}`, { cwd: projectDir, silent: true });
 
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
+
+      installSpinner.start(`Adding @trigger.dev/build@${options.tag} to devDependencies`);
+
+      await addDevDependency(`@trigger.dev/build@${options.tag}`, {
+        cwd: projectDir,
+        silent: true,
+      });
+
+      installSpinner.stop(`@trigger.dev/build@${options.tag} installed`);
 
       span.end();
     } catch (e) {
