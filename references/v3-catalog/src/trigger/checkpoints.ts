@@ -1,4 +1,4 @@
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, queue, task, wait } from "@trigger.dev/sdk/v3";
 
 type Payload = {
   count?: number;
@@ -70,6 +70,7 @@ export const nestedDependencies = task({
           maxDepth,
           waitSeconds,
           failAttemptChance,
+          batchSize,
         });
         logger.log(`Triggered complete ${i + 1}/${batchSize}`);
 
@@ -151,5 +152,38 @@ export const bulkPermanentlyFrozen = task({
         payload: { waitSeconds, count: grandChildCount },
       }))
     );
+  },
+});
+
+const oneAtATime = queue({
+  name: "race-condition",
+  concurrencyLimit: 1,
+});
+
+export const raceConditionCheckpointDequeue = task({
+  id: "race-condition-checkpoint-dequeue",
+  queue: oneAtATime,
+  run: async ({ isBatch = true }: { isBatch?: boolean }) => {
+    await holdConcurrency.trigger({ waitSeconds: 45 });
+
+    if (isBatch) {
+      await fixedLengthTask.batchTriggerAndWait(
+        Array.from({ length: 1 }, (_, i) => ({
+          payload: { waitSeconds: 5 },
+        }))
+      );
+    } else {
+      await fixedLengthTask.triggerAndWait({ waitSeconds: 5 });
+    }
+
+    logger.log(`Successfully completed task`);
+  },
+});
+
+export const holdConcurrency = task({
+  id: "hold-concurrency",
+  queue: oneAtATime,
+  run: async ({ waitSeconds = 60 }: { waitSeconds?: number }) => {
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
   },
 });
