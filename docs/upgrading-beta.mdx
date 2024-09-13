@@ -1,10 +1,12 @@
 ---
 title: "Upgrade to new build system"
 sidebarTitle: "Beta Upgrade"
-description: "How to use the new build system preview release"
+description: "How to update to 3.0.0 from the beta"
 ---
 
-Based on feedback and a steady flow of issues from our previous build system, we're happy to share with you a preview release of our new build system that (hopefully) fixes most of the issues you may have faced.
+The Trigger.dev packages are now at version `3.0.x` in the `latest` tag. This is our first official release of v3 under the latest tag, and we recommend anyone still using packages in the `beta` tag to upgrade to the latest version. This guide will help you upgrade your project to the latest version of Trigger.dev.
+
+The major changes in this release are a new build system, which is more flexible and powerful than the previous build system. We've also made some changes to the `trigger.dev` CLI to improve the developer experience.
 
 The main features of the new build sytem are:
 
@@ -16,26 +18,26 @@ The main features of the new build sytem are:
 
 ## Update packages
 
-To use the new build system, you have to update to use our preview packages. Update the `@trigger.dev/sdk` package in your package.json:
+To use the new build system, you have to update to use our latest packages. Update the `@trigger.dev/sdk` package in your package.json:
 
 ```json
-"@trigger.dev/sdk": "0.0.0-prerelease-20240911144933"
+"@trigger.dev/sdk": "^3.0.0",
 ```
 
-You will also need to update your usage of the `trigger.dev` CLI to use the preview release. If you run the CLI via `npx` you can update to the preview release like so:
+You will also need to update your usage of the `trigger.dev` CLI to use the latest release. If you run the CLI via `npx` you can update to the latest release like so:
 
 ```sh
 # old way
-npx trigger.dev@latest dev
+npx trigger.dev@3.0.0-beta.56 dev
 
-# using the preview release
-npx trigger.dev@0.0.0-prerelease-20240911144933 dev
+# using the latest release
+npx trigger.dev@latest dev
 ```
 
-If you've added the `trigger.dev` CLI to your `devDependencies`, then you should update the version to point to the preview release:
+If you've added the `trigger.dev` CLI to your `devDependencies`, then you should update the version to point to the latest release:
 
 ```json
-"trigger.dev": "0.0.0-prerelease-20240911144933"
+"trigger.dev": "^3.0.0",
 ```
 
 Once you do that make sure you re-install your dependencies using `npm i` or the equivalent with your preferred package manager.
@@ -86,7 +88,7 @@ The `additionalFiles` option has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240911144933 -D
+npm add @trigger.dev/build@latest -D
 ```
 
 Now you can import the `additionalFiles` build extension and use it in your `trigger.config.ts` file:
@@ -112,7 +114,7 @@ The `additionalPackages` option has been moved to our new build extension system
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240911144933 -D
+npm add @trigger.dev/build@latest -D
 ```
 
 Now you can import the `additionalPackages` build extension and use it in your `trigger.config.ts` file:
@@ -136,7 +138,7 @@ The `resolveEnvVars` export has been moved to our new build extension system.
 To use build extensions, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240911144933 -D
+npm add @trigger.dev/build@latest -D
 ```
 
 Now you can import the `syncEnvVars` build extension and use it in your `trigger.config.ts` file:
@@ -184,7 +186,7 @@ export default defineConfig({
 We've created a build extension to support using Prisma in your Trigger.dev tasks. To use this extension, you'll need to add the `@trigger.dev/build` package to your `devDependencies`:
 
 ```sh
-npm add @trigger.dev/build@0.0.0-prerelease-20240911144933 -D
+npm add @trigger.dev/build@latest -D
 ```
 
 Then you can import the `prismaExtension` build extension and use it in your `trigger.config.ts` file, passing in the path to your Prisma schema file:
@@ -325,7 +327,7 @@ export default defineConfig({
 We no longer run typechecking during the deploy command. This was causing issues with some projects, and we found that it wasn't necessary to run typechecking during the deploy command. If you want to run typechecking before deploying to Trigger.dev, you can run the `tsc` command before running the `deploy` command.
 
 ```sh
-tsc && npx trigger.dev@0.0.0-prerelease-20240911144933 deploy
+tsc && npx trigger.dev@latest deploy
 ```
 
 Or if you are using GitHub actions, you can add an additional step to run the `tsc` command before deploying to Trigger.dev.
@@ -341,7 +343,7 @@ Or if you are using GitHub actions, you can add an additional step to run the `t
   env:
     TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
   run: |
-    npx trigger.dev@0.0.0-prerelease-20240911144933 deploy
+    npx trigger.dev@latest deploy
 ```
 
 ### deploy --dry-run
@@ -349,7 +351,7 @@ Or if you are using GitHub actions, you can add an additional step to run the `t
 You can now inspect the build output of your project without actually deploying it to Trigger.dev by using the `--dry-run` flag:
 
 ```sh
-npx trigger.dev@0.0.0-prerelease-20240911144933 deploy --dry-run
+npx trigger.dev@latest deploy --dry-run
 ```
 
 This will save the build output and print the path to the build output directory. If you face any issues with deploying, please include the build output in your issue report.
@@ -359,8 +361,8 @@ This will save the build output and print the path to the build output directory
 You can now pass the path to your local `.env` file using the `--env-file` flag during `dev` and `deploy` commands:
 
 ```sh
-npx trigger.dev@0.0.0-prerelease-20240911144933 dev --env-file ../../.env
-npx trigger.dev@0.0.0-prerelease-20240911144933 deploy --env-file ../../.env
+npx trigger.dev@latest dev --env-file ../../.env
+npx trigger.dev@latest deploy --env-file ../../.env
 ```
 
 The `.env` file works slightly differently in `dev` vs `deploy`:
@@ -382,7 +384,7 @@ Debugging your tasks code in `dev` is now supported via VS Code, without having 
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["trigger.dev@0.0.0-prerelease-20240911144933", "dev"],
+      "runtimeArgs": ["trigger.dev@latest", "dev"],
       "skipFiles": ["<node_internals>/**"],
       "sourceMaps": true
     }
@@ -397,7 +399,7 @@ Then you can start debugging your tasks code by selecting the `Trigger.dev: Dev`
 You can now authenticate the `dev` command using the `TRIGGER_ACCESS_TOKEN` environment variable. Previously this was only supported in the `deploy` command.
 
 ```sh
-TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-20240911144933 dev
+TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@latest dev
 ```
 
 ### Better deploy support for self-hosters
@@ -405,7 +407,7 @@ TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@0.0.0-prerelease-202409
 You can now specify a custom registry and namespace when deploying via a self-hosted instance of Trigger.dev:
 
 ```sh
-npx trigger.dev@0.0.0-prerelease-20240911144933 deploy --self-hosted --load-image --push --registry docker.io --namespace mydockerhubusername
+npx trigger.dev@latest deploy --self-hosted --load-image --push --registry docker.io --namespace mydockerhubusername
 ```
 
 All you have to do is create a repository in dockerhub that matches the project ref of your Trigger.dev project (e.g. `proj_rrkpdguyagvsoktglnod`)
@@ -420,20 +422,3 @@ All you have to do is create a repository in dockerhub that matches the project 
 
 - Path aliases are not yet support in your `trigger.config.ts` file. To workaround this issue you'll need to rewrite path aliases to their relative paths. (See [this](https://github.com/unjs/jiti/issues/166) and [this](https://knip.dev/reference/known-issues#path-aliases-in-config-files)) for more info.
 - `*.test.ts` and `.spec.ts` files inside the trigger dirs will be bundled and could cause issues. You'll need to move these files outside of the trigger dirs to avoid this issue.
-
-## Changelog
-
-### Changes and fixes in `0.0.0-prerelease-20240911144933`
-
-- Fixed an issue where empty env vars in dev runs were overriding local `.env` file values.
-- Fixed an issue when importing v2 `@trigger.dev/sdk` would throw an error because of a missing package.json
-- Fixed node10 moduleResolution with some types
-- Added the ability to push to a custom registry when deploying to a self-hosted instance of Trigger.dev
-- Fix stuck dev runs when a child run fails with a process.exit
-- No longer ignoring `--project-ref` in the `deploy` command
-- No longer ignoring the `--config` option in the `deploy` command
-- Fixed the flushing of logs to the server when deployed.
-- `emitDecoratorMetadata` build extension now works when tsconfig.json file extends another tsconfig.json file
-- We now have the ability to force certain packages to be external (i.e. not be bundled), starting with `headers-generator`
-- You can now call `init` with the `--javascript` flag to initialize a project with JavaScript instead of TypeScript
-- Add support for Prisma TypedSQL in the prisma extension
