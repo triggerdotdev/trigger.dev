@@ -217,7 +217,7 @@ export function createSpanFromEvents(events: TaskEvent[], spanId: string) {
   };
 }
 
-function createSpanFromEvent(events: TaskEvent[], event: PreparedEvent) {
+export function createSpanFromEvent(events: TaskEvent[], event: PreparedEvent) {
   let ancestorCancelled = false;
   let duration = event.duration;
 
@@ -493,7 +493,7 @@ export function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean
   return;
 }
 
-function sanitizedAttributes(json: Prisma.JsonValue) {
+export function sanitizedAttributes(json: Prisma.JsonValue) {
   if (json === null || json === undefined) {
     return;
   }
@@ -530,7 +530,11 @@ function removePrivateProperties(
   return result;
 }
 
-function transformEvents(events: SpanEvents, properties: Attributes, isDev: boolean): SpanEvents {
+export function transformEvents(
+  events: SpanEvents,
+  properties: Attributes,
+  isDev: boolean
+): SpanEvents {
   return (events ?? []).map((event) => transformEvent(event, properties, isDev));
 }
 

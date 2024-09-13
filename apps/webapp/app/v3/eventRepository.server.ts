@@ -41,6 +41,8 @@ import {
   prepareTrace,
   rehydrateJson,
   rehydrateShow,
+  sanitizedAttributes,
+  transformEvents,
 } from "~/utils/taskEvent";
 
 const MAX_FLUSH_DEPTH = 5;
@@ -429,6 +431,83 @@ export class EventRepository {
     });
   }
 
+  // A Span can be cancelled if it is partial and has a parent that is cancelled
+  // And a span's duration, if it is partial and has a cancelled parent, is the time between the start of the span and the time of the cancellation event of the parent
+  public async getSpan(spanId: string, traceId: string) {
+    return await startActiveSpan("getSpan", async (s) => {
+      const spanEvent = await this.#getSpanEvent(spanId);
+
+      if (!spanEvent) {
+        return;
+      }
+
+      const preparedEvent = prepareEvent(spanEvent);
+
+      const span = await this.#createSpanFromEvent(preparedEvent);
+
+      const output = rehydrateJson(spanEvent.output);
+      const payload = rehydrateJson(spanEvent.payload);
+
+      const show = rehydrateShow(spanEvent.properties);
+
+      const properties = sanitizedAttributes(spanEvent.properties);
+
+      const messagingEvent = SpanMessagingEvent.optional().safeParse(
+        (properties as any)?.messaging
+      );
+
+      const links: SpanLink[] = [];
+
+      if (messagingEvent.success && messagingEvent.data) {
+        if (messagingEvent.data.message && "id" in messagingEvent.data.message) {
+          if (messagingEvent.data.message.id.startsWith("run_")) {
+            links.push({
+              type: "run",
+              icon: "runs",
+              title: `Run ${messagingEvent.data.message.id}`,
+              runId: messagingEvent.data.message.id,
+            });
+          }
+        }
+      }
+
+      const backLinks = spanEvent.links as any as Link[] | undefined;
+
+      if (backLinks && backLinks.length > 0) {
+        backLinks.forEach((l) => {
+          const title = String(
+            l.attributes?.[SemanticInternalAttributes.LINK_TITLE] ?? "Triggered by"
+          );
+
+          links.push({
+            type: "span",
+            icon: "trigger",
+            title,
+            traceId: l.context.traceId,
+            spanId: l.context.spanId,
+          });
+        });
+      }
+
+      const spanEvents = transformEvents(
+        preparedEvent.events,
+        spanEvent.metadata as Attributes,
+        spanEvent.environmentType === "DEVELOPMENT"
+      );
+
+      return {
+        ...spanEvent,
+        ...span.data,
+        payload,
+        output,
+        properties,
+        events: spanEvents,
+        show,
+        links,
+      };
+    });
+  }
+
   public async recordEvent(message: string, options: TraceEventOptions) {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
@@ -800,6 +879,118 @@ export class EventRepository {
       hexString += str;
     }
     return hexString;
+  }
+
+  async #getSpanEvent(spanId: string) {
+    return await startActiveSpan("getSpanEvent", async (s) => {
+      const events = await this.readReplica.taskEvent.findMany({
+        where: {
+          spanId,
+        },
+        orderBy: {
+          startTime: "asc",
+        },
+      });
+
+      let finalEvent: TaskEvent | undefined;
+
+      for (const event of events) {
+        if (event.isPartial && finalEvent) {
+          continue;
+        }
+
+        finalEvent = event;
+      }
+
+      return finalEvent;
+    });
+  }
+
+  async #createSpanFromEvent(event: PreparedEvent) {
+    return await startActiveSpan("createSpanFromEvent", async (s) => {
+      let ancestorCancelled = false;
+      let duration = event.duration;
+
+      if (!event.isCancelled && event.isPartial) {
+        await this.#walkSpanAncestors(event, (ancestorEvent, level) => {
+          if (level >= 8) {
+            return { stop: true };
+          }
+
+          if (ancestorEvent.isCancelled) {
+            ancestorCancelled = true;
+
+            // We need to get the cancellation time from the cancellation span event
+            const cancellationEvent = ancestorEvent.events.find(
+              (event) => event.name === "cancellation"
+            );
+
+            if (cancellationEvent) {
+              duration = calculateDurationFromStart(event.startTime, cancellationEvent.time);
+            }
+
+            return { stop: true };
+          }
+
+          return { stop: false };
+        });
+      }
+
+      const span = {
+        recordId: event.id,
+        id: event.spanId,
+        parentId: event.parentId ?? undefined,
+        runId: event.runId,
+        idempotencyKey: event.idempotencyKey,
+        data: {
+          message: event.message,
+          style: event.style,
+          duration,
+          isError: event.isError,
+          isPartial: ancestorCancelled ? false : event.isPartial,
+          isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+          startTime: getDateFromNanoseconds(event.startTime),
+          level: event.level,
+          events: event.events,
+          environmentType: event.environmentType,
+        },
+      };
+
+      return span;
+    });
+  }
+
+  async #walkSpanAncestors(
+    event: PreparedEvent,
+    callback: (event: PreparedEvent, level: number) => { stop: boolean }
+  ) {
+    const parentId = event.parentId;
+    if (!parentId) {
+      return;
+    }
+
+    await startActiveSpan("walkSpanAncestors", async (s) => {
+      let parentEvent = await this.#getSpanEvent(parentId);
+      let level = 1;
+
+      while (parentEvent) {
+        const preparedParentEvent = prepareEvent(parentEvent);
+
+        const result = callback(preparedParentEvent, level);
+
+        if (result.stop) {
+          return;
+        }
+
+        if (!preparedParentEvent.parentId) {
+          return;
+        }
+
+        parentEvent = await this.#getSpanEvent(preparedParentEvent.parentId);
+
+        level++;
+      }
+    });
   }
 }
 
