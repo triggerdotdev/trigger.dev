@@ -274,7 +274,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
     traceId: originalRun.traceId,
   });
 
-  const initialLoad = !isUpToDate || !runs;
+  const initialLoad = !isUpToDate || !runs || !events;
 
   const trace = useMemo(() => {
     if (!events) return undefined;
@@ -332,6 +332,7 @@ function Panels({ resizable, run: originalRun }: LoaderData) {
           <TraceView
             run={originalRun}
             environmentType={originalRun.environment.type}
+            logsDeletedAt={originalRun.logsDeletedAt}
             trace={trace}
             selectedSpanId={selectedSpanId}
             replaceSearchParam={replaceSearchParam}
@@ -371,15 +372,27 @@ type TraceData = {
   trace?: Trace;
   selectedSpanId: string | undefined;
   replaceSearchParam: (key: string, value?: string) => void;
+  logsDeletedAt: Date | null;
 };
 
-function TraceView({ run, environmentType, trace, selectedSpanId, replaceSearchParam }: TraceData) {
+function TraceView({
+  run,
+  environmentType,
+  trace,
+  selectedSpanId,
+  replaceSearchParam,
+  logsDeletedAt,
+}: TraceData) {
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan);
   }, 100);
 
-  if (!trace) {
+  if (logsDeletedAt) {
     return <NoLogsView run={run} />;
+  }
+
+  if (!trace) {
+    return <Loading />;
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
