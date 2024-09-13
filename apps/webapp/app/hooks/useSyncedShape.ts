@@ -2,8 +2,8 @@ import { useShape } from "@electric-sql/react";
 
 export type ShapeInput = Parameters<typeof useShape>[0];
 export type ShapeOutput<S> = {
+  error: Error | false;
   isError: boolean;
-  isUpToDate: boolean;
   data: S[] | undefined;
 };
 
@@ -25,8 +25,8 @@ export function useSyncedShape<S>(props: ShapeInput): ShapeOutput<SyncedShapeDat
   const output = useShape(props) as any;
 
   return {
+    error: output.error,
     isError: output.isError,
-    isUpToDate: output.isUpToDate,
     data: output.data
       ? (transformInput(output.data as InputObject) as SyncedShapeData<S>[])
       : undefined,

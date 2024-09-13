@@ -7,10 +7,10 @@ type Params = {
 };
 
 export function useSyncRunPage({ origin, traceId }: Params) {
-  const { isUpToDate: isRunUpToDate, runs } = useSyncTraceRuns({ origin, traceId });
-  const { isUpToDate: isTraceUpToDate, events } = useSyncTrace({ origin, traceId });
+  const { runs } = useSyncTraceRuns({ origin, traceId });
+  const { events } = useSyncTrace({ origin, traceId });
 
-  const isUpToDate = isRunUpToDate && isTraceUpToDate;
+  const isUpToDate = runs !== undefined && events !== undefined;
 
-  return { isUpToDate, isRunUpToDate, isTraceUpToDate, runs, events };
+  return { isUpToDate, runs, events };
 }

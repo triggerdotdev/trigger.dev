@@ -10,9 +10,9 @@ type Params = {
 export type RawRun = Prettify<SyncedShapeData<TaskRun>>;
 
 export function useSyncTraceRuns({ origin, traceId }: Params) {
-  const { isUpToDate, data } = useSyncedShape<TaskRun>({
+  const { data, error, isError } = useSyncedShape<TaskRun>({
     url: `${origin}/sync/traces/runs/${traceId}`,
   });
 
-  return { isUpToDate, runs: data };
+  return { runs: data, error, isError };
 }

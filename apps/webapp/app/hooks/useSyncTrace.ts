@@ -11,9 +11,9 @@ export type Trace = ReturnType<typeof createTraceTreeFromEvents>;
 export type TraceEvent = Trace["events"][number];
 
 export function useSyncTrace({ origin, traceId }: Params) {
-  const { isUpToDate, data, error, isError } = useShape({
+  const { data, error, isError } = useShape({
     url: `${origin}/sync/traces/${traceId}`,
   });
 
-  return { isUpToDate, events: data ? (data as any as TaskEvent[]) : undefined };
+  return { error, isError, events: data ? (data as any as TaskEvent[]) : undefined };
 }
