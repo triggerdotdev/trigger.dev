@@ -278,6 +278,7 @@
       "group": "Frameworks",
       "pages": [
         "guides/frameworks/nodejs",
+        "guides/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/remix",
         {

@@ -99,14 +99,14 @@ If you already have a GitHub action file, you can just add the final step "🚀 
 
 ## Version pinning
 
-The CLI and `@trigger.dev/*` package versions need to be in sync, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
+The CLI and `@trigger.dev/*` package versions need to be in sync with the `trigger.dev` CLI, otherwise there will be errors and unpredictable behavior. Hence, the `deploy` command will automatically fail during CI on any version mismatches.
 Tip: add the deploy command to your `package.json` file to keep versions managed in the same place. For example:
 
 ```json
 {
   "scripts": {
-    "deploy:trigger-prod": "npx trigger.dev@3.0.0-beta.34 deploy",
-    "deploy:trigger": "npx trigger.dev@3.0.0-beta.34 deploy --env staging"
+    "deploy:trigger-prod": "npx trigger.dev@3.0.0 deploy",
+    "deploy:trigger": "npx trigger.dev@3.0.0 deploy --env staging"
   }
 }
 ```

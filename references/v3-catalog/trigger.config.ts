@@ -1,41 +1,14 @@
 import { InfisicalClient } from "@infisical/sdk";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
+import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
-import { ffmpeg } from "@trigger.dev/build/extensions/core";
-import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
-import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export { handleError } from "./src/handleError.js";
-
-export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async (ctx) => {
-  if (
-    process.env.INFISICAL_CLIENT_ID === undefined ||
-    process.env.INFISICAL_CLIENT_SECRET === undefined ||
-    process.env.INFISICAL_PROJECT_ID === undefined
-  ) {
-    return;
-  }
-
-  const client = new InfisicalClient({
-    clientId: process.env.INFISICAL_CLIENT_ID,
-    clientSecret: process.env.INFISICAL_CLIENT_SECRET,
-  });
-
-  const secrets = await client.listSecrets({
-    environment: ctx.environment,
-    projectId: process.env.INFISICAL_PROJECT_ID,
-  });
-
-  return {
-    variables: secrets.map((secret) => ({
-      name: secret.secretKey,
-      value: secret.secretValue,
-    })),
-  };
-};
 
 export default defineConfig({
   runtime: "node",
@@ -82,6 +55,30 @@ export default defineConfig({
         }),
         { placement: "last", target: "deploy" }
       ),
+      syncEnvVars(async (ctx) => {
+        if (
+          !process.env.INFISICAL_CLIENT_ID ||
+          !process.env.INFISICAL_CLIENT_SECRET ||
+          !process.env.INFISICAL_PROJECT_ID
+        ) {
+          return;
+        }
+
+        const client = new InfisicalClient({
+          clientId: process.env.INFISICAL_CLIENT_ID,
+          clientSecret: process.env.INFISICAL_CLIENT_SECRET,
+        });
+
+        const secrets = await client.listSecrets({
+          environment: ctx.environment,
+          projectId: process.env.INFISICAL_PROJECT_ID,
+        });
+
+        return secrets.map((secret) => ({
+          name: secret.secretKey,
+          value: secret.secretValue,
+        }));
+      }),
     ],
     external: ["re2"],
   },

@@ -3,10 +3,9 @@ title: "Common problems"
 description: "Some common problems you might experience and their solutions"
 ---
 
-import NextjsTroubleshootingMissingApiKey from '/snippets/nextjs-missing-api-key.mdx';
-import NextjsTroubleshootingButtonSyntax from '/snippets/nextjs-button-syntax.mdx';
-import RateLimitHitUseBatchTrigger from '/snippets/rate-limit-hit-use-batchtrigger.mdx';
-import WorkerFailedToStartWhenRunningDevCommand from '/snippets/worker-failed-to-start.mdx';
+import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
+import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
+import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigger.mdx";
 
 ## Development
 
@@ -30,36 +29,19 @@ Then change the permissions of the npm folder (if 1 doesn't work):
 sudo chown -R $(whoami) ~/.npm
 ```
 
-
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
 
 You can run the deploy command with `--log-level debug` at the end. This will spit out a lot of information about the deploy. If you can't figure out the problem from the information below please join [our Discord](https://trigger.dev/discord) and create a help forum post. Do NOT share the extended debug logs publicly as they might reveal private information about your project.
 
+You can also review the build by supplying the `--dry-run` flag. This will build your project but not deploy it. You can then inspect the build output on your machine.
+
 Here are some common problems and their solutions:
-
-### `Typecheck failed, aborting deployment`
-
-We typecheck your code before deploying. If the typecheck fails, the deployment is aborted. You should see logs with details about the typecheck failure.
-
-You can skip typechecking, by adding the `--skip-typecheck` flag when calling deploy.
-
-### `Error: Cannot find module 'X'`
-
-This errors occurs if we can't figure out how to automatically import some code. You can fix this by adding it to the `dependenciesToBundle` array in the [trigger.config file](/trigger-config).
-
-<BundlePackages/>
 
 ### `Failed to build project image: Error building image`
 
 There should be a link below the error message to the full build logs on your machine. Take a look at these to see what went wrong. Join [our Discord](https://trigger.dev/discord) and you share it privately with us if you can't figure out what's going wrong. Do NOT share these publicly as the verbose logs might reveal private information about your project.
-
-### `Deployment timed out`
-
-The last stage of deployment is to run it on our servers – we register the new versions of your tasks with the dashboard during this step. We allow 3 mins for this to succeed or fail. If it fails then you'll see this error.
-
-The first thing to do is to try again. If that fails then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
 ### `Deployment encountered an error`
 
@@ -68,6 +50,7 @@ Usually there will be some useful guidance below this message. If you can't figu
 ## Project setup issues
 
 ### `The requested module 'node:events' does not provide an export named 'addAbortListener'`
+
 If you see this error it means you're not a supported version of Node:
 
 ```
@@ -81,10 +64,11 @@ Node.js v19.9.0
 You need to be on at least these minor versions:
 
 | Version | Minimum |
-| ----- | ------- |
-| 18   | 18.16+  |
-| 20   | 20.11+  |
-| 21   | 21.0+  |
+| ------- | ------- |
+| 18      | 18.20+  |
+| 20      | 20.5+   |
+| 21      | 21.0+   |
+| 22      | 22.0+   |
 
 ## Runtime issues
 
@@ -94,7 +78,7 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 ### `Error: @prisma/client did not initialize yet.`
 
-Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [read the guide](/trigger-config#prisma-and-other-generators).
+Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [read the guide](/config/config-file#prisma).
 
 ### When triggering subtasks the parent task finishes too soon
 
@@ -102,7 +86,7 @@ Make sure that you always use `await` when you call `trigger`, `triggerAndWait`,
 
 ### Rate limit exceeded
 
-<RateLimitHitUseBatchTrigger/>
+<RateLimitHitUseBatchTrigger />
 
 View the [rate limits](/limits) page for more information.
 
@@ -147,11 +131,10 @@ Or change the tsconfig jsx setting:
 {
   "compilerOptions": {
     //...
-    "jsx": "react-jsx" 
-  },
+    "jsx": "react-jsx"
+  }
 }
 ```
 
-<NextjsTroubleshootingMissingApiKey/>
-<NextjsTroubleshootingButtonSyntax/>
-<WorkerFailedToStartWhenRunningDevCommand/>
+<NextjsTroubleshootingMissingApiKey />
+<NextjsTroubleshootingButtonSyntax />

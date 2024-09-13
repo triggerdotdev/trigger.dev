@@ -105,7 +105,7 @@ Some ones we recommend:
 
 ## Runtime
 
-We currently only official support the `node` runtime, but you can try our expirimental `bun` runtime by setting the `runtime` option in your config file:
+We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -453,7 +453,11 @@ These environment variables are only used during the build process and are not e
 
 </Note>
 
-#### `audioWaveform`
+#### syncEnvVars
+
+The `syncEnvVars` build extension replaces the deprecated `resolveEnvVars` export. Check out our [syncEnvVars documentation](/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
+
+#### audioWaveform
 
 Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
 
@@ -469,7 +473,7 @@ export default defineConfig({
 });
 ```
 
-#### `ffmpeg`
+#### ffmpeg
 
 You can add the `ffmpeg` build extension to your build process:
 
@@ -528,7 +532,7 @@ export default defineConfig({
 });
 ```
 
-#### `aptGet`
+#### aptGet
 
 You can install system packages into the deployed image using using the `aptGet` extension:
 

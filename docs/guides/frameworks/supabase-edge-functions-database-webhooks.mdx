@@ -73,8 +73,8 @@ Replace the `database-webhook` placeholder code with the following code:
 
 ```ts functions/database-webhook/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0-beta.55". You can find this in your package.json file.
-import { tasks } from "npm:@trigger.dev/sdk@<your-sdk-version>/v3";
+// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
+import { tasks } from "npm:@trigger.dev/sdk@3.0.0/v3";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
 //     👆 **type-only** import

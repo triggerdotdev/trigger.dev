@@ -6,7 +6,7 @@ description: "Understand how Trigger.dev works and how it can help you."
 
 ## Introduction
 
-Trigger.dev v3 allows you to embed long-running async tasks into your application and run them in the background. This allows you to offload tasks that take a long time to complete, such as sending emails, processing videos, or running long chains of AI tasks.
+Trigger.dev v3 allows you to integrate long-running async tasks into your application and run them in the background. This allows you to offload tasks that take a long time to complete, such as sending multi-day email campaigns, processing videos, or running long chains of AI tasks.
 
 For example, the below task processes a video with `ffmpeg` and sends the results to an s3 bucket, then updates a database with the results and sends an email to the user.
 
@@ -424,7 +424,8 @@ When you run `npx trigger.dev@latest dev`, we run your task code locally on your
 
 <Note>
   Trigger.dev currently does not support "offline" dev mode, where you can run tasks without an
-  internet connection. Please let us know if this is a feature you want/need.
+  internet connection. [Please let us know](feedback.trigger.dev) if this is a feature you
+  want/need.
 </Note>
 
 ## Staging and production environments

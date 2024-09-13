@@ -1,6 +1,6 @@
 ---
 title: "Upgrade to new build system"
-sidebarTitle: "Beta Upgrade"
+sidebarTitle: "Beta upgrade"
 description: "How to update to 3.0.0 from the beta"
 ---
 
@@ -52,7 +52,7 @@ The new build system does not effect your trigger task files at all, so those ca
 
 You should now import the `defineConfig` function from `@trigger.dev/sdk/v3` and export the config as the default export:
 
-```
+```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
@@ -81,7 +81,7 @@ export default defineConfig({
 
 `external` is an array of strings, where each string is the name of a dependency that should be made external. Glob expressions are also supported and use the [minimatch](https://github.com/isaacs/minimatch) matcher.
 
-### `additionalFiles`
+### additionalFiles
 
 The `additionalFiles` option has been moved to our new build extension system.
 
@@ -107,7 +107,7 @@ export default defineConfig({
 });
 ```
 
-### `additionalPackages`
+### additionalPackages
 
 The `additionalPackages` option has been moved to our new build extension system.
 
@@ -131,7 +131,7 @@ export default defineConfig({
 });
 ```
 
-### `resolveEnvVars`
+### resolveEnvVars
 
 The `resolveEnvVars` export has been moved to our new build extension system.
 
@@ -161,9 +161,11 @@ export default defineConfig({
 });
 ```
 
-The `syncEnvVars` callback function works very similarly to the [`resolveEnvVars`](/deploy-environment-variables#sync-env-vars-from-another-service) callback, but now instead of returning an object with a `variables` key that contains the environment variables, you return an object with the environment variables directly (see the example above).
+The `syncEnvVars` callback function works very similarly to the deprecated `resolveEnvVars` handler, but now instead of returning an object with a `variables` key that contains the environment variables, you return an object with the environment variables directly (see the example above).
 
 One other difference is now `params.env` only contains the environment variables that are set in the Trigger.dev environment variables, and not the environment variables from the process. If you want to access the environment variables from the process, you can use `process.env`.
+
+See the [syncEnvVars](/deploy-environment-variables#sync-env-vars-from-another-service) documentation for more information.
 
 ### emitDecoratorMetadata
 
@@ -346,7 +348,7 @@ Or if you are using GitHub actions, you can add an additional step to run the `t
     npx trigger.dev@latest deploy
 ```
 
-### deploy --dry-run
+### deploy `--dry-run`
 
 You can now inspect the build output of your project without actually deploying it to Trigger.dev by using the `--dry-run` flag:
 
@@ -356,7 +358,7 @@ npx trigger.dev@latest deploy --dry-run
 
 This will save the build output and print the path to the build output directory. If you face any issues with deploying, please include the build output in your issue report.
 
-### --env-file
+### `--env-file`
 
 You can now pass the path to your local `.env` file using the `--env-file` flag during `dev` and `deploy` commands:
 
@@ -407,7 +409,12 @@ TRIGGER_ACCESS_TOKEN=<your access token> npx trigger.dev@latest dev
 You can now specify a custom registry and namespace when deploying via a self-hosted instance of Trigger.dev:
 
 ```sh
-npx trigger.dev@latest deploy --self-hosted --load-image --push --registry docker.io --namespace mydockerhubusername
+npx trigger.dev@latest deploy \
+  --self-hosted \
+  --load-image \
+  --push \
+  --registry docker.io \
+  --namespace mydockerhubusername
 ```
 
 All you have to do is create a repository in dockerhub that matches the project ref of your Trigger.dev project (e.g. `proj_rrkpdguyagvsoktglnod`)
