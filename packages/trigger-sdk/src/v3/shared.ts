@@ -266,6 +266,7 @@ export type TaskRunResult<TOutput = any> =
 export class SubtaskUnwrapError extends Error {
   public readonly taskId: string;
   public readonly runId: string;
+  public readonly cause?: unknown;
 
   constructor(taskId: string, runId: string, subtaskError: unknown) {
     if (subtaskError instanceof Error) {

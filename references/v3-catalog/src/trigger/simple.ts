@@ -1,5 +1,5 @@
 import "server-only";
-import { logger, task, tasks, wait } from "@trigger.dev/sdk/v3";
+import { logger, SubtaskUnwrapError, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry.js";
 import { HeaderGenerator } from "header-generator";
 
@@ -40,7 +40,13 @@ export const anyPayloadTask = task({
 
       console.log("Result from fetch-post-task 211111sss", { output: { url, method } });
     } catch (error) {
-      console.error("Error in fetch-post-task", { error });
+      if (error instanceof SubtaskUnwrapError) {
+        console.error("Error in fetch-post-task", {
+          runId: error.runId,
+          taskId: error.taskId,
+          cause: error.cause,
+        });
+      }
     }
 
     return {
