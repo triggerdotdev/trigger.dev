@@ -107,6 +107,7 @@
         "introduction",
         "quick-start",
         "how-it-works",
+        "upgrading-beta",
         "limits"
       ]
     },
@@ -122,20 +123,7 @@
         },
         "triggering",
         "apikeys",
-        {
-          "group": "Configuration",
-          "pages": [
-            "config/config-file",
-            {
-              "group": "Build Extensions",
-              "pages": [
-                "config/extensions/overview",
-                "config/extensions/prisma",
-                "config/extensions/custom"
-              ]
-            }
-          ]
-        }
+        "config/config-file"
       ]
     },
     {

@@ -4,6 +4,7 @@ import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
 import { defineConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 
@@ -63,6 +64,7 @@ export default defineConfig({
   build: {
     conditions: ["react-server"],
     extensions: [
+      ffmpeg(),
       emitDecoratorMetadata(),
       audioWaveform(),
       prismaExtension({
@@ -81,6 +83,6 @@ export default defineConfig({
         { placement: "last", target: "deploy" }
       ),
     ],
-    external: ["@ffmpeg-installer/ffmpeg", "re2"],
+    external: ["re2"],
   },
 });
