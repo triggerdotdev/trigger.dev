@@ -231,6 +231,9 @@ importers:
       '@depot/sdk-node':
         specifier: ^1.0.0
         version: 1.0.0
+      '@electric-sql/client':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@electric-sql/react':
         specifier: ^0.3.5
         version: 0.3.5(react@18.2.0)
@@ -624,6 +627,9 @@ importers:
       ulidx:
         specifier: ^2.2.1
         version: 2.2.1
+      use-sync-external-store:
+        specifier: ^1.2.2
+        version: 1.2.2(react@18.2.0)
       ws:
         specifier: ^8.11.0
         version: 8.12.0
@@ -730,6 +736,9 @@ importers:
       '@types/tar':
         specifier: ^6.1.4
         version: 6.1.4
+      '@types/use-sync-external-store':
+        specifier: ^0.0.6
+        version: 0.0.6
       '@types/ws':
         specifier: ^8.5.3
         version: 8.5.4
@@ -4471,6 +4480,12 @@ packages:
 
   /@electric-sql/client@0.4.0:
     resolution: {integrity: sha512-YVYSqHitqVIDC1RBTfmHMfAfqDNAKMK9/AFVTDFQQxN3Q85dIQS49zThAuJVecYiuYRJvTiqf40c4n39jZSNrQ==}
+    optionalDependencies:
+      '@rollup/rollup-darwin-arm64': 4.21.3
+    dev: false
+
+  /@electric-sql/client@0.4.1:
+    resolution: {integrity: sha512-O8LV9Qdr4H5t5kfDw0EhnX5gB7kYDkoCJT2ApAC0UwvCn9p8d8CHYQKw+USGOK4a0CkiwK04NENYpLHuvFAxHA==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
@@ -14899,6 +14914,10 @@ packages:
 
   /@types/unist@2.0.6:
     resolution: {integrity: sha512-PBjIUxZHOuj0R15/xuwJYjFi+KZdNFrehocChv4g5hu6aFroHue8m0lBP0POdK2nKzbw0cgV1mws8+V/JAcEkQ==}
+    dev: true
+
+  /@types/use-sync-external-store@0.0.6:
+    resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
     dev: true
 
   /@types/uuid@9.0.0:
