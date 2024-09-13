@@ -39,6 +39,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   overrideConfig: z.boolean().default(false),
   tag: z.string().default("beta"),
   skipPackageInstall: z.boolean().default(false),
+  runtime: z.string().default("node"),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
@@ -61,6 +62,11 @@ export function configureInitCommand(program: Command) {
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
         "beta"
+      )
+      .option(
+        "-r, --runtime <runtime>",
+        "Which runtime to use for the project. Currently only supports node and bun",
+        "node"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -490,12 +496,14 @@ async function writeConfigFile(
         "cli.projectDir": projectDir,
         "cli.templatePath": templateUrl,
         "cli.outputPath": outputPath,
+        "cli.runtime": options.runtime,
       });
 
       const result = await createFileFromTemplate({
         templateUrl,
         replacements: {
           projectRef: project.externalRef,
+          runtime: options.runtime,
           triggerDirectoriesOption: triggerDir.isCustomValue
             ? `\n  dirs: ["${triggerDir.location}"],`
             : `\n  dirs: ["/src/trigger"],`,
