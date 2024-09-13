@@ -254,9 +254,14 @@
       "group": "Examples",
       "pages": [
         "examples/generate-image-with-dall-e3",
-        "examples/ffmpeg-compress-video",
-        "examples/ffmpeg-extract-audio",
-        "examples/ffmpeg-generate-thumbnail"
+        {
+          "group": "FFmpeg",
+          "pages": [
+            "examples/ffmpeg-compress-video",
+            "examples/ffmpeg-extract-audio",
+            "examples/ffmpeg-generate-thumbnail"
+          ]
+        }
       ]
     }
   ],

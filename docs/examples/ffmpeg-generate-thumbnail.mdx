@@ -1,98 +1,123 @@
 ---
 title: "Generate a thumbnail from a video using FFmpeg"
-sidebarTitle: "Generate a thumbnail with FFmpeg"
-description: "This example shows you how to generate a thumbnail from a video using FFmpeg with Trigger.dev."
+sidebarTitle: "FFmpeg thumbnail from video"
+description: "This example shows you how to generate a thumbnail from a video using FFmpeg with Trigger.dev and upload the thumbnail to R2 storage."
 ---
 
 ## Overview
 
-This task uses FFmpeg to generate a thumbnail from a video at a specific time point.
+This task demonstrates how to use FFmpeg to generate a thumbnail from a video at a specific time and upload the generated thumbnail to R2 storage using Trigger.dev.
 
 ## Key Features:
 
 - Fetches a video from a given URL
--     Generates a thumbnail from the video at the 50% time point
-- Sets the thumbnail size to 320x240 pixels
-- Handles temporary file management by creating and cleaning up input and output files
-- Returns the generated thumbnail buffer, the file path of the thumbnail, the original video size, and the thumbnail size
+- Generates a thumbnail from the video at the 5-second mark
+- Uploads the generated thumbnail to R2 storage
+
+### Extension configuration
+
+To use our FFmpeg extension during the build process, you need to add it to your project configuration like this:
+
+```ts trigger.config.ts
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<your-project-id>",
+
+...
+// Your other config settings...
+...
+
+  build: {
+    extensions: [
+      ffmpeg(),
+    ],
+  },
+});
+```
 
 ## Task code
 
-```ts trigger/ffmpeg-extract-audio.ts
-import os from "os";
-import fetch from "node-fetch";
-import fs from "fs/promises";
-import path from "path";
+```ts trigger/ffmpeg-generate-thumbnail.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
 
 export const ffmpegGenerateThumbnail = task({
   id: "ffmpeg-generate-thumbnail",
-  run: async (payload: { videoUrl: string }, { ctx }) => {
-    if (ctx.environment.type !== "DEVELOPMENT") {
-      ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
-      ffmpeg.setFfprobePath("/usr/bin/ffprobe");
-    }
+  run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate temporary file names
+    // Generate output file name with a timestamp
     const tempDirectory = os.tmpdir();
-    const tempInputPath = path.join(tempDirectory, `input_${Date.now()}.mp4`);
     const outputPath = path.join(tempDirectory, `thumbnail_${Date.now()}.jpg`);
 
-    try {
-      // Fetch the video
-      const response = await fetch(videoUrl);
-      const buffer = await response.buffer();
-      await fs.writeFile(tempInputPath, buffer);
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
 
-      // Generate the thumbnail
-      await new Promise((resolve, reject) => {
-        ffmpeg(tempInputPath)
-          .screenshots({
-            count: 1,
-            folder: "/tmp",
-            filename: path.basename(outputPath),
-            size: "320x240",
-            timemarks: ["50%"],
-          })
-          .on("end", resolve)
-          .on("error", reject);
-      });
-
-      // Read the generated thumbnail
-      const thumbnail = await fs.readFile(outputPath);
-
-      // Get file sizes for comparison
-      const originalSize = buffer.length;
-      const thumbnailSize = thumbnail.length;
-
-      // Clean up temporary files
-      await fs.unlink(tempInputPath);
-
-      // Log thumbnail generation results
-      logger.log(`Original video size: ${originalSize} bytes`);
-      logger.log(`Thumbnail size: ${thumbnailSize} bytes`);
-      logger.log(`Thumbnail saved at: ${outputPath}`);
-
-      // Return the thumbnail buffer, file path, and sizes
-      return {
-        thumbnailBuffer: thumbnail,
-        thumbnailPath: outputPath,
-        originalSize,
-        thumbnailSize,
-      };
-    } catch (error) {
-      logger.error("Error generating thumbnail:", { error });
-      // Clean up files in case of error
-      try {
-        await fs.unlink(tempInputPath);
-        await fs.unlink(outputPath);
-      } catch (cleanupError) {
-        logger.error("Error during cleanup:", { cleanupError });
+    // Generate the thumbnail using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
       }
-      throw error;
-    }
+      ffmpeg(Readable.from(response.body))
+        .screenshots({
+          count: 1,
+          folder: "/tmp",
+          filename: path.basename(outputPath),
+          size: "320x240",
+          timemarks: ["5"], // 5 seconds
+        })
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    // Read the generated thumbnail into a buffer
+    const thumbnail = await fs.readFile(outputPath);
+
+    // Generate the S3 key for the uploaded thumbnail file
+    const s3Key = `thumbnails/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the thumbnail to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: thumbnail,
+    };
+
+    // Upload the thumbnail to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Thumbnail uploaded to R2", { url: s3Url });
+
+    // Delete the temporary thumbnail file
+    await fs.unlink(outputPath);
+
+    // Log thumbnail generation results for debugging purposes
+    logger.log(`Thumbnail uploaded to S3: ${s3Url}`);
+
+    // Return the thumbnail buffer, file path, and R2 URL
+    return {
+      thumbnailBuffer: thumbnail,
+      thumbnailPath: outputPath,
+      s3Url,
+    };
   },
 });
 ```

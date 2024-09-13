@@ -1,99 +1,129 @@
 ---
 title: "Extract audio from a video using FFmpeg"
-sidebarTitle: "Extract audio with FFmpeg"
-description: "This example shows you how to extract audio from a video using FFmpeg with Trigger.dev."
+sidebarTitle: "FFmpeg extract audio"
+description: "This example shows you how to extract audio from a video using FFmpeg with Trigger.dev and upload the extracted audio to R2 storage."
 ---
 
 ## Overview
 
-This task uses FFmpeg to extract audio from a video and convert it to the WAV format.
+This task demonstrates how to use FFmpeg to extract audio from a video, convert it to WAV format, and upload it to R2 storage using Trigger.dev.
 
 ## Key Features:
 
 - Fetches a video from a given URL
-- Extracts the audio from the video
-- Converts the extracted audio to the WAV format
-- Handles temporary file management by creating and cleaning up input and output files
-- Returns the extracted WAV audio buffer and the file path of the WAV file
+- Extracts the audio from the video using FFmpeg
+- Converts the extracted audio to WAV format
+- Uploads the extracted audio to R2 storage
+
+### Extension configuration
+
+To use our FFmpeg extension during the build process, you need to add it to your project configuration like this:
+
+```ts trigger.config.ts
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<your-project-id>",
+
+...
+// Your other config settings...
+...
+
+  build: {
+    extensions: [
+      ffmpeg(),
+    ],
+  },
+});
+```
 
 ## Task code
 
 <Warning>
-  When testing, make sure to provide a video URL that has audio. If the video does not contain
+  When testing, make sure to provide a video URL that contains audio. If the video does not have
   audio, the task will fail.
 </Warning>
 
 ```ts trigger/ffmpeg-extract-audio.ts
-import fetch from "node-fetch";
-import fs from "fs/promises";
-import path from "path";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
 import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
 
 export const ffmpegExtractAudio = task({
   id: "ffmpeg-extract-audio",
-  run: async (payload: { videoUrl: string }, { ctx }) => {
-    if (ctx.environment.type !== "DEVELOPMENT") {
-      ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
-      ffmpeg.setFfprobePath("/usr/bin/ffprobe");
-    }
+  run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate temporary and output file names
+    // Generate output file name with a timestamp
     const tempDirectory = os.tmpdir();
-
-    const tempInputPath = path.join(tempDirectory, `input_${Date.now()}.mp4`);
     const outputPath = path.join(tempDirectory, `output_${Date.now()}.wav`);
 
-    try {
-      // Fetch the video
-      const response = await fetch(videoUrl);
-      const buffer = await response.arrayBuffer();
-      const videoBuffer = Buffer.from(buffer);
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
 
-      // Save the video buffer to a temporary file
-      await fs.writeFile(tempInputPath, videoBuffer);
-
-      // Convert the video to WAV
-      await new Promise((resolve, reject) => {
-        ffmpeg(tempInputPath)
-          .toFormat("wav")
-          .save(outputPath)
-          .on("end", () => {
-            logger.log(`WAV file saved to ${outputPath}`);
-            resolve(outputPath);
-          })
-          .on("error", (err) => {
-            reject(err);
-          });
-      });
-
-      // Read the WAV file
-      const wavBuffer = await fs.readFile(outputPath);
-
-      // Clean up temporary files
-      await fs.unlink(tempInputPath);
-
-      // Log the output file path
-      logger.log(`Converted video saved at: ${outputPath}`);
-
-      // Return the WAV buffer and file path
-      return {
-        wavBuffer,
-        wavFilePath: outputPath,
-      };
-    } catch (error) {
-      logger.error("Error converting video to WAV:", { error });
-      // Clean up files in case of error
-      try {
-        await fs.unlink(tempInputPath);
-        await fs.unlink(outputPath);
-      } catch (cleanupError) {
-        logger.error("Error during cleanup:", { cleanupError });
+    // Convert the video to WAV format using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
       }
-      throw error;
-    }
+      ffmpeg(Readable.from(response.body))
+        .toFormat("wav")
+        .save(outputPath)
+        .on("end", () => {
+          logger.log(`WAV file saved to ${outputPath}`);
+          resolve(outputPath);
+        })
+        .on("error", (err) => {
+          reject(err);
+        });
+    });
+
+    // Read the WAV file into a buffer
+    const wavBuffer = await fs.readFile(outputPath);
+
+    // Log the output file path for debugging purposes
+    logger.log(`Converted video saved at: ${outputPath}`);
+
+    // Generate the S3 key for the uploaded audio file
+    const s3Key = `processed-audio/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the audio to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: wavBuffer,
+    };
+
+    // Upload the audio to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Extracted audio uploaded to R2", { url: s3Url });
+
+    // Delete the temporary output file
+    await fs.unlink(outputPath);
+
+    // Return the WAV buffer, file path, and R2 URL
+    return {
+      wavBuffer,
+      wavFilePath: outputPath,
+      s3Url,
+    };
   },
 });
 ```

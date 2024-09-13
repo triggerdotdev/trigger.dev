@@ -1,105 +1,134 @@
 ---
 title: "Compress a video using FFmpeg"
-sidebarTitle: "Compress a video with FFmpeg"
-description: "This example shows you how to compress a video using FFmpeg with Trigger.dev."
+sidebarTitle: "FFmpeg compress video"
+description: "This example shows you how to compress a video using FFmpeg with Trigger.dev and upload the compressed video to R2 storage."
 ---
 
 ## Overview
 
-This task uses FFmpeg to compress a video, reducing its file size while attempting to maintain reasonable quality.
+This task demonstrates how to use FFmpeg to compress a video, reducing its file size while maintaining reasonable quality, and upload the compressed video to R2 storage using Trigger.dev.
 
 ## Key Features:
 
 - Fetches a video from a given URL
-- Uses the H.264 codec for video compression
-- Sets the Constant Rate Factor (CRF) to 28 for a good balance between quality and file size
-- Uses the "veryslow" preset for the best compression
-- Scales the video resolution to 50% of the original width and height
-- Uses AAC codec for audio with a bitrate of 64kbps and converts to mono
-- Handles temporary file management by creating and cleaning up input and output files
-- Returns the compressed video buffer, the file path of the compressed video, the original file size, the compressed file size, and the compression ratio
+- Compresses the video using FFmpeg with various compression settings
+- Uploads the compressed video to R2 storage
+- Handles temporary file management by creating and cleaning up the output file
+- Returns the compressed video file path, the compressed file size, and the R2 URL of the uploaded video
+
+### Extension configuration
+
+To use our FFmpeg extension during the build process, you need to add it to your project configuration like this:
+
+```ts trigger.config.ts
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<your-project-id>",
+
+...
+// Your other config settings...
+...
+
+  build: {
+    extensions: [
+      ffmpeg(),
+    ],
+  },
+});
+```
 
 ## Task code
 
 ```ts trigger/ffmpeg-compress-video.ts
-import fetch from "node-fetch";
-import fs from "fs/promises";
-import path from "path";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
 
 export const ffmpegCompressVideo = task({
   id: "ffmpeg-compress-video",
-  run: async (payload: { videoUrl: string }, { ctx }) => {
-    if (ctx.environment.type !== "DEVELOPMENT") {
-      ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
-      ffmpeg.setFfprobePath("/usr/bin/ffprobe");
-    }
+  run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate temporary file names
-    const tempInputPath = path.join("/tmp", `input_${Date.now()}.mp4`);
-    const outputPath = path.join("/tmp", `output_${Date.now()}.mp4`);
+    // Generate output file name with a timestamp
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `output_${Date.now()}.mp4`);
 
-    try {
-      // Fetch the video
-      const response = await fetch(videoUrl);
-      const buffer = await response.buffer();
-      await fs.writeFile(tempInputPath, buffer);
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
 
-      // Compress the video
-      await new Promise((resolve, reject) => {
-        ffmpeg(tempInputPath)
-          .outputOptions([
-            "-c:v libx264", // Use H.264 codec
-            "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
-            "-preset veryslow", // Slowest preset for best compression
-            "-vf scale=iw/2:ih/2", // Reduce resolution to 320p width (height auto-calculated)
-            "-c:a aac", // Use AAC for audio
-            "-b:a 64k", // Reduce audio bitrate to 64k
-            "-ac 1", // Convert to mono audio
-          ])
-          .output(outputPath)
-          .on("end", resolve)
-          .on("error", reject)
-          .run();
-      });
-
-      // Read the compressed video
-      const compressedVideo = await fs.readFile(outputPath);
-
-      // Get file sizes for comparison
-      const originalSize = buffer.length;
-      const compressedSize = compressedVideo.length;
-
-      // Clean up temporary files
-      await fs.unlink(tempInputPath);
-
-      // Log compression results
-      logger.log(`Original video size: ${originalSize} bytes`);
-      logger.log(`Compressed video size: ${compressedSize} bytes`);
-      logger.log(`Compression ratio: ${((1 - compressedSize / originalSize) * 100).toFixed(2)}%`);
-      logger.log(`Compressed video saved at: ${outputPath}`);
-
-      // Return the compressed video buffer, file path, and compression stats
-      return {
-        compressedVideoBuffer: compressedVideo,
-        compressedVideoPath: outputPath,
-        originalSize,
-        compressedSize,
-        compressionRatio: ((1 - compressedSize / originalSize) * 100).toFixed(2),
-      };
-    } catch (error) {
-      logger.error("Error compressing video:", { error });
-      // Clean up files in case of error
-      try {
-        await fs.unlink(tempInputPath);
-        await fs.unlink(outputPath);
-      } catch (cleanupError) {
-        logger.error("Error during cleanup:", { cleanupError });
+    // Compress the video using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
       }
-      throw error;
-    }
+
+      ffmpeg(Readable.from(response.body))
+        .outputOptions([
+          "-c:v libx264", // Use H.264 codec
+          "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
+          "-preset veryslow", // Slowest preset for best compression
+          "-vf scale=iw/2:ih/2", // Reduce resolution to 50% of original width and height
+          "-c:a aac", // Use AAC for audio
+          "-b:a 64k", // Reduce audio bitrate to 64k
+          "-ac 1", // Convert to mono audio
+        ])
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
+
+    // Read the compressed video into a buffer
+    const compressedVideo = await fs.readFile(outputPath);
+
+    // Get the compressed video size
+    const compressedSize = compressedVideo.length;
+
+    // Log compression results for debugging purposes
+    logger.log(`Compressed video size: ${compressedSize} bytes`);
+    logger.log(`Compressed video saved at: ${outputPath}`);
+
+    // Generate the S3 key for the uploaded video file
+    const s3Key = `processed-videos/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the video to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: compressedVideo,
+    };
+
+    // Upload the video to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Compressed video uploaded to R2", { url: s3Url });
+
+    // Delete the temporary compressed video file
+    await fs.unlink(outputPath);
+
+    // Return the compressed video file path, compressed size, and R2 URL
+    return {
+      compressedVideoPath: outputPath,
+      compressedSize,
+      s3Url,
+    };
   },
 });
 ```
