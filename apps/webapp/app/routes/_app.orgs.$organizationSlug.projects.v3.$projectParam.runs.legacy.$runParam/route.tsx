@@ -1,5 +1,6 @@
 import {
   ArrowUturnLeftIcon,
+  BoltSlashIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -9,8 +10,8 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { Location } from "@remix-run/react";
-import { useParams } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useLoaderData, useParams, useRevalidator } from "@remix-run/react";
+import { LoaderFunctionArgs, SerializeFrom, json } from "@remix-run/server-runtime";
 import { Virtualizer } from "@tanstack/react-virtual";
 import {
   formatDurationMilliseconds,
@@ -19,10 +20,8 @@ import {
 } from "@trigger.dev/core/v3";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { ClientOnly } from "remix-utils/client-only";
 import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -47,31 +46,26 @@ import {
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
-import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import * as Timeline from "~/components/primitives/Timeline";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TreeView, UseTreeStateOutput, useTree } from "~/components/primitives/TreeView/TreeView";
 import { NodesState } from "~/components/primitives/TreeView/reducer";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
-import { RunInspector } from "~/components/runs/v3/RunInspector";
-import { SpanInspector } from "~/components/runs/v3/SpanInspector";
 import { SpanTitle, eventBackgroundClassName } from "~/components/runs/v3/SpanTitle";
 import { TaskRunStatusIcon, runStatusClassNameColor } from "~/components/runs/v3/TaskRunStatus";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { env } from "~/env.server";
 import { useDebounce } from "~/hooks/useDebounce";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useSyncRunPage } from "~/hooks/useSyncRunPage";
-import { Trace, TraceEvent } from "~/hooks/useSyncTrace";
-import { RawRun } from "~/hooks/useSyncTraceRuns";
 import { useUser } from "~/hooks/useUser";
-import { Run, RunPresenter } from "~/presenters/v3/RunPresenterElectric.server";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
+import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -80,15 +74,12 @@ import {
   v3RunParamsSchema,
   v3RunPath,
   v3RunSpanPath,
+  v3RunStreamingPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import {
-  TraceSpan,
-  createSpanFromEvents,
-  createTraceTreeFromEvents,
-  prepareTrace,
-} from "~/utils/taskEvent";
+import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 
 const resizableSettings = {
   parent: {
@@ -120,6 +111,8 @@ const resizableSettings = {
   },
 };
 
+type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0];
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
@@ -136,8 +129,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
   const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
-  return typedjson({
+  return json({
     run: result.run,
+    trace: result.trace,
+    maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
     resizable: {
       parent,
       tree,
@@ -145,7 +140,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-type LoaderData = UseDataFunctionReturn<typeof loader>;
+type LoaderData = SerializeFrom<typeof loader>;
 
 function getSpanId(location: Location<any>): string | undefined {
   const search = new URLSearchParams(location.search);
@@ -153,8 +148,7 @@ function getSpanId(location: Location<any>): string | undefined {
 }
 
 export default function Page() {
-  const { run, resizable } = useTypedLoaderData<typeof loader>();
-
+  const { run, trace, resizable, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
   const user = useUser();
   const organization = useOrganization();
   const project = useProject();
@@ -242,185 +236,110 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
-          <ClientOnly fallback={<Loading />}>
-            {() => <Panels run={run} resizable={resizable} />}
-          </ClientOnly>
-        </div>
+        {trace ? (
+          <TraceView
+            run={run}
+            trace={trace}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizable={resizable}
+          />
+        ) : (
+          <NoLogsView
+            run={run}
+            trace={trace}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizable={resizable}
+          />
+        )}
       </PageBody>
     </>
   );
 }
 
-type InspectorState =
-  | {
-      type: "span";
-      span?: TraceSpan;
-    }
-  | {
-      type: "run";
-      run?: RawRun;
-      span?: TraceSpan;
-    }
-  | undefined;
-
-function Panels({ resizable, run: originalRun }: LoaderData) {
+function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
+  const organization = useOrganization();
+  const project = useProject();
   const { location, replaceSearchParam } = useReplaceLocation();
   const selectedSpanId = getSpanId(location);
 
-  const appOrigin = useAppOrigin();
-  const { isUpToDate, events, runs } = useSyncRunPage({
-    origin: appOrigin,
-    traceId: originalRun.traceId,
-  });
-
-  const initialLoad = !isUpToDate || !runs || !events;
-
-  const trace = useMemo(() => {
-    if (!events) return undefined;
-    const preparedEvents = prepareTrace(events);
-    if (!preparedEvents) return undefined;
-    return createTraceTreeFromEvents(preparedEvents, originalRun.spanId);
-  }, [events, originalRun.spanId]);
-
-  const inspectorState = useMemo<InspectorState>(() => {
-    if (originalRun.logsDeletedAt) {
-      return {
-        type: "run",
-        run: runs?.find((r) => r.friendlyId === originalRun.friendlyId),
-      };
-    }
-
-    if (selectedSpanId) {
-      if (runs && runs.length > 0) {
-        const spanRun = runs.find((r) => r.spanId === selectedSpanId);
-        if (spanRun && events) {
-          const span = createSpanFromEvents(events, selectedSpanId);
-          return {
-            type: "run",
-            run: spanRun,
-            span,
-          };
-        }
-      }
-
-      if (!events) {
-        return {
-          type: "span",
-          span: undefined,
-        };
-      }
-
-      const span = createSpanFromEvents(events, selectedSpanId);
-      return {
-        type: "span",
-        span,
-      };
-    }
-  }, [selectedSpanId, runs, events]);
-
-  return (
-    <ResizablePanelGroup
-      autosaveId={resizableSettings.parent.autosaveId}
-      // snapshot={resizable.parent}
-      className="h-full max-h-full"
-    >
-      <ResizablePanel id={resizableSettings.parent.main.id} min={resizableSettings.parent.main.min}>
-        {initialLoad ? (
-          <Loading />
-        ) : (
-          <TraceView
-            run={originalRun}
-            environmentType={originalRun.environment.type}
-            logsDeletedAt={originalRun.logsDeletedAt}
-            trace={trace}
-            selectedSpanId={selectedSpanId}
-            replaceSearchParam={replaceSearchParam}
-          />
-        )}
-      </ResizablePanel>
-      <ResizableHandle id={resizableSettings.parent.handleId} />
-      {inspectorState ? (
-        <ResizablePanel
-          id={resizableSettings.parent.inspector.id}
-          default={resizableSettings.parent.inspector.default}
-          min={resizableSettings.parent.inspector.min}
-          isStaticAtRest
-        >
-          {inspectorState.type === "span" ? (
-            <SpanInspector
-              runParam={originalRun.friendlyId}
-              span={inspectorState.span}
-              closePanel={!originalRun.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
-            />
-          ) : inspectorState.type === "run" ? (
-            <RunInspector
-              runParam={originalRun.friendlyId}
-              run={inspectorState.run}
-              closePanel={!originalRun.logsDeletedAt ? () => replaceSearchParam("span") : undefined}
-            />
-          ) : null}
-        </ResizablePanel>
-      ) : null}
-    </ResizablePanelGroup>
-  );
-}
-
-type TraceData = {
-  run: Run;
-  environmentType: RuntimeEnvironmentType;
-  trace?: Trace;
-  selectedSpanId: string | undefined;
-  replaceSearchParam: (key: string, value?: string) => void;
-  logsDeletedAt: Date | null;
-};
-
-function TraceView({
-  run,
-  environmentType,
-  trace,
-  selectedSpanId,
-  replaceSearchParam,
-  logsDeletedAt,
-}: TraceData) {
-  const changeToSpan = useDebounce((selectedSpan: string) => {
-    replaceSearchParam("span", selectedSpan);
-  }, 100);
-
-  if (logsDeletedAt) {
-    return <NoLogsView run={run} />;
-  }
-
   if (!trace) {
-    return <Loading />;
+    return <></>;
   }
 
   const { events, parentRunFriendlyId, duration, rootSpanStatus, rootStartedAt } = trace;
+  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
+
+  const changeToSpan = useDebounce((selectedSpan: string) => {
+    replaceSearchParam("span", selectedSpan);
+  }, 250);
+
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(v3RunStreamingPath(organization, project, run), {
+    event: "message",
+    disabled: !shouldLiveReload,
+  });
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <TasksTreeView
-      selectedId={selectedSpanId}
-      key={events[0]?.id ?? "-"}
-      events={events}
-      parentRunFriendlyId={parentRunFriendlyId}
-      onSelectedIdChanged={(selectedSpan) => {
-        //instantly close the panel if no span is selected
-        if (!selectedSpan) {
-          replaceSearchParam("span");
-          return;
-        }
+    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+      <ResizablePanelGroup
+        autosaveId={resizableSettings.parent.autosaveId}
+        // snapshot={resizable.parent}
+        className="h-full max-h-full"
+      >
+        <ResizablePanel
+          id={resizableSettings.parent.main.id}
+          min={resizableSettings.parent.main.min}
+        >
+          <TasksTreeView
+            selectedId={selectedSpanId}
+            key={events[0]?.id ?? "-"}
+            events={events}
+            parentRunFriendlyId={parentRunFriendlyId}
+            onSelectedIdChanged={(selectedSpan) => {
+              //instantly close the panel if no span is selected
+              if (!selectedSpan) {
+                replaceSearchParam("span");
+                return;
+              }
 
-        changeToSpan(selectedSpan);
-      }}
-      totalDuration={duration}
-      rootSpanStatus={rootSpanStatus}
-      rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
-      environmentType={environmentType}
-    />
+              changeToSpan(selectedSpan);
+            }}
+            totalDuration={duration}
+            rootSpanStatus={rootSpanStatus}
+            rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
+            environmentType={run.environment.type}
+            shouldLiveReload={shouldLiveReload}
+            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+          />
+        </ResizablePanel>
+        <ResizableHandle id={resizableSettings.parent.handleId} />
+        {selectedSpanId && (
+          <ResizablePanel
+            id={resizableSettings.parent.inspector.id}
+            default={resizableSettings.parent.inspector.default}
+            min={resizableSettings.parent.inspector.min}
+            isStaticAtRest
+          >
+            {" "}
+            <SpanView
+              runParam={run.friendlyId}
+              spanId={selectedSpanId}
+              closePanel={() => replaceSearchParam("span")}
+            />
+          </ResizablePanel>
+        )}
+      </ResizablePanelGroup>
+    </div>
   );
 }
 
-function NoLogsView({ run }: { run: Run }) {
+function NoLogsView({ run, resizable }: LoaderData) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -437,46 +356,74 @@ function NoLogsView({ run }: { run: Run }) {
     daysSinceCompleted !== undefined && daysSinceCompleted <= logRetention;
 
   return (
-    <div className="grid h-full place-items-center">
-      {daysSinceCompleted === undefined ? (
-        <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
-          <Paragraph variant="small">
-            We tidy up older logs to keep things running smoothly.
-          </Paragraph>
-        </InfoPanel>
-      ) : isWithinLogRetention ? (
-        <InfoPanel variant="info" icon={InformationCircleIcon} title="These logs have been deleted">
-          <Paragraph variant="small">
-            Your log retention is {logRetention} days but these logs had already been deleted. From
-            now on only logs from runs that completed {logRetention} days ago will be deleted.
-          </Paragraph>
-        </InfoPanel>
-      ) : daysSinceCompleted <= 30 ? (
-        <InfoPanel
-          variant="upgrade"
-          icon={LockOpenIcon}
-          iconClassName="text-indigo-500"
-          title="Unlock longer log retention"
-          to={v3BillingPath(organization)}
-          buttonLabel="Upgrade"
+    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+      <ResizablePanelGroup
+        autosaveId={resizableSettings.parent.autosaveId}
+        // snapshot={resizable.parent}
+        className="h-full max-h-full"
+      >
+        <ResizablePanel
+          id={resizableSettings.parent.main.id}
+          min={resizableSettings.parent.main.min}
         >
-          <Paragraph variant="small">
-            The logs for this run have been deleted because the run completed {daysSinceCompleted}{" "}
-            days ago.
-          </Paragraph>
-          <Paragraph variant="small">Upgrade your plan to keep logs for longer.</Paragraph>
-        </InfoPanel>
-      ) : (
-        <InfoPanel
-          variant="info"
-          icon={InformationCircleIcon}
-          title="These logs are more than 30 days old"
+          <div className="grid h-full place-items-center">
+            {daysSinceCompleted === undefined ? (
+              <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
+                <Paragraph variant="small">
+                  We tidy up older logs to keep things running smoothly.
+                </Paragraph>
+              </InfoPanel>
+            ) : isWithinLogRetention ? (
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="These logs have been deleted"
+              >
+                <Paragraph variant="small">
+                  Your log retention is {logRetention} days but these logs had already been deleted.
+                  From now on only logs from runs that completed {logRetention} days ago will be
+                  deleted.
+                </Paragraph>
+              </InfoPanel>
+            ) : daysSinceCompleted <= 30 ? (
+              <InfoPanel
+                variant="upgrade"
+                icon={LockOpenIcon}
+                iconClassName="text-indigo-500"
+                title="Unlock longer log retention"
+                to={v3BillingPath(organization)}
+                buttonLabel="Upgrade"
+              >
+                <Paragraph variant="small">
+                  The logs for this run have been deleted because the run completed{" "}
+                  {daysSinceCompleted} days ago.
+                </Paragraph>
+                <Paragraph variant="small">Upgrade your plan to keep logs for longer.</Paragraph>
+              </InfoPanel>
+            ) : (
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="These logs are more than 30 days old"
+              >
+                <Paragraph variant="small">
+                  We tidy up older logs to keep things running smoothly.
+                </Paragraph>
+              </InfoPanel>
+            )}
+          </div>
+        </ResizablePanel>
+        <ResizableHandle id={resizableSettings.parent.handleId} />
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          isStaticAtRest
         >
-          <Paragraph variant="small">
-            We tidy up older logs to keep things running smoothly.
-          </Paragraph>
-        </InfoPanel>
-      )}
+          {" "}
+          <SpanView runParam={run.friendlyId} spanId={run.spanId} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }
@@ -490,6 +437,8 @@ type TasksTreeViewProps = {
   rootSpanStatus: "executing" | "completed" | "failed";
   rootStartedAt: Date | undefined;
   environmentType: RuntimeEnvironmentType;
+  shouldLiveReload: boolean;
+  maximumLiveReloadingSetting: number;
 };
 
 function TasksTreeView({
@@ -501,6 +450,8 @@ function TasksTreeView({
   rootSpanStatus,
   rootStartedAt,
   environmentType,
+  shouldLiveReload,
+  maximumLiveReloadingSetting,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -574,7 +525,11 @@ function TasksTreeView({
                   This is the root task
                 </Paragraph>
               )}
-              <LiveReloadingStatus rootSpanCompleted={rootSpanStatus !== "executing"} />
+              <LiveReloadingStatus
+                rootSpanCompleted={rootSpanStatus !== "executing"}
+                isLiveReloading={shouldLiveReload}
+                settingValue={maximumLiveReloadingSetting}
+              />
             </div>
             <TreeView
               parentRef={parentRef}
@@ -691,7 +646,7 @@ function TasksTreeView({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="grow @container">
           <div className="hidden items-center gap-4 @[42rem]:flex">
             <KeyboardShortcuts
@@ -1045,16 +1000,40 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
   );
 }
 
-function LiveReloadingStatus({ rootSpanCompleted }: { rootSpanCompleted: boolean }) {
+function LiveReloadingStatus({
+  rootSpanCompleted,
+  isLiveReloading,
+  settingValue,
+}: {
+  rootSpanCompleted: boolean;
+  isLiveReloading: boolean;
+  settingValue: number;
+}) {
   if (rootSpanCompleted) return null;
 
   return (
-    <div className="flex items-center gap-1">
-      <PulsingDot />
-      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-        Live reloading
-      </Paragraph>
-    </div>
+    <>
+      {isLiveReloading ? (
+        <div className="flex items-center gap-1">
+          <PulsingDot />
+          <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
+            Live reloading
+          </Paragraph>
+        </div>
+      ) : (
+        <SimpleTooltip
+          content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
+          button={
+            <div className="flex items-center gap-1">
+              <BoltSlashIcon className="size-3.5 text-text-dimmed" />
+              <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
+                Live reloading disabled
+              </Paragraph>
+            </div>
+          }
+        ></SimpleTooltip>
+      )}
+    </>
   );
 }
 
@@ -1091,7 +1070,7 @@ function SpanWithDuration({
         )}
         <div
           className={cn(
-            "sticky left-0 z-10 transition-opacity group-hover:opacity-100",
+            "sticky left-0 z-10 transition group-hover:opacity-100",
             !showDuration && "opacity-0"
           )}
         >
@@ -1151,7 +1130,7 @@ function ConnectedDevWarning() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(true);
-    }, 6000);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -1159,14 +1138,14 @@ function ConnectedDevWarning() {
   return (
     <div
       className={cn(
-        "mt-2 flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
+        "flex items-center overflow-hidden pl-5 pr-2 transition-opacity duration-500",
         isVisible ? "opacity-100" : "h-0 opacity-0"
       )}
     >
       <Callout variant="info">
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
-            Runs usually start within 2 seconds in{" "}
+            Runs usually start within 1 second in{" "}
             <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />. Check you're running the
             CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@beta dev</InlineCode>
           </Paragraph>
@@ -1281,19 +1260,5 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
       value={value}
       onChange={(e) => updateValue(e.target.value)}
     />
-  );
-}
-
-export function Loading() {
-  return (
-    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="mx-3 flex items-center gap-2 border-b border-grid-dimmed">
-        <Spinner className="size-4" />
-        <Paragraph variant="extra-small" className="flex items-center gap-2">
-          Loading logs
-        </Paragraph>
-      </div>
-      <div></div>
-    </div>
   );
 }
