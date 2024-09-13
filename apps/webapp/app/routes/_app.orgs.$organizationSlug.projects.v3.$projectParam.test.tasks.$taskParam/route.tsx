@@ -180,8 +180,8 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       onSubmit={(e) => submitForm(e)}
     >
       <input type="hidden" name="triggerSource" value={"STANDARD"} />
-      <ResizablePanelGroup direction="horizontal">
-        <ResizablePanel order={1} minSize={30} defaultSize={60}>
+      <ResizablePanelGroup orientation="horizontal">
+        <ResizablePanel id="test-task-main" min="100px" default="60%">
           <div className="h-full bg-charcoal-900">
             <JSONEditor
               defaultValue={defaultJson}
@@ -207,8 +207,8 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
             />
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel order={2} minSize={20} defaultSize={40}>
+        <ResizableHandle id="test-task-handle" />
+        <ResizablePanel id="test-task-inspector" min="100px">
           <RecentPayloads
             runs={runs}
             selectedId={selectedCodeSampleId}
@@ -308,8 +308,8 @@ function ScheduledTaskForm({
         {...conform.input(environmentId, { type: "hidden" })}
         value={task.environment.id}
       />
-      <ResizablePanelGroup direction="horizontal">
-        <ResizablePanel order={1} minSize={30} defaultSize={60}>
+      <ResizablePanelGroup orientation="horizontal">
+        <ResizablePanel id="test-task-main" min="100px" default="60%">
           <div className="p-3">
             <Fieldset>
               <InputGroup>
@@ -402,8 +402,8 @@ function ScheduledTaskForm({
             </Fieldset>
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel order={2} minSize={20} defaultSize={40}>
+        <ResizableHandle id="test-task-handle" />
+        <ResizablePanel id="test-task-inspector" min="100px">
           <RecentPayloads
             runs={runs}
             selectedId={selectedCodeSampleId}

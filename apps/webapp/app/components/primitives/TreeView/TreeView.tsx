@@ -241,7 +241,7 @@ export function useTree<TData, TFilterValue>({
         index,
       });
     },
-    overscan: 20,
+    overscan: 50,
   });
 
   const scrollToNodeFn = useCallback(
