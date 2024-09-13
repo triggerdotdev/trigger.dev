@@ -29,9 +29,9 @@ export class InitializeDeploymentService extends BaseService {
       const nextVersion = calculateNextBuildVersion(latestDeployment?.version);
 
       // Try and create a depot build and get back the external build data
-      const externalBuildData = !!payload.selfHosted
-        ? await createRemoteImageBuild(environment.project)
-        : undefined;
+      const externalBuildData = payload.selfHosted
+        ? undefined
+        : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findUnique({

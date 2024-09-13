@@ -66,6 +66,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@<your-sdk-version>/v3";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
+//     👆 **type-only** import
 
 Deno.serve(async () => {
   await tasks.trigger<typeof helloWorldTask>(

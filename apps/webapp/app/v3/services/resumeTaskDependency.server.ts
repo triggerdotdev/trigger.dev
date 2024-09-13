@@ -39,6 +39,16 @@ export class ResumeTaskDependencyService extends BaseService {
     const dependentRun = dependency.dependentAttempt.taskRun;
 
     if (dependency.dependentAttempt.status === "PAUSED" && dependency.checkpointEventId) {
+      logger.debug(
+        "Task dependency resume: Attempt is paused and there's a checkpoint. Enqueuing resume with checkpoint.",
+        {
+          attemptId: dependency.id,
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        }
+      );
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
@@ -61,6 +71,7 @@ export class ResumeTaskDependencyService extends BaseService {
         dependentAttempt: dependency.dependentAttempt,
         checkpointEventId: dependency.checkpointEventId,
         hasCheckpointEvent: !!dependency.checkpointEventId,
+        runId: dependentRun.id,
       });
 
       if (dependency.dependentAttempt.status === "PAUSED" && !dependency.checkpointEventId) {

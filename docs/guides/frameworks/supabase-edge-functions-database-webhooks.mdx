@@ -77,6 +77,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { tasks } from "npm:@trigger.dev/sdk@<your-sdk-version>/v3";
 // Import your task type from your /trigger folder
 import type { helloWorldTask } from "../../../src/trigger/example.ts";
+//     👆 **type-only** import
 
 console.log("Hello from 'database-webhook' function!");
 
@@ -87,8 +88,8 @@ Deno.serve(async (req) => {
   await tasks.trigger<typeof helloWorldTask>(
     // Your task id
     "hello-world",
-    // Your task payload
-    "hello from a Supabase Edge Function!"
+    // Your task payload. This will be the data you receive from the database webhook
+    payload
   );
   return new Response("ok");
 });
@@ -221,6 +222,8 @@ Go back to your edge function dashboard <Icon icon="circle-1" iconType="solid" s
 ![How to view the logs](/images/supabase-logs.png)
 
 Then, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a successful `hello-world` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the `name` `Sarah Connor` to your `skynet` Supabase table.
+
+Inside that run you will see the payload that was sent from the database webhook, including the `name` and other table information.
 
 ![How to insert a new row 2](/images/supabase-trigger-screenshot.png)
 

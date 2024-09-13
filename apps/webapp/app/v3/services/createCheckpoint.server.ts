@@ -258,6 +258,16 @@ export class CreateCheckpointService extends BaseService {
             };
           }
 
+          //if there's a message in the queue, we make sure the checkpoint event is on it
+          await marqs?.replaceMessage(
+            attempt.taskRun.id,
+            {
+              checkpointEventId: checkpointEvent.id,
+            },
+            undefined,
+            true
+          );
+
           await ResumeBatchRunService.enqueue(batchRun.id, this._prisma);
 
           return {

@@ -76,7 +76,7 @@ export class CheckScheduleService extends BaseService {
         throw new ServiceValidationError("Project not found");
       }
 
-      const limit = await getLimit(project.organizationId, "schedules", 500);
+      const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
       const schedulesCount = await this._prisma.taskSchedule.count({
         where: {
           projectId,
