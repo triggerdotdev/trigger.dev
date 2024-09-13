@@ -24,11 +24,9 @@ yarn dlx trigger.dev@latest deploy
 It performs a few steps to deploy:
 
 1. Optionally updates packages when running locally.
-2. Typechecks the code.
-3. Compiles and bundles the code.
-4. Checks that [environment variables](/deploy-environment-variables) are set.
-5. Deploys the code to the cloud.
-6. Registers the tasks as a new version in the environment (prod by default).
+2. Compiles and bundles the code.
+3. Deploys the code to the Trigger.dev instance.
+4. Registers the tasks as a new version in the environment (prod by default).
 
 You can also setup [GitHub Actions](/github-actions) to deploy your tasks automatically.
 
@@ -38,28 +36,33 @@ You can also setup [GitHub Actions](/github-actions) to deploy your tasks automa
   Defaults to `prod` but you can specify `staging`.
 </ParamField>
 
-<ParamField body="Skip typecheck" type="--skip-typecheck">
-  Skips the pre-build typecheck step.
+<ParamField body="Set config filename" type="--config | -c">
+  The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
+</ParamField>
+
+<ParamField body="Env file" type="--env">
+  Load environment variables from a file. This will only hydrate the `process.env` of the CLI
+  process, not the tasks.
+</ParamField>
+
+<ParamField body="Dry run" type="--dry-run">
+  Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
 </ParamField>
 
 <ParamField body="Skip update check" type="--skip-update-check">
   Skip checking for `@trigger.dev` package updates.
 </ParamField>
 
-<ParamField body="Build platform" type="--build-platform">
-  The platform to build the deployment image for. Defaults to `linux/amd64`.
+<ParamField body="Set the projectRef" type="--project-ref | -p">
+  The project ref. Required if there is no config file.
 </ParamField>
 
 <ParamField body="Log level" type="--log-level | -l">
   The log level to use (debug, info, log, warn, error, none). Defaults to `log`.
 </ParamField>
 
-<ParamField body="Set config filename" type="--config | -c">
-  The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
-</ParamField>
-
-<ParamField body="Set the projectRef" type="--project-ref | -p">
-  The project ref. Required if there is no config file.
+<ParamField body="Skip syncing env vars" type="--skip-sync-env-vars">
+  Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
 
 ## Self-hosting
@@ -76,15 +79,32 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
   default registry.
 </ParamField>
 
+<ParamField body="Load image" type="--load-image">
+  Loads the image into your local docker after building it.
+</ParamField>
+
 <ParamField body="Registry" type="--registry">
-  **This option is coming soon.** The registry to push the image to when using --self-hosted.
+  Specify the registry to push the image to when using `--self-hosted`.
 </ParamField>
 
 <ParamField body="Push image" type="--push">
-  When using the --self-hosted flag, push the image to the default registry. (defaults to false when
-  not using --registry)
+  When using the --self-hosted flag, push the image to the registry.
 </ParamField>
 
-<ParamField body="Tag the image" type="--tag">
-  **This option is coming soon.** Specify the tag to use when pushing the image to the registry.
+<ParamField body="Namespace" type="--namepsace">
+  The namespace to use when pushing the image to the registry. For example, if pushing to Docker
+  Hub, the namespace is your Docker Hub username.
 </ParamField>
+
+### Push to Docker Hub
+
+An example of deploying to Docker Hub when using a self-hosted setup:
+
+```bash
+npx trigger.dev@latest deploy \
+  --self-hosted \
+  --load-image \
+  --push \
+  --registry docker.io \
+  --namespace mydockerhubusername
+```

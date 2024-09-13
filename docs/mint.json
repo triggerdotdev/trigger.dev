@@ -74,6 +74,18 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/tasks-overview",
+      "destination": "/tasks/overview"
+    },
+    {
+      "source": "/tasks-scheduled",
+      "destination": "/tasks/scheduled"
+    },
+    {
+      "source": "/trigger-folder",
+      "destination": "/config/config-file"
     }
   ],
   "anchors": [
@@ -95,20 +107,21 @@
         "introduction",
         "quick-start",
         "how-it-works",
-        "limits",
-        "changelog",
-        "roadmap"
+        "limits"
       ]
     },
     {
       "group": "Fundamentals",
       "pages": [
-        "trigger-folder",
-        "tasks-overview",
+        {
+          "group": "Tasks",
+          "pages": [
+            "tasks/overview",
+            "tasks/scheduled"
+          ]
+        },
         "triggering",
         "apikeys",
-        "tasks-regular",
-        "tasks-scheduled",
         {
           "group": "Configuration",
           "pages": [
@@ -249,7 +262,9 @@
       "pages": [
         "open-source-self-hosting",
         "open-source-contributing",
-        "github-repo"
+        "github-repo",
+        "changelog",
+        "roadmap"
       ]
     },
     {

@@ -1,10 +1,10 @@
 ---
 title: "Tasks: Overview"
-sidebarTitle: "Tasks"
+sidebarTitle: "Overview"
 description: "Tasks are functions that can run for a long time and provide strong resilience to failure."
 ---
 
-There are different types of tasks including [regular tasks](/tasks-regular) and [scheduled tasks](/tasks-scheduled).
+There are different types of tasks including regular tasks and [scheduled tasks](/tasks/scheduled).
 
 ## Hello world task and how to trigger it
 
@@ -264,6 +264,80 @@ export const config: TriggerConfig = {
 You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.
 
 Read more about `handleError` in our [Errors and Retrying guide](/errors-retrying).
+
+## Example tasks
+
+### A task that does an OpenAI call with retrying
+
+Sometimes OpenAI calls can take a long time to complete, or they can fail. This task will retry if the API call fails completely or if the response is empty.
+
+<OpenaiRetry />
+
+### A Task that sends emails in a sequence with delays in between
+
+This example uses Resend to send a sequence of emails over several days.
+
+Each email is wrapped in `retry.onThrow`. This will retry the block of code if an error is thrown. This is useful when you don't want to retry the whole task, but just a part of it. The entire task will use the default retrying, so can also retry.
+
+Additionally this task uses `wait.for` to wait for a certain amount of time before sending the next email. During the waiting time, the task will be paused and will not consume any resources.
+
+```ts /trigger/email-sequence.ts
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_ASP_KEY);
+
+export const emailSequence = task({
+  id: "email-sequence",
+  run: async (payload: { userId: string; email: string; name: string }) => {
+    console.log(`Start email sequence for user ${payload.userId}`, payload);
+
+    //send the first email immediately
+    const firstEmailResult = await retry.onThrow(
+      async ({ attempt }) => {
+        const { data, error } = await resend.emails.send({
+          from: "hello@trigger.dev",
+          to: payload.email,
+          subject: "Welcome to Trigger.dev",
+          html: `<p>Hello ${payload.name},</p><p>Welcome to Trigger.dev</p>`,
+        });
+
+        if (error) {
+          //throwing an error will trigger a retry of this block
+          throw error;
+        }
+
+        return data;
+      },
+      { maxAttempts: 3 }
+    );
+
+    //then wait 3 days
+    await wait.for({ days: 3 });
+
+    //send the second email
+    const secondEmailResult = await retry.onThrow(
+      async ({ attempt }) => {
+        const { data, error } = await resend.emails.send({
+          from: "hello@trigger.dev",
+          to: payload.email,
+          subject: "Some tips for you",
+          html: `<p>Hello ${payload.name},</p><p>Here are some tips for you…</p>`,
+        });
+
+        if (error) {
+          //throwing an error will trigger a retry of this block
+          throw error;
+        }
+
+        return data;
+      },
+      { maxAttempts: 3 }
+    );
+
+    //etc...
+  },
+});
+```
 
 ## Next steps
 
