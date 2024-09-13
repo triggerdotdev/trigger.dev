@@ -43,7 +43,7 @@ export class AlertChannelListPresenter extends BasePresenter {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    const limit = await getLimit(organization.organizationId, "alerts", 25);
+    const limit = await getLimit(organization.organizationId, "alerts", 100_000_000);
 
     return {
       alertChannels: await Promise.all(

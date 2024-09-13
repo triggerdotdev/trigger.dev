@@ -1,0 +1,69 @@
+---
+title: "Generate a PDF using react-pdf and save it to R2"
+sidebarTitle: "React to PDF"
+description: "This example will show you how to generate a PDF using Trigger.dev."
+---
+
+## Overview
+
+This example demonstrates how to use Trigger.dev to generate a PDF using `react-pdf` and save it to Cloudflare R2.
+
+## Task code
+
+```ts trigger/generateResumePDF.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const generateResumePDF = task({
+  id: "generate-resume-pdf",
+  run: async (payload: { text: string }) => {
+    logger.log("Generating PDF resume", payload);
+
+    // Render the ResumeDocument component to a PDF buffer
+    const pdfBuffer = await renderToBuffer(
+      <Document>
+        <Page size="A4">
+          <View>
+            <Text>{payload.text}</Text>
+          </View>
+        </Page>
+      </Document>
+    );
+
+    // Generate a unique filename
+    const filename = `${payload.text
+      .replace(/\s+/g, "-")
+      .toLowerCase()}-${Date.now()}.pdf`;
+
+    // Upload to R2
+    const s3Key = `resumes/${filename}`;
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: pdfBuffer,
+      ContentType: "application/pdf",
+    };
+
+    logger.log("Uploading to R2 with params", uploadParams);
+
+    // Upload the PDF to R2 and return the URL.
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("PDF uploaded to R2", { url: s3Url });
+    return { pdfUrl: s3Url };
+  },
+});
+
+```

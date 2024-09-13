@@ -489,7 +489,7 @@ async function writeConfigFile(
           projectRef: project.externalRef,
           triggerDirectoriesOption: triggerDir.isCustomValue
             ? `\n  dirs: ["${triggerDir.location}"],`
-            : "",
+            : `\n  dirs: ["/src/trigger"],`,
         },
         outputPath,
         override: options.overrideConfig,

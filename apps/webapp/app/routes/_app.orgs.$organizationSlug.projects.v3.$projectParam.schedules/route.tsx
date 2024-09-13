@@ -177,8 +177,8 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-          <ResizablePanel order={1} minSize={20} defaultSize={60}>
+        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+          <ResizablePanel id="schedules-main" min={"100px"}>
             <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
               {possibleTasks.length === 0 ? (
                 <CreateScheduledTaskInstructions />
@@ -250,8 +250,8 @@ export default function Page() {
           </ResizablePanel>
           {(isShowingNewPane || isShowingSchedule) && (
             <>
-              <ResizableHandle withHandle />
-              <ResizablePanel order={2} minSize={20} defaultSize={40}>
+              <ResizableHandle id="schedules-handle" />
+              <ResizablePanel id="schedules-inspector" min="100px" default="500px">
                 <Outlet />
               </ResizablePanel>
             </>

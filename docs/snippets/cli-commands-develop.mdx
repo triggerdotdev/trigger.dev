@@ -90,13 +90,15 @@ Install the concurrently package as a dev dependency:
 concurrently --raw --kill-others npm:dev:remix npm:dev:trigger
 ```
 
-Then add something like this in your package.json scripts. This assumes you're running Next.js so swap that bit out if you're not:
+Then add something like this in your package.json scripts:
 
 ```json
 "scripts": {
   "dev": "concurrently --raw --kill-others npm:dev:*",
-  "dev:next": "next dev",
   "dev:trigger": "npx trigger.dev@beta dev",
+  // Add your framework-specific dev script here, for example:
+  // "dev:next": "next dev",
+  // "dev:remix": "remix dev",
   //...
 }
 ```

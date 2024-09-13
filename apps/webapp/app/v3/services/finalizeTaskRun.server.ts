@@ -122,6 +122,14 @@ export class FinalizeTaskRunService extends BaseService {
           error,
         });
 
+        if (!run.lockedById) {
+          logger.error(
+            "FinalizeTaskRunService: No lockedById, so can't get the BackgroundWorkerTask. Not creating an attempt.",
+            { runId: run.id }
+          );
+          return;
+        }
+
         const workerTask = await this._prisma.backgroundWorkerTask.findFirst({
           select: {
             id: true,
@@ -129,7 +137,7 @@ export class FinalizeTaskRunService extends BaseService {
             runtimeEnvironmentId: true,
           },
           where: {
-            id: run.lockedById!,
+            id: run.lockedById,
           },
         });
 

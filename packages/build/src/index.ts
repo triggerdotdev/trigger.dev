@@ -1,2 +1,2 @@
 // Barrel no more
-export {};
+export * from "./extensions/index.js";

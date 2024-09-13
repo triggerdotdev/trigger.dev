@@ -256,7 +256,7 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     });
 
-    const limit = await getLimit(project.organizationId, "schedules", 500);
+    const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
 
     return {
       currentPage: page,

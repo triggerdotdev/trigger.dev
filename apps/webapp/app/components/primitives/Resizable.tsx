@@ -1,32 +1,35 @@
 "use client";
 
-import * as ResizablePrimitive from "react-resizable-panels";
+import React from "react";
+import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
 import { cn } from "~/utils/cn";
 
-const ResizablePanelGroup = ({
-  className,
-  ...props
-}: React.ComponentProps<typeof ResizablePrimitive.PanelGroup>) => (
-  <ResizablePrimitive.PanelGroup
-    className={cn("flex w-full data-[panel-group-direction=vertical]:flex-col", className)}
+const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
+  <PanelGroup
+    className={cn(
+      "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
+      className
+    )}
+    autosaveStrategy={props.autosaveId ? "cookie" : undefined}
     {...props}
   />
 );
 
-const ResizablePanel = ResizablePrimitive.Panel;
+const ResizablePanel = Panel;
 
 const ResizableHandle = ({
-  withHandle,
+  withHandle = true,
   className,
   ...props
-}: React.ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
+}: React.ComponentProps<typeof PanelResizer> & {
   withHandle?: boolean;
 }) => (
-  <ResizablePrimitive.PanelResizeHandle
+  <PanelResizer
     className={cn(
-      "focus-visible:ring-ring group relative flex w-0.75 items-center justify-center after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 hover:w-0.75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-offset-1 [&[data-panel-group-direction=vertical]>div]:rotate-90",
+      "focus-visible:ring-ring group relative flex w-0.75 items-center justify-center after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 hover:w-0.75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-secondary/50 focus-visible:ring-offset-0 [&[data-panel-group-direction=vertical]>div]:rotate-90",
       className
     )}
+    size="3px"
     {...props}
   >
     <div className="absolute left-[0.0625rem] top-0 h-full w-px bg-grid-bright transition group-hover:left-0 group-hover:w-0.75 group-hover:bg-lavender-500" />
@@ -37,7 +40,9 @@ const ResizableHandle = ({
         ))}
       </div>
     )}
-  </ResizablePrimitive.PanelResizeHandle>
+  </PanelResizer>
 );
 
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup };
+
+export type ResizableSnapshot = React.ComponentProps<typeof PanelGroup>["snapshot"];

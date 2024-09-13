@@ -207,11 +207,7 @@ export class EventRepository {
   }
 
   async insertImmediate(event: CreatableEvent) {
-    await this.db.taskEvent.create({
-      data: event as Prisma.TaskEventCreateInput,
-    });
-
-    this.#publishToRedis([event]);
+    await this.#flushBatch([event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
