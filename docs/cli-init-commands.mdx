@@ -4,6 +4,8 @@ sidebarTitle: "Init"
 description: "Use these options when running the CLI `init` command."
 ---
 
+import CommonOptions from '/snippets/cli-options-common.mdx';
+
 Run the command like this:
 
 <CodeGroup>
@@ -44,24 +46,8 @@ yarn dlx trigger.dev@beta init
   Additional arguments to pass to the package manager. Accepts CSV for multiple args.
 </ParamField>
 
-<ParamField body="Login profile" type="--profile">
-  The login profile to use. Defaults to "default".
-</ParamField>
+### Common options
 
-<ParamField body="API URL" type="--api-url | -a">
-  Override the default API URL. If not specified, it uses `https://api.trigger.dev`.
-</ParamField>
+These options are available on most commands.
 
-<ParamField body="Log level" type="--log-level | -l">
-  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This does not affect the log level of your trigger.dev tasks. Defaults to "log".
-</ParamField>
-
-<ParamField body="Skip telemetry" type="--skip-telemetry">
-  Opt-out of sending telemetry data.
-</ParamField>
-
-## Standard options
-
-<ParamField body="Help" type="--help | -h">
-  Shows the help information for the command.
-</ParamField>
+<CommonOptions />

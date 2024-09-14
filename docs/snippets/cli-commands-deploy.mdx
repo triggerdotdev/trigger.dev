@@ -1,3 +1,6 @@
+import CommonOptions from '/snippets/cli-options-common.mdx';
+import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
+
 Run the command like this:
 
 <CodeGroup>
@@ -47,19 +50,13 @@ You can also setup [GitHub Actions](/github-actions) to deploy your tasks automa
   The platform to build the deployment image for. Defaults to `linux/amd64`.
 </ParamField>
 
-<ParamField body="Log level" type="--log-level | -l">
-  The log level to use (debug, info, log, warn, error, none). Defaults to `log`.
-</ParamField>
-
 <ParamField body="Set config filename" type="--config | -c">
   The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
 </ParamField>
 
-<ParamField body="Set the projectRef" type="--project-ref | -p">
-  The project ref. Required if there is no config file.
-</ParamField>
+<ProjectRefOption />
 
-## Self-hosting
+### Self-hosting
 
 These options are typically used when [self-hosting](/open-source-self-hosting) or for local development.
 
@@ -82,3 +79,9 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 <ParamField body="Tag the image" type="--tag">
   **This option is coming soon.** Specify the tag to use when pushing the image to the registry.
 </ParamField>
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />
