@@ -1,0 +1,38 @@
+name: "#️⃣ Get image tag (action)"
+
+description: This action gets the image tag from the commit ref or input (if provided)
+
+outputs:
+  tag:
+    description: The image tag
+    value: ${{ steps.get_tag.outputs.tag }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: "#️⃣ Get image tag (step)"
+      id: get_tag
+      shell: bash
+      run: |
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ "${{ github.ref_name }}" == infra-*-* ]]; then
+            env=$(echo ${{ github.ref_name }} | cut -d- -f2)
+            sha=$(echo ${{ github.sha }} | head -c7)
+            ts=$(date +%s)
+            tag=${env}-${sha}-${ts}
+          elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
+            version="${GITHUB_REF_NAME#v.docker.}"
+            tag="v${version}"
+          elif [[ "${{ github.ref_name }}" == build-* ]]; then
+            tag="${GITHUB_REF_NAME#build-}"
+          else
+            echo "Invalid tag: ${{ github.ref_name }}"
+            exit 1
+          fi
+        elif [[ "${{ github.ref_name }}" == "main" ]]; then
+          tag="main"
+        else
+          echo "Invalid reference: ${{ github.ref }}"
+          exit 1
+        fi
+        echo "tag=${tag}" >> "$GITHUB_OUTPUT"

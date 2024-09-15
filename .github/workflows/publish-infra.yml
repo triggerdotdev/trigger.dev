@@ -45,41 +45,19 @@ jobs:
       - name: ⬇️ Checkout git repo
         uses: actions/checkout@v4
 
-      - name: Generate image reference
-        id: prep
+      - name: 📦 Get image repo
+        id: get_repository
         run: |
-          # set image repo
           if [[ "${{ matrix.package }}" == *-provider ]]; then
             provider_type=$(echo "${{ matrix.package }}" | cut -d- -f1)
-            repository=provider/${provider_type}
+            repo=provider/${provider_type}
           else
-            repository="${{ matrix.package }}"
+            repo="${{ matrix.package }}"
           fi
-          echo "REPOSITORY=${repository}" >> "$GITHUB_OUTPUT"
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
 
-          # set image tag
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            if [[ "${{ github.ref_name }}" == infra-*-* ]]; then
-              env=$(echo ${{ github.ref_name }} | cut -d- -f2)
-              sha=$(echo ${{ github.sha }} | head -c7)
-              ts=$(date +%s)
-              image_tag=${env}-${sha}-${ts}
-            elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
-              version="${GITHUB_REF_NAME#v.docker.}"
-              image_tag="v${version}"
-            elif [[ "${{ github.ref_name }}" == build-* ]]; then
-              image_tag="${GITHUB_REF_NAME#build-}"
-            else
-              echo "Invalid tag: ${{ github.ref_name }}"
-              exit 1
-            fi
-          elif [[ "${{ github.ref_name }}" == "main" ]]; then
-            image_tag="main"
-          else
-            echo "Invalid reference: ${{ github.ref }}"
-            exit 1
-          fi
-          echo "IMAGE_TAG=${image_tag}" >> "$GITHUB_OUTPUT"
+      - id: get_tag
+        uses: ./.github/actions/get-image-tag
 
       - name: 🐋 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -109,8 +87,8 @@ jobs:
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
         env:
           REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: ${{ steps.prep.outputs.REPOSITORY }}
-          IMAGE_TAG: ${{ steps.prep.outputs.IMAGE_TAG }}
+          REPOSITORY: ${{ steps.get_repository.outputs.repo }}
+          IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
 
       - name: 🐙 Push 'v3' tag to GitHub Container Registry
         if: startsWith(github.ref_name, 'v.docker.')
@@ -119,4 +97,4 @@ jobs:
           docker push $REGISTRY/$REPOSITORY:v3
         env:
           REGISTRY: ghcr.io/triggerdotdev
-          REPOSITORY: ${{ steps.prep.outputs.REPOSITORY }}
+          REPOSITORY: ${{ steps.get_repository.outputs.repo }}

@@ -9,7 +9,7 @@ jobs:
     env:
       PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
+      version: ${{ steps.get_tag.outputs.tag }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
       - name: Setup Depot CLI
@@ -20,45 +20,27 @@ jobs:
         with:
           submodules: recursive
 
-      - name: 🆚 Get the version
-        id: get_version
-        run: |
-          IMAGE_TAG="${GITHUB_REF#refs/tags/}"
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            if [[ $IMAGE_TAG == v.docker.* ]]; then
-              ORIGINAL_VERSION="${IMAGE_TAG#v.docker.}"
-              IMAGE_TAG="v${ORIGINAL_VERSION}"
-            elif [[ $IMAGE_TAG == build-* ]]; then
-              IMAGE_TAG="${IMAGE_TAG#build-}"
-            fi
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          elif [[ $GITHUB_REF == refs/heads/main ]]; then
-            # Handle main branch specifically
-            IMAGE_TAG="main"
-            echo "IMAGE_TAG=${IMAGE_TAG}"
-          else
-            echo "Invalid reference: ${GITHUB_REF}"
-            exit 1
-          fi
-          echo "::set-output name=version::${IMAGE_TAG}"
+      - name: "#️⃣ Get the image tag"
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
 
       - name: 🔢 Get the commit hash
         id: get_commit
         run: |
-          echo ::set-output name=sha_short::$(echo ${{ github.sha }} | cut -c1-7)
+          echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: 📛 Set the tags
         id: set_tags
         run: |
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
-          image_tags=$ref_without_tag:${{ steps.get_version.outputs.version }}
+          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
 
           # if it's a versioned tag, also tag it as v3
           if [[ "${{ github.ref_name }}" == v.docker.* ]]; then
             image_tags=$image_tags,$ref_without_tag:v3
           fi
-          
-          echo "IMAGE_TAGS=${image_tags}" >> "$GITHUB_OUTPUT"
+
+          echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
 
       - name: 🐙 Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -72,5 +54,5 @@ jobs:
         with:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.set_tags.outputs.IMAGE_TAGS }}
+          tags: ${{ steps.set_tags.outputs.image_tags }}
           push: true
