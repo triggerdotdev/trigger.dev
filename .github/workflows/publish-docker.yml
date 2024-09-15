@@ -35,8 +35,8 @@ jobs:
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
           image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
 
-          # if it's a versioned tag, also tag it as v3
-          if [[ "${{ github.ref_name }}" == v.docker.* ]]; then
+          # if tag is a semver, also tag it as v3
+          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
             image_tags=$image_tags,$ref_without_tag:v3
           fi
 
