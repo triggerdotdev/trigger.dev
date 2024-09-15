@@ -72,19 +72,21 @@ export async function POST(request: Request) {
 }
 ```
 
-```ts Remix
+```ts Remix 
 import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+//     👆 **type-only** import
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "POST") {
-    return json("Method Not Allowed", { status: 405 });
+  if (request.method !== "POST") {
+    throw new Response("Method Not Allowed", { status: 405 });
   }
 
   //get the JSON from the request
   const data = await request.json();
 
-  // The generic argument is optional, but recommended for full type checking
-  const handle = await tasks.trigger("email-sequence", {
+  // Pass the task type to `trigger()` as a generic argument, giving you full type checking
+  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
     to: data.email,
     name: data.name,
   });
@@ -127,6 +129,29 @@ export async function POST(request: Request) {
 }
 ```
 
+```ts Remix
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method !== "POST") {
+    throw new Response("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
+  const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
+    "email-sequence",
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+  );
+
+  //return a success response with the handle
+  return json(batchHandle);
+}
+```
+
 </CodeGroup>
 
 ### tasks.triggerAndPoll()
@@ -163,6 +188,32 @@ export async function POST(request: Request) {
 }
 ```
 
+```ts Remix
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method !== "POST") {
+    throw new Response("Method Not Allowed", { status: 405 });
+  }
+
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
+  const result = await tasks.triggerAndPoll<typeof emailSequence>(
+    "email-sequence",
+    {
+      to: data.email,
+      name: data.name,
+    },
+    { pollIntervalMs: 5000 }
+  );
+
+  //return a success response with the result
+  return json(result);
+}
+```
 </CodeGroup>
 
 <Note>
