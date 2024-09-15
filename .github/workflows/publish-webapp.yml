@@ -1,4 +1,4 @@
-name: "🐳 Publish Docker"
+name: "🐳 Publish Webapp"
 
 on:
   workflow_call:

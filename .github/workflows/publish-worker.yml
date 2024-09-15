@@ -1,4 +1,4 @@
-name: "🚢 Publish Infra Images"
+name: "🚢 Publish Worker"
 
 on:
   workflow_call:
