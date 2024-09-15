@@ -7,31 +7,10 @@ on:
       - "infra-dev-*"
       - "infra-test-*"
       - "infra-prod-*"
-    paths:
-      - ".github/workflows/publish.yml"
-      - "packages/**"
-      - "!packages/**/*.md"
-      - "!packages/**/*.eslintrc"
-      - "apps/**"
-      - "!apps/**/*.md"
-      - "!apps/**/*.eslintrc"
-      - "integrations/**"
-      - "!integrations/**/*.md"
-      - "!integrations/**/*.eslintrc"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "turbo.json"
-      - "docker/Dockerfile"
-      - "docker/scripts/**"
-      - "tests/**"
 
 permissions:
-  id-token: write
   packages: write
   contents: read
-
-env:
-  AWS_REGION: us-east-1
 
 jobs:
   build:
