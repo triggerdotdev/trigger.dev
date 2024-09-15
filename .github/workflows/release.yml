@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths-ignore:
+      - "docs/**"
       - "**.md"
-      - "**.mdx"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
 
