@@ -1,6 +1,12 @@
 name: 🚀 Publish Trigger.dev Docker
 
 on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        required: true
+        type: string
   push:
     branches:
       - main
@@ -55,8 +61,12 @@ jobs:
     needs: [typecheck, units]
     uses: ./.github/workflows/publish-docker.yml
     secrets: inherit
+    with:
+      image_tag: ${{ github.event.inputs.image_tag }}
 
   publish-infra:
     needs: [typecheck, units]
     uses: ./.github/workflows/publish-infra.yml
     secrets: inherit
+    with:
+      image_tag: ${{ github.event.inputs.image_tag }}

@@ -2,6 +2,12 @@ name: "🐳 Publish Docker"
 
 on:
   workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        type: string
+        required: false
+        default: ""
 
 jobs:
   publish:
@@ -12,7 +18,7 @@ jobs:
       version: ${{ steps.get_tag.outputs.tag }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
-      - name: Setup Depot CLI
+      - name: 🏭 Setup Depot CLI
         uses: depot/setup-action@v1
 
       - name: ⬇️ Checkout repo
@@ -23,6 +29,8 @@ jobs:
       - name: "#️⃣ Get the image tag"
         id: get_tag
         uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ github.event.inputs.image_tag }}
 
       - name: 🔢 Get the commit hash
         id: get_commit

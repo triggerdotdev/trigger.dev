@@ -2,6 +2,12 @@ name: "🚢 Publish Infra Images"
 
 on:
   workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        type: string
+        required: false
+        default: ""
   push:
     tags:
       - "infra-dev-*"
@@ -37,6 +43,8 @@ jobs:
 
       - id: get_tag
         uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ github.event.inputs.image_tag }}
 
       - name: 🐋 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
