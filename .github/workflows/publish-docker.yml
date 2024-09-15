@@ -1,6 +1,8 @@
 name: "🐳 Publish Docker"
+
 on:
   workflow_call:
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -14,7 +16,7 @@ jobs:
         uses: depot/setup-action@v1
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -59,7 +61,7 @@ jobs:
           echo "IMAGE_TAGS=${image_tags}" >> "$GITHUB_OUTPUT"
 
       - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}

@@ -14,8 +14,7 @@ jobs:
   release:
     name: 🦋 Changesets Release
     runs-on: buildjet-8vcpu-ubuntu-2204
-    if: |
-      github.repository == 'triggerdotdev/trigger.dev'
+    if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published: ${{ steps.changesets.outputs.published }}
@@ -24,7 +23,7 @@ jobs:
         uses: styfle/cancel-workflow-action@0.11.0
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 

@@ -1,4 +1,5 @@
 name: "E2E"
+
 on:
   workflow_call:
     inputs:
@@ -7,6 +8,7 @@ on:
         default: webapp
         required: false
         type: string
+
 jobs:
   cli-v3:
     name: "🧪 CLI v3 tests (${{ matrix.os }} - ${{ matrix.package-manager }})"
@@ -19,7 +21,7 @@ jobs:
         package-manager: ["npm", "pnpm", "yarn"]
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -50,5 +52,3 @@ jobs:
         shell: bash
         run: |
           LOG=debug PM=${{ matrix.package-manager }} pnpm --filter trigger.dev run test:e2e
-
-
