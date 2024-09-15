@@ -8,11 +8,13 @@ on:
       - "v.docker.*"
       - "build-*"
     paths:
+      - ".github/actions/**/*.yml"
       - ".github/workflows/publish.yml"
       - ".github/workflows/typecheck.yml"
       - ".github/workflows/unit-tests.yml"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/publish-docker.yml"
+      - ".github/workflows/publish-infra.yml"
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
