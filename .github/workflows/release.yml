@@ -20,8 +20,9 @@ jobs:
     runs-on: buildjet-8vcpu-ubuntu-2204
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
-      published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published: ${{ steps.changesets.outputs.published }}
+      published_packages: ${{ steps.changesets.outputs.publishedPackages }}
+      published_package_version: ${{ steps.get_version.outputs.package_version }}
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
@@ -73,3 +74,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 📦 Get package version
+        if: steps.changesets.outputs.published == 'true'
+        id: get_version
+        run: |
+          package_version=$(echo ${{ steps.changesets.outputs.publishedPackages }} | jq '.[0].version')
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: release
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
+    if: needs.release.outputs.published == 'true'
+    with:
+      image_tag: v${{ needs.release.outputs.published_package_version }}
