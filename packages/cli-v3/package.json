@@ -29,7 +29,6 @@
     "dist"
   ],
   "bin": {
-    "triggerdev": "./dist/esm/index.js",
     "trigger": "./dist/esm/index.js"
   },
   "tshy": {
