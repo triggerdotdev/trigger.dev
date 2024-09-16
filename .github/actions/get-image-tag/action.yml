@@ -37,13 +37,13 @@ runs:
           elif [[ "${{ github.ref_name }}" == build-* ]]; then
             tag="${GITHUB_REF_NAME#build-}"
           else
-            echo "Invalid tag: ${{ github.ref_name }}"
+            echo "Invalid git tag: ${{ github.ref_name }}"
             exit 1
           fi
         elif [[ "${{ github.ref_name }}" == "main" ]]; then
           tag="main"
         else
-          echo "Invalid reference: ${{ github.ref }}"
+          echo "Invalid git ref: ${{ github.ref }}"
           exit 1
         fi
         echo "tag=${tag}" >> "$GITHUB_OUTPUT"
