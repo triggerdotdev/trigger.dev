@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.1
+
+### Patch Changes
+
+- 3aa581179: Fixing false-positive package version mismatches
+- Updated dependencies [3aa581179]
+  - @trigger.dev/core@3.0.1
+
 ## 3.0.0
 
 ### Major Changes

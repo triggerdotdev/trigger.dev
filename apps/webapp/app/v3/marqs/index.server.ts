@@ -698,8 +698,8 @@ export class MarQS {
   }
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
-  public async heartbeatMessage(messageId: string, seconds: number = 30) {
-    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, seconds * 1000);
+  public async heartbeatMessage(messageId: string) {
+    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, this.visibilityTimeoutInMs);
   }
 
   get visibilityTimeoutInMs() {
@@ -1871,7 +1871,7 @@ function getMarQSClient() {
         redis: redisOptions,
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-        visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
+        visibilityTimeoutInMs: env.MARQS_VISIBILITY_TIMEOUT_MS,
         enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
         subscriber: concurrencyTracker,
       });
