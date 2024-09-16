@@ -248,7 +248,12 @@ export class Checkpointer {
       return false;
     }
 
-    controller.abort("cancelCheckpointing()");
+    if (controller.signal.aborted) {
+      this.#logger.debug("Controller already aborted", { runId });
+      return false;
+    }
+
+    controller.abort("cancelCheckpoint()");
     this.#abortControllers.delete(runId);
 
     return true;
