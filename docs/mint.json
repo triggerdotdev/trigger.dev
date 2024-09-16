@@ -228,6 +228,7 @@
     {
       "group": "Frameworks",
       "pages": [
+        "guides/frameworks/introduction",
         "guides/frameworks/nodejs",
         "guides/frameworks/nextjs",
         "guides/frameworks/remix",
