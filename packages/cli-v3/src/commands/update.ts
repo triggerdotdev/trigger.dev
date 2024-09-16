@@ -317,7 +317,7 @@ async function tryResolveTriggerPackageVersion(
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
 
-    const { packageJson } = await getPackageJson(dirname(resolvedPath));
+    const { packageJson } = await getPackageJson(dirname(dirname(resolvedPath)));
 
     if (packageJson.version) {
       logger.debug(`Resolved ${name} package version`, { name, version: packageJson.version });
