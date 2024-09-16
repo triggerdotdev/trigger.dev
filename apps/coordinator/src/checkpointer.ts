@@ -481,7 +481,7 @@ export class Checkpointer {
 
       const containerId = this.#logger.debug(
         // @ts-expect-error
-        await $$`crictl ps`
+        await $`crictl ps`
           .pipeStdout($$({ stdin: "pipe" })`grep ${containterName}`)
           .pipeStdout($$({ stdin: "pipe" })`cut -f1 ${"-d "}`)
       );
