@@ -506,7 +506,7 @@ async function writeConfigFile(
           runtime: options.runtime,
           triggerDirectoriesOption: triggerDir.isCustomValue
             ? `\n  dirs: ["${triggerDir.location}"],`
-            : `\n  dirs: ["/src/trigger"],`,
+            : `\n  dirs: ["./src/trigger"],`,
         },
         outputPath,
         override: options.overrideConfig,
