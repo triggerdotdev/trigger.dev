@@ -1147,7 +1147,7 @@ function ConnectedDevWarning() {
           <Paragraph variant="small">
             Runs usually start within 1 second in{" "}
             <EnvironmentLabel environment={{ type: "DEVELOPMENT" }} />. Check you're running the
-            CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@beta dev</InlineCode>
+            CLI: <InlineCode className="whitespace-nowrap">npx trigger.dev@latest dev</InlineCode>
           </Paragraph>
         </div>
       </Callout>

@@ -7,7 +7,7 @@ import { Command, Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import { addDependency, detectPackageManager } from "nypm";
+import { addDependency, addDevDependency, detectPackageManager } from "nypm";
 import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
@@ -37,8 +37,9 @@ import { login } from "./login.js";
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
-  tag: z.string().default("beta"),
+  tag: z.string().default("latest"),
   skipPackageInstall: z.boolean().default(false),
+  runtime: z.string().default("node"),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
@@ -60,7 +61,12 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        "beta"
+        "latest"
+      )
+      .option(
+        "-r, --runtime <runtime>",
+        "Which runtime to use for the project. Currently only supports node and bun",
+        "node"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -434,6 +440,15 @@ async function installPackages(dir: string, options: InitCommandOptions) {
 
       installSpinner.stop(`@trigger.dev/sdk@${options.tag} installed`);
 
+      installSpinner.start(`Adding @trigger.dev/build@${options.tag} to devDependencies`);
+
+      await addDevDependency(`@trigger.dev/build@${options.tag}`, {
+        cwd: projectDir,
+        silent: true,
+      });
+
+      installSpinner.stop(`@trigger.dev/build@${options.tag} installed`);
+
       span.end();
     } catch (e) {
       if (options.logLevel === "debug") {
@@ -481,15 +496,17 @@ async function writeConfigFile(
         "cli.projectDir": projectDir,
         "cli.templatePath": templateUrl,
         "cli.outputPath": outputPath,
+        "cli.runtime": options.runtime,
       });
 
       const result = await createFileFromTemplate({
         templateUrl,
         replacements: {
           projectRef: project.externalRef,
+          runtime: options.runtime,
           triggerDirectoriesOption: triggerDir.isCustomValue
             ? `\n  dirs: ["${triggerDir.location}"],`
-            : `\n  dirs: ["/src/trigger"],`,
+            : `\n  dirs: ["./src/trigger"],`,
         },
         outputPath,
         override: options.overrideConfig,

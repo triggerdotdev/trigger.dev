@@ -24,11 +24,20 @@ As self-hosted deployments tend to have unique requirements and configurations, 
 Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
 
 <Accordion title="Please consider these additional warnings">
-- The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume RAM.
-- The Docker provider does not currently enforce any resource limits. This means your tasks can consume up to the total machine CPU and RAM. Having no limits may be preferable when self-hosting, but can impact the performance of other services.
-- The worker components (not the tasks!) have direct access to the Docker socket. This means they can run any Docker command. To restrict access, you may want to consider using [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy).
-- The task containers are running with host networking. This means there is no network isolation between them and the host machine. They will be able to access any networked service on the host.
-- There is currently no support for adding multiple worker machines. This would require a more elaborate provider, or possibly a switch to Docker Swarm. This is not currently planned, but you are welcome to [contribute](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md).
+  - The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an
+  experimental feature which may not work as expected. It won't be enabled by default. Instead, the
+  containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume
+  RAM. - The Docker provider does not currently enforce any resource limits. This means your tasks
+  can consume up to the total machine CPU and RAM. Having no limits may be preferable when
+  self-hosting, but can impact the performance of other services. - The worker components (not the
+  tasks!) have direct access to the Docker socket. This means they can run any Docker command. To
+  restrict access, you may want to consider using [Docker Socket
+  Proxy](https://github.com/Tecnativa/docker-socket-proxy). - The task containers are running with
+  host networking. This means there is no network isolation between them and the host machine. They
+  will be able to access any networked service on the host. - There is currently no support for
+  adding multiple worker machines. This would require a more elaborate provider, or possibly a
+  switch to Docker Swarm. This is not currently planned, but you are welcome to
+  [contribute](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md).
 </Accordion>
 
 ## Requirements
@@ -70,6 +79,7 @@ sudo apt-get install -y \
 ### Trigger.dev setup
 
 1. Clone the [Trigger.dev docker repository](https://github.com/triggerdotdev/docker) and checkout the v3 branch
+
 ```bash
 git clone https://github.com/triggerdotdev/docker
 cd docker
@@ -77,6 +87,7 @@ git checkout v3
 ```
 
 2. Run the start script and follow the prompts
+
 ```bash
 ./start.sh # hint: you can append -d to run in detached mode
 ```
@@ -163,7 +174,7 @@ docker login -u <your_dockerhub_username>
 5. You can now deploy v3 projects using the CLI with these flags:
 
 ```bash
-npx trigger.dev@beta deploy --self-hosted --push
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ## Part 2: Split services
@@ -201,9 +212,12 @@ scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
 
 ## Checkpoint support
 
-<Warning>This requires an _experimental Docker feature_. Successfully checkpointing a task today, does not mean you will be able to restore it tomorrow. Your data may be lost. You've been warned!</Warning>
+<Warning>
+  This requires an _experimental Docker feature_. Successfully checkpointing a task today, does not
+  mean you will be able to restore it tomorrow. Your data may be lost. You've been warned!
+</Warning>
 
-Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for 
+Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for
 long-running tasks that need to be paused and resumed without losing state. Think fan-out and fan-in, or long waits in email campaigns.
 
 The checkpoints will be pushed to the same registry as the deployed images. Please see the [Registry setup](#registry-setup) section for more information.
@@ -283,5 +297,5 @@ TRIGGER_TELEMETRY_DISABLED=1
 To avoid being redirected to the Cloud login page when using the CLI, you can specify the URL of your self-hosted instance with the `-a` flag. For example:
 
 ```
-npx trigger.dev@beta login -a http://example.com
+npx trigger.dev@latest login -a http://example.com
 ```

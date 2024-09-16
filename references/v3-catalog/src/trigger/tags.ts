@@ -1,9 +1,8 @@
-import { RunTags } from "@trigger.dev/core/v3";
-import { logger, runs, tags, task, tasks } from "@trigger.dev/sdk/v3";
-import { simpleChildTask } from "./subtasks";
+import { logger, runs, task, tasks } from "@trigger.dev/sdk/v3";
+import { simpleChildTask } from "./subtasks.js";
 
 type Payload = {
-  tags: RunTags;
+  tags: string | string[];
 };
 
 export const triggerRunsWithTags = task({
@@ -15,6 +14,22 @@ export const triggerRunsWithTags = task({
       { message: "trigger from triggerRunsWithTags" },
       { tags: payload.tags }
     );
+
+    //runs in the past 5 seconds, as a date
+    const from = new Date();
+    from.setSeconds(from.getSeconds() - 5);
+    const result2 = await runs.list({ tag: payload.tags, from });
+    logger.log("list with Date()", { length: result2.data.length, data: result2.data });
+
+    //runs in the past 5 seconds, as a number timestamp
+    const result3 = await runs.list({ tag: payload.tags, from: from.getTime() - 5000 });
+    logger.log("list with timestamp", { length: result3.data.length, data: result3.data });
+
+    logger.log("run usage", {
+      costInCents: result2.data[0].costInCents,
+      baseCostInCents: result2.data[0].baseCostInCents,
+      durationMs: result2.data[0].durationMs,
+    });
 
     await simpleChildTask.triggerAndWait(
       { message: "triggerAndWait from triggerRunsWithTags" },
@@ -70,14 +85,6 @@ export const triggerRunsWithTags = task({
       costInCents: run.costInCents,
       baseCostInCents: run.baseCostInCents,
       durationMs: run.durationMs,
-    });
-
-    const result2 = await runs.list({ tag: payload.tags });
-    logger.log("trigger runs ", { length: result2.data.length, data: result2.data });
-    logger.log("run usage", {
-      costInCents: result2.data[0].costInCents,
-      baseCostInCents: result2.data[0].baseCostInCents,
-      durationMs: result2.data[0].durationMs,
     });
   },
 });

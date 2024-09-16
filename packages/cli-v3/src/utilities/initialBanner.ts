@@ -72,10 +72,7 @@ export function printDevBanner(printTopBorder = true) {
 async function doUpdateCheck(): Promise<string | undefined> {
   try {
     // default cache for update check is 1 day
-    const meta = await getLatestVersion(
-      `trigger.dev@${VERSION.startsWith("3.0.0-beta") ? "beta" : "latest"}`,
-      { force: true }
-    );
+    const meta = await getLatestVersion("trigger.dev@latest", { force: true });
 
     if (!meta.version) {
       return;
