@@ -26,5 +26,13 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
+      - name: 📦 Cache npm
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.cache
+          key: ${{ runner.os }}-mintlify
+
       - name: 🔗 Check for broken links
-        run: npx mintlify broken-links
+        run: npx mintlify@4.0.222 broken-links
