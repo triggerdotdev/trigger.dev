@@ -1,7 +1,7 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
-import { resolve } from "path";
+import { basename, dirname, resolve } from "path";
 import { PackageJson, readPackageJSON, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
@@ -12,6 +12,7 @@ import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
 import { hasTTY } from "std-env";
+import nodeResolve from "resolve";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -83,7 +84,7 @@ export async function updateTriggerPackages(
     hasOutput = true;
   }
 
-  const triggerDependencies = await getTriggerDependencies(packageJson);
+  const triggerDependencies = await getTriggerDependencies(packageJson, packageJsonPath);
 
   logger.debug("Resolved trigger deps", { triggerDependencies });
 
@@ -270,7 +271,10 @@ type Dependency = {
   version: string;
 };
 
-async function getTriggerDependencies(packageJson: PackageJson): Promise<Dependency[]> {
+async function getTriggerDependencies(
+  packageJson: PackageJson,
+  packageJsonPath: string
+): Promise<Dependency[]> {
   const deps: Dependency[] = [];
 
   for (const type of ["dependencies", "devDependencies"] as const) {
@@ -293,7 +297,7 @@ async function getTriggerDependencies(packageJson: PackageJson): Promise<Depende
         continue;
       }
 
-      const $version = await tryResolveTriggerPackageVersion(name);
+      const $version = await tryResolveTriggerPackageVersion(name, packageJsonPath);
 
       deps.push({ type, name, version: $version ?? version });
     }
@@ -302,9 +306,18 @@ async function getTriggerDependencies(packageJson: PackageJson): Promise<Depende
   return deps;
 }
 
-async function tryResolveTriggerPackageVersion(name: string): Promise<string | undefined> {
+async function tryResolveTriggerPackageVersion(
+  name: string,
+  packageJsonPath: string
+): Promise<string | undefined> {
   try {
-    const versionModule = await import(`${name}/version`);
+    const resolvedPath = nodeResolve.sync(`${name}/version`, {
+      basedir: dirname(packageJsonPath),
+    });
+
+    logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
+
+    const versionModule = await import(resolvedPath);
 
     return versionModule?.VERSION;
   } catch (error) {
