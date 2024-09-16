@@ -1,7 +1,10 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
+  "openapi": [
+    "/openapi.yml",
+    "/v3-openapi.yaml"
+  ],
   "api": {
     "playground": {
       "mode": "simple"
@@ -71,9 +74,20 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/tasks-overview",
+      "destination": "/tasks/overview"
+    },
+    {
+      "source": "/tasks-scheduled",
+      "destination": "/tasks/scheduled"
+    },
+    {
+      "source": "/trigger-folder",
+      "destination": "/config/config-file"
     }
   ],
-
   "anchors": [
     {
       "name": "Guides",
@@ -89,23 +103,35 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quick-start", "limits", "changelog", "roadmap"]
+      "pages": [
+        "introduction",
+        "quick-start",
+        "how-it-works",
+        "upgrading-beta",
+        "limits"
+      ]
     },
     {
       "group": "Fundamentals",
       "pages": [
-        "trigger-folder",
-        "tasks-overview",
+        {
+          "group": "Tasks",
+          "pages": [
+            "tasks/overview",
+            "tasks/scheduled"
+          ]
+        },
         "triggering",
         "apikeys",
-        "tasks-regular",
-        "tasks-scheduled",
-        "trigger-config"
+        "config/config-file"
       ]
     },
     {
       "group": "Development",
-      "pages": ["cli-dev", "run-tests"]
+      "pages": [
+        "cli-dev",
+        "run-tests"
+      ]
     },
     {
       "group": "Deployment",
@@ -115,7 +141,9 @@
         "github-actions",
         {
           "group": "Deployment integrations",
-          "pages": ["vercel-integration"]
+          "pages": [
+            "vercel-integration"
+          ]
         }
       ]
     },
@@ -127,7 +155,13 @@
         "errors-retrying",
         {
           "group": "Wait",
-          "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
+          "pages": [
+            "wait",
+            "wait-for",
+            "wait-until",
+            "wait-for-event",
+            "wait-for-request"
+          ]
         },
         "queue-concurrency",
         "versioning",
@@ -145,7 +179,10 @@
         "management/overview",
         {
           "group": "Tasks API",
-          "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+          "pages": [
+            "management/tasks/trigger",
+            "management/tasks/batch-trigger"
+          ]
         },
         {
           "group": "Runs API",
@@ -183,7 +220,9 @@
         },
         {
           "group": "Projects API",
-          "pages": ["management/projects/runs"]
+          "pages": [
+            "management/projects/runs"
+          ]
         }
       ]
     },
@@ -208,7 +247,13 @@
     },
     {
       "group": "Open source",
-      "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
+      "pages": [
+        "open-source-self-hosting",
+        "open-source-contributing",
+        "github-repo",
+        "changelog",
+        "roadmap"
+      ]
     },
     {
       "group": "Troubleshooting",
@@ -223,13 +268,18 @@
     },
     {
       "group": "Help",
-      "pages": ["community", "help-slack", "help-email"]
+      "pages": [
+        "community",
+        "help-slack",
+        "help-email"
+      ]
     },
     {
       "group": "Frameworks",
       "pages": [
         "guides/frameworks/introduction",
         "guides/frameworks/nodejs",
+        "guides/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/remix",
         {
@@ -245,11 +295,15 @@
     },
     {
       "group": "Dashboard",
-      "pages": ["guides/dashboard/creating-a-project"]
+      "pages": [
+        "guides/dashboard/creating-a-project"
+      ]
     },
     {
       "group": "Migrations",
-      "pages": ["guides/use-cases/upgrading-from-v2"]
+      "pages": [
+        "guides/use-cases/upgrading-from-v2"
+      ]
     },
     {
       "group": "Examples",

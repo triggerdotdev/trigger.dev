@@ -1,5 +1,5 @@
 import "server-only";
-import { logger, task, tasks, wait } from "@trigger.dev/sdk/v3";
+import { logger, SubtaskUnwrapError, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry.js";
 import { HeaderGenerator } from "header-generator";
 
@@ -31,14 +31,22 @@ export const fetchPostTask = task({
 export const anyPayloadTask = task({
   id: "any-payload-task",
   run: async (payload: any) => {
-    const result = await tasks.triggerAndWait<typeof fetchPostTask>("fetch-post-task", {
-      url: "https://jsonplaceholder.typicode.com/posts/1",
-    });
+    try {
+      const { url, method } = await tasks
+        .triggerAndWait<typeof fetchPostTask>("fetch-post-task", {
+          url: "https://jsonplaceholder.typicode.comasdqdasd/posts/1",
+        })
+        .unwrap();
 
-    if (result.ok) {
-      logger.info("Result from fetch-post-task 211111sss", { output: result.output });
-    } else {
-      logger.error("Error from fetch-post-task", { error: result.error });
+      console.log("Result from fetch-post-task 211111sss", { output: { url, method } });
+    } catch (error) {
+      if (error instanceof SubtaskUnwrapError) {
+        console.error("Error in fetch-post-task", {
+          runId: error.runId,
+          taskId: error.taskId,
+          cause: error.cause,
+        });
+      }
     }
 
     return {
@@ -126,10 +134,12 @@ export const parentTask = task({
 
     await wait.for({ seconds: 5 });
 
-    const childTaskResponse = await childTask.triggerAndWait({
-      message: payload.message,
-      forceError: false,
-    });
+    const childTaskResponse = await childTask
+      .triggerAndWait({
+        message: payload.message,
+        forceError: false,
+      })
+      .unwrap();
 
     logger.info("Child task response", { childTaskResponse });
 
