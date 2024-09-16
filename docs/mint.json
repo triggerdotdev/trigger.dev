@@ -253,15 +253,8 @@
     {
       "group": "Examples",
       "pages": [
-        "examples/generate-image-with-dall-e3",
-        {
-          "group": "FFmpeg",
-          "pages": [
-            "examples/ffmpeg-compress-video",
-            "examples/ffmpeg-extract-audio",
-            "examples/ffmpeg-generate-thumbnail"
-          ]
-        },
+        "examples/dall-e3-generate-image",
+        "examples/ffmpeg-video-processing",
         "examples/open-ai-with-retrying",
         "examples/react-pdf",
         "examples/resend-email-sequence"
