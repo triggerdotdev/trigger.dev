@@ -23,8 +23,7 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts",
-      "./v3": "./src/v3/index.ts",
-      "./version": "./src/version.ts"
+      "./v3": "./src/v3/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -100,17 +99,6 @@
       "require": {
         "types": "./dist/commonjs/v3/index.d.ts",
         "default": "./dist/commonjs/v3/index.js"
-      }
-    },
-    "./version": {
-      "import": {
-        "@triggerdotdev/source": "./src/version.ts",
-        "types": "./dist/esm/version.d.ts",
-        "default": "./dist/esm/version.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/version.d.ts",
-        "default": "./dist/commonjs/version.js"
       }
     }
   },

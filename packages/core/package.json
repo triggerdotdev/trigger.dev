@@ -22,7 +22,6 @@
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts",
-      "./version": "./src/version.ts",
       "./logger": "./src/logger.ts",
       "./bloom": "./src/bloom.ts",
       "./eventFilterMatches": "./src/eventFilterMatches.ts",
@@ -224,17 +223,6 @@
       "require": {
         "types": "./dist/commonjs/index.d.ts",
         "default": "./dist/commonjs/index.js"
-      }
-    },
-    "./version": {
-      "import": {
-        "@triggerdotdev/source": "./src/version.ts",
-        "types": "./dist/esm/version.d.ts",
-        "default": "./dist/esm/version.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/version.d.ts",
-        "default": "./dist/commonjs/version.js"
       }
     },
     "./logger": {
