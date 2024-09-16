@@ -317,6 +317,7 @@ async function tryResolveTriggerPackageVersion(
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
 
+    // IMPORTANT: keep the two dirname calls, as the first one resolves the nested package.json inside dist/commonjs or dist/esm
     const { packageJson } = await getPackageJson(dirname(dirname(resolvedPath)));
 
     if (packageJson.version) {
