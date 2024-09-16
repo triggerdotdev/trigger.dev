@@ -132,7 +132,7 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
 }
 
 // Trigger.dev version 3 setup commands
-const v3PackageTag = "beta";
+const v3PackageTag = "latest";
 
 function getApiUrlArg() {
   const appOrigin = useAppOrigin();
