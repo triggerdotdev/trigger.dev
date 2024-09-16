@@ -37,7 +37,7 @@ import { login } from "./login.js";
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   overrideConfig: z.boolean().default(false),
-  tag: z.string().default("beta"),
+  tag: z.string().default("latest"),
   skipPackageInstall: z.boolean().default(false),
   runtime: z.string().default("node"),
   pkgArgs: z.string().optional(),
@@ -61,7 +61,7 @@ export function configureInitCommand(program: Command) {
       .option(
         "-t, --tag <package tag>",
         "The version of the @trigger.dev/sdk package to install",
-        "beta"
+        "latest"
       )
       .option(
         "-r, --runtime <runtime>",
