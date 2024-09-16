@@ -31,8 +31,10 @@ jobs:
         with:
           path: |
             ~/.npm
-            ~/.cache
-          key: ${{ runner.os }}-mintlify
+          key: |
+            ${{ runner.os }}-mintlify
+          restore-keys: |
+            ${{ runner.os }}-mintlify
 
       - name: 🔗 Check for broken links
         run: npx mintlify@4.0.222 broken-links
