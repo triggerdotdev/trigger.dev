@@ -83,7 +83,9 @@ export async function updateTriggerPackages(
     hasOutput = true;
   }
 
-  const triggerDependencies = getTriggerDependencies(packageJson);
+  const triggerDependencies = await getTriggerDependencies(packageJson);
+
+  logger.debug("Resolved trigger deps", { triggerDependencies });
 
   function getVersionMismatches(
     deps: Dependency[],
@@ -268,7 +270,7 @@ type Dependency = {
   version: string;
 };
 
-function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
+async function getTriggerDependencies(packageJson: PackageJson): Promise<Dependency[]> {
   const deps: Dependency[] = [];
 
   for (const type of ["dependencies", "devDependencies"] as const) {
@@ -291,11 +293,24 @@ function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
         continue;
       }
 
-      deps.push({ type, name, version });
+      const $version = await tryResolveTriggerPackageVersion(name);
+
+      deps.push({ type, name, version: $version ?? version });
     }
   }
 
   return deps;
+}
+
+async function tryResolveTriggerPackageVersion(name: string): Promise<string | undefined> {
+  try {
+    const versionModule = await import(`${name}/version`);
+
+    return versionModule?.VERSION;
+  } catch (error) {
+    logger.debug("Failed to resolve package version", { name, error });
+    return undefined;
+  }
 }
 
 function mutatePackageJsonWithUpdatedPackages(

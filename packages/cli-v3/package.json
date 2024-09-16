@@ -42,7 +42,8 @@
     "project": "./tsconfig.src.json",
     "exports": {
       "./package.json": "./package.json",
-      ".": "./src/index.ts"
+      ".": "./src/index.ts",
+      "./version": "./src/version.ts"
     }
   },
   "devDependencies": {
@@ -133,6 +134,12 @@
       "import": {
         "types": "./dist/esm/index.d.ts",
         "default": "./dist/esm/index.js"
+      }
+    },
+    "./version": {
+      "import": {
+        "types": "./dist/esm/version.d.ts",
+        "default": "./dist/esm/version.js"
       }
     }
   }
