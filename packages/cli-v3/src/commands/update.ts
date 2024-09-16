@@ -317,9 +317,14 @@ async function tryResolveTriggerPackageVersion(
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
 
-    const versionModule = await import(`${dirname(resolvedPath)}/version.js`);
+    const { packageJson } = await getPackageJson(dirname(resolvedPath));
 
-    return versionModule?.VERSION;
+    if (packageJson.version) {
+      logger.debug(`Resolved ${name} package version`, { name, version: packageJson.version });
+      return packageJson.version;
+    }
+
+    return;
   } catch (error) {
     logger.debug("Failed to resolve package version", { name, error });
     return undefined;
