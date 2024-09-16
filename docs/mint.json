@@ -258,7 +258,8 @@
         "examples/open-ai-with-retrying",
         "examples/sharp-image-processing",
         "examples/react-pdf",
-        "examples/resend-email-sequence"
+        "examples/resend-email-sequence",
+        "examples/vercel-ai-sdk"
       ]
     }
   ],
