@@ -30,7 +30,7 @@ jobs:
         id: get_tag
         uses: ./.github/actions/get-image-tag
         with:
-          tag: ${{ github.event.inputs.image_tag }}
+          tag: ${{ inputs.image_tag }}
 
       - name: 🔢 Get the commit hash
         id: get_commit

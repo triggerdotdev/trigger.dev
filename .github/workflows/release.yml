@@ -79,7 +79,7 @@ jobs:
         if: steps.changesets.outputs.published == 'true'
         id: get_version
         run: |
-          package_version=$(echo ${{ steps.changesets.outputs.publishedPackages }} | jq '.[0].version')
+          package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
 
   publish:

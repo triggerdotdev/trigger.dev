@@ -1,4 +1,4 @@
-name: "🚢 Publish Worker"
+name: "⚒️ Publish Worker"
 
 on:
   workflow_call:
@@ -44,7 +44,7 @@ jobs:
       - id: get_tag
         uses: ./.github/actions/get-image-tag
         with:
-          tag: ${{ github.event.inputs.image_tag }}
+          tag: ${{ inputs.image_tag }}
 
       - name: 🐋 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
