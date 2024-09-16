@@ -77,7 +77,7 @@ export async function updateTriggerPackages(
     prettyWarning(
       "You're not running the latest CLI version, please consider updating ASAP",
       `Current:     ${cliVersion}\nLatest:      ${newCliVersion}`,
-      "Run latest:  npx trigger.dev@beta"
+      "Run latest:  npx trigger.dev@latest"
     );
 
     hasOutput = true;
@@ -108,25 +108,9 @@ export async function updateTriggerPackages(
       mismatches.push(dep);
     }
 
-    const extractRelease = (version: string) => {
-      const release = Number(version.split("3.0.0-beta.")[1]);
-      return release || undefined;
-    };
-
-    let isDowngrade = false;
-    const targetRelease = extractRelease(targetVersion);
-
-    if (targetRelease) {
-      isDowngrade = mismatches.some((dep) => {
-        const depRelease = extractRelease(dep.version);
-
-        if (!depRelease) {
-          return false;
-        }
-
-        return depRelease > targetRelease;
-      });
-    }
+    const isDowngrade = mismatches.some((dep) => {
+      return dep.version > targetVersion;
+    });
 
     return {
       mismatches,

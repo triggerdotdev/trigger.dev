@@ -5,20 +5,20 @@ description: "Tasks need to be triggered in order to run."
 
 Trigger tasks **from your backend**:
 
-| Function                         | This works            | What it does                                                                                                                                                              |
-| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tasks.trigger()`                | Anywhere              | Triggers a task and gets a handle you can use to fetch and manage the run. [Read more](#tasks-trigger)                                                                    |
-| `tasks.batchTrigger()`           | Anywhere              | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger)                                               |
-| `tasks.triggerAndPoll()`         | Anywhere              | Triggers a task and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll)                                                                            |
+| Function                 | This works | What it does                                                                                                                |
+| ------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `tasks.trigger()`        | Anywhere   | Triggers a task and gets a handle you can use to fetch and manage the run. [Read more](#tasks-trigger)                      |
+| `tasks.batchTrigger()`   | Anywhere   | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger) |
+| `tasks.triggerAndPoll()` | Anywhere   | Triggers a task and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll)                              |
 
 Trigger tasks **from inside a run**:
 
-| Function                         | This works            | What it does                                                                                                                                                              |
-| -------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yourTask.trigger()`             | Anywhere              | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#task-trigger)                                  |
-| `yourTask.batchTrigger()`        | Anywhere              | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#task-batchtrigger)            |
-| `yourTask.triggerAndWait()`      | Inside task           | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#task-triggerandwait)                                           |
-| `yourTask.batchTriggerAndWait()` | Inside task           | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#task-batchtriggerandwait) |
+| Function                         | This works  | What it does                                                                                                                                                              |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yourTask.trigger()`             | Anywhere    | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#task-trigger)                                  |
+| `yourTask.batchTrigger()`        | Anywhere    | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#task-batchtrigger)            |
+| `yourTask.triggerAndWait()`      | Inside task | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#task-triggerandwait)                                           |
+| `yourTask.batchTriggerAndWait()` | Inside task | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#task-batchtriggerandwait) |
 
 Additionally, [scheduled tasks](/tasks-scheduled) get **automatically** triggered on their schedule and webhooks when receiving a webhook.
 
@@ -46,7 +46,9 @@ You can use Next.js Server Actions but [you need to be careful with bundling](/g
 Triggers a single run of a task with the payload you pass in, and any options you specify, without needing to import the task.
 
 <Note>
-  By using `tasks.trigger()`, you can pass in the task type as a generic argument, giving you full type checking. Make sure you use a `type` import so that your task code is not imported into your application.
+  By using `tasks.trigger()`, you can pass in the task type as a generic argument, giving you full
+  type checking. Make sure you use a `type` import so that your task code is not imported into your
+  application.
 </Note>
 
 <CodeGroup>
@@ -103,7 +105,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 Triggers multiples runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
 
 <Note>
-  By using `tasks.batchTrigger()`, you can pass in the task type as a generic argument, giving you full type checking. Make sure you use a `type` import so that your task code is not imported into your application.
+  By using `tasks.batchTrigger()`, you can pass in the task type as a generic argument, giving you
+  full type checking. Make sure you use a `type` import so that your task code is not imported into
+  your application.
 </Note>
 
 <CodeGroup>
@@ -159,7 +163,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
 
 <Note>
-  By using `tasks.triggerAndPoll()`, you can pass in the task type as a generic argument, giving you full type checking. Make sure you use a `type` import so that your task code is not imported into your application.
+  By using `tasks.triggerAndPoll()`, you can pass in the task type as a generic argument, giving you
+  full type checking. Make sure you use a `type` import so that your task code is not imported into
+  your application.
 </Note>
 
 <CodeGroup>
@@ -313,10 +319,62 @@ export const loopTask = task({
 export const parentTask = task({
   id: "parent-task",
   run: async (payload: string) => {
-    const result = await batchChildTask.triggerAndWait("some-data");
+    const result = await childTask.triggerAndWait("some-data");
     console.log("Result", result);
 
     //...do stuff with the result
+  },
+});
+```
+
+The `result` object is a "Result" type that needs to be checked to see if the child task run was successful:
+
+```ts /trigger/parent.ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const result = await childTask.triggerAndWait("some-data");
+
+    if (result.ok) {
+      console.log("Result", result.output); // result.output is the typed return value of the child task
+    } else {
+      console.error("Error", result.error); // result.error is the error that caused the run to fail
+    }
+  },
+});
+```
+
+If instead you just want to get the output of the child task, and throw an error if the child task failed, you can use the `unwrap` method:
+
+```ts /trigger/parent.ts
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const output = await childTask.triggerAndWait("some-data").unwrap();
+    console.log("Output", output);
+  },
+});
+```
+
+You can also catch the error if the child task fails and get more information about the error:
+
+```ts /trigger/parent.ts
+import { task, SubtaskUnwrapError } from "@trigger.dev/sdk/v3";
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    try {
+      const output = await childTask.triggerAndWait("some-data").unwrap();
+      console.log("Output", output);
+    } catch (error) {
+      if (error instanceof SubtaskUnwrapError) {
+        console.error("Error in fetch-post-task", {
+          runId: error.runId,
+          taskId: error.taskId,
+          cause: error.cause,
+        });
+      }
+    }
   },
 });
 ```
@@ -379,45 +437,45 @@ export const loopTask = task({
   
   When using `batchTriggerAndWait`, you have full control over how to handle failures within the batch. The method returns an array of run results, allowing you to inspect each run's outcome individually and implement custom error handling.
 
-  Here's how you can manage run failures:
+Here's how you can manage run failures:
 
-  1. **Inspect individual run results**: Each run in the returned array has an `ok` property indicating success or failure.
+1. **Inspect individual run results**: Each run in the returned array has an `ok` property indicating success or failure.
 
-  2. **Access error information**: For failed runs, you can examine the `error` property to get details about the failure.
+2. **Access error information**: For failed runs, you can examine the `error` property to get details about the failure.
 
-  3. **Choose your failure strategy**: You have two main options:
-     - **Fail the entire batch**: Throw an error if any run fails, causing the parent task to reattempt.
-     - **Continue despite failures**: Process the results without throwing an error, allowing the parent task to continue.
+3. **Choose your failure strategy**: You have two main options:
 
-  4. **Implement custom logic**: You can create sophisticated handling based on the number of failures, types of errors, or other criteria.
+   - **Fail the entire batch**: Throw an error if any run fails, causing the parent task to reattempt.
+   - **Continue despite failures**: Process the results without throwing an error, allowing the parent task to continue.
 
-  Here's an example of how you might handle run failures:
+4. **Implement custom logic**: You can create sophisticated handling based on the number of failures, types of errors, or other criteria.
+
+Here's an example of how you might handle run failures:
 
 <CodeGroup>
 
 ```ts /trigger/batchTriggerAndWait.ts
-  const result = await batchChildTask.batchTriggerAndWait([
-    { payload: "item1" },
-    { payload: "item2" },
-    { payload: "item3" },
-  ]);
+const result = await batchChildTask.batchTriggerAndWait([
+  { payload: "item1" },
+  { payload: "item2" },
+  { payload: "item3" },
+]);
 
-  // Result will contain the finished runs. 
-  // They're only finished if they have succeeded or failed.
-  // "Failed" means all attempts failed
+// Result will contain the finished runs.
+// They're only finished if they have succeeded or failed.
+// "Failed" means all attempts failed
 
-  for (const run of result.runs) {
+for (const run of result.runs) {
+  // Check if the run succeeded
+  if (run.ok) {
+    logger.info("Batch task run succeeded", { output: run.output });
+  } else {
+    logger.error("Batch task run error", { error: run.error });
 
-    // Check if the run succeeded
-    if (run.ok) {
-      logger.info("Batch task run succeeded", { output: run.output });
-    } else {
-      logger.error("Batch task run error", { error: run.error });
-
-      //You can choose if you want to throw an error and fail the entire run
-      throw new Error(`Fail the entire run because ${run.id} failed`);
-    }
+    //You can choose if you want to throw an error and fail the entire run
+    throw new Error(`Fail the entire run because ${run.id} failed`);
   }
+}
 ```
 
 </CodeGroup>
@@ -472,7 +530,7 @@ await myTask.trigger({ some: "data" }, { delay: "2024-12-01T00:00:00" });
 // Delay using a Date object
 await myTask.trigger({ some: "data" }, { delay: new Date(Date.now() + 1000 * 60 * 60) });
 // Delay using a timezone
-await myTask.trigger({ some: "data" }, { delay: new Date('2024-07-23T11:50:00+02:00') });
+await myTask.trigger({ some: "data" }, { delay: new Date("2024-07-23T11:50:00+02:00") });
 ```
 
 Runs that are delayed and have not been enqueued yet will display in the dashboard with a "Delayed" status:
