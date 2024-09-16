@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.1
+
+### Patch Changes
+
+- 3aa581179: Fixing false-positive package version mismatches
+
 ## 3.0.0
 
 ### Major Changes
