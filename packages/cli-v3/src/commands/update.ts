@@ -311,13 +311,13 @@ async function tryResolveTriggerPackageVersion(
   packageJsonPath: string
 ): Promise<string | undefined> {
   try {
-    const resolvedPath = nodeResolve.sync(`${name}/version`, {
+    const resolvedPath = nodeResolve.sync(name, {
       basedir: dirname(packageJsonPath),
     });
 
     logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
 
-    const versionModule = await import(resolvedPath);
+    const versionModule = await import(`${dirname(resolvedPath)}/version.js`);
 
     return versionModule?.VERSION;
   } catch (error) {
