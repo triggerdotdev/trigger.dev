@@ -254,6 +254,7 @@
     {
       "group": "Examples",
       "pages": [
+        "examples/intro",
         "examples/generate-image-with-dall-e3",
         "examples/open-ai-with-retrying",
         "examples/react-pdf",
