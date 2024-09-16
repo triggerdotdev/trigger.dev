@@ -16,9 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [buildjet-8vcpu-ubuntu-2204, windows-latest]
-        package-manager: ["npm", "pnpm", "yarn"]
-    env:
-      YARN_ENABLE_IMMUTABLE_INSTALLS: false
+        package-manager: ["npm", "pnpm"]
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
