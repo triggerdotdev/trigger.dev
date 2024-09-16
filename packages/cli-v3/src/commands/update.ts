@@ -54,7 +54,7 @@ export async function updateTriggerPackages(
   let hasOutput = false;
   const cliVersion = VERSION;
 
-  if (cliVersion.startsWith("0.0.0")) {
+  if (cliVersion.startsWith("0.0.0") && process.env.ENABLE_PRERELEASE_UPDATE_CHECKS !== "1") {
     return false;
   }
 
