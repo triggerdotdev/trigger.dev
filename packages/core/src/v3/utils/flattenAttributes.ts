@@ -33,6 +33,11 @@ export function flattenAttributes(
     return result;
   }
 
+  if (obj instanceof Date) {
+    result[prefix || ""] = obj.toISOString();
+    return result;
+  }
+
   for (const [key, value] of Object.entries(obj)) {
     const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
