@@ -16,9 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [buildjet-8vcpu-ubuntu-2204, windows-latest]
-        package-manager: ["npm", "pnpm", "yarn"]
-    env:
-      YARN_ENABLE_IMMUTABLE_INSTALLS: false
+        package-manager: ["npm", "pnpm"]
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v3
@@ -34,7 +32,6 @@ jobs:
         uses: buildjet/setup-node@v3
         with:
           node-version: 20.11.1
-          cache: "pnpm"
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...

@@ -16,8 +16,7 @@
     "generate:prisma": "prisma generate --sql"
   },
   "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "fluent-ffmpeg": "^2.1.3",
     "@infisical/sdk": "^2.1.9",
     "@opentelemetry/api": "1.4.1",
     "@prisma/client": "5.19.0",
@@ -68,6 +67,7 @@
     "@types/email-reply-parser": "^1.4.2",
     "@types/node": "20.4.2",
     "@types/react": "^18.3.1",
+    "@types/fluent-ffmpeg": "^2.1.26",
     "esbuild": "^0.19.11",
     "prisma": "5.19.0",
     "prisma-kysely": "^1.8.0",

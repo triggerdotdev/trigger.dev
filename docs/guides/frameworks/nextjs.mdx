@@ -5,16 +5,16 @@ description: "This guide will show you how to setup Trigger.dev in your existing
 icon: "N"
 ---
 
-import Prerequisites from '/snippets/framework-prerequisites.mdx';
-import CliInitStep from '/snippets/step-cli-init.mdx';
-import CliDevStep from '/snippets/step-cli-dev.mdx';
-import CliRunTestStep from '/snippets/step-run-test.mdx';
-import CliViewRunStep from '/snippets/step-view-run.mdx';
-import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
-import TriggerTaskNextjs from '/snippets/trigger-tasks-nextjs.mdx';
-import NextjsTroubleshootingMissingApiKey from '/snippets/nextjs-missing-api-key.mdx';
-import NextjsTroubleshootingButtonSyntax from '/snippets/nextjs-button-syntax.mdx';
-import WorkerFailedToStartWhenRunningDevCommand from '/snippets/worker-failed-to-start.mdx';
+import Prerequisites from "/snippets/framework-prerequisites.mdx";
+import CliInitStep from "/snippets/step-cli-init.mdx";
+import CliDevStep from "/snippets/step-cli-dev.mdx";
+import CliRunTestStep from "/snippets/step-run-test.mdx";
+import CliViewRunStep from "/snippets/step-view-run.mdx";
+import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
+import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
+import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
+import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
+import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 
 <Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
 
@@ -91,11 +91,11 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
     <Tab title="App Router (Server Actions)">
 
     <Steps>
-    
+
     <Step title="Create an `actions.ts` file">
 
       Create an `actions.ts` file in the `app/api` directory and add this code which imports your `helloWorldTask()` task. Make sure to include `"use server";` at the top of the file.
-      
+
       ```ts app/api/actions.ts
         "use server";
 
@@ -120,7 +120,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
       ```
 
     </Step>
-    
+
     <Step title="Create a button to trigger your task">
 
       For the purposes of this guide, we'll create a button with an `onClick` event that triggers your task. We'll add this to the `page.tsx` file so we can trigger the task by clicking the button. Make sure to import your task and include `"use client";` at the top of your file.
@@ -166,31 +166,31 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
     </CodeGroup>
 
-    Open your app in a browser, making sure the port number is the same as the one you're running your Next.js app on. For example, if you're running your Next.js app on port 3000, visit: 
+    Open your app in a browser, making sure the port number is the same as the one you're running your Next.js app on. For example, if you're running your Next.js app on port 3000, visit:
 
     ```bash
     http://localhost:3000
     ```
-    
+
     Run the dev server from Step 2. of the [Initial Setup](/guides/frameworks/nextjs#initial-setup) section above if it's not already running:
-    
+
     <CodeGroup>
 
     ```bash npm
-    npx trigger.dev@beta dev
+    npx trigger.dev@latest dev
     ```
 
     ```bash pnpm
-    pnpm dlx trigger.dev@beta dev
+    pnpm dlx trigger.dev@latest dev
     ```
 
     ```bash yarn
-    yarn dlx trigger.dev@beta dev
+    yarn dlx trigger.dev@latest dev
     ```
 
     </CodeGroup>
-    
-    Then click the button we created in your app to trigger the task. You should see the CLI log the task run with a link to view the logs. 
+
+    Then click the button we created in your app to trigger the task. You should see the CLI log the task run with a link to view the logs.
 
     ![Trigger.dev CLI showing a successful run](/images/trigger-cli-run-success.png)
 
@@ -225,7 +225,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
         "James"
         );
 
-        res.status(200).json(handle);   
+        res.status(200).json(handle);
       }
       ```
     </Step>
@@ -261,15 +261,15 @@ For this guide, we'll manually deploy your task by running the [CLI deploy comma
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta deploy
+npx trigger.dev@latest deploy
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta deploy
+pnpm dlx trigger.dev@latest deploy
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta deploy
+yarn dlx trigger.dev@latest deploy
 ```
 
 </CodeGroup>
