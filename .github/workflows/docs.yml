@@ -1,0 +1,27 @@
+name: 📚 Docs Checks
+
+on:
+  push:
+  pull_request:
+    paths:
+      - "docs/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-broken-links:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🔗 Check for broken links
+        run: npx mintlify broken-links
