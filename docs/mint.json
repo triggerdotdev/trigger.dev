@@ -256,6 +256,7 @@
         "examples/dall-e3-generate-image",
         "examples/ffmpeg-video-processing",
         "examples/open-ai-with-retrying",
+        "examples/sharp-image-processing",
         "examples/react-pdf",
         "examples/resend-email-sequence"
       ]
