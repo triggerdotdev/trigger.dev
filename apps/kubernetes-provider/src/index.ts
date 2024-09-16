@@ -24,6 +24,7 @@ const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST ?? undefined;
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT ?? undefined;
+const KUBERNETES_NAMESPACE = process.env.KUBERNETES_NAMESPACE ?? "default";
 
 const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
 
@@ -54,7 +55,7 @@ class KubernetesTaskOperations implements TaskOperations {
     apps: k8s.AppsV1Api;
   };
 
-  constructor(namespace = "default") {
+  constructor(namespace = KUBERNETES_NAMESPACE) {
     this.#namespace = {
       metadata: {
         name: namespace,
@@ -688,7 +689,7 @@ taskMonitor.start();
 
 const podCleaner = new PodCleaner({
   runtimeEnv: RUNTIME_ENV,
-  namespace: "default",
+  namespace: KUBERNETES_NAMESPACE,
   intervalInSeconds: POD_CLEANER_INTERVAL_SECONDS,
 });
 
@@ -697,7 +698,7 @@ podCleaner.start();
 if (UPTIME_HEARTBEAT_URL) {
   const uptimeHeartbeat = new UptimeHeartbeat({
     runtimeEnv: RUNTIME_ENV,
-    namespace: "default",
+    namespace: KUBERNETES_NAMESPACE,
     intervalInSeconds: UPTIME_INTERVAL_SECONDS,
     pingUrl: UPTIME_HEARTBEAT_URL,
     maxPendingRuns: UPTIME_MAX_PENDING_RUNS,
