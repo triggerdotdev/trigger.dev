@@ -1,27 +1,29 @@
 import * as k8s from "@kubernetes/client-node";
 import {
+  EnvironmentType,
+  MachinePreset,
+  PostStartCauses,
+  PreStopCauses,
+} from "@trigger.dev/core/v3";
+import {
   ProviderShell,
+  SimpleLogger,
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsPrePullDeploymentOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core/v3/apps";
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
-import {
-  MachinePreset,
-  PostStartCauses,
-  PreStopCauses,
-  EnvironmentType,
-} from "@trigger.dev/core/v3";
-import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
+import { TaskMonitor } from "./taskMonitor";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318";
+const COORDINATOR_HOST = process.env.COORDINATOR_HOST ?? undefined;
+const COORDINATOR_PORT = process.env.COORDINATOR_PORT ?? undefined;
 
 const POD_CLEANER_INTERVAL_SECONDS = Number(process.env.POD_CLEANER_INTERVAL_SECONDS || "300");
 
@@ -230,14 +232,31 @@ class KubernetesTaskOperations implements TaskOperations {
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
               env: [
-                {
-                  name: "COORDINATOR_HOST",
-                  valueFrom: {
-                    fieldRef: {
-                      fieldPath: "status.hostIP",
-                    },
-                  },
-                },
+                ...(COORDINATOR_HOST
+                  ? [
+                      {
+                        name: "COORDINATOR_HOST",
+                        value: COORDINATOR_HOST,
+                      },
+                    ]
+                  : [
+                      {
+                        name: "COORDINATOR_HOST",
+                        valueFrom: {
+                          fieldRef: {
+                            fieldPath: "status.hostIP",
+                          },
+                        },
+                      },
+                    ]),
+                ...(COORDINATOR_PORT
+                  ? [
+                      {
+                        name: "COORDINATOR_PORT",
+                        value: COORDINATOR_PORT,
+                      },
+                    ]
+                  : []),
               ],
               volumeMounts: [
                 {
@@ -435,14 +454,7 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
       },
-      {
-        name: "COORDINATOR_HOST",
-        valueFrom: {
-          fieldRef: {
-            fieldPath: "status.hostIP",
-          },
-        },
-      },
+
       {
         name: "MACHINE_NAME",
         valueFrom: {
@@ -451,6 +463,19 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
       },
+      ...(COORDINATOR_HOST
+        ? [{ name: "COORDINATOR_HOST", value: COORDINATOR_HOST }]
+        : [
+            {
+              name: "COORDINATOR_HOST",
+              valueFrom: {
+                fieldRef: {
+                  fieldPath: "status.hostIP",
+                },
+              },
+            },
+          ]),
+      ...(COORDINATOR_PORT ? [{ name: "COORDINATOR_PORT", value: COORDINATOR_PORT }] : []),
     ];
   }
 
