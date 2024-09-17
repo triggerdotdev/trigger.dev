@@ -3,6 +3,8 @@ title: "Self-hosting"
 description: "You can self-host Trigger.dev on your own infrastructure."
 ---
 
+<Warning>Self-hosting does not support the latest CLI yet, you will have to continue using the `beta` tag for now.</Warning>
+
 ## Overview
 
 <Frame>
@@ -174,7 +176,7 @@ docker login -u <your_dockerhub_username>
 5. You can now deploy v3 projects using the CLI with these flags:
 
 ```
-npx trigger.dev@latest deploy --self-hosted --push
+npx trigger.dev@beta deploy --self-hosted --push
 ```
 
 ## Part 2: Split services
