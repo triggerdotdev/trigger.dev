@@ -1,5 +1,6 @@
 import CommonOptions from '/snippets/cli-options-common.mdx';
 import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
+import EnvFileOption from '/snippets/cli-options-env-file.mdx';
 
 This runs a server on your machine that can execute Trigger.dev tasks:
 
@@ -33,10 +34,7 @@ It is worth noting that each task runs in a separate Node process. This means th
 
 <ProjectRefOption />
 
-<ParamField body="Env file" type="--env">
-  Pass a custom path to an env file. We automatically detect `.env`, `.env.local`,
-  `.env.development`, and `.env.development.local` files.
-</ParamField>
+<EnvFileOption />
 
 <ParamField body="Skip update check" type="--skip-update-check">
   Skip checking for `@trigger.dev` package updates.

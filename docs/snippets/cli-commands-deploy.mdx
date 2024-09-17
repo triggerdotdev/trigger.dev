@@ -1,5 +1,6 @@
 import CommonOptions from '/snippets/cli-options-common.mdx';
 import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
+import EnvFileOption from '/snippets/cli-options-env-file.mdx';
 
 Run the command like this:
 
@@ -39,10 +40,7 @@ You can also setup [GitHub Actions](/github-actions) to deploy your tasks automa
   Defaults to `prod` but you can specify `staging`.
 </ParamField>
 
-<ParamField body="Env file" type="--env">
-  Load environment variables from a file. This will only hydrate the `process.env` of the CLI
-  process, not the tasks.
-</ParamField>
+<EnvFileOption />
 
 <ParamField body="Dry run" type="--dry-run">
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
