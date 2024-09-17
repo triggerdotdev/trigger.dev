@@ -15,6 +15,21 @@ import {
   WaitReason,
 } from "./schemas.js";
 
+const ackCallbackResult = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(false),
+    error: z.object({
+      name: z.string(),
+      message: z.string(),
+      stack: z.string().optional(),
+      stderr: z.string().optional(),
+    }),
+  }),
+  z.object({
+    success: z.literal(true),
+  }),
+]);
+
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("CANCEL_ATTEMPT"),
@@ -269,20 +284,7 @@ export const PlatformToProviderMessages = {
       projectId: z.string(),
       deploymentId: z.string(),
     }),
-    callback: z.discriminatedUnion("success", [
-      z.object({
-        success: z.literal(false),
-        error: z.object({
-          name: z.string(),
-          message: z.string(),
-          stack: z.string().optional(),
-          stderr: z.string().optional(),
-        }),
-      }),
-      z.object({
-        success: z.literal(true),
-      }),
-    ]),
+    callback: ackCallbackResult,
   },
   RESTORE: {
     message: z.object({
@@ -504,6 +506,7 @@ export const CoordinatorToPlatformMessages = {
 };
 
 export const PlatformToCoordinatorMessages = {
+  /** @deprecated use RESUME_AFTER_DEPENDENCY_WITH_ACK instead  */
   RESUME_AFTER_DEPENDENCY: {
     message: z.object({
       version: z.literal("v1").default("v1"),
@@ -513,6 +516,17 @@ export const PlatformToCoordinatorMessages = {
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
     }),
+  },
+  RESUME_AFTER_DEPENDENCY_WITH_ACK: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      runId: z.string(),
+      attemptId: z.string(),
+      attemptFriendlyId: z.string(),
+      completions: TaskRunExecutionResult.array(),
+      executions: TaskRunExecution.array(),
+    }),
+    callback: ackCallbackResult,
   },
   RESUME_AFTER_DURATION: {
     message: z.object({

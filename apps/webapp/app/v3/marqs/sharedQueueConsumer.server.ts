@@ -725,20 +725,47 @@ export class SharedQueueConsumer {
         }
 
         try {
-          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY", {
-            runId: resumableAttempt.taskRunId,
-            attemptId: resumableAttempt.id,
-          });
-
-          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
-            version: "v1",
+          const resumeMessage = {
+            version: "v1" as const,
             runId: resumableAttempt.taskRunId,
             attemptId: resumableAttempt.id,
             attemptFriendlyId: resumableAttempt.friendlyId,
             completions,
             executions,
+          };
+
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", { resumeMessage, message });
+
+          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
+          const responses = await socketIo.coordinatorNamespace
+            .timeout(10_000)
+            .emitWithAck("RESUME_AFTER_DEPENDENCY_WITH_ACK", resumeMessage);
+
+          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK received", {
+            resumeMessage,
+            responses,
+            message,
           });
+
+          if (responses.length === 0) {
+            logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK no response", {
+              resumeMessage,
+              message,
+            });
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 1_000);
+            return;
+          }
+
+          const failed = responses.filter((response) => !response.success);
+          if (failed.length > 0) {
+            logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+              resumeMessage,
+              failed,
+              message,
+            });
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 1_000);
+            return;
+          }
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);

@@ -162,6 +162,33 @@ class TaskCoordinator {
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
+        RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
+            return {
+              success: false,
+              error: {
+                name: "SocketNotFoundError",
+                message: "Socket for attempt not found",
+              },
+            };
+          }
+
+          await chaosMonkey.call();
+
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
+
+          return {
+            success: true,
+          };
+        },
         RESUME_AFTER_DURATION: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
