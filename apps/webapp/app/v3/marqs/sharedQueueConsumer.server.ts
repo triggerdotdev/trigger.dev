@@ -752,7 +752,7 @@ export class SharedQueueConsumer {
               resumeMessage,
               message,
             });
-            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 1_000);
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
             return;
           }
 
@@ -763,7 +763,7 @@ export class SharedQueueConsumer {
               failed,
               message,
             });
-            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 1_000);
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
             return;
           }
         } catch (e) {
