@@ -6,7 +6,10 @@ import {
   trigger,
   triggerAndPoll,
   triggerAndWait,
+  SubtaskUnwrapError,
 } from "./shared.js";
+
+export { SubtaskUnwrapError };
 
 import type {
   TaskOptions,

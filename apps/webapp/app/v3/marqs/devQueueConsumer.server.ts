@@ -162,8 +162,8 @@ export class DevQueueConsumer {
   /**
    * @deprecated Use `taskRunHeartbeat` instead
    */
-  public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
-    logger.debug("[DevQueueConsumer] taskHeartbeat()", { id, seconds });
+  public async taskHeartbeat(workerId: string, id: string) {
+    logger.debug("[DevQueueConsumer] taskHeartbeat()", { id });
 
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: id },
@@ -173,13 +173,13 @@ export class DevQueueConsumer {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
   }
 
-  public async taskRunHeartbeat(workerId: string, id: string, seconds: number = 60) {
-    logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id, seconds });
+  public async taskRunHeartbeat(workerId: string, id: string) {
+    logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id });
 
-    await marqs?.heartbeatMessage(id, seconds);
+    await marqs?.heartbeatMessage(id);
   }
 
   public async stop(reason: string = "CLI disconnected") {

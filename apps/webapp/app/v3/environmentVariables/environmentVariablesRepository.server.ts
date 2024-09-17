@@ -798,6 +798,15 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
     ]);
   }
 
+  if (env.PROD_TASK_HEARTBEAT_INTERVAL_MS) {
+    result = result.concat([
+      {
+        key: "HEARTBEAT_INTERVAL_MS",
+        value: String(env.PROD_TASK_HEARTBEAT_INTERVAL_MS),
+      },
+    ]);
+  }
+
   const commonVariables = await resolveCommonBuiltInVariables(runtimeEnvironment);
 
   return [...result, ...commonVariables];

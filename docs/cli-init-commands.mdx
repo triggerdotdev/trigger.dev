@@ -11,27 +11,32 @@ Run the command like this:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta init
+npx trigger.dev@latest init
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta init
+pnpm dlx trigger.dev@latest init
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta init
+yarn dlx trigger.dev@latest init
 ```
 
 </CodeGroup>
 
 ## Options
 
+<ParamField body="Javascript" type="--javascript">
+  By default, the init command assumes you are using TypeScript. Use this flag to initialize a
+  project that uses JavaScript.
+</ParamField>
+
 <ParamField body="Project ref" type="--project-ref | -p">
   The project ref to use when initializing the project.
 </ParamField>
 
 <ParamField body="Package tag" type="--tag | -t">
-  The version of the `@trigger.dev/sdk` package to install. Defaults to `3.0.0-beta.56`.
+  The version of the `@trigger.dev/sdk` package to install. Defaults to `latest`.
 </ParamField>
 
 <ParamField body="Skip package install" type="--skip-package-install">
