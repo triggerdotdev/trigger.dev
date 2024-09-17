@@ -98,14 +98,13 @@ export const ffmpegCompressVideo = task({
 
     // Read the compressed video
     const compressedVideo = await fs.readFile(outputPath);
-
     const compressedSize = compressedVideo.length;
 
     // Log compression results
     logger.log(`Compressed video size: ${compressedSize} bytes`);
-    logger.log(`Compressed video saved at: ${outputPath}`);
+    logger.log(`Temporary compressed video file created`, { outputPath });
 
-    // Upload the compressed video to S3, replacing slashes with underscores
+    // Create the r2Key for the extracted audio, using the base name of the output path
     const r2Key = `processed-videos/${path.basename(outputPath)}`;
 
     const uploadParams = {
@@ -116,20 +115,29 @@ export const ffmpegCompressVideo = task({
 
     // Upload the video to R2 and get the URL
     await s3Client.send(new PutObjectCommand(uploadParams));
-    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
-    logger.log("Compressed video uploaded to R2", { url: r2Url });
+    logger.log(`Compressed video saved to your r2 bucket`, { r2Key });
 
     // Delete the temporary compressed video file
     await fs.unlink(outputPath);
+    logger.log(`Temporary compressed video file deleted`, { outputPath });
 
-    // Return the compressed video file path, compressed size, and S3 URL
+    // Return the compressed video buffer and r2 key
     return {
-      compressedVideoPath: outputPath,
-      compressedSize,
-      r2Url,
+      Bucket: process.env.R2_BUCKET,
+      r2Key,
     };
   },
 });
+```
+
+### Testing:
+
+To test this task, use this payload structure:
+
+```json
+{
+  "videoUrl": "<video-url>"
+}
 ```
 
 ## Extract audio from a video using FFmpeg
@@ -144,11 +152,6 @@ This task demonstrates how to use FFmpeg to extract audio from a video, convert 
 - Uploads the extracted audio to R2 storage
 
 ### Task code
-
-<Warning>
-  When testing, make sure to provide a video URL that contains audio. If the video does not have
-  audio, the task will fail.
-</Warning>
 
 ```ts trigger/ffmpeg-extract-audio.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
@@ -176,61 +179,79 @@ export const ffmpegExtractAudio = task({
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate temporary and output file names
+    // Generate temporary file names
     const tempDirectory = os.tmpdir();
-    const outputPath = path.join(tempDirectory, `output_${Date.now()}.wav`);
+    const outputPath = path.join(tempDirectory, `audio_${Date.now()}.wav`);
 
     // Fetch the video
     const response = await fetch(videoUrl);
 
-    // Convert the video to WAV
+    // Extract the audio
     await new Promise((resolve, reject) => {
       if (!response.body) {
         return reject(new Error("Failed to fetch video"));
       }
+
       ffmpeg(Readable.from(response.body))
-        .toFormat("wav")
-        .save(outputPath)
-        .on("end", () => {
-          logger.log(`WAV file saved to ${outputPath}`);
-          resolve(outputPath);
-        })
-        .on("error", (err) => {
-          reject(err);
-        });
+        .outputOptions([
+          "-vn", // Disable video output
+          "-acodec pcm_s16le", // Use PCM 16-bit little-endian encoding
+          "-ar 44100", // Set audio sample rate to 44.1 kHz
+          "-ac 2", // Set audio channels to stereo
+        ])
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
     });
 
-    // Read the WAV file
-    const wavBuffer = await fs.readFile(outputPath);
+    // Read the extracted audio
+    const audioBuffer = await fs.readFile(outputPath);
+    const audioSize = audioBuffer.length;
 
-    // Log the output file path
-    logger.log(`Converted video saved at: ${outputPath}`);
+    // Log audio extraction results
+    logger.log(`Extracted audio size: ${audioSize} bytes`);
+    logger.log(`Temporary audio file created`, { outputPath });
 
-    // Upload the compressed video to S3, replacing slashes with underscores
-    const r2Key = `processed-audio/${path.basename(outputPath)}`;
+    // Create the r2Key for the extracted audio, using the base name of the output path
+    const r2Key = `extracted-audio/${path.basename(outputPath)}`;
 
     const uploadParams = {
       Bucket: process.env.R2_BUCKET,
       Key: r2Key,
-      Body: wavBuffer,
+      Body: audioBuffer,
     };
 
     // Upload the audio to R2 and get the URL
     await s3Client.send(new PutObjectCommand(uploadParams));
-    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
-    logger.log("Extracted audio uploaded to R2", { url: r2Url });
+    logger.log(`Extracted audio saved to your R2 bucket`, { r2Key });
 
-    // Delete the temporary file
+    // Delete the temporary audio file
     await fs.unlink(outputPath);
+    logger.log(`Temporary audio file deleted`, { outputPath });
 
-    // Return the WAV buffer and file path
+    // Return the audio file path, size, and R2 URL
     return {
-      wavBuffer,
-      wavFilePath: outputPath,
-      r2Url,
+      Bucket: process.env.R2_BUCKET,
+      r2Key,
     };
   },
 });
+```
+
+### Testing:
+
+To test this task, use this payload structure:
+
+<Warning>
+  Make sure to provide a video URL that contains audio. If the video does not have audio, the task
+  will fail.
+</Warning>
+
+```json
+{
+  "videoUrl": "<video-url>"
+}
 ```
 
 ## Generate a thumbnail from a video using FFmpeg
@@ -298,7 +319,7 @@ export const ffmpegGenerateThumbnail = task({
     // Read the generated thumbnail
     const thumbnail = await fs.readFile(outputPath);
 
-    // Upload the compressed video to S3, replacing slashes with underscores
+    // Create the r2Key for the extracted audio, using the base name of the output path
     const r2Key = `thumbnails/${path.basename(outputPath)}`;
 
     const uploadParams = {
@@ -318,7 +339,7 @@ export const ffmpegGenerateThumbnail = task({
     // Log thumbnail generation results
     logger.log(`Thumbnail uploaded to S3: ${r2Url}`);
 
-    // Return the thumbnail buffer, file path, sizes, and S3 URL
+    // Return the thumbnail buffer, path, and R2 URL
     return {
       thumbnailBuffer: thumbnail,
       thumbnailPath: outputPath,
@@ -326,4 +347,14 @@ export const ffmpegGenerateThumbnail = task({
     };
   },
 });
+```
+
+### Testing:
+
+To test this task, use this payload structure:
+
+```json
+{
+  "videoUrl": "<video-url>"
+}
 ```
