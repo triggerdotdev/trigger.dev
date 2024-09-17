@@ -18,13 +18,13 @@ export function useSearchParams() {
         }
 
         if (typeof value === "string") {
-          search.set(param, encodeURIComponent(value));
+          search.set(param, value);
           continue;
         }
 
         search.delete(param);
         for (const v of value) {
-          search.append(param, encodeURIComponent(v));
+          search.append(param, v);
         }
       }
     },
