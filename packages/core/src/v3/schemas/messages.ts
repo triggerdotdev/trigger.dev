@@ -861,6 +861,7 @@ export const ProdWorkerSocketData = z.object({
   podName: z.string(),
   deploymentId: z.string(),
   deploymentVersion: z.string(),
+  requiresCheckpointResumeWithMessage: z.string().optional(),
 });
 
 export const CoordinatorSocketData = z.object({
