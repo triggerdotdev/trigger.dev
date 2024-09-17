@@ -27,6 +27,8 @@ export default defineConfig({
   deploying). You can use pre-built extensions or create your own.
 </Note>
 
+You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies` if you don't already have it there.
+
 ## Compress a video using FFmpeg
 
 This task demonstrates how to use FFmpeg to compress a video, reducing its file size while maintaining reasonable quality, and upload the compressed video to R2 storage.
@@ -49,10 +51,11 @@ import { Readable } from "node:stream";
 import os from "os";
 import path from "path";
 
-// Initialize S3 client for R2 storage
+// Initialize S3 client
 const s3Client = new S3Client({
+  // How to authenticate to R2: https://developers.cloudflare.com/r2/api/s3/tokens/
   region: "auto",
-  endpoint: process.env.S3_ENDPOINT,
+  endpoint: process.env.R2_ENDPOINT,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
@@ -64,14 +67,14 @@ export const ffmpegCompressVideo = task({
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate output file name with a timestamp
+    // Generate temporary file names
     const tempDirectory = os.tmpdir();
     const outputPath = path.join(tempDirectory, `output_${Date.now()}.mp4`);
 
-    // Fetch the video from the provided URL
+    // Fetch the video
     const response = await fetch(videoUrl);
 
-    // Compress the video using FFmpeg
+    // Compress the video
     await new Promise((resolve, reject) => {
       if (!response.body) {
         return reject(new Error("Failed to fetch video"));
@@ -82,7 +85,7 @@ export const ffmpegCompressVideo = task({
           "-c:v libx264", // Use H.264 codec
           "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
           "-preset veryslow", // Slowest preset for best compression
-          "-vf scale=iw/2:ih/2", // Reduce resolution to 50% of original width and height
+          "-vf scale=iw/2:ih/2", // Reduce resolution to 320p width (height auto-calculated)
           "-c:a aac", // Use AAC for audio
           "-b:a 64k", // Reduce audio bitrate to 64k
           "-ac 1", // Convert to mono audio
@@ -93,39 +96,37 @@ export const ffmpegCompressVideo = task({
         .run();
     });
 
-    // Read the compressed video into a buffer
+    // Read the compressed video
     const compressedVideo = await fs.readFile(outputPath);
 
-    // Get the compressed video size
     const compressedSize = compressedVideo.length;
 
-    // Log compression results for debugging purposes
+    // Log compression results
     logger.log(`Compressed video size: ${compressedSize} bytes`);
     logger.log(`Compressed video saved at: ${outputPath}`);
 
-    // Generate the S3 key for the uploaded video file
-    const s3Key = `processed-videos/${path.basename(outputPath)}`;
+    // Upload the compressed video to S3, replacing slashes with underscores
+    const r2Key = `processed-videos/${path.basename(outputPath)}`;
 
-    // Set up the parameters for uploading the video to R2
     const uploadParams = {
-      Bucket: process.env.S3_BUCKET,
-      Key: s3Key,
+      Bucket: process.env.R2_BUCKET,
+      Key: r2Key,
       Body: compressedVideo,
     };
 
-    // Upload the video to R2 and get the public URL
+    // Upload the video to R2 and get the URL
     await s3Client.send(new PutObjectCommand(uploadParams));
-    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
-    logger.log("Compressed video uploaded to R2", { url: s3Url });
+    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
+    logger.log("Compressed video uploaded to R2", { url: r2Url });
 
     // Delete the temporary compressed video file
     await fs.unlink(outputPath);
 
-    // Return the compressed video file path, compressed size, and R2 URL
+    // Return the compressed video file path, compressed size, and S3 URL
     return {
       compressedVideoPath: outputPath,
       compressedSize,
-      s3Url,
+      r2Url,
     };
   },
 });
@@ -159,10 +160,11 @@ import { Readable } from "node:stream";
 import os from "os";
 import path from "path";
 
-// Initialize S3 client for R2 storage
+// Initialize S3 client
 const s3Client = new S3Client({
+  // How to authenticate to R2: https://developers.cloudflare.com/r2/api/s3/tokens/
   region: "auto",
-  endpoint: process.env.S3_ENDPOINT,
+  endpoint: process.env.R2_ENDPOINT,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
@@ -174,14 +176,14 @@ export const ffmpegExtractAudio = task({
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate output file name with a timestamp
+    // Generate temporary and output file names
     const tempDirectory = os.tmpdir();
     const outputPath = path.join(tempDirectory, `output_${Date.now()}.wav`);
 
-    // Fetch the video from the provided URL
+    // Fetch the video
     const response = await fetch(videoUrl);
 
-    // Convert the video to WAV format using FFmpeg
+    // Convert the video to WAV
     await new Promise((resolve, reject) => {
       if (!response.body) {
         return reject(new Error("Failed to fetch video"));
@@ -198,35 +200,34 @@ export const ffmpegExtractAudio = task({
         });
     });
 
-    // Read the WAV file into a buffer
+    // Read the WAV file
     const wavBuffer = await fs.readFile(outputPath);
 
-    // Log the output file path for debugging purposes
+    // Log the output file path
     logger.log(`Converted video saved at: ${outputPath}`);
 
-    // Generate the S3 key for the uploaded audio file
-    const s3Key = `processed-audio/${path.basename(outputPath)}`;
+    // Upload the compressed video to S3, replacing slashes with underscores
+    const r2Key = `processed-audio/${path.basename(outputPath)}`;
 
-    // Set up the parameters for uploading the audio to R2
     const uploadParams = {
-      Bucket: process.env.S3_BUCKET,
-      Key: s3Key,
+      Bucket: process.env.R2_BUCKET,
+      Key: r2Key,
       Body: wavBuffer,
     };
 
-    // Upload the audio to R2 and get the public URL
+    // Upload the audio to R2 and get the URL
     await s3Client.send(new PutObjectCommand(uploadParams));
-    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
-    logger.log("Extracted audio uploaded to R2", { url: s3Url });
+    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
+    logger.log("Extracted audio uploaded to R2", { url: r2Url });
 
-    // Delete the temporary output file
+    // Delete the temporary file
     await fs.unlink(outputPath);
 
-    // Return the WAV buffer, file path, and R2 URL
+    // Return the WAV buffer and file path
     return {
       wavBuffer,
       wavFilePath: outputPath,
-      s3Url,
+      r2Url,
     };
   },
 });
@@ -254,10 +255,11 @@ import { Readable } from "node:stream";
 import os from "os";
 import path from "path";
 
-// Initialize S3 client for R2 storage
+// Initialize S3 client
 const s3Client = new S3Client({
+  // How to authenticate to R2: https://developers.cloudflare.com/r2/api/s3/tokens/
   region: "auto",
-  endpoint: process.env.S3_ENDPOINT,
+  endpoint: process.env.R2_ENDPOINT,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
@@ -269,14 +271,14 @@ export const ffmpegGenerateThumbnail = task({
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate output file name with a timestamp
+    // Generate output file name
     const tempDirectory = os.tmpdir();
     const outputPath = path.join(tempDirectory, `thumbnail_${Date.now()}.jpg`);
 
-    // Fetch the video from the provided URL
+    // Fetch the video
     const response = await fetch(videoUrl);
 
-    // Generate the thumbnail using FFmpeg
+    // Generate the thumbnail
     await new Promise((resolve, reject) => {
       if (!response.body) {
         return reject(new Error("Failed to fetch video"));
@@ -293,35 +295,34 @@ export const ffmpegGenerateThumbnail = task({
         .on("error", reject);
     });
 
-    // Read the generated thumbnail into a buffer
+    // Read the generated thumbnail
     const thumbnail = await fs.readFile(outputPath);
 
-    // Generate the S3 key for the uploaded thumbnail file
-    const s3Key = `thumbnails/${path.basename(outputPath)}`;
+    // Upload the compressed video to S3, replacing slashes with underscores
+    const r2Key = `thumbnails/${path.basename(outputPath)}`;
 
-    // Set up the parameters for uploading the thumbnail to R2
     const uploadParams = {
-      Bucket: process.env.S3_BUCKET,
-      Key: s3Key,
+      Bucket: process.env.R2_BUCKET,
+      Key: r2Key,
       Body: thumbnail,
     };
 
-    // Upload the thumbnail to R2 and get the public URL
+    // Upload the thumbnail to R2 and get the URL
     await s3Client.send(new PutObjectCommand(uploadParams));
-    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
-    logger.log("Thumbnail uploaded to R2", { url: s3Url });
+    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
+    logger.log("Thumbnail uploaded to R2", { url: r2Url });
 
-    // Delete the temporary thumbnail file
+    // Delete the temporary file
     await fs.unlink(outputPath);
 
-    // Log thumbnail generation results for debugging purposes
-    logger.log(`Thumbnail uploaded to S3: ${s3Url}`);
+    // Log thumbnail generation results
+    logger.log(`Thumbnail uploaded to S3: ${r2Url}`);
 
-    // Return the thumbnail buffer, file path, and R2 URL
+    // Return the thumbnail buffer, file path, sizes, and S3 URL
     return {
       thumbnailBuffer: thumbnail,
       thumbnailPath: outputPath,
-      s3Url,
+      r2Url,
     };
   },
 });
