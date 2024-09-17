@@ -1,0 +1,328 @@
+---
+title: "Video processing with FFmpeg"
+sidebarTitle: "FFmpeg video processing"
+description: "These examples show you how to process videos in various ways using FFmpeg with Trigger.dev."
+---
+
+## Adding the FFmpeg build extension
+
+To use these example tasks, you'll first need to add our FFmpeg extension to your project configuration like this:
+
+```ts trigger.config.ts
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [ffmpeg()],
+  },
+});
+```
+
+<Note>
+  [Build extensions](../guides/build-extensions) allow you to hook into the build system and
+  customize the build process or the resulting bundle and container image (in the case of
+  deploying). You can use pre-built extensions or create your own.
+</Note>
+
+## Compress a video using FFmpeg
+
+This task demonstrates how to use FFmpeg to compress a video, reducing its file size while maintaining reasonable quality, and upload the compressed video to R2 storage.
+
+### Key Features:
+
+- Fetches a video from a given URL
+- Compresses the video using FFmpeg with various compression settings
+- Uploads the compressed video to R2 storage
+
+### Task code
+
+```ts trigger/ffmpeg-compress-video.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const ffmpegCompressVideo = task({
+  id: "ffmpeg-compress-video",
+  run: async (payload: { videoUrl: string }) => {
+    const { videoUrl } = payload;
+
+    // Generate output file name with a timestamp
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `output_${Date.now()}.mp4`);
+
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
+
+    // Compress the video using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
+      }
+
+      ffmpeg(Readable.from(response.body))
+        .outputOptions([
+          "-c:v libx264", // Use H.264 codec
+          "-crf 28", // Higher CRF for more compression (28 is near the upper limit for acceptable quality)
+          "-preset veryslow", // Slowest preset for best compression
+          "-vf scale=iw/2:ih/2", // Reduce resolution to 50% of original width and height
+          "-c:a aac", // Use AAC for audio
+          "-b:a 64k", // Reduce audio bitrate to 64k
+          "-ac 1", // Convert to mono audio
+        ])
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
+
+    // Read the compressed video into a buffer
+    const compressedVideo = await fs.readFile(outputPath);
+
+    // Get the compressed video size
+    const compressedSize = compressedVideo.length;
+
+    // Log compression results for debugging purposes
+    logger.log(`Compressed video size: ${compressedSize} bytes`);
+    logger.log(`Compressed video saved at: ${outputPath}`);
+
+    // Generate the S3 key for the uploaded video file
+    const s3Key = `processed-videos/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the video to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: compressedVideo,
+    };
+
+    // Upload the video to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Compressed video uploaded to R2", { url: s3Url });
+
+    // Delete the temporary compressed video file
+    await fs.unlink(outputPath);
+
+    // Return the compressed video file path, compressed size, and R2 URL
+    return {
+      compressedVideoPath: outputPath,
+      compressedSize,
+      s3Url,
+    };
+  },
+});
+```
+
+## Extract audio from a video using FFmpeg
+
+This task demonstrates how to use FFmpeg to extract audio from a video, convert it to WAV format, and upload it to R2 storage.
+
+### Key Features:
+
+- Fetches a video from a given URL
+- Extracts the audio from the video using FFmpeg
+- Converts the extracted audio to WAV format
+- Uploads the extracted audio to R2 storage
+
+### Task code
+
+<Warning>
+  When testing, make sure to provide a video URL that contains audio. If the video does not have
+  audio, the task will fail.
+</Warning>
+
+```ts trigger/ffmpeg-extract-audio.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const ffmpegExtractAudio = task({
+  id: "ffmpeg-extract-audio",
+  run: async (payload: { videoUrl: string }) => {
+    const { videoUrl } = payload;
+
+    // Generate output file name with a timestamp
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `output_${Date.now()}.wav`);
+
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
+
+    // Convert the video to WAV format using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
+      }
+      ffmpeg(Readable.from(response.body))
+        .toFormat("wav")
+        .save(outputPath)
+        .on("end", () => {
+          logger.log(`WAV file saved to ${outputPath}`);
+          resolve(outputPath);
+        })
+        .on("error", (err) => {
+          reject(err);
+        });
+    });
+
+    // Read the WAV file into a buffer
+    const wavBuffer = await fs.readFile(outputPath);
+
+    // Log the output file path for debugging purposes
+    logger.log(`Converted video saved at: ${outputPath}`);
+
+    // Generate the S3 key for the uploaded audio file
+    const s3Key = `processed-audio/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the audio to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: wavBuffer,
+    };
+
+    // Upload the audio to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Extracted audio uploaded to R2", { url: s3Url });
+
+    // Delete the temporary output file
+    await fs.unlink(outputPath);
+
+    // Return the WAV buffer, file path, and R2 URL
+    return {
+      wavBuffer,
+      wavFilePath: outputPath,
+      s3Url,
+    };
+  },
+});
+```
+
+## Generate a thumbnail from a video using FFmpeg
+
+This task demonstrates how to use FFmpeg to generate a thumbnail from a video at a specific time and upload the generated thumbnail to R2 storage.
+
+### Key Features:
+
+- Fetches a video from a given URL
+- Generates a thumbnail from the video at the 5-second mark
+- Uploads the generated thumbnail to R2 storage
+
+### Task code
+
+```ts trigger/ffmpeg-generate-thumbnail.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+
+// Initialize S3 client for R2 storage
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const ffmpegGenerateThumbnail = task({
+  id: "ffmpeg-generate-thumbnail",
+  run: async (payload: { videoUrl: string }) => {
+    const { videoUrl } = payload;
+
+    // Generate output file name with a timestamp
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `thumbnail_${Date.now()}.jpg`);
+
+    // Fetch the video from the provided URL
+    const response = await fetch(videoUrl);
+
+    // Generate the thumbnail using FFmpeg
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
+      }
+      ffmpeg(Readable.from(response.body))
+        .screenshots({
+          count: 1,
+          folder: "/tmp",
+          filename: path.basename(outputPath),
+          size: "320x240",
+          timemarks: ["5"], // 5 seconds
+        })
+        .on("end", resolve)
+        .on("error", reject);
+    });
+
+    // Read the generated thumbnail into a buffer
+    const thumbnail = await fs.readFile(outputPath);
+
+    // Generate the S3 key for the uploaded thumbnail file
+    const s3Key = `thumbnails/${path.basename(outputPath)}`;
+
+    // Set up the parameters for uploading the thumbnail to R2
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: thumbnail,
+    };
+
+    // Upload the thumbnail to R2 and get the public URL
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("Thumbnail uploaded to R2", { url: s3Url });
+
+    // Delete the temporary thumbnail file
+    await fs.unlink(outputPath);
+
+    // Log thumbnail generation results for debugging purposes
+    logger.log(`Thumbnail uploaded to S3: ${s3Url}`);
+
+    // Return the thumbnail buffer, file path, and R2 URL
+    return {
+      thumbnailBuffer: thumbnail,
+      thumbnailPath: outputPath,
+      s3Url,
+    };
+  },
+});
+```

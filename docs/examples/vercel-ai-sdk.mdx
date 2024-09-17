@@ -1,0 +1,43 @@
+---
+title: "Using the Vercel AI SDK"
+sidebarTitle: "Vercel AI SDK"
+description: "This example demonstrates how to use the Vercel AI SDK with Trigger.dev."
+---
+
+## Overview
+
+The [Vercel AI SDK](https://www.npmjs.com/package/ai) is a simple way to use AI models from many different providers, including OpenAI, Microsoft Azure, Google Generative AI, Anthropic, Amazon Bedrock, Groq, Perplexity and [more](https://sdk.vercel.ai/providers/ai-sdk-providers).
+
+It provides a consistent interface to interact with the different AI models, so you can easily switch between them without needing to change your code.
+
+## Generate text using OpenAI
+
+This task shows how to use the Vercel AI SDK to generate text from a prompt with OpenAI.
+
+### Task code
+
+```ts trigger/vercel-ai-sdk-openai.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { generateText } from "ai";
+// Install the package of the AI model you want to use, in this case OpenAI
+import { openai } from "@ai-sdk/openai"; // Ensure OPENAI_API_KEY environment variable is set
+
+export const openaiTask = task({
+  id: "openai-text-generate",
+
+  run: async (payload: { prompt: string }) => {
+    const chatCompletion = await generateText({
+      model: openai("gpt-4-turbo"),
+      // Add a system message which will be included with the prompt
+      system: "You are a friendly assistant!",
+      // The prompt passed in from the payload
+      prompt: payload.prompt,
+    });
+
+    // Log the generated text
+    logger.log("chatCompletion text:" + chatCompletion.text);
+
+    return chatCompletion;
+  },
+});
+```
