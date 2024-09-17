@@ -1,0 +1,121 @@
+---
+title: "Process images using Sharp"
+sidebarTitle: "Sharp image processing"
+description: "This example demonstrates how to process images using the Sharp library with Trigger.dev."
+---
+
+## Overview
+
+This task optimizes and watermarks an image using the Sharp library, and then uploads the processed image to R2 storage.
+
+## Adding build configurations
+
+To use this example, you'll first need to add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This is required to use the Sharp library
+    external: ["sharp"],
+  },
+});
+```
+
+<Note>
+  Any packages that install or build a native binary should be added to external, as native binaries
+  cannot be bundled.
+</Note>
+
+## Key features
+
+    - Resizes and rotates an image
+    - Adds a watermark to the image
+    - Uploads the processed image to R2 storage
+
+## Task code
+
+```ts trigger/sharp-image-processing.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import fs from "fs/promises";
+import fetch from "node-fetch";
+import os from "os";
+import path from "path";
+import sharp from "sharp";
+
+// Initialize R2 client
+const r2Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const sharpProcessImage = task({
+  id: "sharp-process-image",
+  run: async (payload: { imageUrl: string; watermarkUrl: string }) => {
+    const { imageUrl, watermarkUrl } = payload;
+
+    // Generate temporary and output file names
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `output_${Date.now()}.jpg`);
+
+    // Fetch the image and watermark
+    const [imageResponse, watermarkResponse] = await Promise.all([
+      fetch(imageUrl),
+      fetch(watermarkUrl),
+    ]);
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const watermarkBuffer = await watermarkResponse.arrayBuffer();
+
+    // Optimize the image using Sharp
+    await sharp(Buffer.from(imageBuffer))
+      .rotate(90) // Rotate the image by 90 degrees
+      .resize(800, 600) // Resize the image to 800x600
+      .composite([
+        {
+          input: Buffer.from(watermarkBuffer),
+          gravity: "southeast", // Position the watermark in the bottom-right corner
+        },
+      ])
+      .toFormat("jpeg")
+      .toFile(outputPath);
+
+    // Log the output file path
+    logger.log(`Optimized image saved at: ${outputPath}`);
+
+    // Read the optimized image file
+    const optimizedImageBuffer = await fs.readFile(outputPath);
+
+    // Upload the optimized image to R2, replacing slashes with underscores
+    const r2Key = `processed-images/${path.basename(outputPath)}`;
+
+    const uploadParams = {
+      Bucket: process.env.R2_BUCKET,
+      Key: r2Key,
+      Body: optimizedImageBuffer,
+    };
+
+    // Upload the image to R2 and get the URL
+    await r2Client.send(new PutObjectCommand(uploadParams));
+    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
+    logger.log("Optimized image uploaded to R2", { url: r2Url });
+
+    // Delete the temporary file
+    await fs.unlink(outputPath);
+
+    // Return the optimized image buffer, file path, and R2 URL
+    return {
+      optimizedImageBuffer,
+      optimizedImagePath: outputPath,
+      r2Url,
+    };
+  },
+});
+```

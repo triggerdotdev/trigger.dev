@@ -1169,8 +1169,8 @@ class SharedQueueTasks {
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 
-  async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
-    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId, seconds });
+  async taskHeartbeat(attemptFriendlyId: string) {
+    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId });
 
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: attemptFriendlyId },
@@ -1180,13 +1180,13 @@ class SharedQueueTasks {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
   }
 
-  async taskRunHeartbeat(runId: string, seconds: number = 60) {
-    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId, seconds });
+  async taskRunHeartbeat(runId: string) {
+    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId });
 
-    await marqs?.heartbeatMessage(runId, seconds);
+    await marqs?.heartbeatMessage(runId);
   }
 
   public async taskRunFailed(completion: TaskRunFailedExecutionResult) {

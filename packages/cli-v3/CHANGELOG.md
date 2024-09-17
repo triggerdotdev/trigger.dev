@@ -1,5 +1,23 @@
 # trigger.dev
 
+## 3.0.2
+
+### Patch Changes
+
+- 2b5771f38: Remove duplicate bin definition, fixes issue #1311
+- de135e488: Configurable deployed heartbeat interval via HEARTBEAT_INTERVAL_MS env var
+  - @trigger.dev/build@3.0.2
+  - @trigger.dev/core@3.0.2
+
+## 3.0.1
+
+### Patch Changes
+
+- 3aa581179: Fixing false-positive package version mismatches
+- Updated dependencies [3aa581179]
+  - @trigger.dev/build@3.0.1
+  - @trigger.dev/core@3.0.1
+
 ## 3.0.0
 
 ### Major Changes
