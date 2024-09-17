@@ -48,6 +48,8 @@ type CheckpointerOptions = {
   chaosMonkey?: ChaosMonkey;
 };
 
+class CheckpointAbortError extends Error {}
+
 async function getFileSize(filePath: string): Promise<number> {
   try {
     const stats = await fs.stat(filePath);
@@ -400,6 +402,14 @@ export class Checkpointer {
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
 
+    const assertNotAborted = (abortMessage?: string) => {
+      if (controller.signal.aborted) {
+        throw new CheckpointAbortError(abortMessage);
+      }
+
+      this.#logger.debug("Not aborted", { abortMessage });
+    };
+
     const $$ = $({ signal: controller.signal });
 
     const shortCode = nanoid(8);
@@ -423,6 +433,7 @@ export class Checkpointer {
     };
 
     try {
+      assertNotAborted("chaosMonkey.call");
       await this.chaosMonkey.call({ $: $$ });
 
       this.#logger.log("Checkpointing:", { options });
@@ -479,6 +490,7 @@ export class Checkpointer {
         return { success: false, reason: "SKIP_RETRYING" };
       }
 
+      assertNotAborted("cmd: crictl ps");
       const containerId = this.#logger.debug(
         // @ts-expect-error
         await $`crictl ps`
@@ -501,6 +513,7 @@ export class Checkpointer {
       }
 
       // Create checkpoint
+      assertNotAborted("cmd: crictl checkpoint");
       this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
       const postCheckpoint = performance.now();
 
@@ -509,20 +522,25 @@ export class Checkpointer {
       this.#logger.log("checkpoint archive created", { size, options });
 
       // Create image from checkpoint
+      assertNotAborted("cmd: buildah from scratch");
       const container = this.#logger.debug(await $$`buildah from scratch`);
       const postFrom = performance.now();
 
+      assertNotAborted("cmd: buildah add");
       this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
       const postAdd = performance.now();
 
+      assertNotAborted("cmd: buildah config");
       this.#logger.debug(
         await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
       );
       const postConfig = performance.now();
 
+      assertNotAborted("cmd: buildah commit");
       this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
       const postCommit = performance.now();
 
+      assertNotAborted("cmd: buildah rm");
       this.#logger.debug(await $$`buildah rm ${container}`);
       const postRm = performance.now();
 
@@ -534,6 +552,7 @@ export class Checkpointer {
       }
 
       // Push checkpoint image
+      assertNotAborted("cmd: buildah push");
       this.#logger.debug(
         await $$`buildah push --tls-verify=${String(this.registryTlsVerify)} ${imageRef}`
       );
@@ -559,9 +578,15 @@ export class Checkpointer {
         },
       };
     } catch (error) {
+      if (error instanceof CheckpointAbortError) {
+        this.#logger.error("Checkpoint canceled: CheckpointAbortError", { options, error });
+
+        return { success: false, reason: "CANCELED" };
+      }
+
       if (isExecaChildProcess(error)) {
         if (error.isCanceled) {
-          this.#logger.error("Checkpoint canceled", { options, error });
+          this.#logger.error("Checkpoint canceled: ExecaChildProcess", { options, error });
 
           return { success: false, reason: "CANCELED" };
         }
