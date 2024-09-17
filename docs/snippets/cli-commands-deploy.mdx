@@ -1,6 +1,9 @@
+import ProjectPathArg from '/snippets/cli-args-project-path.mdx';
 import CommonOptions from '/snippets/cli-options-common.mdx';
 import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
 import EnvFileOption from '/snippets/cli-options-env-file.mdx';
+import ConfigFileOption from '/snippets/cli-options-config-file.mdx';
+import SkipUpdateCheckOption from '/snippets/cli-options-skip-update-check.mdx';
 
 Run the command like this:
 
@@ -34,20 +37,30 @@ It performs a few steps to deploy:
 
 You can also setup [GitHub Actions](/github-actions) to deploy your tasks automatically.
 
+## Arguments
+
+```
+npx trigger.dev@latest deploy [path]
+```
+
+<ProjectPathArg />
+
 ## Options
+
+<ConfigFileOption />
+
+<ProjectRefOption />
+
+<EnvFileOption />
+
+<SkipUpdateCheckOption />
 
 <ParamField body="Environment" type="--env | -e">
   Defaults to `prod` but you can specify `staging`.
 </ParamField>
 
-<EnvFileOption />
-
 <ParamField body="Dry run" type="--dry-run">
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
-</ParamField>
-
-<ParamField body="Skip update check" type="--skip-update-check">
-  Skip checking for `@trigger.dev` package updates.
 </ParamField>
 
 <ParamField body="Build platform" type="--build-platform">
@@ -57,12 +70,6 @@ You can also setup [GitHub Actions](/github-actions) to deploy your tasks automa
 <ParamField body="Skip syncing env vars" type="--skip-sync-env-vars">
   Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
-
-<ParamField body="Set config filename" type="--config | -c">
-  The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
-</ParamField>
-
-<ProjectRefOption />
 
 ### Common options
 
