@@ -1,3 +1,10 @@
+import ProjectPathArg from '/snippets/cli-args-project-path.mdx';
+import CommonOptions from '/snippets/cli-options-common.mdx';
+import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
+import EnvFileOption from '/snippets/cli-options-env-file.mdx';
+import ConfigFileOption from '/snippets/cli-options-config-file.mdx';
+import SkipUpdateCheckOption from '/snippets/cli-options-skip-update-check.mdx';
+
 Run the command like this:
 
 <CodeGroup>
@@ -18,7 +25,7 @@ yarn dlx trigger.dev@latest deploy
 
 <Warning>
   This will fail in CI if any version mismatches are detected. Ensure everything runs locally first
-  using the [dev](/cli-dev) command and don't bypass the version checks!
+  using the [dev](/cli-dev-commands) command and don't bypass the version checks!
 </Warning>
 
 It performs a few steps to deploy:
@@ -30,42 +37,47 @@ It performs a few steps to deploy:
 
 You can also setup [GitHub Actions](/github-actions) to deploy your tasks automatically.
 
+## Arguments
+
+```
+npx trigger.dev@latest deploy [path]
+```
+
+<ProjectPathArg />
+
 ## Options
+
+<ConfigFileOption />
+
+<ProjectRefOption />
+
+<EnvFileOption />
+
+<SkipUpdateCheckOption />
 
 <ParamField body="Environment" type="--env | -e">
   Defaults to `prod` but you can specify `staging`.
-</ParamField>
-
-<ParamField body="Set config filename" type="--config | -c">
-  The name of the config file, found where the command is run from. Defaults to `trigger.config.ts`.
-</ParamField>
-
-<ParamField body="Env file" type="--env">
-  Load environment variables from a file. This will only hydrate the `process.env` of the CLI
-  process, not the tasks.
 </ParamField>
 
 <ParamField body="Dry run" type="--dry-run">
   Create a deployable build but don't deploy it. Prints out the build path so you can inspect it.
 </ParamField>
 
-<ParamField body="Skip update check" type="--skip-update-check">
-  Skip checking for `@trigger.dev` package updates.
-</ParamField>
-
-<ParamField body="Set the projectRef" type="--project-ref | -p">
-  The project ref. Required if there is no config file.
-</ParamField>
-
-<ParamField body="Log level" type="--log-level | -l">
-  The log level to use (debug, info, log, warn, error, none). Defaults to `log`.
+<ParamField body="Build platform" type="--build-platform">
+  The platform to build the deployment image for. Defaults to `linux/amd64`.
 </ParamField>
 
 <ParamField body="Skip syncing env vars" type="--skip-sync-env-vars">
   Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
 
-## Self-hosting
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />
+
+### Self-hosting
 
 These options are typically used when [self-hosting](/open-source-self-hosting) or for local development.
 
@@ -96,7 +108,9 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
   Hub, the namespace is your Docker Hub username.
 </ParamField>
 
-### Push to Docker Hub
+## Examples
+
+### Push to Docker Hub (self-hosted)
 
 An example of deploying to Docker Hub when using a self-hosted setup:
 

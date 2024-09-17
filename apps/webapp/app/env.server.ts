@@ -177,6 +177,11 @@ const EnvironmentSchema = z.object({
 
   LOOPS_API_KEY: z.string().optional(),
   MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
+  MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .default(60 * 1000 * 15),
+  PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
   V2_MARQS_ENABLED: z.string().default("0"),
