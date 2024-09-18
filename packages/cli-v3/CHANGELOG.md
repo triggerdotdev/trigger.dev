@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Fix an issue where a missing tsconfig.json file would throw an error on dev/deploy
+- 3d53d4c08: Fixes for CLI update command, and make the hide the "whoami" command output when running in dev.
+- Updated dependencies [3d53d4c08]
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+  - @trigger.dev/build@3.0.3
+
 ## 3.0.2
 
 ### Patch Changes
