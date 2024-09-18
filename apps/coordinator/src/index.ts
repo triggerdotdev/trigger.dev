@@ -853,6 +853,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after task checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -930,6 +931,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after batch checkpoint", { runId: socket.data.runId });
             return;
           }
