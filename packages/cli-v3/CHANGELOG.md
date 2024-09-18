@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.0.5
+
+### Patch Changes
+
+- 3b1522445: Apply default machine preset in config
+- 3b1522445: Add additional error message and stack trace when a task file cannot be imported for run
+  - @trigger.dev/build@3.0.5
+  - @trigger.dev/core@3.0.5
+
 ## 3.0.4
 
 ### Patch Changes
