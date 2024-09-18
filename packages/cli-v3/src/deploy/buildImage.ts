@@ -14,6 +14,7 @@ export interface BuildImageOptions {
   // Self-hosted specific options
   push: boolean;
   registry?: string;
+  network?: string;
 
   // Non-self-hosted specific options
   loadImage?: boolean;
@@ -84,6 +85,7 @@ export async function buildImage(options: BuildImageOptions) {
       apiUrl,
       apiKey,
       buildEnvVars,
+      network: options.network,
     });
   }
 
@@ -277,6 +279,7 @@ interface SelfHostedBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  network?: string;
 }
 
 async function selfHostedBuildImage(
@@ -295,6 +298,7 @@ async function selfHostedBuildImage(
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.buildPlatform,
+    ...(options.network ? ["--network", options.network] : []),
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
