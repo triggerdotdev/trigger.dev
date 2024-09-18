@@ -756,11 +756,11 @@ export class SharedQueueConsumer {
             return;
           }
 
-          const failed = responses.filter((response) => !response.success);
-          if (failed.length > 0) {
-            logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+          const hasSuccess = responses.some((response) => response.success);
+          if (!hasSuccess) {
+            logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
               resumeMessage,
-              failed,
+              responses,
               message,
             });
             await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
@@ -775,7 +775,12 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          await this.#nackAndDoMoreWork(message.messageId);
+          logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK threw, nacking with delay", {
+            message,
+            error: e,
+          });
+
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
           return;
         }
 
