@@ -3,8 +3,6 @@ title: "Self-hosting"
 description: "You can self-host Trigger.dev on your own infrastructure."
 ---
 
-<Warning>Self-hosting does not support the latest CLI yet, you will have to continue using the `beta` tag for now.</Warning>
-
 ## Overview
 
 <Frame>
@@ -176,7 +174,7 @@ docker login -u <your_dockerhub_username>
 5. You can now deploy v3 projects using the CLI with these flags:
 
 ```
-npx trigger.dev@beta deploy --self-hosted --push
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ## Part 2: Split services
@@ -303,7 +301,7 @@ This section highlights some of the CLI commands and options that are useful whe
 To avoid being redirected to the [Trigger.dev Cloud](https://cloud.trigger.dev) login page when using the CLI, you can specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
 
 ```bash
-npx trigger.dev@beta login -a http://trigger.example.com
+npx trigger.dev@latest login -a http://trigger.example.com
 ```
 
 Once you've logged in, the CLI will remember your login details and you won't need to specify the URL again with other commands.
@@ -313,19 +311,19 @@ Once you've logged in, the CLI will remember your login details and you won't ne
 You can specify a custom profile when logging in. This allows you to easily use the CLI with our cloud product and your self-hosted instance at the same time. For example:
 
 ```
-npx trigger.dev@beta login -a http://trigger.example.com --profile my-profile
+npx trigger.dev@latest login -a http://trigger.example.com --profile my-profile
 ```
 
 You can then use this profile with other commands:
 
 ```
-npx trigger.dev@beta dev --profile my-profile
+npx trigger.dev@latest dev --profile my-profile
 ```
 
 To list all your profiles, use the `list-profiles` command:
 
 ```
-npx trigger.dev@beta list-profiles
+npx trigger.dev@latest list-profiles
 ```
 
 #### Verify login
@@ -333,10 +331,10 @@ npx trigger.dev@beta list-profiles
 It can be useful to check you have successfully logged in to the correct instance. You can do this with the `whoami` command, which will also show the API URL:
 
 ```bash
-npx trigger.dev@beta whoami
+npx trigger.dev@latest whoami
 
 # with a custom profile
-npx trigger.dev@beta whoami --profile my-profile
+npx trigger.dev@latest whoami --profile my-profile
 ```
 
 ### Deploy
@@ -344,7 +342,7 @@ npx trigger.dev@beta whoami --profile my-profile
 On [Trigger.dev Cloud](https://cloud.trigger.dev), we build deployments remotely and push those images for you. When self-hosting you will have to do that locally yourself. This can be done with the `--self-hosted` and `--push` flags. For example:
 
 ```
-npx trigger.dev@beta deploy --self-hosted --push
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ### CI / GitHub Actions
