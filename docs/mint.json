@@ -247,7 +247,7 @@
       "pages": [
         "guides/frameworks/introduction",
         "guides/frameworks/nodejs",
-        "guides/bun",
+        "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/remix",
         {
