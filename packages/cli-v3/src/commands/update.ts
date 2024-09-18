@@ -74,7 +74,7 @@ export async function updateTriggerPackages(
 
   const newCliVersion = await updateCheck();
 
-  if (newCliVersion) {
+  if (newCliVersion && !cliVersion.startsWith("0.0.0")) {
     prettyWarning(
       "You're not running the latest CLI version, please consider updating ASAP",
       `Current:     ${cliVersion}\nLatest:      ${newCliVersion}`,
