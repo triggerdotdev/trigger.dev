@@ -33,6 +33,11 @@ export function flattenAttributes(
     return result;
   }
 
+  if (obj instanceof Date) {
+    result[prefix || ""] = obj.toISOString();
+    return result;
+  }
+
   for (const [key, value] of Object.entries(obj)) {
     const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
@@ -104,8 +109,13 @@ export function unflattenAttributes(
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+
+      if (!part) {
+        continue;
+      }
+
       const nextPart = parts[i + 1];
-      const isArray = /^\d+$/.test(nextPart);
+      const isArray = nextPart && /^\d+$/.test(nextPart);
       if (isArray && !Array.isArray(current[part])) {
         current[part] = [];
       } else if (!isArray && current[part] === undefined) {
@@ -114,7 +124,9 @@ export function unflattenAttributes(
       current = current[part];
     }
     const lastPart = parts[parts.length - 1];
-    current[lastPart] = rehydrateNull(value);
+    if (lastPart) {
+      current[lastPart] = rehydrateNull(value);
+    }
   }
 
   // Convert the result to an array if all top-level keys are numeric indices

@@ -5,16 +5,22 @@ import {
   RectangleStackIcon,
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
-import { StopIcon } from "@heroicons/react/24/outline";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { useCallback, useRef } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
+import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { useEnvironments } from "~/hooks/useEnvironments";
+import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
 import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
+import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
@@ -31,18 +37,10 @@ import {
   TableRow,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
+import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
-import { LiveTimer } from "./LiveTimer";
-import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
-import { Checkbox } from "~/components/primitives/Checkbox";
-import { useCallback, useRef } from "react";
-import { run } from "@remix-run/dev/dist/cli/run";
-import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { useFeatures } from "~/hooks/useFeatures";
-import { useUser } from "~/hooks/useUser";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { Header3 } from "~/components/primitives/Headers";
+import { RunTag } from "./RunTag";
 
 type RunsTableProps = {
   total: number;
@@ -173,8 +171,73 @@ export function TaskRunsTable({
           )}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
-          <TableHeaderCell>Delayed until</TableHeaderCell>
-          <TableHeaderCell>TTL</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  When you want to trigger a task now, but have it run at a later time, you can use
+                  the delay option.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  Runs that are delayed and have not been enqueued yet will display in the dashboard
+                  with a “Delayed” status.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            Delayed until
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can set a TTL (time to live) when triggering a task, which will automatically
+                  expire the run if it hasn’t started within the specified time.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  All runs in development have a default ttl of 10 minutes. You can disable this by
+                  setting the ttl option.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            TTL
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags to a run and then filter runs using them.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags when triggering a run or inside the run function.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/tags")}
+                  variant="tertiary/small"
+                  LeadingIcon={BookOpenIcon}
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            Tags
+          </TableHeaderCell>
           <TableHeaderCell>
             <span className="sr-only">Go to page</span>
           </TableHeaderCell>
@@ -230,8 +293,12 @@ export function TaskRunsTable({
                       formatDuration(new Date(run.createdAt), new Date(run.startedAt), {
                         style: "short",
                       })
-                    ) : (
+                    ) : run.isCancellable ? (
                       <LiveTimer startTime={new Date(run.createdAt)} />
+                    ) : (
+                      formatDuration(new Date(run.createdAt), new Date(run.updatedAt), {
+                        style: "short",
+                      })
                     )}
                   </div>
                 </TableCell>
@@ -274,6 +341,11 @@ export function TaskRunsTable({
                   {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
                 </TableCell>
                 <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
+                <TableCell to={path} actionClassName="py-1">
+                  <div className="flex gap-1">
+                    {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
+                  </div>
+                </TableCell>
                 <RunActionsCell run={run} path={path} />
               </TableRow>
             );

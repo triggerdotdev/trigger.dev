@@ -116,7 +116,20 @@ export async function disconnectSession(environmentId: string) {
   return session;
 }
 
-type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+export async function findLatestSession(environmentId: string) {
+  const session = await prisma.runtimeEnvironmentSession.findFirst({
+    where: {
+      environmentId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return session;
+}
+
+export type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   select: {
     id: true;
     type: true;

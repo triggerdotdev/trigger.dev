@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { TaskRunError } from "./schemas/common";
+import { DeploymentErrorData } from "./schemas/api.js";
+import { ImportTaskFileErrors, WorkerManifest } from "./schemas/build.js";
+import { SerializedError, TaskRunError } from "./schemas/common.js";
+import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
 
 export class AbortTaskRunError extends Error {
   constructor(message: string) {
@@ -59,14 +62,6 @@ export function createErrorTaskError(error: TaskRunError): any {
     }
   }
 }
-
-export const SerializedError = z.object({
-  message: z.string(),
-  name: z.string().optional(),
-  stackTrace: z.string().optional(),
-});
-
-export type SerializedError = z.infer<typeof SerializedError>;
 
 export function createJsonErrorObject(error: TaskRunError): SerializedError {
   switch (error.type) {
@@ -178,7 +173,7 @@ export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) 
         return acc;
       }
 
-      const taskIndex = issue.path[1];
+      const taskIndex = issue.path[2];
 
       if (typeof taskIndex !== "number") {
         return acc;
@@ -190,7 +185,7 @@ export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) 
         return acc;
       }
 
-      const restOfPath = issue.path.slice(2);
+      const restOfPath = issue.path.slice(3);
 
       const taskId = task.id;
       const taskName = task.exportName;
@@ -225,4 +220,273 @@ export function groupTaskMetadataIssuesByTask(tasks: any, issues: z.ZodIssue[]) 
       }
     >
   );
+}
+
+export class UncaughtExceptionError extends Error {
+  constructor(
+    public readonly originalError: { name: string; message: string; stack?: string },
+    public readonly origin: "uncaughtException" | "unhandledRejection"
+  ) {
+    super(`Uncaught exception: ${originalError.message}`);
+
+    this.name = "UncaughtExceptionError";
+  }
+}
+
+export class TaskMetadataParseError extends Error {
+  constructor(
+    public readonly zodIssues: z.ZodIssue[],
+    public readonly tasks: any
+  ) {
+    super(`Failed to parse task metadata`);
+
+    this.name = "TaskMetadataParseError";
+  }
+}
+
+export class TaskIndexingImportError extends Error {
+  constructor(
+    public readonly importErrors: ImportTaskFileErrors,
+    public readonly manifest: WorkerManifest
+  ) {
+    super(`Failed to import some task files`);
+
+    this.name = "TaskIndexingImportError";
+  }
+}
+
+export class UnexpectedExitError extends Error {
+  constructor(
+    public code: number,
+    public signal: NodeJS.Signals | null,
+    public stderr: string | undefined
+  ) {
+    super(`Unexpected exit with code ${code}`);
+
+    this.name = "UnexpectedExitError";
+  }
+}
+
+export class CleanupProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CleanupProcessError";
+  }
+}
+
+export class CancelledProcessError extends Error {
+  constructor() {
+    super("Cancelled");
+
+    this.name = "CancelledProcessError";
+  }
+}
+
+export class SigKillTimeoutProcessError extends Error {
+  constructor() {
+    super("Process kill timeout");
+
+    this.name = "SigKillTimeoutProcessError";
+  }
+}
+
+export class GracefulExitTimeoutError extends Error {
+  constructor() {
+    super("Graceful exit timeout");
+
+    this.name = "GracefulExitTimeoutError";
+  }
+}
+
+export function getFriendlyErrorMessage(
+  code: number,
+  signal: NodeJS.Signals | null,
+  stderr: string | undefined,
+  dockerMode = true
+) {
+  const message = (text: string) => {
+    if (signal) {
+      return `[${signal}] ${text}`;
+    } else {
+      return text;
+    }
+  };
+
+  if (code === 137) {
+    if (dockerMode) {
+      return message(
+        "Process ran out of memory! Try choosing a machine preset with more memory for this task."
+      );
+    } else {
+      // Note: containerState reason and message should be checked to clarify the error
+      return message(
+        "Process most likely ran out of memory, but we can't be certain. Try choosing a machine preset with more memory for this task."
+      );
+    }
+  }
+
+  if (stderr?.includes("OOMErrorHandler")) {
+    return message(
+      "Process ran out of memory! Try choosing a machine preset with more memory for this task."
+    );
+  }
+
+  return message(`Process exited with code ${code}.`);
+}
+
+export function serializeIndexingError(error: unknown, stderr?: string): DeploymentErrorData {
+  if (error instanceof TaskMetadataParseError) {
+    return {
+      name: "TaskMetadataParseError",
+      message: "There was an error parsing the task metadata",
+      stack: JSON.stringify({ zodIssues: error.zodIssues, tasks: error.tasks }),
+      stderr,
+    };
+  } else if (error instanceof TaskIndexingImportError) {
+    return {
+      name: "TaskIndexingImportError",
+      message: "There was an error importing task files",
+      stack: JSON.stringify(error.importErrors),
+      stderr,
+    };
+  } else if (error instanceof UncaughtExceptionError) {
+    const originalError = error.originalError;
+
+    return {
+      name: originalError.name,
+      message: originalError.message,
+      stack: originalError.stack,
+      stderr,
+    };
+  } else if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      stderr,
+    };
+  }
+
+  return {
+    name: "UnknownError",
+    message: String(error),
+    stderr,
+  };
+}
+
+export function prepareDeploymentError(
+  errorData: DeploymentErrorData
+): DeploymentErrorData | undefined {
+  if (!errorData) {
+    return;
+  }
+
+  if (errorData.name === "TaskMetadataParseError") {
+    const errorJson = tryJsonParse(errorData.stack);
+
+    if (errorJson) {
+      const parsedError = TaskMetadataFailedToParseData.safeParse(errorJson);
+
+      if (parsedError.success) {
+        return {
+          name: errorData.name,
+          message: errorData.message,
+          stack: createTaskMetadataFailedErrorStack(parsedError.data),
+          stderr: errorData.stderr,
+        };
+      } else {
+        return {
+          name: errorData.name,
+          message: errorData.message,
+          stderr: errorData.stderr,
+        };
+      }
+    } else {
+      return {
+        name: errorData.name,
+        message: errorData.message,
+        stderr: errorData.stderr,
+      };
+    }
+  } else if (errorData.name === "TaskIndexingImportError") {
+    const errorJson = tryJsonParse(errorData.stack);
+
+    if (errorJson) {
+      const parsedError = ImportTaskFileErrors.safeParse(errorJson);
+
+      if (parsedError.success) {
+        return {
+          name: errorData.name,
+          message: errorData.message,
+          stack: parsedError.data
+            .map((error) => {
+              return `x ${error.message} in ${error.file}`;
+            })
+            .join("\n"),
+          stderr: errorData.stderr,
+        };
+      } else {
+        return {
+          name: errorData.name,
+          message: errorData.message,
+          stderr: errorData.stderr,
+        };
+      }
+    } else {
+      return {
+        name: errorData.name,
+        message: errorData.message,
+        stderr: errorData.stderr,
+      };
+    }
+  }
+
+  return {
+    name: errorData.name,
+    message: errorData.message,
+    stack: errorData.stack,
+    stderr: errorData.stderr,
+  };
+}
+
+export function createTaskMetadataFailedErrorStack(
+  data: z.infer<typeof TaskMetadataFailedToParseData>
+): string {
+  const stack = [];
+
+  const groupedIssues = groupTaskMetadataIssuesByTask(data.tasks, data.zodIssues);
+
+  for (const key in groupedIssues) {
+    const taskWithIssues = groupedIssues[key];
+
+    if (!taskWithIssues) {
+      continue;
+    }
+
+    stack.push("\n");
+    stack.push(`  ❯ ${taskWithIssues.exportName} in ${taskWithIssues.filePath}`);
+
+    for (const issue of taskWithIssues.issues) {
+      if (issue.path) {
+        stack.push(`    x ${issue.path} ${issue.message}`);
+      } else {
+        stack.push(`    x ${issue.message}`);
+      }
+    }
+  }
+
+  return stack.join("\n");
+}
+
+function tryJsonParse(data: string | undefined): any {
+  if (!data) {
+    return;
+  }
+
+  try {
+    return JSON.parse(data);
+  } catch {
+    return;
+  }
 }

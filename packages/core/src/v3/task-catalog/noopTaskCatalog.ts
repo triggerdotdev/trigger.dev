@@ -1,6 +1,6 @@
-import { TaskFileMetadata, TaskMetadataWithFilePath } from "../schemas";
-import { TaskMetadataWithFunctions } from "../types";
-import { TaskCatalog } from "./catalog";
+import { TaskFileMetadata, TaskManifest } from "../schemas/index.js";
+import { TaskMetadataWithFunctions } from "../types/index.js";
+import { TaskCatalog } from "./catalog.js";
 
 export class NoopTaskCatalog implements TaskCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
@@ -15,11 +15,11 @@ export class NoopTaskCatalog implements TaskCatalog {
     // noop
   }
 
-  getAllTaskMetadata(): Array<TaskMetadataWithFilePath> {
+  listTaskManifests(): Array<TaskManifest> {
     return [];
   }
 
-  getTaskMetadata(id: string): TaskMetadataWithFilePath | undefined {
+  getTaskManifest(id: string): TaskManifest | undefined {
     return undefined;
   }
 

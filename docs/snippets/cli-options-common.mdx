@@ -1,0 +1,20 @@
+import LogLevelOption from "/snippets/cli-options-log-level.mdx";
+import SkipTelemetryOption from "/snippets/cli-options-skip-telemetry.mdx";
+import HelpOption from "/snippets/cli-options-help.mdx";
+import VersionOption from "/snippets/cli-options-version.mdx";
+
+<ParamField body="Login profile" type="--profile">
+  The login profile to use. Defaults to "default".
+</ParamField>
+
+<ParamField body="API URL" type="--api-url | -a">
+  Override the default API URL. If not specified, it uses `https://api.trigger.dev`. This can also be set via the `TRIGGER_API_URL` environment variable.
+</ParamField>
+
+<LogLevelOption />
+
+<SkipTelemetryOption />
+
+<HelpOption />
+
+<VersionOption />

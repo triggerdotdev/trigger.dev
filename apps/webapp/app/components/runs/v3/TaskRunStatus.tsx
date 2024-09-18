@@ -67,23 +67,17 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   EXPIRED: "Task has surpassed its ttl and won't be executed",
 };
 
-export const QUEUED_STATUSES: TaskRunStatus[] = ["PENDING", "WAITING_FOR_DEPLOY", "DELAYED"];
+export const QUEUED_STATUSES = [
+  "PENDING",
+  "WAITING_FOR_DEPLOY",
+  "DELAYED",
+] satisfies TaskRunStatus[];
 
-export const RUNNING_STATUSES: TaskRunStatus[] = [
+export const RUNNING_STATUSES = [
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
   "WAITING_TO_RESUME",
-];
-
-export const FINISHED_STATUSES: TaskRunStatus[] = [
-  "COMPLETED_SUCCESSFULLY",
-  "CANCELED",
-  "COMPLETED_WITH_ERRORS",
-  "INTERRUPTED",
-  "SYSTEM_FAILURE",
-  "CRASHED",
-  "EXPIRED",
-];
+] satisfies TaskRunStatus[];
 
 export function descriptionForTaskRunStatus(status: TaskRunStatus): string {
   return taskRunStatusDescriptions[status];

@@ -10,8 +10,8 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getTextBody } from "@trigger.dev/core-apps/http";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
 
@@ -49,7 +49,11 @@ const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
-const chaosMonkey = new ChaosMonkey(!!process.env.CHAOS_MONKEY_ENABLED);
+const chaosMonkey = new ChaosMonkey(
+  !!process.env.CHAOS_MONKEY_ENABLED,
+  !!process.env.CHAOS_MONKEY_DISABLE_ERRORS,
+  !!process.env.CHAOS_MONKEY_DISABLE_DELAYS
+);
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
@@ -157,6 +161,49 @@ class TaskCoordinator {
           this.#cancelCheckpoint(message.runId);
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
+        },
+        RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
+            return {
+              success: false,
+              error: {
+                name: "SocketNotFoundError",
+                message: "Socket for attempt not found",
+              },
+            };
+          }
+
+          //if this is set, we want to kill the process because it will be resumed with the checkpoint from the queue
+          if (taskSocket.data.requiresCheckpointResumeWithMessage) {
+            logger.log("RESUME_AFTER_DEPENDENCY_WITH_ACK: Checkpoint is set so going to nack", {
+              socketData: taskSocket.data,
+            });
+
+            return {
+              success: false,
+              error: {
+                name: "CheckpointMessagePresentError",
+                message:
+                  "Checkpoint message is present, so we need to kill the process and resume from the queue.",
+              },
+            };
+          }
+
+          await chaosMonkey.call();
+
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
+
+          return {
+            success: true,
+          };
         },
         RESUME_AFTER_DURATION: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
@@ -290,6 +337,7 @@ class TaskCoordinator {
           setSocketDataFromHeader("projectRef", "x-trigger-project-ref");
           setSocketDataFromHeader("runId", "x-trigger-run-id");
           setSocketDataFromHeader("attemptFriendlyId", "x-trigger-attempt-friendly-id", false);
+          setSocketDataFromHeader("attemptNumber", "x-trigger-attempt-number", false);
           setSocketDataFromHeader("envId", "x-trigger-env-id");
           setSocketDataFromHeader("deploymentId", "x-trigger-deployment-id");
           setSocketDataFromHeader("deploymentVersion", "x-trigger-deployment-version");
@@ -305,6 +353,10 @@ class TaskCoordinator {
       },
       onConnection: async (socket, handler, sender) => {
         const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
+
+        const getAttemptNumber = () => {
+          return socket.data.attemptNumber ? parseInt(socket.data.attemptNumber) : undefined;
+        };
 
         const crashRun = async (error: { name: string; message: string; stack?: string }) => {
           try {
@@ -381,6 +433,10 @@ class TaskCoordinator {
           socket.data.attemptFriendlyId = attemptFriendlyId;
         };
 
+        const updateAttemptNumber = (attemptNumber: string | number) => {
+          socket.data.attemptNumber = String(attemptNumber);
+        };
+
         this.#platformSocket?.send("LOG", {
           metadata: socket.data,
           text: "connected",
@@ -430,6 +486,7 @@ class TaskCoordinator {
             });
 
             updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
+            updateAttemptNumber(executionAck.payload.execution.attempt.number);
           } catch (error) {
             logger.error("Error", { error });
 
@@ -505,11 +562,17 @@ class TaskCoordinator {
 
           updateAttemptFriendlyId(message.attemptFriendlyId);
 
-          this.#platformSocket?.send("READY_FOR_RESUME", message);
+          if (message.version === "v2") {
+            updateAttemptNumber(message.attemptNumber);
+          }
+
+          this.#platformSocket?.send("READY_FOR_RESUME", { ...message, version: "v1" });
         });
 
         // MARK: RUN COMPLETED
-        socket.on("TASK_RUN_COMPLETED", async ({ completion, execution }, callback) => {
+        socket.on("TASK_RUN_COMPLETED", async (message, callback) => {
+          const { completion, execution } = message;
+
           logger.log("completed task", { completionId: completion.id });
 
           // Cancel all in-progress checkpoints (if any)
@@ -518,8 +581,10 @@ class TaskCoordinator {
           await chaosMonkey.call({ throwErrors: false });
 
           const completeWithoutCheckpoint = (shouldExit: boolean) => {
+            const supportsRetryCheckpoints = message.version === "v1";
+
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-              version: "v1",
+              version: supportsRetryCheckpoints ? "v1" : "v2",
               execution,
               completion,
             });
@@ -546,6 +611,15 @@ class TaskCoordinator {
 
           if (completion.retry.delay < this.#delayThresholdInMs) {
             completeWithoutCheckpoint(false);
+
+            // Prevents runs that fail fast from never sending a heartbeat
+            this.#sendRunHeartbeat(socket.data.runId);
+
+            return;
+          }
+
+          if (message.version === "v2") {
+            completeWithoutCheckpoint(true);
             return;
           }
 
@@ -681,6 +755,7 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
@@ -752,12 +827,25 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
           }
+
+          logger.log("WAIT_FOR_TASK checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage", {
+            checkpoint,
+            socketData: socket.data,
+          });
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
@@ -771,6 +859,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after task checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -821,12 +910,25 @@ class TaskCoordinator {
             runId: socket.data.runId,
             projectRef: socket.data.projectRef,
             deploymentVersion: socket.data.deploymentVersion,
+            attemptNumber: getAttemptNumber(),
           });
 
           if (!checkpoint) {
             logger.error("Failed to checkpoint", { runId: socket.data.runId });
             return;
           }
+
+          logger.log("WAIT_FOR_BATCH checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_BATCH set checkpoint", {
+            checkpoint,
+            socketData: socket.data,
+          });
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
@@ -841,6 +943,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after batch checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -905,6 +1008,7 @@ class TaskCoordinator {
           }
 
           updateAttemptFriendlyId(createAttempt.executionPayload.execution.attempt.id);
+          updateAttemptNumber(createAttempt.executionPayload.execution.attempt.number);
 
           callback({
             success: true,
@@ -923,6 +1027,10 @@ class TaskCoordinator {
 
           if (message.attemptFriendlyId) {
             updateAttemptFriendlyId(message.attemptFriendlyId);
+          }
+
+          if (message.attemptNumber) {
+            updateAttemptNumber(message.attemptNumber);
           }
         });
       },

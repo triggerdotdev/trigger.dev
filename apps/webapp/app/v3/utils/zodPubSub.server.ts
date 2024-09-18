@@ -1,4 +1,4 @@
-import { Logger } from "@trigger.dev/core-backend";
+import { Logger } from "@trigger.dev/core/logger";
 import { ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import Redis, { RedisOptions } from "ioredis";
@@ -39,6 +39,7 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
     this._subscriber = new Redis(_options.redis);
     this._messageHandler = new ZodMessageHandler({
       schema: _options.schema,
+      logger: this._logger,
     });
   }
 
@@ -76,20 +77,26 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
 
     const message = this._messageHandler.parseMessage(parsedMessage);
 
-    if (typeof message.type !== "string") {
+    if (!message.success) {
+      this._logger.error(`Failed to parse message: ${message.error}`, { parsedMessage });
       return;
     }
 
-    const listener = this._listeners.get(message.type);
+    if (typeof message.data.type !== "string") {
+      this._logger.error(`Failed to parse message: invalid type`, { parsedMessage });
+      return;
+    }
+
+    const listener = this._listeners.get(message.data.type);
 
     if (!listener) {
-      this._logger.debug(`No listener for message type: ${message.type}`, { parsedMessage });
+      this._logger.debug(`No listener for message type: ${message.data.type}`, { parsedMessage });
 
       return;
     }
 
     try {
-      await listener(message.payload);
+      await listener(message.data.payload);
     } catch (error) {
       this._logger.error("Error handling message", { error, message });
     }

@@ -11,7 +11,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   Table,
   TableBody,
@@ -71,44 +71,39 @@ export default function Page() {
         <Header2 className={cn("whitespace-nowrap")}>Deploy: {deployment.shortCode}</Header2>
 
         <AdminDebugTooltip>
-          <PropertyTable>
-            <Property label="ID">
-              <div className="flex items-center gap-2">
-                <Paragraph variant="extra-small/bright/mono">{deployment.id}</Paragraph>
-              </div>
-            </Property>
-            <Property label="Project ID">
-              <div className="flex items-center gap-2">
-                <Paragraph variant="extra-small/bright/mono">{deployment.projectId}</Paragraph>
-              </div>
-            </Property>
-            <Property label="Org ID">
-              <div className="flex items-center gap-2">
-                <Paragraph variant="extra-small/bright/mono">{deployment.organizationId}</Paragraph>
-              </div>
-            </Property>
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>ID</Property.Label>
+              <Property.Value>{deployment.id}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Project ID</Property.Label>
+              <Property.Value>{deployment.projectId}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Org ID</Property.Label>
+              <Property.Value>{deployment.organizationId}</Property.Value>
+            </Property.Item>
             {deployment.imageReference && (
-              <Property label="Image">
-                <div className="flex items-center gap-2">
-                  <Paragraph variant="extra-small/bright/mono">
-                    {deployment.imageReference}
-                  </Paragraph>
-                </div>
-              </Property>
+              <Property.Item>
+                <Property.Label>Image</Property.Label>
+                <Property.Value>{deployment.imageReference}</Property.Value>
+              </Property.Item>
             )}
             {deployment.externalBuildData && (
-              <Property label="Build Server">
-                <div className="flex items-center gap-2">
+              <Property.Item>
+                <Property.Label>Build Server</Property.Label>
+                <Property.Value>
                   <Link
                     to={`/resources/${deployment.projectId}/deployments/${deployment.id}/logs`}
                     className="extra-small/bright/mono underline"
                   >
                     {deployment.externalBuildData.buildId}
                   </Link>
-                </div>
-              </Property>
+                </Property.Value>
+              </Property.Item>
             )}
-          </PropertyTable>
+          </Property.Table>
         </AdminDebugTooltip>
 
         <LinkButton
@@ -120,35 +115,51 @@ export default function Page() {
       </div>
       <div className="overflow-y-auto px-3 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="flex flex-col gap-4">
-          <PropertyTable>
-            <Property label="Deploy">
-              <div className="flex items-center gap-2">
-                <Paragraph variant="small/bright">{deployment.shortCode}</Paragraph>
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>Deploy</Property.Label>
+              <Property.Value className="flex items-center gap-2">
+                <span>{deployment.shortCode}</span>
                 {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
-              </div>
-            </Property>
-            <Property label="Environment">
-              <EnvironmentLabel environment={deployment.environment} userName={usernameForEnv} />
-            </Property>
-            <Property label="Version">{deployment.version}</Property>
-            <Property label="Status">
-              <DeploymentStatus
-                status={deployment.status}
-                isBuilt={deployment.isBuilt}
-                className="text-sm"
-              />
-            </Property>
-            <Property label="Tasks">{deployment.tasks ? deployment.tasks.length : "–"}</Property>
-            <Property label="SDK Version">
-              {deployment.sdkVersion ? deployment.sdkVersion : "–"}
-            </Property>
-            <Property label="Started at">
-              <Paragraph variant="small/bright">
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Environment</Property.Label>
+              <Property.Value>
+                <EnvironmentLabel environment={deployment.environment} userName={usernameForEnv} />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Version</Property.Label>
+              <Property.Value>{deployment.version}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Status</Property.Label>
+              <Property.Value>
+                <DeploymentStatus
+                  status={deployment.status}
+                  isBuilt={deployment.isBuilt}
+                  className="text-sm"
+                />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Tasks</Property.Label>
+              <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>SDK Version</Property.Label>
+              <Property.Value>{deployment.sdkVersion ? deployment.sdkVersion : "–"}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Started at</Property.Label>
+              <Property.Value>
                 <DateTimeAccurate date={deployment.createdAt} /> UTC
-              </Paragraph>
-            </Property>
-            <Property label="Built at">
-              <Paragraph variant="small/bright">
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Built at</Property.Label>
+              <Property.Value>
                 {deployment.builtAt ? (
                   <>
                     <DateTimeAccurate date={deployment.builtAt} /> UTC
@@ -156,10 +167,11 @@ export default function Page() {
                 ) : (
                   "–"
                 )}
-              </Paragraph>
-            </Property>
-            <Property label="Deployed at">
-              <Paragraph variant="small/bright">
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Deployed at</Property.Label>
+              <Property.Value>
                 {deployment.deployedAt ? (
                   <>
                     <DateTimeAccurate date={deployment.deployedAt} /> UTC
@@ -167,25 +179,28 @@ export default function Page() {
                 ) : (
                   "–"
                 )}
-              </Paragraph>
-            </Property>
-            <Property label="Deployed by">
-              {deployment.deployedBy ? (
-                <div className="flex items-center gap-1">
-                  <UserAvatar
-                    avatarUrl={deployment.deployedBy.avatarUrl}
-                    name={deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                    className="h-4 w-4"
-                  />
-                  <Paragraph variant="small">
-                    {deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                  </Paragraph>
-                </div>
-              ) : (
-                "–"
-              )}
-            </Property>
-          </PropertyTable>
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Deployed by</Property.Label>
+              <Property.Value>
+                {deployment.deployedBy ? (
+                  <div className="flex items-center gap-1">
+                    <UserAvatar
+                      avatarUrl={deployment.deployedBy.avatarUrl}
+                      name={deployment.deployedBy.name ?? deployment.deployedBy.displayName}
+                      className="h-4 w-4"
+                    />
+                    <Paragraph variant="small">
+                      {deployment.deployedBy.name ?? deployment.deployedBy.displayName}
+                    </Paragraph>
+                  </div>
+                ) : (
+                  "–"
+                )}
+              </Property.Value>
+            </Property.Item>
+          </Property.Table>
 
           {deployment.tasks ? (
             <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

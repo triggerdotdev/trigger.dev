@@ -1,5 +1,15 @@
 import { InitOutput } from "@trigger.dev/core/v3";
-import { batchTrigger, createTask, trigger, triggerAndPoll, triggerAndWait } from "./shared";
+import {
+  batchTrigger,
+  batchTriggerAndWait,
+  createTask,
+  trigger,
+  triggerAndPoll,
+  triggerAndWait,
+  SubtaskUnwrapError,
+} from "./shared.js";
+
+export { SubtaskUnwrapError };
 
 import type {
   TaskOptions,
@@ -14,7 +24,8 @@ import type {
   TaskOutput,
   TaskIdentifier,
   TaskRunOptions,
-} from "./shared";
+  AnyTask,
+} from "./shared.js";
 
 export type {
   TaskOptions,
@@ -29,6 +40,7 @@ export type {
   TaskOutput,
   TaskIdentifier,
   TaskRunOptions,
+  AnyTask,
 };
 
 /** Creates a task that can be triggered
@@ -65,4 +77,5 @@ export const tasks = {
   triggerAndPoll,
   batchTrigger,
   triggerAndWait,
+  batchTriggerAndWait,
 };

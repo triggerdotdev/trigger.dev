@@ -1,9 +1,9 @@
 import { Attributes, Span } from "@opentelemetry/api";
-import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits";
-import { SemanticInternalAttributes } from "../semanticInternalAttributes";
-import { TriggerTracer } from "../tracer";
-import { flattenAttributes } from "./flattenAttributes";
-import { apiClientManager } from "../apiClientManager-api";
+import { OFFLOAD_IO_PACKET_LENGTH_LIMIT, imposeAttributeLimits } from "../limits.js";
+import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { TriggerTracer } from "../tracer.js";
+import { flattenAttributes } from "./flattenAttributes.js";
+import { apiClientManager } from "../apiClientManager-api.js";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -340,7 +340,7 @@ function getPacketExtension(outputType: string): string {
   }
 }
 
-async function loadSuperJSON(): Promise<typeof import("superjson")> {
+async function loadSuperJSON() {
   return await import("superjson");
 }
 
@@ -350,4 +350,17 @@ function safeJsonParse(value: string): any {
   } catch {
     return;
   }
+}
+
+export async function replaceSuperJsonPayload(original: string, newPayload: string) {
+  const superjson = await loadSuperJSON();
+  const originalObject = superjson.parse(original);
+  const { meta } = superjson.serialize(originalObject);
+
+  const newSuperJson = {
+    json: JSON.parse(newPayload) as any,
+    meta,
+  };
+
+  return superjson.deserialize(newSuperJson);
 }

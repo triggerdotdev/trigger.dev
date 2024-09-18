@@ -43,7 +43,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     externalBuildData:
       deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
     imageTag,
-    registryHost: env.DEPLOY_REGISTRY_HOST,
+    registryHost: body.data.registryHost ?? env.DEPLOY_REGISTRY_HOST,
   };
 
   return json(responseBody, { status: 200 });

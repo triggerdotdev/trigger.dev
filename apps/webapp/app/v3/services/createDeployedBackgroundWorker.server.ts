@@ -3,7 +3,7 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { BaseService } from "./baseService.server";
-import { createBackgroundTasks } from "./createBackgroundWorker.server";
+import { createBackgroundTasks, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { projectPubSub } from "./projectPubSub.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -11,6 +11,7 @@ import { logger } from "~/services/logger.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { socketIo } from "../handleSocketIo.server";
 
 export class CreateDeployedBackgroundWorkerService extends BaseService {
   public async call(
@@ -50,7 +51,39 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
         },
       });
 
-      await createBackgroundTasks(body.metadata.tasks, backgroundWorker, environment, this._prisma);
+      try {
+        await createBackgroundTasks(
+          body.metadata.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma
+        );
+        await syncDeclarativeSchedules(
+          body.metadata.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma
+        );
+      } catch (error) {
+        const name = error instanceof Error ? error.name : "UnknownError";
+        const message = error instanceof Error ? error.message : JSON.stringify(error);
+
+        await this._prisma.workerDeployment.update({
+          where: {
+            id: deployment.id,
+          },
+          data: {
+            status: "FAILED",
+            failedAt: new Date(),
+            errorData: {
+              name,
+              message,
+            },
+          },
+        });
+
+        throw error;
+      }
 
       // Link the deployment with the background worker
       await this._prisma.workerDeployment.update({
@@ -98,6 +131,20 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
         await marqs?.updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error("Failed to publish WORKER_CREATED event", { err });
+      }
+
+      if (deployment.imageReference) {
+        socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
+          version: "v1",
+          imageRef: deployment.imageReference,
+          shortCode: deployment.shortCode,
+          // identifiers
+          deploymentId: deployment.id,
+          envId: environment.id,
+          envType: environment.type,
+          orgId: environment.organizationId,
+          projectId: deployment.projectId,
+        });
       }
 
       await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id, this._prisma);

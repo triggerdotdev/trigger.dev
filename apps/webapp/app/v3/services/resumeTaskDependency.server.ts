@@ -38,16 +38,17 @@ export class ResumeTaskDependencyService extends BaseService {
 
     const dependentRun = dependency.dependentAttempt.taskRun;
 
-    if (dependency.dependentAttempt.status === "PAUSED") {
-      if (!dependency.checkpointEventId) {
-        logger.error("Can't resume paused attempt without checkpoint event", {
+    if (dependency.dependentAttempt.status === "PAUSED" && dependency.checkpointEventId) {
+      logger.debug(
+        "Task dependency resume: Attempt is paused and there's a checkpoint. Enqueuing resume with checkpoint.",
+        {
           attemptId: dependency.id,
-        });
-
-        await marqs?.acknowledgeMessage(dependentRun.id);
-        return;
-      }
-
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        }
+      );
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
@@ -57,14 +58,41 @@ export class ResumeTaskDependencyService extends BaseService {
           completedAttemptIds: [sourceTaskAttemptId],
           resumableAttemptId: dependency.dependentAttempt.id,
           checkpointEventId: dependency.checkpointEventId,
+          taskIdentifier: dependency.taskRun.taskIdentifier,
+          projectId: dependency.taskRun.runtimeEnvironment.projectId,
+          environmentId: dependency.taskRun.runtimeEnvironment.id,
+          environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined
       );
     } else {
+      logger.debug("Task dependency resume: Attempt is not paused or there's no checkpoint event", {
+        attemptId: dependency.id,
+        dependentAttempt: dependency.dependentAttempt,
+        checkpointEventId: dependency.checkpointEventId,
+        hasCheckpointEvent: !!dependency.checkpointEventId,
+        runId: dependentRun.id,
+      });
+
+      if (dependency.dependentAttempt.status === "PAUSED" && !dependency.checkpointEventId) {
+        // In case of race conditions the status can be PAUSED without a checkpoint event
+        // When the checkpoint is created, it will continue the run
+        logger.error("Task dependency resume: Attempt is paused but there's no checkpoint event", {
+          attemptId: dependency.id,
+          dependentAttemptId: dependency.dependentAttempt.id,
+        });
+        return;
+      }
+
       await marqs?.replaceMessage(dependentRun.id, {
         type: "RESUME",
         completedAttemptIds: [sourceTaskAttemptId],
         resumableAttemptId: dependency.dependentAttempt.id,
+        checkpointEventId: dependency.checkpointEventId ?? undefined,
+        taskIdentifier: dependency.taskRun.taskIdentifier,
+        projectId: dependency.taskRun.runtimeEnvironment.projectId,
+        environmentId: dependency.taskRun.runtimeEnvironment.id,
+        environmentType: dependency.taskRun.runtimeEnvironment.type,
       });
     }
   }

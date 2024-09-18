@@ -281,6 +281,11 @@ export class RegistryProxy {
 
       proxyReq.on("error", (error) => {
         logger.error("Error proxying request", { error: error.message });
+
+        if (response.headersSent) {
+          return;
+        }
+
         response.writeHead(500, { "Content-Type": "text/plain" });
         response.end(`Internal Server Error: ${error.message}`);
       });

@@ -1,0 +1,16 @@
+### Correctly passing event handlers to React components
+
+An issue can sometimes arise when you try to pass a function directly to the `onClick` prop. This is because the function may require specific arguments or context that are not available when the event occurs. By wrapping the function call in an arrow function, you ensure that the handler is called with the correct context and any necessary arguments. For example:
+
+This works:
+
+```tsx
+<Button onClick={() => myTask()}>Trigger my task</Button>
+```
+
+Whereas this does not work:
+
+```tsx
+<Button onClick={myTask}>Trigger my task</Button>
+```
+

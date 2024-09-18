@@ -3,6 +3,7 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { isFinalRunStatus } from "~/v3/taskStatus";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -33,6 +34,9 @@ export class RunPresenter {
         traceId: true,
         spanId: true,
         friendlyId: true,
+        status: true,
+        completedAt: true,
+        logsDeletedAt: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -71,6 +75,11 @@ export class RunPresenter {
           number: run.number,
           friendlyId: run.friendlyId,
           traceId: run.traceId,
+          spanId: run.spanId,
+          status: run.status,
+          isFinished: isFinalRunStatus(run.status),
+          completedAt: run.completedAt,
+          logsDeletedAt: run.logsDeletedAt,
           environment: {
             id: run.runtimeEnvironment.id,
             organizationId: run.runtimeEnvironment.organizationId,
@@ -127,6 +136,11 @@ export class RunPresenter {
         number: run.number,
         friendlyId: run.friendlyId,
         traceId: run.traceId,
+        spanId: run.spanId,
+        status: run.status,
+        isFinished: isFinalRunStatus(run.status),
+        completedAt: run.completedAt,
+        logsDeletedAt: run.logsDeletedAt,
         environment: {
           id: run.runtimeEnvironment.id,
           organizationId: run.runtimeEnvironment.organizationId,

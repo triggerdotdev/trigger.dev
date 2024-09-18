@@ -26,11 +26,13 @@ import {
   MarQSKeyProducer,
   MarQSQueuePriorityStrategy,
   MessagePayload,
+  MessageQueueSubscriber,
   QueueCapacities,
   QueueRange,
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
+import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -60,6 +62,7 @@ export type MarQSOptions = {
   visibilityTimeoutStrategy: VisibilityTimeoutStrategy;
   enableRebalancing?: boolean;
   verbose?: boolean;
+  subscriber?: MessageQueueSubscriber;
 };
 
 /**
@@ -207,6 +210,8 @@ export class MarQS {
         });
 
         await this.#callEnqueueMessage(messagePayload);
+
+        await this.options.subscriber?.messageEnqueued(messagePayload);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -264,6 +269,8 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+
+          await this.options.subscriber?.messageDequeued(message);
         } else {
           logger.error(`Failed to read message, undoing the dequeueing of the message`, {
             messageData,
@@ -379,6 +386,8 @@ export class MarQS {
             [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
             [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
           });
+
+          await this.options.subscriber?.messageDequeued(message);
         }
 
         await this.options.visibilityTimeoutStrategy.heartbeat(
@@ -405,6 +414,10 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
+          logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+            messageId,
+            service: this.name,
+          });
           return;
         }
 
@@ -427,6 +440,8 @@ export class MarQS {
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
           messageId,
         });
+
+        await this.options.subscriber?.messageAcked(message);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -469,7 +484,7 @@ export class MarQS {
         const newMessage: MessagePayload = {
           version: "1",
           // preserve original trace context
-          data: { ...messageData, ...traceContext },
+          data: { ...oldMessage.data, ...messageData, ...traceContext },
           queue: oldMessage.queue,
           concurrencyKey: oldMessage.concurrencyKey,
           timestamp: timestamp ?? Date.now(),
@@ -496,11 +511,93 @@ export class MarQS {
         });
 
         await this.#callEnqueueMessage(newMessage);
+
+        await this.options.subscriber?.messageReplaced(newMessage);
       },
       {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SEMATTRS_MESSAGING_OPERATION]: "replace",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  public async cancelHeartbeat(messageId: string) {
+    return this.#trace(
+      "cancelHeartbeat",
+      async (span) => {
+        span.setAttributes({
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        });
+
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "cancelHeartbeat",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  public async releaseConcurrency(messageId: string, releaseForRun: boolean = false) {
+    return this.#trace(
+      "releaseConcurrency",
+      async (span) => {
+        span.setAttributes({
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        });
+
+        const message = await this.readMessage(messageId);
+
+        if (!message) {
+          logger.log(`[${this.name}].releaseConcurrency() message not found`, {
+            messageId,
+            releaseForRun,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.MESSAGE_ID]: message.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+        const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+        const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
+
+        logger.debug("Calling releaseConcurrency", {
+          messageId,
+          queue: message.queue,
+          concurrencyKey,
+          envConcurrencyKey,
+          orgConcurrencyKey,
+          service: this.name,
+          releaseForRun,
+        });
+
+        return this.redis.releaseConcurrency(
+          //don't release the for the run, it breaks concurrencyLimits
+          releaseForRun ? concurrencyKey : "",
+          envConcurrencyKey,
+          orgConcurrencyKey,
+          message.messageId
+        );
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "releaseConcurrency",
           [SEMATTRS_MESSAGE_ID]: messageId,
           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
         },
@@ -553,6 +650,12 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
+          logger.log(`[${this.name}].nackMessage() message not found`, {
+            messageId,
+            retryAt,
+            updates,
+            service: this.name,
+          });
           return;
         }
 
@@ -580,6 +683,8 @@ export class MarQS {
           messageId,
           messageScore: retryAt,
         });
+
+        await this.options.subscriber?.messageNacked(message);
       },
       {
         kind: SpanKind.CONSUMER,
@@ -593,8 +698,8 @@ export class MarQS {
   }
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
-  public async heartbeatMessage(messageId: string, seconds: number = 30) {
-    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, seconds * 1000);
+  public async heartbeatMessage(messageId: string) {
+    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, this.visibilityTimeoutInMs);
   }
 
   get visibilityTimeoutInMs() {
@@ -645,17 +750,21 @@ export class MarQS {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span) => {
+        span.setAttribute("consumerId", consumerId);
+
         const { range } = await queuePriorityStrategy.nextCandidateSelection(
           parentQueue,
           consumerId
         );
 
-        const queues = await this.#getChildQueuesWithScores(parentQueue, range);
+        const queues = await this.#getChildQueuesWithScores(parentQueue, range, span);
+        span.setAttribute("queueCount", queues.length);
 
         const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
+        span.setAttribute("queuesWithScoresCount", queuesWithScores.length);
 
         // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-        const choice = this.queuePriorityStrategy.chooseQueue(
+        const { choice, nextRange } = this.queuePriorityStrategy.chooseQueue(
           queuesWithScores,
           parentQueue,
           consumerId,
@@ -668,17 +777,20 @@ export class MarQS {
         span.setAttributes({
           ...flattenAttributes(queuesWithScores, "marqs.queuesWithScores"),
         });
-        span.setAttribute("nextRange.offset", range.offset);
-        span.setAttribute("nextRange.count", range.count);
-        span.setAttribute("queueCount", queues.length);
+        span.setAttribute("range.offset", range.offset);
+        span.setAttribute("range.count", range.count);
+        span.setAttribute("nextRange.offset", nextRange.offset);
+        span.setAttribute("nextRange.count", nextRange.count);
 
-        if (this.options.verbose) {
+        if (this.options.verbose || nextRange.offset > 0) {
           if (typeof choice === "string") {
             logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
-              nextRange: range,
+              range,
+              nextRange,
               queueCount: queues.length,
+              queuesWithScoresCount: queuesWithScores.length,
               queueChoice: choice,
               consumerId,
             });
@@ -686,8 +798,10 @@ export class MarQS {
             logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
-              nextRange: range,
+              range,
+              nextRange,
               queueCount: queues.length,
+              queuesWithScoresCount: queuesWithScores.length,
               noQueueChoice: true,
               consumerId,
             });
@@ -752,7 +866,8 @@ export class MarQS {
 
   async #getChildQueuesWithScores(
     key: string,
-    range: QueueRange
+    range: QueueRange,
+    span?: Span
   ): Promise<Array<{ value: string; score: number }>> {
     const valuesWithScores = await this.redis.zrangebyscore(
       key,
@@ -763,6 +878,12 @@ export class MarQS {
       range.offset,
       range.count
     );
+
+    span?.setAttribute("zrangebyscore.valuesWithScores.rawLength", valuesWithScores.length);
+    span?.setAttributes({
+      ...flattenAttributes(valuesWithScores, "zrangebyscore.valuesWithScores.rawValues"),
+    });
+
     const result: Array<{ value: string; score: number }> = [];
 
     for (let i = 0; i < valuesWithScores.length; i += 2) {
@@ -934,8 +1055,15 @@ export class MarQS {
   }
 
   async #callEnqueueMessage(message: MessagePayload) {
+    const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+    const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
+
     logger.debug("Calling enqueueMessage", {
       messagePayload: message,
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
       service: this.name,
     });
 
@@ -943,6 +1071,9 @@ export class MarQS {
       message.queue,
       message.parentQueue,
       this.keys.messageKey(message.messageId),
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
       message.queue,
       message.messageId,
       JSON.stringify(message),
@@ -1216,11 +1347,14 @@ export class MarQS {
 
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 3,
+      numberOfKeys: 6,
       lua: `
 local queue = KEYS[1]
 local parentQueue = KEYS[2]
 local messageKey = KEYS[3]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local orgCurrentConcurrencyKey = KEYS[6]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -1240,6 +1374,11 @@ if #earliestMessage == 0 then
 else
     redis.call('ZADD', parentQueue, earliestMessage[2], queueName)
 end
+
+-- Update the concurrency keys
+redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', orgCurrentConcurrencyKey, messageId)
       `,
     });
 
@@ -1418,6 +1557,24 @@ end
 `,
     });
 
+    this.redis.defineCommand("releaseConcurrency", {
+      numberOfKeys: 3,
+      lua: `
+local concurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local orgCurrentConcurrencyKey = KEYS[3]
+
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+if concurrencyKey ~= "" then
+  redis.call('SREM', concurrencyKey, messageId)
+end
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', orgCurrentConcurrencyKey, messageId)
+`,
+    });
+
     this.redis.defineCommand("heartbeatMessage", {
       numberOfKeys: 1,
       lua: `
@@ -1569,6 +1726,9 @@ declare module "ioredis" {
       queue: string,
       parentQueue: string,
       messageKey: string,
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      orgConcurrencyKey: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -1623,6 +1783,14 @@ declare module "ioredis" {
       messageId: string,
       currentTime: string,
       messageScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    releaseConcurrency(
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      orgConcurrencyKey: string,
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1703,8 +1871,9 @@ function getMarQSClient() {
         redis: redisOptions,
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-        visibilityTimeoutInMs: 120 * 1000, // 2 minutes,
+        visibilityTimeoutInMs: env.MARQS_VISIBILITY_TIMEOUT_MS,
         enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
+        subscriber: concurrencyTracker,
       });
     } else {
       console.warn(

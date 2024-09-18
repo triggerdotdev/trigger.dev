@@ -1,12 +1,20 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["src/globals.d.ts", "./src/**/*.ts", "./src/**/*.tsx"],
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "lib": ["ES2021", "dom"],
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "paths": {}
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "incremental": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "target": "ES2015",
   },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }

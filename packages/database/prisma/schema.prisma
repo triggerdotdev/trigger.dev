@@ -441,6 +441,8 @@ model Project {
 
   version ProjectVersion @default(V2)
 
+  builderProjectId String?
+
   environments           RuntimeEnvironment[]
   endpoints              Endpoint[]
   jobs                   Job[]
@@ -453,7 +455,7 @@ model Project {
   backgroundWorkers      BackgroundWorker[]
   backgroundWorkerTasks  BackgroundWorkerTask[]
   taskRuns               TaskRun[]
-  taskTags               TaskTag[]
+  runTags                TaskRunTag[]
   taskQueues             TaskQueue[]
   environmentVariables   EnvironmentVariable[]
   checkpoints            Checkpoint[]
@@ -464,6 +466,7 @@ model Project {
   alerts                 ProjectAlert[]
   alertStorages          ProjectAlertStorage[]
   bulkActionGroups       BulkActionGroup[]
+  BackgroundWorkerFile   BackgroundWorkerFile[]
 }
 
 enum ProjectVersion {
@@ -909,6 +912,9 @@ model JobRun {
   subscriptions      JobRunSubscription[]
 
   @@index([jobId, createdAt(sort: Desc)], map: "idx_jobrun_jobId_createdAt")
+  @@index([organizationId, createdAt], map: "idx_jobrun_organizationId_createdAt")
+  @@index([versionId], map: "idx_jobrun_versionId")
+  @@index([eventId], map: "JobRun_eventId_idx")
 }
 
 enum JobRunStatus {
@@ -1068,6 +1074,7 @@ model Task {
   attempts           TaskAttempt[]
 
   @@unique([runId, idempotencyKey])
+  @@index([parentId], map: "idx_task_parentId")
 }
 
 enum TaskStatus {
@@ -1563,12 +1570,34 @@ model BackgroundWorker {
   tasks      BackgroundWorkerTask[]
   attempts   TaskRunAttempt[]
   lockedRuns TaskRun[]
+  files      BackgroundWorkerFile[]
 
   deployment WorkerDeployment?
 
   supportsLazyAttempts Boolean @default(false)
 
   @@unique([projectId, runtimeEnvironmentId, version])
+}
+
+model BackgroundWorkerFile {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  filePath    String
+  contentHash String
+  contents    Bytes
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  backgroundWorkers BackgroundWorker[]
+
+  tasks BackgroundWorkerTask[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, contentHash])
 }
 
 model BackgroundWorkerTask {
@@ -1586,6 +1615,9 @@ model BackgroundWorkerTask {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
+  file   BackgroundWorkerFile? @relation(fields: [fileId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  fileId String?
+
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
@@ -1602,6 +1634,8 @@ model BackgroundWorkerTask {
   triggerSource TaskTriggerSource @default(STANDARD)
 
   @@unique([workerId, slug])
+  // Quick lookup of task identifiers
+  @@index([projectId, slug])
 }
 
 enum TaskTriggerSource {
@@ -1641,11 +1675,13 @@ model TaskRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts    TaskRunAttempt[] @relation("attempts")
-  tags        TaskTag[]
+  attempts TaskRunAttempt[] @relation("attempts")
+  tags     TaskRunTag[]
+
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
+  completedAt   DateTime?
   machinePreset String?
 
   usageDurationMs Int   @default(0)
@@ -1671,6 +1707,8 @@ model TaskRun {
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
 
+  alerts ProjectAlert[]
+
   scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: SetNull)
   scheduleInstanceId String?
 
@@ -1679,6 +1717,8 @@ model TaskRun {
 
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
+
+  logsDeletedAt DateTime?
 
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
@@ -1690,6 +1730,10 @@ model TaskRun {
   @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
+  // Run page inspector
+  @@index([spanId])
+  // Finding completed runs
+  @@index([completedAt])
 }
 
 enum TaskRunStatus {
@@ -1735,9 +1779,29 @@ enum TaskRunStatus {
   EXPIRED
 }
 
+model TaskRunTag {
+  id   String @id @default(cuid())
+  name String
+
+  friendlyId String @unique
+
+  runs TaskRun[]
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, name])
+  //Makes run filtering by tag faster
+  @@index([name, id])
+}
+
+/// This is used for triggerAndWait and batchTriggerAndWait. The taskRun is the child task, it points at a parent attempt or a batch
 model TaskRunDependency {
   id String @id @default(cuid())
 
+  /// The child run
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String  @unique
 
@@ -1773,22 +1837,6 @@ model TaskRunNumberCounter {
   lastNumber Int @default(0)
 
   @@unique([taskIdentifier, environmentId])
-}
-
-model TaskTag {
-  id   String @id @default(cuid())
-  name String
-
-  friendlyId String @unique
-
-  runs TaskRun[]
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  projectId String
-
-  createdAt DateTime @default(now())
-
-  @@unique([projectId, name])
 }
 
 model TaskRunAttempt {
@@ -1835,6 +1883,7 @@ model TaskRunAttempt {
   alerts                 ProjectAlert[]
 
   @@unique([taskRunId, number])
+  @@index([taskRunId])
 }
 
 enum TaskRunAttemptStatus {
@@ -2051,6 +2100,8 @@ model BatchTaskRunItem {
   updatedAt DateTime @updatedAt
 
   @@unique([batchTaskRunId, taskRunId])
+  @@index([taskRunAttemptId], map: "idx_batchtaskrunitem_taskrunattempt")
+  @@index([taskRunId], map: "idx_batchtaskrunitem_taskrun")
 }
 
 enum BatchTaskRunItemStatus {
@@ -2103,8 +2154,9 @@ model Checkpoint {
   run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
-  attempt   TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  attemptId String
+  attempt       TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  attemptId     String
+  attemptNumber Int?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
@@ -2231,6 +2283,8 @@ model WorkerDeploymentPromotion {
 model TaskSchedule {
   id String @id @default(cuid())
 
+  type ScheduleType @default(IMPERATIVE)
+
   ///users see this as `id`. They start with schedule_
   friendlyId     String @unique
   ///a reference to a task (not a foreign key because it's across versions)
@@ -2265,6 +2319,13 @@ model TaskSchedule {
   runs TaskRun[]
 
   @@unique([projectId, deduplicationKey])
+}
+
+enum ScheduleType {
+  /// defined on your task using the `cron` property
+  DECLARATIVE
+  /// explicit calls to the SDK are used to create, or using the dashboard
+  IMPERATIVE
 }
 
 enum ScheduleGeneratorType {
@@ -2368,6 +2429,9 @@ model ProjectAlert {
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunAttemptId String?
 
+  taskRun   TaskRun? @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRunId String?
+
   workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   workerDeploymentId String?
 
@@ -2376,6 +2440,8 @@ model ProjectAlert {
 }
 
 enum ProjectAlertType {
+  TASK_RUN
+  /// deprecated, we don't send new alerts for this type
   TASK_RUN_ATTEMPT
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS

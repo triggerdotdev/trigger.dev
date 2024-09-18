@@ -1,6 +1,7 @@
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
+import { eventRepository } from "../eventRepository.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
   public async call(runId: string) {
@@ -38,16 +39,35 @@ export class ExpireEnqueuedRunService extends BaseService {
       run,
     });
 
-    await this._prisma.taskRun.update({
-      where: {
-        id: run.id,
-      },
-      data: {
-        status: "EXPIRED",
-        expiredAt: new Date(),
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      id: run.id,
+      status: "EXPIRED",
+      expiredAt: new Date(),
+      completedAt: new Date(),
+      attemptStatus: "FAILED",
+      error: {
+        type: "STRING_ERROR",
+        raw: `Run expired because the TTL (${run.ttl}) was reached`,
       },
     });
 
-    await marqs?.acknowledgeMessage(run.id);
+    await eventRepository.completeEvent(run.spanId, {
+      endTime: new Date(),
+      attributes: {
+        isError: true,
+      },
+      events: [
+        {
+          name: "exception",
+          time: new Date(),
+          properties: {
+            exception: {
+              message: `Run expired because the TTL (${run.ttl}) was reached`,
+            },
+          },
+        },
+      ],
+    });
   }
 }

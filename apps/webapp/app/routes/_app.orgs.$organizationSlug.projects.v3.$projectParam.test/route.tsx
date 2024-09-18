@@ -85,8 +85,8 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
-          <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-            <ResizablePanel order={1} minSize={20} defaultSize={30}>
+          <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+            <ResizablePanel id="test-selector" min="225px" default="30%">
               <div className="grid h-full max-h-full grid-rows-[5.625rem_1fr] overflow-hidden">
                 <div className="mx-3 flex flex-col gap-1 border-b border-grid-dimmed">
                   <div className="flex h-10 items-center">
@@ -117,8 +117,8 @@ export default function Page() {
                     <Spinner />
                   </div>
                 ) : hasSelectedEnvironment ? (
-                  <div className="grid grid-rows-[2.5rem_1fr]  overflow-hidden">
-                    <div className="mx-3 flex items-center border-b border-grid-dimmed">
+                  <div className="grid grid-rows-[2rem_1fr] overflow-hidden">
+                    <div className="mx-3 flex items-end">
                       <Header2>Select a task</Header2>
                     </div>
                     {!rest.tasks?.length ? (
@@ -135,8 +135,8 @@ export default function Page() {
                 )}
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel order={2} minSize={30} defaultSize={70}>
+            <ResizableHandle id="test-handle" />
+            <ResizablePanel id="test-main" min="225px">
               <Outlet key={taskParam} />
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -157,7 +157,7 @@ function TaskSelector({
 
   return (
     <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className="px-2 pb-2">
+      <div className="p-2">
         <Input
           placeholder="Search tasks"
           variant="medium"

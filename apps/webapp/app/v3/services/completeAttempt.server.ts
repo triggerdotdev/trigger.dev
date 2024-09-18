@@ -3,12 +3,13 @@ import {
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
+  TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
   sanitizeError,
 } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -16,13 +17,13 @@ import { createExceptionPropertiesFromError, eventRepository } from "../eventRep
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { ResumeTaskRunDependenciesService } from "./resumeTaskRunDependencies.server";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
-import { PerformTaskAttemptAlertsService } from "./alerts/performTaskAttemptAlerts.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { env } from "~/env.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -37,11 +38,13 @@ export class CompleteAttemptService extends BaseService {
     execution,
     env,
     checkpoint,
+    supportsRetryCheckpoints,
   }: {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -50,13 +53,33 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
-      // Update the task run to be failed
-      await this._prisma.taskRun.update({
+      const run = await this._prisma.taskRun.findFirst({
         where: {
           friendlyId: execution.run.id,
         },
-        data: {
-          status: "SYSTEM_FAILURE",
+        select: {
+          id: true,
+        },
+      });
+
+      if (!run) {
+        logger.error("[CompleteAttemptService] Task run not found", {
+          friendlyId: execution.run.id,
+        });
+
+        return "COMPLETED";
+      }
+
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        id: run.id,
+        status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
+        attemptStatus: "FAILED",
+        error: {
+          type: "INTERNAL_ERROR",
+          code: "TASK_EXECUTION_FAILED",
+          message: "Tried to complete attempt but it doesn't exist",
         },
       });
 
@@ -80,13 +103,14 @@ export class CompleteAttemptService extends BaseService {
     if (completion.ok) {
       return await this.#completeAttemptSuccessfully(completion, taskRunAttempt, env);
     } else {
-      return await this.#completeAttemptFailed(
+      return await this.#completeAttemptFailed({
         completion,
         execution,
         taskRunAttempt,
         env,
-        checkpoint
-      );
+        checkpoint,
+        supportsRetryCheckpoints,
+      });
     }
   }
 
@@ -95,27 +119,25 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    await this._prisma.taskRunAttempt.update({
-      where: { id: taskRunAttempt.id },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-        output: completion.output,
-        outputType: completion.outputType,
-        usageDurationMs: completion.usage?.durationMs,
-        taskRun: {
-          update: {
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
-            },
-          },
+    await $transaction(this._prisma, async (tx) => {
+      await tx.taskRunAttempt.update({
+        where: { id: taskRunAttempt.id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          output: completion.output,
+          outputType: completion.outputType,
+          usageDurationMs: completion.usage?.durationMs,
         },
-      },
+      });
+
+      const finalizeService = new FinalizeTaskRunService(tx);
+      await finalizeService.call({
+        id: taskRunAttempt.taskRunId,
+        status: "COMPLETED_SUCCESSFULLY",
+        completedAt: new Date(),
+      });
     });
-
-    logger.debug("Completed attempt successfully, ACKing message");
-
-    await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
@@ -132,20 +154,24 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    if (!env || env.type !== "DEVELOPMENT") {
-      await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
-    }
-
     return "COMPLETED";
   }
 
-  async #completeAttemptFailed(
-    completion: TaskRunFailedExecutionResult,
-    execution: TaskRunExecution,
-    taskRunAttempt: NonNullable<FoundAttempt>,
-    env?: AuthenticatedEnvironment,
-    checkpoint?: CheckpointData
-  ): Promise<"COMPLETED" | "RETRIED"> {
+  async #completeAttemptFailed({
+    completion,
+    execution,
+    taskRunAttempt,
+    env,
+    checkpoint,
+    supportsRetryCheckpoints,
+  }: {
+    completion: TaskRunFailedExecutionResult;
+    execution: TaskRunExecution;
+    taskRunAttempt: NonNullable<FoundAttempt>;
+    env?: AuthenticatedEnvironment;
+    checkpoint?: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
+  }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
       completion.error.code === "TASK_RUN_CANCELLED"
@@ -180,10 +206,6 @@ export class CompleteAttemptService extends BaseService {
     });
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
-
-    if (environment.type !== "DEVELOPMENT") {
-      await PerformTaskAttemptAlertsService.enqueue(taskRunAttempt.id, this._prisma);
-    }
 
     if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
       const retryAt = new Date(completion.retry.timestamp);
@@ -230,12 +252,13 @@ export class CompleteAttemptService extends BaseService {
       }
 
       if (!checkpoint) {
-        await this.#retryAttempt(
-          taskRunAttempt.taskRun,
-          completion.retry.timestamp,
-          undefined,
-          taskRunAttempt.backgroundWorker.supportsLazyAttempts
-        );
+        await this.#retryAttempt({
+          run: taskRunAttempt.taskRun,
+          retry: completion.retry,
+          supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+          supportsRetryCheckpoints,
+        });
+
         return "RETRIED";
       }
 
@@ -250,37 +273,29 @@ export class CompleteAttemptService extends BaseService {
         },
       });
 
-      if (!checkpointCreateResult) {
+      if (!checkpointCreateResult.success) {
         logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
 
-        // Update the task run to be failed
-        await this._prisma.taskRun.update({
-          where: {
-            friendlyId: execution.run.id,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
         });
-
-        await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
 
         return "COMPLETED";
       }
 
-      await this.#retryAttempt(
-        taskRunAttempt.taskRun,
-        completion.retry.timestamp,
-        checkpointCreateResult.event.id
-      );
+      await this.#retryAttempt({
+        run: taskRunAttempt.taskRun,
+        retry: completion.retry,
+        checkpointEventId: checkpointCreateResult.event.id,
+        supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+        supportsRetryCheckpoints,
+      });
 
       return "RETRIED";
     } else {
-      // No more retries, we need to fail the task run
-      logger.debug("Completed attempt, ACKing message", taskRunAttempt);
-
-      await marqs?.acknowledgeMessage(taskRunAttempt.taskRunId);
-
       // Now we need to "complete" the task run event/span
       await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
         endTime: new Date(),
@@ -302,6 +317,13 @@ export class CompleteAttemptService extends BaseService {
         sanitizedError.type === "INTERNAL_ERROR" &&
         sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
       ) {
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "SYSTEM_FAILURE",
+          completedAt: new Date(),
+        });
+
         // We need to fail all incomplete spans
         const inProgressEvents = await eventRepository.queryIncompleteEvents({
           attemptId: execution.attempt.id,
@@ -325,58 +347,77 @@ export class CompleteAttemptService extends BaseService {
             });
           })
         );
-
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "SYSTEM_FAILURE",
-          },
-        });
       } else {
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            status: "COMPLETED_WITH_ERRORS",
-          },
+        const finalizeService = new FinalizeTaskRunService();
+        await finalizeService.call({
+          id: taskRunAttempt.taskRunId,
+          status: "COMPLETED_WITH_ERRORS",
+          completedAt: new Date(),
         });
-      }
-
-      if (!env || env.type !== "DEVELOPMENT") {
-        await ResumeTaskRunDependenciesService.enqueue(taskRunAttempt.id, this._prisma);
       }
 
       return "COMPLETED";
     }
   }
 
-  async #retryAttempt(
-    run: TaskRun,
-    retryTimestamp: number,
-    checkpointEventId?: string,
-    supportsLazyAttempts?: boolean
-  ) {
-    if (checkpointEventId || !supportsLazyAttempts) {
-      // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
+  async #retryAttempt({
+    run,
+    retry,
+    checkpointEventId,
+    supportsLazyAttempts,
+    supportsRetryCheckpoints,
+  }: {
+    run: TaskRun;
+    retry: TaskRunExecutionRetry;
+    checkpointEventId?: string;
+    supportsLazyAttempts: boolean;
+    supportsRetryCheckpoints?: boolean;
+  }) {
+    const retryViaQueue = () => {
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      return await marqs?.replaceMessage(
+      return marqs?.replaceMessage(
         run.id,
         {
           type: "EXECUTE",
           taskIdentifier: run.taskIdentifier,
-          checkpointEventId: checkpointEventId,
+          checkpointEventId: supportsRetryCheckpoints ? checkpointEventId : undefined,
+          retryCheckpointsDisabled: !supportsRetryCheckpoints,
         },
-        retryTimestamp
+        retry.timestamp
       );
-    } else {
-      // There's no checkpoint and the worker supports lazy attempts
-      // This means the worker is still running and waiting for a retry message
-      // It supports lazy attempts so we can bypass the queue and send the message directly to it
-      RetryAttemptService.enqueue(run.id, this._prisma, new Date(retryTimestamp));
+    };
+
+    const retryDirectly = () => {
+      return RetryAttemptService.enqueue(run.id, this._prisma, new Date(retry.timestamp));
+    };
+
+    // There's a checkpoint, so we need to go through the queue
+    if (checkpointEventId) {
+      if (!supportsRetryCheckpoints) {
+        logger.error("Worker does not support retry checkpoints, but a checkpoint was created", {
+          runId: run.id,
+          checkpointEventId,
+        });
+      }
+
+      await retryViaQueue();
+      return;
     }
+
+    // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
+    if (!supportsLazyAttempts) {
+      await retryViaQueue();
+      return;
+    }
+
+    // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
+    if (!supportsRetryCheckpoints && retry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS) {
+      await retryViaQueue();
+      return;
+    }
+
+    // The worker is still running and waiting for a retry message
+    await retryDirectly();
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {

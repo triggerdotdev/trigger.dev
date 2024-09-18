@@ -17,13 +17,17 @@ import {
   isRequestOptions,
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
-import { Prettify, RunHandle, apiClientMissingError } from "./shared";
-import { tracer } from "./tracer";
+import { AnyTask, Prettify, RunHandle, Task, apiClientMissingError } from "./shared.js";
+import { tracer } from "./tracer.js";
 
-export type RetrieveRunResult<TOutput> = Prettify<
-  TOutput extends RunHandle<infer THandleOutput>
-    ? Omit<RetrieveRunResponse, "output"> & { output?: THandleOutput }
-    : Omit<RetrieveRunResponse, "output"> & { output?: TOutput }
+export type RetrieveRunResult<TRunId> = Prettify<
+  TRunId extends RunHandle<infer TOutput>
+    ? Omit<RetrieveRunResponse, "output"> & { output?: TOutput }
+    : TRunId extends Task<string, any, infer TTaskOutput>
+    ? Omit<RetrieveRunResponse, "output"> & { output?: TTaskOutput }
+    : TRunId extends string
+    ? RetrieveRunResponse
+    : never
 >;
 
 export const runs = {
@@ -139,8 +143,17 @@ function listRunsRequestOptions(
   );
 }
 
-function retrieveRun<TRunId extends RunHandle<any> | string>(
-  runId: TRunId,
+// Extract out the expected type of the id, can be either a string or a RunHandle
+type RunId<TRunId> = TRunId extends RunHandle<any>
+  ? TRunId
+  : TRunId extends AnyTask
+  ? string
+  : TRunId extends string
+  ? TRunId
+  : never;
+
+function retrieveRun<TRunId extends RunHandle<any> | AnyTask | string>(
+  runId: RunId<TRunId>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveRunResult<TRunId>> {
   const apiClient = apiClientManager.client;
@@ -286,15 +299,15 @@ export type PollOptions = { pollIntervalMs?: number };
 
 const MAX_POLL_ATTEMPTS = 500;
 
-async function poll<TRunHandle extends RunHandle<any> | string>(
-  handle: TRunHandle,
+async function poll<TRunId extends RunHandle<any> | AnyTask | string>(
+  runId: RunId<TRunId>,
   options?: { pollIntervalMs?: number },
   requestOptions?: ApiRequestOptions
 ) {
   let attempts = 0;
 
   while (attempts++ < MAX_POLL_ATTEMPTS) {
-    const run = await runs.retrieve(handle, requestOptions);
+    const run = await runs.retrieve(runId, requestOptions);
 
     if (run.isCompleted) {
       return run;
@@ -303,5 +316,9 @@ async function poll<TRunHandle extends RunHandle<any> | string>(
     await new Promise((resolve) => setTimeout(resolve, options?.pollIntervalMs ?? 1000));
   }
 
-  throw new Error(`Run ${handle} did not complete after ${MAX_POLL_ATTEMPTS} attempts`);
+  throw new Error(
+    `Run ${
+      typeof runId === "string" ? runId : runId.id
+    } did not complete after ${MAX_POLL_ATTEMPTS} attempts`
+  );
 }

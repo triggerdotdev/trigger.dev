@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { SerializableJsonSchema } from "./json";
-import { RunStatusSchema } from "./runs";
+import { SerializableJsonSchema } from "./json.js";
+import { RunStatusSchema } from "./runs.js";
 
 export const StatusUpdateStateSchema = z.union([
   z.literal("loading"),

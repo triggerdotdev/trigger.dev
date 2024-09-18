@@ -1,6 +1,6 @@
 import { DisplayProperty, StatusUpdate } from "@trigger.dev/core";
-import { IntegrationTaskKey } from "./integrations";
-import { IO } from "./io";
+import { IntegrationTaskKey } from "./integrations.js";
+import { IO } from "./io.js";
 
 export class TriggerStatus {
   constructor(

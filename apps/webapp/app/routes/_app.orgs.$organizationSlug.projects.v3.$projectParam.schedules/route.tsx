@@ -11,6 +11,11 @@ import { MainCenteredContainer, PageBody, PageContainer } from "~/components/lay
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
+  ScheduleTypeCombo,
+  ScheduleTypeIcon,
+  scheduleTypeName,
+} from "~/components/runs/v3/ScheduleType";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -23,7 +28,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Property, PropertyTable } from "~/components/primitives/PropertyTable";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -46,7 +51,7 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
-  ScheduleListItem,
+  type ScheduleListItem,
   ScheduleListPresenter,
 } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -117,15 +122,14 @@ export default function Page() {
         <PageTitle title="Schedules" />
         <PageAccessories>
           <AdminDebugTooltip>
-            <PropertyTable>
+            <Property.Table>
               {schedules.map((schedule) => (
-                <Property label={schedule.friendlyId} key={schedule.id}>
-                  <div className="flex items-center gap-2">
-                    <Paragraph variant="extra-small/bright/mono">{schedule.id}</Paragraph>
-                  </div>
-                </Property>
+                <Property.Item key={schedule.id}>
+                  <Property.Label>{schedule.friendlyId}</Property.Label>
+                  <Property.Value>{schedule.id}</Property.Value>
+                </Property.Item>
               ))}
-            </PropertyTable>
+            </Property.Table>
           </AdminDebugTooltip>
 
           {limits.used >= limits.limit ? (
@@ -173,79 +177,81 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup direction="horizontal" className="h-full max-h-full">
-          <ResizablePanel order={1} minSize={20} defaultSize={60}>
-            {possibleTasks.length === 0 ? (
-              <CreateScheduledTaskInstructions />
-            ) : schedules.length === 0 && !hasFilters ? (
-              <AttachYourFirstScheduleInstructions />
-            ) : (
-              <div className="p-3">
-                <div className="mb-2 flex items-center justify-between gap-x-2">
-                  <ScheduleFilters
-                    possibleEnvironments={possibleEnvironments}
-                    possibleTasks={possibleTasks}
-                  />
-                  <div className="flex items-center justify-end gap-x-2">
-                    <PaginationControls
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      showPageNumbers={false}
+        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+          <ResizablePanel id="schedules-main" min={"100px"}>
+            <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              {possibleTasks.length === 0 ? (
+                <CreateScheduledTaskInstructions />
+              ) : schedules.length === 0 && !hasFilters ? (
+                <AttachYourFirstScheduleInstructions />
+              ) : (
+                <div className="p-3">
+                  <div className="mb-2 flex items-center justify-between gap-x-2">
+                    <ScheduleFilters
+                      possibleEnvironments={possibleEnvironments}
+                      possibleTasks={possibleTasks}
                     />
+                    <div className="flex items-center justify-end gap-x-2">
+                      <PaginationControls
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        showPageNumbers={false}
+                      />
+                    </div>
+                  </div>
+
+                  <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                  <div className="mt-3 flex w-full items-start justify-between">
+                    {requiresUpgrade ? (
+                      <InfoPanel
+                        variant="upgrade"
+                        icon={LockOpenIcon}
+                        iconClassName="text-indigo-500"
+                        title="Unlock more schedules"
+                        to={v3BillingPath(organization)}
+                        buttonLabel="Upgrade"
+                      >
+                        <Paragraph variant="small">
+                          You've used all {limits.limit} of your available schedules. Upgrade your
+                          plan to enable more.
+                        </Paragraph>
+                      </InfoPanel>
+                    ) : (
+                      <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
+                        <div className="flex items-center justify-between gap-6">
+                          <Header3>
+                            You've used {limits.used}/{limits.limit} of your schedules.
+                          </Header3>
+
+                          {canUpgrade ? (
+                            <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                              Upgrade
+                            </LinkButton>
+                          ) : (
+                            <Feedback
+                              button={<Button variant="secondary/small">Request more</Button>}
+                              defaultValue="help"
+                            />
+                          )}
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
+                          <div
+                            className="h-full bg-grid-bright"
+                            style={{ width: `${(limits.used / limits.limit) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                   </div>
                 </div>
-
-                <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                <div className="mt-3 flex w-full items-start justify-between">
-                  {requiresUpgrade ? (
-                    <InfoPanel
-                      variant="upgrade"
-                      icon={LockOpenIcon}
-                      iconClassName="text-indigo-500"
-                      title="Unlock more schedules"
-                      to={v3BillingPath(organization)}
-                      buttonLabel="Upgrade"
-                    >
-                      <Paragraph variant="small">
-                        You've used all {limits.limit} of your available schedules. Upgrade your
-                        plan to enable more.
-                      </Paragraph>
-                    </InfoPanel>
-                  ) : (
-                    <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
-                      <div className="flex items-center justify-between gap-6">
-                        <Header3>
-                          You've used {limits.used}/{limits.limit} of your schedules.
-                        </Header3>
-
-                        {canUpgrade ? (
-                          <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                            Upgrade
-                          </LinkButton>
-                        ) : (
-                          <Feedback
-                            button={<Button variant="secondary/small">Request more</Button>}
-                            defaultValue="help"
-                          />
-                        )}
-                      </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
-                        <div
-                          className="h-full bg-grid-bright"
-                          style={{ width: `${(limits.used / limits.limit) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </ResizablePanel>
           {(isShowingNewPane || isShowingSchedule) && (
             <>
-              <ResizableHandle withHandle />
-              <ResizablePanel order={2} minSize={20} defaultSize={40}>
+              <ResizableHandle id="schedules-handle" />
+              <ResizablePanel id="schedules-inspector" min="100px" default="500px">
                 <Outlet />
               </ResizablePanel>
             </>
@@ -334,6 +340,51 @@ function SchedulesTable({
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
           <TableHeaderCell>Task ID</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex max-w-xs flex-col gap-4 p-1">
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"DECLARATIVE"} className="text-sky-500" />
+                      <span className="font-medium">{scheduleTypeName("DECLARATIVE")}</span>
+                    </div>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    Declarative schedules are defined in a{" "}
+                    <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
+                    <InlineCode variant="extra-small">cron</InlineCode>
+                    property. They sync when you update your{" "}
+                    <InlineCode variant="extra-small">schedules.task</InlineCode> definition and run
+                    the CLI dev or deploy commands.
+                  </Paragraph>
+                </div>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                    <div className={"flex items-center space-x-1"}>
+                      <ScheduleTypeIcon type={"IMPERATIVE"} className="text-teal-500" />
+                      <span className="font-medium">{scheduleTypeName("IMPERATIVE")}</span>
+                    </div>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    Imperative schedules are defined here in the dashboard or by using the SDK
+                    functions to create or delete them. They can be created, updated, disabled, and
+                    deleted from the dashboard or using the SDK.
+                  </Paragraph>
+                </div>
+                <div>
+                  <LinkButton
+                    variant="tertiary/medium"
+                    to="https://trigger.dev/docs/v3/tasks-scheduled"
+                  >
+                    View the docs
+                  </LinkButton>
+                </div>
+              </div>
+            }
+          >
+            Type
+          </TableHeaderCell>
           <TableHeaderCell>External ID</TableHeaderCell>
           <TableHeaderCell>CRON</TableHeaderCell>
           <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
@@ -362,7 +413,14 @@ function SchedulesTable({
                   {schedule.taskIdentifier}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.externalId ? schedule.externalId : "–"}
+                  <ScheduleTypeCombo type={schedule.type} />
+                </TableCell>
+                <TableCell to={path} className={cellClass}>
+                  {schedule.type === "IMPERATIVE"
+                    ? schedule.externalId
+                      ? schedule.externalId
+                      : "–"
+                    : "N/A"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   {schedule.cron}
@@ -384,13 +442,21 @@ function SchedulesTable({
                   )}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
-                  {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
+                  {schedule.type === "IMPERATIVE"
+                    ? schedule.userProvidedDeduplicationKey
+                      ? schedule.deduplicationKey
+                      : "–"
+                    : "N/A"}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>
                   <EnvironmentLabels environments={schedule.environments} size="small" />
                 </TableCell>
                 <TableCell to={path}>
-                  <EnabledStatus enabled={schedule.active} />
+                  {schedule.type === "IMPERATIVE" ? (
+                    <EnabledStatus enabled={schedule.active} />
+                  ) : (
+                    "N/A"
+                  )}
                 </TableCell>
               </TableRow>
             );

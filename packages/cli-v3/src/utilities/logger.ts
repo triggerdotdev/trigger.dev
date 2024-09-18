@@ -5,7 +5,8 @@ import chalk from "chalk";
 import CLITable from "cli-table3";
 import { formatMessagesSync } from "esbuild";
 import type { Message } from "esbuild";
-import { getEnvironmentVariableFactory } from "./getEnvironmentVariableFactory.js";
+import { env } from "std-env";
+
 export const LOGGER_LEVELS = {
   none: -1,
   error: 0,
@@ -26,19 +27,15 @@ const LOGGER_LEVEL_FORMAT_TYPE_MAP = {
   debug: undefined,
 } as const;
 
-const getLogLevelFromEnv = getEnvironmentVariableFactory({
-  variableName: "TRIGGER_LOG_LEVEL",
-});
-
 function getLoggerLevel(): LoggerLevel {
-  const fromEnv = getLogLevelFromEnv()?.toLowerCase();
+  const fromEnv = env.TRIGGER_LOG_LEVEL?.toLowerCase();
   if (fromEnv !== undefined) {
     if (fromEnv in LOGGER_LEVELS) return fromEnv as LoggerLevel;
     const expected = Object.keys(LOGGER_LEVELS)
       .map((level) => `"${level}"`)
       .join(" | ");
     console.warn(
-      `Unrecognised WRANGLER_LOG value ${JSON.stringify(
+      `Unrecognised TRIGGER_LOG_LEVEL value ${JSON.stringify(
         fromEnv
       )}, expected ${expected}, defaulting to "log"...`
     );

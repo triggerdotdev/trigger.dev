@@ -56,6 +56,7 @@ async function populate() {
 
         return {
           status: "CANCELED",
+          completedAt: new Date(),
           number: index + 1,
           friendlyId,
           runtimeEnvironmentId: project.environments[randomIndex(project.environments)].id,

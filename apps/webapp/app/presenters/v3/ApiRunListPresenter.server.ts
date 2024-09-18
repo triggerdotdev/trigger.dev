@@ -8,6 +8,27 @@ import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
 import { RunListOptions, RunListPresenter } from "./RunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
 
+const CoercedDate = z.preprocess((arg) => {
+  if (arg === undefined || arg === null) {
+    return;
+  }
+
+  if (typeof arg === "number") {
+    return new Date(arg);
+  }
+
+  if (typeof arg === "string") {
+    const num = Number(arg);
+    if (!isNaN(num)) {
+      return new Date(num);
+    }
+
+    return new Date(arg);
+  }
+
+  return arg;
+}, z.date().optional());
+
 const SearchParamsSchema = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
   "page[after]": z.string().optional(),
@@ -64,6 +85,12 @@ const SearchParamsSchema = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  "filter[tag]": z
+    .string()
+    .optional()
+    .transform((value) => {
+      return value ? value.split(",") : undefined;
+    }),
   "filter[bulkAction]": z.string().optional(),
   "filter[schedule]": z.string().optional(),
   "filter[isTest]": z
@@ -89,8 +116,8 @@ const SearchParamsSchema = z.object({
 
       return z.NEVER;
     }),
-  "filter[createdAt][from]": z.coerce.date().optional(),
-  "filter[createdAt][to]": z.coerce.date().optional(),
+  "filter[createdAt][from]": CoercedDate,
+  "filter[createdAt][to]": CoercedDate,
   "filter[createdAt][period]": z.string().optional(),
 });
 
@@ -168,6 +195,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.versions = $searchParams.data["filter[version]"];
       }
 
+      if ($searchParams.data["filter[tag]"]) {
+        options.tags = $searchParams.data["filter[tag]"];
+      }
+
       if ($searchParams.data["filter[bulkAction]"]) {
         options.bulkId = $searchParams.data["filter[bulkAction]"];
       }
@@ -218,6 +249,10 @@ export class ApiRunListPresenter extends BasePresenter {
             name: run.environment.slug,
             user: run.environment.userName,
           },
+          tags: run.tags,
+          costInCents: run.costInCents,
+          baseCostInCents: run.baseCostInCents,
+          durationMs: run.usageDurationMs,
           ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
             ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
           ),

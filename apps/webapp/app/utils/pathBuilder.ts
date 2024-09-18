@@ -323,6 +323,10 @@ export function v3EnvironmentVariablesPath(organization: OrgForPath, project: Pr
   return `${v3ProjectPath(organization, project)}/environment-variables`;
 }
 
+export function v3ConcurrencyPath(organization: OrgForPath, project: ProjectForPath) {
+  return `${v3ProjectPath(organization, project)}/concurrency`;
+}
+
 export function v3NewEnvironmentVariablesPath(organization: OrgForPath, project: ProjectForPath) {
   return `${v3EnvironmentVariablesPath(organization, project)}/new`;
 }
@@ -687,6 +691,10 @@ export function docsRoot() {
 
 export function docsPath(path: string) {
   return `${docsRoot()}/${path}`;
+}
+
+export function docsTroubleshootingPath(path: string) {
+  return `${docsRoot()}/v3/troubleshooting`;
 }
 
 export function docsIntegrationPath(api: string) {

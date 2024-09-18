@@ -1,0 +1,236 @@
+---
+title: "Triggering tasks from Supabase database webhooks"
+sidebarTitle: "Database webhooks"
+description: "This guide will show you how to trigger a task when a row is added to a table using Supabase database webhooks."
+---
+
+import Prerequisites from "/snippets/framework-prerequisites.mdx";
+import SupabasePrerequisites from "/snippets/supabase-prerequisites.mdx";
+import CliInitStep from "/snippets/step-cli-init.mdx";
+import CliDevStep from "/snippets/step-cli-dev.mdx";
+import CliRunTestStep from "/snippets/step-run-test.mdx";
+import CliViewRunStep from "/snippets/step-view-run.mdx";
+import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
+import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
+import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
+import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
+import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
+
+## Overview
+
+Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table e.g. when a row is inserted, updated, or deleted, or when a specific column is updated.
+
+This guide shows you how to set up a Supabase database webhook and deploy a simple edge function that triggers a "Hello world" task every time a new row is inserted into your table.
+
+## Prerequisites
+
+- Ensure you have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
+- Ensure TypeScript is installed
+- [Create a Trigger.dev account](https://cloud.trigger.dev)
+- [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+
+## Initial setup
+
+<Steps>
+  <SupabasePrerequisites />
+  <CliInitStep />
+  <CliDevStep />
+  <CliRunTestStep />
+  <CliViewRunStep />
+</Steps>
+
+## Create and deploy a new Supabase edge function and create a new database webhook
+
+<Steps>
+
+<Step title="Add your Trigger.dev prod secret key in Supabase">
+
+First, go to your Trigger.dev [project dashboard](https://cloud.trigger.dev) and copy the `prod` secret key from the API keys page.
+
+![How to find your prod secret key](/images/api-key-prod.png)
+
+Then, in [Supabase](https://supabase.com/dashboard/projects), select the project you want to use, navigate to 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, click 'Edge functions' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> in the configurations menu, and then click the 'Add new secret' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> button.
+
+Add `TRIGGER_SECRET_KEY` <Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> with the pasted value of your Trigger.dev `prod` secret key.
+
+![Add secret key in Supabase](/images/supabase-keys-1.png)
+
+</Step>
+
+<Step title="Create a new edge function using the Supabase CLI">
+
+Now create a new edge function using the Supabase CLI. We will call it `database-webhook`.
+
+```bash
+supabase functions new database-webhook
+```
+
+</Step>
+
+<Step title="Update the edge function code">
+
+Replace the `database-webhook` placeholder code with the following code:
+
+```ts functions/database-webhook/index.ts
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
+import { tasks } from "npm:@trigger.dev/sdk@3.0.0/v3";
+// Import your task type from your /trigger folder
+import type { helloWorldTask } from "../../../src/trigger/example.ts";
+//     👆 **type-only** import
+
+console.log("Hello from 'database-webhook' function!");
+
+Deno.serve(async (req) => {
+  // Listens for incoming JSON requests
+  const payload = await req.json();
+  // Triggers the "hello-world" task with the payload
+  await tasks.trigger<typeof helloWorldTask>(
+    // Your task id
+    "hello-world",
+    // Your task payload. This will be the data you receive from the database webhook
+    payload
+  );
+  return new Response("ok");
+});
+```
+
+This code sets up a Deno server that listens for incoming JSON requests, triggers a "hello-world" task, logs the received payload, and responds with "ok". This setup is typical for a webhook endpoint that processes incoming data and triggers some action (in this case, the "hello-world" task) based on that data.
+
+<Note>You can only import the `type` from the task.</Note>
+<Note>
+  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run,
+  especially if you are using a different runtime like Deno. Also do not add "`npm:`" to imports
+  inside your task files, for the same reason.
+</Note>
+
+</Step>
+
+<Step title="Deploy your edge function using the Supabase CLI">
+
+Now deploy your edge function with the following command:
+
+```bash
+supabase functions deploy database-webhook
+```
+
+Follow the CLI instructions, selecting the same project you added your `prod` secret key to, and once complete you should see your new edge function deployment in your Supabase edge functions dashboard.
+
+There will be a link to the dashboard in your terminal output, or you can find it at this URL:
+
+`https://supabase.com/dashboard/project/<your-project-id>/functions`
+
+<Note>Replace `your-project-id` with your actual project ID.</Note>
+
+</Step>
+
+<Step title="Create a new table">
+
+Next, in your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu and create a new table. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
+
+![How to create a new table](/images/supabase-new-table-1.png)
+
+In this example we will call our table `skynet`. <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
+
+Add a new column called `name` with the type `text`. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
+
+![How to add a new column](/images/supabase-new-table-2.png)
+
+</Step>
+
+<Step title="Configure JWT settings">
+
+By default, Supabase edge functions require a JSON Web Token ([JWT](<(https://supabase.com/docs/guides/auth/jwts)>)) in the authorization header. This is to ensure that only authorized users can access your edge functions.
+
+In your Supabase project dashboard, click 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, then the 'API' tab <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and copy the `anon` `public` API key from the table <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to find your Supabase API keys](/images/supabase-api-key.png)
+
+Then, go to 'Database' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> click on 'Webhooks' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and then click 'Create a new hook' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to create a new webhook](/images/supabase-create-webhook-1.png)
+
+<Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> Call the hook `edge-function-hook`.
+
+<Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> Select the new table you have created:
+`public` `skynet`.
+
+<Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> Choose the `insert` event.
+
+![How to create a new webhook 2](/images/supabase-create-webhook-2.png)
+
+<Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> Under 'Webhook configuration', select
+'Supabase Edge functions'{" "}
+
+<Icon icon="circle-5" iconType="solid" size={20} color="A8FF53" /> Under 'Edge function', choose `POST`
+and select the edge function you have created: `database-webhook`.{" "}
+
+<Icon icon="circle-6" iconType="solid" size={20} color="A8FF53" /> Under 'HTTP Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
+
+<Icon icon="circle-7" iconType="solid" size={20} color="A8FF53" /> Click 'Create webhook'.{" "}
+
+![How to create a new webhook 3](/images/supabase-create-webhook-3.png)
+
+Your database webhook is now ready to use.
+
+</Step>
+
+</Steps>
+
+## Deploy your task and trigger it from your new `database-webhook` edge function
+
+<Steps>
+
+<Step title="Deploy your 'Hello World' task">
+
+The next step is to deploy your `hello-world` task to [Trigger.dev cloud](https://cloud.trigger.dev).
+
+To do this, run the following command in the terminal:
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest deploy
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Trigger the task from your edge function">
+
+Your `database-webhook` edge function is now set up to trigger the `hello-world` task every time a new row is inserted into your `skynet` table.
+
+To do this, go back to your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu, click on the `skynet` table <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> , and then click 'Insert', 'Insert Row' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to insert a new row 1](/images/supabase-new-table-3.png)
+
+Add a new item under `name`, with the value `Sarah Connor` (this can be any string). <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
+
+![How to insert a new row 2](/images/supabase-new-table-4.png)
+
+Go back to your edge function dashboard <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> , and under 'Logs' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> you should see a new run of your `database-webhook` edge function. <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />
+
+![How to view the logs](/images/supabase-logs.png)
+
+Then, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a successful `hello-world` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the `name` `Sarah Connor` to your `skynet` Supabase table.
+
+Inside that run you will see the payload that was sent from the database webhook, including the `name` and other table information.
+
+![How to insert a new row 2](/images/supabase-trigger-screenshot.png)
+
+**Congratulations, you have successfully triggered a task from a Supabase edge function using a database webhook!**
+
+</Step>
+
+</Steps>
+
+<UsefulNextSteps />

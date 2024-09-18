@@ -31,6 +31,7 @@ const EnvironmentSchema = z.object({
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
+  ELECTRIC_ORIGIN: z.string(),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),
   SECRET_STORE: SecretStoreOptionsSchema.default("DATABASE"),
@@ -114,6 +115,7 @@ const EnvironmentSchema = z.object({
   DEPOT_TOKEN: z.string().optional(),
   DEPOT_PROJECT_ID: z.string().optional(),
   DEPOT_ORG_ID: z.string().optional(),
+  DEPOT_REGION: z.string().default("us-east-1"),
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
@@ -175,6 +177,11 @@ const EnvironmentSchema = z.object({
 
   LOOPS_API_KEY: z.string().optional(),
   MARQS_DISABLE_REBALANCING: z.coerce.boolean().default(false),
+  MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .default(60 * 1000 * 15),
+  PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
   V2_MARQS_ENABLED: z.string().default("0"),

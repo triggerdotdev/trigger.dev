@@ -120,12 +120,6 @@ export default function Job() {
             </PageInfoGroup>
           </PageInfoRow>
 
-          {job.noRunsHelp && (
-            <Callout variant="info" to={job.noRunsHelp.link} className="mt-2">
-              {job.noRunsHelp.text}
-            </Callout>
-          )}
-
           <PageTabs
             layoutId="jobs"
             tabs={[

@@ -23,17 +23,16 @@
     {
       "type": "node-terminal",
       "request": "launch",
-      "name": "Debug v2 job catalog",
-      "command": "pnpm run byo-auth",
-      "envFile": "${workspaceFolder}/references/job-catalog/.env",
-      "cwd": "${workspaceFolder}/references/job-catalog",
+      "name": "Debug V3 init CLI",
+      "command": "pnpm exec triggerdev init",
+      "cwd": "${workspaceFolder}/references/init-shell",
       "sourceMaps": true
     },
     {
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Dev CLI",
-      "command": "pnpm exec triggerdev dev --log-level debug",
+      "command": "pnpm exec triggerdev dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },
@@ -41,7 +40,23 @@
       "type": "node-terminal",
       "request": "launch",
       "name": "Debug V3 Deploy CLI",
-      "command": "pnpm exec triggerdev deploy",
+      "command": "pnpm exec triggerdev deploy --self-hosted --load-image",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 list-profiles CLI",
+      "command": "pnpm exec triggerdev list-profiles --log-level debug",
+      "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug V3 update CLI",
+      "command": "pnpm exec triggerdev update",
       "cwd": "${workspaceFolder}/references/v3-catalog",
       "sourceMaps": true
     },
@@ -60,6 +75,22 @@
       "port": 9229,
       "restart": true,
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug CLI e2e tests",
+      "command": "MOD=otel-telemetry-loader pnpm run test:e2e",
+      "cwd": "${workspaceFolder}/packages/cli-v3",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "debug v3 hello-world dev",
+      "command": "pnpm exec triggerdev dev",
+      "cwd": "${workspaceFolder}/references/hello-world",
+      "sourceMaps": true
     }
   ]
 }

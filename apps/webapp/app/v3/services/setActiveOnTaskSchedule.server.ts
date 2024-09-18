@@ -28,6 +28,20 @@ export class SetActiveOnTaskScheduleService extends BaseService {
     }
 
     try {
+      const schedule = await this._prisma.taskSchedule.findFirst({
+        where: {
+          friendlyId,
+        },
+      });
+
+      if (!schedule) {
+        throw new Error("Schedule not found");
+      }
+
+      if (schedule.type === "DECLARATIVE") {
+        throw new Error("Cannot enable/disable declarative schedules");
+      }
+
       await this._prisma.taskSchedule.update({
         where: {
           friendlyId,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 export type QueueCapacity = {
   current: number;
@@ -65,7 +65,7 @@ export interface MarQSQueuePriorityStrategy {
     parentQueue: string,
     consumerId: string,
     previousRange: QueueRange
-  ): PriorityStrategyChoice;
+  ): { choice: PriorityStrategyChoice; nextRange: QueueRange };
 
   /**
    * This function is called to get the next candidate selection for the queue
@@ -91,6 +91,14 @@ export const MessagePayload = z.object({
 });
 
 export type MessagePayload = z.infer<typeof MessagePayload>;
+
+export interface MessageQueueSubscriber {
+  messageEnqueued(message: MessagePayload): Promise<void>;
+  messageDequeued(message: MessagePayload): Promise<void>;
+  messageAcked(message: MessagePayload): Promise<void>;
+  messageNacked(message: MessagePayload): Promise<void>;
+  messageReplaced(message: MessagePayload): Promise<void>;
+}
 
 export interface VisibilityTimeoutStrategy {
   heartbeat(messageId: string, timeoutInMs: number): Promise<void>;

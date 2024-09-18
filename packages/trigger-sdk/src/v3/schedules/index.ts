@@ -12,17 +12,61 @@ import {
   taskCatalog,
 } from "@trigger.dev/core/v3";
 import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
-import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared";
-import * as SchedulesAPI from "./api";
-import { tracer } from "../tracer";
+import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared.js";
+import * as SchedulesAPI from "./api.js";
+import { tracer } from "../tracer.js";
+
+export type ScheduleOptions<
+  TIdentifier extends string,
+  TOutput,
+  TInitOutput extends InitOutput,
+> = TaskOptions<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput> & {
+  /** You can optionally specify a CRON schedule on your task. You can also dynamically add a schedule in the dashboard or using the SDK functions.
+   *
+   * 1. Pass a CRON pattern string
+   * ```ts
+   * "0 0 * * *"
+   * ```
+   *
+   * 2. Or an object with a pattern and an optional timezone (default is "UTC")
+   * ```ts
+   * {
+   *   pattern: "0 0 * * *",
+   *   timezone: "America/Los_Angeles"
+   * }
+   * ```
+   *
+   * @link https://trigger.dev/docs/v3/tasks-scheduled
+   */
+  cron?:
+    | string
+    | {
+        pattern: string;
+        timezone?: string;
+      };
+};
 
 export function task<TIdentifier extends string, TOutput, TInitOutput extends InitOutput>(
-  params: TaskOptions<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput, TInitOutput>
+  params: ScheduleOptions<TIdentifier, TOutput, TInitOutput>
 ): Task<TIdentifier, SchedulesAPI.ScheduledTaskPayload, TOutput> {
   const task = createTask(params);
 
+  const cron = params.cron
+    ? typeof params.cron === "string"
+      ? params.cron
+      : params.cron.pattern
+    : undefined;
+  const timezone =
+    (params.cron && typeof params.cron !== "string" ? params.cron.timezone : "UTC") ?? "UTC";
+
   taskCatalog.updateTaskMetadata(task.id, {
     triggerSource: "schedule",
+    schedule: cron
+      ? {
+          cron: cron,
+          timezone,
+        }
+      : undefined,
   });
 
   return task;

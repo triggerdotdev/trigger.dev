@@ -7,10 +7,14 @@ import {
   MessagesFromSocketCatalog,
   SocketMessageHasCallback,
   ZodSocketMessageCatalogSchema,
-} from "./zodSocket";
+} from "./zodSocket.js";
 import { z } from "zod";
-import { ZodSchemaParsedError } from "./zodMessageHandler";
+import { ZodSchemaParsedError } from "./zodMessageHandler.js";
 import { inspect } from "node:util";
+import {
+  ExecutorToWorkerMessageCatalog,
+  WorkerToExecutorMessageCatalog,
+} from "./schemas/messages.js";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
@@ -92,8 +96,7 @@ class ZodIpcMessageHandler<
     if (!parsedMessage.success) {
       throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
     }
-
-    const schema = this.#schema[parsedMessage.data.type]["message"];
+    const schema = this.#schema[parsedMessage.data.type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
@@ -261,7 +264,7 @@ export class ZodIpcConnection<
     type: K,
     payload: z.input<GetSocketMessageSchema<TEmitCatalog, K>>
   ): Promise<void> {
-    const schema = this.opts.emitSchema[type]["message"];
+    const schema = this.opts.emitSchema[type]?.["message"];
 
     if (!schema) {
       throw new Error(`Unknown message type: ${type as string}`);
@@ -307,7 +310,7 @@ export class ZodIpcConnection<
 
       this.#acks.set(currentId, { resolve, reject, timeout });
 
-      const schema = this.opts.emitSchema[type]["message"];
+      const schema = this.opts.emitSchema[type]?.["message"];
 
       if (!schema) {
         clearTimeout(timeout);
@@ -333,3 +336,13 @@ export class ZodIpcConnection<
     });
   }
 }
+
+export type WorkerToExecutorProcessConnection = ZodIpcConnection<
+  typeof ExecutorToWorkerMessageCatalog,
+  typeof WorkerToExecutorMessageCatalog
+>;
+
+export type ExecutorToWorkerProcessConnection = ZodIpcConnection<
+  typeof WorkerToExecutorMessageCatalog,
+  typeof ExecutorToWorkerMessageCatalog
+>;

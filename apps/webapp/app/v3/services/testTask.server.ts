@@ -24,6 +24,7 @@ export class TestTaskService extends BaseService {
       case "SCHEDULED": {
         const payload = {
           scheduleId: "sched_1234",
+          type: "IMPERATIVE",
           timestamp: data.timestamp,
           lastTimestamp: data.lastTimestamp,
           timezone: data.timezone,

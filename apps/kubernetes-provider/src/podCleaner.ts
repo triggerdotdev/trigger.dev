@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 
 type PodCleanerOptions = {
   runtimeEnv: "local" | "kubernetes";
@@ -15,6 +15,7 @@ export class PodCleaner {
   private logger = new SimpleLogger("[PodCleaner]");
   private k8sClient: {
     core: k8s.CoreV1Api;
+    apps: k8s.AppsV1Api;
     kubeConfig: k8s.KubeConfig;
   };
 
@@ -43,6 +44,7 @@ export class PodCleaner {
 
     return {
       core: kubeConfig.makeApiClient(k8s.CoreV1Api),
+      apps: kubeConfig.makeApiClient(k8s.AppsV1Api),
       kubeConfig: kubeConfig,
     };
   }
@@ -87,6 +89,25 @@ export class PodCleaner {
   }) {
     return await this.k8sClient.core
       .deleteCollectionNamespacedPod(
+        opts.namespace,
+        undefined, // pretty
+        undefined, // continue
+        opts.dryRun ? "All" : undefined,
+        opts.fieldSelector,
+        undefined, // gracePeriodSeconds
+        opts.labelSelector
+      )
+      .catch(this.#handleK8sError.bind(this));
+  }
+
+  async #deleteDaemonSets(opts: {
+    namespace: string;
+    dryRun?: boolean;
+    fieldSelector?: string;
+    labelSelector?: string;
+  }) {
+    return await this.k8sClient.apps
+      .deleteCollectionNamespacedDaemonSet(
         opts.namespace,
         undefined, // pretty
         undefined, // continue
@@ -152,6 +173,28 @@ export class PodCleaner {
     });
   }
 
+  async #deleteCompletedPrePulls() {
+    this.logger.log("Deleting completed pre-pulls");
+
+    const start = Date.now();
+
+    const result = await this.#deleteDaemonSets({
+      namespace: this.namespace,
+      labelSelector: "app=task-prepull",
+    });
+
+    const elapsedMs = Date.now() - start;
+
+    if (!result) {
+      this.logger.log("Deleting completed pre-pulls: No delete result", { elapsedMs });
+      return;
+    }
+
+    const total = (result.response as any)?.body?.items?.length ?? 0;
+
+    this.logger.log("Deleting completed pre-pulls: Done", { total, elapsedMs });
+  }
+
   async start() {
     this.enabled = true;
     this.logger.log("Starting");
@@ -183,6 +226,22 @@ export class PodCleaner {
         }
       },
       // Use a longer interval for failed runs. This is only a backup in case the task monitor fails.
+      2 * this.intervalInSeconds * 1000
+    );
+
+    const completedPrePullInterval = setInterval(
+      async () => {
+        if (!this.enabled) {
+          clearInterval(completedPrePullInterval);
+          return;
+        }
+
+        try {
+          await this.#deleteCompletedPrePulls();
+        } catch (error) {
+          this.logger.error("Error deleting completed pre-pulls", error);
+        }
+      },
       2 * this.intervalInSeconds * 1000
     );
 

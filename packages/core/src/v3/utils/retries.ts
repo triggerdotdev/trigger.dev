@@ -1,5 +1,5 @@
-import { calculateResetAt as calculateResetAtInternal } from "../../retry";
-import { FetchRetryOptions, type RetryOptions } from "../schemas";
+import { calculateResetAt as calculateResetAtInternal } from "../../retry.js";
+import { FetchRetryOptions, type RetryOptions } from "../schemas/index.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,

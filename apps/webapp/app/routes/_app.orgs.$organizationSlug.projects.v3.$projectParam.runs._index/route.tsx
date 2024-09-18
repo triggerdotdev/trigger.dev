@@ -56,9 +56,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     tasks: url.searchParams.getAll("tasks"),
     period: url.searchParams.get("period") ?? undefined,
     bulkId: url.searchParams.get("bulkId") ?? undefined,
+    tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
   };
-  const { tasks, versions, statuses, environments, period, bulkId, from, to, cursor, direction } =
-    TaskRunListSearchFilters.parse(s);
+  const {
+    tasks,
+    versions,
+    statuses,
+    environments,
+    tags,
+    period,
+    bulkId,
+    from,
+    to,
+    cursor,
+    direction,
+  } = TaskRunListSearchFilters.parse(s);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
@@ -74,6 +86,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     versions,
     statuses,
     environments,
+    tags,
     period,
     bulkId,
     from,

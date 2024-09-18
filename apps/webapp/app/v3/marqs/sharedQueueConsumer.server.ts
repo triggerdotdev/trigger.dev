@@ -37,7 +37,7 @@ import {
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
-import { tracer } from "../tracer.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
@@ -54,6 +54,7 @@ export const SharedQueueMessageBody = z.discriminatedUnion("type", [
     type: z.literal("EXECUTE"),
     taskIdentifier: z.string(),
     checkpointEventId: z.string().optional(),
+    retryCheckpointsDisabled: z.boolean().optional(),
   }),
   WithTraceContext.extend({
     type: z.literal("RESUME"),
@@ -103,8 +104,8 @@ export class SharedQueueConsumer {
     options: SharedQueueConsumerOptions = {}
   ) {
     this._options = {
-      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 1_000, // 1k items per trace
-      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 60, // 60 seconds
+      maximumItemsPerTrace: options.maximumItemsPerTrace ?? 500,
+      traceTimeoutSeconds: options.traceTimeoutSeconds ?? 10,
       nextTickInterval: options.nextTickInterval ?? 1000, // 1 second
       interval: options.interval ?? 100, // 100ms
     };
@@ -213,6 +214,9 @@ export class SharedQueueConsumer {
         "SharedQueueConsumer.doWork()",
         {
           kind: SpanKind.CONSUMER,
+          attributes: {
+            [SEMINTATTRS_FORCE_RECORDING]: true,
+          },
         },
         ROOT_CONTEXT
       );
@@ -274,14 +278,6 @@ export class SharedQueueConsumer {
           where: {
             id: message.messageId,
           },
-          include: {
-            lockedToVersion: {
-              include: {
-                deployment: true,
-                tasks: true,
-              },
-            },
-          },
         });
 
         if (!existingTaskRun) {
@@ -299,12 +295,9 @@ export class SharedQueueConsumer {
 
         const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
 
-        const EXECUTABLE_RUN_STATUSES: {
-          fromCheckpoint: TaskRunStatus[];
-          withoutCheckpoint: TaskRunStatus[];
-        } = {
-          fromCheckpoint: ["WAITING_TO_RESUME"],
-          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"],
+        const EXECUTABLE_RUN_STATUSES = {
+          fromCheckpoint: ["WAITING_TO_RESUME"] satisfies TaskRunStatus[],
+          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"] satisfies TaskRunStatus[],
         };
 
         if (
@@ -313,18 +306,12 @@ export class SharedQueueConsumer {
           (!retryingFromCheckpoint &&
             !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
         ) {
-          logger.error("Task run has invalid status for execution", {
+          logger.error("Task run has invalid status for execution. Going to ack", {
             queueMessage: message.data,
             messageId: message.messageId,
             taskRun: existingTaskRun.id,
             status: existingTaskRun.status,
             retryingFromCheckpoint,
-          });
-
-          const service = new CrashTaskRunService();
-          await service.call(existingTaskRun.id, {
-            crashAttempts: true,
-            reason: `Invalid run status for execution: ${existingTaskRun.status}`,
           });
 
           await this.#ackAndDoMoreWork(message.messageId);
@@ -479,7 +466,10 @@ export class SharedQueueConsumer {
           ? lockedTaskRun.attempts[0].number + 1
           : 1;
 
-        const isRetry = lockedTaskRun.status === "WAITING_TO_RESUME" && nextAttemptNumber > 1;
+        const isRetry =
+          nextAttemptNumber > 1 &&
+          (lockedTaskRun.status === "WAITING_TO_RESUME" ||
+            lockedTaskRun.status === "RETRYING_AFTER_FAILURE");
 
         try {
           if (messageBody.data.checkpointEventId) {
@@ -520,11 +510,13 @@ export class SharedQueueConsumer {
             }
           }
 
-          if (isRetry) {
+          if (isRetry && !messageBody.data.retryCheckpointsDisabled) {
             socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
               version: "v1",
               runId: lockedTaskRun.id,
             });
+
+            // Retries for workers with disabled retry checkpoints will be handled just like normal attempts
           } else {
             const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
             const machine = machinePresetFromConfig(machineConfig ?? {});
@@ -536,6 +528,7 @@ export class SharedQueueConsumer {
                 image: deployment.imageReference,
                 version: deployment.version,
                 machine,
+                nextAttemptNumber,
                 // identifiers
                 id: "placeholder", // TODO: Remove this completely in a future release
                 envId: lockedTaskRun.runtimeEnvironment.id,
@@ -615,16 +608,6 @@ export class SharedQueueConsumer {
           }
 
           this.#doMoreWork();
-          return;
-        }
-
-        if (messageBody.data.completedAttemptIds.length < 1) {
-          logger.error("No attempt IDs provided", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-
-          await this.#ackAndDoMoreWork(message.messageId);
           return;
         }
 
@@ -742,20 +725,47 @@ export class SharedQueueConsumer {
         }
 
         try {
-          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY", {
-            runId: resumableAttempt.taskRunId,
-            attemptId: resumableAttempt.id,
-          });
-
-          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-          socketIo.coordinatorNamespace.emit("RESUME_AFTER_DEPENDENCY", {
-            version: "v1",
+          const resumeMessage = {
+            version: "v1" as const,
             runId: resumableAttempt.taskRunId,
             attemptId: resumableAttempt.id,
             attemptFriendlyId: resumableAttempt.friendlyId,
             completions,
             executions,
+          };
+
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", { resumeMessage, message });
+
+          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
+          const responses = await socketIo.coordinatorNamespace
+            .timeout(10_000)
+            .emitWithAck("RESUME_AFTER_DEPENDENCY_WITH_ACK", resumeMessage);
+
+          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK received", {
+            resumeMessage,
+            responses,
+            message,
           });
+
+          if (responses.length === 0) {
+            logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK no response", {
+              resumeMessage,
+              message,
+            });
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+            return;
+          }
+
+          const hasSuccess = responses.some((response) => response.success);
+          if (!hasSuccess) {
+            logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+              resumeMessage,
+              responses,
+              message,
+            });
+            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+            return;
+          }
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -765,7 +775,12 @@ export class SharedQueueConsumer {
 
           this._endSpanInNextIteration = true;
 
-          await this.#nackAndDoMoreWork(message.messageId);
+          logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK threw, nacking with delay", {
+            message,
+            error: e,
+          });
+
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
           return;
         }
 
@@ -1080,7 +1095,7 @@ class SharedQueueTasks {
 
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
-      taskRun,
+      taskRun.id,
       machinePreset
     );
 
@@ -1136,16 +1151,18 @@ class SharedQueueTasks {
       return;
     }
 
-    const run = await prisma.taskRun.findUnique({
+    const run = await prisma.taskRun.findFirst({
       where: {
         id: runId,
-        runtimeEnvironmentId: environment.id,
       },
-      include: {
-        lockedBy: true,
-        _count: {
+      select: {
+        id: true,
+        traceContext: true,
+        friendlyId: true,
+        isTest: true,
+        lockedBy: {
           select: {
-            attempts: true,
+            machineConfig: true,
           },
         },
       },
@@ -1156,9 +1173,20 @@ class SharedQueueTasks {
       return;
     }
 
+    const attemptCount = await prisma.taskRunAttempt.count({
+      where: {
+        taskRunId: run.id,
+      },
+    });
+
+    logger.debug("Getting lazy attempt payload for run", {
+      run,
+      attemptCount,
+    });
+
     const machinePreset = machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
 
-    const variables = await this.#buildEnvironmentVariables(environment, run, machinePreset);
+    const variables = await this.#buildEnvironmentVariables(environment, run.id, machinePreset);
 
     return {
       traceContext: run.traceContext as Record<string, unknown>,
@@ -1169,12 +1197,12 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
-      attemptCount: run._count.attempts,
+      attemptCount,
     } satisfies TaskRunExecutionLazyAttemptPayload;
   }
 
-  async taskHeartbeat(attemptFriendlyId: string, seconds: number = 60) {
-    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId, seconds });
+  async taskHeartbeat(attemptFriendlyId: string) {
+    logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId });
 
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: attemptFriendlyId },
@@ -1184,13 +1212,13 @@ class SharedQueueTasks {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
   }
 
-  async taskRunHeartbeat(runId: string, seconds: number = 60) {
-    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId, seconds });
+  async taskRunHeartbeat(runId: string) {
+    logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId });
 
-    await marqs?.heartbeatMessage(runId, seconds);
+    await marqs?.heartbeatMessage(runId);
   }
 
   public async taskRunFailed(completion: TaskRunFailedExecutionResult) {
@@ -1203,13 +1231,13 @@ class SharedQueueTasks {
 
   async #buildEnvironmentVariables(
     environment: RuntimeEnvironment,
-    run: TaskRun,
+    runId: string,
     machinePreset: MachinePreset
   ): Promise<Array<EnvironmentVariable>> {
     const variables = await resolveVariablesForEnvironment(environment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
-      run_id: run.id,
+      run_id: runId,
       machine_preset: machinePreset.name,
     });
 
@@ -1217,7 +1245,7 @@ class SharedQueueTasks {
       ...variables,
       ...[
         { key: "TRIGGER_JWT", value: jwt },
-        { key: "TRIGGER_RUN_ID", value: run.id },
+        { key: "TRIGGER_RUN_ID", value: runId },
         {
           key: "TRIGGER_MACHINE_PRESET",
           value: machinePreset.name,

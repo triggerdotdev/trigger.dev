@@ -12,7 +12,6 @@ coverage
 # next.js
 .next/
 out/
-build
 dist
 packages/**/dist
 
@@ -54,4 +53,8 @@ apps/**/public/build
 /playwright/.cache/
 
 .cosine
-.trigger/
+.trigger
+.tshy*
+.yarn
+*.tsbuildinfo
+/packages/cli-v3/src/package.json

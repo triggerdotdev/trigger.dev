@@ -119,7 +119,7 @@ const pricingDefinitions = {
   },
   schedules: {
     title: "Schedules",
-    content: "You can attach recurring schedules to tasks using CRON syntax.",
+    content: "You can attach recurring schedules to tasks using cron syntax.",
   },
   alerts: {
     title: "Alert destination",

@@ -65,7 +65,7 @@ export class ResumeTaskRunDependenciesService extends BaseService {
         },
       });
 
-      await ResumeBatchRunService.enqueue(batchItem.batchTaskRunId, taskAttempt.id, tx);
+      await ResumeBatchRunService.enqueue(batchItem.batchTaskRunId, tx);
     });
   }
 

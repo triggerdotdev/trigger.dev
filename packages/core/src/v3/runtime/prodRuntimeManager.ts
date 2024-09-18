@@ -1,13 +1,11 @@
-import { clock } from "../clock-api";
+import { clock } from "../clock-api.js";
 import {
   BatchTaskRunExecutionResult,
-  ProdChildToWorkerMessages,
-  ProdWorkerToChildMessages,
   TaskRunContext,
   TaskRunExecutionResult,
-} from "../schemas";
-import { ZodIpcConnection } from "../zodIpc";
-import { RuntimeManager } from "./manager";
+} from "../schemas/index.js";
+import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
+import { RuntimeManager } from "./manager.js";
 
 export type ProdRuntimeManagerOptions = {
   waitThresholdInMs?: number;
@@ -24,10 +22,7 @@ export class ProdRuntimeManager implements RuntimeManager {
   _waitForDuration: { resolve: (value: void) => void; reject: (err?: any) => void } | undefined;
 
   constructor(
-    private ipc: ZodIpcConnection<
-      typeof ProdWorkerToChildMessages,
-      typeof ProdChildToWorkerMessages
-    >,
+    private ipc: ExecutorToWorkerProcessConnection,
     private options: ProdRuntimeManagerOptions = {}
   ) {}
 

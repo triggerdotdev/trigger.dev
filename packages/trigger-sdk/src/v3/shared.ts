@@ -18,6 +18,7 @@ import {
   QueueOptions,
   RetryOptions,
   RunFnParams,
+  RunTags,
   SemanticInternalAttributes,
   StartFnParams,
   SuccessFnParams,
@@ -35,10 +36,9 @@ import {
   taskCatalog,
   taskContext,
 } from "@trigger.dev/core/v3";
-import * as packageJson from "../../package.json";
-import { tracer } from "./tracer";
-import { PollOptions, RetrieveRunResult, runs } from "./runs";
-import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys";
+import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
+import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
+import { tracer } from "./tracer.js";
 
 export type Context = TaskRunContext;
 
@@ -263,6 +263,47 @@ export type TaskRunResult<TOutput = any> =
       error: unknown;
     };
 
+export class SubtaskUnwrapError extends Error {
+  public readonly taskId: string;
+  public readonly runId: string;
+  public readonly cause?: unknown;
+
+  constructor(taskId: string, runId: string, subtaskError: unknown) {
+    if (subtaskError instanceof Error) {
+      super(`Error in ${taskId}: ${subtaskError.message}`, { cause: subtaskError });
+      this.name = "SubtaskUnwrapError";
+    } else {
+      super(`Error in ${taskId}`, { cause: subtaskError });
+      this.name = "SubtaskUnwrapError";
+    }
+
+    this.taskId = taskId;
+    this.runId = runId;
+  }
+}
+
+export class TaskRunPromise<T> extends Promise<TaskRunResult<T>> {
+  constructor(
+    executor: (
+      resolve: (value: TaskRunResult<T> | PromiseLike<TaskRunResult<T>>) => void,
+      reject: (reason?: any) => void
+    ) => void,
+    private readonly taskId: string
+  ) {
+    super(executor);
+  }
+
+  unwrap(): Promise<T> {
+    return this.then((result) => {
+      if (result.ok) {
+        return result.output;
+      } else {
+        throw new SubtaskUnwrapError(this.taskId, result.id, result.error);
+      }
+    });
+  }
+}
+
 export type BatchResult<TOutput = any> = {
   id: string;
   runs: TaskRunResult<TOutput>[];
@@ -311,7 +352,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => Promise<TaskRunResult<TOutput>>;
+  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => TaskRunPromise<TOutput>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
@@ -336,7 +377,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
 }
 
-type AnyTask = Task<string, any, any>;
+export type AnyTask = Task<string, any, any>;
 
 export type TaskPayload<TTask extends AnyTask> = TTask extends Task<string, infer TInput, any>
   ? TInput
@@ -440,6 +481,21 @@ export type TaskRunOptions = {
    * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
    */
   ttl?: string | number;
+
+  /**
+   * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
+   *
+   * You can set up to 5 tags per run, they must be less than 64 characters each.
+   *
+   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { tags: ["user:1234567", "org:9876543"] });
+   * ```
+   */
+  tags?: RunTags;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -460,352 +516,83 @@ export function createTask<
 >(
   params: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
 ): Task<TIdentifier, TInput, TOutput> {
+  const customQueue = params.queue
+    ? queue({
+        name: params.queue?.name ?? `task/${params.id}`,
+        ...params.queue,
+      })
+    : undefined;
+
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     trigger: async (payload, options) => {
-      const apiClient = apiClientManager.client;
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      if (!apiClient) {
-        throw apiClientMissingError();
-      }
-
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
-
-      const payloadPacket = await stringifyIO(payload);
-
-      const handle = await apiClient.triggerTask(
+      return await trigger_internal<TInput, TOutput>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.trigger()`
+          : `trigger()`,
         params.id,
+        payload,
         {
-          payload: payloadPacket.data,
-          options: {
-            queue: options?.queue ?? params.queue,
-            concurrencyKey: options?.concurrencyKey,
-            test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
-            idempotencyKey: await makeKey(options?.idempotencyKey),
-            delay: options?.delay,
-            ttl: options?.ttl,
-            maxAttempts: options?.maxAttempts,
-          },
-        },
-        { spanParentAsLink: true },
-        {
-          name: taskMetadata ? `${taskMetadata.exportName}.trigger()` : `trigger()`,
-          tracer,
-          icon: "trigger",
-          attributes: {
-            [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.client_id"]: taskContext.worker?.id,
-            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            ...accessoryAttributes({
-              items: [
-                {
-                  text: params.id,
-                  variant: "normal",
-                },
-              ],
-              style: "codepath",
-            }),
-          },
-          onResponseBody: (body, span) => {
-            body &&
-              typeof body === "object" &&
-              !Array.isArray(body) &&
-              "id" in body &&
-              typeof body.id === "string" &&
-              span.setAttribute("messaging.message.id", body.id);
-          },
+          queue: customQueue,
+          ...options,
         }
       );
-
-      return handle as RunHandle<TOutput>;
     },
     batchTrigger: async (items) => {
-      const apiClient = apiClientManager.client;
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      if (!apiClient) {
-        throw apiClientMissingError();
-      }
-
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
-
-      const response = await apiClient.batchTriggerTask(
+      return await batchTrigger_internal<TInput, TOutput>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.batchTrigger()`
+          : `batchTrigger()`,
         params.id,
-        {
-          items: await Promise.all(
-            items.map(async (item) => {
-              const payloadPacket = await stringifyIO(item.payload);
-
-              return {
-                payload: payloadPacket.data,
-                options: {
-                  queue: item.options?.queue ?? params.queue,
-                  concurrencyKey: item.options?.concurrencyKey,
-                  test: taskContext.ctx?.run.isTest,
-                  payloadType: payloadPacket.dataType,
-                  idempotencyKey: await makeKey(item.options?.idempotencyKey),
-                  delay: item.options?.delay,
-                  ttl: item.options?.ttl,
-                  maxAttempts: item.options?.maxAttempts,
-                },
-              };
-            })
-          ),
-        },
-        { spanParentAsLink: true },
-        {
-          name: taskMetadata ? `${taskMetadata.exportName}.batchTrigger()` : `batchTrigger()`,
-          icon: "trigger",
-          tracer,
-          attributes: {
-            [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContext.worker?.id,
-            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            ...accessoryAttributes({
-              items: [
-                {
-                  text: params.id,
-                  variant: "normal",
-                },
-              ],
-              style: "codepath",
-            }),
-          },
-        }
+        items,
+        undefined,
+        customQueue
       );
-
-      const handle = {
-        batchId: response.batchId,
-        runs: response.runs.map((id) => ({ id })),
-      };
-
-      return handle as BatchRunHandle<TOutput>;
     },
-    triggerAndWait: async (payload, options) => {
-      const ctx = taskContext.ctx;
+    triggerAndWait: (payload, options) => {
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      if (!ctx) {
-        throw new Error("triggerAndWait can only be used from inside a task.run()");
-      }
-
-      const apiClient = apiClientManager.client;
-
-      if (!apiClient) {
-        throw apiClientMissingError();
-      }
-
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
-
-      const payloadPacket = await stringifyIO(payload);
-
-      return await tracer.startActiveSpan(
-        taskMetadata ? `${taskMetadata.exportName}.triggerAndWait()` : `triggerAndWait()`,
-        async (span) => {
-          const response = await apiClient.triggerTask(params.id, {
-            payload: payloadPacket.data,
-            options: {
-              dependentAttempt: ctx.attempt.id,
-              lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-              queue: options?.queue ?? params.queue,
-              concurrencyKey: options?.concurrencyKey,
-              test: taskContext.ctx?.run.isTest,
-              payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeKey(options?.idempotencyKey),
-              delay: options?.delay,
-              ttl: options?.ttl,
-              maxAttempts: options?.maxAttempts,
-            },
-          });
-
-          span.setAttribute("messaging.message.id", response.id);
-
-          if (options?.idempotencyKey) {
-            // If an idempotency key is provided, we can check if the result is already available
-            const result = await apiClient.getRunResult(response.id);
-
-            if (result) {
-              logger.log(
-                `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
-                {
-                  runId: response.id,
-                  idempotencyKey: options.idempotencyKey,
-                }
-              );
-
-              return await handleTaskRunExecutionResult<TOutput>(result);
-            }
+      return new TaskRunPromise<TOutput>((resolve, reject) => {
+        triggerAndWait_internal<TInput, TOutput>(
+          taskMetadata && taskMetadata.exportName
+            ? `${taskMetadata.exportName}.triggerAndWait()`
+            : `triggerAndWait()`,
+          params.id,
+          payload,
+          {
+            queue: customQueue,
+            ...options,
           }
-
-          const result = await runtime.waitForTask({
-            id: response.id,
-            ctx,
+        )
+          .then((result) => {
+            resolve(result);
+          })
+          .catch((error) => {
+            reject(error);
           });
-
-          return await handleTaskRunExecutionResult<TOutput>(result);
-        },
-        {
-          kind: SpanKind.PRODUCER,
-          attributes: {
-            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.client_id"]: taskContext.worker?.id,
-            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            ...accessoryAttributes({
-              items: [
-                {
-                  text: params.id,
-                  variant: "normal",
-                },
-              ],
-              style: "codepath",
-            }),
-          },
-        }
-      );
+      }, params.id);
     },
     batchTriggerAndWait: async (items) => {
-      const ctx = taskContext.ctx;
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      if (!ctx) {
-        throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
-      }
-
-      const apiClient = apiClientManager.client;
-
-      if (!apiClient) {
-        throw apiClientMissingError();
-      }
-
-      const taskMetadata = taskCatalog.getTaskMetadata(params.id);
-
-      return await tracer.startActiveSpan(
-        taskMetadata ? `${taskMetadata.exportName}.batchTriggerAndWait()` : `batchTriggerAndWait()`,
-        async (span) => {
-          const response = await apiClient.batchTriggerTask(params.id, {
-            items: await Promise.all(
-              items.map(async (item) => {
-                const payloadPacket = await stringifyIO(item.payload);
-
-                return {
-                  payload: payloadPacket.data,
-                  options: {
-                    lockToVersion: taskContext.worker?.version,
-                    queue: item.options?.queue ?? params.queue,
-                    concurrencyKey: item.options?.concurrencyKey,
-                    test: taskContext.ctx?.run.isTest,
-                    payloadType: payloadPacket.dataType,
-                    idempotencyKey: await makeKey(item.options?.idempotencyKey),
-                    delay: item.options?.delay,
-                    ttl: item.options?.ttl,
-                    maxAttempts: item.options?.maxAttempts,
-                  },
-                };
-              })
-            ),
-            dependentAttempt: ctx.attempt.id,
-          });
-
-          span.setAttribute("messaging.message.id", response.batchId);
-
-          const getBatchResults = async (): Promise<BatchTaskRunExecutionResult> => {
-            // We need to check if the results are already available, but only if any of the items options has an idempotency key
-            const hasIdempotencyKey = items.some((item) => item.options?.idempotencyKey);
-
-            if (hasIdempotencyKey) {
-              const results = await apiClient.getBatchResults(response.batchId);
-
-              if (results) {
-                return results;
-              }
-            }
-
-            return {
-              id: response.batchId,
-              items: [],
-            };
-          };
-
-          const existingResults = await getBatchResults();
-
-          const incompleteRuns = response.runs.filter(
-            (runId) => !existingResults.items.some((item) => item.id === runId)
-          );
-
-          if (incompleteRuns.length === 0) {
-            logger.log(
-              `Results reused from previous task runs because of the provided idempotency keys.`
-            );
-
-            // All runs are already completed
-            const runs = await handleBatchTaskRunExecutionResult<TOutput>(existingResults.items);
-
-            return {
-              id: existingResults.id,
-              runs,
-            };
-          }
-
-          const result = await runtime.waitForBatch({
-            id: response.batchId,
-            runs: incompleteRuns,
-            ctx,
-          });
-
-          // Combine the already completed runs with the newly completed runs, ordered by the original order
-          const combinedItems: BatchTaskRunExecutionResult["items"] = [];
-
-          for (const runId of response.runs) {
-            const existingItem = existingResults.items.find((item) => item.id === runId);
-
-            if (existingItem) {
-              combinedItems.push(existingItem);
-            } else {
-              const newItem = result.items.find((item) => item.id === runId);
-
-              if (newItem) {
-                combinedItems.push(newItem);
-              }
-            }
-          }
-
-          const runs = await handleBatchTaskRunExecutionResult<TOutput>(combinedItems);
-
-          return {
-            id: result.id,
-            runs,
-          };
-        },
-        {
-          kind: SpanKind.PRODUCER,
-          attributes: {
-            [SEMATTRS_MESSAGING_OPERATION]: "publish",
-            ["messaging.batch.message_count"]: items.length,
-            ["messaging.client_id"]: taskContext.worker?.id,
-            [SEMATTRS_MESSAGING_DESTINATION]: params.queue?.name ?? params.id,
-            [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-            [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-            ...accessoryAttributes({
-              items: [
-                {
-                  text: params.id,
-                  variant: "normal",
-                },
-              ],
-              style: "codepath",
-            }),
-          },
-        }
+      return await batchTriggerAndWait_internal<TInput, TOutput>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
+          : `batchTriggerAndWait()`,
+        params.id,
+        items,
+        undefined,
+        customQueue
       );
     },
   };
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
-    packageVersion: packageJson.version,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
@@ -820,6 +607,9 @@ export function createTask<
       onStart: params.onStart,
     },
   });
+
+  // @ts-expect-error
+  task[Symbol.for("trigger.dev/task")] = true;
 
   return task;
 }
@@ -845,7 +635,140 @@ export async function trigger<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
-): Promise<TaskOutputHandle<TTask>> {
+): Promise<RunHandle<TaskOutput<TTask>>> {
+  return await trigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+    "tasks.trigger()",
+    id,
+    payload,
+    options,
+    requestOptions
+  );
+}
+
+/**
+ * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
+ * @param id - The id of the task to trigger
+ * @param payload
+ * @param options - Options for the task run
+ * @returns TaskRunResult
+ * @example
+ * ```ts
+ * import { tasks } from "@trigger.dev/sdk/v3";
+ * const result = await tasks.triggerAndWait("my-task", { foo: "bar" });
+ *
+ * if (result.ok) {
+ *  console.log(result.output);
+ * } else {
+ *  console.error(result.error);
+ * }
+ * ```
+ */
+export function triggerAndWait<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TaskRunOptions,
+  requestOptions?: ApiRequestOptions
+): TaskRunPromise<TaskOutput<TTask>> {
+  return new TaskRunPromise<TaskOutput<TTask>>((resolve, reject) => {
+    triggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+      "tasks.triggerAndWait()",
+      id,
+      payload,
+      options,
+      requestOptions
+    )
+      .then((result) => {
+        resolve(result);
+      })
+      .catch((error) => {
+        reject(error);
+      });
+  }, id);
+}
+
+/**
+ * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
+ * @param id - The id of the task to trigger
+ * @param items
+ * @returns BatchResult
+ * @example
+ *
+ * ```ts
+ * import { tasks } from "@trigger.dev/sdk/v3";
+ *
+ * const result = await tasks.batchTriggerAndWait("my-task", [
+ *  { payload: { foo: "bar" } },
+ *  { payload: { foo: "baz" } },
+ * ]);
+ *
+ * for (const run of result.runs) {
+ *  if (run.ok) {
+ *    console.log(run.output);
+ *  } else {
+ *    console.error(run.error);
+ *  }
+ * }
+ * ```
+ */
+export async function batchTriggerAndWait<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  items: Array<BatchItem<TaskPayload<TTask>>>,
+  requestOptions?: ApiRequestOptions
+): Promise<BatchResult<TaskOutput<TTask>>> {
+  return await batchTriggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+    "tasks.batchTriggerAndWait()",
+    id,
+    items,
+    requestOptions
+  );
+}
+
+/**
+ * Trigger a task by its identifier with the given payload and poll until the run is completed.
+ *
+ * @example
+ *
+ * ```ts
+ * import { tasks, runs } from "@trigger.dev/sdk/v3";
+ * import type { myTask } from "./myTasks"; // Import just the type of the task
+ *
+ * const run = await tasks.triggerAndPoll<typeof myTask>("my-task", { foo: "bar" }); // The id and payload are fully typesafe
+ * console.log(run.output) // The output is also fully typed
+ * ```
+ *
+ * @returns {Run} The completed run, either successful or failed.
+ */
+export async function triggerAndPoll<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TaskRunOptions & PollOptions,
+  requestOptions?: ApiRequestOptions
+): Promise<RetrieveRunResult<RunHandle<TaskOutput<TTask>>>> {
+  const handle = await trigger(id, payload, options, requestOptions);
+
+  return runs.poll(handle, options, requestOptions);
+}
+
+export async function batchTrigger<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  items: Array<BatchItem<TaskPayload<TTask>>>,
+  requestOptions?: ApiRequestOptions
+): Promise<BatchRunHandle<TaskOutput<TTask>>> {
+  return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+    "tasks.batchTrigger()",
+    id,
+    items,
+    requestOptions
+  );
+}
+
+async function trigger_internal<TPayload, TOutput>(
+  name: string,
+  id: string,
+  payload: TPayload,
+  options?: TaskRunOptions,
+  requestOptions?: ApiRequestOptions
+): Promise<RunHandle<TOutput>> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -866,6 +789,7 @@ export async function trigger<TTask extends AnyTask>(
         idempotencyKey: await makeKey(options?.idempotencyKey),
         delay: options?.delay,
         ttl: options?.ttl,
+        tags: options?.tags,
         maxAttempts: options?.maxAttempts,
       },
     },
@@ -873,7 +797,7 @@ export async function trigger<TTask extends AnyTask>(
       spanParentAsLink: true,
     },
     {
-      name: `tasks.trigger()`,
+      name,
       tracer,
       icon: "trigger",
       attributes: {
@@ -902,132 +826,16 @@ export async function trigger<TTask extends AnyTask>(
     }
   );
 
-  return handle as TaskOutputHandle<TTask>;
+  return handle as RunHandle<TOutput>;
 }
 
-export async function triggerAndWait<TTask extends AnyTask>(
-  id: TaskIdentifier<TTask>,
-  payload: TaskPayload<TTask>,
-  options?: TaskRunOptions,
-  requestOptions?: ApiRequestOptions
-): Promise<TaskRunResult<TaskOutput<TTask>>> {
-  const ctx = taskContext.ctx;
-
-  if (!ctx) {
-    throw new Error("tasks.triggerAndWait can only be used from inside a task.run()");
-  }
-
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
-
-  const payloadPacket = await stringifyIO(payload);
-
-  return await tracer.startActiveSpan(
-    "tasks.triggerAndWait()",
-    async (span) => {
-      const response = await apiClient.triggerTask(
-        id,
-        {
-          payload: payloadPacket.data,
-          options: {
-            dependentAttempt: ctx.attempt.id,
-            lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-            queue: options?.queue,
-            concurrencyKey: options?.concurrencyKey,
-            test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
-            idempotencyKey: await makeKey(options?.idempotencyKey),
-            delay: options?.delay,
-            ttl: options?.ttl,
-            maxAttempts: options?.maxAttempts,
-          },
-        },
-        {},
-        requestOptions
-      );
-
-      span.setAttribute("messaging.message.id", response.id);
-
-      if (options?.idempotencyKey) {
-        // If an idempotency key is provided, we can check if the result is already available
-        const result = await apiClient.getRunResult(response.id);
-
-        if (result) {
-          logger.log(
-            `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
-            {
-              runId: response.id,
-              idempotencyKey: options.idempotencyKey,
-            }
-          );
-
-          return await handleTaskRunExecutionResult<TaskOutput<TTask>>(result);
-        }
-      }
-
-      const result = await runtime.waitForTask({
-        id: response.id,
-        ctx,
-      });
-
-      return await handleTaskRunExecutionResult<TaskOutput<TTask>>(result);
-    },
-    {
-      kind: SpanKind.PRODUCER,
-      attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-        [SEMATTRS_MESSAGING_OPERATION]: "publish",
-        ["messaging.client_id"]: taskContext.worker?.id,
-        [SEMATTRS_MESSAGING_DESTINATION]: id,
-        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: id,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
-      },
-    }
-  );
-}
-
-/**
- * Trigger a task by its identifier with the given payload and poll until the run is completed.
- *
- * @example
- *
- * ```ts
- * import { tasks, runs } from "@trigger.dev/sdk/v3";
- * import type { myTask } from "./myTasks"; // Import just the type of the task
- *
- * const run = await tasks.triggerAndPoll<typeof myTask>("my-task", { foo: "bar" }); // The id and payload are fully typesafe
- * console.log(run.output) // The output is also fully typed
- * ```
- *
- * @returns {Run} The completed run, either successful or failed.
- */
-export async function triggerAndPoll<TTask extends AnyTask>(
-  id: TaskIdentifier<TTask>,
-  payload: TaskPayload<TTask>,
-  options?: TaskRunOptions & PollOptions,
-  requestOptions?: ApiRequestOptions
-): Promise<RetrieveRunResult<TaskOutputHandle<TTask>>> {
-  const handle = await trigger(id, payload, options, requestOptions);
-
-  return runs.poll(handle, options, requestOptions);
-}
-
-export async function batchTrigger<TTask extends AnyTask>(
-  id: TaskIdentifier<TTask>,
-  items: Array<BatchItem<TaskPayload<TTask>>>,
-  requestOptions?: ApiRequestOptions
-): Promise<TaskBatchOutputHandle<TTask>> {
+async function batchTrigger_internal<TPayload, TOutput>(
+  name: string,
+  id: string,
+  items: Array<BatchItem<TPayload>>,
+  requestOptions?: ApiRequestOptions,
+  queue?: QueueOptions
+): Promise<BatchRunHandle<TOutput>> {
   const apiClient = apiClientManager.client;
 
   if (!apiClient) {
@@ -1044,13 +852,14 @@ export async function batchTrigger<TTask extends AnyTask>(
           return {
             payload: payloadPacket.data,
             options: {
-              queue: item.options?.queue,
+              queue: item.options?.queue ?? queue,
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: await makeKey(item.options?.idempotencyKey),
               delay: item.options?.delay,
               ttl: item.options?.ttl,
+              tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
             },
           };
@@ -1059,7 +868,7 @@ export async function batchTrigger<TTask extends AnyTask>(
     },
     { spanParentAsLink: true },
     {
-      name: `tasks.batchTrigger()`,
+      name,
       tracer,
       icon: "trigger",
       attributes: {
@@ -1085,7 +894,246 @@ export async function batchTrigger<TTask extends AnyTask>(
     runs: response.runs.map((id) => ({ id })),
   };
 
-  return handle as TaskBatchOutputHandle<TTask>;
+  return handle as BatchRunHandle<TOutput>;
+}
+
+async function triggerAndWait_internal<TPayload, TOutput>(
+  name: string,
+  id: string,
+  payload: TPayload,
+  options?: TaskRunOptions,
+  requestOptions?: ApiRequestOptions
+): Promise<TaskRunResult<TOutput>> {
+  const ctx = taskContext.ctx;
+
+  if (!ctx) {
+    throw new Error("triggerAndWait can only be used from inside a task.run()");
+  }
+
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  const payloadPacket = await stringifyIO(payload);
+
+  return await tracer.startActiveSpan(
+    name,
+    async (span) => {
+      const response = await apiClient.triggerTask(
+        id,
+        {
+          payload: payloadPacket.data,
+          options: {
+            dependentAttempt: ctx.attempt.id,
+            lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
+            queue: options?.queue,
+            concurrencyKey: options?.concurrencyKey,
+            test: taskContext.ctx?.run.isTest,
+            payloadType: payloadPacket.dataType,
+            idempotencyKey: await makeKey(options?.idempotencyKey),
+            delay: options?.delay,
+            ttl: options?.ttl,
+            tags: options?.tags,
+            maxAttempts: options?.maxAttempts,
+          },
+        },
+        {},
+        requestOptions
+      );
+
+      span.setAttribute("messaging.message.id", response.id);
+
+      if (options?.idempotencyKey) {
+        // If an idempotency key is provided, we can check if the result is already available
+        const result = await apiClient.getRunResult(response.id);
+
+        if (result) {
+          logger.log(
+            `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
+            {
+              runId: response.id,
+              idempotencyKey: options.idempotencyKey,
+            }
+          );
+
+          return await handleTaskRunExecutionResult<TOutput>(result);
+        }
+      }
+
+      const result = await runtime.waitForTask({
+        id: response.id,
+        ctx,
+      });
+
+      return await handleTaskRunExecutionResult<TOutput>(result);
+    },
+    {
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+        [SEMATTRS_MESSAGING_OPERATION]: "publish",
+        ["messaging.client_id"]: taskContext.worker?.id,
+        [SEMATTRS_MESSAGING_DESTINATION]: id,
+        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
+async function batchTriggerAndWait_internal<TPayload, TOutput>(
+  name: string,
+  id: string,
+  items: Array<BatchItem<TPayload>>,
+  requestOptions?: ApiRequestOptions,
+  queue?: QueueOptions
+): Promise<BatchResult<TOutput>> {
+  const ctx = taskContext.ctx;
+
+  if (!ctx) {
+    throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
+  }
+
+  const apiClient = apiClientManager.client;
+
+  if (!apiClient) {
+    throw apiClientMissingError();
+  }
+
+  return await tracer.startActiveSpan(
+    name,
+    async (span) => {
+      const response = await apiClient.batchTriggerTask(
+        id,
+        {
+          items: await Promise.all(
+            items.map(async (item) => {
+              const payloadPacket = await stringifyIO(item.payload);
+
+              return {
+                payload: payloadPacket.data,
+                options: {
+                  lockToVersion: taskContext.worker?.version,
+                  queue: item.options?.queue ?? queue,
+                  concurrencyKey: item.options?.concurrencyKey,
+                  test: taskContext.ctx?.run.isTest,
+                  payloadType: payloadPacket.dataType,
+                  idempotencyKey: await makeKey(item.options?.idempotencyKey),
+                  delay: item.options?.delay,
+                  ttl: item.options?.ttl,
+                  tags: item.options?.tags,
+                  maxAttempts: item.options?.maxAttempts,
+                },
+              };
+            })
+          ),
+          dependentAttempt: ctx.attempt.id,
+        },
+        {},
+        requestOptions
+      );
+
+      span.setAttribute("messaging.message.id", response.batchId);
+
+      const getBatchResults = async (): Promise<BatchTaskRunExecutionResult> => {
+        // We need to check if the results are already available, but only if any of the items options has an idempotency key
+        const hasIdempotencyKey = items.some((item) => item.options?.idempotencyKey);
+
+        if (hasIdempotencyKey) {
+          const results = await apiClient.getBatchResults(response.batchId);
+
+          if (results) {
+            return results;
+          }
+        }
+
+        return {
+          id: response.batchId,
+          items: [],
+        };
+      };
+
+      const existingResults = await getBatchResults();
+
+      const incompleteRuns = response.runs.filter(
+        (runId) => !existingResults.items.some((item) => item.id === runId)
+      );
+
+      if (incompleteRuns.length === 0) {
+        logger.log(
+          `Results reused from previous task runs because of the provided idempotency keys.`
+        );
+
+        // All runs are already completed
+        const runs = await handleBatchTaskRunExecutionResult<TOutput>(existingResults.items);
+
+        return {
+          id: existingResults.id,
+          runs,
+        };
+      }
+
+      const result = await runtime.waitForBatch({
+        id: response.batchId,
+        runs: incompleteRuns,
+        ctx,
+      });
+
+      // Combine the already completed runs with the newly completed runs, ordered by the original order
+      const combinedItems: BatchTaskRunExecutionResult["items"] = [];
+
+      for (const runId of response.runs) {
+        const existingItem = existingResults.items.find((item) => item.id === runId);
+
+        if (existingItem) {
+          combinedItems.push(existingItem);
+        } else {
+          const newItem = result.items.find((item) => item.id === runId);
+
+          if (newItem) {
+            combinedItems.push(newItem);
+          }
+        }
+      }
+
+      const runs = await handleBatchTaskRunExecutionResult<TOutput>(combinedItems);
+
+      return {
+        id: result.id,
+        runs,
+      };
+    },
+    {
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+        ["messaging.batch.message_count"]: items.length,
+        [SEMATTRS_MESSAGING_OPERATION]: "publish",
+        ["messaging.client_id"]: taskContext.worker?.id,
+        [SEMATTRS_MESSAGING_DESTINATION]: id,
+        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
 }
 
 async function handleBatchTaskRunExecutionResult<TOutput>(

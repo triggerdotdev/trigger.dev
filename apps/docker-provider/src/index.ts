@@ -5,15 +5,16 @@ import {
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
-} from "@trigger.dev/core-apps/provider";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
-import { isExecaChildProcess, testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
+} from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
+import { isExecaChildProcess, testDockerCheckpoint } from "@trigger.dev/core/v3/apps";
 import { setTimeout } from "node:timers/promises";
 import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
 const COORDINATOR_HOST = process.env.COORDINATOR_HOST || "127.0.0.1";
+const DOCKER_NETWORK = process.env.DOCKER_NETWORK || "host";
 
 const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://0.0.0.0:4318";
@@ -90,7 +91,7 @@ class DockerTaskOperations implements TaskOperations {
     logger.debug(
       await execa("docker", [
         "run",
-        "--network=host",
+        `--network=${DOCKER_NETWORK}`,
         "--rm",
         `--env=INDEX_TASKS=true`,
         `--env=TRIGGER_SECRET_KEY=${opts.apiKey}`,
@@ -109,11 +110,11 @@ class DockerTaskOperations implements TaskOperations {
   async create(opts: TaskOperationsCreateOptions) {
     await this.init();
 
-    const containerName = this.#getRunContainerName(opts.runId);
+    const containerName = this.#getRunContainerName(opts.runId, opts.nextAttemptNumber);
 
     const runArgs = [
       "run",
-      "--network=host",
+      `--network=${DOCKER_NETWORK}`,
       "--detach",
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runId}`,
@@ -150,7 +151,7 @@ class DockerTaskOperations implements TaskOperations {
   async restore(opts: TaskOperationsRestoreOptions) {
     await this.init();
 
-    const containerName = this.#getRunContainerName(opts.runId);
+    const containerName = this.#getRunContainerName(opts.runId, opts.attemptNumber);
 
     if (!this.#canCheckpoint || this.opts.forceSimulate) {
       logger.log("Simulating restore");
@@ -195,8 +196,8 @@ class DockerTaskOperations implements TaskOperations {
     return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
   }
 
   async #sendPostStart(containerName: string): Promise<void> {

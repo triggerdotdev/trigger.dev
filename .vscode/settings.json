@@ -1,4 +1,9 @@
 {
   "deno.enablePaths": ["references/deno-reference", "runtime_tests/tests/deno"],
-  "debug.toolBarLocation": "commandCenter"
+  "debug.toolBarLocation": "commandCenter",
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "search.exclude": {
+    "**/node_modules/**": true,
+    "packages/cli-v3/e2e": true
+  }
 }

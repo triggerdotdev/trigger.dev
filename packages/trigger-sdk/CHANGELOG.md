@@ -1,5 +1,295 @@
 # @trigger.dev/sdk
 
+## 3.0.3
+
+### Patch Changes
+
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+
+## 3.0.2
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.2
+
+## 3.0.1
+
+### Patch Changes
+
+- 3aa581179: Fixing false-positive package version mismatches
+- Updated dependencies [3aa581179]
+  - @trigger.dev/core@3.0.1
+
+## 3.0.0
+
+### Major Changes
+
+- cf13fbdf3: Release 3.0.0
+- 395abe1b9: Updates to support Trigger.dev v3
+
+### Patch Changes
+
+- b66d5525e: add machine config and secure zod connection
+- 9491a1649: Implement task.onSuccess/onFailure and config.onSuccess/onFailure
+- b271742dc: Configurable log levels in the config file and via env var
+- 0591db5f2: Fixes for continuing after waits
+- f9ec66c56: New Build System
+- 8cae1d087: Fix trigger functions for custom queues
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 979bee50d: Fix return type of runs.retrieve, and allow passing the type of the task to runs.retrieve
+- b68012f81: Make msw a normal dependency (for now) to fix Module Not Found error in Next.js.
+
+  It turns out that webpack will "hoist" dynamically imported modules and attempt to resolve them at build time, even though it's an optional peer dep:
+
+  https://x.com/maverickdotdev/status/1782465214308319404
+
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+- 1b90ffbb8: v3: Usage tracking
+- 51bb4c887: Fix for calling trigger and passing a custom queue
+- 4986bfda2: Export queue from the SDK
+- 086a0f95c: Extract common trigger code into internal functions and add a tasks.batchTriggerAndWait function
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- 0591db5f2: Rollback to try and fix some dependent attempt issues
+- 8578c9b28: Support self-hosters pushing to a custom registry when running deploy
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- ecf1110ab: v3: Export AbortTaskRunError from @trigger.dev/sdk/v3
+- f854cb90e: Added replayRun function to the SDK
+- 44e1b8754: Improve the SDK function types and expose a new APIError instead of the APIResult type
+- 55264657d: You can now add tags to runs and list runs using them
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+- ecef19966: Use global setTimeout to ensure cross-runtime support
+- 719c0a0b9: Fixed incorrect span timings around checkpoints by implementing a precise wall clock that resets after restores
+- 4986bfda2: Adding task with a triggerSource of schedule
+- e9a63a486: Lock SDK and CLI deps on exact core version
+- 374edef02: Updates the `trigger`, `batchTrigger` and their `*AndWait` variants to use the first parameter for the payload/items, and the second parameter for options.
+
+  Before:
+
+  ```ts
+  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.triggerAndWait({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
+
+  await yourTask.batchTrigger({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  await yourTask.batchTriggerAndWait({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  ```
+
+  After:
+
+  ```ts
+  await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
+  await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
+
+  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  ```
+
+  We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
+
+  Now instead we're returning a `TaskRunResult` object that allows you to discriminate between successful and failed runs in the subtask:
+
+  Before:
+
+  ```ts
+  try {
+    const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+    // result is the output of your task
+    console.log("result", result);
+  } catch (error) {
+    // handle subtask errors here
+  }
+  ```
+
+  After:
+
+  ```ts
+  const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+  if (result.ok) {
+    console.log(`Run ${result.id} succeeded with output`, result.output);
+  } else {
+    console.log(`Run ${result.id} failed with error`, result.error);
+  }
+  ```
+
+- 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
+
+  - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
+  - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
+  - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
+  - When resolving batchTriggerAndWait, the runtimes no longer reject promises, leading to an error in the parent task
+
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- c9e1a3e9c: Remove unimplemented batchOptions
+- cf13fbdf3: Add triggerAndWait().unwrap() to more easily get at the output or throw the subtask error
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+- ba71f959e: Management SDK overhaul and adding the runs.list API
+- 7c36a1a4b: v3: Adding SDK functions for triggering tasks in a typesafe way, without importing task file
+- f93eae300: Dynamically import superjson and fix some bundling issues
+- c405ae711: Added timezone support to schedules
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+- 8ba998794: Added declarative cron schedules
+- f854cb90e: Added cancelRun to the SDK
+- 4986bfda2: Added a new global - Task Catalog - to better handle task metadata
+- b68012f81: Extracting out all the non-SDK related features from the main @trigger.dev/core/v3 export
+- 8578c9b28: Remove msw and retry.interceptFetch
+- Updated dependencies [ed2a26c86]
+- Updated dependencies [c702d6a9c]
+- Updated dependencies [9882d66f8]
+- Updated dependencies [b66d5525e]
+- Updated dependencies [e3db25739]
+- Updated dependencies [9491a1649]
+- Updated dependencies [1670c4c41]
+- Updated dependencies [b271742dc]
+- Updated dependencies [cf13fbdf3]
+- Updated dependencies [dbda820a7]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [eb6012628]
+- Updated dependencies [f9ec66c56]
+- Updated dependencies [f7d32b83b]
+- Updated dependencies [09413a62a]
+- Updated dependencies [3a1b0c486]
+- Updated dependencies [203e00208]
+- Updated dependencies [b4f9b70ae]
+- Updated dependencies [1b90ffbb8]
+- Updated dependencies [5cf90da72]
+- Updated dependencies [9af2570da]
+- Updated dependencies [7ea8532cc]
+- Updated dependencies [1477a2e30]
+- Updated dependencies [4f95c9de4]
+- Updated dependencies [83dc87155]
+- Updated dependencies [d490bc5cb]
+- Updated dependencies [e3cf456c6]
+- Updated dependencies [14c2bdf89]
+- Updated dependencies [9491a1649]
+- Updated dependencies [0ed93a748]
+- Updated dependencies [8578c9b28]
+- Updated dependencies [0e77e7ef7]
+- Updated dependencies [e417aca87]
+- Updated dependencies [568da0178]
+- Updated dependencies [c738ef39c]
+- Updated dependencies [ece6ca678]
+- Updated dependencies [f854cb90e]
+- Updated dependencies [0e919f56f]
+- Updated dependencies [44e1b8754]
+- Updated dependencies [55264657d]
+- Updated dependencies [6d9dfbc75]
+- Updated dependencies [e337b2165]
+- Updated dependencies [719c0a0b9]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [e30beb779]
+- Updated dependencies [68d32429b]
+- Updated dependencies [374edef02]
+- Updated dependencies [e04d44866]
+- Updated dependencies [26093896d]
+- Updated dependencies [55d1f8c67]
+- Updated dependencies [c405ae711]
+- Updated dependencies [9e5382951]
+- Updated dependencies [b68012f81]
+- Updated dependencies [098932ea9]
+- Updated dependencies [68d32429b]
+- Updated dependencies [9835f4ec5]
+- Updated dependencies [3f8b6d8fc]
+- Updated dependencies [fde939a30]
+- Updated dependencies [1281d40e4]
+- Updated dependencies [ba71f959e]
+- Updated dependencies [395abe1b9]
+- Updated dependencies [03b104a3d]
+- Updated dependencies [f93eae300]
+- Updated dependencies [5ae3da6b4]
+- Updated dependencies [c405ae711]
+- Updated dependencies [34ca7667d]
+- Updated dependencies [8ba998794]
+- Updated dependencies [62c9a5b71]
+- Updated dependencies [392453e8a]
+- Updated dependencies [8578c9b28]
+- Updated dependencies [6a379e4e9]
+- Updated dependencies [f854cb90e]
+- Updated dependencies [584c7da5d]
+- Updated dependencies [4986bfda2]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [b68012f81]
+- Updated dependencies [39885a427]
+- Updated dependencies [8578c9b28]
+- Updated dependencies [e69ffd314]
+- Updated dependencies [8578c9b28]
+- Updated dependencies [f04041744]
+- Updated dependencies [d934feb02]
+  - @trigger.dev/core@3.0.0
+
+## 3.0.0-beta.55
+
+### Patch Changes
+
+- 0591db5f2: Fixes for continuing after waits
+  - @trigger.dev/core@3.0.0-beta.55
+  - @trigger.dev/core-backend@3.0.0-beta.55
+
+## 3.0.0-beta.54
+
+### Patch Changes
+
+- 728eeeff6: Rollback to try and fix some dependent attempt issues
+  - @trigger.dev/core@3.0.0-beta.54
+  - @trigger.dev/core-backend@3.0.0-beta.54
+
+## 3.0.0-beta.53
+
+### Patch Changes
+
+- Updated dependencies [5cf90da72]
+  - @trigger.dev/core@3.0.0-beta.53
+  - @trigger.dev/core-backend@3.0.0-beta.53
+
+## 3.0.0-beta.52
+
+### Patch Changes
+
+- 8cae1d087: Fix trigger functions for custom queues
+- Updated dependencies [9882d66f8]
+- Updated dependencies [09413a62a]
+  - @trigger.dev/core@3.0.0-beta.52
+  - @trigger.dev/core-backend@3.0.0-beta.52
+
+## 3.0.0-beta.51
+
+### Patch Changes
+
+- 979bee50d: Fix return type of runs.retrieve, and allow passing the type of the task to runs.retrieve
+- 086a0f95c: Extract common trigger code into internal functions and add a tasks.batchTriggerAndWait function
+- 55264657d: You can now add tags to runs and list runs using them
+- Updated dependencies [55264657d]
+  - @trigger.dev/core@3.0.0-beta.51
+  - @trigger.dev/core-backend@3.0.0-beta.51
+
+## 3.0.0-beta.50
+
+### Patch Changes
+
+- 8ba998794: Added declarative cron schedules
+- Updated dependencies [8ba998794]
+  - @trigger.dev/core@3.0.0-beta.50
+  - @trigger.dev/core-backend@3.0.0-beta.50
+
+## 3.0.0-beta.49
+
+### Patch Changes
+
+- Updated dependencies [dbda820a7]
+- Updated dependencies [e417aca87]
+- Updated dependencies [d934feb02]
+  - @trigger.dev/core@3.0.0-beta.49
+  - @trigger.dev/core-backend@3.0.0-beta.49
+
 ## 3.0.0-beta.48
 
 ### Patch Changes

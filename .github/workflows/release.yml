@@ -6,6 +6,7 @@ on:
       - main
     paths-ignore:
       - "**.md"
+      - "**.mdx"
       - ".github/CODEOWNERS"
       - ".github/ISSUE_TEMPLATE/**"
 
@@ -38,16 +39,14 @@ jobs:
           node-version: 20.11.1
           cache: "pnpm"
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
+
+      - name: 🏗️ Build
+        run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: 🔎 Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
@@ -70,7 +69,7 @@ jobs:
           commit: "chore: Update version for release"
           title: "chore: Update version for release"
           publish: pnpm run changeset:release
-          createGithubReleases: false
+          createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

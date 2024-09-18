@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { StructuredLogger } from "./utils/structuredLogger";
+import { StructuredLogger } from "./utils/structuredLogger.js";
 
 export class ZodSchemaParsedError extends Error {
   constructor(
@@ -25,6 +25,7 @@ export type ZodMessageHandlers<TCatalogSchema extends ZodMessageCatalogSchema> =
 export type ZodMessageHandlerOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {
   schema: TMessageCatalog;
   messages?: ZodMessageHandlers<TMessageCatalog>;
+  logger?: StructuredLogger;
 };
 
 export type MessageFromSchema<
@@ -34,6 +35,11 @@ export type MessageFromSchema<
   type: K;
   payload: z.input<TMessageCatalog[K]>;
 };
+
+export type MessagePayloadFromSchema<
+  K extends keyof TMessageCatalog,
+  TMessageCatalog extends ZodMessageCatalogSchema,
+> = z.output<TMessageCatalog[K]>;
 
 export type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSchema<K, TMessageCatalog>;
@@ -52,53 +58,107 @@ export interface EventEmitterLike {
 export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> {
   #schema: TMessageCatalog;
   #handlers: ZodMessageHandlers<TMessageCatalog> | undefined;
+  #logger: StructuredLogger | Console;
 
   constructor(options: ZodMessageHandlerOptions<TMessageCatalog>) {
     this.#schema = options.schema;
     this.#handlers = options.messages;
+    this.#logger = options.logger ?? console;
   }
 
-  public async handleMessage(message: unknown) {
+  public async handleMessage(message: unknown): Promise<
+    | {
+        success: true;
+        data: unknown;
+      }
+    | {
+        success: false;
+        error: string;
+      }
+  > {
     const parsedMessage = this.parseMessage(message);
 
-    if (!this.#handlers) {
-      throw new Error("No handlers provided");
+    if (!parsedMessage.success) {
+      this.#logger.error(parsedMessage.error, { message });
+
+      return {
+        success: false,
+        error: parsedMessage.error,
+      };
     }
 
-    const handler = this.#handlers[parsedMessage.type];
+    if (!this.#handlers) {
+      this.#logger.error("No handlers provided", { message });
+
+      return {
+        success: false,
+        error: "No handlers provided",
+      };
+    }
+
+    const handler = this.#handlers[parsedMessage.data.type];
 
     if (!handler) {
-      console.error(`No handler for message type: ${String(parsedMessage.type)}`);
-      return;
+      const error = `No handler for message type: ${String(parsedMessage.data.type)}`;
+
+      this.#logger.error(error, { message });
+
+      return {
+        success: false,
+        error,
+      };
     }
 
-    const ack = await handler(parsedMessage.payload);
+    const ack = await handler(parsedMessage.data.payload);
 
-    return ack;
+    return {
+      success: true,
+      data: ack,
+    };
   }
 
-  public parseMessage(message: unknown): MessageFromCatalog<TMessageCatalog> {
+  public parseMessage(message: unknown):
+    | {
+        success: true;
+        data: MessageFromCatalog<TMessageCatalog>;
+      }
+    | {
+        success: false;
+        error: string;
+      } {
     const parsedMessage = ZodMessageSchema.safeParse(message);
 
     if (!parsedMessage.success) {
-      throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
+      return {
+        success: false,
+        error: `Failed to parse message: ${JSON.stringify(parsedMessage.error)}`,
+      };
     }
 
     const schema = this.#schema[parsedMessage.data.type];
 
     if (!schema) {
-      throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
+      return {
+        success: false,
+        error: `Unknown message type: ${parsedMessage.data.type}`,
+      };
     }
 
     const parsedPayload = schema.safeParse(parsedMessage.data.payload);
 
     if (!parsedPayload.success) {
-      throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+      return {
+        success: false,
+        error: `Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`,
+      };
     }
 
     return {
-      type: parsedMessage.data.type,
-      payload: parsedPayload.data,
+      success: true,
+      data: {
+        type: parsedMessage.data.type,
+        payload: parsedPayload.data,
+      },
     };
   }
 
@@ -117,7 +177,7 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
           hasCallback: !!callback,
         });
 
-        let ack;
+        let ack: Awaited<ReturnType<ZodMessageHandler<TMessageCatalog>["handleMessage"]>>;
 
         // FIXME: this only works if the message doesn't have genuine payload prop
         if ("payload" in message) {
@@ -129,11 +189,45 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
         }
 
         if (callback && typeof callback === "function") {
-          callback(ack);
+          if (!ack.success) {
+            // We don't know the callback type, so we can't do anything else - not all callbacks may accept a success prop
+            log.error("Failed to handle message, skipping callback", { message, error: ack.error });
+            return;
+          }
+
+          callback(ack.data);
         }
       });
     }
   }
+}
+
+export function parseMessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema>(
+  message: unknown,
+  schema: TMessageCatalog
+): MessageFromCatalog<TMessageCatalog> {
+  const parsedMessage = ZodMessageSchema.safeParse(message);
+
+  if (!parsedMessage.success) {
+    throw new Error(`Failed to parse message: ${JSON.stringify(parsedMessage.error)}`);
+  }
+
+  const messageSchema = schema[parsedMessage.data.type];
+
+  if (!messageSchema) {
+    throw new Error(`Unknown message type: ${parsedMessage.data.type}`);
+  }
+
+  const parsedPayload = messageSchema.safeParse(parsedMessage.data.payload);
+
+  if (!parsedPayload.success) {
+    throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+  }
+
+  return {
+    type: parsedMessage.data.type,
+    payload: parsedPayload.data,
+  };
 }
 
 type ZodMessageSenderCallback<TMessageCatalog extends ZodMessageCatalogSchema> = (message: {
@@ -208,6 +302,27 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
       console.error("[ZodMessageSender] Failed to forward message", error);
     }
   }
+}
+
+export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCatalogSchema>(
+  catalog: TMessageCatalog,
+  type: keyof TMessageCatalog,
+  payload: z.input<TMessageCatalog[keyof TMessageCatalog]>,
+  sender: ZodMessageSenderCallback<TMessageCatalog>
+) {
+  const schema = catalog[type];
+
+  if (!schema) {
+    throw new Error(`Unknown message type: ${type as string}`);
+  }
+
+  const parsedPayload = schema.safeParse(payload);
+
+  if (!parsedPayload.success) {
+    throw new ZodSchemaParsedError(parsedPayload.error, payload);
+  }
+
+  await sender({ type, payload, version: "v1" });
 }
 
 export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {

@@ -207,11 +207,7 @@ export class EventRepository {
   }
 
   async insertImmediate(event: CreatableEvent) {
-    await this.db.taskEvent.create({
-      data: event as Prisma.TaskEventCreateInput,
-    });
-
-    this.#publishToRedis([event]);
+    await this.#flushBatch([event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
@@ -226,6 +222,7 @@ export class EventRepository {
     const events = await this.queryIncompleteEvents({ spanId });
 
     if (events.length === 0) {
+      logger.warn("No incomplete events found for spanId", { spanId, options });
       return;
     }
 
@@ -1100,16 +1097,6 @@ export class EventRepository {
 
   public generateSpanId() {
     return this._randomIdGenerator.generateSpanId();
-  }
-
-  public async truncateEvents() {
-    await this.db.taskEvent.deleteMany({
-      where: {
-        createdAt: {
-          lt: new Date(Date.now() - this._config.retentionInDays * 24 * 60 * 60 * 1000),
-        },
-      },
-    });
   }
 
   /**

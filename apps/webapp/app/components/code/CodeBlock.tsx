@@ -1,7 +1,7 @@
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
-import { forwardRef, useCallback, useState } from "react";
+import { forwardRef, ReactNode, useCallback, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Paragraph } from "../primitives/Paragraph";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
@@ -241,16 +241,12 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 onMouseEnter={() => setMouseOver(true)}
                 onMouseLeave={() => setMouseOver(false)}
                 className={cn(
-                  "absolute  right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
-                  showChrome ? "top-10" : "top-3",
+                  "absolute right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
+                  showChrome ? "top-10" : "top-2.5",
                   copied ? "text-emerald-500" : "text-charcoal-500 hover:text-charcoal-300"
                 )}
               >
-                {copied ? (
-                  <ClipboardCheck className="h-5 w-5" />
-                ) : (
-                  <Clipboard className="h-5 w-5" />
-                )}
+                {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
               </TooltipTrigger>
               <TooltipContent side="left" className="text-xs">
                 {copied ? "Copied" : "Copy"}
@@ -389,10 +385,10 @@ function Chrome({ title }: { title?: string }) {
   );
 }
 
-export function TitleRow({ title }: { title: string }) {
+export function TitleRow({ title }: { title: ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-4">
-      <Paragraph variant="base/bright" className="w-full border-b border-grid-dimmed py-2.5">
+    <div className="flex items-center justify-between px-3">
+      <Paragraph variant="small/bright" className="w-full border-b border-grid-dimmed py-2">
         {title}
       </Paragraph>
     </div>

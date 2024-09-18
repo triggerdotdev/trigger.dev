@@ -1,6 +1,7 @@
 import { context, propagation } from "@opentelemetry/api";
-import { version } from "../../../package.json";
+import { z } from "zod";
 import {
+  AddTagsRequestBody,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
@@ -23,8 +24,8 @@ import {
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
   UpdateScheduleOptions,
-} from "../schemas";
-import { taskContext } from "../task-context-api";
+} from "../schemas/index.js";
+import { taskContext } from "../task-context-api.js";
 import {
   ApiRequestOptions,
   CursorPagePromise,
@@ -33,15 +34,16 @@ import {
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
-} from "./core";
-import { ApiError } from "./errors";
+} from "./core.js";
+import { ApiError } from "./errors.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
-} from "./types";
+} from "./types.js";
+import { VERSION } from "../../version.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -63,8 +65,8 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   },
 };
 
-export type { ApiRequestOptions };
 export { isRequestOptions };
+export type { ApiRequestOptions };
 
 /**
  * Trigger.dev v3 API client
@@ -289,6 +291,19 @@ export class ApiClient {
     );
   }
 
+  addTags(runId: string, body: AddTagsRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.object({ message: z.string() }),
+      `${this.baseUrl}/api/v1/runs/${runId}/tags`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   createSchedule(options: CreateScheduleOptions, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       ScheduleObject,
@@ -488,7 +503,7 @@ export class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
-      "trigger-version": version,
+      "trigger-version": VERSION,
     };
 
     // Only inject the context if we are inside a task
@@ -532,6 +547,13 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.bulkAction) {
       searchParams.append("filter[bulkAction]", query.bulkAction);
+    }
+
+    if (query.tag) {
+      searchParams.append(
+        "filter[tag]",
+        Array.isArray(query.tag) ? query.tag.join(",") : query.tag
+      );
     }
 
     if (query.schedule) {

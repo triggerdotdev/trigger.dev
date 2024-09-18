@@ -1,4 +1,3 @@
-import { RedisOptions } from "ioredis";
 import { nanoid } from "nanoid";
 import {
   MarQSQueuePriorityStrategy,
@@ -32,7 +31,7 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
     parentQueue: string,
     consumerId: string,
     previousRange: QueueRange
-  ): PriorityStrategyChoice {
+  ): { choice: PriorityStrategyChoice; nextRange: QueueRange } {
     const filteredQueues = filterQueuesAtCapacity(queues);
 
     if (queues.length === this.options.queueSelectionCount) {
@@ -40,6 +39,7 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
         offset: previousRange.offset + this.options.queueSelectionCount,
         count: this.options.queueSelectionCount,
       };
+
       // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
       this._nextRangesByParentQueue.set(`${consumerId}:${parentQueue}`, nextRange);
     } else {
@@ -47,12 +47,20 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
     }
 
     if (filteredQueues.length === 0) {
-      return { abort: true };
+      return {
+        choice: { abort: true },
+        nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
+      };
     }
 
     const queueWeights = this.#calculateQueueWeights(filteredQueues);
 
-    return weightedRandomChoice(queueWeights);
+    const choice = weightedRandomChoice(queueWeights);
+
+    return {
+      choice,
+      nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
+    };
   }
 
   async nextCandidateSelection(
@@ -117,8 +125,8 @@ export class NoopWeightedChoiceStrategy implements MarQSQueuePriorityStrategy {
     queues: QueueWithScores[],
     parentQueue: string,
     selectionId: string
-  ): PriorityStrategyChoice {
-    return { abort: true };
+  ): { choice: PriorityStrategyChoice; nextRange: QueueRange } {
+    return { choice: { abort: true }, nextRange: { offset: 0, count: 0 } };
   }
 
   nextCandidateSelection(parentQueue: string): Promise<{ range: QueueRange; selectionId: string }> {

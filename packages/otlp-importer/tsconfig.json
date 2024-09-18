@@ -1,17 +1,10 @@
 {
-  "extends": "@trigger.dev/tsconfig/node18.json",
-  "include": ["src/globals.d.ts", "./src/**/*.ts", "tsup.config.ts", "./test/**/*.ts"],
+  "extends": "../../.configs/tsconfig.base.json",
   "compilerOptions": {
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "declaration": false,
-    "declarationMap": false,
-    "types": ["jest"],
-    "lib": ["DOM", "DOM.Iterable"],
-    "paths": {
-      "@trigger.dev/tsup/*": ["../../config-packages/tsup/src/*"],
-      "@trigger.dev/tsup": ["../../config-packages/tsup/src/index"]
-    }
+    "isolatedDeclarations": false,
+    "composite": true,
+    "sourceMap": true,
+    "stripInternal": true
   },
-  "exclude": ["node_modules"]
+  "include": ["./src/**/*.ts"]
 }

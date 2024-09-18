@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es2016",
+    "target": "es2018",
     "module": "commonjs",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -9,9 +9,7 @@
     "skipLibCheck": true,
     "paths": {
       "@trigger.dev/core/v3": ["../../packages/core/src/v3"],
-      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"],
-      "@trigger.dev/core-apps": ["../../packages/core-apps/src"],
-      "@trigger.dev/core-apps/*": ["../../packages/core-apps/src/*"]
+      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"]
     }
   }
 }

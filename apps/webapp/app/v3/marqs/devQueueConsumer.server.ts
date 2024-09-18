@@ -2,7 +2,6 @@ import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentele
 import {
   TaskRunExecution,
   TaskRunExecutionLazyAttemptPayload,
-  TaskRunExecutionPayload,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   serverWebsocketMessages,
@@ -17,9 +16,8 @@ import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
-import { CancelTaskRunService } from "../services/cancelTaskRun.server";
+import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
-import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import {
   SEMINTATTRS_FORCE_RECORDING,
   attributesFromAuthenticatedEnv,
@@ -164,8 +162,8 @@ export class DevQueueConsumer {
   /**
    * @deprecated Use `taskRunHeartbeat` instead
    */
-  public async taskHeartbeat(workerId: string, id: string, seconds: number = 60) {
-    logger.debug("[DevQueueConsumer] taskHeartbeat()", { id, seconds });
+  public async taskHeartbeat(workerId: string, id: string) {
+    logger.debug("[DevQueueConsumer] taskHeartbeat()", { id });
 
     const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
       where: { friendlyId: id },
@@ -175,13 +173,13 @@ export class DevQueueConsumer {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId, seconds);
+    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
   }
 
-  public async taskRunHeartbeat(workerId: string, id: string, seconds: number = 60) {
-    logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id, seconds });
+  public async taskRunHeartbeat(workerId: string, id: string) {
+    logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id });
 
-    await marqs?.heartbeatMessage(id, seconds);
+    await marqs?.heartbeatMessage(id);
   }
 
   public async stop(reason: string = "CLI disconnected") {
@@ -194,10 +192,22 @@ export class DevQueueConsumer {
     this._enabled = false;
 
     // Create the session
-    await disconnectSession(this.env.id);
+    const session = await disconnectSession(this.env.id);
 
-    // We need to cancel all the in progress task run attempts and ack the messages so they will stop processing
-    await this.#cancelInProgressRunsAndAttempts(reason);
+    const runIds = Array.from(this._inProgressRuns.values());
+    this._inProgressRuns.clear();
+
+    if (runIds.length > 0) {
+      await CancelDevSessionRunsService.enqueue(
+        {
+          runIds,
+          cancelledAt: new Date(),
+          reason,
+          cancelledSessionId: session?.id,
+        },
+        new Date(Date.now() + 1000 * 10) // 10 seconds from now
+      );
+    }
 
     // We need to unsubscribe from the background worker channels
     for (const [id, subscriber] of this._backgroundWorkerSubscriber) {
@@ -212,54 +222,6 @@ export class DevQueueConsumer {
     // We need to end the current span
     if (this._currentSpan) {
       this._currentSpan.end();
-    }
-  }
-
-  async #cancelInProgressRunsAndAttempts(reason: string) {
-    const cancelTaskRunService = new CancelTaskRunService();
-
-    const cancelledAt = new Date();
-
-    const inProgressRuns = new Map(this._inProgressRuns);
-
-    this._inProgressRuns.clear();
-
-    logger.debug("Cancelling in progress runs and attempts", {
-      runs: Array.from(inProgressRuns.keys()),
-    });
-
-    for (const [_, runId] of inProgressRuns) {
-      await this.#cancelInProgressRun(runId, cancelTaskRunService, cancelledAt, reason);
-    }
-  }
-
-  async #cancelInProgressRun(
-    runId: string,
-    service: CancelTaskRunService,
-    cancelledAt: Date,
-    reason: string
-  ) {
-    logger.debug("Cancelling in progress run", { runId });
-
-    const taskRun = runId.startsWith("run_")
-      ? await prisma.taskRun.findUnique({
-          where: { friendlyId: runId },
-        })
-      : await prisma.taskRun.findUnique({
-          where: { id: runId },
-        });
-
-    if (!taskRun) {
-      return;
-    }
-
-    try {
-      await service.call(taskRun, { reason, cancelAttempts: true, cancelledAt });
-    } catch (e) {
-      logger.error("Failed to cancel in progress run", {
-        runId,
-        error: e,
-      });
     }
   }
 
@@ -534,63 +496,13 @@ export class DevQueueConsumer {
         setTimeout(() => this.#doWork(), 100);
       }
     } else {
-      const service = new CreateTaskRunAttemptService();
-      const { execution } = await service.call(lockedTaskRun.friendlyId, this.env);
+      logger.debug("We no longer support non-lazy attempts, aborting this run", {
+        messageId: message.messageId,
+        backgroundWorker,
+      });
+      await marqs?.acknowledgeMessage(message.messageId);
 
-      const payload: TaskRunExecutionPayload = {
-        traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
-        environment: variables.reduce((acc: Record<string, string>, curr) => {
-          acc[curr.key] = curr.value;
-          return acc;
-        }, {}),
-        execution,
-      };
-
-      try {
-        await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-          backgroundWorkerId: backgroundWorker.friendlyId,
-          data: {
-            type: "EXECUTE_RUNS",
-            payloads: [payload],
-          },
-        });
-
-        logger.debug("Executing the run", {
-          messageId: message.messageId,
-        });
-
-        this._inProgressRuns.set(lockedTaskRun.friendlyId, message.messageId);
-      } catch (e) {
-        if (e instanceof Error) {
-          this._currentSpan?.recordException(e);
-        } else {
-          this._currentSpan?.recordException(new Error(String(e)));
-        }
-
-        this._endSpanInNextIteration = true;
-
-        // We now need to unlock the task run and delete the task run attempt
-        await prisma.$transaction([
-          prisma.taskRun.update({
-            where: {
-              id: lockedTaskRun.id,
-            },
-            data: {
-              lockedAt: null,
-              lockedById: null,
-              status: "PENDING",
-              startedAt: existingTaskRun.startedAt,
-            },
-          }),
-        ]);
-
-        this._inProgressRuns.delete(lockedTaskRun.friendlyId);
-
-        // Finally we need to nack the message so it can be retried
-        await marqs?.nackMessage(message.messageId);
-      } finally {
-        setTimeout(() => this.#doWork(), 100);
-      }
+      setTimeout(() => this.#doWork(), 100);
     }
   }
 

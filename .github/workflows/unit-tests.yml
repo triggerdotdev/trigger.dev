@@ -22,21 +22,6 @@ jobs:
           node-version: 20.11.1
           cache: "pnpm"
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: ⎔ Setup Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
-      - name: ⎔ Setup bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: "1.0.15"
-
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 

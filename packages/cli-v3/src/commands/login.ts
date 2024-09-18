@@ -15,12 +15,14 @@ import {
 } from "../cli/common.js";
 import { chalkLink, prettyError } from "../utilities/cliOutput.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
-import { getVersion } from "../utilities/getVersion.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
+import { isLinuxServer } from "../utilities/linux.js";
+import { VERSION } from "../version.js";
+import { env } from "std-env";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -34,7 +36,7 @@ export function configureLoginCommand(program: Command) {
       .command("login")
       .description("Login with Trigger.dev so you can perform authenticated actions")
   )
-    .version(getVersion(), "-v, --version", "Display the version number")
+    .version(VERSION, "-v, --version", "Display the version number")
     .action(async (options) => {
       await handleTelemetry(async () => {
         await printInitialBanner(false);
@@ -57,12 +59,18 @@ export type LoginOptions = {
   defaultApiUrl?: string;
   embedded?: boolean;
   profile?: string;
+  silent?: boolean;
 };
 
 export async function login(options?: LoginOptions): Promise<LoginResult> {
   return await tracer.startActiveSpan("login", async (span) => {
     try {
-      const opts = { defaultApiUrl: "https://api.trigger.dev", embedded: false, ...options };
+      const opts = {
+        defaultApiUrl: "https://api.trigger.dev",
+        embedded: false,
+        silent: false,
+        ...options,
+      };
 
       span.setAttributes({
         "cli.config.apiUrl": opts.defaultApiUrl,
@@ -73,12 +81,12 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         intro("Logging in to Trigger.dev");
       }
 
-      const accessTokenFromEnv = process.env.TRIGGER_ACCESS_TOKEN;
+      const accessTokenFromEnv = env.TRIGGER_ACCESS_TOKEN;
 
       if (accessTokenFromEnv) {
         const auth = {
           accessToken: accessTokenFromEnv,
-          apiUrl: process.env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
+          apiUrl: env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? "https://api.trigger.dev",
         };
         const apiClient = new CliApiClient(auth.apiUrl, auth.accessToken);
         const userData = await apiClient.whoAmI();
@@ -109,7 +117,8 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
           },
-          true
+          true,
+          opts.silent
         );
 
         if (!whoAmIResult.success) {
@@ -204,7 +213,11 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         `Please visit the following URL to login:\n${chalkLink(authorizationCodeResult.url)}`
       );
 
-      await open(authorizationCodeResult.url);
+      if (await isLinuxServer()) {
+        log.message("Please install `xdg-utils` to automatically open the login URL.");
+      } else {
+        await open(authorizationCodeResult.url);
+      }
 
       //poll for personal access token (we need to poll for it)
       const getPersonalAccessTokenSpinner = spinner();

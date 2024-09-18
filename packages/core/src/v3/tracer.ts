@@ -9,10 +9,10 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import { Logger, logs } from "@opentelemetry/api-logs";
-import { SemanticInternalAttributes } from "./semanticInternalAttributes";
-import { clock } from "./clock-api";
-import { usage } from "./usage-api";
-import { taskContext } from "./task-context-api";
+import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
+import { clock } from "./clock-api.js";
+import { usage } from "./usage-api.js";
+import { taskContext } from "./task-context-api.js";
 
 export type TriggerTracerConfig =
   | {

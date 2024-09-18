@@ -1,6 +1,11 @@
-import { NavLink, useLocation } from "@remix-run/react";
+import { Link, NavLink, useLocation } from "@remix-run/react";
 import { motion } from "framer-motion";
+import { ReactNode, useRef } from "react";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+import { projectPubSub } from "~/v3/services/projectPubSub.server";
+import { ShortcutKey } from "./ShortcutKey";
 
 export type TabsProps = {
   tabs: {
@@ -13,28 +18,106 @@ export type TabsProps = {
 
 export function Tabs({ tabs, className, layoutId }: TabsProps) {
   return (
-    <div className={cn(`flex flex-row gap-x-6 border-b border-grid-bright`, className)}>
+    <TabContainer className={className}>
       {tabs.map((tab, index) => (
-        <NavLink key={index} to={tab.to} className="group flex flex-col items-center pt-1" end>
-          {({ isActive, isPending }) => (
-            <>
-              <span
-                className={cn(
-                  "text-sm transition duration-200",
-                  isActive || isPending ? "text-indigo-500" : "text-charcoal-200"
-                )}
-              >
-                {tab.label}
-              </span>
-              {isActive || isPending ? (
-                <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
-              ) : (
-                <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
-              )}
-            </>
-          )}
-        </NavLink>
+        <TabLink key={index} to={tab.to} layoutId={layoutId}>
+          {tab.label}
+        </TabLink>
       ))}
+    </TabContainer>
+  );
+}
+
+export function TabContainer({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn(`flex flex-row gap-x-6 border-b border-grid-bright`, className)}>
+      {children}
     </div>
+  );
+}
+
+export function TabLink({
+  to,
+  children,
+  layoutId,
+}: {
+  to: string;
+  children: ReactNode;
+  layoutId: string;
+}) {
+  return (
+    <NavLink to={to} className="group flex flex-col items-center pt-1" end>
+      {({ isActive, isPending }) => {
+        return (
+          <>
+            <span
+              className={cn(
+                "text-sm transition duration-200",
+                isActive || isPending ? "text-text-bright" : "text-text-bright"
+              )}
+            >
+              {children}
+            </span>
+            {isActive || isPending ? (
+              <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
+            ) : (
+              <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+            )}
+          </>
+        );
+      }}
+    </NavLink>
+  );
+}
+
+export function TabButton({
+  isActive,
+  layoutId,
+  shortcut,
+  ...props
+}: {
+  isActive: boolean;
+  shortcut?: ShortcutDefinition;
+  layoutId: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  if (shortcut) {
+    useShortcutKeys({
+      shortcut: shortcut,
+      action: () => {
+        if (ref.current) {
+          ref.current.click();
+        }
+      },
+      disabled: props.disabled,
+    });
+  }
+
+  return (
+    <button
+      className={cn("group flex flex-col items-center pt-1", props.className)}
+      ref={ref}
+      {...props}
+    >
+      <>
+        <div className="flex items-center gap-1">
+          <span
+            className={cn(
+              "text-sm transition duration-200",
+              isActive ? "text-text-bright" : "text-text-bright"
+            )}
+          >
+            {props.children}
+          </span>
+          {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}
+        </div>
+        {isActive ? (
+          <motion.div layoutId={layoutId} className="mt-1 h-0.5 w-full bg-indigo-500" />
+        ) : (
+          <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+        )}
+      </>
+    </button>
   );
 }

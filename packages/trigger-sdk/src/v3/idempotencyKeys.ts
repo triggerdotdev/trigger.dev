@@ -69,11 +69,13 @@ function injectScope(scope: "run" | "attempt" | "global"): string[] {
       if (taskContext?.ctx) {
         return [taskContext.ctx.run.id];
       }
+      break;
     }
     case "attempt": {
       if (taskContext?.ctx) {
         return [taskContext.ctx.attempt.id];
       }
+      break;
     }
   }
 

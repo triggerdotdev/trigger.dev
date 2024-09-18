@@ -12,7 +12,7 @@ import {
   trace,
 } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { InstrumentationOption, registerInstrumentations } from "@opentelemetry/instrumentation";
+import { type Instrumentation, registerInstrumentations } from "@opentelemetry/instrumentation";
 import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { Resource } from "@opentelemetry/resources";
@@ -124,6 +124,9 @@ function getTracer() {
     sampler: new ParentBasedSampler({
       root: new CustomWebappSampler(new TraceIdRatioBasedSampler(samplingRate)),
     }),
+    spanLimits: {
+      attributeCountLimit: 1024,
+    },
   });
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
@@ -164,7 +167,7 @@ function getTracer() {
 
   provider.register();
 
-  let instrumentations: InstrumentationOption[] = [
+  let instrumentations: Instrumentation[] = [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
   ];

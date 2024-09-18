@@ -1,6 +1,7 @@
 import { log, spinner as clackSpinner } from "@clack/prompts";
+import { isWindows as stdEnvIsWindows } from "std-env";
 
-export const isWindows = process.platform === "win32";
+export const isWindows = stdEnvIsWindows;
 
 export function escapeImportPath(path: string) {
   return isWindows ? path.replaceAll("\\", "\\\\") : path;

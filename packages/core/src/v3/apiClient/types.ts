@@ -1,5 +1,5 @@
-import { RunStatus } from "../schemas";
-import { CursorPageParams } from "./pagination";
+import { RunStatus } from "../schemas/index.js";
+import { CursorPageParams } from "./pagination.js";
 
 export interface ImportEnvironmentVariablesParams {
   /**
@@ -28,6 +28,7 @@ export interface ListRunsQueryParams extends CursorPageParams {
   to?: Date | number;
   period?: string;
   bulkAction?: string;
+  tag?: Array<string> | string;
   schedule?: string;
   isTest?: boolean;
 }

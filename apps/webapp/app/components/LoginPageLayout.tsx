@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ATAndTLogo } from "~/assets/logos/ATAndTLogo";
 import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
 import { CalComLogo } from "~/assets/logos/CalComLogo";
-import { OktaLogo } from "~/assets/logos/OktaLogo";
 import { ShopifyLogo } from "~/assets/logos/ShopifyLogo";
 import { VerizonLogo } from "~/assets/logos/VerizonLogo";
 import { LogoType } from "./LogoType";
@@ -75,7 +74,6 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
           <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-charcoal-500 xl:justify-between xl:gap-0">
             <VerizonLogo />
             <ShopifyLogo />
-            <OktaLogo />
             <ATAndTLogo />
             <AppsmithLogo />
             <CalComLogo />

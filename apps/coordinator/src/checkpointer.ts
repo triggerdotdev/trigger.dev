@@ -1,6 +1,6 @@
-import { ExponentialBackoff } from "@trigger.dev/core-apps/backoff";
-import { isExecaChildProcess, testDockerCheckpoint } from "@trigger.dev/core-apps/checkpoints";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+import { ExponentialBackoff } from "@trigger.dev/core/v3/apps";
+import { testDockerCheckpoint, isExecaChildProcess } from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { $ } from "execa";
 import { nanoid } from "nanoid";
 import fs from "node:fs/promises";
@@ -17,6 +17,7 @@ type CheckpointAndPushOptions = {
   projectRef: string;
   deploymentVersion: string;
   shouldHeartbeat?: boolean;
+  attemptNumber?: number;
 };
 
 type CheckpointAndPushResult =
@@ -258,6 +259,7 @@ export class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
+    attemptNumber,
   }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
     this.#logger.log("Checkpointing with backoff", {
       runId,
@@ -297,6 +299,7 @@ export class Checkpointer {
           leaveRunning,
           projectRef,
           deploymentVersion,
+          attemptNumber,
         });
 
         if (result.success) {
@@ -359,6 +362,7 @@ export class Checkpointer {
     leaveRunning = true, // This mirrors kubernetes behaviour more accurately
     projectRef,
     deploymentVersion,
+    attemptNumber,
   }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
     await this.init();
 
@@ -367,6 +371,7 @@ export class Checkpointer {
       leaveRunning,
       projectRef,
       deploymentVersion,
+      attemptNumber,
     };
 
     if (!this.#dockerMode && !this.#canCheckpoint) {
@@ -418,13 +423,14 @@ export class Checkpointer {
       this.#logger.log("Checkpointing:", { options });
 
       const containterName = this.#getRunContainerName(runId);
+      const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
         try {
           if (this.opts.forceSimulate || !this.#canCheckpoint) {
             this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $$`docker pause ${containterName}`);
+            this.#logger.debug(await $$`docker pause ${containterNameWithAttempt}`);
           } else {
             if (this.simulateCheckpointFailure) {
               if (performance.now() < this.simulateCheckpointFailureSeconds * 1000) {
@@ -435,11 +441,11 @@ export class Checkpointer {
 
             if (leaveRunning) {
               this.#logger.debug(
-                await $$`docker checkpoint create --leave-running ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create --leave-running ${containterNameWithAttempt} ${exportLocation}`
               );
             } else {
               this.#logger.debug(
-                await $$`docker checkpoint create ${containterName} ${exportLocation}`
+                await $$`docker checkpoint create ${containterNameWithAttempt} ${exportLocation}`
               );
             }
           }
@@ -581,7 +587,7 @@ export class Checkpointer {
     return this.#failedCheckpoints.has(runId);
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
   }
 }

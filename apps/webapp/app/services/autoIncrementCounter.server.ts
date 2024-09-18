@@ -31,27 +31,21 @@ export class AutoIncrementCounter {
     let performedBackfill = false;
 
     try {
-      return await $transaction(
-        client,
-        async (tx) => {
-          let newNumber = await this.#increment(key);
+      let newNumber = await this.#increment(key);
 
-          performedIncrement = true;
+      performedIncrement = true;
 
-          if (newNumber === 1 && backfiller) {
-            const backfilledNumber = await backfiller(key, tx);
+      if (newNumber === 1 && backfiller) {
+        const backfilledNumber = await backfiller(key, client);
 
-            if (backfilledNumber && backfilledNumber > 1) {
-              newNumber = backfilledNumber + 1;
-              await this._redis.set(key, newNumber);
-              performedBackfill = true;
-            }
-          }
+        if (backfilledNumber && backfilledNumber > 1) {
+          newNumber = backfilledNumber + 1;
+          await this._redis.set(key, newNumber);
+          performedBackfill = true;
+        }
+      }
 
-          return await callback(newNumber, tx);
-        },
-        transactionOptions
-      );
+      return await callback(newNumber, client);
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError ||

@@ -1,5 +1,6 @@
 import {
   IOPacket,
+  QueueOptions,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   packetRequiresOffloading,
@@ -17,6 +18,8 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -77,6 +80,16 @@ export class TriggerTaskService extends BaseService {
         }
       }
 
+      if (
+        body.options?.tags &&
+        typeof body.options.tags !== "string" &&
+        body.options.tags.length > MAX_TAGS_PER_RUN
+      ) {
+        throw new ServiceValidationError(
+          `Runs can only have ${MAX_TAGS_PER_RUN} tags, you're trying to set ${body.options.tags.length}.`
+        );
+      }
+
       const runFriendlyId = generateFriendlyId("run");
 
       const payloadPacket = await this.#handlePayloadPacket(
@@ -94,6 +107,7 @@ export class TriggerTaskService extends BaseService {
                 select: {
                   id: true,
                   status: true,
+                  taskIdentifier: true,
                 },
               },
             },
@@ -130,6 +144,7 @@ export class TriggerTaskService extends BaseService {
                     select: {
                       id: true,
                       status: true,
+                      taskIdentifier: true,
                     },
                   },
                 },
@@ -200,7 +215,9 @@ export class TriggerTaskService extends BaseService {
                   })
                 : undefined;
 
-              let queueName = sanitizeQueueName(body.options?.queue?.name ?? `task/${taskId}`);
+              let queueName = sanitizeQueueName(
+                await this.#getQueueName(taskId, environment, body.options?.queue?.name)
+              );
 
               // Check that the queuename is not an empty string
               if (!queueName) {
@@ -209,6 +226,22 @@ export class TriggerTaskService extends BaseService {
 
               event.setAttribute("queueName", queueName);
               span.setAttribute("queueName", queueName);
+
+              //upsert tags
+              let tagIds: string[] = [];
+              const bodyTags =
+                typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
+              if (bodyTags && bodyTags.length > 0) {
+                for (const tag of bodyTags) {
+                  const tagRecord = await createTag({
+                    tag,
+                    projectId: environment.projectId,
+                  });
+                  if (tagRecord) {
+                    tagIds.push(tagRecord.id);
+                  }
+                }
+              }
 
               const taskRun = await tx.taskRun.create({
                 data: {
@@ -233,21 +266,14 @@ export class TriggerTaskService extends BaseService {
                   queuedAt: delayUntil ? undefined : new Date(),
                   maxAttempts: body.options?.maxAttempts,
                   ttl,
+                  tags:
+                    tagIds.length === 0
+                      ? undefined
+                      : {
+                          connect: tagIds.map((id) => ({ id })),
+                        },
                 },
               });
-
-              if (payloadPacket.data) {
-                if (
-                  payloadPacket.dataType === "application/json" ||
-                  payloadPacket.dataType === "application/super+json"
-                ) {
-                  event.setAttribute("payload", JSON.parse(payloadPacket.data) as any);
-                } else {
-                  event.setAttribute("payload", payloadPacket.data);
-                }
-
-                event.setAttribute("payloadType", payloadPacket.dataType);
-              }
 
               event.setAttribute("runId", taskRun.friendlyId);
               span.setAttribute("runId", taskRun.friendlyId);
@@ -274,27 +300,36 @@ export class TriggerTaskService extends BaseService {
                     ? Math.max(0, body.options.queue.concurrencyLimit)
                     : undefined;
 
-                const taskQueue = await tx.taskQueue.upsert({
+                let taskQueue = await tx.taskQueue.findFirst({
                   where: {
-                    runtimeEnvironmentId_name: {
-                      runtimeEnvironmentId: environment.id,
-                      name: queueName,
-                    },
-                  },
-                  update: {
-                    concurrencyLimit,
-                    rateLimit: body.options.queue.rateLimit,
-                  },
-                  create: {
-                    friendlyId: generateFriendlyId("queue"),
-                    name: queueName,
-                    concurrencyLimit,
                     runtimeEnvironmentId: environment.id,
-                    projectId: environment.projectId,
-                    rateLimit: body.options.queue.rateLimit,
-                    type: "NAMED",
+                    name: queueName,
                   },
                 });
+
+                if (taskQueue) {
+                  taskQueue = await tx.taskQueue.update({
+                    where: {
+                      id: taskQueue.id,
+                    },
+                    data: {
+                      concurrencyLimit,
+                      rateLimit: body.options.queue.rateLimit,
+                    },
+                  });
+                } else {
+                  taskQueue = await tx.taskQueue.create({
+                    data: {
+                      friendlyId: generateFriendlyId("queue"),
+                      name: queueName,
+                      concurrencyLimit,
+                      runtimeEnvironmentId: environment.id,
+                      projectId: environment.projectId,
+                      rateLimit: body.options.queue.rateLimit,
+                      type: "NAMED",
+                    },
+                  });
+                }
 
                 if (typeof taskQueue.concurrencyLimit === "number") {
                   await marqs?.updateQueueConcurrencyLimits(
@@ -345,6 +380,20 @@ export class TriggerTaskService extends BaseService {
             this._prisma
           );
 
+          //release the concurrency for the env and org, if part of a (batch)triggerAndWait
+          if (dependentAttempt) {
+            const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
+          }
+          if (dependentBatchRun?.dependentTaskAttempt) {
+            const isSameTask =
+              dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(
+              dependentBatchRun.dependentTaskAttempt.taskRun.id,
+              isSameTask
+            );
+          }
+
           if (!run) {
             return;
           }
@@ -355,7 +404,13 @@ export class TriggerTaskService extends BaseService {
               environment,
               run.queue,
               run.id,
-              { type: "EXECUTE", taskIdentifier: taskId },
+              {
+                type: "EXECUTE",
+                taskIdentifier: taskId,
+                projectId: environment.projectId,
+                environmentId: environment.id,
+                environmentType: environment.type,
+              },
               body.options?.concurrencyKey
             );
           }
@@ -364,6 +419,57 @@ export class TriggerTaskService extends BaseService {
         }
       );
     });
+  }
+
+  async #getQueueName(taskId: string, environment: AuthenticatedEnvironment, queueName?: string) {
+    if (queueName) {
+      return queueName;
+    }
+
+    const defaultQueueName = `task/${taskId}`;
+
+    const worker = await findCurrentWorkerFromEnvironment(environment);
+
+    if (!worker) {
+      logger.debug("Failed to get queue name: No worker found", {
+        taskId,
+        environmentId: environment.id,
+      });
+
+      return defaultQueueName;
+    }
+
+    const task = await this._prisma.backgroundWorkerTask.findUnique({
+      where: {
+        workerId_slug: {
+          workerId: worker.id,
+          slug: taskId,
+        },
+      },
+    });
+
+    if (!task) {
+      console.log("Failed to get queue name: No task found", {
+        taskId,
+        environmentId: environment.id,
+      });
+
+      return defaultQueueName;
+    }
+
+    const queueConfig = QueueOptions.optional().nullable().safeParse(task.queueConfig);
+
+    if (!queueConfig.success) {
+      console.log("Failed to get queue name: Invalid queue config", {
+        taskId,
+        environmentId: environment.id,
+        queueConfig: task.queueConfig,
+      });
+
+      return defaultQueueName;
+    }
+
+    return queueConfig.data?.name ?? defaultQueueName;
   }
 
   async #handlePayloadPacket(

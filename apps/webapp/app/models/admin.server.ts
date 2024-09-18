@@ -1,5 +1,12 @@
+import { redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { SearchParams } from "~/routes/admin._index";
+import {
+  clearImpersonationId,
+  commitImpersonationSession,
+  setImpersonationId,
+} from "~/services/impersonation.server";
+import { requireUser } from "~/services/session.server";
 
 const pageSize = 20;
 
@@ -32,6 +39,7 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
             select: {
               title: true,
               slug: true,
+              deletedAt: true,
             },
           },
         },
@@ -120,6 +128,7 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
       title: true,
       v2Enabled: true,
       v3Enabled: true,
+      deletedAt: true,
       members: {
         select: {
           user: {
@@ -214,6 +223,29 @@ export async function setV3Enabled(userId: string, id: string, v3Enabled: boolea
     },
     data: {
       v3Enabled,
+    },
+  });
+}
+
+export async function redirectWithImpersonation(request: Request, userId: string, path: string) {
+  const user = await requireUser(request);
+  if (!user.admin) {
+    throw new Error("Unauthorized");
+  }
+
+  const session = await setImpersonationId(userId, request);
+
+  return redirect(path, {
+    headers: { "Set-Cookie": await commitImpersonationSession(session) },
+  });
+}
+
+export async function clearImpersonation(request: Request, path: string) {
+  const session = await clearImpersonationId(request);
+
+  return redirect(path, {
+    headers: {
+      "Set-Cookie": await commitImpersonationSession(session),
     },
   });
 }

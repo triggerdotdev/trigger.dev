@@ -79,6 +79,7 @@ export type TaskRunStringError = z.infer<typeof TaskRunStringError>;
 export const TaskRunErrorCodes = {
   COULD_NOT_FIND_EXECUTOR: "COULD_NOT_FIND_EXECUTOR",
   COULD_NOT_FIND_TASK: "COULD_NOT_FIND_TASK",
+  COULD_NOT_IMPORT_TASK: "COULD_NOT_IMPORT_TASK",
   CONFIGURED_INCORRECTLY: "CONFIGURED_INCORRECTLY",
   TASK_ALREADY_RUNNING: "TASK_ALREADY_RUNNING",
   TASK_EXECUTION_FAILED: "TASK_EXECUTION_FAILED",
@@ -89,6 +90,7 @@ export const TaskRunErrorCodes = {
   TASK_OUTPUT_ERROR: "TASK_OUTPUT_ERROR",
   HANDLE_ERROR_ERROR: "HANDLE_ERROR_ERROR",
   GRACEFUL_EXIT_TIMEOUT: "GRACEFUL_EXIT_TIMEOUT",
+  TASK_RUN_CRASHED: "TASK_RUN_CRASHED",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -96,6 +98,7 @@ export const TaskRunInternalError = z.object({
   code: z.enum([
     "COULD_NOT_FIND_EXECUTOR",
     "COULD_NOT_FIND_TASK",
+    "COULD_NOT_IMPORT_TASK",
     "CONFIGURED_INCORRECTLY",
     "TASK_ALREADY_RUNNING",
     "TASK_EXECUTION_FAILED",
@@ -107,6 +110,7 @@ export const TaskRunInternalError = z.object({
     "HANDLE_ERROR_ERROR",
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
+    "TASK_RUN_CRASHED",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -137,6 +141,7 @@ export const TaskRun = z.object({
   durationMs: z.number().default(0),
   costInCents: z.number().default(0),
   baseCostInCents: z.number().default(0),
+  version: z.string().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -275,3 +280,11 @@ export const BatchTaskRunExecutionResult = z.object({
 });
 
 export type BatchTaskRunExecutionResult = z.infer<typeof BatchTaskRunExecutionResult>;
+
+export const SerializedError = z.object({
+  message: z.string(),
+  name: z.string().optional(),
+  stackTrace: z.string().optional(),
+});
+
+export type SerializedError = z.infer<typeof SerializedError>;

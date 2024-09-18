@@ -4,16 +4,16 @@ import {
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
+  TaskOperationsPrePullDeploymentOptions,
   TaskOperationsRestoreOptions,
-} from "@trigger.dev/core-apps/provider";
-import { SimpleLogger } from "@trigger.dev/core-apps/logger";
+} from "@trigger.dev/core/v3/apps";
+import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import {
   MachinePreset,
   PostStartCauses,
   PreStopCauses,
   EnvironmentType,
 } from "@trigger.dev/core/v3";
-import { randomUUID } from "crypto";
 import { TaskMonitor } from "./taskMonitor";
 import { PodCleaner } from "./podCleaner";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
@@ -40,7 +40,7 @@ type Namespace = {
   };
 };
 
-type ComputeResources = {
+type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
 };
 
@@ -49,6 +49,7 @@ class KubernetesTaskOperations implements TaskOperations {
   #k8sApi: {
     core: k8s.CoreV1Api;
     batch: k8s.BatchV1Api;
+    apps: k8s.AppsV1Api;
   };
 
   constructor(namespace = "default") {
@@ -100,7 +101,7 @@ class KubernetesTaskOperations implements TaskOperations {
                   resources: {
                     limits: {
                       cpu: "1",
-                      memory: "1G",
+                      memory: "2G",
                       "ephemeral-storage": "2Gi",
                     },
                   },
@@ -137,10 +138,12 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   async create(opts: TaskOperationsCreateOptions) {
+    const containerName = this.#getRunContainerName(opts.runId, opts.nextAttemptNumber);
+
     await this.#createPod(
       {
         metadata: {
-          name: this.#getRunContainerName(opts.runId),
+          name: containerName,
           namespace: this.#namespace.metadata.name,
           labels: {
             ...this.#getSharedLabels(opts),
@@ -155,22 +158,14 @@ class KubernetesTaskOperations implements TaskOperations {
           terminationGracePeriodSeconds: 60 * 60,
           containers: [
             {
-              name: this.#getRunContainerName(opts.runId),
+              name: containerName,
               image: opts.image,
               ports: [
                 {
                   containerPort: 8000,
                 },
               ],
-              resources: {
-                requests: {
-                  ...this.#defaultResourceRequests,
-                },
-                limits: {
-                  ...this.#defaultResourceLimits,
-                  ...this.#getResourcesFromMachineConfig(opts.machine),
-                },
-              },
+              resources: this.#getResourcesForMachine(opts.machine),
               lifecycle: {
                 preStop: {
                   exec: {
@@ -209,7 +204,7 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#createPod(
       {
         metadata: {
-          name: `${this.#getRunContainerName(opts.runId)}-${randomUUID().slice(0, 8)}`,
+          name: `${this.#getRunContainerName(opts.runId)}-${opts.checkpointId.slice(-8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
             ...this.#getSharedLabels(opts),
@@ -261,15 +256,7 @@ class KubernetesTaskOperations implements TaskOperations {
                   containerPort: 8000,
                 },
               ],
-              resources: {
-                requests: {
-                  ...this.#defaultResourceRequests,
-                },
-                limits: {
-                  ...this.#defaultResourceLimits,
-                  ...this.#getResourcesFromMachineConfig(opts.machine),
-                },
-              },
+              resources: this.#getResourcesForMachine(opts.machine),
               lifecycle: {
                 postStart: {
                   exec: {
@@ -313,6 +300,72 @@ class KubernetesTaskOperations implements TaskOperations {
     await this.#getPod(opts.runId, this.#namespace);
   }
 
+  async prePullDeployment(opts: TaskOperationsPrePullDeploymentOptions) {
+    const metaName = this.#getPrePullContainerName(opts.shortCode);
+
+    const metaLabels = {
+      ...this.#getSharedLabels(opts),
+      app: "task-prepull",
+      "app.kubernetes.io/part-of": "trigger-worker",
+      "app.kubernetes.io/component": "prepull",
+      deployment: opts.deploymentId,
+      name: metaName,
+    } satisfies k8s.V1ObjectMeta["labels"];
+
+    await this.#createDaemonSet(
+      {
+        metadata: {
+          name: metaName,
+          namespace: this.#namespace.metadata.name,
+          labels: metaLabels,
+        },
+        spec: {
+          selector: {
+            matchLabels: {
+              name: metaName,
+            },
+          },
+          template: {
+            metadata: {
+              labels: metaLabels,
+            },
+            spec: {
+              ...this.#defaultPodSpec,
+              restartPolicy: "Always",
+              initContainers: [
+                {
+                  name: "prepull",
+                  image: opts.imageRef,
+                  command: ["/usr/bin/true"],
+                  resources: {
+                    limits: {
+                      cpu: "0.25",
+                      memory: "100Mi",
+                      "ephemeral-storage": "1Gi",
+                    },
+                  },
+                },
+              ],
+              containers: [
+                {
+                  name: "pause",
+                  image: "registry.k8s.io/pause:3.9",
+                  resources: {
+                    limits: {
+                      cpu: "1m",
+                      memory: "12Mi",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+      this.#namespace
+    );
+  }
+
   #envTypeToLabelValue(type: EnvironmentType) {
     switch (type) {
       case "PRODUCTION":
@@ -344,13 +397,13 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  get #defaultResourceRequests(): ComputeResources {
+  get #defaultResourceRequests(): ResourceQuantities {
     return {
       "ephemeral-storage": "2Gi",
     };
   }
 
-  get #defaultResourceLimits(): ComputeResources {
+  get #defaultResourceLimits(): ResourceQuantities {
     return {
       "ephemeral-storage": "10Gi",
     };
@@ -402,7 +455,11 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   #getSharedLabels(
-    opts: TaskOperationsIndexOptions | TaskOperationsCreateOptions | TaskOperationsRestoreOptions
+    opts:
+      | TaskOperationsIndexOptions
+      | TaskOperationsCreateOptions
+      | TaskOperationsRestoreOptions
+      | TaskOperationsPrePullDeploymentOptions
   ): Record<string, string> {
     return {
       env: opts.envId,
@@ -412,10 +469,30 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
-  #getResourcesFromMachineConfig(preset: MachinePreset): ComputeResources {
+  #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
+    return {
+      cpu: `${preset.cpu * 0.75}`,
+      memory: `${preset.memory}G`,
+    };
+  }
+
+  #getResourceLimitsForMachine(preset: MachinePreset): ResourceQuantities {
     return {
       cpu: `${preset.cpu}`,
       memory: `${preset.memory}G`,
+    };
+  }
+
+  #getResourcesForMachine(preset: MachinePreset): k8s.V1ResourceRequirements {
+    return {
+      requests: {
+        ...this.#defaultResourceRequests,
+        ...this.#getResourceRequestsForMachine(preset),
+      },
+      limits: {
+        ...this.#defaultResourceLimits,
+        ...this.#getResourceLimitsForMachine(preset),
+      },
     };
   }
 
@@ -442,8 +519,12 @@ class KubernetesTaskOperations implements TaskOperations {
     return `task-index-${suffix}`;
   }
 
-  #getRunContainerName(suffix: string) {
-    return `task-run-${suffix}`;
+  #getRunContainerName(suffix: string, attemptNumber?: number) {
+    return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
+  }
+
+  #getPrePullContainerName(suffix: string) {
+    return `task-prepull-${suffix}`;
   }
 
   #createK8sApi() {
@@ -460,6 +541,7 @@ class KubernetesTaskOperations implements TaskOperations {
     return {
       core: kubeConfig.makeApiClient(k8s.CoreV1Api),
       batch: kubeConfig.makeApiClient(k8s.BatchV1Api),
+      apps: kubeConfig.makeApiClient(k8s.AppsV1Api),
     };
   }
 
@@ -497,6 +579,18 @@ class KubernetesTaskOperations implements TaskOperations {
   async #createJob(job: k8s.V1Job, namespace: Namespace) {
     try {
       const res = await this.#k8sApi.batch.createNamespacedJob(namespace.metadata.name, job);
+      logger.debug(res.body);
+    } catch (err: unknown) {
+      this.#handleK8sError(err);
+    }
+  }
+
+  async #createDaemonSet(daemonSet: k8s.V1DaemonSet, namespace: Namespace) {
+    try {
+      const res = await this.#k8sApi.apps.createNamespacedDaemonSet(
+        namespace.metadata.name,
+        daemonSet
+      );
       logger.debug(res.body);
     } catch (err: unknown) {
       this.#handleK8sError(err);

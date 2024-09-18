@@ -1,0 +1,153 @@
+{
+  "name": "@trigger.dev/build",
+  "version": "3.0.3",
+  "description": "trigger.dev build extensions",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/build"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "tshy": {
+    "selfLink": false,
+    "main": true,
+    "module": true,
+    "project": "./tsconfig.src.json",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts",
+      "./extensions": "./src/extensions/index.ts",
+      "./extensions/core": "./src/extensions/core.ts",
+      "./extensions/prisma": "./src/extensions/prisma.ts",
+      "./extensions/audioWaveform": "./src/extensions/audioWaveform.ts",
+      "./extensions/typescript": "./src/extensions/typescript.ts"
+    },
+    "sourceDialects": [
+      "@triggerdotdev/source"
+    ]
+  },
+  "typesVersions": {
+    "*": {
+      "extensions": [
+        "dist/commonjs/extensions/index.d.ts"
+      ],
+      "extensions/core": [
+        "dist/commonjs/extensions/core.d.ts"
+      ],
+      "extensions/prisma": [
+        "dist/commonjs/extensions/prisma.d.ts"
+      ],
+      "extensions/audioWaveform": [
+        "dist/commonjs/extensions/audioWaveform.d.ts"
+      ],
+      "extensions/typescript": [
+        "dist/commonjs/extensions/typescript.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tshy && pnpm run update-version",
+    "dev": "tshy --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:3.0.3",
+    "pkg-types": "^1.1.3",
+    "tinyglobby": "^0.2.2",
+    "tsconfck": "3.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.14",
+    "rimraf": "6.0.1",
+    "tshy": "^3.0.2",
+    "typescript": "^5.5.4",
+    "tsx": "4.17.0",
+    "esbuild": "^0.23.0",
+    "@arethetypeswrong/cli": "^0.15.4"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    },
+    "./extensions": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/index.ts",
+        "types": "./dist/esm/extensions/index.d.ts",
+        "default": "./dist/esm/extensions/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/index.d.ts",
+        "default": "./dist/commonjs/extensions/index.js"
+      }
+    },
+    "./extensions/core": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/core.ts",
+        "types": "./dist/esm/extensions/core.d.ts",
+        "default": "./dist/esm/extensions/core.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/core.d.ts",
+        "default": "./dist/commonjs/extensions/core.js"
+      }
+    },
+    "./extensions/prisma": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/prisma.ts",
+        "types": "./dist/esm/extensions/prisma.d.ts",
+        "default": "./dist/esm/extensions/prisma.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/prisma.d.ts",
+        "default": "./dist/commonjs/extensions/prisma.js"
+      }
+    },
+    "./extensions/audioWaveform": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/audioWaveform.ts",
+        "types": "./dist/esm/extensions/audioWaveform.d.ts",
+        "default": "./dist/esm/extensions/audioWaveform.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/audioWaveform.d.ts",
+        "default": "./dist/commonjs/extensions/audioWaveform.js"
+      }
+    },
+    "./extensions/typescript": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/typescript.ts",
+        "types": "./dist/esm/extensions/typescript.d.ts",
+        "default": "./dist/esm/extensions/typescript.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/typescript.d.ts",
+        "default": "./dist/commonjs/extensions/typescript.js"
+      }
+    }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}

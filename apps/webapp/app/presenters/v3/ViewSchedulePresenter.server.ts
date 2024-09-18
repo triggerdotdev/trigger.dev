@@ -21,6 +21,7 @@ export class ViewSchedulePresenter {
     const schedule = await this.#prismaClient.taskSchedule.findFirst({
       select: {
         id: true,
+        type: true,
         friendlyId: true,
         generatorExpression: true,
         generatorDescription: true,
@@ -99,6 +100,7 @@ export class ViewSchedulePresenter {
   public toJSONResponse(result: NonNullable<Awaited<ReturnType<ViewSchedulePresenter["call"]>>>) {
     const response: ScheduleObject = {
       id: result.schedule.friendlyId,
+      type: result.schedule.type,
       task: result.schedule.taskIdentifier,
       active: result.schedule.active,
       nextRun: result.schedule.nextRuns[0],

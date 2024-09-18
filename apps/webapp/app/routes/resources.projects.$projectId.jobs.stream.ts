@@ -37,7 +37,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 function projectForUpdates(id: string) {
-  return prisma.project.findUnique({
+  return prisma.project.findFirst({
     where: {
       id,
     },

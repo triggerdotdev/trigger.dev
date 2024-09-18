@@ -40,8 +40,6 @@ FROM base AS builder
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
-# Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler
 
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .
 COPY --from=dev-deps --chown=node:node /triggerdotdev/ .
@@ -49,12 +47,14 @@ COPY --chown=node:node turbo.json turbo.json
 COPY --chown=node:node docker/scripts ./scripts
 RUN chmod +x ./scripts/wait-for-it.sh
 RUN chmod +x ./scripts/entrypoint.sh
+COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
+COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
 RUN pnpm run generate
 RUN pnpm run build --filter=webapp...
 
 # Runner
 FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS runner
-RUN apt-get update && apt-get install -y openssl
+RUN apt-get update && apt-get install -y openssl netcat-openbsd
 WORKDIR /triggerdotdev
 RUN corepack enable
 ENV NODE_ENV production

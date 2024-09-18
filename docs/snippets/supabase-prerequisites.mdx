@@ -1,0 +1,52 @@
+<Step title="Optional step 1: create a new Supabase project">
+
+<Info> If you already have a Supabase project on your local machine you can skip this step.</Info>
+
+You can create a new project by running the following command in your terminal using the Supabase CLI:
+
+```bash
+supabase init
+```
+
+<Note>
+  If you are using VS Code, ensure to answer 'y' when asked to generate VS Code settings for Deno,
+  and install any recommended extensions.
+</Note>
+
+</Step>
+
+<Step title="Optional step 2: create package.json and tsconfig.json files">
+
+If your project does not already have `package.json` or/and `tsconfig.json` files (e.g. if you are using Deno), create them manually and add them to your project root folder.
+
+<Info> If your project has these files you can skip this step.</Info>
+
+Both of these files are required for the Trigger.dev SDK to work correctly.
+
+```ts package.json
+{
+  "devDependencies": {
+    // This should be the version of typescript you are using
+    "typescript": "^5.6.2"
+  }
+}
+```
+
+```ts tsconfig.json
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "strict": true,
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "lib": ["DOM", "DOM.Iterable"],
+    "noEmit": true
+  },
+  "include": ["./src/**/*.ts", "trigger.config.ts"]
+}
+```
+
+</Step>
