@@ -1,5 +1,11 @@
 # @trigger.dev/sdk
 
+## 3.0.5
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.5
+
 ## 3.0.4
 
 ### Patch Changes
