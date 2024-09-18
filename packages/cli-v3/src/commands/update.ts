@@ -168,8 +168,7 @@ export async function updateTriggerPackages(
   }
 
   // WARNING: We can only start accepting user input once we know this is a TTY, otherwise, the process will exit with an error in CI
-
-  if (isDowngrade) {
+  if (isDowngrade && embedded) {
     printUpdateTable("Versions", mismatches, cliVersion, "installed", "CLI");
 
     outro("CLI update required!");
