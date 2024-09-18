@@ -83,7 +83,6 @@ sudo apt-get install -y \
 ```bash
 git clone https://github.com/triggerdotdev/docker
 cd docker
-git checkout v3
 ```
 
 2. Run the start script and follow the prompts
@@ -305,11 +304,27 @@ Occasionally, you may also have to update your `.env` file, but we will try to k
 ### From beta
 
 If you're coming from the beta CLI package images, you will need to:
-- **Pull changes from our docker repo.** We've added a new container for [Electric](https://github.com/electric-sql/electric) and made some other improvements.
+- **Stash you changes.** If you made any changes, stash them with `git stash`.
+- **Switch branches.** We moved back to main. Run `git checkout main` in your docker repo.
+- **Pull in updates.** We've added a new container for [Electric](https://github.com/electric-sql/electric) and made some other improvements. Run `git pull` to get the latest updates.
+- **Apply your changes.** If you stashed your changes, apply them with `git stash pop`.
+- **Restart all services.** Run `./stop.sh && ./start.sh` and you're good to go.
+
+In summary, run this wherever you cloned the docker repo:
 
 ```bash
-# wherever you cloned the docker repo
-git pull && ./stop.sh && ./start.sh
+# if you made changes
+git stash
+
+# switch to the main branch and pull the latest changes
+git checkout main
+git pull
+
+# if you stashed your changes
+git stash pop
+
+# restart your services
+./stop.sh && ./start.sh
 ```
 
 ## Version locking
@@ -321,7 +336,7 @@ There are several reasons to lock the version of your Docker images:
 By default, the images will point at the latest versioned release via the `v3` tag. You can override this by specifying a different tag in your `.env` file. For example:
 
 ```bash
-TRIGGER_IMAGE_TAG=v3.0.5
+TRIGGER_IMAGE_TAG=v3.0.4
 ```
 
 ## CLI usage
