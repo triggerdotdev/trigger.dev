@@ -194,9 +194,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      `npx trigger.dev@${options.tag} dev${
-        options.apiUrl === CLOUD_API_URL ? "" : ` -a ${options.apiUrl}`
-      }`
+      `npx trigger.dev@${options.tag} dev${options.profile ? "" : ` --profile ${options.profile}`}`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);

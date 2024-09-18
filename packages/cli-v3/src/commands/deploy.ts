@@ -55,6 +55,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   skipUpdateCheck: z.boolean().default(false),
   noCache: z.boolean().default(false),
   envFile: z.string().optional(),
+  network: z.enum(["default", "none", "host"]).optional(),
 });
 
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
@@ -144,6 +145,7 @@ export function configureDeployCommand(program: Command) {
         "If provided, will save logs even for successful builds"
       ).hideHelp()
     )
+    .option("--network <mode>", "The networking mode for RUN instructions when using --self-hosted")
     .action(async (path, options) => {
       await handleTelemetry(async () => {
         await printStandloneInitialBanner(true);
@@ -349,6 +351,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     authAccessToken: authorization.auth.accessToken,
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
+    network: options.network,
   });
 
   logger.debug("Build result", buildResult);
