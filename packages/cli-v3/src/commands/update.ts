@@ -43,7 +43,7 @@ export function configureUpdateCommand(program: Command) {
 const triggerPackageFilter = /^@trigger\.dev/;
 
 export async function updateCommand(dir: string, options: UpdateCommandOptions) {
-  await updateTriggerPackages(dir, options);
+  await updateTriggerPackages(dir, options, false);
 }
 
 export async function updateTriggerPackages(
@@ -127,24 +127,30 @@ export async function updateTriggerPackages(
 
   if (mismatches.length === 0) {
     if (!embedded) {
-      outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
+      outro(`Nothing to update${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
       return hasOutput;
     }
     return hasOutput;
   }
 
-  if (isDowngrade) {
-    prettyError("Some of the installed @trigger.dev packages are newer than your CLI version");
-  } else {
-    prettyWarning(
-      "Mismatch between your CLI version and installed packages",
-      "We recommend pinned versions for guaranteed compatibility"
-    );
+  if (embedded) {
+    if (isDowngrade) {
+      prettyError("Some of the installed @trigger.dev packages are newer than your CLI version");
+    } else {
+      if (embedded) {
+        prettyWarning(
+          "Mismatch between your CLI version and installed packages",
+          "We recommend pinned versions for guaranteed compatibility"
+        );
+      }
+    }
   }
 
   if (!hasTTY) {
     // Running in CI with version mismatch detected
-    outro("Deploy failed");
+    if (embedded) {
+      outro("Deploy failed");
+    }
 
     console.log(
       `ERROR: Version mismatch detected while running in CI. This won't end well. Aborting.
@@ -187,14 +193,20 @@ export async function updateTriggerPackages(
 
   if (!userWantsToUpdate) {
     if (requireUpdate) {
-      outro("You shall not pass!");
+      if (embedded) {
+        outro("You shall not pass!");
 
-      logger.log(
-        `${chalkError(
-          "X Error:"
-        )} Update required: Version mismatches are a common source of bugs and errors. Please update or use \`--skip-update-check\` at your own risk.\n`
-      );
-      process.exit(1);
+        logger.log(
+          `${chalkError(
+            "X Error:"
+          )} Update required: Version mismatches are a common source of bugs and errors. Please update or use \`--skip-update-check\` at your own risk.\n`
+        );
+        process.exit(1);
+      } else {
+        outro("No updates applied");
+
+        process.exit(0);
+      }
     }
 
     if (!embedded) {
@@ -205,7 +217,7 @@ export async function updateTriggerPackages(
   }
 
   const installSpinner = spinner();
-  installSpinner.start("Writing new package.json file");
+  installSpinner.start("Updating dependencies in package.json");
 
   // Backup package.json
   const packageJsonBackupPath = `${packageJsonPath}.bak`;
@@ -235,12 +247,16 @@ export async function updateTriggerPackages(
   const packageManager = await detectPackageManager(projectPath);
 
   try {
-    installSpinner.message(`Installing new package versions with ${packageManager}`);
+    installSpinner.message(
+      `Installing new package versions${packageManager ? ` with ${packageManager.name}` : ""}`
+    );
 
-    await installDependencies({ cwd: projectPath });
+    await installDependencies({ cwd: projectPath, silent: true });
   } catch (error) {
     installSpinner.stop(
-      `Failed to install new package versions${packageManager ? ` with ${packageManager}` : ""}`
+      `Failed to install new package versions${
+        packageManager ? ` with ${packageManager.name}` : ""
+      }`
     );
 
     // Remove exit handler in case of failure
