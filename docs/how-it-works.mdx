@@ -167,7 +167,7 @@ Example of a parent and child task using the Checkpoint-Resume System:
 ```ts
 import { task, wait } from "@trigger.dev/sdk/v3";
 
-const parentTask = task({
+export const parentTask = task({
   id: "parent-task",
   run: async () => {
     console.log("Starting parent task");
@@ -186,7 +186,7 @@ const parentTask = task({
   },
 });
 
-const childTask = task({
+export const childTask = task({
   id: "child-task",
   run: async (payload: { data: string }) => {
     console.log("Starting child task with data:", payload.data);
