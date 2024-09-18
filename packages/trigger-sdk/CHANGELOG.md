@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 3.0.3
+
+### Patch Changes
+
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+
 ## 3.0.2
 
 ### Patch Changes
