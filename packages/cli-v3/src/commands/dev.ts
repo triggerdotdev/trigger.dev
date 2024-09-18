@@ -51,6 +51,7 @@ export async function devCommand(options: DevCommandOptions) {
 
   const authorization = await login({
     embedded: true,
+    silent: true,
     defaultApiUrl: options.apiUrl,
     profile: options.profile,
   });

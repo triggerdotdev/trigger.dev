@@ -31,7 +31,7 @@ export async function resolveFileSources(
   }
 
   await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.configFile);
-  await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.tsconfig);
+  await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.tsconfigPath);
   await resolveConfigSource(sources, resolvedConfig.workingDir, resolvedConfig.packageJsonPath);
 
   return sources;
