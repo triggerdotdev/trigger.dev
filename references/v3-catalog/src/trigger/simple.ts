@@ -11,6 +11,7 @@ let headerGenerator = new HeaderGenerator({
 
 export const fetchPostTask = task({
   id: "fetch-post-task",
+  machine: { preset: "small-1x" },
   run: async (payload: { url: string }) => {
     const headers = headerGenerator.getHeaders({
       operatingSystems: ["linux"],

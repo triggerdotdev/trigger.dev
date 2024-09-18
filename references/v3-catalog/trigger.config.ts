@@ -13,7 +13,7 @@ export { handleError } from "./src/handleError.js";
 export default defineConfig({
   runtime: "node",
   project: "yubjwjsfkxnylobaqvqz",
-  machine: "small-2x",
+  machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
   retries: {
