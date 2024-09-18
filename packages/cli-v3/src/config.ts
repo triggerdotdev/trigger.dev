@@ -138,7 +138,7 @@ async function resolveConfig(
   warn = true
 ): Promise<ResolvedConfig> {
   const packageJsonPath = await resolvePackageJSON(cwd);
-  const tsconfigPath = await resolveTSConfig(cwd);
+  const tsconfigPath = await safeResolveTsConfig(cwd);
   const lockfilePath = await resolveLockfile(cwd);
   const workspaceDir = await findWorkspaceDir(cwd);
 
@@ -179,13 +179,21 @@ async function resolveConfig(
         conditions: [],
       },
     }
-  );
+  ) as ResolvedConfig; // TODO: For some reason, without this, there is a weird type error complaining about tsconfigPath being string | nullish, which can't be assigned to string | undefined
 
   return {
     ...mergedConfig,
     dirs: Array.from(new Set(mergedConfig.dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
   };
+}
+
+async function safeResolveTsConfig(cwd: string) {
+  try {
+    return await resolveTSConfig(cwd);
+  } catch {
+    return undefined;
+  }
 }
 
 const IGNORED_DIRS = ["node_modules", ".git", "dist", "out", "build"];
