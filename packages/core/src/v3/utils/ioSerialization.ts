@@ -160,6 +160,31 @@ export async function conditionallyImportPacket(
   }
 }
 
+export async function resolvePresignedPacketUrl(
+  url: string,
+  tracer?: TriggerTracer
+): Promise<any | undefined> {
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data = await response.text();
+    const dataType = response.headers.get("content-type") ?? "application/json";
+
+    const packet = {
+      data,
+      dataType,
+    };
+
+    return await parsePacket(packet);
+  } catch (error) {
+    return;
+  }
+}
+
 async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
   if (!packet.data) {
     return packet;
