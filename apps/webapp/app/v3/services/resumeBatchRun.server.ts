@@ -122,7 +122,9 @@ export class ResumeBatchRunService extends BaseService {
         // When the checkpoint is created, it will continue the run
         logger.error("ResumeBatchRunService: attempt is paused but there's no checkpoint event", {
           batchRunId: batchRun.id,
-          dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
+          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          checkpointEventId: batchRun.checkpointEventId,
+          hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
         return;
       }
