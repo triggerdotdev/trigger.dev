@@ -1,8 +1,10 @@
 ---
 title: "CLI whoami command"
-sidebarTitle: "Whoami"
+sidebarTitle: "whoami"
 description: "Use these options to display the current logged in user and project details."
 ---
+
+import CommonOptions from '/snippets/cli-options-common.mdx';
 
 Run the command like this:
 
@@ -24,25 +26,8 @@ yarn dlx trigger.dev@latest whoami
 
 ## Options
 
-<ParamField body="Login profile" type="--profile">
-  The login profile to use. Defaults to `default`.
-</ParamField>
+### Common options
 
-<ParamField body="API URL" type="--api-url | -a">
-  Override the API URL. Defaults to `https://api.trigger.dev`.
-</ParamField>
+These options are available on most commands.
 
-<ParamField body="Log level" type="--log-level | -l">
-  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This
-  does not affect the log level of your trigger.dev tasks. Defaults to `log`.
-</ParamField>
-
-<ParamField body="Skip telemetry" type="--skip-telemetry">
-  Opt-out of sending telemetry data.
-</ParamField>
-
-## Standard options
-
-<ParamField body="Help" type="--help | -h">
-  Shows the help information for the command.
-</ParamField>
+<CommonOptions />

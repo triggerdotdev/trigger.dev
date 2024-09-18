@@ -51,27 +51,32 @@ export async function whoAmICommand(options: unknown) {
 
 export async function whoAmI(
   options?: WhoamiCommandOptions,
-  embedded: boolean = false
+  embedded: boolean = false,
+  silent: boolean = false
 ): Promise<WhoAmIResult> {
   if (!embedded) {
     intro(`Displaying your account details [${options?.profile ?? "default"}]`);
   }
 
   const loadingSpinner = spinner();
-  loadingSpinner.start("Checking your account details");
+
+  if (!silent) {
+    loadingSpinner.start("Checking your account details");
+  }
 
   const authentication = await isLoggedIn(options?.profile);
 
   if (!authentication.ok) {
     if (authentication.error === "fetch failed") {
-      loadingSpinner.stop("Fetch failed. Platform down?");
+      !silent && loadingSpinner.stop("Fetch failed. Platform down?");
     } else {
       if (embedded) {
-        loadingSpinner.stop(
-          `Failed to check account details. You may want to run \`trigger.dev logout --profile ${
-            options?.profile ?? "default"
-          }\` and try again.`
-        );
+        !silent &&
+          loadingSpinner.stop(
+            `Failed to check account details. You may want to run \`trigger.dev logout --profile ${
+              options?.profile ?? "default"
+            }\` and try again.`
+          );
       } else {
         loadingSpinner.stop(
           `You must login first. Use \`trigger.dev login --profile ${
@@ -110,7 +115,7 @@ URL: ${chalkLink(authentication.auth.apiUrl)}
       `Account details [${authentication.profile}]`
     );
   } else {
-    loadingSpinner.stop(`Retrieved your account details for ${userData.data.email}`);
+    !silent && loadingSpinner.stop(`Retrieved your account details for ${userData.data.email}`);
   }
 
   return userData;

@@ -162,6 +162,49 @@ class TaskCoordinator {
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
+        RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
+            return {
+              success: false,
+              error: {
+                name: "SocketNotFoundError",
+                message: "Socket for attempt not found",
+              },
+            };
+          }
+
+          //if this is set, we want to kill the process because it will be resumed with the checkpoint from the queue
+          if (taskSocket.data.requiresCheckpointResumeWithMessage) {
+            logger.log("RESUME_AFTER_DEPENDENCY_WITH_ACK: Checkpoint is set so going to nack", {
+              socketData: taskSocket.data,
+            });
+
+            return {
+              success: false,
+              error: {
+                name: "CheckpointMessagePresentError",
+                message:
+                  "Checkpoint message is present, so we need to kill the process and resume from the queue.",
+              },
+            };
+          }
+
+          await chaosMonkey.call();
+
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
+
+          return {
+            success: true,
+          };
+        },
         RESUME_AFTER_DURATION: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
@@ -792,6 +835,18 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_TASK checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
@@ -804,6 +859,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after task checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -862,6 +918,18 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_BATCH checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_BATCH set checkpoint", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
@@ -875,6 +943,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after batch checkpoint", { runId: socket.data.runId });
             return;
           }

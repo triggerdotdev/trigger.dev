@@ -1,3 +1,10 @@
+import ProjectPathArg from '/snippets/cli-args-project-path.mdx';
+import CommonOptions from '/snippets/cli-options-common.mdx';
+import ProjectRefOption from '/snippets/cli-options-project-ref.mdx';
+import EnvFileOption from '/snippets/cli-options-env-file.mdx';
+import ConfigFileOption from '/snippets/cli-options-config-file.mdx';
+import SkipUpdateCheckOption from '/snippets/cli-options-skip-update-check.mdx';
+
 This runs a server on your machine that can execute Trigger.dev tasks:
 
 <CodeGroup>
@@ -22,43 +29,29 @@ You will see in the terminal that the server is running and listening for tasks.
 
 It is worth noting that each task runs in a separate Node process. This means that if you have a long-running task, it will not block other tasks from running.
 
+## Arguments
+
+```
+npx trigger.dev@latest dev [path]
+```
+
+<ProjectPathArg />
+
 ## Options
 
-<ParamField body="Config file" type="--config | -c">
-  The name of the config file, found at [path].
-</ParamField>
+<ConfigFileOption />
 
-<ParamField body="Project ref" type="--project-ref | -p">
-  The project ref. Required if there is no config file.
-</ParamField>
+<ProjectRefOption />
 
-<ParamField body="Env file" type="--env">
-  Pass a custom path to an env file. We automatically detect `.env`, `.env.local`,
-  `.env.development`, and `.env.development.local` files.
-</ParamField>
+<EnvFileOption />
 
-<ParamField body="Skip update check" type="--skip-update-check">
-  Skip checking for `@trigger.dev` package updates.
-</ParamField>
+<SkipUpdateCheckOption />
 
-<ParamField body="Login profile" type="--profile">
-  The login profile to use. Defaults to `default`.
-</ParamField>
+### Common options
 
-<ParamField body="API URL" type="--api-url | -a">
-  Override the API URL. Defaults to `https://api.trigger.dev`.
-</ParamField>
+These options are available on most commands.
 
-<ParamField body="Log level" type="--log-level | -l">
-  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This
-  does not affect the log level of your trigger.dev tasks. Defaults to `log`.
-</ParamField>
-
-## Standard options
-
-<ParamField body="Help" type="--help | -h">
-  Shows the help information for the command.
-</ParamField>
+<CommonOptions />
 
 ## Concurrently running the terminal
 

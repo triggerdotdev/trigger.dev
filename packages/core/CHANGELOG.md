@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Fix an issue where a missing tsconfig.json file would throw an error on dev/deploy
+
+## 3.0.2
+
 ## 3.0.1
 
 ### Patch Changes

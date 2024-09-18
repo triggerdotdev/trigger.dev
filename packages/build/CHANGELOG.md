@@ -1,5 +1,19 @@
 # @trigger.dev/build
 
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Strip out TRIGGER\_ keys when using syncEnvVars, to prevent deploy errors
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+
+## 3.0.2
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.2
+
 ## 3.0.1
 
 ### Patch Changes

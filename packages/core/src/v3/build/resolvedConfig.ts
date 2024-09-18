@@ -24,6 +24,7 @@ export type ResolvedConfig = Prettify<
     packageJsonPath: string;
     lockfilePath: string;
     configFile?: string;
+    tsconfigPath?: string;
     resolveEnvVars?: ResolveEnvironmentVariablesFunction;
     instrumentedPackageNames?: string[];
   }
