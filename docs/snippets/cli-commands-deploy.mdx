@@ -81,14 +81,14 @@ These options are available on most commands.
 
 These options are typically used when [self-hosting](/open-source-self-hosting) or for local development.
 
-<ParamField body="Skip deploying the image" type="--skip-deploy | -D">
-  Load the built image into your local docker.
-</ParamField>
-
 <ParamField body="Self-hosted (builds locally)" type="--self-hosted">
   Builds and loads the image using your local docker. Use the `--registry` option to specify the
   registry to push the image to when using `--self-hosted`, or just use `--push` to push to the
   default registry.
+</ParamField>
+
+<ParamField body="Skip deploying the image" type="--skip-deploy | -D">
+  Load the built image into your local docker.
 </ParamField>
 
 <ParamField body="Load image" type="--load-image">
@@ -96,16 +96,20 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 </ParamField>
 
 <ParamField body="Registry" type="--registry">
-  Specify the registry to push the image to when using `--self-hosted`.
+  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable `--push`.
 </ParamField>
 
 <ParamField body="Push image" type="--push">
-  When using the --self-hosted flag, push the image to the registry.
+  When using the `--self-hosted` flag, push the image to the registry.
 </ParamField>
 
 <ParamField body="Namespace" type="--namepsace">
   The namespace to use when pushing the image to the registry. For example, if pushing to Docker
   Hub, the namespace is your Docker Hub username.
+</ParamField>
+
+<ParamField body="Network" type="--network">
+  The networking mode for RUN instructions when using `--self-hosted`.
 </ParamField>
 
 ## Examples
@@ -118,7 +122,6 @@ An example of deploying to Docker Hub when using a self-hosted setup:
 npx trigger.dev@latest deploy \
   --self-hosted \
   --load-image \
-  --push \
   --registry docker.io \
   --namespace mydockerhubusername
 ```
