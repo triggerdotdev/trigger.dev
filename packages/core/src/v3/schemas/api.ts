@@ -68,7 +68,9 @@ export const TriggerTaskRequestBody = z.object({
   options: z
     .object({
       dependentAttempt: z.string().optional(),
+      parentAttempt: z.string().optional(),
       dependentBatch: z.string().optional(),
+      parentBatch: z.string().optional(),
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),

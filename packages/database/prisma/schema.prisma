@@ -1720,6 +1720,31 @@ model TaskRun {
 
   logsDeletedAt DateTime?
 
+  /// This represents the original task that that was triggered outside of a Trigger.dev task
+  rootTaskRun   TaskRun? @relation("TaskRootRun", fields: [rootTaskRunId], references: [id], onDelete: SetNull)
+  rootTaskRunId String?
+
+  /// The root run will have a list of all the descendant runs, children, grand children, etc.
+  descendantRuns TaskRun[] @relation("TaskRootRun")
+
+  /// The immediate parent run of this task run
+  parentTaskRun   TaskRun? @relation("TaskParentRun", fields: [parentTaskRunId], references: [id], onDelete: SetNull)
+  parentTaskRunId String?
+
+  /// The immediate child runs of this task run
+  childRuns TaskRun[] @relation("TaskParentRun")
+
+  /// The immediate parent attempt of this task run
+  parentTaskRunAttempt   TaskRunAttempt? @relation("TaskParentRunAttempt", fields: [parentTaskRunAttemptId], references: [id], onDelete: SetNull)
+  parentTaskRunAttemptId String?
+
+  /// The batch run that this task run is a part of
+  batch   BatchTaskRun? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchId String?
+
+  /// whether or not the task run was created because of a triggerAndWait for batchTriggerAndWait
+  resumeParentOnCompletion Boolean @default(false)
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
@@ -1734,6 +1759,8 @@ model TaskRun {
   @@index([spanId])
   // Finding completed runs
   @@index([completedAt])
+  // Finding child runs
+  @@index([parentTaskRunId])
 }
 
 enum TaskRunStatus {
@@ -1881,6 +1908,7 @@ model TaskRunAttempt {
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   alerts                 ProjectAlert[]
+  childRuns              TaskRun[]                @relation("TaskParentRunAttempt")
 
   @@unique([taskRunId, number])
   @@index([taskRunId])
@@ -2071,8 +2099,9 @@ model BatchTaskRun {
   items           BatchTaskRunItem[]
   runDependencies TaskRunDependency[] @relation("dependentBatchRun")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  TaskRun   TaskRun[]
 
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
 }

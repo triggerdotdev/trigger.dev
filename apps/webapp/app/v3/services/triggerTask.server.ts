@@ -108,6 +108,7 @@ export class TriggerTaskService extends BaseService {
                   id: true,
                   status: true,
                   taskIdentifier: true,
+                  rootTaskRunId: true,
                 },
               },
             },
@@ -134,6 +135,22 @@ export class TriggerTaskService extends BaseService {
         }
       }
 
+      const parentAttempt = body.options?.parentAttempt
+        ? await this._prisma.taskRunAttempt.findUnique({
+            where: { friendlyId: body.options.parentAttempt },
+            include: {
+              taskRun: {
+                select: {
+                  id: true,
+                  status: true,
+                  taskIdentifier: true,
+                  rootTaskRunId: true,
+                },
+              },
+            },
+          })
+        : undefined;
+
       const dependentBatchRun = body.options?.dependentBatch
         ? await this._prisma.batchTaskRun.findUnique({
             where: { friendlyId: body.options.dependentBatch },
@@ -145,6 +162,7 @@ export class TriggerTaskService extends BaseService {
                       id: true,
                       status: true,
                       taskIdentifier: true,
+                      rootTaskRunId: true,
                     },
                   },
                 },
@@ -175,6 +193,26 @@ export class TriggerTaskService extends BaseService {
           );
         }
       }
+
+      const parentBatchRun = body.options?.parentBatch
+        ? await this._prisma.batchTaskRun.findUnique({
+            where: { friendlyId: body.options.parentBatch },
+            include: {
+              dependentTaskAttempt: {
+                include: {
+                  taskRun: {
+                    select: {
+                      id: true,
+                      status: true,
+                      taskIdentifier: true,
+                      rootTaskRunId: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : undefined;
 
       return await eventRepository.traceEvent(
         taskId,
@@ -272,6 +310,24 @@ export class TriggerTaskService extends BaseService {
                       : {
                           connect: tagIds.map((id) => ({ id })),
                         },
+                  parentTaskRunId:
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                  parentTaskRunAttemptId:
+                    dependentAttempt?.id ??
+                    parentAttempt?.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.id,
+                  rootTaskRunId:
+                    dependentAttempt?.taskRun.rootTaskRunId ??
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.rootTaskRunId ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+
+                  batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
+                  resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
                 },
               });
 
