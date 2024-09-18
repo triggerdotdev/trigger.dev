@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.4
+
+### Patch Changes
+
+- 4adc773c7: Auto-resolve payload/output presigned urls when retrieving a run with runs.retrieve
+
 ## 3.0.3
 
 ### Patch Changes

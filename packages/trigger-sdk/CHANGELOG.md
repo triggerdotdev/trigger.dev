@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.4
+
+### Patch Changes
+
+- 4adc773c7: Auto-resolve payload/output presigned urls when retrieving a run with runs.retrieve
+- Updated dependencies [4adc773c7]
+  - @trigger.dev/core@3.0.4
+
 ## 3.0.3
 
 ### Patch Changes

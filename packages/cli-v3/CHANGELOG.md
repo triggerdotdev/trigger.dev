@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 3.0.4
+
+### Patch Changes
+
+- 8d1e41693: - Improve index error logging
+  - Add network flag for self-hosted deploys
+  - Fix checksum flag on some docker versions
+  - Add Containerfile debug logs
+- Updated dependencies [4adc773c7]
+  - @trigger.dev/core@3.0.4
+  - @trigger.dev/build@3.0.4
+
 ## 3.0.3
 
 ### Patch Changes
