@@ -246,9 +246,9 @@
       "group": "Frameworks",
       "pages": [
         "guides/frameworks/introduction",
-        "guides/frameworks/nodejs",
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
+        "guides/frameworks/nodejs",
         "guides/frameworks/remix",
         {
           "group": "Supabase",
