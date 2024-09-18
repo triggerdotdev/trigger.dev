@@ -96,11 +96,11 @@ These options are typically used when [self-hosting](/open-source-self-hosting) 
 </ParamField>
 
 <ParamField body="Registry" type="--registry">
-  Specify the registry to push the image to when using `--self-hosted`.
+  Specify the registry to push the image to when using `--self-hosted`. Will automatically enable `--push`.
 </ParamField>
 
 <ParamField body="Push image" type="--push">
-  When using the --self-hosted flag, push the image to the registry.
+  When using the `--self-hosted` flag, push the image to the registry.
 </ParamField>
 
 <ParamField body="Namespace" type="--namepsace">
@@ -122,7 +122,6 @@ An example of deploying to Docker Hub when using a self-hosted setup:
 npx trigger.dev@latest deploy \
   --self-hosted \
   --load-image \
-  --push \
   --registry docker.io \
   --namespace mydockerhubusername
 ```
