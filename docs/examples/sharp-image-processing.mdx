@@ -119,3 +119,14 @@ export const sharpProcessImage = task({
   },
 });
 ```
+
+## Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "imageUrl": "<an-image-url.jpg>", // Replace with a URL to a JPEG image
+  "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
+}
+```
