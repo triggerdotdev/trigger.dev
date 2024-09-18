@@ -835,10 +835,16 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_TASK checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           //setting this means we can only resume from a checkpoint
           socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
           logger.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage", {
-            requiresCheckpointResumeWithMessage: socket.data.requiresCheckpointResumeWithMessage,
+            checkpoint,
+            socketData: socket.data,
           });
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
@@ -912,10 +918,16 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_BATCH checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           //setting this means we can only resume from a checkpoint
           socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
-          logger.log("WAIT_FOR_BATCH set requiresCheckpointResumeWithMessage", {
-            requiresCheckpointResumeWithMessage: socket.data.requiresCheckpointResumeWithMessage,
+          logger.log("WAIT_FOR_BATCH set checkpoint", {
+            checkpoint,
+            socketData: socket.data,
           });
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
