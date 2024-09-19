@@ -1,0 +1,84 @@
+---
+title: "Turn a PDF into an image using MuPDF"
+sidebarTitle: "PDF to image"
+description: "This example will show you how to turn a PDF into an image using MuPDF and Trigger.dev."
+---
+
+## Overview
+
+This example demonstrates how to use Trigger.dev to turn a PDF into an image using MuPDF.
+
+## Task code
+
+```ts trigger/pdfToImage.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const pdfToImage = task({
+  id: "pdf-to-image",
+  run: async (payload: { pdfUrl: string; documentId: string }) => {
+    logger.log("Converting PDF to images", payload);
+
+    const pdfPath = `/tmp/${payload.documentId}.pdf`;
+    const outputDir = `/tmp/${payload.documentId}`;
+
+    // Download PDF and convert to images using MuPDF
+    execSync(`curl -s -o ${pdfPath} ${payload.pdfUrl}`);
+    fs.mkdirSync(outputDir, { recursive: true });
+    execSync(`mutool convert -o ${outputDir}/page-%d.png ${pdfPath}`);
+
+    // Upload images to R2
+    const uploadedUrls = [];
+    for (const file of fs.readdirSync(outputDir)) {
+      const s3Key = `images/${payload.documentId}/${file}`;
+      const uploadParams = {
+        Bucket: process.env.S3_BUCKET,
+        Key: s3Key,
+        Body: fs.readFileSync(path.join(outputDir, file)),
+        ContentType: "image/png",
+      };
+
+      logger.log("Uploading to R2", uploadParams);
+
+      await s3Client.send(new PutObjectCommand(uploadParams));
+      const s3Url = `https://${process.env.S3_BUCKET}.r2.cloudflarestorage.com/${s3Key}`;
+      uploadedUrls.push(s3Url);
+      logger.log("Image uploaded to R2", { url: s3Url });
+    }
+
+    // Clean up
+    fs.rmSync(outputDir, { recursive: true, force: true });
+    fs.unlinkSync(pdfPath);
+
+    logger.log("All images uploaded to R2", { urls: uploadedUrls });
+
+    return {
+      imageUrls: uploadedUrls,
+    };
+  },
+});
+```
+
+## Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "pdfUrl": "https://pdfobject.com/pdf/sample.pdf",
+  "documentId": "unique-document-id"
+}
+```
