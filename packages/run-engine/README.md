@@ -49,6 +49,14 @@ These are all the TaskRun mutations happening right now:
 
 ## 1. TriggerTaskService
 
+This is called from:
+
+- trigger task API
+- `BatchTriggerTaskService` for each item
+- `ReplayTaskRunService`
+- `TestTaskService`
+- `TriggerScheduledTaskService` when the CRON fires
+
 Directly creates a run if it doesn't exist, either in the `PENDING` or `DELAYED` states.
 Enqueues the run.
 
