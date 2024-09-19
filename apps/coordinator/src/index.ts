@@ -241,7 +241,7 @@ class TaskCoordinator {
             return;
           }
 
-          this.#checkpointer.cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId);
 
           if (message.delayInMs) {
             taskSocket.emit("REQUEST_EXIT", {
