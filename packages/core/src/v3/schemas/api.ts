@@ -496,7 +496,23 @@ const CommonRunFields = {
   costInCents: z.number(),
   baseCostInCents: z.number(),
   durationMs: z.number(),
+  depth: z.number(),
 };
+
+export const DescendantRunDetails = z.object({
+  ...CommonRunFields,
+  triggerFunction: z.enum(["triggerAndWait", "trigger", "batchTriggerAndWait", "batchTrigger"]),
+  batchId: z.string().optional(),
+});
+
+export const RootRunDetails = z.object({
+  ...CommonRunFields,
+});
+
+export const ParentRunDetails = z.object({
+  ...CommonRunFields,
+  isRoot: z.boolean(),
+});
 
 export const RetrieveRunResponse = z.object({
   ...CommonRunFields,
@@ -505,6 +521,11 @@ export const RetrieveRunResponse = z.object({
   output: z.any().optional(),
   outputPresignedUrl: z.string().optional(),
   schedule: RunScheduleDetails.optional(),
+  relatedRuns: z.object({
+    root: RootRunDetails.optional(),
+    parent: ParentRunDetails.optional(),
+    children: z.array(DescendantRunDetails).optional(),
+  }),
   attempts: z.array(
     z
       .object({

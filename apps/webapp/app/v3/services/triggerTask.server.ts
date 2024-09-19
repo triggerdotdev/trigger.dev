@@ -109,6 +109,7 @@ export class TriggerTaskService extends BaseService {
                   status: true,
                   taskIdentifier: true,
                   rootTaskRunId: true,
+                  depth: true,
                 },
               },
             },
@@ -145,6 +146,7 @@ export class TriggerTaskService extends BaseService {
                   status: true,
                   taskIdentifier: true,
                   rootTaskRunId: true,
+                  depth: true,
                 },
               },
             },
@@ -163,6 +165,7 @@ export class TriggerTaskService extends BaseService {
                       status: true,
                       taskIdentifier: true,
                       rootTaskRunId: true,
+                      depth: true,
                     },
                   },
                 },
@@ -281,6 +284,14 @@ export class TriggerTaskService extends BaseService {
                 }
               }
 
+              const depth = dependentAttempt
+                ? dependentAttempt.taskRun.depth + 1
+                : parentAttempt
+                ? parentAttempt.taskRun.depth + 1
+                : dependentBatchRun?.dependentTaskAttempt
+                ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
+                : 0;
+
               const taskRun = await tx.taskRun.create({
                 data: {
                   status: delayUntil ? "DELAYED" : "PENDING",
@@ -325,9 +336,9 @@ export class TriggerTaskService extends BaseService {
                     parentAttempt?.taskRun.id ??
                     dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
                     dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
-
                   batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                   resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
+                  depth,
                 },
               });
 

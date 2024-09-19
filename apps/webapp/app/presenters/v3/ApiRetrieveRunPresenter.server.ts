@@ -22,7 +22,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     showSecretDetails: boolean
   ): Promise<RetrieveRunResponse | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const taskRun = await this._prisma.taskRun.findUnique({
+      const taskRun = await this._replica.taskRun.findFirst({
         where: {
           friendlyId,
           runtimeEnvironmentId: env.id,
@@ -36,6 +36,94 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           lockedToVersion: true,
           schedule: true,
           tags: true,
+          parentTaskRun: {
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              taskIdentifier: true,
+              createdAt: true,
+              startedAt: true,
+              updatedAt: true,
+              completedAt: true,
+              expiredAt: true,
+              delayUntil: true,
+              ttl: true,
+              tags: true,
+              costInCents: true,
+              baseCostInCents: true,
+              usageDurationMs: true,
+              idempotencyKey: true,
+              isTest: true,
+              depth: true,
+              lockedToVersion: {
+                select: {
+                  version: true,
+                },
+              },
+            },
+          },
+          rootTaskRun: {
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              taskIdentifier: true,
+              createdAt: true,
+              startedAt: true,
+              updatedAt: true,
+              completedAt: true,
+              expiredAt: true,
+              delayUntil: true,
+              ttl: true,
+              tags: true,
+              costInCents: true,
+              baseCostInCents: true,
+              usageDurationMs: true,
+              idempotencyKey: true,
+              isTest: true,
+              depth: true,
+              lockedToVersion: {
+                select: {
+                  version: true,
+                },
+              },
+            },
+          },
+          childRuns: {
+            select: {
+              id: true,
+              taskIdentifier: true,
+              friendlyId: true,
+              resumeParentOnCompletion: true,
+              status: true,
+              createdAt: true,
+              startedAt: true,
+              updatedAt: true,
+              completedAt: true,
+              expiredAt: true,
+              delayUntil: true,
+              ttl: true,
+              tags: true,
+              costInCents: true,
+              baseCostInCents: true,
+              usageDurationMs: true,
+              idempotencyKey: true,
+              isTest: true,
+              depth: true,
+              lockedToVersion: {
+                select: {
+                  version: true,
+                },
+              },
+              batch: {
+                select: {
+                  id: true,
+                  friendlyId: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -124,6 +212,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         costInCents: taskRun.costInCents,
         baseCostInCents: taskRun.baseCostInCents,
         durationMs: taskRun.usageDurationMs,
+        depth: taskRun.depth,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -150,6 +239,94 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
               completedAt: a.completedAt ?? undefined,
               error: ApiRetrieveRunPresenter.apiErrorFromError(a.error),
             })),
+        relatedRuns: {
+          root: taskRun.rootTaskRun
+            ? {
+                id: taskRun.rootTaskRun.friendlyId,
+                taskIdentifier: taskRun.rootTaskRun.taskIdentifier,
+                idempotencyKey: taskRun.rootTaskRun.idempotencyKey ?? undefined,
+                version: taskRun.rootTaskRun.lockedToVersion?.version,
+                status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(taskRun.rootTaskRun.status),
+                createdAt: taskRun.rootTaskRun.createdAt,
+                startedAt: taskRun.rootTaskRun.startedAt ?? undefined,
+                updatedAt: taskRun.rootTaskRun.updatedAt,
+                finishedAt: taskRun.rootTaskRun.completedAt ?? undefined,
+                expiredAt: taskRun.rootTaskRun.expiredAt ?? undefined,
+                delayedUntil: taskRun.rootTaskRun.delayUntil ?? undefined,
+                ttl: taskRun.rootTaskRun.ttl ?? undefined,
+                costInCents: taskRun.rootTaskRun.costInCents,
+                baseCostInCents: taskRun.rootTaskRun.baseCostInCents,
+                durationMs: taskRun.rootTaskRun.usageDurationMs,
+                isTest: taskRun.rootTaskRun.isTest,
+                depth: taskRun.rootTaskRun.depth,
+                tags: taskRun.rootTaskRun.tags
+                  .map((t) => t.name)
+                  .sort((a, b) => a.localeCompare(b)),
+                ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(
+                  taskRun.rootTaskRun.status
+                ),
+              }
+            : undefined,
+          parent: taskRun.parentTaskRun
+            ? {
+                id: taskRun.parentTaskRun.friendlyId,
+                taskIdentifier: taskRun.parentTaskRun.taskIdentifier,
+                idempotencyKey: taskRun.parentTaskRun.idempotencyKey ?? undefined,
+                version: taskRun.parentTaskRun.lockedToVersion?.version,
+                status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(
+                  taskRun.parentTaskRun.status
+                ),
+                createdAt: taskRun.parentTaskRun.createdAt,
+                startedAt: taskRun.parentTaskRun.startedAt ?? undefined,
+                updatedAt: taskRun.parentTaskRun.updatedAt,
+                finishedAt: taskRun.parentTaskRun.completedAt ?? undefined,
+                expiredAt: taskRun.parentTaskRun.expiredAt ?? undefined,
+                delayedUntil: taskRun.parentTaskRun.delayUntil ?? undefined,
+                isRoot: taskRun.parentTaskRun.id === taskRun.rootTaskRun?.id,
+                ttl: taskRun.parentTaskRun.ttl ?? undefined,
+                costInCents: taskRun.parentTaskRun.costInCents,
+                baseCostInCents: taskRun.parentTaskRun.baseCostInCents,
+                durationMs: taskRun.parentTaskRun.usageDurationMs,
+                isTest: taskRun.parentTaskRun.isTest,
+                depth: taskRun.parentTaskRun.depth,
+                tags: taskRun.parentTaskRun.tags
+                  .map((t) => t.name)
+                  .sort((a, b) => a.localeCompare(b)),
+                ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(
+                  taskRun.parentTaskRun.status
+                ),
+              }
+            : undefined,
+          children: taskRun.childRuns.map((r) => ({
+            id: r.friendlyId,
+            taskIdentifier: r.taskIdentifier,
+            idempotencyKey: r.idempotencyKey ?? undefined,
+            version: r.lockedToVersion?.version,
+            triggerFunction: r.batch
+              ? r.resumeParentOnCompletion
+                ? "batchTriggerAndWait"
+                : "batchTrigger"
+              : r.resumeParentOnCompletion
+              ? "triggerAndWait"
+              : "trigger",
+            batchId: r.batch?.friendlyId,
+            status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(r.status),
+            createdAt: r.createdAt,
+            startedAt: r.startedAt ?? undefined,
+            updatedAt: r.updatedAt,
+            finishedAt: r.completedAt ?? undefined,
+            expiredAt: r.expiredAt ?? undefined,
+            delayedUntil: r.delayUntil ?? undefined,
+            ttl: r.ttl ?? undefined,
+            tags: r.tags.map((t) => t.name).sort((a, b) => a.localeCompare(b)),
+            costInCents: r.costInCents,
+            baseCostInCents: r.baseCostInCents,
+            durationMs: r.usageDurationMs,
+            depth: r.depth,
+            isTest: r.isTest,
+            ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(r.status),
+          })),
+        },
       };
     });
   }
@@ -223,6 +400,12 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         assertNever(status);
       }
     }
+  }
+
+  static apiBooleanHelpersFromTaskRunStatus(status: TaskRunStatus) {
+    return ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
+      ApiRetrieveRunPresenter.apiStatusFromRunStatus(status)
+    );
   }
 
   static apiBooleanHelpersFromRunStatus(status: RunStatus) {

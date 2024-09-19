@@ -1745,6 +1745,9 @@ model TaskRun {
   /// whether or not the task run was created because of a triggerAndWait for batchTriggerAndWait
   resumeParentOnCompletion Boolean @default(false)
 
+  /// The depth of this task run in the task run hierarchy
+  depth Int @default(0)
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])

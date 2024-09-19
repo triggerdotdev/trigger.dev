@@ -1821,7 +1821,7 @@ components:
               format: date-time
               description: The Date to delay the run until, e.g. `new Date()` or `"2024-06-25T15:45:26Z"`
               example: 2024-06-25T15:45:26Z
-    RetrieveRunResponse:
+    CommonRunObject:
       type: object
       required:
         - id
@@ -1859,22 +1859,6 @@ components:
           type: string
           example: 20240523.1
           description: The version of the worker that executed the run
-        payload:
-          type: object
-          description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
-          example: { "foo": "bar" }
-        payloadPresignedUrl:
-          type: string
-          description: The presigned URL to download the payload. Will only be included if the payload is too large to be included in the response. Expires in 5 minutes.
-          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
-        output:
-          type: object
-          description: The output of the run. Will be omitted if the request was made with a Public API key
-          example: { "foo": "bar" }
-        outputPresignedUrl:
-          type: string
-          description: The presigned URL to download the output. Will only be included if the output is too large to be included in the response. Expires in 5 minutes.
-          example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
         idempotencyKey:
           type: string
           description: The idempotency key used to prevent creating duplicate runs, if provided
@@ -1926,77 +1910,141 @@ components:
           type: number
           example: 491
           description: The duration of compute (so far) in milliseconds. This does not include waits.
-        schedule:
-          type: object
-          description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
+        depth:
+          type: number
+          example: 0
+          description: The depth of the run in the task run hierarchy. The root run has a depth of 0.
+
+    RetrieveRunResponse:
+      allOf:
+        - $ref: "#/components/schemas/CommonRunObject"
+        - type: object
           required:
-            - id
-            - generator
+            - attempts
           properties:
-            id:
+            payload:
+              type: object
+              description: The payload that was sent to the task. Will be omitted if the request was made with a Public API key
+              example: { "foo": "bar" }
+            payloadPresignedUrl:
               type: string
-              description: The unique ID of the schedule, prefixed with `sched_`
-              example: sched_1234
-            externalId:
+              description: The presigned URL to download the payload. Will only be included if the payload is too large to be included in the response. Expires in 5 minutes.
+              example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
+            output:
+              type: object
+              description: The output of the run. Will be omitted if the request was made with a Public API key
+              example: { "foo": "bar" }
+            outputPresignedUrl:
               type: string
-              description: The external ID of the schedule. Can be anything that is useful to you (e.g., user ID, org ID, etc.)
-              example: user_1234
-            deduplicationKey:
-              type: string
-              description: The deduplication key used to prevent creating duplicate schedules
-              example: dedup_key_1234
-            generator:
+              description: The presigned URL to download the output. Will only be included if the output is too large to be included in the response. Expires in 5 minutes.
+              example: "https://r2.cloudflarestorage.com/packets/yubjwjsfkxnylobaqvqz/dev/run_p4omhh45hgxxnq1re6ovy/payload.json?X-Amz-Expires=300&X-Amz-Date=20240625T154526Z&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=10b064e58a0680db5b5e077be2be3b2a%2F20240625%2Fauto%2Fs3%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=88604cb993ffc151b4d73f2439da431d9928488e4b3dcfa4a7c8f1819"
+            relatedRuns:
               type: object
               properties:
-                type:
+                root:
+                  $ref: "#/components/schemas/CommonRunObject"
+                  description: The root run of the run hierarchy. Will be omitted if the run is the root run
+                parent:
+                  description: The parent run of the run. Will be omitted if the run is the root run
+                  allOf:
+                    - $ref: "#/components/schemas/CommonRunObject"
+                    - type: object
+                      properties:
+                        isRoot:
+                          type: boolean
+                          example: false
+                          description: Whether this run is the root run
+                children:
+                  description: The immediate children of the run. Will be omitted if the run has no children
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: "#/components/schemas/CommonRunObject"
+                      - type: object
+                        properties:
+                          batchId:
+                            type: string
+                            description: The ID of the batch that this run belongs to
+                            example: batch_1234
+                          triggerFunction:
+                            type: string
+                            description: The name of the function that triggered the run
+                            enum:
+                              - trigger
+                              - triggerAndWait
+                              - batchTrigger
+                              - batchTriggerAndWait
+            schedule:
+              type: object
+              description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
+              required:
+                - id
+                - generator
+              properties:
+                id:
                   type: string
-                  enum:
-                    - CRON
-                expression:
+                  description: The unique ID of the schedule, prefixed with `sched_`
+                  example: sched_1234
+                externalId:
                   type: string
-                  description: The cron expression used to generate the schedule
-                  example: 0 0 * * *
-                description:
+                  description: The external ID of the schedule. Can be anything that is useful to you (e.g., user ID, org ID, etc.)
+                  example: user_1234
+                deduplicationKey:
                   type: string
-                  description: The description of the generator in plain english
-                  example: Every day at midnight
-        attempts:
-          type: array
-          items:
-            type: object
-            required:
-              - id
-              - status
-              - createdAt
-              - updatedAt
-            properties:
-              id:
-                type: string
-                description: The unique ID of the attempt, prefixed with `attempt_`
-                example: attempt_1234
-              status:
-                type: string
-                enum:
-                  - PENDING
-                  - EXECUTING
-                  - PAUSED
-                  - COMPLETED
-                  - FAILED
-                  - CANCELED
-              error:
-                $ref: "#/components/schemas/SerializedError"
-              createdAt:
-                type: string
-                format: date-time
-              updatedAt:
-                type: string
-                format: date-time
-              startedAt:
-                type: string
-                format: date-time
-              completedAt:
-                type: string
-                format: date-time
+                  description: The deduplication key used to prevent creating duplicate schedules
+                  example: dedup_key_1234
+                generator:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                        - CRON
+                    expression:
+                      type: string
+                      description: The cron expression used to generate the schedule
+                      example: 0 0 * * *
+                    description:
+                      type: string
+                      description: The description of the generator in plain english
+                      example: Every day at midnight
+            attempts:
+              type: array
+              items:
+                type: object
+                required:
+                  - id
+                  - status
+                  - createdAt
+                  - updatedAt
+                properties:
+                  id:
+                    type: string
+                    description: The unique ID of the attempt, prefixed with `attempt_`
+                    example: attempt_1234
+                  status:
+                    type: string
+                    enum:
+                      - PENDING
+                      - EXECUTING
+                      - PAUSED
+                      - COMPLETED
+                      - FAILED
+                      - CANCELED
+                  error:
+                    $ref: "#/components/schemas/SerializedError"
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  startedAt:
+                    type: string
+                    format: date-time
+                  completedAt:
+                    type: string
+                    format: date-time
     CreateScheduleOptions:
       type: object
       properties:
