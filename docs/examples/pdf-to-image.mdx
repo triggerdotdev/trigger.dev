@@ -8,6 +8,20 @@ description: "This example will show you how to turn a PDF into an image using M
 
 This example demonstrates how to use Trigger.dev to turn a PDF into a series of images using MuPDF and upload them to Cloudflare R2.
 
+## Update your build configuration
+
+To use this example, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [aptGet({ packages: ["mupdf-tools", "curl"] })],
+  },
+});
+```
+
 ## Task code
 
 ```ts trigger/pdfToImage.ts
