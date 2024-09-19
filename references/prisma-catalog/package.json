@@ -1,0 +1,18 @@
+{
+  "name": "references-prisma-catalog",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*",
+    "@trigger.dev/build": "workspace:*",
+    "typescript": "^5.5.4",
+    "prisma": "5.19.0"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "@prisma/client": "5.19.0"
+  },
+  "scripts": {
+    "generate:prisma": "prisma generate --sql"
+  }
+}

@@ -39,6 +39,14 @@
     {
       "type": "node-terminal",
       "request": "launch",
+      "name": "Debug prisma-catalog deploy CLI",
+      "command": "pnpm exec trigger deploy --self-hosted --load-image",
+      "cwd": "${workspaceFolder}/references/prisma-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
       "name": "Debug V3 Deploy CLI",
       "command": "pnpm exec triggerdev deploy --self-hosted --load-image",
       "cwd": "${workspaceFolder}/references/v3-catalog",

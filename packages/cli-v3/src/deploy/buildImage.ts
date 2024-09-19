@@ -492,7 +492,7 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER bun
 WORKDIR /app
@@ -601,7 +601,7 @@ COPY --chown=node:node . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER node
 WORKDIR /app
