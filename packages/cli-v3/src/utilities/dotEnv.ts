@@ -21,6 +21,7 @@ export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
   delete result.TRIGGER_API_URL;
   delete result.TRIGGER_SECRET_KEY;
+  delete result.OTEL_EXPORTER_OTLP_ENDPOINT;
 
   return result;
 }

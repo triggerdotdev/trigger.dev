@@ -444,12 +444,9 @@ export default defineConfig({
 ```
 
 <Note>
-  The `prismaExtension` will inject the `DATABASE_URL` environment variable into the build process
-  when running the `deploy` command. This means the CLI needs to have `process.env.DATABASE_URL` set
-  at the time of calling the `deploy` command. You can do this via a `.env` file and passing the
-  `--env-file .env` option to the deploy command or via shell environment variables. This goes for direct database URLs as well.
+  The `prismaExtension` will inject the `DATABASE_URL` environment variable into the build process. Learn more about setting environment variables for deploying in our [Environment Variables](/deploy-environment-variables) guide.
 
-These environment variables are only used during the build process and are not embedded in the final image.
+These environment variables are only used during the build process and are not embedded in the final container image.
 
 </Note>
 
