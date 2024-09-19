@@ -47,7 +47,12 @@ It's very important that a run can only be acted on by one process at a time. We
 
 These are all the TaskRun mutations happening right now:
 
-## 1. Trigger
+## 1. TriggerTaskService
+
+Directly creates a run if it doesn't exist, either in the `PENDING` or `DELAYED` states.
+Enqueues the run.
+
+[TriggerTaskService.call()](/apps//webapp/app/v3/services/triggerTask.server.ts#246)
 
 ## 2. Batch trigger
 
