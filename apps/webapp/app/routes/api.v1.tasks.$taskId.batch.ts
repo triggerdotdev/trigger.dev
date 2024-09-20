@@ -39,6 +39,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     "idempotency-key": idempotencyKey,
     "trigger-version": triggerVersion,
     "x-trigger-span-parent-as-link": spanParentAsLink,
+    "x-trigger-worker": isFromWorker,
     traceparent,
     tracestate,
   } = headers.data;
@@ -86,11 +87,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const service = new BatchTriggerTaskService();
 
+  const traceContext =
+    traceparent ?? isFromWorker // If the request is from a worker, we should pass the trace context
+      ? { traceparent, tracestate }
+      : undefined;
+
   try {
     const result = await service.call(taskId, authenticationResult.environment, body.data, {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
-      traceContext: traceparent ? { traceparent, tracestate } : undefined,
+      traceContext,
       spanParentAsLink: spanParentAsLink === 1,
     });
 
