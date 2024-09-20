@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 3.0.6
+
+### Patch Changes
+
+- 64862db84: Ignore OTEL_EXPORTER_OTLP_ENDPOINT environment variable from `.env` files, to prevent the internal OTEL_EXPORTER_OTLP_ENDPOINT being overwritten with a user-supplied value.
+- b4be73655: prismaExtension fixes for #1325 and #1327
+- Updated dependencies [b4be73655]
+- Updated dependencies [4e0bc485a]
+- Updated dependencies [c65d4822b]
+- Updated dependencies [1f5bcc73b]
+  - @trigger.dev/build@3.0.6
+  - @trigger.dev/core@3.0.6
+
 ## 3.0.5
 
 ### Patch Changes
