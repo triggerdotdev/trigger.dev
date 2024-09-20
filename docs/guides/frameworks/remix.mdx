@@ -11,6 +11,9 @@ import CliDevStep from '/snippets/step-cli-dev.mdx';
 import CliRunTestStep from '/snippets/step-run-test.mdx';
 import CliViewRunStep from '/snippets/step-view-run.mdx';
 import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
+import TriggerTaskRemix from "/snippets/trigger-tasks-remix.mdx";
+import AddEnvironmentVariables from "/snippets/add-environment-variables.mdx";
+import DeployingYourTask from "/snippets/deplopying-your-task.mdx";
 
 <Prerequisites framework="Remix" />
 
@@ -22,5 +25,140 @@ import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
     <CliRunTestStep />
     <CliViewRunStep />
 </Steps>
+
+## Set your secret key locally
+
+Set your `TRIGGER_SECRET_KEY` environment variable in your `.env` file. This key is used to authenticate with Trigger.dev, so you can trigger runs from your Remix app. Visit the API Keys page in the dashboard and select the DEV secret key.
+
+![How to find your secret key](/images/api-keys.png)
+
+For more information on authenticating with Trigger.dev, see the [API keys page](/apikeys).
+
+## Triggering your task in Remix
+
+<Steps>
+
+  <Step title="Create an API route">
+
+  Create a new file called `api.trigger.ts` (or `api.trigger.js`) in the `app/routes` directory like this: `app/routes/api.trigger.ts`.
+
+  </Step>
+
+  <Step title="Add your task">
+
+  Add this code to your `api.trigger.ts` file which imports your task:
+
+  ```ts
+  import type { helloWorldTask } from "../../src/trigger/example";
+  import { tasks } from "@trigger.dev/sdk/v3";
+
+  export async function loader() {
+    const handle = await tasks.trigger<typeof helloWorldTask>(
+      "hello-world",
+      "James"
+    );
+
+    return new Response(JSON.stringify(handle), {
+      headers: { "Content-Type": "application/json" },
+    });
+}
+```
+
+  </Step>
+
+  <Step title="Trigger your task">
+
+    <TriggerTaskRemix/>
+
+  </Step>
+
+</Steps>
+
+<AddEnvironmentVariables/>
+
+<DeployingYourTask/>
+
+## Deploying Remix to Vercel Edge Functions
+
+There are a few extra steps to follow to deploy your Remix app to Vercel Edge Functions.
+
+<Steps>
+
+<Step title="Update the Vercel configuration">
+
+Create or update the `vercel.json` file with the following:
+
+```json vercel.json
+{
+  "buildCommand": "npm run vercel-build",
+  "devCommand": "npm run dev",
+  "framework": "remix",
+  "installCommand": "npm install",
+  "outputDirectory": "build/client"
+}
+```
+
+</Step>
+
+<Step title="Update `package.json` scripts">
+
+Update your `package.json` to include the following scripts:
+
+```json package.json
+"scripts": {
+    "build": "remix vite:build",
+    "dev": "remix vite:dev",
+    "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
+    "start": "remix-serve ./build/server/index.js",
+    "typecheck": "tsc",
+    "vercel-build": "remix vite:build && cp -r ./public ./build/client"
+},
+```
+
+</Step>
+
+<Step title="Deploy to Vercel">
+
+Push your code to a Git repository and create a new project in the Vercel dashboard. Select your repository and follow the prompts to complete the deployment.
+
+</Step>
+
+
+<Step title="Add your Vercel environment variables">
+
+In the Vercel project settings, add your Trigger.dev secret key:
+
+```bash
+TRIGGER_SECRET_KEY=your-secret-key
+```
+
+You can find this key in the Trigger.dev dashboard under API Keys and select the environment key you want to use.
+
+![How to find your secret key](/images/api-keys.png)
+
+</Step>
+
+<Step title="Deploy your project">
+
+Once you've added the environment variable, deploy your project to Vercel.
+
+<Note>Ensure you have also deployed your Trigger.dev task. See [deploy your task step](/guides/frameworks/remix#deploying-your-task-to-trigger-dev).</Note>
+
+</Step>
+
+<Step title="Test your task in production">
+
+After deployment, visit your Vercel deployment URL followed by `/api/trigger` (e.g., `https://your-app.vercel.app/api/trigger`) to test the Trigger.dev task in production.
+
+</Step>
+
+</Steps>
+
+### Additional notes
+
+The `vercel-build` script in `package.json` is specific to Remix projects on Vercel, ensuring that static assets are correctly copied to the build output.
+
+The `runtime: "edge"` configuration in the API route allows for better performance on Vercel's Edge Network.
+
 
 <UsefulNextSteps />
