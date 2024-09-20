@@ -421,7 +421,10 @@ class TaskCoordinator {
               success: true,
             };
           } catch (error) {
-            logger.error("Error while waiting for checkpointable state", { error });
+            logger.error("Error while waiting for checkpointable state", {
+              error,
+              runId: socket.data.runId,
+            });
 
             if (error instanceof CheckpointReadinessTimeoutError) {
               logger.error(
@@ -510,7 +513,7 @@ class TaskCoordinator {
             updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
             updateAttemptNumber(executionAck.payload.execution.attempt.number);
           } catch (error) {
-            logger.error("Error", { error });
+            logger.error("READY_FOR_EXECUTION error", { error, runId: socket.data.runId });
 
             await crashRun({
               name: "ReadyForExecutionError",
@@ -566,7 +569,7 @@ class TaskCoordinator {
               return;
             }
 
-            logger.error("Error", { error });
+            logger.error("READY_FOR_LAZY_ATTEMPT error", { error, runId: socket.data.runId });
 
             await crashRun({
               name: "ReadyForLazyAttemptError",
