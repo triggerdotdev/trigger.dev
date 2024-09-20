@@ -354,6 +354,10 @@ export function RunInspector({
                       : "–"}
                   </Property.Value>
                 </Property.Item>
+                <Property.Item>
+                  <Property.Label>Run ID</Property.Label>
+                  <Property.Value>{run.id}</Property.Value>
+                </Property.Item>
               </Property.Table>
             </div>
           ) : tab === "context" ? (
