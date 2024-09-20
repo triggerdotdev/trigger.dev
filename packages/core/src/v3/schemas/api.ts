@@ -505,12 +505,14 @@ const CommonRunFields = {
   costInCents: z.number(),
   baseCostInCents: z.number(),
   durationMs: z.number(),
+};
+
+export const RelatedRunDetails = z.object({
+  ...CommonRunFields,
   depth: z.number(),
   triggerFunction: z.enum(["triggerAndWait", "trigger", "batchTriggerAndWait", "batchTrigger"]),
   batchId: z.string().optional(),
-};
-
-export const RelatedRunDetails = z.object(CommonRunFields);
+});
 
 export const RetrieveRunResponse = z.object({
   ...CommonRunFields,
