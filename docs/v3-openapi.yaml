@@ -1829,7 +1829,6 @@ components:
         - taskIdentifier
         - createdAt
         - updatedAt
-        - attempts
       properties:
         id:
           type: string
@@ -1911,9 +1910,21 @@ components:
           example: 491
           description: The duration of compute (so far) in milliseconds. This does not include waits.
         depth:
-          type: number
+          type: integer
           example: 0
           description: The depth of the run in the task run hierarchy. The root run has a depth of 0.
+        batchId:
+          type: string
+          description: The ID of the batch that this run belongs to
+          example: batch_1234
+        triggerFunction:
+          type: string
+          description: The name of the function that triggered the run
+          enum:
+            - trigger
+            - triggerAndWait
+            - batchTrigger
+            - batchTriggerAndWait
 
     RetrieveRunResponse:
       allOf:
@@ -1945,35 +1956,13 @@ components:
                   $ref: "#/components/schemas/CommonRunObject"
                   description: The root run of the run hierarchy. Will be omitted if the run is the root run
                 parent:
+                  $ref: "#/components/schemas/CommonRunObject"
                   description: The parent run of the run. Will be omitted if the run is the root run
-                  allOf:
-                    - $ref: "#/components/schemas/CommonRunObject"
-                    - type: object
-                      properties:
-                        isRoot:
-                          type: boolean
-                          example: false
-                          description: Whether this run is the root run
                 children:
                   description: The immediate children of the run. Will be omitted if the run has no children
                   type: array
                   items:
-                    allOf:
-                      - $ref: "#/components/schemas/CommonRunObject"
-                      - type: object
-                        properties:
-                          batchId:
-                            type: string
-                            description: The ID of the batch that this run belongs to
-                            example: batch_1234
-                          triggerFunction:
-                            type: string
-                            description: The name of the function that triggered the run
-                            enum:
-                              - trigger
-                              - triggerAndWait
-                              - batchTrigger
-                              - batchTriggerAndWait
+                    $ref: "#/components/schemas/CommonRunObject"
             schedule:
               type: object
               description: The schedule that triggered the run. Will be omitted if the run was not triggered by a schedule
