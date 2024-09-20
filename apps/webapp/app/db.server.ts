@@ -1,4 +1,3 @@
-import { withOptimize } from "@prisma/extension-optimize";
 import { Prisma, PrismaClient } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
