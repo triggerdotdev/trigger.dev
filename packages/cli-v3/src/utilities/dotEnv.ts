@@ -11,14 +11,18 @@ export function resolveDotEnvVars(cwd?: string, envFile?: string) {
     ? resolve(cwd ?? process.cwd(), envFile)
     : ENVVAR_FILES.map((p) => resolve(cwd ?? process.cwd(), p));
 
-  dotenv.config({
-    processEnv: result,
-    path: envFilePath,
+  // Load environment variables from the first found .env file
+  const { parsed } = dotenv.config({
+    path: Array.isArray(envFilePath) ? envFilePath.find(path => fs.existsSync(path)) : envFilePath,
   });
+
+  if (parsed) {
+    Object.assign(result, parsed);
+  }
 
   env.TRIGGER_API_URL && (result.TRIGGER_API_URL = env.TRIGGER_API_URL);
 
-  // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
+  // Remove sensitive environment variables
   delete result.TRIGGER_API_URL;
   delete result.TRIGGER_SECRET_KEY;
   delete result.OTEL_EXPORTER_OTLP_ENDPOINT;
@@ -31,7 +35,8 @@ export function loadDotEnvVars(cwd?: string, envFile?: string) {
     ? resolve(cwd ?? process.cwd(), envFile)
     : ENVVAR_FILES.map((p) => resolve(cwd ?? process.cwd(), p));
 
+  // Load the first found .env file
   dotenv.config({
-    path: envFilePath,
+    path: Array.isArray(envFilePath) ? envFilePath.find(path => fs.existsSync(path)) : envFilePath,
   });
 }
