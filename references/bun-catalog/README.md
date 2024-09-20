@@ -35,13 +35,13 @@ cd references/v3-catalog
 4. If you've never logged in to the CLI you'll see an error telling you to login. Do this:
 
 ```bash
-pnpm exec triggerdev login -a http://localhost:3030
+pnpm exec trigger login -a http://localhost:3030
 ```
 
 If this fails because you already are logged in you can create a new profile:
 
 ```bash
-pnpm exec triggerdev login -a http://localhost:3030 --profile local
+pnpm exec trigger login -a http://localhost:3030 --profile local
 ```
 
 Note: if you use a profile then you'll need to append `--profile local` to all commands, like `dev`.
@@ -49,7 +49,7 @@ Note: if you use a profile then you'll need to append `--profile local` to all c
 5. Run the v3 CLI
 
 ```bash
-pnpm exec triggerdev dev
+pnpm exec trigger dev
 ```
 
 6. You should see the v3 dev command spitting out messages, including that it's started a background worker.
