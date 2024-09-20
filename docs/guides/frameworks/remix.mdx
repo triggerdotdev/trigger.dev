@@ -40,15 +40,15 @@ For more information on authenticating with Trigger.dev, see the [API keys page]
 
   <Step title="Create an API route">
 
-  Create a new file called `api.trigger.ts` (or `api.trigger.js`) in the `app/routes` directory like this: `app/routes/api.trigger.ts`.
+  Create a new file called `api.hello-world.ts` (or `api.hello-world.js`) in the `app/routes` directory like this: `app/routes/api.hello-world.ts`.
 
   </Step>
 
   <Step title="Add your task">
 
-  Add this code to your `api.trigger.ts` file which imports your task:
+  Add this code to your `api.hello-world.ts` file which imports your task:
 
-  ```ts
+  ```ts app/routes/api.hello-world.ts
   import type { helloWorldTask } from "../../src/trigger/example";
   import { tasks } from "@trigger.dev/sdk/v3";
 
@@ -78,11 +78,43 @@ For more information on authenticating with Trigger.dev, see the [API keys page]
 
 <DeployingYourTask/>
 
-## Deploying Remix to Vercel Edge Functions
+## Deploying to Vercel Edge Functions
 
-There are a few extra steps to follow to deploy your Remix app to Vercel Edge Functions.
+Before we start, it's important to note that:
+- We'll be using a type-only import for the task to ensure compatibility with the edge runtime.
+- The `@trigger.dev/sdk/v3` package supports the edge runtime out of the box.
+
+There are a few extra steps to follow to deploy your `/api/hello-world` API endpoint to Vercel Edge Functions.
 
 <Steps>
+
+<Step title="Update your API route">
+
+Update your API route to use the `runtime: "edge"` option and change it to an `action()` so we can trigger the task from a curl request later on.
+
+```ts app/routes/api.hello-world.ts
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { helloWorldTask } from "../../src/trigger/example";
+//      👆 **type-only** import
+
+// include this at the top of your API route file
+export const config = {
+  runtime: "edge",
+};
+export async function action({ request }: { request: Request }) {
+  // This is where you'd authenticate the request
+  const payload = await request.json();
+  const handle = await tasks.trigger<typeof helloWorldTask>(
+    "hello-world",
+    payload
+  );
+  return new Response(JSON.stringify(handle), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
+
+</Step>
 
 <Step title="Update the Vercel configuration">
 
@@ -100,7 +132,7 @@ Create or update the `vercel.json` file with the following:
 
 </Step>
 
-<Step title="Update `package.json` scripts">
+<Step title="Update package.json scripts">
 
 Update your `package.json` to include the following scripts:
 
@@ -148,7 +180,15 @@ Once you've added the environment variable, deploy your project to Vercel.
 
 <Step title="Test your task in production">
 
-After deployment, visit your Vercel deployment URL followed by `/api/trigger` (e.g., `https://your-app.vercel.app/api/trigger`) to test the Trigger.dev task in production.
+After deployment, you can test your task in production by running this curl command:
+
+```bash
+curl -X POST https://your-app.vercel.app/api/hello-world \
+-H "Content-Type: application/json" \
+-d '{"name": "James"}'
+```
+
+This sends a POST request to your API endpoint with a JSON payload.
 
 </Step>
 
