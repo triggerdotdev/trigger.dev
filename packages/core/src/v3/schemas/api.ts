@@ -507,15 +507,17 @@ const CommonRunFields = {
   durationMs: z.number(),
 };
 
-export const RelatedRunDetails = z.object({
+const RetrieveRunCommandFields = {
   ...CommonRunFields,
   depth: z.number(),
   triggerFunction: z.enum(["triggerAndWait", "trigger", "batchTriggerAndWait", "batchTrigger"]),
   batchId: z.string().optional(),
-});
+};
+
+export const RelatedRunDetails = z.object(RetrieveRunCommandFields);
 
 export const RetrieveRunResponse = z.object({
-  ...CommonRunFields,
+  ...RetrieveRunCommandFields,
   payload: z.any().optional(),
   payloadPresignedUrl: z.string().optional(),
   output: z.any().optional(),
