@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "TaskRun" ADD COLUMN     "depth" INTEGER NOT NULL DEFAULT 0;
