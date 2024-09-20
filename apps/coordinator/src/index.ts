@@ -424,10 +424,10 @@ class TaskCoordinator {
             logger.error("Error while waiting for checkpointable state", { error });
 
             if (error instanceof CheckpointReadinessTimeoutError) {
-              await crashRun({
-                name: error.name,
-                message: `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
-              });
+              logger.error(
+                `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
+                { runId: socket.data.runId }
+              );
 
               return {
                 success: false,
