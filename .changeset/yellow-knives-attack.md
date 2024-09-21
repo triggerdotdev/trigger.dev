@@ -2,4 +2,4 @@
 "trigger.dev": patch
 ---
 
-Added dev.vars into dotEnv file
+Add the "dev.vars" file to the list of auto-loaded dotenv files in the dev CLI command
