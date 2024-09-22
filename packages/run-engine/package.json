@@ -10,8 +10,13 @@
     "ioredis": "^5.3.2",
     "typescript": "^4.8.4"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.13.1",
+    "testcontainers": "^10.13.1",
+    "vitest": "^1.4.0"
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
   }
 }
