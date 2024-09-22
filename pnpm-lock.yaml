@@ -1252,6 +1252,9 @@ importers:
       '@testcontainers/postgresql':
         specifier: ^10.13.1
         version: 10.13.1
+      '@testcontainers/redis':
+        specifier: ^10.13.1
+        version: 10.13.1
       testcontainers:
         specifier: ^10.13.1
         version: 10.13.1
@@ -14133,6 +14136,14 @@ packages:
 
   /@testcontainers/postgresql@10.13.1:
     resolution: {integrity: sha512-HAh/3uLAzAhOmzXsOE6hVxkvetczPnX/Zoyt+SgK7QotW98Npr1MDx8OKiaLGTJ8XkIvVvS4Ch6bl+frt4pnkQ==}
+    dependencies:
+      testcontainers: 10.13.1
+    transitivePeerDependencies:
+      - supports-color
+    dev: true
+
+  /@testcontainers/redis@10.13.1:
+    resolution: {integrity: sha512-pXg15o4oTRaEyb5xryQZUdePtoRId/+3TeU7vnUgDpqOmRacF8/7zL7jqs13uPh1uea6M7a8MDgHQM8j8kXZUg==}
     dependencies:
       testcontainers: 10.13.1
     transitivePeerDependencies:
