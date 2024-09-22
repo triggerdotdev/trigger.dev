@@ -1,12 +1,14 @@
 import Redis, { RedisOptions } from "ioredis";
 import { z } from "zod";
 
-class SimpleQueue<T extends z.ZodType> {
+export class SimpleQueue<T extends z.ZodType> {
+  name: string;
   private redis: Redis;
   private keyPrefix: string;
   private schema: T;
 
   constructor(name: string, schema: T, redisOptions: RedisOptions) {
+    this.name = name;
     this.redis = new Redis(redisOptions);
     this.keyPrefix = `queue:${name}:`;
     this.schema = schema;
@@ -53,5 +55,3 @@ class SimpleQueue<T extends z.ZodType> {
     await this.redis.quit();
   }
 }
-
-export default SimpleQueue;
