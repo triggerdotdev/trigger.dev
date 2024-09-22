@@ -1248,6 +1248,9 @@ importers:
       typescript:
         specifier: ^4.8.4
         version: 4.9.5
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^10.13.1

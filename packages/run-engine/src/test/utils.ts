@@ -1,9 +1,8 @@
-import { PrismaClient, Prisma } from "@trigger.dev/database";
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer } from "@testcontainers/redis";
-import path from "path";
+import { PrismaClient } from "@trigger.dev/database";
 import { execSync } from "child_process";
-import Redis, { RedisOptions } from "ioredis";
+import path from "path";
 
 export async function createTestPrismaClient() {
   const container = await new PostgreSqlContainer().start();
@@ -36,12 +35,14 @@ export async function createTestPrismaClient() {
 export async function createTestRedisClient() {
   const container = await new RedisContainer().start();
   try {
-    const client = new Redis({
-      host: container.getHost(),
-      port: container.getPort(),
-      password: container.getPassword(),
-    });
-    return { client, container };
+    return {
+      options: {
+        host: container.getHost(),
+        port: container.getPort(),
+        password: container.getPassword(),
+      },
+      container,
+    };
   } catch (e) {
     console.error(e);
     throw e;

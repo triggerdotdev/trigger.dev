@@ -2,12 +2,12 @@ import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { PrismaClient } from "@trigger.dev/database";
 import { createTestRedisClient, createTestPrismaClient } from "./test/utils";
 import { StartedRedisContainer } from "@testcontainers/redis";
-import { Redis } from "ioredis";
+import { Redis, RedisOptions } from "ioredis";
 
 let postgresContainer: StartedPostgreSqlContainer;
 let prisma: PrismaClient;
 let redisContainer: StartedRedisContainer;
-let redis: Redis;
+let redisOptions: RedisOptions;
 
 describe("Placeholder", () => {
   beforeEach(async () => {
@@ -16,13 +16,12 @@ describe("Placeholder", () => {
     prisma = pg.prisma;
     const rd = await createTestRedisClient();
     redisContainer = rd.container;
-    redis = rd.client;
+    redisOptions = rd.options;
   }, 30_000);
 
   afterEach(async () => {
     await prisma?.$disconnect();
     await postgresContainer?.stop();
-    await redis?.quit();
     await redisContainer?.stop();
   }, 10_000);
 
@@ -38,8 +37,11 @@ describe("Placeholder", () => {
     expect(result.length).toEqual(1);
     expect(result[0].email).toEqual("test@example.com");
 
+    const redis = new Redis(redisOptions);
     await redis.set("mykey", "value");
     const value = await redis.get("mykey");
     expect(value).toEqual("value");
+
+    await redis.quit();
   });
 });
