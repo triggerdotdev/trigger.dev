@@ -1,10 +1,9 @@
 import { expect } from "vitest";
 import { z } from "zod";
 import { SimpleQueue } from "./simpleQueue";
-import { containerTest } from "./test/containerTest";
+import { containerTest, postgresTest, redisTest } from "./test/containerTest";
 
-// Use the extended test
-containerTest("Simple connection test", async ({ prisma, redis }) => {
+postgresTest("Prisma create user", { timeout: 15_000 }, async ({ prisma }) => {
   await prisma.user.create({
     data: {
       authenticationMethod: "MAGIC_LINK",
@@ -15,13 +14,15 @@ containerTest("Simple connection test", async ({ prisma, redis }) => {
   const result = await prisma.user.findMany();
   expect(result.length).toEqual(1);
   expect(result[0].email).toEqual("test@example.com");
+});
 
+redisTest("Set/get values", async ({ redis }) => {
   await redis.set("mykey", "value");
   const value = await redis.get("mykey");
   expect(value).toEqual("value");
 });
 
-containerTest("SimpleQueue", async ({ redisContainer }) => {
+redisTest("SimpleQueue enqueue/dequeue", async ({ redisContainer }) => {
   const queue = new SimpleQueue(
     "test",
     z.object({

@@ -2,45 +2,66 @@ import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
 import { Redis } from "ioredis";
-import { test } from "vitest";
+import { test, TestAPI } from "vitest";
 import { createPostgresContainer, createRedisContainer } from "./utils";
 
-type ContainerTest = {
+type PostgresContext = {
   postgresContainer: StartedPostgreSqlContainer;
-  redisContainer: StartedRedisContainer;
   prisma: PrismaClient;
-  redis: Redis;
 };
 
-export const containerTest = test.extend<ContainerTest>({
-  postgresContainer: async ({}, use) => {
-    const { container } = await createPostgresContainer();
-    await use(container);
-    await container.stop();
-  },
-  redisContainer: async ({}, use) => {
-    const { container } = await createRedisContainer();
-    await use(container);
-    await container.stop();
-  },
-  prisma: async ({ postgresContainer }, use) => {
-    const prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: postgresContainer.getConnectionUri(),
-        },
+type RedisContext = { redisContainer: StartedRedisContainer; redis: Redis };
+type ContainerContext = PostgresContext & RedisContext;
+
+type Use<T> = (value: T) => Promise<void>;
+
+const postgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>) => {
+  const { container } = await createPostgresContainer();
+  await use(container);
+  await container.stop();
+};
+
+const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
+  const { container } = await createRedisContainer();
+  await use(container);
+  await container.stop();
+};
+
+const prisma = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  use: Use<PrismaClient>
+) => {
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: postgresContainer.getConnectionUri(),
       },
-    });
-    await use(prisma);
-    await prisma.$disconnect();
-  },
-  redis: async ({ redisContainer }, use) => {
-    const redis = new Redis({
-      host: redisContainer.getHost(),
-      port: redisContainer.getPort(),
-      password: redisContainer.getPassword(),
-    });
-    await use(redis);
-    await redis.quit();
-  },
+    },
+  });
+  await use(prisma);
+  await prisma.$disconnect();
+};
+
+const redis = async (
+  { redisContainer }: { redisContainer: StartedRedisContainer },
+  use: Use<Redis>
+) => {
+  const redis = new Redis({
+    host: redisContainer.getHost(),
+    port: redisContainer.getPort(),
+    password: redisContainer.getPassword(),
+  });
+  await use(redis);
+  await redis.quit();
+};
+
+export const containerTest = test.extend<ContainerContext>({
+  postgresContainer,
+  prisma,
+  redisContainer,
+  redis,
 });
+
+export const postgresTest = test.extend<PostgresContext>({ postgresContainer, prisma });
+
+export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
