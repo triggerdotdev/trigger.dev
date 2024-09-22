@@ -4,7 +4,7 @@ import { PrismaClient } from "@trigger.dev/database";
 import { execSync } from "child_process";
 import path from "path";
 
-export async function createTestPrismaClient() {
+export async function createPostgresContainer() {
   const container = await new PostgreSqlContainer().start();
 
   // Run migrations
@@ -20,27 +20,13 @@ export async function createTestPrismaClient() {
 
   // console.log(container.getConnectionUri());
 
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: container.getConnectionUri(),
-      },
-    },
-  });
-  prisma.$connect();
-
-  return { prisma, container };
+  return { url: container.getConnectionUri(), container };
 }
 
-export async function createTestRedisClient() {
+export async function createRedisContainer() {
   const container = await new RedisContainer().start();
   try {
     return {
-      options: {
-        host: container.getHost(),
-        port: container.getPort(),
-        password: container.getPassword(),
-      },
       container,
     };
   } catch (e) {
