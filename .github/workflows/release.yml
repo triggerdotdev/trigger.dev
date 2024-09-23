@@ -76,12 +76,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: 🚀 PR / Publish (mock)
-        if: ${{ env.ACT }}
-        id: changesets
-        run: |
-          echo "published=true" >> "$GITHUB_OUTPUT"
-          echo "publishedPackages=[{\"name\": \"@xx/xx\", \"version\": \"1.2.0\"}, {\"name\": \"@xx/xy\", \"version\": \"0.8.9\"}]" >> "$GITHUB_OUTPUT"
+      # - name: 🚀 PR / Publish (mock)
+      #   if: ${{ env.ACT }}
+      #   id: changesets
+      #   run: |
+      #     echo "published=true" >> "$GITHUB_OUTPUT"
+      #     echo "publishedPackages=[{\"name\": \"@xx/xx\", \"version\": \"1.2.0\"}, {\"name\": \"@xx/xy\", \"version\": \"0.8.9\"}]" >> "$GITHUB_OUTPUT"
 
       - name: 📦 Get package version
         if: steps.changesets.outputs.published == 'true'
