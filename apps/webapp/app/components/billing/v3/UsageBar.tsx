@@ -8,32 +8,16 @@ type UsageBarProps = {
   current: number;
   billingLimit?: number;
   tierLimit?: number;
-  projectedUsage?: number;
   isPaying: boolean;
 };
 
 const startFactor = 4;
 
-export function UsageBar({
-  current,
-  billingLimit,
-  tierLimit,
-  projectedUsage,
-  isPaying,
-}: UsageBarProps) {
-  const getLargestNumber = Math.max(
-    current,
-    tierLimit ?? -Infinity,
-    projectedUsage ?? -Infinity,
-    billingLimit ?? -Infinity,
-    5
-  );
+export function UsageBar({ current, billingLimit, tierLimit, isPaying }: UsageBarProps) {
+  const getLargestNumber = Math.max(current, tierLimit ?? -Infinity, billingLimit ?? -Infinity, 5);
   //creates a maximum range for the progress bar, add 10% to the largest number so the bar doesn't reach the end
   const maxRange = Math.round(getLargestNumber * 1.1);
   const tierRunLimitPercentage = tierLimit ? Math.round((tierLimit / maxRange) * 100) : 0;
-  const projectedRunsPercentage = projectedUsage
-    ? Math.round((projectedUsage / maxRange) * 100)
-    : 0;
   const billingLimitPercentage =
     billingLimit !== undefined ? Math.round((billingLimit / maxRange) * 100) : 0;
   const usagePercentage = Math.round((current / maxRange) * 100);
@@ -42,7 +26,7 @@ export function UsageBar({
   const usageCappedToLimitPercentage = Math.min(usagePercentage, tierRunLimitPercentage);
 
   return (
-    <div className="h-fit w-full py-12">
+    <div className="h-fit w-full py-6">
       <div className="relative h-3 w-full rounded-sm bg-background-bright">
         {billingLimit !== undefined && (
           <motion.div
@@ -93,23 +77,6 @@ export function UsageBar({
             />
           </motion.div>
         )}
-        {projectedUsage !== undefined && projectedUsage !== 0 && (
-          <motion.div
-            initial={{ width: projectedRunsPercentage / startFactor + "%" }}
-            animate={{ width: projectedRunsPercentage + "%" }}
-            transition={{ duration: 1.5, type: "spring" }}
-            style={{ width: `${projectedRunsPercentage}%` }}
-            className="absolute h-3 rounded-l-sm"
-          >
-            <Legend
-              text="Projected:"
-              value={formatCurrency(projectedUsage, false)}
-              position="topRow2"
-              percentage={projectedRunsPercentage}
-            />
-          </motion.div>
-        )}
-
         <motion.div
           initial={{ width: usageCappedToLimitPercentage / startFactor + "%" }}
           animate={{ width: usageCappedToLimitPercentage + "%" }}

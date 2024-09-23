@@ -114,7 +114,7 @@ pnpm i
 ```sh
 cd references/v3-catalog
 cp .env.example .env
-pnpm exec triggerdev login -a http://localhost:3030
+pnpm exec trigger login -a http://localhost:3030
 ```
 
 This will open a new browser window and authorize the CLI against your local user account.
@@ -123,10 +123,10 @@ You can optionally pass a `--profile` flag to the `login` command, which will al
 
 ```sh
 cd references/v3-catalog
-pnpm exec triggerdev login -a http://localhost:3030 --profile local
+pnpm exec trigger login -a http://localhost:3030 --profile local
 # later when you run the dev or deploy command:
-pnpm exec triggerdev dev --profile local
-pnpm exec triggerdev deploy --profile local
+pnpm exec trigger dev --profile local
+pnpm exec trigger deploy --profile local
 ```
 
 ### Running
@@ -155,14 +155,14 @@ Note: You do not need to do the same for `@trigger.dev/sdk`, just core.
 
 ```sh
 # in <root>/references/v3-catalog
-pnpm exec triggerdev dev
+pnpm exec trigger dev
 ```
 
 If you want additional debug logging, you can use the `--log-level debug` flag:
 
 ```sh
 # in <root>/references/v3-catalog
-pnpm exec triggerdev dev --log-level debug
+pnpm exec trigger dev --log-level debug
 ```
 
 5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `v3-catalog/src/trigger` dir will automatically be rebuilt by the `dev` command.

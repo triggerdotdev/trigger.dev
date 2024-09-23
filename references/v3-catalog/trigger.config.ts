@@ -4,6 +4,7 @@ import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -13,7 +14,7 @@ export { handleError } from "./src/handleError.js";
 export default defineConfig({
   runtime: "node",
   project: "yubjwjsfkxnylobaqvqz",
-  machine: "small-2x",
+  machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
   retries: {
@@ -79,6 +80,7 @@ export default defineConfig({
           value: secret.secretValue,
         }));
       }),
+      puppeteer(),
     ],
     external: ["re2"],
   },

@@ -420,7 +420,6 @@ function NoLogsView({ run, resizable }: LoaderData) {
           min={resizableSettings.parent.inspector.min}
           isStaticAtRest
         >
-          {" "}
           <SpanView runParam={run.friendlyId} spanId={run.spanId} />
         </ResizablePanel>
       </ResizablePanelGroup>

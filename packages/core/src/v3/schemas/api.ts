@@ -68,7 +68,9 @@ export const TriggerTaskRequestBody = z.object({
   options: z
     .object({
       dependentAttempt: z.string().optional(),
+      parentAttempt: z.string().optional(),
       dependentBatch: z.string().optional(),
+      parentBatch: z.string().optional(),
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
@@ -470,6 +472,15 @@ export const RunScheduleDetails = z.object({
 
 export type RunScheduleDetails = z.infer<typeof RunScheduleDetails>;
 
+export const TriggerFunction = z.enum([
+  "triggerAndWait",
+  "trigger",
+  "batchTriggerAndWait",
+  "batchTrigger",
+]);
+
+export type TriggerFunction = z.infer<typeof TriggerFunction>;
+
 const CommonRunFields = {
   id: z.string(),
   status: RunStatus,
@@ -496,13 +507,27 @@ const CommonRunFields = {
   durationMs: z.number(),
 };
 
-export const RetrieveRunResponse = z.object({
+const RetrieveRunCommandFields = {
   ...CommonRunFields,
+  depth: z.number(),
+  triggerFunction: z.enum(["triggerAndWait", "trigger", "batchTriggerAndWait", "batchTrigger"]),
+  batchId: z.string().optional(),
+};
+
+export const RelatedRunDetails = z.object(RetrieveRunCommandFields);
+
+export const RetrieveRunResponse = z.object({
+  ...RetrieveRunCommandFields,
   payload: z.any().optional(),
   payloadPresignedUrl: z.string().optional(),
   output: z.any().optional(),
   outputPresignedUrl: z.string().optional(),
   schedule: RunScheduleDetails.optional(),
+  relatedRuns: z.object({
+    root: RelatedRunDetails.optional(),
+    parent: RelatedRunDetails.optional(),
+    children: z.array(RelatedRunDetails).optional(),
+  }),
   attempts: z.array(
     z
       .object({

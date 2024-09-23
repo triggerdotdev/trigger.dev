@@ -14,6 +14,7 @@ export interface BuildImageOptions {
   // Self-hosted specific options
   push: boolean;
   registry?: string;
+  network?: string;
 
   // Non-self-hosted specific options
   loadImage?: boolean;
@@ -84,6 +85,7 @@ export async function buildImage(options: BuildImageOptions) {
       apiUrl,
       apiKey,
       buildEnvVars,
+      network: options.network,
     });
   }
 
@@ -277,6 +279,7 @@ interface SelfHostedBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  network?: string;
 }
 
 async function selfHostedBuildImage(
@@ -295,6 +298,7 @@ async function selfHostedBuildImage(
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.buildPlatform,
+    ...(options.network ? ["--network", options.network] : []),
     "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
@@ -458,7 +462,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
     " "
   );
 
-  return `
+  return `# syntax=docker/dockerfile:1
 FROM imbios/bun-node:22-debian AS base
 
 ${baseInstructions}
@@ -488,7 +492,7 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER bun
 WORKDIR /app
@@ -563,7 +567,7 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
     " "
   );
 
-  return `
+  return `# syntax=docker/dockerfile:1
 FROM node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170 AS base
 
 ${baseInstructions}
@@ -597,7 +601,7 @@ COPY --chown=node:node . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER node
 WORKDIR /app

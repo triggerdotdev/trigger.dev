@@ -3,8 +3,6 @@ title: "Self-hosting"
 description: "You can self-host Trigger.dev on your own infrastructure."
 ---
 
-<Warning>Self-hosting does not support the latest CLI yet, you will have to continue using the `beta` tag for now.</Warning>
-
 ## Overview
 
 <Frame>
@@ -85,7 +83,6 @@ sudo apt-get install -y \
 ```bash
 git clone https://github.com/triggerdotdev/docker
 cd docker
-git checkout v3
 ```
 
 2. Run the start script and follow the prompts
@@ -94,7 +91,7 @@ git checkout v3
 ./start.sh # hint: you can append -d to run in detached mode
 ```
 
-### Manual setup
+#### Manual
 
 Alternatively, you can follow these manual steps after cloning the docker repo:
 
@@ -176,7 +173,7 @@ docker login -u <your_dockerhub_username>
 5. You can now deploy v3 projects using the CLI with these flags:
 
 ```
-npx trigger.dev@beta deploy --self-hosted --push
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ## Part 2: Split services
@@ -286,12 +283,62 @@ echo "FORCE_CHECKPOINT_SIMULATION=0" >> .env
 ./stop.sh worker && ./start.sh worker
 ```
 
-## Telemetry
+## Updating
 
-By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. If you would like to opt-out of this, you can set the `TRIGGER_TELEMETRY_DISABLED` environment variable in your `.env` file. The value doesn't matter, it just can't be empty. For example:
+Once you have everything set up, you will periodically want to update your Docker images. You can easily do this by running the update script and restarting your services:
 
 ```bash
-TRIGGER_TELEMETRY_DISABLED=1
+./update.sh
+./stop.sh && ./start.sh
+```
+
+Sometimes, we will make more extensive changes that require pulling updated compose files, scripts, etc from our docker repo:
+
+```bash
+git pull
+./stop.sh && ./start.sh
+```
+
+Occasionally, you may also have to update your `.env` file, but we will try to keep these changes to a minimum. Check the `.env.example` file for new variables.
+
+### From beta
+
+If you're coming from the beta CLI package images, you will need to:
+- **Stash you changes.** If you made any changes, stash them with `git stash`.
+- **Switch branches.** We moved back to main. Run `git checkout main` in your docker repo.
+- **Pull in updates.** We've added a new container for [Electric](https://github.com/electric-sql/electric) and made some other improvements. Run `git pull` to get the latest updates.
+- **Apply your changes.** If you stashed your changes, apply them with `git stash pop`.
+- **Update your images.** We've also published new images. Run `./update.sh` to pull them.
+- **Restart all services.** Run `./stop.sh && ./start.sh` and you're good to go.
+
+In summary, run this wherever you cloned the docker repo:
+
+```bash
+# if you made changes
+git stash
+
+# switch to the main branch and pull the latest changes
+git checkout main
+git pull
+
+# if you stashed your changes
+git stash pop
+
+# update and restart your services
+./update.sh
+./stop.sh && ./start.sh
+```
+
+## Version locking
+
+There are several reasons to lock the version of your Docker images:
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `v3` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v3.0.4
 ```
 
 ## CLI usage
@@ -303,7 +350,7 @@ This section highlights some of the CLI commands and options that are useful whe
 To avoid being redirected to the [Trigger.dev Cloud](https://cloud.trigger.dev) login page when using the CLI, you can specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
 
 ```bash
-npx trigger.dev@beta login -a http://trigger.example.com
+npx trigger.dev@latest login -a http://trigger.example.com
 ```
 
 Once you've logged in, the CLI will remember your login details and you won't need to specify the URL again with other commands.
@@ -313,19 +360,19 @@ Once you've logged in, the CLI will remember your login details and you won't ne
 You can specify a custom profile when logging in. This allows you to easily use the CLI with our cloud product and your self-hosted instance at the same time. For example:
 
 ```
-npx trigger.dev@beta login -a http://trigger.example.com --profile my-profile
+npx trigger.dev@latest login -a http://trigger.example.com --profile my-profile
 ```
 
 You can then use this profile with other commands:
 
 ```
-npx trigger.dev@beta dev --profile my-profile
+npx trigger.dev@latest dev --profile my-profile
 ```
 
 To list all your profiles, use the `list-profiles` command:
 
 ```
-npx trigger.dev@beta list-profiles
+npx trigger.dev@latest list-profiles
 ```
 
 #### Verify login
@@ -333,10 +380,10 @@ npx trigger.dev@beta list-profiles
 It can be useful to check you have successfully logged in to the correct instance. You can do this with the `whoami` command, which will also show the API URL:
 
 ```bash
-npx trigger.dev@beta whoami
+npx trigger.dev@latest whoami
 
 # with a custom profile
-npx trigger.dev@beta whoami --profile my-profile
+npx trigger.dev@latest whoami --profile my-profile
 ```
 
 ### Deploy
@@ -344,7 +391,7 @@ npx trigger.dev@beta whoami --profile my-profile
 On [Trigger.dev Cloud](https://cloud.trigger.dev), we build deployments remotely and push those images for you. When self-hosting you will have to do that locally yourself. This can be done with the `--self-hosted` and `--push` flags. For example:
 
 ```
-npx trigger.dev@beta deploy --self-hosted --push
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ### CI / GitHub Actions
@@ -353,3 +400,12 @@ When running the CLI in a CI environment, your login profiles won't be available
 variables to point at your self-hosted instance and authenticate.
 
 For more detailed instructions, see the [GitHub Actions guide](/github-actions).
+
+
+## Telemetry
+
+By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. If you would like to opt-out of this, you can set the `TRIGGER_TELEMETRY_DISABLED` environment variable in your `.env` file. The value doesn't matter, it just can't be empty. For example:
+
+```bash
+TRIGGER_TELEMETRY_DISABLED=1
+```

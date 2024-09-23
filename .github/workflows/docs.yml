@@ -1,0 +1,42 @@
+name: 📚 Docs Checks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "docs/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-broken-links:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Cache npm
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+          key: |
+            ${{ runner.os }}-mintlify
+          restore-keys: |
+            ${{ runner.os }}-mintlify
+
+      - name: 🔗 Check for broken links
+        run: npx mintlify@4.0.222 broken-links

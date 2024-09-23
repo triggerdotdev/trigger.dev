@@ -22,7 +22,7 @@ export const emailSequence = task({
   run: async (payload: { userId: string; email: string; name: string }) => {
     console.log(`Start email sequence for user ${payload.userId}`, payload);
 
-    //send the first email immediately
+    // Send the first email immediately
     const firstEmailResult = await retry.onThrow(
       async ({ attempt }) => {
         const { data, error } = await resend.emails.send({
@@ -33,7 +33,7 @@ export const emailSequence = task({
         });
 
         if (error) {
-          //throwing an error will trigger a retry of this block
+          // Throwing an error will trigger a retry of this block
           throw error;
         }
 
@@ -42,10 +42,10 @@ export const emailSequence = task({
       { maxAttempts: 3 }
     );
 
-    //then wait 3 days
+    // Then wait 3 days
     await wait.for({ days: 3 });
 
-    //send the second email
+    // Send the second email
     const secondEmailResult = await retry.onThrow(
       async ({ attempt }) => {
         const { data, error } = await resend.emails.send({
@@ -56,7 +56,7 @@ export const emailSequence = task({
         });
 
         if (error) {
-          //throwing an error will trigger a retry of this block
+          // Throwing an error will trigger a retry of this block
           throw error;
         }
 
@@ -68,5 +68,16 @@ export const emailSequence = task({
     //etc...
   },
 });
+```
 
+## Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "userId": "123",
+  "email": "<your-test-email>", // Replace with your test email
+  "name": "Alice Testington"
+}
 ```

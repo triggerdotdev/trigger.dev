@@ -119,10 +119,51 @@ export const sdkUsage = task({
 
 export const sdkChild = task({
   id: "sdk-child",
-  run: async (payload: any) => {},
+  run: async (payload: any) => {
+    return payload;
+  },
 });
 
 export const sdkSchedule = schedules.task({
   id: "sdk-schedule",
   run: async (payload: any) => {},
+});
+
+export const autoResolvePayloadAndOutput = task({
+  id: "auto-resolve-payload-and-output",
+  run: async (payload: any, { ctx }) => {
+    // Generate a large JSON payload (bigger than 128KB)
+    const childPayload = Array.from({ length: 10000 }, () => ({
+      key: "value",
+      date: new Date(),
+    }));
+
+    const handle = await tasks.trigger<typeof sdkChild>("sdk-child", childPayload);
+
+    const childRun = await runs.retrieve(handle.id);
+
+    if (childRun.payload) {
+      console.log("Child run payload exists", {
+        payloadPresignedUrl: childRun.payloadPresignedUrl,
+      });
+    } else {
+      console.log("Child run payload does not exist", {
+        payloadPresignedUrl: childRun.payloadPresignedUrl,
+      });
+    }
+
+    await runs.poll(handle.id);
+
+    const finishedRun = await runs.retrieve(handle.id);
+
+    if (finishedRun.output) {
+      console.log("Finished run output exists", {
+        outputPresignedUrl: finishedRun.outputPresignedUrl,
+      });
+    } else {
+      console.log("Finished run payload does not exist", {
+        outputPresignedUrl: finishedRun.outputPresignedUrl,
+      });
+    }
+  },
 });

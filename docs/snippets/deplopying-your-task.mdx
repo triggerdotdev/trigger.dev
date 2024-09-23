@@ -1,0 +1,37 @@
+## Deploying your task to Trigger.dev
+
+For this guide, we'll manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest deploy
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest deploy
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest deploy
+```
+
+</CodeGroup>
+
+### Other ways to deploy
+
+<Tabs>
+
+<Tab title="GitHub Actions">
+
+Use GitHub Actions to automatically deploy your tasks whenever new code is pushed and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
+
+</Tab>
+
+<Tab title="Vercel Integration">
+
+We're working on adding an official [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
+
+</Tab>
+
+</Tabs>

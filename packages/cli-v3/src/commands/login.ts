@@ -59,12 +59,18 @@ export type LoginOptions = {
   defaultApiUrl?: string;
   embedded?: boolean;
   profile?: string;
+  silent?: boolean;
 };
 
 export async function login(options?: LoginOptions): Promise<LoginResult> {
   return await tracer.startActiveSpan("login", async (span) => {
     try {
-      const opts = { defaultApiUrl: "https://api.trigger.dev", embedded: false, ...options };
+      const opts = {
+        defaultApiUrl: "https://api.trigger.dev",
+        embedded: false,
+        silent: false,
+        ...options,
+      };
 
       span.setAttributes({
         "cli.config.apiUrl": opts.defaultApiUrl,
@@ -111,7 +117,8 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             skipTelemetry: !span.isRecording(),
             logLevel: logger.loggerLevel,
           },
-          true
+          true,
+          opts.silent
         );
 
         if (!whoAmIResult.success) {

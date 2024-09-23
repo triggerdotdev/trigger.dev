@@ -1,5 +1,34 @@
 # @trigger.dev/sdk
 
+## 3.0.6
+
+### Patch Changes
+
+- e79f0cc84: runs.retrieve() now includes details about related runs (root, parent, and children) as well how how the runs were triggered and if they are in a batch
+- Updated dependencies [4e0bc485a]
+  - @trigger.dev/core@3.0.6
+
+## 3.0.5
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.5
+
+## 3.0.4
+
+### Patch Changes
+
+- 4adc773c7: Auto-resolve payload/output presigned urls when retrieving a run with runs.retrieve
+- Updated dependencies [4adc773c7]
+  - @trigger.dev/core@3.0.4
+
+## 3.0.3
+
+### Patch Changes
+
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+
 ## 3.0.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/build",
-  "version": "3.0.2",
+  "version": "3.0.6",
   "description": "trigger.dev build extensions",
   "license": "MIT",
   "publishConfig": {
@@ -27,7 +27,8 @@
       "./extensions/core": "./src/extensions/core.ts",
       "./extensions/prisma": "./src/extensions/prisma.ts",
       "./extensions/audioWaveform": "./src/extensions/audioWaveform.ts",
-      "./extensions/typescript": "./src/extensions/typescript.ts"
+      "./extensions/typescript": "./src/extensions/typescript.ts",
+      "./extensions/puppeteer": "./src/extensions/puppeteer.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -49,6 +50,9 @@
       ],
       "extensions/typescript": [
         "dist/commonjs/extensions/typescript.d.ts"
+      ],
+      "extensions/puppeteer": [
+        "dist/commonjs/extensions/puppeteer.d.ts"
       ]
     }
   },
@@ -61,7 +65,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:3.0.2",
+    "@trigger.dev/core": "workspace:3.0.6",
     "pkg-types": "^1.1.3",
     "tinyglobby": "^0.2.2",
     "tsconfck": "3.1.3"
@@ -144,6 +148,17 @@
       "require": {
         "types": "./dist/commonjs/extensions/typescript.d.ts",
         "default": "./dist/commonjs/extensions/typescript.js"
+      }
+    },
+    "./extensions/puppeteer": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/puppeteer.ts",
+        "types": "./dist/esm/extensions/puppeteer.d.ts",
+        "default": "./dist/esm/extensions/puppeteer.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/puppeteer.d.ts",
+        "default": "./dist/commonjs/extensions/puppeteer.js"
       }
     }
   },

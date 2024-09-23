@@ -1,5 +1,36 @@
 # @trigger.dev/build
 
+## 3.0.6
+
+### Patch Changes
+
+- b4be73655: prismaExtension fixes for #1325 and #1327
+- c65d4822b: Feat: puppeteer build extension
+- 1f5bcc73b: fix: audiowaveform extension
+- Updated dependencies [4e0bc485a]
+  - @trigger.dev/core@3.0.6
+
+## 3.0.5
+
+### Patch Changes
+
+- @trigger.dev/core@3.0.5
+
+## 3.0.4
+
+### Patch Changes
+
+- Updated dependencies [4adc773c7]
+  - @trigger.dev/core@3.0.4
+
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Strip out TRIGGER\_ keys when using syncEnvVars, to prevent deploy errors
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+
 ## 3.0.2
 
 ### Patch Changes

@@ -1,5 +1,50 @@
 # trigger.dev
 
+## 3.0.6
+
+### Patch Changes
+
+- 64862db84: Ignore OTEL_EXPORTER_OTLP_ENDPOINT environment variable from `.env` files, to prevent the internal OTEL_EXPORTER_OTLP_ENDPOINT being overwritten with a user-supplied value.
+- b4be73655: prismaExtension fixes for #1325 and #1327
+- Updated dependencies [b4be73655]
+- Updated dependencies [4e0bc485a]
+- Updated dependencies [c65d4822b]
+- Updated dependencies [1f5bcc73b]
+  - @trigger.dev/build@3.0.6
+  - @trigger.dev/core@3.0.6
+
+## 3.0.5
+
+### Patch Changes
+
+- 3b1522445: Apply default machine preset in config
+- 3b1522445: Add additional error message and stack trace when a task file cannot be imported for run
+  - @trigger.dev/build@3.0.5
+  - @trigger.dev/core@3.0.5
+
+## 3.0.4
+
+### Patch Changes
+
+- 8d1e41693: - Improve index error logging
+  - Add network flag for self-hosted deploys
+  - Fix checksum flag on some docker versions
+  - Add Containerfile debug logs
+- Updated dependencies [4adc773c7]
+  - @trigger.dev/core@3.0.4
+  - @trigger.dev/build@3.0.4
+
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Fix an issue where a missing tsconfig.json file would throw an error on dev/deploy
+- 3d53d4c08: Fixes for CLI update command, and make the hide the "whoami" command output when running in dev.
+- Updated dependencies [3d53d4c08]
+- Updated dependencies [3d53d4c08]
+  - @trigger.dev/core@3.0.3
+  - @trigger.dev/build@3.0.3
+
 ## 3.0.2
 
 ### Patch Changes

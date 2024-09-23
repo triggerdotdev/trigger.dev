@@ -104,6 +104,8 @@ async function indexDeployment({
   } catch (error) {
     const serialiedIndexError = serializeIndexingError(error, stderr.join("\n"));
 
+    console.error("Failed to index deployment", serialiedIndexError);
+
     await cliApiClient.failDeployment(deploymentId, { error: serialiedIndexError });
 
     process.exit(1);

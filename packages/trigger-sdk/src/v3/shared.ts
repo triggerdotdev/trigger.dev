@@ -791,6 +791,7 @@ async function trigger_internal<TPayload, TOutput>(
         ttl: options?.ttl,
         tags: options?.tags,
         maxAttempts: options?.maxAttempts,
+        parentAttempt: taskContext.ctx?.attempt.id,
       },
     },
     {
@@ -861,6 +862,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
               ttl: item.options?.ttl,
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
+              parentAttempt: taskContext.ctx?.attempt.id,
             },
           };
         })

@@ -49,6 +49,7 @@ export async function indexWorkerManifest({
         OTEL_IMPORT_HOOK_EXCLUDES: otelHookExclude?.join(","),
         TRIGGER_BUILD_MANIFEST_PATH: buildManifestPath,
         NODE_OPTIONS: nodeOptions,
+        TRIGGER_INDEXING: "1",
       },
       execPath: execPathForRuntime(runtime),
     });

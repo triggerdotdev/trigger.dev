@@ -1,5 +1,25 @@
 # internal-platform
 
+## 3.0.6
+
+### Patch Changes
+
+- 4e0bc485a: Add support for Buffer in payloads and outputs
+
+## 3.0.5
+
+## 3.0.4
+
+### Patch Changes
+
+- 4adc773c7: Auto-resolve payload/output presigned urls when retrieving a run with runs.retrieve
+
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Fix an issue where a missing tsconfig.json file would throw an error on dev/deploy
+
 ## 3.0.2
 
 ## 3.0.1

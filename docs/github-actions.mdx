@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -181,7 +181,7 @@ jobs:
           TRIGGER_API_URL: ${{ secrets.TRIGGER_API_URL }}
         # deploy with additional flags
         run: |
-          npx trigger.dev@beta deploy --self-hosted --push
+          npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 </CodeGroup>

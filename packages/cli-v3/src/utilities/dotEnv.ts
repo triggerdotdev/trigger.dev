@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { env } from "std-env";
 
-const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local"];
+const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local", "dev.vars"];
 
 export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   const result: { [key: string]: string } = {};
@@ -21,6 +21,7 @@ export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   // remove TRIGGER_API_URL and TRIGGER_SECRET_KEY, since those should be coming from the worker
   delete result.TRIGGER_API_URL;
   delete result.TRIGGER_SECRET_KEY;
+  delete result.OTEL_EXPORTER_OTLP_ENDPOINT;
 
   return result;
 }

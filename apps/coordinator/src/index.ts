@@ -55,6 +55,9 @@ const chaosMonkey = new ChaosMonkey(
   !!process.env.CHAOS_MONKEY_DISABLE_DELAYS
 );
 
+class CheckpointReadinessTimeoutError extends Error {}
+class CheckpointCancelError extends Error {}
+
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
   #checkpointer = new Checkpointer({
@@ -162,6 +165,49 @@ class TaskCoordinator {
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
+        RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
+          const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
+
+          if (!taskSocket) {
+            logger.log("Socket for attempt not found", {
+              attemptFriendlyId: message.attemptFriendlyId,
+            });
+            return {
+              success: false,
+              error: {
+                name: "SocketNotFoundError",
+                message: "Socket for attempt not found",
+              },
+            };
+          }
+
+          //if this is set, we want to kill the process because it will be resumed with the checkpoint from the queue
+          if (taskSocket.data.requiresCheckpointResumeWithMessage) {
+            logger.log("RESUME_AFTER_DEPENDENCY_WITH_ACK: Checkpoint is set so going to nack", {
+              socketData: taskSocket.data,
+            });
+
+            return {
+              success: false,
+              error: {
+                name: "CheckpointMessagePresentError",
+                message:
+                  "Checkpoint message is present, so we need to kill the process and resume from the queue.",
+              },
+            };
+          }
+
+          await chaosMonkey.call();
+
+          // In case the task resumed faster than we could checkpoint
+          this.#cancelCheckpoint(message.runId);
+
+          taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
+
+          return {
+            success: true,
+          };
+        },
         RESUME_AFTER_DURATION: async (message) => {
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
@@ -198,7 +244,7 @@ class TaskCoordinator {
             return;
           }
 
-          this.#checkpointer.cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId);
 
           if (message.delayInMs) {
             taskSocket.emit("REQUEST_EXIT", {
@@ -355,9 +401,14 @@ class TaskCoordinator {
 
           let timeout: NodeJS.Timeout | undefined = undefined;
 
+          const CHECKPOINTABLE_TIMEOUT_SECONDS = 20;
+
           const isCheckpointable = new Promise((resolve, reject) => {
             // We set a reasonable timeout to prevent waiting forever
-            timeout = setTimeout(() => reject("timeout"), 20_000);
+            timeout = setTimeout(
+              () => reject(new CheckpointReadinessTimeoutError()),
+              CHECKPOINTABLE_TIMEOUT_SECONDS * 1000
+            );
 
             this.#checkpointableTasks.set(socket.data.runId, { resolve, reject });
           });
@@ -372,10 +423,24 @@ class TaskCoordinator {
           } catch (error) {
             logger.error("Error while waiting for checkpointable state", { error });
 
-            await crashRun({
-              name: "ReadyForCheckpointError",
-              message: `Failed to become checkpointable for ${reason}`,
-            });
+            if (error instanceof CheckpointReadinessTimeoutError) {
+              await crashRun({
+                name: error.name,
+                message: `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
+              });
+
+              return {
+                success: false,
+                reason: "timeout",
+              };
+            }
+
+            if (error instanceof CheckpointCancelError) {
+              return {
+                success: false,
+                reason: "canceled",
+              };
+            }
 
             return {
               success: false,
@@ -792,6 +857,18 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_TASK checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
@@ -804,6 +881,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after task checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -862,6 +940,18 @@ class TaskCoordinator {
             return;
           }
 
+          logger.log("WAIT_FOR_BATCH checkpoint created", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
+          //setting this means we can only resume from a checkpoint
+          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+          logger.log("WAIT_FOR_BATCH set checkpoint", {
+            checkpoint,
+            socketData: socket.data,
+          });
+
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
             attemptFriendlyId: message.attemptFriendlyId,
@@ -875,6 +965,7 @@ class TaskCoordinator {
           });
 
           if (ack?.keepRunAlive) {
+            socket.data.requiresCheckpointResumeWithMessage = undefined;
             logger.log("keeping run alive after batch checkpoint", { runId: socket.data.runId });
             return;
           }
@@ -996,7 +1087,7 @@ class TaskCoordinator {
 
     if (checkpointWait) {
       // Stop waiting for task to reach checkpointable state
-      checkpointWait.reject("Checkpoint cancelled");
+      checkpointWait.reject(new CheckpointCancelError());
     }
 
     // Cancel checkpointing procedure
