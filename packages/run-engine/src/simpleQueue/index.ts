@@ -1,12 +1,14 @@
 import Redis, { RedisOptions } from "ioredis";
 import { z } from "zod";
+import { Logger } from "@trigger.dev/core/logger";
 
 export class SimpleQueue<T extends z.ZodType> {
   name: string;
   private redis: Redis;
   private schema: T;
+  private logger: Logger;
 
-  constructor(name: string, schema: T, redisOptions: RedisOptions) {
+  constructor(name: string, schema: T, redisOptions: RedisOptions, logger?: Logger) {
     this.name = name;
     this.redis = new Redis({
       ...redisOptions,
@@ -19,12 +21,14 @@ export class SimpleQueue<T extends z.ZodType> {
     });
     this.schema = schema;
 
+    this.logger = logger ?? new Logger("SimpleQueue", "debug");
+
     this.redis.on("error", (error) => {
-      console.error(`Redis Error for queue ${this.name}:`, error);
+      this.logger.error(`Redis Error for queue ${this.name}:`, { queue: this.name, error });
     });
 
     this.redis.on("connect", () => {
-      // console.log(`Redis connected for queue ${this.name}`);
+      // this.logger.log(`Redis connected for queue ${this.name}`);
     });
   }
 
@@ -49,7 +53,8 @@ export class SimpleQueue<T extends z.ZodType> {
         }
       });
     } catch (e) {
-      console.error(`SimpleQueue ${this.name}.enqueue(): error enqueuing`, {
+      this.logger.error(`SimpleQueue ${this.name}.enqueue(): error enqueuing`, {
+        queue: this.name,
         error: e,
         id,
         item,
@@ -94,7 +99,10 @@ export class SimpleQueue<T extends z.ZodType> {
       const serializedItem = await this.redis.hget(`items`, id);
 
       if (!serializedItem) {
-        console.warn(`Item ${id} not found in hash, might have been deleted`);
+        this.logger.warn(`Item ${id} not found in hash, might have been deleted`, {
+          queue: this.name,
+          id,
+        });
         return null;
       }
 
@@ -103,7 +111,8 @@ export class SimpleQueue<T extends z.ZodType> {
       const validatedItem = this.schema.safeParse(parsedItem);
 
       if (!validatedItem.success) {
-        console.error("Invalid item in queue", {
+        this.logger.error("Invalid item in queue", {
+          queue: this.name,
           id,
           item: parsedItem,
           errors: validatedItem.error,
@@ -113,7 +122,10 @@ export class SimpleQueue<T extends z.ZodType> {
 
       return { id, item: validatedItem.data };
     } catch (e) {
-      console.error(`SimpleQueue ${this.name}.dequeue(): error dequeuing`, { error: e });
+      this.logger.error(`SimpleQueue ${this.name}.dequeue(): error dequeuing`, {
+        queue: this.name,
+        error: e,
+      });
       throw e;
     }
   }
@@ -123,7 +135,10 @@ export class SimpleQueue<T extends z.ZodType> {
       const result = await this.redis.zcard(`queue`);
       return result;
     } catch (e) {
-      console.error(`SimpleQueue ${this.name}.size(): error getting queue size`, { error: e });
+      this.logger.error(`SimpleQueue ${this.name}.size(): error getting queue size`, {
+        queue: this.name,
+        error: e,
+      });
       throw e;
     }
   }
