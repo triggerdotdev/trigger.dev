@@ -1,5 +1,80 @@
 ---
-title: "Overview"
-sidebarTitle: "Overview"
-description: "This file is used to configure your project and how it's bundled."
+title: "Build extensions"
+description: "Customize how your project is built and deployed to Trigger.dev with build extensions"
 ---
+
+Build extension allow you to hook into the build system and customize the build process or the resulting bundle and container image (in the case of deploying). See our [trigger.config.ts reference](/config/config-file#extensions) for more information on how to install and use our built-in extensions. Build extensions can do the following:
+
+- Add additional files to the build
+- Add esbuild plugins
+- Add additional npm dependencies
+- Add additional system packages to the image build container
+- Add commands to run in the image build container
+- Add environment variables to the image build container
+- Sync environment variables to your Trigger.dev project
+
+## Creating a build extension
+
+Build extensions are added to your `trigger.config.ts` file, with a required `name` and optional build hook functions. Here's a simple example of a build extension that just logs a message when the build starts:
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "my-project",
+  build: {
+    extensions: [
+      {
+        name: "my-extension",
+        onBuildStart: async (context) => {
+          console.log("Build starting!");
+        },
+      },
+    ],
+  },
+});
+```
+
+You can also extract that out into a function instead of defining it inline, in which case you will need to import the `BuildExtension` type from the `@trigger.dev/build` package:
+
+<Note>
+  You'll need to add the `@trigger.dev/build` package to your `devDependencies` before the below
+  code will work. Make sure it's version matches that of the installed `@trigger.dev/sdk` package.
+</Note>
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { BuildExtension } from "@trigger.dev/build";
+
+export default defineConfig({
+  project: "my-project",
+  build: {
+    extensions: [myExtension()],
+  },
+});
+
+function myExtension(): BuildExtension {
+  return {
+    name: "my-extension",
+    onBuildStart: async (context) => {
+      console.log("Build starting!");
+    },
+  };
+}
+```
+
+## Build hooks
+
+### onBuildStart
+
+### onBuildComplete
+
+## Reference
+
+### BuildContext
+
+### BuildLayer
+
+## Troubleshooting
+
+Describe how to use --dry-run
