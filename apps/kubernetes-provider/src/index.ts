@@ -235,33 +235,7 @@ class KubernetesTaskOperations implements TaskOperations {
               imagePullPolicy: "IfNotPresent",
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
-              env: [
-                ...(COORDINATOR_HOST
-                  ? [
-                      {
-                        name: "COORDINATOR_HOST",
-                        value: COORDINATOR_HOST,
-                      },
-                    ]
-                  : [
-                      {
-                        name: "COORDINATOR_HOST",
-                        valueFrom: {
-                          fieldRef: {
-                            fieldPath: "status.hostIP",
-                          },
-                        },
-                      },
-                    ]),
-                ...(COORDINATOR_PORT
-                  ? [
-                      {
-                        name: "COORDINATOR_PORT",
-                        value: COORDINATOR_PORT,
-                      },
-                    ]
-                  : []),
-              ],
+              env: this.#coordinatorEnvVars,
               volumeMounts: [
                 {
                   name: "taskinfo",
@@ -432,6 +406,41 @@ class KubernetesTaskOperations implements TaskOperations {
     };
   }
 
+  get #coordinatorHostEnvVar(): k8s.V1EnvVar {
+    return COORDINATOR_HOST
+      ? {
+          name: "COORDINATOR_HOST",
+          value: COORDINATOR_HOST,
+        }
+      : {
+          name: "COORDINATOR_HOST",
+          valueFrom: {
+            fieldRef: {
+              fieldPath: "status.hostIP",
+            },
+          },
+        };
+  }
+
+  get #coordinatorPortEnvVar(): k8s.V1EnvVar | undefined {
+    if (COORDINATOR_PORT) {
+      return {
+        name: "COORDINATOR_PORT",
+        value: COORDINATOR_PORT,
+      };
+    }
+  }
+
+  get #coordinatorEnvVars(): k8s.V1EnvVar[] {
+    const envVars = [this.#coordinatorHostEnvVar];
+
+    if (this.#coordinatorPortEnvVar) {
+      envVars.push(this.#coordinatorPortEnvVar);
+    }
+
+    return envVars;
+  }
+
   #getSharedEnv(envId: string): k8s.V1EnvVar[] {
     return [
       {
@@ -458,7 +467,6 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
       },
-
       {
         name: "MACHINE_NAME",
         valueFrom: {
@@ -467,19 +475,7 @@ class KubernetesTaskOperations implements TaskOperations {
           },
         },
       },
-      ...(COORDINATOR_HOST
-        ? [{ name: "COORDINATOR_HOST", value: COORDINATOR_HOST }]
-        : [
-            {
-              name: "COORDINATOR_HOST",
-              valueFrom: {
-                fieldRef: {
-                  fieldPath: "status.hostIP",
-                },
-              },
-            },
-          ]),
-      ...(COORDINATOR_PORT ? [{ name: "COORDINATOR_PORT", value: COORDINATOR_PORT }] : []),
+      ...this.#coordinatorEnvVars,
     ];
   }
 
