@@ -179,4 +179,38 @@ export const fixturesConfig: TestCase[] = [
       },
     ],
   },
+  {
+    id: "esm-only-external",
+    buildManifestMatcher: {
+      runtime: "node",
+      externals: [
+        {
+          name: "import-in-the-middle",
+          version: "1.11.0",
+        },
+        {
+          name: "mupdf",
+          version: "0.3.0",
+        },
+      ],
+      files: [{ entry: "src/trigger/helloWorld.ts" }],
+    },
+    workerManifestMatcher: {
+      tasks: [
+        {
+          id: "helloWorld",
+          filePath: "src/trigger/helloWorld.ts",
+          exportName: "helloWorld",
+        },
+      ],
+    },
+    runs: [
+      {
+        task: { id: "helloWorld", filePath: "src/trigger/helloWorld.ts", exportName: "helloWorld" },
+        payload: "{}",
+        result: { ok: true, durationMs: 1 },
+      },
+    ],
+    tsconfig: "tsconfig.json",
+  },
 ];
