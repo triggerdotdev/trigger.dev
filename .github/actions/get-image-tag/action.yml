@@ -66,8 +66,15 @@ runs:
       shell: bash
       env:
         tag: ${{ steps.get_tag.outputs.tag }}
+      # Will match most semver formats except build metadata, i.e. v1.2.3+build.1
+      # Valid matches:
+      # v1.2.3
+      # v1.2.3-alpha
+      # v1.2.3-alpha.1
+      # v1.2.3-rc.1
+      # v1.2.3-beta-1
       run: |
-        if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+)?$ ]]; then
+        if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
           echo "Tag is a semantic version: ${tag}"
           is_semver=true
         else
