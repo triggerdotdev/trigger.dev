@@ -6,76 +6,36 @@ description: "This example demonstrates how to handle Stripe webhook events usin
 
 ## Overview
 
-We will set up a webhook handler for incoming Stripe events. When an event is received, the handler will trigger a task that can perform an action based on the event type.
+This example shows how to set up a webhook handler for incoming Stripe events. The handler triggers a task when a `checkout.session.completed` event is received. This is easily customisable to handle other Stripe events.
 
 ## Key features
 
-- Handles Stripe webhook events
-- Performs actions based on the event type (e.g. `checkout.session.completed`)
+- Shows how to create a Stripe webhook handler
+- Triggers a task when a `checkout.session.completed` event is received
 
 ## Environment variables
 
-You'll need to configure the following environment variables for this example:
+You'll need to configure the following environment variables for this example to work:
 
 - `STRIPE_WEBHOOK_SECRET` The secret key used to verify the Stripe webhook signature.
 - `TRIGGER_API_URL` Your Trigger.dev API url: `https://api.trigger.dev`
 - `TRIGGER_API_SECRET` Your Trigger.dev API secret.
 
-## Setting up a Stripe webhook handler
+## Setting up the Stripe webhook handler
 
-First you'll need to create a webhook handler route that listens for POST requests and verifies the Stripe signature.
+First you'll need to create a [Stripe webhook](https://stripe.com/docs/webhooks) handler route that listens for POST requests and verifies the Stripe signature.
 
 Here are examples of how you can set up a handler using different frameworks:
 
 <CodeGroup>
-
-```ts Remix
-// app/webhooks/stripe.ts
-import { type ActionFunctionArgs, json } from "@remix-run/node";
-import type { stripeWebhook } from "src/trigger/stripe-webhook";
-import { tasks } from "@trigger.dev/sdk/v3";
-import stripe from "stripe";
-
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, { status: 405 });
-  }
-
-  const signature = request.headers.get("stripe-signature");
-  const payload = await request.text();
-
-  if (!signature || !payload) {
-    return json({ error: "Invalid Stripe payload/signature" }, { status: 400 });
-  }
-
-  try {
-    // Construct the Stripe event using the payload, signature, and webhook secret
-    const event = stripe.webhooks.constructEvent(
-      payload,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
-    );
-
-    console.log("Received Stripe event:", event);
-
-    // Trigger the 'stripe-webhook' task with the constructed event
-    const { id } = await tasks.trigger<typeof stripeWebhook>("stripe-webhook", event);
-
-    // Return a JSON response with the run ID of the triggered task
-    return json({ runId: id });
-  } catch (e) {
-    console.error("Error processing Stripe webhook:", e);
-    return json({ error: e instanceof Error ? e.message : JSON.stringify(e) }, { status: 400 });
-  }
-}
-```
 
 ```ts Next.js
 // app/api/stripe-webhook/route.ts
 import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk/v3";
 import Stripe from "stripe";
-import { stripeWebhook } from "../../../trigger/stripe-webhook";
+import type { stripeCheckoutCompleted } from "@/trigger/stripe-checkout-completed";
+//     👆 **type-only** import
 
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
@@ -90,22 +50,71 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    const event = Stripe.webhooks.constructEvent(
-      payload,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
-    );
+  const event = Stripe.webhooks.constructEvent(
+    payload,
+    signature,
+    process.env.STRIPE_WEBHOOK_SECRET as string
+  );
 
-    const { id } = await tasks.trigger<typeof stripeWebhook>("stripe-webhook", event);
+  // Perform the check based on the event type
+  switch (event.type) {
+    case "checkout.session.completed": {
+      // Trigger the task only if the event type is "checkout.session.completed"
+      const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
+        "stripe-checkout-completed",
+        event
+      );
+      return NextResponse.json({ runId: id });
+    }
+    default: {
+      // Return a response indicating that the event is not handled
+      return NextResponse.json(
+        { message: "Event not handled" },
+        {
+          status: 200,
+        }
+      );
+    }
+  }
+}
+```
 
-    return NextResponse.json({ runId: id });
-  } catch (e) {
-    console.error("Error processing Stripe webhook:", e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : JSON.stringify(e) },
-      { status: 400 }
-    );
+```ts Remix
+// app/webhooks/stripe.ts
+import { type ActionFunctionArgs, json } from "@remix-run/node";
+import type { stripeCheckoutCompleted } from "src/trigger/stripe-webhook";
+import { tasks } from "@trigger.dev/sdk/v3";
+import Stripe from "stripe";
+
+export async function action({ request }: ActionFunctionArgs) {
+  // Validate the Stripe webhook payload
+  const signature = request.headers.get("stripe-signature");
+  const payload = await request.text();
+
+  if (!signature || !payload) {
+    return json({ error: "Invalid Stripe payload/signature" }, { status: 400 });
+  }
+
+  const event = Stripe.webhooks.constructEvent(
+    payload,
+    signature,
+    process.env.STRIPE_WEBHOOK_SECRET as string
+  );
+
+  // Perform the check based on the event type
+  switch (event.type) {
+    case "checkout.session.completed": {
+      // Trigger the task only if the event type is "checkout.session.completed"
+      const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
+        "stripe-checkout-completed",
+        event
+      );
+      return json({ runId: id });
+    }
+    default: {
+      // Return a response indicating that the event is not handled
+      return json({ message: "Event not handled" }, { status: 200 });
+    }
   }
 }
 ```
@@ -114,20 +123,16 @@ export async function POST(request: Request) {
 
 ## Task code
 
-This task listens for Stripe events and performs actions based on the `checkout.session.completed` event type:
+This task is triggered when a `checkout.session.completed` event is received from Stripe.
 
 ```ts trigger/stripe-webhook.ts
 import { task } from "@trigger.dev/sdk/v3";
 import type stripe from "stripe";
 
-export const stripeWebhook = task({
-  id: "stripe-webhook",
-  run: async (payload: stripe.Event, { ctx }) => {
-    switch (payload.type) {
-      case "checkout.session.completed": {
-        //do stuff
-      }
-    }
+export const stripeCheckoutCompleted = task({
+  id: "stripe-checkout-completed",
+  run: async (payload: stripe.Event, {}) => {
+    // Add your custom logic for handling the checkout.session.completed event here
   },
 });
 ```
