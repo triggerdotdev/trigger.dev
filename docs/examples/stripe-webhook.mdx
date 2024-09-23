@@ -1,17 +1,17 @@
 ---
-title: "Trigger a task from a Stripe webhook events"
+title: "Trigger a task from Stripe webhook events"
 sidebarTitle: "Stripe webhook"
 description: "This example demonstrates how to handle Stripe webhook events using Trigger.dev."
 ---
 
 ## Overview
 
-We will set up a webhook handler for incoming Stripe events. When a Stripe event is received, the handler will trigger a task that can perform an action based on the event type.
+We will set up a webhook handler for incoming Stripe events. When an event is received, the handler will trigger a task that can perform an action based on the event type.
 
 ## Key features
 
 - Handles Stripe webhook events
-- Performs actions based on the event type (e.g., "checkout.session.completed")
+- Performs actions based on the event type (e.g. `checkout.session.completed`)
 
 ## Environment variables
 
@@ -23,7 +23,7 @@ You'll need to configure the following environment variables for this example:
 
 ## Setting up a Stripe webhook handler
 
-To set up your endpoint, you'll need to create a webhook handler route that listens for POST requests and verifies the Stripe signature.
+First you'll need to create a webhook handler route that listens for POST requests and verifies the Stripe signature.
 
 Here are examples of how you can set up a handler using different frameworks:
 
@@ -70,7 +70,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 ```
 
-```ts Nextjs
+```ts Next.js
 // app/api/stripe-webhook/route.ts
 import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk/v3";
@@ -137,8 +137,8 @@ export const stripeWebhook = task({
 To test everything is working you can use the Stripe CLI to send test events to your endpoint:
 
 1. Install the [Stripe CLI](https://stripe.com/docs/stripe-cli#install), and login
-2. Follow the instructions to [test your handler](https://docs.stripe.com/webhooks#test-webhook). This will include a temporary `STRIPE_WEBHOOK_SECRET` that you can use to test your endpoint.
-3. If your endpoint is set up correctly, you should see the Stripe events logged in your console with a status of 200.
+2. Follow the instructions to [test your handler](https://docs.stripe.com/webhooks#test-webhook). This will include a temporary `STRIPE_WEBHOOK_SECRET` that you can use for testing.
+3. If your endpoint is set up correctly, you should see the Stripe events logged in your console with a status of `200`.
 4. Then, check the [Trigger.dev](https://cloud.trigger.dev) dashboard and you should see the successful run of the `stripe-webhook` task.
 
 For more information on setting up and testing Stripe webhooks, refer to the [Stripe Webhook Documentation](https://stripe.com/docs/webhooks).
