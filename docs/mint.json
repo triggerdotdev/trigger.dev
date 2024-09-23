@@ -83,6 +83,10 @@
     {
       "source": "/trigger-folder",
       "destination": "/config/config-file"
+    },
+    {
+      "source": "/trigger-config",
+      "destination": "/config/config-file"
     }
   ],
   "anchors": [
