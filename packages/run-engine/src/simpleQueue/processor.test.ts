@@ -71,7 +71,6 @@ describe("SimpleQueue processor", () => {
           },
           maxAttempts: 2,
         },
-        logger: new Logger("QueueProcessor", "debug"),
         onItem: async (id, item) => {
           attempts++;
           if (attempts === 1) {
