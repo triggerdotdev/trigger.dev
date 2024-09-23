@@ -21,12 +21,6 @@ const postgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>) => {
   await container.stop();
 };
 
-const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
-  const { container } = await createRedisContainer();
-  await use(container);
-  await container.stop();
-};
-
 const prisma = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
   use: Use<PrismaClient>
@@ -42,6 +36,14 @@ const prisma = async (
   await prisma.$disconnect();
 };
 
+export const postgresTest = test.extend<PostgresContext>({ postgresContainer, prisma });
+
+const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
+  const { container } = await createRedisContainer();
+  await use(container);
+  await container.stop();
+};
+
 const redis = async (
   { redisContainer }: { redisContainer: StartedRedisContainer },
   use: Use<Redis>
@@ -55,13 +57,11 @@ const redis = async (
   await redis.quit();
 };
 
+export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
+
 export const containerTest = test.extend<ContainerContext>({
   postgresContainer,
   prisma,
   redisContainer,
   redis,
 });
-
-export const postgresTest = test.extend<PostgresContext>({ postgresContainer, prisma });
-
-export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
