@@ -98,10 +98,13 @@ Some ones we recommend:
 | Package                                 | Description                                                                                                              |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `@opentelemetry/instrumentation-undici` | Logs all fetch calls (inc. Undici fetch)                                                                                 |
-| `@opentelemetry/instrumentation-fs`     | Logs all file system calls                                                                                               |
 | `@opentelemetry/instrumentation-http`   | Logs all HTTP calls                                                                                                      |
 | `@prisma/instrumentation`               | Logs all Prisma calls, you need to [enable tracing](https://github.com/prisma/prisma/tree/main/packages/instrumentation) |
 | `@traceloop/instrumentation-openai`     | Logs all OpenAI calls                                                                                                    |
+
+<Note>
+  `@opentelemetry/instrumentation-fs` which logs all file system calls is currently not supported.
+</Note>
 
 ## Runtime
 
