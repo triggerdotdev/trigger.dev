@@ -4,6 +4,8 @@ sidebarTitle: "PDF to image"
 description: "This example will show you how to turn a PDF into an image using MuPDF and Trigger.dev."
 ---
 
+import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+
 ## Overview
 
 This example demonstrates how to use Trigger.dev to turn a PDF into a series of images using MuPDF and upload them to Cloudflare R2.
@@ -96,3 +98,7 @@ To test this task in the dashboard, you can use the following payload:
   "documentId": "unique-document-id"
 }
 ```
+
+<LocalDevelopment packages={"mupdf-tools from MuPDF"} />
+
+
