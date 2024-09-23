@@ -94,6 +94,8 @@ jobs:
     needs: release
     uses: ./.github/workflows/publish.yml
     secrets: inherit
-    if: needs.release.outputs.published == 'true'
+    # if: needs.release.outputs.published == 'true'
+    # disable automatic publishing for now
+    if: false
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
