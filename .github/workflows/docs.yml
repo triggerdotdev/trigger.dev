@@ -26,7 +26,7 @@ jobs:
         working-directory: ./docs
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 📦 Cache npm
         uses: actions/cache@v3
