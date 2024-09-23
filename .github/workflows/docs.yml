@@ -2,6 +2,8 @@ name: 📚 Docs Checks
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "docs/**"
   pull_request:
