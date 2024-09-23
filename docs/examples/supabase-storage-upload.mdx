@@ -18,20 +18,16 @@ This task downloads a video from a provided URL, saves it to a temporary file, a
 ```ts trigger/supabase-storage-upload.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
-import fs from "fs/promises";
 import fetch from "node-fetch";
-import os from "os";
-import path from "path";
 
 // Initialize S3 client for Supabase Storage
-// Update your .env file, and environment variables in the dashboard as instructed below
 const s3Client = new S3Client({
   region: process.env.SUPABASE_REGION, // Your Supabase project's region e.g. "us-east-1"
-  endpoint: `https://${process.env.SUPABASE_PROJECT_ID}.supabase.co/storage/v1/s3`, // Your Supabase project ID
+  endpoint: `https://${process.env.SUPABASE_PROJECT_ID}.supabase.co/storage/v1/s3`,
   credentials: {
     // These credentials can be found in your supabase storage settings, under 'S3 access keys'
-    accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID ?? "", // Access key ID
-    secretAccessKey: process.env.SUPABASE_S3__SECRET_ACCESS_KEY ?? "", // Access key
+    accessKeyId: process.env.SUPABASE_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.SUPABASE_SECRET_ACCESS_KEY ?? "",
   },
 });
 
@@ -40,31 +36,23 @@ export const supabaseStorageUpload = task({
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
-    // Generate temporary file path
-    const tempDirectory = os.tmpdir();
-    const outputPath = path.join(tempDirectory, `video_${Date.now()}.mp4`);
-
-    // Fetch the video and save it to a temporary file
+    // Fetch the video as an ArrayBuffer
     const response = await fetch(videoUrl);
-    const videoBuffer = await response.arrayBuffer();
-    await fs.writeFile(outputPath, Buffer.from(videoBuffer));
+    const videoArrayBuffer = await response.arrayBuffer();
+    const videoBuffer = Buffer.from(videoArrayBuffer);
 
-    const videoFile = await fs.readFile(outputPath); // Read the video file
     const bucket = "my_bucket"; // Replace "my_bucket" with your bucket name
+    const objectKey = `video_${Date.now()}.mp4`;
 
-    // Upload the video to Supabase Storage
-    const objectKey = path.basename(outputPath);
+    // Upload the video directly to Supabase Storage
     await s3Client.send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: objectKey,
-        Body: videoFile,
+        Body: videoBuffer,
       })
     );
     logger.log(`Video uploaded to Supabase Storage bucket`, { objectKey });
-
-    // Delete the temporary video file
-    await fs.unlink(outputPath);
 
     // Return the video object key
     return {
