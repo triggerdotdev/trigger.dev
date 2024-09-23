@@ -1,13 +1,15 @@
 name: "ʦ TypeScript"
+
 on:
   workflow_call:
+
 jobs:
   typecheck:
     runs-on: buildjet-8vcpu-ubuntu-2204
 
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -17,7 +19,7 @@ jobs:
           version: 8.15.5
 
       - name: ⎔ Setup node
-        uses: buildjet/setup-node@v3
+        uses: buildjet/setup-node@v4
         with:
           node-version: 20.11.1
           cache: "pnpm"
@@ -30,6 +32,6 @@ jobs:
 
       - name: 🔎 Type check
         run: pnpm run typecheck
-      
+
       - name: 🔎 Check exports
         run: pnpm run check-exports

@@ -4,6 +4,8 @@ sidebarTitle: "Sharp image processing"
 description: "This example demonstrates how to process images using the Sharp library with Trigger.dev."
 ---
 
+import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+
 ## Overview
 
 This task optimizes and watermarks an image using the Sharp library, and then uploads the processed image to R2 storage.
@@ -130,3 +132,5 @@ To test this task in the dashboard, you can use the following payload:
   "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
 }
 ```
+
+<LocalDevelopment packages={"the Sharp image processing library"} />

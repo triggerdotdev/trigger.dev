@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { env } from "std-env";
 
-const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local"];
+const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local", "dev.vars"];
 
 export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   const result: { [key: string]: string } = {};

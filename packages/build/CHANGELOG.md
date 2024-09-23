@@ -1,5 +1,15 @@
 # @trigger.dev/build
 
+## 3.0.6
+
+### Patch Changes
+
+- b4be73655: prismaExtension fixes for #1325 and #1327
+- c65d4822b: Feat: puppeteer build extension
+- 1f5bcc73b: fix: audiowaveform extension
+- Updated dependencies [4e0bc485a]
+  - @trigger.dev/core@3.0.6
+
 ## 3.0.5
 
 ### Patch Changes

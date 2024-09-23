@@ -1,6 +1,6 @@
 ---
 title: "The trigger.config.ts file"
-sidebarTitle: "Configuration"
+sidebarTitle: "trigger.config.ts"
 description: "This file is used to configure your project and how it's built."
 ---
 
@@ -70,7 +70,7 @@ export default defineConfig({
 });
 ```
 
-Read more about task lifecycle functions in the [tasks overview](/tasks-overview).
+Read more about task lifecycle functions in the [tasks overview](/tasks/overview).
 
 ## Instrumentations
 
@@ -98,10 +98,13 @@ Some ones we recommend:
 | Package                                 | Description                                                                                                              |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `@opentelemetry/instrumentation-undici` | Logs all fetch calls (inc. Undici fetch)                                                                                 |
-| `@opentelemetry/instrumentation-fs`     | Logs all file system calls                                                                                               |
 | `@opentelemetry/instrumentation-http`   | Logs all HTTP calls                                                                                                      |
 | `@prisma/instrumentation`               | Logs all Prisma calls, you need to [enable tracing](https://github.com/prisma/prisma/tree/main/packages/instrumentation) |
 | `@traceloop/instrumentation-openai`     | Logs all OpenAI calls                                                                                                    |
+
+<Note>
+  `@opentelemetry/instrumentation-fs` which logs all file system calls is currently not supported.
+</Note>
 
 ## Runtime
 
@@ -116,7 +119,7 @@ export default defineConfig({
 });
 ```
 
-See our [Bun guide](/guides/bun) for more information.
+See our [Bun guide](/guides/frameworks/bun) for more information.
 
 ## Default machine
 

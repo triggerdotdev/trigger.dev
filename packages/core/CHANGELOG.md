@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.6
+
+### Patch Changes
+
+- 4e0bc485a: Add support for Buffer in payloads and outputs
+
 ## 3.0.5
 
 ## 3.0.4
