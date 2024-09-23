@@ -279,6 +279,7 @@
         "examples/open-ai-with-retrying",
         "examples/pdf-to-image",
         "examples/sharp-image-processing",
+        "examples/stripe-webhook",
         "examples/supabase-storage-upload",
         "examples/react-pdf",
         "examples/resend-email-sequence",

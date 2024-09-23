@@ -1,0 +1,144 @@
+---
+title: "Trigger a task from a Stripe webhook events"
+sidebarTitle: "Stripe webhook"
+description: "This example demonstrates how to handle Stripe webhook events using Trigger.dev."
+---
+
+## Overview
+
+We will set up a webhook handler for incoming Stripe events. When a Stripe event is received, the handler will trigger a task that can perform an action based on the event type.
+
+## Key features
+
+- Handles Stripe webhook events
+- Performs actions based on the event type (e.g., "checkout.session.completed")
+
+## Environment variables
+
+You'll need to configure the following environment variables for this example:
+
+- `STRIPE_WEBHOOK_SECRET` The secret key used to verify the Stripe webhook signature.
+- `TRIGGER_API_URL` Your Trigger.dev API url: `https://api.trigger.dev`
+- `TRIGGER_API_SECRET` Your Trigger.dev API secret.
+
+## Setting up a Stripe webhook handler
+
+To set up your endpoint, you'll need to create a webhook handler route that listens for POST requests and verifies the Stripe signature.
+
+Here are examples of how you can set up a handler using different frameworks:
+
+<CodeGroup>
+
+```ts Remix
+// app/webhooks/stripe.ts
+import { type ActionFunctionArgs, json } from "@remix-run/node";
+import type { stripeWebhook } from "src/trigger/stripe-webhook";
+import { tasks } from "@trigger.dev/sdk/v3";
+import stripe from "stripe";
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  const signature = request.headers.get("stripe-signature");
+  const payload = await request.text();
+
+  if (!signature || !payload) {
+    return json({ error: "Invalid Stripe payload/signature" }, { status: 400 });
+  }
+
+  try {
+    // Construct the Stripe event using the payload, signature, and webhook secret
+    const event = stripe.webhooks.constructEvent(
+      payload,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET as string
+    );
+
+    console.log("Received Stripe event:", event);
+
+    // Trigger the 'stripe-webhook' task with the constructed event
+    const { id } = await tasks.trigger<typeof stripeWebhook>("stripe-webhook", event);
+
+    // Return a JSON response with the run ID of the triggered task
+    return json({ runId: id });
+  } catch (e) {
+    console.error("Error processing Stripe webhook:", e);
+    return json({ error: e instanceof Error ? e.message : JSON.stringify(e) }, { status: 400 });
+  }
+}
+```
+
+```ts Nextjs
+// app/api/stripe-webhook/route.ts
+import { NextResponse } from "next/server";
+import { tasks } from "@trigger.dev/sdk/v3";
+import Stripe from "stripe";
+import { stripeWebhook } from "../../../trigger/stripe-webhook";
+
+export async function POST(request: Request) {
+  const signature = request.headers.get("stripe-signature");
+  const payload = await request.text();
+
+  if (!signature || !payload) {
+    return NextResponse.json(
+      { error: "Invalid Stripe payload/signature" },
+      {
+        status: 400,
+      }
+    );
+  }
+
+  try {
+    const event = Stripe.webhooks.constructEvent(
+      payload,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET as string
+    );
+
+    const { id } = await tasks.trigger<typeof stripeWebhook>("stripe-webhook", event);
+
+    return NextResponse.json({ runId: id });
+  } catch (e) {
+    console.error("Error processing Stripe webhook:", e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : JSON.stringify(e) },
+      { status: 400 }
+    );
+  }
+}
+```
+
+</CodeGroup>
+
+## Task code
+
+This task listens for Stripe events and performs actions based on the `checkout.session.completed` event type:
+
+```ts trigger/stripe-webhook.ts
+import { task } from "@trigger.dev/sdk/v3";
+import type stripe from "stripe";
+
+export const stripeWebhook = task({
+  id: "stripe-webhook",
+  run: async (payload: stripe.Event, { ctx }) => {
+    switch (payload.type) {
+      case "checkout.session.completed": {
+        //do stuff
+      }
+    }
+  },
+});
+```
+
+## Testing your task locally
+
+To test everything is working you can use the Stripe CLI to send test events to your endpoint:
+
+1. Install the [Stripe CLI](https://stripe.com/docs/stripe-cli#install), and login
+2. Follow the instructions to [test your handler](https://docs.stripe.com/webhooks#test-webhook). This will include a temporary `STRIPE_WEBHOOK_SECRET` that you can use to test your endpoint.
+3. If your endpoint is set up correctly, you should see the Stripe events logged in your console with a status of 200.
+4. Then, check the [Trigger.dev](https://cloud.trigger.dev) dashboard and you should see the successful run of the `stripe-webhook` task.
+
+For more information on setting up and testing Stripe webhooks, refer to the [Stripe Webhook Documentation](https://stripe.com/docs/webhooks).
