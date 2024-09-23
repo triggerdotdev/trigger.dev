@@ -11,7 +11,7 @@ This example shows how to set up a webhook handler for incoming Stripe events. T
 ## Key features
 
 - Shows how to create a Stripe webhook handler
-- Triggers a task when a `checkout.session.completed` event is received
+- Triggers a task from your backend when a `checkout.session.completed` event is received
 
 ## Environment variables
 
@@ -83,6 +83,7 @@ export async function POST(request: Request) {
 // app/webhooks.stripe.ts
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import type { stripeCheckoutCompleted } from "src/trigger/stripe-webhook";
+//     👆 **type-only** import
 import { tasks } from "@trigger.dev/sdk/v3";
 import Stripe from "stripe";
 
