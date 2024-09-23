@@ -74,8 +74,8 @@ You can use our SDK to get and manipulate environment variables. You can also ea
 
 We have a complete set of SDK functions (and REST API) you can use to directly manipulate environment variables.
 
-| Function                                              | Description                                                 |
-| ----------------------------------------------------- | ----------------------------------------------------------- |
+| Function                                           | Description                                                 |
+| -------------------------------------------------- | ----------------------------------------------------------- |
 | [envvars.list()](/management/envvars/list)         | List all environment variables                              |
 | [envvars.upload()](/management/envvars/import)     | Upload multiple env vars. You can override existing values. |
 | [envvars.create()](/management/envvars/create)     | Create a new environment variable                           |
@@ -85,58 +85,43 @@ We have a complete set of SDK functions (and REST API) you can use to directly m
 
 ### Sync env vars from another service
 
-You could use the SDK functions above but it's much easier to use our `resolveEnvVars` function in your `trigger.config` file.
+You could use the SDK functions above but it's much easier to use our `syncEnvVars` build extension in your `trigger.config` file.
+
+<Note>
+  To use the `syncEnvVars` build extension, you should first install the `@trigger.dev/build`
+  package into your devDependencies.
+</Note>
 
 In this example we're using env vars from [Infisical](https://infisical.com).
 
-```ts /trigger.config.ts
-import type { TriggerConfig, ResolveEnvironmentVariablesFunction } from "@trigger.dev/sdk/v3";
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { InfisicalClient } from "@infisical/sdk";
 
-//This runs when you run the deploy command or the dev command
-export const resolveEnvVars: ResolveEnvironmentVariablesFunction = async ({
-  //the project ref (starting with "proj_")
-  projectRef,
-  //any existing env vars from a .env file or Trigger.dev
-  env,
-  //"dev", "staging", or "prod"
-  environment,
-}) => {
-  //the existing environment variables from Trigger.dev (or your local .env file)
-  if (env.INFISICAL_CLIENT_ID === undefined || env.INFISICAL_CLIENT_SECRET === undefined) {
-    //returning undefined won't modify the existing env vars
-    return;
-  }
+export default defineConfig({
+  build: {
+    extensions: [
+      syncEnvVars(async (ctx) => {
+        const client = new InfisicalClient({
+          clientId: process.env.INFISICAL_CLIENT_ID,
+          clientSecret: process.env.INFISICAL_CLIENT_SECRET,
+        });
 
-  const client = new InfisicalClient({
-    clientId: env.INFISICAL_CLIENT_ID,
-    clientSecret: env.INFISICAL_CLIENT_SECRET,
-  });
+        const secrets = await client.listSecrets({
+          environment: ctx.environment,
+          projectId: process.env.INFISICAL_PROJECT_ID!,
+        });
 
-  const secrets = await client.listSecrets({
-    environment,
-    projectId: env.INFISICAL_PROJECT_ID!,
-  });
-
-  return {
-    variables: secrets.map((secret) => ({
-      name: secret.secretKey,
-      value: secret.secretValue,
-    })),
-    // this defaults to true
-    // override: true,
-  };
-};
-
-//the rest of your config file
-export const config: TriggerConfig = {
-  project: "proj_1234567890",
-  //etc
-};
+        return secrets.map((secret) => ({
+          name: secret.secretKey,
+          value: secret.secretValue,
+        }));
+      }),
+    ],
+  },
+});
 ```
-
-#### Local development
-
-When you [develop locally](/cli-dev) `resolveEnvVars()` will inject the env vars from [Infisical](https://infisical.com) into your local `process.env`.
 
 #### Deploy
 
@@ -144,34 +129,47 @@ When you run the [CLI deploy command](/cli-deploy) directly or using [GitHub Act
 
 This means that you need to redeploy your Trigger.dev tasks if you change the environment variables in [Infisical](https://infisical.com).
 
-### The variables return type
+<Note>
+  The `process.env.INFISICAL_CLIENT_ID`, `process.env.INFISICAL_CLIENT_SECRET` and
+  `process.env.INFISICAL_PROJECT_ID` will need to be supplied to the `deploy` CLI command. You can
+  do this via the `--env-file .env` flag or by setting them as environment variables in your
+  terminal.
+</Note>
 
-You can return `variables` as an object with string keys and values, or an array of names + values.
+#### Dev
+
+`syncEnvVars` does not have any effect when running the `dev` command locally. If you want to inject environment variables from another service into your local environment you can do so via a `.env` file or just supplying them as environment variables in your terminal. Most services will have a CLI tool that allows you to run a command with environment variables set:
+
+```sh
+infisical run -- npx trigger.dev@latest dev
+```
+
+Any environment variables set in the CLI command will be available to your local Trigger.dev tasks.
+
+### The syncEnvVars callback return type
+
+You can return env vars as an object with string keys and values, or an array of names + values.
 
 ```ts
 return {
-  variables: {
-    MY_ENV_VAR: "my value",
-    MY_OTHER_ENV_VAR: "my other value",
-  },
+  MY_ENV_VAR: "my value",
+  MY_OTHER_ENV_VAR: "my other value",
 };
 ```
 
 or
 
 ```ts
-return {
-  variables: [
-    {
-      name: "MY_ENV_VAR",
-      value: "my value",
-    },
-    {
-      name: "MY_OTHER_ENV_VAR",
-      value: "my other value",
-    },
-  ],
-};
+return [
+  {
+    name: "MY_ENV_VAR",
+    value: "my value",
+  },
+  {
+    name: "MY_OTHER_ENV_VAR",
+    value: "my other value",
+  },
+];
 ```
 
 This should mean that for most secret services you won't need to convert the data into a different format.
@@ -184,11 +182,11 @@ Securely pass a Google credential JSON file to your Trigger.dev task using envir
 
 <Step title="Convert the Google credential file to base64">
 
-  In your terminal, run the following command and copy the resulting base64 string:
+In your terminal, run the following command and copy the resulting base64 string:
 
-  ```
-  base64 path/to/your/service-account-file.json
-  ```
+```
+base64 path/to/your/service-account-file.json
+```
 
 </Step>
 
@@ -207,13 +205,15 @@ GOOGLE_CREDENTIALS_BASE64="<your base64 string>"
 Add the following code to your Trigger.dev task:
 
 ```ts
-import { google } from 'googleapis';
+import { google } from "googleapis";
 
-const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString('utf8'));
+const credentials = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, "base64").toString("utf8")
+);
 
 const auth = new google.auth.GoogleAuth({
   credentials,
-  scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  scopes: ["https://www.googleapis.com/auth/cloud-platform"],
 });
 
 const client = await auth.getClient();

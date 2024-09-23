@@ -77,12 +77,13 @@ process.on("uncaughtException", function (error, origin) {
   }
 });
 
-const heartbeatIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
+const usageIntervalMs = getEnvVar("USAGE_HEARTBEAT_INTERVAL_MS");
 const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
+const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
 const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
-  heartbeatIntervalMs: heartbeatIntervalMs ? parseInt(heartbeatIntervalMs, 10) : undefined,
+  heartbeatIntervalMs: usageIntervalMs ? parseInt(usageIntervalMs, 10) : undefined,
   url: usageEventUrl,
   jwt: triggerJWT,
 });
@@ -218,6 +219,7 @@ const zodIpc = new ZodIpcConnection({
               error: {
                 type: "INTERNAL_ERROR",
                 code: TaskRunErrorCodes.COULD_NOT_FIND_TASK,
+                message: `Could not find task ${execution.task.id}. Make sure the task is exported and the ID is correct.`,
               },
               usage: {
                 durationMs: 0,
@@ -247,6 +249,8 @@ const zodIpc = new ZodIpcConnection({
               error: {
                 type: "INTERNAL_ERROR",
                 code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+                message: err instanceof Error ? err.message : String(err),
+                stackTrace: err instanceof Error ? err.stack : undefined,
               },
               usage: {
                 durationMs: 0,
@@ -383,7 +387,9 @@ runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
 process.title = "trigger-dev-worker";
 
-for await (const _ of setInterval(15_000)) {
+const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
+
+for await (const _ of setInterval(heartbeatInterval)) {
   if (_isRunning && _execution) {
     try {
       await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });

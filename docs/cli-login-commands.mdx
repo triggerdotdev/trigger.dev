@@ -1,51 +1,33 @@
 ---
 title: "CLI login command"
-sidebarTitle: "Login"
+sidebarTitle: "login"
 description: "Use these options when logging in to Trigger.dev using the CLI."
 ---
+
+import CommonOptions from '/snippets/cli-options-common.mdx';
 
 Run the command like this:
 
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta login
+npx trigger.dev@latest login
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta login
+pnpm dlx trigger.dev@latest login
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta login
+yarn dlx trigger.dev@latest login
 ```
 
 </CodeGroup>
 
 ## Options
 
-<ParamField body="Login profile" type="--profile">
-  Specifies the login profile to use. If not provided, it defaults to "default".
-</ParamField>
+### Common options
 
-<ParamField body="API URL" type="-a | --api-url">
-  Overrides the default API URL. If not specified, it uses `https://api.trigger.dev`.
-</ParamField>
+These options are available on most commands.
 
-<ParamField body="Log level" type="-l | --log-level">
-  Sets the CLI log level. Available options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This setting doesn't affect the log level of your trigger.dev tasks. The default is `log`.
-</ParamField>
-
-<ParamField body="Skip telemetry" type="--skip-telemetry">
-  Opts out of sending telemetry data.
-</ParamField>
-
-## Standard options
-
-<ParamField body="Version" type="--version | -v">
-  Displays the version number of the CLI.
-</ParamField>
-
-<ParamField body="Help" type="--help | -h">
-  Shows the help information for the command.
-</ParamField>
+<CommonOptions />

@@ -139,31 +139,17 @@ export default function Page() {
                   }
                 >
                   {(usage) => (
-                    <>
-                      <div className="flex w-full items-center gap-6">
-                        <div className="flex flex-col gap-2">
-                          <Header3 className="">
-                            {isCurrentMonth ? "Month-to-date" : "Usage"}
-                          </Header3>
-                          <p className="text-3xl font-medium text-text-bright">
-                            {formatCurrency(usage.overall.current, false)}
-                          </p>
-                        </div>
-                        {isCurrentMonth ? (
-                          <>
-                            <ArrowRightIcon className="h-6 w-6 text-text-dimmed/50" />
-                            <div className="flex flex-col gap-2 text-text-dimmed">
-                              <Header3 className="text-text-dimmed">Projected</Header3>
-                              <p className="text-3xl font-medium">
-                                {formatCurrency(usage.overall.projected, false)}
-                              </p>
-                            </div>
-                          </>
-                        ) : null}
+                    <div className="flex items-center gap-8">
+                      <div className="flex flex-col gap-2">
+                        <Header3 className="whitespace-nowrap">
+                          {isCurrentMonth ? "Month-to-date" : "Usage"}
+                        </Header3>
+                        <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
+                          {formatCurrency(usage.overall.current, false)}
+                        </p>
                       </div>
                       <UsageBar
                         current={usage.overall.current}
-                        projectedUsage={isCurrentMonth ? usage.overall.projected : undefined}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
                         tierLimit={
                           isCurrentMonth
@@ -171,7 +157,7 @@ export default function Page() {
                             : undefined
                         }
                       />
-                    </>
+                    </div>
                   )}
                 </Await>
               </Suspense>

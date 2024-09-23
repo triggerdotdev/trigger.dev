@@ -9,7 +9,7 @@ description: "When we release fixes and new features we recommend you upgrade yo
 Run this command in your project:
 
 ```sh
-npx trigger.dev@beta update
+npx trigger.dev@latest update
 ```
 
 This will update all of the Trigger.dev packages in your project to the latest version.
@@ -19,11 +19,11 @@ This will update all of the Trigger.dev packages in your project to the latest v
 When you run the CLI locally use the latest version for the `dev` and `deploy` commands:
 
 ```sh
-npx trigger.dev@beta dev
+npx trigger.dev@latest dev
 ```
 
 ```sh
-npx trigger.dev@beta deploy
+npx trigger.dev@latest deploy
 ```
 
 These commands will also give you the option to upgrade if you are behind on versions.
@@ -44,7 +44,7 @@ You can deploy using [GitHub Actions](/github-actions). We recommend that you lo
   </Step>
   <Step title="Update the version for the run command">
     In the steps you'll see a `run` command. It will run the trigger.dev deploy CLI command. Make
-    sure to update this version to the latest version (e.g. `npx trigger.dev@3.0.0-beta.48 deploy`).
+    sure to update this version to the latest version (e.g. `npx trigger.dev@3.0.0 deploy`).
   </Step>
 </Steps>
 
@@ -57,7 +57,7 @@ For example:
 ```json
 {
   "devDependencies": {
-    "trigger.dev": "3.0.0-beta.48"
+    "trigger.dev": "3.0.0"
   }
 }
 ```
@@ -71,8 +71,8 @@ But we recommend adding your dev and deploy commands to the `scripts` section of
 ```json
 {
   "scripts": {
-    "dev:trigger": "triggerdev dev",
-    "deploy:trigger": "triggerdev deploy"
+    "dev:trigger": "trigger dev",
+    "deploy:trigger": "trigger deploy"
   }
 }
 ```

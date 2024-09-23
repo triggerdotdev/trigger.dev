@@ -71,9 +71,20 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/tasks-overview",
+      "destination": "/tasks/overview"
+    },
+    {
+      "source": "/tasks-scheduled",
+      "destination": "/tasks/scheduled"
+    },
+    {
+      "source": "/trigger-folder",
+      "destination": "/config/config-file"
     }
   ],
-
   "anchors": [
     {
       "name": "Guides",
@@ -89,18 +100,18 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quick-start", "limits", "changelog", "roadmap"]
+      "pages": ["introduction", "quick-start", "how-it-works", "upgrading-beta", "limits"]
     },
     {
       "group": "Fundamentals",
       "pages": [
-        "trigger-folder",
-        "tasks-overview",
+        {
+          "group": "Tasks",
+          "pages": ["tasks/overview", "tasks/scheduled"]
+        },
         "triggering",
         "apikeys",
-        "tasks-regular",
-        "tasks-scheduled",
-        "trigger-config"
+        "config/config-file"
       ]
     },
     {
@@ -208,7 +219,13 @@
     },
     {
       "group": "Open source",
-      "pages": ["open-source-self-hosting", "open-source-contributing", "github-repo"]
+      "pages": [
+        "open-source-self-hosting",
+        "open-source-contributing",
+        "github-repo",
+        "changelog",
+        "roadmap"
+      ]
     },
     {
       "group": "Troubleshooting",
@@ -228,14 +245,17 @@
     {
       "group": "Frameworks",
       "pages": [
-        "guides/frameworks/nodejs",
+        "guides/frameworks/introduction",
+        "guides/frameworks/bun",
         "guides/frameworks/nextjs",
+        "guides/frameworks/nodejs",
         "guides/frameworks/remix",
         {
           "group": "Supabase",
           "icon": "bolt",
           "iconType": "solid",
           "pages": [
+            "guides/frameworks/supabase-guides-overview",
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
@@ -253,10 +273,15 @@
     {
       "group": "Examples",
       "pages": [
-        "examples/generate-image-with-dall-e3",
+        "examples/intro",
+        "examples/dall-e3-generate-image",
+        "examples/ffmpeg-video-processing",
         "examples/open-ai-with-retrying",
+        "examples/pdf-to-image",
+        "examples/sharp-image-processing",
         "examples/react-pdf",
-        "examples/resend-email-sequence"
+        "examples/resend-email-sequence",
+        "examples/vercel-ai-sdk"
       ]
     }
   ],

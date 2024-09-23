@@ -219,6 +219,8 @@ const zodIpc = new ZodIpcConnection({
             error: {
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.COULD_NOT_IMPORT_TASK,
+              message: err instanceof Error ? err.message : String(err),
+              stackTrace: err instanceof Error ? err.stack : undefined,
             },
             usage: {
               durationMs: 0,

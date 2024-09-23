@@ -24,11 +24,20 @@ As self-hosted deployments tend to have unique requirements and configurations, 
 Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
 
 <Accordion title="Please consider these additional warnings">
-- The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume RAM.
-- The Docker provider does not currently enforce any resource limits. This means your tasks can consume up to the total machine CPU and RAM. Having no limits may be preferable when self-hosting, but can impact the performance of other services.
-- The worker components (not the tasks!) have direct access to the Docker socket. This means they can run any Docker command. To restrict access, you may want to consider using [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy).
-- The task containers are running with host networking. This means there is no network isolation between them and the host machine. They will be able to access any networked service on the host.
-- There is currently no support for adding multiple worker machines. This would require a more elaborate provider, or possibly a switch to Docker Swarm. This is not currently planned, but you are welcome to [contribute](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md).
+  - The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an
+  experimental feature which may not work as expected. It won't be enabled by default. Instead, the
+  containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume
+  RAM. - The Docker provider does not currently enforce any resource limits. This means your tasks
+  can consume up to the total machine CPU and RAM. Having no limits may be preferable when
+  self-hosting, but can impact the performance of other services. - The worker components (not the
+  tasks!) have direct access to the Docker socket. This means they can run any Docker command. To
+  restrict access, you may want to consider using [Docker Socket
+  Proxy](https://github.com/Tecnativa/docker-socket-proxy). - The task containers are running with
+  host networking. This means there is no network isolation between them and the host machine. They
+  will be able to access any networked service on the host. - There is currently no support for
+  adding multiple worker machines. This would require a more elaborate provider, or possibly a
+  switch to Docker Swarm. This is not currently planned, but you are welcome to
+  [contribute](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md).
 </Accordion>
 
 ## Requirements
@@ -70,18 +79,19 @@ sudo apt-get install -y \
 ### Trigger.dev setup
 
 1. Clone the [Trigger.dev docker repository](https://github.com/triggerdotdev/docker) and checkout the v3 branch
+
 ```bash
 git clone https://github.com/triggerdotdev/docker
 cd docker
-git checkout v3
 ```
 
 2. Run the start script and follow the prompts
+
 ```bash
 ./start.sh # hint: you can append -d to run in detached mode
 ```
 
-### Manual setup
+#### Manual
 
 Alternatively, you can follow these manual steps after cloning the docker repo:
 
@@ -162,8 +172,8 @@ docker login -u <your_dockerhub_username>
 
 5. You can now deploy v3 projects using the CLI with these flags:
 
-```bash
-npx trigger.dev@beta deploy --self-hosted --push
+```
+npx trigger.dev@latest deploy --self-hosted --push
 ```
 
 ## Part 2: Split services
@@ -201,9 +211,12 @@ scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
 
 ## Checkpoint support
 
-<Warning>This requires an _experimental Docker feature_. Successfully checkpointing a task today, does not mean you will be able to restore it tomorrow. Your data may be lost. You've been warned!</Warning>
+<Warning>
+  This requires an _experimental Docker feature_. Successfully checkpointing a task today, does not
+  mean you will be able to restore it tomorrow. Your data may be lost. You've been warned!
+</Warning>
 
-Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for 
+Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for
 long-running tasks that need to be paused and resumed without losing state. Think fan-out and fan-in, or long waits in email campaigns.
 
 The checkpoints will be pushed to the same registry as the deployed images. Please see the [Registry setup](#registry-setup) section for more information.
@@ -270,18 +283,129 @@ echo "FORCE_CHECKPOINT_SIMULATION=0" >> .env
 ./stop.sh worker && ./start.sh worker
 ```
 
+## Updating
+
+Once you have everything set up, you will periodically want to update your Docker images. You can easily do this by running the update script and restarting your services:
+
+```bash
+./update.sh
+./stop.sh && ./start.sh
+```
+
+Sometimes, we will make more extensive changes that require pulling updated compose files, scripts, etc from our docker repo:
+
+```bash
+git pull
+./stop.sh && ./start.sh
+```
+
+Occasionally, you may also have to update your `.env` file, but we will try to keep these changes to a minimum. Check the `.env.example` file for new variables.
+
+### From beta
+
+If you're coming from the beta CLI package images, you will need to:
+- **Stash you changes.** If you made any changes, stash them with `git stash`.
+- **Switch branches.** We moved back to main. Run `git checkout main` in your docker repo.
+- **Pull in updates.** We've added a new container for [Electric](https://github.com/electric-sql/electric) and made some other improvements. Run `git pull` to get the latest updates.
+- **Apply your changes.** If you stashed your changes, apply them with `git stash pop`.
+- **Update your images.** We've also published new images. Run `./update.sh` to pull them.
+- **Restart all services.** Run `./stop.sh && ./start.sh` and you're good to go.
+
+In summary, run this wherever you cloned the docker repo:
+
+```bash
+# if you made changes
+git stash
+
+# switch to the main branch and pull the latest changes
+git checkout main
+git pull
+
+# if you stashed your changes
+git stash pop
+
+# update and restart your services
+./update.sh
+./stop.sh && ./start.sh
+```
+
+## Version locking
+
+There are several reasons to lock the version of your Docker images:
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `v3` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v3.0.4
+```
+
+## CLI usage
+
+This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
+
+### Login
+
+To avoid being redirected to the [Trigger.dev Cloud](https://cloud.trigger.dev) login page when using the CLI, you can specify the URL of your self-hosted instance with the `--api-url` or `-a` flag. For example:
+
+```bash
+npx trigger.dev@latest login -a http://trigger.example.com
+```
+
+Once you've logged in, the CLI will remember your login details and you won't need to specify the URL again with other commands.
+
+#### Custom profiles
+
+You can specify a custom profile when logging in. This allows you to easily use the CLI with our cloud product and your self-hosted instance at the same time. For example:
+
+```
+npx trigger.dev@latest login -a http://trigger.example.com --profile my-profile
+```
+
+You can then use this profile with other commands:
+
+```
+npx trigger.dev@latest dev --profile my-profile
+```
+
+To list all your profiles, use the `list-profiles` command:
+
+```
+npx trigger.dev@latest list-profiles
+```
+
+#### Verify login
+
+It can be useful to check you have successfully logged in to the correct instance. You can do this with the `whoami` command, which will also show the API URL:
+
+```bash
+npx trigger.dev@latest whoami
+
+# with a custom profile
+npx trigger.dev@latest whoami --profile my-profile
+```
+
+### Deploy
+
+On [Trigger.dev Cloud](https://cloud.trigger.dev), we build deployments remotely and push those images for you. When self-hosting you will have to do that locally yourself. This can be done with the `--self-hosted` and `--push` flags. For example:
+
+```
+npx trigger.dev@latest deploy --self-hosted --push
+```
+
+### CI / GitHub Actions
+
+When running the CLI in a CI environment, your login profiles won't be available. Instead, you can use the `TRIGGER_API_URL` and `TRIGGER_ACCESS_TOKEN` environment 
+variables to point at your self-hosted instance and authenticate.
+
+For more detailed instructions, see the [GitHub Actions guide](/github-actions).
+
+
 ## Telemetry
 
 By default, the Trigger.dev webapp sends telemetry data to our servers. This data is used to improve the product and is not shared with third parties. If you would like to opt-out of this, you can set the `TRIGGER_TELEMETRY_DISABLED` environment variable in your `.env` file. The value doesn't matter, it just can't be empty. For example:
 
 ```bash
 TRIGGER_TELEMETRY_DISABLED=1
-```
-
-## Login via the CLI
-
-To avoid being redirected to the Cloud login page when using the CLI, you can specify the URL of your self-hosted instance with the `-a` flag. For example:
-
-```
-npx trigger.dev@beta login -a http://example.com
 ```

@@ -8,6 +8,27 @@ import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
 import { RunListOptions, RunListPresenter } from "./RunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
 
+const CoercedDate = z.preprocess((arg) => {
+  if (arg === undefined || arg === null) {
+    return;
+  }
+
+  if (typeof arg === "number") {
+    return new Date(arg);
+  }
+
+  if (typeof arg === "string") {
+    const num = Number(arg);
+    if (!isNaN(num)) {
+      return new Date(num);
+    }
+
+    return new Date(arg);
+  }
+
+  return arg;
+}, z.date().optional());
+
 const SearchParamsSchema = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
   "page[after]": z.string().optional(),
@@ -95,8 +116,8 @@ const SearchParamsSchema = z.object({
 
       return z.NEVER;
     }),
-  "filter[createdAt][from]": z.coerce.date().optional(),
-  "filter[createdAt][to]": z.coerce.date().optional(),
+  "filter[createdAt][from]": CoercedDate,
+  "filter[createdAt][to]": CoercedDate,
   "filter[createdAt][period]": z.string().optional(),
 });
 
@@ -232,6 +253,7 @@ export class ApiRunListPresenter extends BasePresenter {
           costInCents: run.costInCents,
           baseCostInCents: run.baseCostInCents,
           durationMs: run.usageDurationMs,
+          depth: run.depth,
           ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
             ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
           ),

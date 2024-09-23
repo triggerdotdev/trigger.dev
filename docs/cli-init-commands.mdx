@@ -1,35 +1,42 @@
 ---
 title: "CLI init command"
-sidebarTitle: "Init"
+sidebarTitle: "init"
 description: "Use these options when running the CLI `init` command."
 ---
+
+import CommonOptions from '/snippets/cli-options-common.mdx';
 
 Run the command like this:
 
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@beta init
+npx trigger.dev@latest init
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@beta init
+pnpm dlx trigger.dev@latest init
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@beta init
+yarn dlx trigger.dev@latest init
 ```
 
 </CodeGroup>
 
 ## Options
 
+<ParamField body="Javascript" type="--javascript">
+  By default, the init command assumes you are using TypeScript. Use this flag to initialize a
+  project that uses JavaScript.
+</ParamField>
+
 <ParamField body="Project ref" type="--project-ref | -p">
   The project ref to use when initializing the project.
 </ParamField>
 
 <ParamField body="Package tag" type="--tag | -t">
-  The version of the `@trigger.dev/sdk` package to install. Defaults to `3.0.0-beta.56`.
+  The version of the `@trigger.dev/sdk` package to install. Defaults to `latest`.
 </ParamField>
 
 <ParamField body="Skip package install" type="--skip-package-install">
@@ -44,24 +51,8 @@ yarn dlx trigger.dev@beta init
   Additional arguments to pass to the package manager. Accepts CSV for multiple args.
 </ParamField>
 
-<ParamField body="Login profile" type="--profile">
-  The login profile to use. Defaults to "default".
-</ParamField>
+### Common options
 
-<ParamField body="API URL" type="--api-url | -a">
-  Override the default API URL. If not specified, it uses `https://api.trigger.dev`.
-</ParamField>
+These options are available on most commands.
 
-<ParamField body="Log level" type="--log-level | -l">
-  The CLI log level to use. Options are `debug`, `info`, `log`, `warn`, `error`, and `none`. This does not affect the log level of your trigger.dev tasks. Defaults to "log".
-</ParamField>
-
-<ParamField body="Skip telemetry" type="--skip-telemetry">
-  Opt-out of sending telemetry data.
-</ParamField>
-
-## Standard options
-
-<ParamField body="Help" type="--help | -h">
-  Shows the help information for the command.
-</ParamField>
+<CommonOptions />

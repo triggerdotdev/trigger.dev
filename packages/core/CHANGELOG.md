@@ -1,5 +1,317 @@
 # internal-platform
 
+## 3.0.6
+
+### Patch Changes
+
+- 4e0bc485a: Add support for Buffer in payloads and outputs
+
+## 3.0.5
+
+## 3.0.4
+
+### Patch Changes
+
+- 4adc773c7: Auto-resolve payload/output presigned urls when retrieving a run with runs.retrieve
+
+## 3.0.3
+
+### Patch Changes
+
+- 3d53d4c08: Fix an issue where a missing tsconfig.json file would throw an error on dev/deploy
+
+## 3.0.2
+
+## 3.0.1
+
+### Patch Changes
+
+- 3aa581179: Fixing false-positive package version mismatches
+
+## 3.0.0
+
+### Major Changes
+
+- cf13fbdf3: Release 3.0.0
+- 395abe1b9: Updates to support Trigger.dev v3
+
+### Patch Changes
+
+- ed2a26c86: - Fix additionalFiles that aren't decendants
+  - Stop swallowing uncaught exceptions in prod
+  - Improve warnings and errors, fail early on critical warnings
+  - New arg to --save-logs even for successful builds
+- c702d6a9c: better handle task metadata parse errors, and display nicely formatted errors
+- 9882d66f8: Pre-pull deployment images for faster startups
+- b66d5525e: add machine config and secure zod connection
+- e3db25739: Fix error stack traces
+- 9491a1649: Implement task.onSuccess/onFailure and config.onSuccess/onFailure
+- 1670c4c41: Remove "log" Log Level, unify log and info messages under the "info" log level
+- b271742dc: Configurable log levels in the config file and via env var
+- dbda820a7: - Prevent uncaught exceptions when handling WebSocket messages
+  - Improve CLI dev command WebSocket debug and error logging
+- 4986bfda2: Add option to print console logs in the dev CLI locally (issue #1014)
+- eb6012628: Fixed batch otel flushing
+- f9ec66c56: New Build System
+- f7d32b83b: Removed the folder/filepath from Attempt spans
+- 09413a62a: Added version to ctx.run
+- 3a1b0c486: v3: Environment variable management API and SDK, along with resolveEnvVars CLI hook
+- 203e00208: Add runs.retrieve management API method to get info about a run by run ID
+- b4f9b70ae: Support triggering tasks with non-URL friendly characters in the ID
+- 1b90ffbb8: v3: Usage tracking
+- 5cf90da72: Fix issues that could result in unreezable state run crashes. Details:
+  - Never checkpoint between attempts
+  - Some messages and socket data now include attempt numbers
+  - Remove attempt completion replays
+  - Additional prod entry point logging
+  - Fail runs that receive deprecated (pre-lazy attempt) execute messages
+- 9af2570da: Retry 429, 500, and connection error API requests to the trigger.dev server
+- 7ea8532cc: Display errors for runs and deployments
+- 1477a2e30: Increased the timeout when canceling a checkpoint to 31s (to match the timeout on the server)
+- 4f95c9de4: v3: recover from server rate limiting errors in a more reliable way
+- 83dc87155: Fix issues with consecutive waits
+- d490bc5cb: Add the "log" level back in as an alias to "info"
+- e3cf456c6: Handle string and non-stringifiable outputs like functions
+- 14c2bdf89: Tasks should now be much more robust and resilient to reconnects during crucial operations and other failure scenarios.
+
+  Task runs now have to signal checkpointable state prior to ALL checkpoints. This ensures flushing always happens.
+
+  All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
+
+  Other changes:
+
+  - Fix retry check in shared queue
+  - Fix env var sync spinner
+  - Heartbeat between retries
+  - Fix retry prep
+  - Fix prod worker no tasks detection
+  - Fail runs above `MAX_TASK_RUN_ATTEMPTS`
+  - Additional debug logs in all places
+  - Prevent crashes due to failed socket schema parsing
+  - Remove core-apps barrel
+  - Upgrade socket.io-client to fix an ACK memleak
+  - Additional index failure logs
+  - Prevent message loss during reconnect
+  - Prevent burst of heartbeats on reconnect
+  - Prevent crash on failed cleanup
+  - Handle at-least-once lazy execute message delivery
+  - Handle uncaught entry point exceptions
+
+- 9491a1649: Adds support for `emitDecoratorMetadata: true` and `experimentalDecorators: true` in your tsconfig using the [`@anatine/esbuild-decorators`](https://github.com/anatine/esbuildnx/tree/main/packages/esbuild-decorators) package. This allows you to use libraries like TypeORM:
+
+  ```ts orm/index.ts
+  import "reflect-metadata";
+  import { DataSource } from "typeorm";
+  import { Entity, Column, PrimaryColumn } from "typeorm";
+
+  @Entity()
+  export class Photo {
+    @PrimaryColumn()
+    id!: number;
+
+    @Column()
+    name!: string;
+
+    @Column()
+    description!: string;
+
+    @Column()
+    filename!: string;
+
+    @Column()
+    views!: number;
+
+    @Column()
+    isPublished!: boolean;
+  }
+
+  export const AppDataSource = new DataSource({
+    type: "postgres",
+    host: "localhost",
+    port: 5432,
+    username: "postgres",
+    password: "postgres",
+    database: "v3-catalog",
+    entities: [Photo],
+    synchronize: true,
+    logging: false,
+  });
+  ```
+
+  And then in your trigger.config.ts file you can initialize the datasource using the new `init` option:
+
+  ```ts trigger.config.ts
+  import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+  import { AppDataSource } from "@/trigger/orm";
+
+  export const config: TriggerConfig = {
+    // ... other options here
+    init: async (payload, { ctx }) => {
+      await AppDataSource.initialize();
+    },
+  };
+  ```
+
+  Now you are ready to use this in your tasks:
+
+  ```ts
+  import { task } from "@trigger.dev/sdk/v3";
+  import { AppDataSource, Photo } from "./orm";
+
+  export const taskThatUsesDecorators = task({
+    id: "taskThatUsesDecorators",
+    run: async (payload: { message: string }) => {
+      console.log("Creating a photo...");
+
+      const photo = new Photo();
+      photo.id = 2;
+      photo.name = "Me and Bears";
+      photo.description = "I am near polar bears";
+      photo.filename = "photo-with-bears.jpg";
+      photo.views = 1;
+      photo.isPublished = true;
+
+      await AppDataSource.manager.save(photo);
+    },
+  });
+  ```
+
+- 0ed93a748: v3: Remove aggressive otel flush timeouts in dev/prod
+- 8578c9b28: Support self-hosters pushing to a custom registry when running deploy
+- 0e77e7ef7: v3: Trigger delayed runs and reschedule them
+- e417aca87: Added config option extraCACerts to ProjectConfig type. This copies the ca file along with additionalFiles and sets NODE_EXTRA_CA_CERTS environment variable in built image as well as running the task.
+- 568da0178: - Improve non-zero exit code error messages
+  - Detect OOM conditions within worker child processes
+  - Internal errors can have optional stack traces
+  - Docker provider can be set to enforce machine presets
+- c738ef39c: OTEL attributes can include Dates that will be formatted as ISO strings
+- ece6ca678: Fix issue when using SDK in non-node environments by scoping the stream import with node:
+- f854cb90e: Added replayRun function to the SDK
+- 0e919f56f: Better handle uncaught exceptions
+- 44e1b8754: Improve the SDK function types and expose a new APIError instead of the APIResult type
+- 55264657d: You can now add tags to runs and list runs using them
+- 6d9dfbc75: Add configure function to be able to configure the SDK manually
+- e337b2165: Add a postInstall option to allow running scripts after dependencies have been installed in deployed images
+- 719c0a0b9: Fixed incorrect span timings around checkpoints by implementing a precise wall clock that resets after restores
+- 4986bfda2: Adding task with a triggerSource of schedule
+- e30beb779: Added support for custom esbuild plugins
+- 68d32429b: Capture and display stderr on index failures
+- 374edef02: Updates the `trigger`, `batchTrigger` and their `*AndWait` variants to use the first parameter for the payload/items, and the second parameter for options.
+
+  Before:
+
+  ```ts
+  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.triggerAndWait({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
+
+  await yourTask.batchTrigger({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  await yourTask.batchTriggerAndWait({
+    items: [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+  });
+  ```
+
+  After:
+
+  ```ts
+  await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
+  await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
+
+  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  ```
+
+  We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
+
+  Now instead we're returning a `TaskRunResult` object that allows you to discriminate between successful and failed runs in the subtask:
+
+  Before:
+
+  ```ts
+  try {
+    const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+    // result is the output of your task
+    console.log("result", result);
+  } catch (error) {
+    // handle subtask errors here
+  }
+  ```
+
+  After:
+
+  ```ts
+  const result = await yourTask.triggerAndWait({ foo: "bar" });
+
+  if (result.ok) {
+    console.log(`Run ${result.id} succeeded with output`, result.output);
+  } else {
+    console.log(`Run ${result.id} failed with error`, result.error);
+  }
+  ```
+
+- e04d44866: v3: sanitize errors with null unicode characters in some places
+- 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
+
+  - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
+  - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
+  - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
+  - When resolving batchTriggerAndWait, the runtimes no longer reject promises, leading to an error in the parent task
+
+- 55d1f8c67: Add callback to checkpoint created message
+- c405ae711: Make deduplicationKey required when creating/updating a schedule
+- 9e5382951: Improve the display of non-object return types in the run trace viewer
+- b68012f81: Move to our global system from AsyncLocalStorage for the current task context storage
+- 098932ea9: v3: vercel edge runtime support
+- 68d32429b: - Fix uncaught provider exception
+  - Remove unused provider messages
+- 9835f4ec5: v3: fix otel flushing causing CLEANUP ack timeout errors by always setting a forceFlushTimeoutMillis value
+- 3f8b6d8fc: v2: Better handle recovering from platform communication errors by auto-yielding back to the platform in case of temporary API failures
+- fde939a30: Make optional schedule object fields nullish
+- 1281d40e4: When a v2 run hits the rate limit, reschedule with the reset date
+- ba71f959e: Management SDK overhaul and adding the runs.list API
+- 03b104a3d: Added JSDocs to the schedule SDK types
+- f93eae300: Dynamically import superjson and fix some bundling issues
+- 5ae3da6b4: - Fix artifact detection logs
+  - Fix OOM detection and error messages
+  - Add test link to cli deployment completion
+- c405ae711: Added timezone support to schedules
+- 34ca7667d: v3: Include presigned urls for downloading large payloads and outputs when using runs.retrieve
+- 8ba998794: Added declarative cron schedules
+- 62c9a5b71: Fixes an issue that caused failed tasks when resuming after calling `triggerAndWait` or `batchTriggerAndWait` in prod/staging (this doesn't effect dev).
+
+  The version of Node.js we use for deployed workers (latest 20) would crash with an out-of-memory error when the checkpoint was restored. This crash does not happen on Node 18x or Node21x, so we've decided to upgrade the worker version to Node.js21x, to mitigate this issue.
+
+  You'll need to re-deploy to production to fix the issue.
+
+- 392453e8a: Fix for when a log flush times out and the process is checkpointed
+- 8578c9b28: Add remote forced externals system, in case we come across another package that cannot be bundled (spurred on by header-generator)
+- 6a379e4e9: Fix 3rd party otel propagation from breaking our Task Events data from being properly correlated to the correct trace
+- f854cb90e: Added cancelRun to the SDK
+- 584c7da5d: - Add graceful exit for prod workers
+  - Prevent overflow in long waits
+- 4986bfda2: Added a new global - Task Catalog - to better handle task metadata
+- e69ffd314: - Clear paused states before retry
+  - Detect and handle unrecoverable worker errors
+  - Remove checkpoints after successful push
+  - Permanently switch to DO hosted busybox image
+  - Fix IPC timeout issue, or at least handle it more gracefully
+  - Handle checkpoint failures
+  - Basic chaos monkey for checkpoint testing
+  - Stack traces are back in the dashboard
+  - Display final errors on root span
+- b68012f81: Extracting out all the non-SDK related features from the main @trigger.dev/core/v3 export
+- 39885a427: v3: fix missing init output in task run function when no middleware is defined
+- 8578c9b28: fix node10 moduleResolution in @trigger.dev/core
+- e69ffd314: Improve handling of IPC timeouts and fix checkpoint cancellation after failures
+- 8578c9b28: Only import import-in-the-middle hook if there are instrumented packages
+- f04041744: Support for custom conditions
+- d934feb02: Add more package exports that can be used from the web app
+
 ## 3.0.0-beta.55
 
 ## 3.0.0-beta.54

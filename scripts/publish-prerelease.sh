@@ -15,7 +15,6 @@ else
 fi
 
 # Run your commands
-rm .changeset/pre.json
 
 echo "Running: pnpm exec changeset version --snapshot $version"
 pnpm exec changeset version --snapshot $version

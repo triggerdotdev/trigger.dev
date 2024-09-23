@@ -95,9 +95,25 @@ async function bootstrap() {
   };
 }
 
-const { buildManifest, importErrors } = await bootstrap();
+const { buildManifest, importErrors, config } = await bootstrap();
 
-const tasks = taskCatalog.listTaskManifests();
+let tasks = taskCatalog.listTaskManifests();
+
+// If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
+if (typeof config.machine === "string") {
+  tasks = tasks.map((task) => {
+    if (typeof task.machine?.preset !== "string") {
+      return {
+        ...task,
+        machine: {
+          preset: config.machine,
+        },
+      };
+    }
+
+    return task;
+  });
+}
 
 await sendMessageInCatalog(
   indexerToWorkerMessages,

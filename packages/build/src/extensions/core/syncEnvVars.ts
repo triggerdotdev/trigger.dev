@@ -63,6 +63,8 @@ const UNSYNCABLE_ENV_VARS = [
   "_",
 ];
 
+const UNSYNCABLE_ENV_VARS_PREFIXES = ["TRIGGER_"];
+
 export type SyncEnvVarsFunction = (params: SyncEnvVarsParams) => SyncEnvVarsResult;
 
 export type SyncEnvVarsOptions = {
@@ -95,6 +97,11 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
       const env = Object.entries(result).reduce(
         (acc, [key, value]) => {
           if (UNSYNCABLE_ENV_VARS.includes(key)) {
+            return acc;
+          }
+
+          // Strip out any TRIGGER_ prefix env vars
+          if (UNSYNCABLE_ENV_VARS_PREFIXES.some((prefix) => key.startsWith(prefix))) {
             return acc;
           }
 

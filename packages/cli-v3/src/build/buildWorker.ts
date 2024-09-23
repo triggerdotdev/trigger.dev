@@ -223,5 +223,10 @@ async function writeContainerfile(outputPath: string, buildManifest: BuildManife
     indexScript: buildManifest.indexControllerEntryPoint,
   });
 
-  await writeFile(join(outputPath, "Containerfile"), containerfile);
+  const containerfilePath = join(outputPath, "Containerfile");
+
+  logger.debug("Writing Containerfile", { containerfilePath });
+  logger.debug(containerfile);
+
+  await writeFile(containerfilePath, containerfile);
 }

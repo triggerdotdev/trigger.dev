@@ -263,6 +263,47 @@ export type TaskRunResult<TOutput = any> =
       error: unknown;
     };
 
+export class SubtaskUnwrapError extends Error {
+  public readonly taskId: string;
+  public readonly runId: string;
+  public readonly cause?: unknown;
+
+  constructor(taskId: string, runId: string, subtaskError: unknown) {
+    if (subtaskError instanceof Error) {
+      super(`Error in ${taskId}: ${subtaskError.message}`, { cause: subtaskError });
+      this.name = "SubtaskUnwrapError";
+    } else {
+      super(`Error in ${taskId}`, { cause: subtaskError });
+      this.name = "SubtaskUnwrapError";
+    }
+
+    this.taskId = taskId;
+    this.runId = runId;
+  }
+}
+
+export class TaskRunPromise<T> extends Promise<TaskRunResult<T>> {
+  constructor(
+    executor: (
+      resolve: (value: TaskRunResult<T> | PromiseLike<TaskRunResult<T>>) => void,
+      reject: (reason?: any) => void
+    ) => void,
+    private readonly taskId: string
+  ) {
+    super(executor);
+  }
+
+  unwrap(): Promise<T> {
+    return this.then((result) => {
+      if (result.ok) {
+        return result.output;
+      } else {
+        throw new SubtaskUnwrapError(this.taskId, result.id, result.error);
+      }
+    });
+  }
+}
+
 export type BatchResult<TOutput = any> = {
   id: string;
   runs: TaskRunResult<TOutput>[];
@@ -311,7 +352,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => Promise<TaskRunResult<TOutput>>;
+  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => TaskRunPromise<TOutput>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
@@ -512,20 +553,28 @@ export function createTask<
         customQueue
       );
     },
-    triggerAndWait: async (payload, options) => {
+    triggerAndWait: (payload, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await triggerAndWait_internal<TInput, TOutput>(
-        taskMetadata && taskMetadata.exportName
-          ? `${taskMetadata.exportName}.triggerAndWait()`
-          : `triggerAndWait()`,
-        params.id,
-        payload,
-        {
-          queue: customQueue,
-          ...options,
-        }
-      );
+      return new TaskRunPromise<TOutput>((resolve, reject) => {
+        triggerAndWait_internal<TInput, TOutput>(
+          taskMetadata && taskMetadata.exportName
+            ? `${taskMetadata.exportName}.triggerAndWait()`
+            : `triggerAndWait()`,
+          params.id,
+          payload,
+          {
+            queue: customQueue,
+            ...options,
+          }
+        )
+          .then((result) => {
+            resolve(result);
+          })
+          .catch((error) => {
+            reject(error);
+          });
+      }, params.id);
     },
     batchTriggerAndWait: async (items) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
@@ -614,19 +663,27 @@ export async function trigger<TTask extends AnyTask>(
  * }
  * ```
  */
-export async function triggerAndWait<TTask extends AnyTask>(
+export function triggerAndWait<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
-): Promise<TaskRunResult<TaskOutput<TTask>>> {
-  return await triggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
-    "tasks.triggerAndWait()",
-    id,
-    payload,
-    options,
-    requestOptions
-  );
+): TaskRunPromise<TaskOutput<TTask>> {
+  return new TaskRunPromise<TaskOutput<TTask>>((resolve, reject) => {
+    triggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+      "tasks.triggerAndWait()",
+      id,
+      payload,
+      options,
+      requestOptions
+    )
+      .then((result) => {
+        resolve(result);
+      })
+      .catch((error) => {
+        reject(error);
+      });
+  }, id);
 }
 
 /**
@@ -734,6 +791,7 @@ async function trigger_internal<TPayload, TOutput>(
         ttl: options?.ttl,
         tags: options?.tags,
         maxAttempts: options?.maxAttempts,
+        parentAttempt: taskContext.ctx?.attempt.id,
       },
     },
     {
@@ -804,6 +862,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
               ttl: item.options?.ttl,
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
+              parentAttempt: taskContext.ctx?.attempt.id,
             },
           };
         })

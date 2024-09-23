@@ -3,6 +3,7 @@ import type {
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   RescheduleRunRequestBody,
+  TriggerTracer,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -19,6 +20,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { AnyTask, Prettify, RunHandle, Task, apiClientMissingError } from "./shared.js";
 import { tracer } from "./tracer.js";
+import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerialization";
 
 export type RetrieveRunResult<TRunId> = Prettify<
   TRunId extends RunHandle<infer TOutput>
@@ -183,13 +185,31 @@ function retrieveRun<TRunId extends RunHandle<any> | AnyTask | string>(
     requestOptions
   );
 
-  if (typeof runId === "string") {
-    return apiClient.retrieveRun(runId, $requestOptions) as ApiPromise<RetrieveRunResult<TRunId>>;
-  } else {
-    return apiClient.retrieveRun(runId.id, $requestOptions) as ApiPromise<
-      RetrieveRunResult<TRunId>
-    >;
+  const $runId = typeof runId === "string" ? runId : runId.id;
+
+  return apiClient.retrieveRun($runId, $requestOptions).then((retrievedRun) => {
+    return resolvePayloadAndOutputUrls(retrievedRun);
+  }) as ApiPromise<RetrieveRunResult<TRunId>>;
+}
+
+async function resolvePayloadAndOutputUrls(run: RetrieveRunResult<any>) {
+  const resolvedRun = { ...run };
+
+  if (run.payloadPresignedUrl && run.outputPresignedUrl) {
+    const [payload, output] = await Promise.all([
+      resolvePresignedPacketUrl(run.payloadPresignedUrl, tracer),
+      resolvePresignedPacketUrl(run.outputPresignedUrl, tracer),
+    ]);
+
+    resolvedRun.payload = payload;
+    resolvedRun.output = output;
+  } else if (run.payloadPresignedUrl) {
+    resolvedRun.payload = await resolvePresignedPacketUrl(run.payloadPresignedUrl, tracer);
+  } else if (run.outputPresignedUrl) {
+    resolvedRun.output = await resolvePresignedPacketUrl(run.outputPresignedUrl, tracer);
   }
+
+  return resolvedRun;
 }
 
 function replayRun(

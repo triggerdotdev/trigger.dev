@@ -1,7 +1,7 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
-import { resolve } from "path";
+import { basename, dirname, resolve } from "path";
 import { PackageJson, readPackageJSON, resolvePackageJSON } from "pkg-types";
 import { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
@@ -12,6 +12,7 @@ import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
 import { hasTTY } from "std-env";
+import nodeResolve from "resolve";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -42,7 +43,7 @@ export function configureUpdateCommand(program: Command) {
 const triggerPackageFilter = /^@trigger\.dev/;
 
 export async function updateCommand(dir: string, options: UpdateCommandOptions) {
-  await updateTriggerPackages(dir, options);
+  await updateTriggerPackages(dir, options, false);
 }
 
 export async function updateTriggerPackages(
@@ -54,7 +55,7 @@ export async function updateTriggerPackages(
   let hasOutput = false;
   const cliVersion = VERSION;
 
-  if (cliVersion.startsWith("0.0.0")) {
+  if (cliVersion.startsWith("0.0.0") && process.env.ENABLE_PRERELEASE_UPDATE_CHECKS !== "1") {
     return false;
   }
 
@@ -73,17 +74,19 @@ export async function updateTriggerPackages(
 
   const newCliVersion = await updateCheck();
 
-  if (newCliVersion) {
+  if (newCliVersion && !cliVersion.startsWith("0.0.0")) {
     prettyWarning(
       "You're not running the latest CLI version, please consider updating ASAP",
       `Current:     ${cliVersion}\nLatest:      ${newCliVersion}`,
-      "Run latest:  npx trigger.dev@beta"
+      "Run latest:  npx trigger.dev@latest"
     );
 
     hasOutput = true;
   }
 
-  const triggerDependencies = getTriggerDependencies(packageJson);
+  const triggerDependencies = await getTriggerDependencies(packageJson, packageJsonPath);
+
+  logger.debug("Resolved trigger deps", { triggerDependencies });
 
   function getVersionMismatches(
     deps: Dependency[],
@@ -108,25 +111,9 @@ export async function updateTriggerPackages(
       mismatches.push(dep);
     }
 
-    const extractRelease = (version: string) => {
-      const release = Number(version.split("3.0.0-beta.")[1]);
-      return release || undefined;
-    };
-
-    let isDowngrade = false;
-    const targetRelease = extractRelease(targetVersion);
-
-    if (targetRelease) {
-      isDowngrade = mismatches.some((dep) => {
-        const depRelease = extractRelease(dep.version);
-
-        if (!depRelease) {
-          return false;
-        }
-
-        return depRelease > targetRelease;
-      });
-    }
+    const isDowngrade = mismatches.some((dep) => {
+      return dep.version > targetVersion;
+    });
 
     return {
       mismatches,
@@ -140,24 +127,30 @@ export async function updateTriggerPackages(
 
   if (mismatches.length === 0) {
     if (!embedded) {
-      outro(`Nothing to do${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
+      outro(`Nothing to update${newCliVersion ? " ..but you should really update your CLI!" : ""}`);
       return hasOutput;
     }
     return hasOutput;
   }
 
-  if (isDowngrade) {
-    prettyError("Some of the installed @trigger.dev packages are newer than your CLI version");
-  } else {
-    prettyWarning(
-      "Mismatch between your CLI version and installed packages",
-      "We recommend pinned versions for guaranteed compatibility"
-    );
+  if (embedded) {
+    if (isDowngrade) {
+      prettyError("Some of the installed @trigger.dev packages are newer than your CLI version");
+    } else {
+      if (embedded) {
+        prettyWarning(
+          "Mismatch between your CLI version and installed packages",
+          "We recommend pinned versions for guaranteed compatibility"
+        );
+      }
+    }
   }
 
   if (!hasTTY) {
     // Running in CI with version mismatch detected
-    outro("Deploy failed");
+    if (embedded) {
+      outro("Deploy failed");
+    }
 
     console.log(
       `ERROR: Version mismatch detected while running in CI. This won't end well. Aborting.
@@ -175,8 +168,7 @@ export async function updateTriggerPackages(
   }
 
   // WARNING: We can only start accepting user input once we know this is a TTY, otherwise, the process will exit with an error in CI
-
-  if (isDowngrade) {
+  if (isDowngrade && embedded) {
     printUpdateTable("Versions", mismatches, cliVersion, "installed", "CLI");
 
     outro("CLI update required!");
@@ -200,14 +192,20 @@ export async function updateTriggerPackages(
 
   if (!userWantsToUpdate) {
     if (requireUpdate) {
-      outro("You shall not pass!");
+      if (embedded) {
+        outro("You shall not pass!");
 
-      logger.log(
-        `${chalkError(
-          "X Error:"
-        )} Update required: Version mismatches are a common source of bugs and errors. Please update or use \`--skip-update-check\` at your own risk.\n`
-      );
-      process.exit(1);
+        logger.log(
+          `${chalkError(
+            "X Error:"
+          )} Update required: Version mismatches are a common source of bugs and errors. Please update or use \`--skip-update-check\` at your own risk.\n`
+        );
+        process.exit(1);
+      } else {
+        outro("No updates applied");
+
+        process.exit(0);
+      }
     }
 
     if (!embedded) {
@@ -218,7 +216,7 @@ export async function updateTriggerPackages(
   }
 
   const installSpinner = spinner();
-  installSpinner.start("Writing new package.json file");
+  installSpinner.start("Updating dependencies in package.json");
 
   // Backup package.json
   const packageJsonBackupPath = `${packageJsonPath}.bak`;
@@ -248,12 +246,16 @@ export async function updateTriggerPackages(
   const packageManager = await detectPackageManager(projectPath);
 
   try {
-    installSpinner.message(`Installing new package versions with ${packageManager}`);
+    installSpinner.message(
+      `Installing new package versions${packageManager ? ` with ${packageManager.name}` : ""}`
+    );
 
-    await installDependencies({ cwd: projectPath });
+    await installDependencies({ cwd: projectPath, silent: true });
   } catch (error) {
     installSpinner.stop(
-      `Failed to install new package versions${packageManager ? ` with ${packageManager}` : ""}`
+      `Failed to install new package versions${
+        packageManager ? ` with ${packageManager.name}` : ""
+      }`
     );
 
     // Remove exit handler in case of failure
@@ -284,7 +286,10 @@ type Dependency = {
   version: string;
 };
 
-function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
+async function getTriggerDependencies(
+  packageJson: PackageJson,
+  packageJsonPath: string
+): Promise<Dependency[]> {
   const deps: Dependency[] = [];
 
   for (const type of ["dependencies", "devDependencies"] as const) {
@@ -307,11 +312,39 @@ function getTriggerDependencies(packageJson: PackageJson): Dependency[] {
         continue;
       }
 
-      deps.push({ type, name, version });
+      const $version = await tryResolveTriggerPackageVersion(name, packageJsonPath);
+
+      deps.push({ type, name, version: $version ?? version });
     }
   }
 
   return deps;
+}
+
+async function tryResolveTriggerPackageVersion(
+  name: string,
+  packageJsonPath: string
+): Promise<string | undefined> {
+  try {
+    const resolvedPath = nodeResolve.sync(name, {
+      basedir: dirname(packageJsonPath),
+    });
+
+    logger.debug(`Resolved ${name} package version path`, { name, resolvedPath });
+
+    // IMPORTANT: keep the two dirname calls, as the first one resolves the nested package.json inside dist/commonjs or dist/esm
+    const { packageJson } = await getPackageJson(dirname(dirname(resolvedPath)));
+
+    if (packageJson.version) {
+      logger.debug(`Resolved ${name} package version`, { name, version: packageJson.version });
+      return packageJson.version;
+    }
+
+    return;
+  } catch (error) {
+    logger.debug("Failed to resolve package version", { name, error });
+    return undefined;
+  }
 }
 
 function mutatePackageJsonWithUpdatedPackages(
