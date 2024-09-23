@@ -19,7 +19,7 @@ You'll need to configure the following environment variables for this example to
 
 - `STRIPE_WEBHOOK_SECRET` The secret key used to verify the Stripe webhook signature.
 - `TRIGGER_API_URL` Your Trigger.dev API url: `https://api.trigger.dev`
-- `TRIGGER_API_SECRET` Your Trigger.dev API secret.
+- `TRIGGER_SECRET_KEY` Your Trigger.dev secret key
 
 ## Setting up the Stripe webhook handler
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       // Trigger the task only if the event type is "checkout.session.completed"
       const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
         "stripe-checkout-completed",
-        event
+        event.data.object
       );
       return NextResponse.json({ runId: id });
     }
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 ```
 
 ```ts Remix
-// app/webhooks/stripe.ts
+// app/webhooks.stripe.ts
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import type { stripeCheckoutCompleted } from "src/trigger/stripe-webhook";
 import { tasks } from "@trigger.dev/sdk/v3";
@@ -107,7 +107,7 @@ export async function action({ request }: ActionFunctionArgs) {
       // Trigger the task only if the event type is "checkout.session.completed"
       const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
         "stripe-checkout-completed",
-        event
+        event.data.object
       );
       return json({ runId: id });
     }
@@ -125,13 +125,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
 This task is triggered when a `checkout.session.completed` event is received from Stripe.
 
-```ts trigger/stripe-webhook.ts
+```ts trigger/stripe-checkout-completed.ts
 import { task } from "@trigger.dev/sdk/v3";
 import type stripe from "stripe";
 
 export const stripeCheckoutCompleted = task({
   id: "stripe-checkout-completed",
-  run: async (payload: stripe.Event, {}) => {
+  run: async (payload: stripe.Checkout.Session) => {
     // Add your custom logic for handling the checkout.session.completed event here
   },
 });
