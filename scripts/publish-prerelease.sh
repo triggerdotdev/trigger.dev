@@ -28,6 +28,7 @@ if [[ $prompt =~ [yY](es)* ]]; then
     pnpm exec changeset publish --no-git-tag --snapshot --tag $version
 else
     echo "Publish command aborted by the user."
+    git reset --hard HEAD
     exit 1;
 fi
 
