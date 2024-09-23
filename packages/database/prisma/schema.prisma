@@ -468,6 +468,7 @@ model Project {
   bulkActionGroups       BulkActionGroup[]
   BackgroundWorkerFile   BackgroundWorkerFile[]
   waitpoints             Waitpoint[]
+  taskRunWaitpoints      TaskRunWaitpoint[]
 }
 
 enum ProjectVersion {
@@ -1650,6 +1651,8 @@ model TaskRun {
   number     Int    @default(0)
   friendlyId String @unique
 
+  engine RunEngineVersion @default(V1)
+
   status TaskRunStatus @default(PENDING)
 
   idempotencyKey String?
@@ -1703,6 +1706,12 @@ model TaskRun {
   ttl         String?
   expiredAt   DateTime?
   maxAttempts Int?
+
+  ///When this run is finished, the waitpoint will be marked as completed
+  associatedWaitpoint Waitpoint?
+
+  ///If there are any blocked waitpoints, the run won't be executed
+  blockedByWaitpoints TaskRunWaitpoint[]
 
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
@@ -1780,19 +1789,39 @@ enum TaskRunStatus {
   EXPIRED
 }
 
+enum RunEngineVersion {
+  /// The original version that uses marqs v1 and Graphile
+  V1
+  V2
+}
+
 /// A Waitpoint blocks a run from continuing until it's completed
+/// If there's a waitpoint blocking a run, it shouldn't be in the queue
 model Waitpoint {
   id String @id @default(cuid())
 
   type   WaitpointType
   status WaitpointStatus @default(PENDING)
 
+  /// If it's an Event type waitpoint, this is the event. It can also be provided for the DATETIME type
   idempotencyKey             String
   userProvidedIdempotencyKey Boolean
 
-  ///if an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field. This is a workaround because Prisma doesn't support partial indexes.
+  /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field. 
+  /// This is a workaround because Prisma doesn't support partial indexes.
   inactiveIdempotencyKey String?
 
+  /// If it's a RUN type waitpoint, this is the associated run
+  completedByTaskRunId String?  @unique
+  completedByTaskRun   TaskRun? @relation(fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
+
+  /// If it's a DATETIME type waitpoint, this is the date
+  completedAfter DateTime?
+
+  /// The runs this waitpoint is blocking
+  blockingTaskRuns TaskRunWaitpoint[]
+
+  /// When completed, an output can be stored here
   output     String?
   outputType String  @default("application/json")
 
@@ -1816,8 +1845,25 @@ enum WaitpointStatus {
   COMPLETED
 }
 
-///todo add a waitpoint to each run
-///todo add a blockedBy array of waitpoint IDs to the run, and attempt. With appropriate indexes for fast search.
+model TaskRunWaitpoint {
+  id String @id @default(cuid())
+
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id])
+  taskRunId String
+
+  waitpoint   Waitpoint @relation(fields: [waitpointId], references: [id])
+  waitpointId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskRunId, waitpointId])
+  @@index([taskRunId])
+  @@index([waitpointId])
+}
 
 model TaskRunTag {
   id   String @id @default(cuid())
