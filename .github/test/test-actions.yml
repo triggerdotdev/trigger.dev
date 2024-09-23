@@ -1,0 +1,152 @@
+name: Test Actions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  get-image-tag-none:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log current ref
+        run: |
+          echo "ref: ${{ github.ref }}"
+          echo "ref_type: ${{ github.ref_type }}"
+          echo "ref_name: ${{ github.ref_name }}"
+
+      - name: Run without input tag
+        id: get_tag
+        # this step may fail depending on the current ref
+        continue-on-error: true
+        uses: ./.github/actions/get-image-tag
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-null:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log current ref
+        run: |
+          echo "ref: ${{ github.ref }}"
+          echo "ref_type: ${{ github.ref_type }}"
+          echo "ref_name: ${{ github.ref_name }}"
+
+      - name: Run without input tag
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        # this step may fail depending on the current ref
+        continue-on-error: true
+        with:
+          # this should behave exactly as when no tag is provided
+          tag: null
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-override:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run with tag override
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: "abc-123"
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-invalid-string:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run with invalid string
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        # this step is expected to fail
+        continue-on-error: true
+        with:
+          # does not end with alphanumeric character
+          tag: "abc-123-"
+
+      - name: Fail job if previous step did not fail
+        if: steps.get_tag.outcome != 'failure'
+        run: exit 1
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-prerelease:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run with prerelease semver
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: "v1.2.3-beta.4"
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-semver:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run with basic semver
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: "v1.2.3"
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"
+
+  get-image-tag-invalid-semver:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run with invalid semver
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        # this step is expected to fail
+        continue-on-error: true
+        with:
+          tag: "v1.2.3-"
+
+      - name: Fail job if previous step did not fail
+        if: steps.get_tag.outcome != 'failure'
+        run: exit 1
+
+      - name: Verify output
+        run: |
+          echo "${{ toJson(steps.get_tag) }}"

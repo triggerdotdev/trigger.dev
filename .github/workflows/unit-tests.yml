@@ -1,13 +1,15 @@
 name: "🧪 Unit Tests"
+
 on:
   workflow_call:
+
 jobs:
   unitTests:
     name: "🧪 Unit Tests"
     runs-on: buildjet-8vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -25,6 +27,5 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
-      - name: Run Unit Tests
-        run: |
-          pnpm run test
+      - name: 🧪 Run Unit Tests
+        run: pnpm run test
