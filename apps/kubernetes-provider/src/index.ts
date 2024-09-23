@@ -48,19 +48,22 @@ type ResourceQuantities = {
 };
 
 class KubernetesTaskOperations implements TaskOperations {
-  #namespace: Namespace;
+  #namespace: Namespace = {
+    metadata: {
+      name: "default",
+    },
+  };
+
   #k8sApi: {
     core: k8s.CoreV1Api;
     batch: k8s.BatchV1Api;
     apps: k8s.AppsV1Api;
   };
 
-  constructor(namespace = KUBERNETES_NAMESPACE) {
-    this.#namespace = {
-      metadata: {
-        name: namespace,
-      },
-    };
+  constructor(opts: { namespace?: string } = {}) {
+    if (opts.namespace) {
+      this.#namespace.metadata.name = opts.namespace;
+    }
 
     this.#k8sApi = this.#createK8sApi();
   }
@@ -649,7 +652,9 @@ class KubernetesTaskOperations implements TaskOperations {
 }
 
 const provider = new ProviderShell({
-  tasks: new KubernetesTaskOperations(),
+  tasks: new KubernetesTaskOperations({
+    namespace: KUBERNETES_NAMESPACE,
+  }),
   type: "kubernetes",
 });
 
