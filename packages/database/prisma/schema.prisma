@@ -1803,6 +1803,8 @@ model Waitpoint {
   type   WaitpointType
   status WaitpointStatus @default(PENDING)
 
+  completedAt DateTime?
+
   /// If it's an Event type waitpoint, this is the event. It can also be provided for the DATETIME type
   idempotencyKey             String
   userProvidedIdempotencyKey Boolean
