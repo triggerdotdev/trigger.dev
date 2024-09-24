@@ -1,0 +1,76 @@
+---
+title: "Puppeteer"
+sidebarTitle: "Puppeteer"
+description: "These examples demonstrate how to use Puppeteer with Trigger.dev."
+---
+
+import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+
+## Overview
+
+There are 2 example tasks to follow on this page:
+
+1. [Generate a PDF](/examples/puppeteer#generate-a-pdf)
+2. [Scrape data from a website](/examples/puppeteer#scrape-data-from-a-website)
+
+<Warning>
+  **WEB SCRAPING WARNING:** Direct scraping of third-party websites without explicit permission using Trigger.dev Cloud is strictly prohibited and will result in immediate account suspension. If web scraping is necessary for your project, you MUST use a proxy service to comply with our terms of service.
+</Warning>
+
+## Adding build configurations
+
+To use all examples on this page, you'll first need to add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This is required to use the Puppeteer library
+    external: ["puppeteer"],
+  },
+});
+```
+
+<Note>
+  Any packages that install or build a native binary should be added to external, as native binaries
+  cannot be bundled.
+</Note>
+
+## Generate a PDF from a web page
+
+```ts trigger/generate-pdf.ts
+code here
+```
+
+### Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "imageUrl": "<an-image-url.jpg>", // Replace with a URL to a JPEG image
+  "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
+}
+```
+
+## Scrape data from a website
+
+```ts trigger/scrape-website.ts
+code here
+```
+
+### Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "imageUrl": "<an-image-url.jpg>", // Replace with a URL to a JPEG image
+  "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
+}
+```
+
+<LocalDevelopment packages={"the Puppeteer library"} />
