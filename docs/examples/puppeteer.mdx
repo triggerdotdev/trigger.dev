@@ -5,17 +5,17 @@ description: "These examples demonstrate how to use Puppeteer with Trigger.dev."
 ---
 
 import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 
 ## Overview
 
 There are 2 example tasks to follow on this page:
 
-1. [Generate a PDF](/examples/puppeteer#generate-a-pdf)
-2. [Scrape data from a website](/examples/puppeteer#scrape-data-from-a-website)
+1. [Basic example](/examples/puppeteer#basic-example)
+2. [Generate a PDF from a web page](/examples/puppeteer#generate-a-pdf-from-a-web-page)
+3. [Scrape data from a website](/examples/puppeteer#scrape-data-from-a-website)
 
-<Warning>
-  **WEB SCRAPING WARNING:** Direct scraping of third-party websites without explicit permission using Trigger.dev Cloud is strictly prohibited and will result in immediate account suspension. If web scraping is necessary for your project, you MUST use a proxy service to comply with our terms of service.
-</Warning>
+<ScrapingWarning />
 
 ## Adding build configurations
 
@@ -35,28 +35,121 @@ export default defineConfig({
 ```
 
 <Note>
-  Any packages that install or build a native binary should be added to external, as native binaries
-  cannot be bundled.
+  Ensure you use `puppeteer` not `puppeteer-core` in your build configuration.
 </Note>
 
-## Generate a PDF from a web page
+## Set an environment variable
 
-```ts trigger/generate-pdf.ts
-code here
+Add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+
+```bash
+PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
+```
+
+## Basic example
+
+### Overview
+
+In this example we use Puppeteer to log out the title of a web page, in this case Google.
+
+### Task code
+
+```ts trigger/puppeteer-basic-example.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer";
+
+export const puppeteerTask = task({
+  id: "puppeteer-log-title",
+  run: async () => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    await page.goto("https://google.com");
+
+    const content = await page.title();
+    logger.info("Content", { content });
+
+    await browser.close();
+  },
+});
 ```
 
 ### Testing your task
 
-To test this task in the dashboard, you can use the following payload:
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
 
-```json
-{
-  "imageUrl": "<an-image-url.jpg>", // Replace with a URL to a JPEG image
-  "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
-}
+## Generate a PDF from a web page
+
+### Overview
+
+In this example we use Puppeteer to generate a PDF from a web page and upload it to Cloudflare R2.
+
+### Task code
+
+```ts trigger/puppeteer-generate-pdf.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const puppeteerWebpageToPDF = task({
+  id: "puppeteer-webpage-to-pdf",
+  run: async () => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    const response = await page.goto("https://google.com");
+    const url = response?.url() ?? "No URL found";
+
+    // Generate PDF from the webpage
+    const generatePdf = await page.pdf();
+
+    logger.info("PDF generated from URL", { url });
+
+    await browser.close();
+
+    // Upload to R2
+    const s3Key = `pdfs/test.pdf`;
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: generatePdf,
+      ContentType: "application/pdf",
+    };
+
+    logger.log("Uploading to R2 with params", uploadParams);
+
+    // Upload the PDF to R2 and return the URL.
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("PDF uploaded to R2", { url: s3Url });
+    return { pdfUrl: s3Url };
+  },
+});
+
 ```
 
+### Testing your task
+
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
+
 ## Scrape data from a website
+
+### Overview
+
+In this example we use Puppeteer with a proxy to scrape the content from a webpage and log it out.
+
+<ScrapingWarning />
+
+### Task code
 
 ```ts trigger/scrape-website.ts
 code here
@@ -64,13 +157,6 @@ code here
 
 ### Testing your task
 
-To test this task in the dashboard, you can use the following payload:
-
-```json
-{
-  "imageUrl": "<an-image-url.jpg>", // Replace with a URL to a JPEG image
-  "watermarkUrl": "<an-image-url.png>" // Replace with a URL to a PNG watermark image
-}
-```
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
 
 <LocalDevelopment packages={"the Puppeteer library"} />
