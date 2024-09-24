@@ -289,6 +289,25 @@ echo "FORCE_CHECKPOINT_SIMULATION=0" >> .env
 ./stop.sh worker && ./start.sh worker
 ```
 
+## Large payloads
+
+By default, payloads over 512KB will be offloaded to S3-compatible storage. If you don't provide the required env vars, runs with payloads larger than this will fail.
+
+For example, using Cloudflare R2:
+
+```bash
+OBJECT_STORE_BASE_URL="https://<bucket>.<account>.r2.cloudflarestorage.com"
+OBJECT_STORE_ACCESS_KEY_ID="<r2 access key with read/write access to bucket>"
+OBJECT_STORE_SECRET_ACCESS_KEY="<r2 secret key>"
+```
+
+Alternatively, you can increase the threshold:
+
+```bash
+# size in bytes, example with 5MB threshold
+TASK_PAYLOAD_OFFLOAD_THRESHOLD=5242880
+```
+
 ## Updating
 
 Once you have everything set up, you will periodically want to update your Docker images. You can easily do this by running the update script and restarting your services:
