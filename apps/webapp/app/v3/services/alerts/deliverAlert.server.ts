@@ -617,7 +617,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                  text: this.#truncateSlackText(`\`\`\`${error.stackTrace ?? error.message}\`\`\``),
                 },
               },
               {
@@ -729,7 +729,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                  text: this.#truncateSlackText(`\`\`\`${error.stackTrace ?? error.message}\`\`\``),
                 },
               },
               {
@@ -829,7 +829,9 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``,
+                  text: this.#truncateSlackText(
+                    `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``
+                  ),
                 },
               },
               {
@@ -1045,6 +1047,14 @@ export class DeliverAlertService extends BaseService {
       type: "CUSTOM_ERROR",
       raw: "No error on attempt",
     };
+  }
+
+  #truncateSlackText(text: string) {
+    if (text.length > 3000) {
+      return text.slice(0, 2900) + "\n\ntruncated - check dashboard for complete error message";
+    }
+
+    return text;
   }
 
   static async enqueue(
