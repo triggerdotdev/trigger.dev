@@ -631,7 +631,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: this.#truncateSlackText(`\`\`\`${error.stackTrace ?? error.message}\`\`\``),
+                  text: `\`\`\`${this.#truncateSlackText(error.stackTrace ?? error.message)}\`\`\``,
                 },
               },
               {
@@ -743,7 +743,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: this.#truncateSlackText(`\`\`\`${error.stackTrace ?? error.message}\`\`\``),
+                  text: `\`\`\`${this.#truncateSlackText(error.stackTrace ?? error.message)}\`\`\``,
                 },
               },
               {
@@ -843,9 +843,9 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: this.#truncateSlackText(
-                    `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``
-                  ),
+                  text: `\`\`\`${this.#truncateSlackText(
+                    preparedError.stack ?? preparedError.message
+                  )}\`\`\``,
                 },
               },
               {
