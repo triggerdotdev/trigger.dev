@@ -73,6 +73,8 @@ type FoundAlert = Prisma.Result<
   >;
 };
 
+class SkipRetryError extends Error {}
+
 export class DeliverAlertService extends BaseService {
   public async call(alertId: string) {
     const alert: FoundAlert | null = await this._prisma.projectAlert.findFirst({
@@ -136,22 +138,34 @@ export class DeliverAlertService extends BaseService {
       alert.failedAttempt = finishedAttempt;
     }
 
-    switch (alert.channel.type) {
-      case "EMAIL": {
-        await this.#sendEmail(alert);
-        break;
+    try {
+      switch (alert.channel.type) {
+        case "EMAIL": {
+          await this.#sendEmail(alert);
+          break;
+        }
+        case "SLACK": {
+          await this.#sendSlack(alert);
+          break;
+        }
+        case "WEBHOOK": {
+          await this.#sendWebhook(alert);
+          break;
+        }
+        default: {
+          assertNever(alert.channel.type);
+        }
       }
-      case "SLACK": {
-        await this.#sendSlack(alert);
-        break;
+    } catch (error) {
+      if (error instanceof SkipRetryError) {
+        logger.error("[DeliverAlert] Skipping retry", {
+          reason: error.message,
+        });
+
+        return;
       }
-      case "WEBHOOK": {
-        await this.#sendWebhook(alert);
-        break;
-      }
-      default: {
-        assertNever(alert.channel.type);
-      }
+
+      throw error;
     }
 
     await this._prisma.projectAlert.update({
@@ -1011,6 +1025,14 @@ export class DeliverAlertService extends BaseService {
           error,
           message,
         });
+
+        if (error.data.error === "invalid_blocks") {
+          logger.error("[DeliverAlert] Slack invalid blocks", {
+            error,
+          });
+
+          throw new SkipRetryError("Slack invalid blocks");
+        }
 
         throw new Error("Slack platform error");
       }
