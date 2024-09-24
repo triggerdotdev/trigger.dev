@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma } from "@trigger.dev/database";
-import { type RedisOptions } from "ioredis";
+import { Redis, type RedisOptions } from "ioredis";
+import Redlock from "redlock";
 
 type Options = {
   prisma: PrismaClient;
@@ -10,13 +11,22 @@ type Options = {
 
 export class RunEngine {
   private prisma: PrismaClient;
+  private redis: Redis;
+  private redlock: Redlock;
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
+    this.redis = new Redis(options.redis);
+    this.redlock = new Redlock([this.redis], {
+      driftFactor: 0.01,
+      retryCount: 10,
+      retryDelay: 200, // time in ms
+      retryJitter: 200, // time in ms
+      automaticExtensionThreshold: 500, // time in ms
+    });
   }
 
-  /** Triggers one run.
-   *  This doesn't start execution, but it will schedule it for execution.
+  /** "Triggers" one run, which creates the run
    */
   async trigger() {
     // const result = await this.options.prisma.taskRun.create({});
