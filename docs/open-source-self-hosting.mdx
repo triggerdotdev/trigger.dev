@@ -264,6 +264,28 @@ By default, the images will point at the latest versioned release via the `v3` t
 TRIGGER_IMAGE_TAG=v3.0.4
 ```
 
+### Auth options
+
+By default, magic link auth is the only login option. If the `RESEND_API_KEY` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+
+All email addresses can sign up and log in this way. If you would like to restrict this, you can use the `WHITELISTED_EMAILS` env var. For example:
+
+```bash
+# every email that does not match this regex will be rejected
+WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+```
+
+It's currently impossible to restrict GitHub OAuth logins by account name or email like above, so this method is _not recommended_ for self-hosted instances. It's also very easy to lock yourself out of your own instance.
+
+<Warning>Only enable GitHub auth if you understand the risks! We strongly advise you against this.</Warning>
+
+Your GitHub OAuth app needs a callback URL `https://<your_domain>/auth/github/callback` and you will have to set the following env vars:
+
+```bash
+AUTH_GITHUB_CLIENT_ID=<your_client_id>
+AUTH_GITHUB_CLIENT_SECRET=<your_client_secret>
+```
+
 ### Checkpoint support
 
 <Warning>
