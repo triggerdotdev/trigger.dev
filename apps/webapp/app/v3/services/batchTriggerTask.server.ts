@@ -113,6 +113,7 @@ export class BatchTriggerTaskService extends BaseService {
               options: {
                 ...item.options,
                 dependentBatch: dependentAttempt?.id ? batch.friendlyId : undefined, // Only set dependentBatch if dependentAttempt is set which means batchTriggerAndWait was called
+                parentBatch: dependentAttempt?.id ? undefined : batch.friendlyId, // Only set parentBatch if dependentAttempt is NOT set which means batchTrigger was called
               },
             },
             {

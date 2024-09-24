@@ -1,0 +1,74 @@
+---
+title: "Upload a video to Supabase Storage using S3"
+sidebarTitle: "Supabase Storage upload"
+description: "This example demonstrates how to download a video from a URL and upload it to Supabase Storage using Trigger.dev."
+---
+
+## Overview
+
+This task downloads a video from a provided URL, saves it to a temporary file, and then uploads the video file to Supabase Storage using S3.
+
+## Key features
+
+- Fetches a video from a provided URL
+- Uploads the video file to Supabase Storage
+
+## Task code
+
+```ts trigger/supabase-storage-upload.ts
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import fetch from "node-fetch";
+
+// Initialize S3 client for Supabase Storage
+const s3Client = new S3Client({
+  region: process.env.SUPABASE_REGION, // Your Supabase project's region e.g. "us-east-1"
+  endpoint: `https://${process.env.SUPABASE_PROJECT_ID}.supabase.co/storage/v1/s3`,
+  credentials: {
+    // These credentials can be found in your supabase storage settings, under 'S3 access keys'
+    accessKeyId: process.env.SUPABASE_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.SUPABASE_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const supabaseStorageUpload = task({
+  id: "supabase-storage-upload",
+  run: async (payload: { videoUrl: string }) => {
+    const { videoUrl } = payload;
+
+    // Fetch the video as an ArrayBuffer
+    const response = await fetch(videoUrl);
+    const videoArrayBuffer = await response.arrayBuffer();
+    const videoBuffer = Buffer.from(videoArrayBuffer);
+
+    const bucket = "my_bucket"; // Replace "my_bucket" with your bucket name
+    const objectKey = `video_${Date.now()}.mp4`;
+
+    // Upload the video directly to Supabase Storage
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: objectKey,
+        Body: videoBuffer,
+      })
+    );
+    logger.log(`Video uploaded to Supabase Storage bucket`, { objectKey });
+
+    // Return the video object key
+    return {
+      objectKey,
+      bucket: bucket,
+    };
+  },
+});
+```
+
+## Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "videoUrl": "<a-video-url>" // Replace <a-video-url> with the URL of the video you want to upload
+}
+```

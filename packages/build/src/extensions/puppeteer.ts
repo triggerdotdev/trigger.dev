@@ -29,6 +29,12 @@ class PuppeteerExtension implements BuildExtension {
       image: {
         instructions,
       },
+      deploy: {
+        env: {
+          PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
+        },
+        override: true,
+      },
     });
   }
 }

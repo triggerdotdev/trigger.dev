@@ -253,6 +253,7 @@ export class ApiRunListPresenter extends BasePresenter {
           costInCents: run.costInCents,
           baseCostInCents: run.baseCostInCents,
           durationMs: run.usageDurationMs,
+          depth: run.depth,
           ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
             ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
           ),

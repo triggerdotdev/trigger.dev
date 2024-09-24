@@ -6,8 +6,8 @@
     "schema": "./prisma/schema.zmodel"
   },
   "scripts": {
-    "dev:trigger": "triggerdev dev",
-    "deploy": "triggerdev deploy",
+    "dev:trigger": "trigger dev",
+    "deploy": "trigger deploy",
     "management": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/management.ts",
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",

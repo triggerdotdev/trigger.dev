@@ -15,6 +15,8 @@ import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
 import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
 import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.mdx";
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
+import AddEnvironmentVariables from "/snippets/add-environment-variables.mdx";
+import DeployingYourTask from "/snippets/deplopying-your-task.mdx";
 
 <Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
 
@@ -66,7 +68,7 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
       //tasks.trigger also works with the edge runtime
       //export const runtime = "edge";
 
-      export async function GET(request: Request) {
+      export async function GET() {
         const handle = await tasks.trigger<typeof helloWorldTask>(
           "hello-world",
           "James"
@@ -242,55 +244,9 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 </Tabs>
 
-## Add your environment variables (optional)
+<AddEnvironmentVariables/>
 
-If you have any environment variables in your tasks, be sure to add them in the dashboard so deployed code runs successfully. In Node.js, these environment variables are accessed in your code using `process.env.MY_ENV_VAR`.
-
-In the sidebar select the "Environment Variables" page, then press the "New environment variable"
-button. ![Environment variables page](/images/environment-variables-page.jpg)
-
-You can add values for your local dev environment, staging and prod. ![Environment variables
-page](/images/environment-variables-panel.jpg)
-
-You can also add environment variables in code by following the steps on the [Environment Variables page](/deploy-environment-variables#in-your-code).
-
-## Deploying your task in Next.js
-
-For this guide, we'll manually deploy your task by running the [CLI deploy command](/cli-deploy) below. Other ways to deploy are listed in the next section.
-
-<CodeGroup>
-
-```bash npm
-npx trigger.dev@latest deploy
-```
-
-```bash pnpm
-pnpm dlx trigger.dev@latest deploy
-```
-
-```bash yarn
-yarn dlx trigger.dev@latest deploy
-```
-
-</CodeGroup>
-
-### Other ways to deploy
-
-<Tabs>
-
-<Tab title="GitHub Actions">
-
-Use GitHub Actions to automatically deploy your tasks whenever new code is pushed and when the `trigger` directory has changes in it. Follow [this guide](/github-actions) to set up GitHub Actions.
-
-</Tab>
-
-<Tab title="Vercel Integration">
-
-We're working on adding an official [Vercel integration](/vercel-integration) which you can follow the progress of [here](https://feedback.trigger.dev/p/vercel-integration-3).
-
-</Tab>
-
-</Tabs>
+<DeployingYourTask/>
 
 ## Troubleshooting
 

@@ -1,5 +1,20 @@
 # @trigger.dev/sdk
 
+## 3.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.7`
+
+## 3.0.6
+
+### Patch Changes
+
+- e79f0cc84: runs.retrieve() now includes details about related runs (root, parent, and children) as well how how the runs were triggered and if they are in a batch
+- Updated dependencies [4e0bc485a]
+  - @trigger.dev/core@3.0.6
+
 ## 3.0.5
 
 ### Patch Changes

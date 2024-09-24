@@ -1,0 +1,66 @@
+name: "🐳 Publish Webapp"
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
+    outputs:
+      version: ${{ steps.get_tag.outputs.tag }}
+      short_sha: ${{ steps.get_commit.outputs.sha_short }}
+    steps:
+      - name: 🏭 Setup Depot CLI
+        uses: depot/setup-action@v1
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: "#️⃣ Get the image tag"
+        id: get_tag
+        uses: ./.github/actions/get-image-tag
+        with:
+          tag: ${{ inputs.image_tag }}
+
+      - name: 🔢 Get the commit hash
+        id: get_commit
+        run: |
+          echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: 📛 Set the tags
+        id: set_tags
+        run: |
+          ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
+          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
+
+          # if tag is a semver, also tag it as v3
+          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+            image_tags=$image_tags,$ref_without_tag:v3
+          fi
+
+          echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+
+      - name: 🐙 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Build image and push to GitHub Container Registry
+        uses: depot/build-push-action@v1
+        with:
+          file: ./docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.set_tags.outputs.image_tags }}
+          push: true

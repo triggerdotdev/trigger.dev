@@ -229,6 +229,7 @@ export class SpanPresenter extends BasePresenter {
     };
 
     return {
+      id: run.id,
       friendlyId: run.friendlyId,
       status: run.status,
       createdAt: run.createdAt,

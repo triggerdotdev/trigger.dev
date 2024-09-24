@@ -4,6 +4,7 @@ import {
   RunStatus,
   SerializedError,
   TaskRunError,
+  TriggerFunction,
   conditionallyImportPacket,
   createJsonErrorObject,
   logger,
@@ -14,6 +15,47 @@ import assertNever from "assert-never";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generatePresignedUrl } from "~/v3/r2.server";
 import { BasePresenter } from "./basePresenter.server";
+import { prisma } from "~/db.server";
+
+// Build 'select' object
+const commonRunSelect = {
+  id: true,
+  friendlyId: true,
+  status: true,
+  taskIdentifier: true,
+  createdAt: true,
+  startedAt: true,
+  updatedAt: true,
+  completedAt: true,
+  expiredAt: true,
+  delayUntil: true,
+  ttl: true,
+  tags: true,
+  costInCents: true,
+  baseCostInCents: true,
+  usageDurationMs: true,
+  idempotencyKey: true,
+  isTest: true,
+  depth: true,
+  lockedToVersion: {
+    select: {
+      version: true,
+    },
+  },
+  resumeParentOnCompletion: true,
+  batch: {
+    select: {
+      id: true,
+      friendlyId: true,
+    },
+  },
+} satisfies Prisma.TaskRunSelect;
+
+type CommonRelatedRun = Prisma.Result<
+  typeof prisma.taskRun,
+  { select: typeof commonRunSelect },
+  "findFirstOrThrow"
+>;
 
 export class ApiRetrieveRunPresenter extends BasePresenter {
   public async call(
@@ -22,7 +64,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     showSecretDetails: boolean
   ): Promise<RetrieveRunResponse | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const taskRun = await this._prisma.taskRun.findUnique({
+      const taskRun = await this._replica.taskRun.findFirst({
         where: {
           friendlyId,
           runtimeEnvironmentId: env.id,
@@ -36,6 +78,23 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
           lockedToVersion: true,
           schedule: true,
           tags: true,
+          batch: {
+            select: {
+              id: true,
+              friendlyId: true,
+            },
+          },
+          parentTaskRun: {
+            select: commonRunSelect,
+          },
+          rootTaskRun: {
+            select: commonRunSelect,
+          },
+          childRuns: {
+            select: {
+              ...commonRunSelect,
+            },
+          },
         },
       });
 
@@ -101,29 +160,11 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       const apiStatus = ApiRetrieveRunPresenter.apiStatusFromRunStatus(taskRun.status);
 
       return {
-        id: taskRun.friendlyId,
-        status: apiStatus,
-        taskIdentifier: taskRun.taskIdentifier,
-        idempotencyKey: taskRun.idempotencyKey ?? undefined,
-        version: taskRun.lockedToVersion ? taskRun.lockedToVersion.version : undefined,
-        createdAt: taskRun.createdAt ?? undefined,
-        updatedAt: taskRun.updatedAt ?? undefined,
-        startedAt: taskRun.startedAt ?? taskRun.lockedAt ?? undefined,
-        finishedAt: ApiRetrieveRunPresenter.isStatusFinished(apiStatus)
-          ? taskRun.updatedAt
-          : undefined,
-        delayedUntil: taskRun.delayUntil ?? undefined,
+        ...createCommonRunStructure(taskRun),
         payload: $payload,
         payloadPresignedUrl: $payloadPresignedUrl,
         output: $output,
         outputPresignedUrl: $outputPresignedUrl,
-        isTest: taskRun.isTest,
-        ttl: taskRun.ttl ?? undefined,
-        expiredAt: taskRun.expiredAt ?? undefined,
-        tags: taskRun.tags.map((t) => t.name).sort((a, b) => a.localeCompare(b)),
-        costInCents: taskRun.costInCents,
-        baseCostInCents: taskRun.baseCostInCents,
-        durationMs: taskRun.usageDurationMs,
         schedule: taskRun.schedule
           ? {
               id: taskRun.schedule.friendlyId,
@@ -138,7 +179,6 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
               },
             }
           : undefined,
-        ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(apiStatus),
         attempts: !showSecretDetails
           ? []
           : taskRun.attempts.map((a) => ({
@@ -150,6 +190,13 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
               completedAt: a.completedAt ?? undefined,
               error: ApiRetrieveRunPresenter.apiErrorFromError(a.error),
             })),
+        relatedRuns: {
+          root: taskRun.rootTaskRun ? createCommonRunStructure(taskRun.rootTaskRun) : undefined,
+          parent: taskRun.parentTaskRun
+            ? createCommonRunStructure(taskRun.parentTaskRun)
+            : undefined,
+          children: taskRun.childRuns.map((r) => createCommonRunStructure(r)),
+        },
       };
     });
   }
@@ -225,6 +272,12 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
     }
   }
 
+  static apiBooleanHelpersFromTaskRunStatus(status: TaskRunStatus) {
+    return ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
+      ApiRetrieveRunPresenter.apiStatusFromRunStatus(status)
+    );
+  }
+
   static apiBooleanHelpersFromRunStatus(status: RunStatus) {
     const isQueued = status === "QUEUED" || status === "WAITING_FOR_DEPLOY" || status === "DELAYED";
     const isExecuting = status === "EXECUTING" || status === "REATTEMPTING" || status === "FROZEN";
@@ -273,5 +326,41 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         assertNever(status);
       }
     }
+  }
+}
+
+function createCommonRunStructure(run: CommonRelatedRun) {
+  return {
+    id: run.friendlyId,
+    taskIdentifier: run.taskIdentifier,
+    idempotencyKey: run.idempotencyKey ?? undefined,
+    version: run.lockedToVersion?.version,
+    status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status),
+    createdAt: run.createdAt,
+    startedAt: run.startedAt ?? undefined,
+    updatedAt: run.updatedAt,
+    finishedAt: run.completedAt ?? undefined,
+    expiredAt: run.expiredAt ?? undefined,
+    delayedUntil: run.delayUntil ?? undefined,
+    ttl: run.ttl ?? undefined,
+    costInCents: run.costInCents,
+    baseCostInCents: run.baseCostInCents,
+    durationMs: run.usageDurationMs,
+    isTest: run.isTest,
+    depth: run.depth,
+    tags: run.tags
+      .map((t: { name: string }) => t.name)
+      .sort((a: string, b: string) => a.localeCompare(b)),
+    ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status),
+    triggerFunction: resolveTriggerFunction(run),
+    batchId: run.batch?.friendlyId,
+  };
+}
+
+function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
+  if (run.batch) {
+    return run.resumeParentOnCompletion ? "batchTriggerAndWait" : "batchTrigger";
+  } else {
+    return run.resumeParentOnCompletion ? "triggerAndWait" : "trigger";
   }
 }
