@@ -1110,6 +1110,8 @@ model TaskAttempt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  executionSnapshot TaskRunExecutionSnapshot[]
+
   @@unique([taskId, number])
 }
 
@@ -1716,6 +1718,7 @@ model TaskRun {
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
+  executionSnapshot      TaskRunExecutionSnapshot[]
 
   alerts ProjectAlert[]
 
@@ -1835,10 +1838,14 @@ model TaskRunExecutionSnapshot {
 
   engine RunEngineVersion @default(V2)
 
-  runId     String
+  runId String
+  run   TaskRun @relation(fields: [runId], references: [id])
+
   runStatus TaskRunStatus
 
-  currentAttemptId     String?
+  currentAttemptId String?
+  currentAttempt   TaskAttempt? @relation(fields: [currentAttemptId], references: [id])
+
   currentAttemptStatus TaskAttemptStatus?
 
   /// When set, we can clear the state
