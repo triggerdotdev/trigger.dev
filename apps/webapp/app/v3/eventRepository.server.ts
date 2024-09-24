@@ -835,7 +835,8 @@ export class EventRepository {
     options: TraceEventOptions & { incomplete?: boolean },
     callback: (
       e: EventBuilder,
-      traceContext: Record<string, string | undefined>
+      traceContext: Record<string, string | undefined>,
+      traceparent?: { traceId: string; spanId: string }
     ) => Promise<TResult>
   ): Promise<TResult> {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
@@ -892,7 +893,7 @@ export class EventRepository {
       },
     };
 
-    const result = await callback(eventBuilder, traceContext);
+    const result = await callback(eventBuilder, traceContext, propagatedContext?.traceparent);
 
     const duration = process.hrtime.bigint() - start;
 

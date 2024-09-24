@@ -240,7 +240,7 @@ export class TriggerTaskService extends BaseService {
           incomplete: true,
           immediate: true,
         },
-        async (event, traceContext) => {
+        async (event, traceContext, traceparent) => {
           const run = await autoIncrementCounter.incrementInTransaction(
             `v3-run:${environment.id}:${taskId}`,
             async (num, tx) => {
@@ -307,6 +307,8 @@ export class TriggerTaskService extends BaseService {
                   traceContext: traceContext,
                   traceId: event.traceId,
                   spanId: event.spanId,
+                  parentSpanId:
+                    options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
