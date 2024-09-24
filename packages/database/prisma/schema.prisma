@@ -1751,6 +1751,8 @@ model TaskRun {
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
+  // Finding ancestor runs
+  @@index([rootTaskRunId])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
   //Runs list
