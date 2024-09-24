@@ -615,7 +615,7 @@ function getWorkerQueue() {
         },
       },
       "v3.deliverAlert": {
-        priority: 2,
+        priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new DeliverAlertService();
