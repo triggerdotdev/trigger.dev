@@ -1825,6 +1825,32 @@ enum RunEngineVersion {
   V2
 }
 
+/// Used by the RunEngine during TaskRun execution
+/// It has the required information to transactionally progress a run through states,
+/// and prevent side effects like heartbeats failing a run that has progressed.
+/// It is optimised for performance and is designed to be cleared at some point, 
+/// so there are no foreign key relationships to other models.
+model TaskRunExecutionSnapshot {
+  id String @id @default(cuid())
+
+  engine RunEngineVersion @default(V2)
+
+  runId     String
+  runStatus TaskRunStatus
+
+  currentAttemptId     String?
+  currentAttemptStatus TaskAttemptStatus?
+
+  /// When set, we can clear the state
+  completedAt DateTime?
+
+  /// These are only ever appended, so we don't need updatedAt
+  createdAt DateTime @default(now())
+
+  /// Used to get the latest state quickly
+  @@index([runId, createdAt(sort: Desc)])
+}
+
 /// A Waitpoint blocks a run from continuing until it's completed
 /// If there's a waitpoint blocking a run, it shouldn't be in the queue
 model Waitpoint {
