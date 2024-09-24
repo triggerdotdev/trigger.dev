@@ -384,6 +384,30 @@ git stash pop
 ./stop.sh && ./start.sh
 ```
 
+## Troubleshooting
+
+- **Deployment fails at the push step.** The machine running `deploy` needs registry access:
+
+```bash
+docker login -u <username> <registry>
+# this should now succeed
+npx trigger.dev@latest deploy --self-hosted --push
+```
+
+- **Prod runs fail to start.** The `docker-provider` needs registry access:
+
+```bash
+# single server? run this:
+docker exec -ti \
+  trigger-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
+
+# split webapp and worker? run this on the worker:
+docker exec -ti \
+  trigger-worker-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
+```
+
 ## CLI usage
 
 This section highlights some of the CLI commands and options that are useful when self-hosting. Please check the [CLI reference](/cli-introduction) for more in-depth documentation.
