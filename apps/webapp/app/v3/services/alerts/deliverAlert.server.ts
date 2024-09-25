@@ -73,6 +73,8 @@ type FoundAlert = Prisma.Result<
   >;
 };
 
+class SkipRetryError extends Error {}
+
 export class DeliverAlertService extends BaseService {
   public async call(alertId: string) {
     const alert: FoundAlert | null = await this._prisma.projectAlert.findFirst({
@@ -136,22 +138,34 @@ export class DeliverAlertService extends BaseService {
       alert.failedAttempt = finishedAttempt;
     }
 
-    switch (alert.channel.type) {
-      case "EMAIL": {
-        await this.#sendEmail(alert);
-        break;
+    try {
+      switch (alert.channel.type) {
+        case "EMAIL": {
+          await this.#sendEmail(alert);
+          break;
+        }
+        case "SLACK": {
+          await this.#sendSlack(alert);
+          break;
+        }
+        case "WEBHOOK": {
+          await this.#sendWebhook(alert);
+          break;
+        }
+        default: {
+          assertNever(alert.channel.type);
+        }
       }
-      case "SLACK": {
-        await this.#sendSlack(alert);
-        break;
+    } catch (error) {
+      if (error instanceof SkipRetryError) {
+        logger.error("[DeliverAlert] Skipping retry", {
+          reason: error.message,
+        });
+
+        return;
       }
-      case "WEBHOOK": {
-        await this.#sendWebhook(alert);
-        break;
-      }
-      default: {
-        assertNever(alert.channel.type);
-      }
+
+      throw error;
     }
 
     await this._prisma.projectAlert.update({
@@ -617,7 +631,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
               {
@@ -729,7 +743,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${error.stackTrace ?? error.message}\`\`\``,
+                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
               {
@@ -829,7 +843,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${preparedError.stack ?? preparedError.message}\`\`\``,
+                  text: this.#wrapInCodeBlock(preparedError.stack ?? preparedError.message),
                 },
               },
               {
@@ -1010,6 +1024,14 @@ export class DeliverAlertService extends BaseService {
           message,
         });
 
+        if (error.data.error === "invalid_blocks") {
+          logger.error("[DeliverAlert] Slack invalid blocks", {
+            error,
+          });
+
+          throw new SkipRetryError("Slack invalid blocks");
+        }
+
         throw new Error("Slack platform error");
       }
 
@@ -1045,6 +1067,25 @@ export class DeliverAlertService extends BaseService {
       type: "CUSTOM_ERROR",
       raw: "No error on attempt",
     };
+  }
+
+  #wrapInCodeBlock(text: string, maxLength = 3000) {
+    return `\`\`\`${this.#truncateSlackText(text, maxLength - 10)}\`\`\``;
+  }
+
+  #truncateSlackText(text: string, length = 3000) {
+    if (text.length > length) {
+      logger.debug("[DeliverAlert] Truncating slack text", {
+        length,
+        originalLength: text.length,
+      });
+
+      const truncationSuffix = "\n\ntruncated - check dashboard for complete error message";
+
+      return text.slice(0, length - truncationSuffix.length) + truncationSuffix;
+    }
+
+    return text;
   }
 
   static async enqueue(
