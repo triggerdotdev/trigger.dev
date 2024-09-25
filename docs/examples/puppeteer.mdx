@@ -9,15 +9,15 @@ import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 
 ## Overview
 
-There are 2 example tasks to follow on this page:
+There are 3 example tasks to follow on this page:
 
 1. [Basic example](/examples/puppeteer#basic-example)
 2. [Generate a PDF from a web page](/examples/puppeteer#generate-a-pdf-from-a-web-page)
-3. [Scrape data from a website](/examples/puppeteer#scrape-data-from-a-website)
+3. [Scrape content from a web page](/examples/puppeteer#scrape-data-from-a-website)
 
 <ScrapingWarning />
 
-## Adding build configurations
+## Build configurations
 
 To use all examples on this page, you'll first need to add these build settings to your `trigger.config.ts` file:
 
@@ -29,14 +29,10 @@ export default defineConfig({
   // Your other config settings...
   build: {
     // This is required to use the Puppeteer library
-    external: ["puppeteer"],
+    extensions: [puppeteer()],
   },
 });
 ```
-
-<Note>
-  Ensure you use `puppeteer` not `puppeteer-core` in your build configuration.
-</Note>
 
 ## Set an environment variable
 
@@ -109,7 +105,7 @@ export const puppeteerWebpageToPDF = task({
     const response = await page.goto("https://google.com");
     const url = response?.url() ?? "No URL found";
 
-    // Generate PDF from the webpage
+    // Generate PDF from the web page
     const generatePdf = await page.pdf();
 
     logger.info("PDF generated from URL", { url });
@@ -141,22 +137,77 @@ export const puppeteerWebpageToPDF = task({
 
 There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
 
-## Scrape data from a website
+## Scrape content from a web page
 
 ### Overview
 
-In this example we use Puppeteer with a proxy to scrape the content from a webpage and log it out.
+In this example we use Puppeteer with a BrowserBase proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out.
 
 <ScrapingWarning />
 
 ### Task code
 
 ```ts trigger/scrape-website.ts
-code here
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer-core";
+
+export const puppeteerScrapeWithProxy = task({
+  id: "puppeteer-scrape-with-proxy",
+  run: async () => {
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${process.env.BROWSERBASE_API_KEY}`,
+    });
+
+    const page = await browser.newPage();
+
+    // Set up BrowserBase proxy authentication
+    await page.authenticate({
+      username: "api",
+      password: process.env.BROWSERBASE_API_KEY || "",
+    });
+
+    try {
+      // Navigate to the target website
+      await page.goto("https://trigger.dev", { waitUntil: "networkidle0" });
+
+      // Scrape the GitHub stars count
+      const starCount = await page.evaluate(() => {
+        const starElement = document.querySelector(".github-star-count");
+        const text = starElement?.textContent ?? "0";
+        const numberText = text.replace(/[^0-9]/g, "");
+        return parseInt(numberText);
+      });
+
+      logger.info("GitHub star count", { starCount });
+
+      return { starCount };
+    } catch (error) {
+      logger.error("Error during scraping", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      await browser.close();
+    }
+  },
+});
 ```
 
 ### Testing your task
 
 There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
 
-<LocalDevelopment packages={"the Puppeteer library"} />
+<LocalDevelopment packages={"the Puppeteer library."} />
+
+## Proxying
+
+If you're using Trigger.dev Cloud and Puppeteer or any other tool to scrape content from websites you don't own, you'll need to proxy your requests. **If you don't you'll risk getting our IP address blocked and we will ban you from our service.**
+
+Here are a list of proxy services we recommend:
+
+- [Browserbase](https://www.browserbase.com/)
+- [Brightdata](https://brightdata.com/)
+- [Browserless](https://browserless.io/)
+- [Oxylabs](https://oxylabs.io/)
+- [ScrapingBee](https://scrapingbee.com/)
+- [Smartproxy](https://smartproxy.com/)
