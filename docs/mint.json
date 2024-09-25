@@ -324,6 +324,7 @@
         "examples/ffmpeg-video-processing",
         "examples/open-ai-with-retrying",
         "examples/pdf-to-image",
+        "examples/puppeteer",
         "examples/sharp-image-processing",
         "examples/stripe-webhook",
         "examples/supabase-storage-upload",
