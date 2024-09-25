@@ -60,9 +60,29 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
+    let output: string | undefined = undefined;
+    let outputType: string | undefined = undefined;
+
+    if (status === "COMPLETED_SUCCESSFULLY") {
+      // We need to get the output from the attempt
+      const attempt = await this._prisma.taskRunAttempt.findFirst({
+        where: { taskRunId: id, status: "COMPLETED", output: { not: null } },
+        orderBy: { id: "desc" },
+        select: {
+          output: true,
+          outputType: true,
+        },
+      });
+
+      if (attempt) {
+        output = attempt.output ?? undefined;
+        outputType = attempt.outputType;
+      }
+    }
+
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt },
+      data: { status, expiredAt, completedAt, output, outputType },
       ...(include ? { include } : {}),
     });
 

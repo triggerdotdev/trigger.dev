@@ -42,6 +42,8 @@ export const runMetadataChildTask = task({
     await runMetadataChildTask2.triggerAndWait(payload, {
       metadata: metadata.current(),
     });
+
+    return metadata.current();
   },
   onStart: async () => {
     logger.info("metadata", { metadata: metadata.current() });
