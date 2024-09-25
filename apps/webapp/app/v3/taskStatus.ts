@@ -50,7 +50,12 @@ export const FINAL_ATTEMPT_STATUSES = [
   "COMPLETED",
   "FAILED",
 ] satisfies TaskRunAttemptStatus[];
+
 export type FINAL_ATTEMPT_STATUSES = (typeof FINAL_ATTEMPT_STATUSES)[number];
+
+export const FAILED_ATTEMPT_STATUSES = ["FAILED", "CANCELED"] satisfies TaskRunAttemptStatus[];
+
+export type FAILED_ATTEMPT_STATUSES = (typeof FAILED_ATTEMPT_STATUSES)[number];
 
 export const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
 export const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];

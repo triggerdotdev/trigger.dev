@@ -1,4 +1,4 @@
-import { logger, task, metadata } from "@trigger.dev/sdk/v3";
+import { logger, task, metadata, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 
 export const runMetadataTask = task({
   id: "run-metadata-task",
@@ -55,7 +55,9 @@ export const runMetadataChildTask = task({
 
 export const runMetadataChildTask2 = task({
   id: "run-metadata-child-task-2",
-  run: async (payload: any, { ctx }) => {},
+  run: async (payload: any, { ctx }) => {
+    throw new AbortTaskRunError("aborting");
+  },
 });
 
 export const myTask = task({

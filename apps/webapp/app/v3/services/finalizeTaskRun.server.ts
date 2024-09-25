@@ -2,15 +2,11 @@ import { sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
-import {
-  isFailedRunStatus,
-  type FINAL_ATTEMPT_STATUSES,
-  type FINAL_RUN_STATUSES,
-} from "../taskStatus";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, type FINAL_RUN_STATUSES } from "../taskStatus";
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 
 type BaseInput = {
   id: string;
@@ -60,34 +56,18 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
-    let output: string | undefined = undefined;
-    let outputType: string | undefined = undefined;
-
-    if (status === "COMPLETED_SUCCESSFULLY") {
-      // We need to get the output from the attempt
-      const attempt = await this._prisma.taskRunAttempt.findFirst({
-        where: { taskRunId: id, status: "COMPLETED", output: { not: null } },
-        orderBy: { id: "desc" },
-        select: {
-          output: true,
-          outputType: true,
-        },
-      });
-
-      if (attempt) {
-        output = attempt.output ?? undefined;
-        outputType = attempt.outputType;
-      }
-    }
-
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt, output, outputType },
+      data: { status, expiredAt, completedAt },
       ...(include ? { include } : {}),
     });
 
     if (attemptStatus || error) {
       await this.finalizeAttempt({ attemptStatus, error, run });
+    }
+
+    if (isFailedRunStatus(run.status)) {
+      await this.finalizeRunError(run, error);
     }
 
     //resume any dependencies
@@ -106,6 +86,19 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     return run as Output<T>;
+  }
+
+  async finalizeRunError(run: TaskRun, error?: TaskRunError) {
+    if (!error) {
+      return;
+    }
+
+    await this._prisma.taskRun.update({
+      where: { id: run.id },
+      data: {
+        error: sanitizeError(error),
+      },
+    });
   }
 
   async finalizeAttempt({

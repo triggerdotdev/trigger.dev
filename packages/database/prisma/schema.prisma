@@ -1759,6 +1759,9 @@ model TaskRun {
   output     String?
   outputType String  @default("application/json")
 
+  /// Run error
+  error Json?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
