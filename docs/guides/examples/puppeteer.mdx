@@ -164,12 +164,6 @@ export const puppeteerScrapeWithProxy = task({
 
     const page = await browser.newPage();
 
-    // Set up BrowserBase proxy authentication
-    await page.authenticate({
-      username: "api",
-      password: process.env.BROWSERBASE_API_KEY || "",
-    });
-
     try {
       // Navigate to the target website
       await page.goto("https://trigger.dev", { waitUntil: "networkidle0" });
