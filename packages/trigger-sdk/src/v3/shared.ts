@@ -805,15 +805,6 @@ async function trigger_internal<TPayload, TOutput>(
         [SEMATTRS_MESSAGING_OPERATION]: "publish",
         ["messaging.client_id"]: taskContext.worker?.id,
         [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: id,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
       },
       onResponseBody: (body, span) => {
         body &&
@@ -877,15 +868,6 @@ async function batchTrigger_internal<TPayload, TOutput>(
         [SEMATTRS_MESSAGING_OPERATION]: "publish",
         ["messaging.client_id"]: taskContext.worker?.id,
         [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: id,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
       },
       ...requestOptions,
     }
