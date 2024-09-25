@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["ES2019", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "Node16",
     "types": ["vitest/globals"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "moduleResolution": "node",
     "preserveWatchOutput": true,
     "skipLibCheck": true,
     "noEmit": true,
