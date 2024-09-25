@@ -319,8 +319,12 @@ function SpanBody({
                               { friendlyId: run.friendlyId },
                               { spanId: run.spanId }
                             )}
+                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                           >
-                            {run.taskIdentifier} ({run.friendlyId})
+                            {run.taskIdentifier}
+                            <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                              ({run.friendlyId})
+                            </span>
                           </TextLink>
                         ))}
                       </div>
@@ -614,9 +618,12 @@ function RunBody({
                             },
                             { spanId: run.relationships.root.spanId }
                           )}
+                          className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                         >
-                          {run.relationships.root.taskIdentifier} (
-                          {run.relationships.root.friendlyId})
+                          {run.relationships.root.taskIdentifier}
+                          <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                            ({run.relationships.root.friendlyId})
+                          </span>
                         </TextLink>
                       </Property.Value>
                     </Property.Item>
@@ -634,9 +641,12 @@ function RunBody({
                               },
                               { spanId: run.relationships.root.spanId }
                             )}
+                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                           >
-                            {run.relationships.root.taskIdentifier} (
-                            {run.relationships.root.friendlyId})
+                            {run.relationships.root.taskIdentifier}
+                            <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                              ({run.relationships.root.friendlyId})
+                            </span>
                           </TextLink>
                         </Property.Value>
                       </Property.Item>
@@ -653,9 +663,12 @@ function RunBody({
                                 },
                                 { spanId: run.relationships.parent.spanId }
                               )}
+                              className="group flex flex-wrap items-center gap-x-1 gap-y-0"
                             >
-                              {run.relationships.parent.taskIdentifier} (
-                              {run.relationships.parent.friendlyId})
+                              {run.relationships.parent.taskIdentifier}
+                              <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                                ({run.relationships.parent.friendlyId})
+                              </span>
                             </TextLink>
                           </Property.Value>
                         </Property.Item>
