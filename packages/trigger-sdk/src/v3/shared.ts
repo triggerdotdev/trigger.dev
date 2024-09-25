@@ -499,7 +499,7 @@ export type TaskRunOptions = {
   tags?: RunTags;
 
   /**
-   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 8KB.
+   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
    */
   metadata?: Record<string, SerializableJson>;
 };

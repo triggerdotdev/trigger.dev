@@ -24,6 +24,26 @@ export const TestTaskData = z
           }
         }
       }),
+      metadata: z.string().transform((metadata, ctx) => {
+        try {
+          const data = JSON.parse(metadata);
+          return data as any;
+        } catch (e) {
+          console.log("parsing error", e);
+
+          if (e instanceof Error) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: e.message,
+            });
+          } else {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "This is invalid JSON",
+            });
+          }
+        }
+      }),
     }),
     z.object({
       triggerSource: z.literal("SCHEDULED"),

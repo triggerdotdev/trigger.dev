@@ -212,7 +212,7 @@ const EnvironmentSchema = z.object({
   MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
   TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
   TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
-  TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(8_000), // 8KB
+  TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(4_096), // 4KB
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

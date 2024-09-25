@@ -33,11 +33,11 @@ export class RunMetadataAPI {
     key: string,
     value: DeserializedJson,
     requestOptions?: ApiRequestOptions
-  ): Promise<Record<string, DeserializedJson>> {
+  ): Promise<void> {
     const runId = taskContext.ctx?.run.id;
 
     if (!runId) {
-      throw new Error("Cannot set metadata outside of a task run");
+      return;
     }
 
     const apiClient = apiClientManager.clientOrThrow();
@@ -54,18 +54,13 @@ export class RunMetadataAPI {
     );
 
     this.store = response.metadata;
-
-    return this.store;
   }
 
-  public async deleteKey(
-    key: string,
-    requestOptions?: ApiRequestOptions
-  ): Promise<Record<string, DeserializedJson>> {
+  public async deleteKey(key: string, requestOptions?: ApiRequestOptions): Promise<void> {
     const runId = taskContext.ctx?.run.id;
 
     if (!runId) {
-      throw new Error("Cannot delete metadata outside of a task run");
+      return;
     }
 
     const apiClient = apiClientManager.clientOrThrow();
@@ -80,18 +75,16 @@ export class RunMetadataAPI {
     );
 
     this.store = response.metadata;
-
-    return this.store;
   }
 
   public async update(
     metadata: Record<string, DeserializedJson>,
     requestOptions?: ApiRequestOptions
-  ): Promise<Record<string, DeserializedJson>> {
+  ): Promise<void> {
     const runId = taskContext.ctx?.run.id;
 
     if (!runId) {
-      throw new Error("Cannot update metadata outside of a task run");
+      return;
     }
 
     const apiClient = apiClientManager.clientOrThrow();
@@ -99,7 +92,5 @@ export class RunMetadataAPI {
     const response = await apiClient.updateRunMetadata(runId, { metadata }, requestOptions);
 
     this.store = response.metadata;
-
-    return this.store;
   }
 }

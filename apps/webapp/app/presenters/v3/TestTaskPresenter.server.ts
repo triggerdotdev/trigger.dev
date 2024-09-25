@@ -1,11 +1,6 @@
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
-import {
-  RuntimeEnvironmentType,
-  TaskRunAttemptStatus,
-  TaskRunStatus,
-  TaskTriggerSource,
-} from "@trigger.dev/database";
-import { sqlDatabaseSchema, PrismaClient, prisma } from "~/db.server";
+import { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
+import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { getUsername } from "~/utils/username";
 
@@ -51,6 +46,8 @@ type RawRun = {
   payload: string;
   payloadType: string;
   runtimeEnvironmentId: string;
+  metadata?: string;
+  metadataType?: string;
 };
 
 export type StandardRun = Omit<RawRun, "number"> & {
@@ -131,6 +128,8 @@ export class TestTaskPresenter {
         taskr.status,
         taskr.payload,
         taskr."payloadType",
+        taskr.metadata,
+        taskr."metadataType",
         taskr."runtimeEnvironmentId"
     FROM 
         taskruns AS taskr
@@ -166,6 +165,9 @@ export class TestTaskPresenter {
                 ...r,
                 number,
                 payload: await prettyPrintPacket(r.payload, r.payloadType),
+                metadata: r.metadata
+                  ? await prettyPrintPacket(r.metadata, r.metadataType)
+                  : undefined,
               };
             })
           ),

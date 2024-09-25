@@ -19,6 +19,7 @@ export class TestTaskService extends BaseService {
           payload: data.payload,
           options: {
             test: true,
+            metadata: data.metadata,
           },
         });
       case "SCHEDULED": {
