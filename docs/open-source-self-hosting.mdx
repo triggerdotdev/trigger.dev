@@ -11,7 +11,7 @@ description: "You can self-host Trigger.dev on your own infrastructure."
   <img src="/images/self-hosting.png" alt="Self-hosting architecture" />
 </Frame>
 
-The self-hosting guide covers two alternative setups. The first options uses a simple setup where you run everything on one server. With the second option, the webapp and worker components are split on two separate machines.
+The self-hosting guide covers two alternative setups. The first option uses a simple setup where you run everything on one server. With the second option, the webapp and worker components are split on two separate machines.
 
 You're going to need at least one Debian (or derivative) machine with Docker and Docker Compose installed. We'll also use Ngrok to expose the webapp to the internet.
 
@@ -170,7 +170,7 @@ DEPLOY_REGISTRY_NAMESPACE=<your_dockerhub_username>
 docker login -u <your_dockerhub_username> docker.io
 ```
 
-4. Ensure the `docker-provider` container is logged in as well:
+4. Required on some systems: Run the login command inside the `docker-provider` container so it can pull deployment images to run your tasks.
 
 ```bash
 docker exec -ti \
