@@ -631,7 +631,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${this.#truncateSlackText(error.stackTrace ?? error.message)}\`\`\``,
+                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
               {
@@ -743,7 +743,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${this.#truncateSlackText(error.stackTrace ?? error.message)}\`\`\``,
+                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
               {
@@ -843,9 +843,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: `\`\`\`${this.#truncateSlackText(
-                    preparedError.stack ?? preparedError.message
-                  )}\`\`\``,
+                  text: this.#wrapInCodeBlock(preparedError.stack ?? preparedError.message),
                 },
               },
               {
@@ -1071,9 +1069,20 @@ export class DeliverAlertService extends BaseService {
     };
   }
 
-  #truncateSlackText(text: string) {
-    if (text.length > 3000) {
-      return text.slice(0, 2900) + "\n\ntruncated - check dashboard for complete error message";
+  #wrapInCodeBlock(text: string, maxLength = 3000) {
+    return `\`\`\`${this.#truncateSlackText(text, maxLength - 10)}\`\`\``;
+  }
+
+  #truncateSlackText(text: string, length = 3000) {
+    if (text.length > length) {
+      logger.debug("[DeliverAlert] Truncating slack text", {
+        length,
+        originalLength: text.length,
+      });
+
+      const truncationSuffix = "\n\ntruncated - check dashboard for complete error message";
+
+      return text.slice(0, length - truncationSuffix.length) + truncationSuffix;
     }
 
     return text;
