@@ -265,18 +265,6 @@ function SpanBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
               </Property.Table>
             </div>
           ) : (
@@ -318,13 +306,22 @@ function SpanBody({
                   <Property.Label>Message</Property.Label>
                   <Property.Value>{span.message}</Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
+                {span.triggeredRuns.length > 0 && (
                   <Property.Item>
-                    <Property.Label>Links</Property.Label>
+                    <Property.Label>Triggered runs</Property.Label>
                     <Property.Value>
                       <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
+                        {span.triggeredRuns.map((run) => (
+                          <TextLink
+                            to={v3RunSpanPath(
+                              organization,
+                              project,
+                              { friendlyId: run.friendlyId },
+                              { spanId: run.spanId }
+                            )}
+                          >
+                            {run.taskIdentifier} ({run.friendlyId})
+                          </TextLink>
                         ))}
                       </div>
                     </Property.Value>
@@ -551,18 +548,7 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {run.links && run.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {run.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
+
                 <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
@@ -613,6 +599,71 @@ function RunBody({
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
               </div>
               <RunTimeline run={run} />
+              {run.relationships.root ? (
+                <Property.Table>
+                  {run.relationships.root.isParent ? (
+                    <Property.Item>
+                      <Property.Label>Root & Parent</Property.Label>
+                      <Property.Value>
+                        <TextLink
+                          to={v3RunSpanPath(
+                            organization,
+                            project,
+                            {
+                              friendlyId: run.relationships.root.friendlyId,
+                            },
+                            { spanId: run.relationships.root.spanId }
+                          )}
+                        >
+                          {run.relationships.root.taskIdentifier} (
+                          {run.relationships.root.friendlyId})
+                        </TextLink>
+                      </Property.Value>
+                    </Property.Item>
+                  ) : (
+                    <>
+                      <Property.Item>
+                        <Property.Label>Root</Property.Label>
+                        <Property.Value>
+                          <TextLink
+                            to={v3RunSpanPath(
+                              organization,
+                              project,
+                              {
+                                friendlyId: run.relationships.root.friendlyId,
+                              },
+                              { spanId: run.relationships.root.spanId }
+                            )}
+                          >
+                            {run.relationships.root.taskIdentifier} (
+                            {run.relationships.root.friendlyId})
+                          </TextLink>
+                        </Property.Value>
+                      </Property.Item>
+                      {run.relationships.parent ? (
+                        <Property.Item>
+                          <Property.Label>Parent</Property.Label>
+                          <Property.Value>
+                            <TextLink
+                              to={v3RunSpanPath(
+                                organization,
+                                project,
+                                {
+                                  friendlyId: run.relationships.parent.friendlyId,
+                                },
+                                { spanId: run.relationships.parent.spanId }
+                              )}
+                            >
+                              {run.relationships.parent.taskIdentifier} (
+                              {run.relationships.parent.friendlyId})
+                            </TextLink>
+                          </Property.Value>
+                        </Property.Item>
+                      ) : null}
+                    </>
+                  )}
+                </Property.Table>
+              ) : null}
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}

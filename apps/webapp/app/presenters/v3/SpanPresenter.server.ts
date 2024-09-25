@@ -125,6 +125,21 @@ export class SpanPresenter extends BasePresenter {
             exportName: true,
           },
         },
+        //relationships
+        rootTaskRun: {
+          select: {
+            taskIdentifier: true,
+            friendlyId: true,
+            spanId: true,
+          },
+        },
+        parentTaskRun: {
+          select: {
+            taskIdentifier: true,
+            friendlyId: true,
+            spanId: true,
+          },
+        },
       },
       where: {
         spanId,
@@ -182,8 +197,6 @@ export class SpanPresenter extends BasePresenter {
         };
       }
     }
-
-    const span = await eventRepository.getSpan(spanId, run.traceId);
 
     const context = {
       task: {
@@ -270,7 +283,15 @@ export class SpanPresenter extends BasePresenter {
       output,
       outputType: finishedAttempt?.outputType ?? "application/json",
       error,
-      links: span?.links,
+      relationships: {
+        root: run.rootTaskRun
+          ? {
+              ...run.rootTaskRun,
+              isParent: run.parentTaskRun?.friendlyId === run.rootTaskRun.friendlyId,
+            }
+          : undefined,
+        parent: run.parentTaskRun ?? undefined,
+      },
       context: JSON.stringify(context, null, 2),
     };
   }
@@ -295,10 +316,22 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
+    const triggeredRuns = await this._replica.taskRun.findMany({
+      select: {
+        friendlyId: true,
+        taskIdentifier: true,
+        spanId: true,
+      },
+      where: {
+        parentSpanId: spanId,
+      },
+    });
+
     return {
       ...span,
       events: span.events,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      triggeredRuns,
       showActionBar: span.show?.actions === true,
     };
   }
