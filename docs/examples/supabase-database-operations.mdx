@@ -1,12 +1,12 @@
 ---
 title: "Supabase database operations using Trigger.dev"
 sidebarTitle: "Supabase database operations"
-description: "These examples demonstrate how to run basic CRUD operations on a Supabase database using Trigger.dev."
+description: "These examples demonstrate how to run basic CRUD operations on a table in a Supabase database using Trigger.dev."
 ---
 
-## Add a new user to a Supabase database
+## Add a new user to a table in a Supabase database
 
-This is a basic task which inserts a new row into a Supabase database from a Trigger.dev task.
+This is a basic task which inserts a new row into a table from a Trigger.dev task.
 
 ### Key features
 
@@ -60,7 +60,7 @@ export const supabaseDatabaseInsert = task({
   This task uses your service role secret key to bypass Row Level Security. There are different ways
   of configuring your [RLS
   policies](https://supabase.com/docs/guides/database/postgres/row-level-security), so always make
-  sure you have the correct permissions set up for your Supabase database.
+  sure you have the correct permissions set up for your project.
 </Note>
 
 ### Testing your task
@@ -75,11 +75,11 @@ To test this task in the [Trigger.dev dashboard](https://cloud.trigger.dev), you
 
 If the task completes successfully, you will see a new row in your `user_subscriptions` table with the `user_id` set to `user_12345`.
 
-## Update a user's subscription in a Supabase database
+## Update a user's subscription on a table in a Supabase database
 
-This task shows how to update a user's subscription. It checks if the user already has a subscription and either inserts a new row or updates an existing row with the new plan.
+This task shows how to update a user's subscription on a table. It checks if the user already has a subscription and either inserts a new row or updates an existing row with the new plan.
 
-This type of task is useful for managing user subscriptions, updating user details, or performing other operations on a Supabase database.
+This type of task is useful for managing user subscriptions, updating user details, or performing other operations you might need to do on a database table.
 
 ### Key features
 
@@ -171,7 +171,7 @@ export const supabaseUpdateUserSubscription = task({
   This task uses your service role secret key to bypass Row Level Security. There are different ways
   of configuring your [RLS
   policies](https://supabase.com/docs/guides/database/postgres/row-level-security), so always make
-  sure you have the correct permissions set up for your Supabase database.
+  sure you have the correct permissions set up for your project.
 </Note>
 
 ## Testing your task
