@@ -280,7 +280,10 @@ export function TaskRunsTable({
                   />
                 </TableCell>
                 <TableCell to={path}>
-                  {run.taskIdentifier} {run.rootTaskRunId === null ? <Badge>Root</Badge> : null}
+                  <span className="flex items-center gap-x-1">
+                    {run.taskIdentifier}
+                    {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
+                  </span>
                 </TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>

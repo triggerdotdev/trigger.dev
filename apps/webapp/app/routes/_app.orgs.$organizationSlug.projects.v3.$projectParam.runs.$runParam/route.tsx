@@ -65,7 +65,7 @@ import { useProject } from "~/hooks/useProject";
 import { useReplaceLocation } from "~/hooks/useReplaceLocation";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
-import { RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -316,6 +316,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
             environmentType={run.environment.type}
             shouldLiveReload={shouldLiveReload}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            rootRun={run.rootTaskRun}
           />
         </ResizablePanel>
         <ResizableHandle id={resizableSettings.parent.handleId} />
@@ -438,6 +439,11 @@ type TasksTreeViewProps = {
   environmentType: RuntimeEnvironmentType;
   shouldLiveReload: boolean;
   maximumLiveReloadingSetting: number;
+  rootRun: {
+    friendlyId: string;
+    taskIdentifier: string;
+    spanId: string;
+  } | null;
 };
 
 function TasksTreeView({
@@ -451,6 +457,7 @@ function TasksTreeView({
   environmentType,
   shouldLiveReload,
   maximumLiveReloadingSetting,
+  rootRun,
 }: TasksTreeViewProps) {
   const [filterText, setFilterText] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
@@ -517,8 +524,14 @@ function TasksTreeView({
         >
           <div className="grid h-full grid-rows-[2rem_1fr] overflow-hidden">
             <div className="flex items-center pr-2">
-              {parentRunFriendlyId ? (
-                <ShowParentLink runFriendlyId={parentRunFriendlyId} />
+              {rootRun ? (
+                <ShowParentLink
+                  runFriendlyId={rootRun.friendlyId}
+                  isRoot={true}
+                  spanId={rootRun.spanId}
+                />
+              ) : parentRunFriendlyId ? (
+                <ShowParentLink runFriendlyId={parentRunFriendlyId} isRoot={false} />
               ) : (
                 <Paragraph variant="small" className="flex-1 text-charcoal-500">
                   This is the root task
@@ -599,7 +612,9 @@ function TasksTreeView({
                           className="h-4 min-h-4 w-4 min-w-4"
                         />
                         <NodeText node={node} />
-                        {node.data.isRoot && <Badge variant="outline-rounded">Root</Badge>}
+                        {node.data.isRoot && !rootRun && (
+                          <Badge variant="outline-rounded">Root</Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <NodeStatusIcon node={node} />
@@ -954,24 +969,34 @@ function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boole
   return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
-function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
+function ShowParentLink({
+  runFriendlyId,
+  spanId,
+  isRoot,
+}: {
+  runFriendlyId: string;
+  spanId?: string;
+  isRoot: boolean;
+}) {
   const [mouseOver, setMouseOver] = useState(false);
   const organization = useOrganization();
   const project = useProject();
   const { spanParam } = useParams();
 
+  const span = spanId ? spanId : spanParam;
+
   return (
     <LinkButton
       variant="minimal/medium"
       to={
-        spanParam
+        span
           ? v3RunSpanPath(
               organization,
               project,
               {
                 friendlyId: runFriendlyId,
               },
-              { spanId: spanParam }
+              { spanId: span }
             )
           : v3RunPath(organization, project, {
               friendlyId: runFriendlyId,
@@ -993,7 +1018,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
         variant="small"
         className={cn(mouseOver ? "text-indigo-500" : "text-charcoal-500")}
       >
-        Show parent items
+        {isRoot ? "Show root run" : "Show parent run"}
       </Paragraph>
     </LinkButton>
   );
