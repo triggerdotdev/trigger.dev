@@ -1,7 +1,10 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
+  "openapi": [
+    "/openapi.yml",
+    "/v3-openapi.yaml"
+  ],
   "api": {
     "playground": {
       "mode": "simple"
@@ -104,23 +107,41 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quick-start", "how-it-works", "upgrading-beta", "limits"]
+      "pages": [
+        "introduction",
+        "quick-start",
+        "how-it-works",
+        "upgrading-beta",
+        "limits"
+      ]
     },
     {
       "group": "Fundamentals",
       "pages": [
         {
           "group": "Tasks",
-          "pages": ["tasks/overview", "tasks/scheduled"]
+          "pages": [
+            "tasks/overview",
+            "tasks/scheduled"
+          ]
         },
         "triggering",
         "apikeys",
-        "config/config-file"
+        {
+          "group": "Configuration",
+          "pages": [
+            "config/config-file",
+            "config/extensions/overview"
+          ]
+        }
       ]
     },
     {
       "group": "Development",
-      "pages": ["cli-dev", "run-tests"]
+      "pages": [
+        "cli-dev",
+        "run-tests"
+      ]
     },
     {
       "group": "Deployment",
@@ -130,7 +151,9 @@
         "github-actions",
         {
           "group": "Deployment integrations",
-          "pages": ["vercel-integration"]
+          "pages": [
+            "vercel-integration"
+          ]
         }
       ]
     },
@@ -142,7 +165,13 @@
         "errors-retrying",
         {
           "group": "Wait",
-          "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
+          "pages": [
+            "wait",
+            "wait-for",
+            "wait-until",
+            "wait-for-event",
+            "wait-for-request"
+          ]
         },
         "queue-concurrency",
         "versioning",
@@ -160,7 +189,10 @@
         "management/overview",
         {
           "group": "Tasks API",
-          "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+          "pages": [
+            "management/tasks/trigger",
+            "management/tasks/batch-trigger"
+          ]
         },
         {
           "group": "Runs API",
@@ -198,7 +230,9 @@
         },
         {
           "group": "Projects API",
-          "pages": ["management/projects/runs"]
+          "pages": [
+            "management/projects/runs"
+          ]
         }
       ]
     },
@@ -244,7 +278,11 @@
     },
     {
       "group": "Help",
-      "pages": ["community", "help-slack", "help-email"]
+      "pages": [
+        "community",
+        "help-slack",
+        "help-email"
+      ]
     },
     {
       "group": "Frameworks",
@@ -268,11 +306,15 @@
     },
     {
       "group": "Dashboard",
-      "pages": ["guides/dashboard/creating-a-project"]
+      "pages": [
+        "guides/dashboard/creating-a-project"
+      ]
     },
     {
       "group": "Migrations",
-      "pages": ["guides/use-cases/upgrading-from-v2"]
+      "pages": [
+        "guides/use-cases/upgrading-from-v2"
+      ]
     },
     {
       "group": "Examples",
@@ -284,6 +326,8 @@
         "examples/pdf-to-image",
         "examples/puppeteer",
         "examples/sharp-image-processing",
+        "examples/stripe-webhook",
+        "examples/supabase-storage-upload",
         "examples/react-pdf",
         "examples/resend-email-sequence",
         "examples/vercel-ai-sdk"

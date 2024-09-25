@@ -1,4 +1,3 @@
-import { context, propagation } from "@opentelemetry/api";
 import { z } from "zod";
 import {
   AddTagsRequestBody,
@@ -509,7 +508,6 @@ export class ApiClient {
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
       headers["x-trigger-worker"] = "true";
-      propagation.inject(context.active(), headers);
 
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";

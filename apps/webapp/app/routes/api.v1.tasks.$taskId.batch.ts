@@ -88,7 +88,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new BatchTriggerTaskService();
 
   const traceContext =
-    traceparent ?? isFromWorker // If the request is from a worker, we should pass the trace context
+    traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
       ? { traceparent, tracestate }
       : undefined;
 

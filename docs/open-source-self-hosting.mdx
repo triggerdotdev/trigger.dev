@@ -3,15 +3,21 @@ title: "Self-hosting"
 description: "You can self-host Trigger.dev on your own infrastructure."
 ---
 
+<Note>This guide is for Docker only. We don't currently provide documentation for Kubernetes.</Note>
+
 ## Overview
 
 <Frame>
   <img src="/images/self-hosting.png" alt="Self-hosting architecture" />
 </Frame>
 
-The self-hosting guide comes in two parts. The first part is a simple setup where you run everything on one server. In the second part, the webapp and worker components are split on two separate machines.
+The self-hosting guide covers two alternative setups. The first option uses a simple setup where you run everything on one server. With the second option, the webapp and worker components are split on two separate machines.
 
 You're going to need at least one Debian (or derivative) machine with Docker and Docker Compose installed. We'll also use Ngrok to expose the webapp to the internet.
+
+## Support
+
+It's dangerous to go alone! Join the self-hosting channel on our [Discord server](https://discord.gg/NQTxt5NA7s).
 
 ## Caveats
 
@@ -49,7 +55,7 @@ Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cl
 
 You will also need a way to expose the webapp to the internet. This can be done with a reverse proxy, or with a service like Ngrok. We will be using the latter in this guide.
 
-## Part 1: Single server
+## Option 1: Single server
 
 This is the simplest setup. You run everything on one server. It's a good option if you have spare capacity on an existing machine, and have no need to independently scale worker capacity.
 
@@ -161,55 +167,126 @@ DEPLOY_REGISTRY_NAMESPACE=<your_dockerhub_username>
 3. Log in to Docker Hub both locally and your server. For the split setup, this will be the worker machine. You may want to create an [access token](https://hub.docker.com/settings/security) for this.
 
 ```bash
-docker login -u <your_dockerhub_username>
+docker login -u <your_dockerhub_username> docker.io
 ```
 
-4. Restart the services
+4. Required on some systems: Run the login command inside the `docker-provider` container so it can pull deployment images to run your tasks.
+
+```bash
+docker exec -ti \
+  trigger-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
+```
+
+5. Restart the services
 
 ```bash
 ./stop.sh && ./start.sh
 ```
 
-5. You can now deploy v3 projects using the CLI with these flags:
+6. You can now deploy v3 projects using the CLI with these flags:
 
 ```
 npx trigger.dev@latest deploy --self-hosted --push
 ```
 
-## Part 2: Split services
+## Option 2: Split services
 
 With this setup, the webapp will run on a different machine than the worker components. This allows independent scaling of your workload capacity.
 
 ### Webapp setup
 
-All steps are the same as in Part 1, except for the following:
+All steps are the same as for a single server, except for the following:
 
-1. Run the start script with the `webapp` argument
+1. **Startup.** Run the start script with the `webapp` argument
 
 ```bash
 ./start.sh webapp
 ```
 
-2. Tunnelling is now _required_. Please follow the tunnelling section from above.
+2. **Tunnelling.** This is now _required_. Please follow the [tunnelling](/open-source-self-hosting#tunnelling) section.
 
 ### Worker setup
 
-1. Copy your `.env` file from the webapp to the worker machine
+1. **Environment variables.** Copy your `.env` file from the webapp to the worker machine:
 
 ```bash
 # an example using scp
 scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
 ```
 
-2. Run the start script with the `worker` argument
+2. **Startup.** Run the start script with the `worker` argument
 
 ```bash
 ./start.sh worker
 ```
 
-2. Tunnelling is _not_ required for the worker components.
+3. **Tunnelling.** This is _not_ required for the worker components.
 
-## Checkpoint support
+4. **Registry setup.** Follow the [registry setup](/open-source-self-hosting#registry-setup) section but run the last command on the worker machine - note the container name is different:  
+
+```bash
+docker exec -ti \
+  trigger-worker-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
+```
+
+## Additional features
+
+### Large payloads
+
+By default, payloads over 512KB will be offloaded to S3-compatible storage. If you don't provide the required env vars, runs with payloads larger than this will fail.
+
+For example, using Cloudflare R2:
+
+```bash
+OBJECT_STORE_BASE_URL="https://<bucket>.<account>.r2.cloudflarestorage.com"
+OBJECT_STORE_ACCESS_KEY_ID="<r2 access key with read/write access to bucket>"
+OBJECT_STORE_SECRET_ACCESS_KEY="<r2 secret key>"
+```
+
+Alternatively, you can increase the threshold:
+
+```bash
+# size in bytes, example with 5MB threshold
+TASK_PAYLOAD_OFFLOAD_THRESHOLD=5242880
+```
+
+### Version locking
+
+There are several reasons to lock the version of your Docker images:
+- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
+- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
+
+By default, the images will point at the latest versioned release via the `v3` tag. You can override this by specifying a different tag in your `.env` file. For example:
+
+```bash
+TRIGGER_IMAGE_TAG=v3.0.4
+```
+
+### Auth options
+
+By default, magic link auth is the only login option. If the `RESEND_API_KEY` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+
+All email addresses can sign up and log in this way. If you would like to restrict this, you can use the `WHITELISTED_EMAILS` env var. For example:
+
+```bash
+# every email that does not match this regex will be rejected
+WHITELISTED_EMAILS="authorized@yahoo\.com|authorized@gmail\.com"
+```
+
+It's currently impossible to restrict GitHub OAuth logins by account name or email like above, so this method is _not recommended_ for self-hosted instances. It's also very easy to lock yourself out of your own instance.
+
+<Warning>Only enable GitHub auth if you understand the risks! We strongly advise you against this.</Warning>
+
+Your GitHub OAuth app needs a callback URL `https://<your_domain>/auth/github/callback` and you will have to set the following env vars:
+
+```bash
+AUTH_GITHUB_CLIENT_ID=<your_client_id>
+AUTH_GITHUB_CLIENT_SECRET=<your_client_secret>
+```
+
+### Checkpoint support
 
 <Warning>
   This requires an _experimental Docker feature_. Successfully checkpointing a task today, does not
@@ -219,14 +296,14 @@ scp -3 root@<webapp_machine>:docker/.env root@<worker_machine>:docker/.env
 Checkpointing allows you to save the state of a running container to disk and restore it later. This can be useful for
 long-running tasks that need to be paused and resumed without losing state. Think fan-out and fan-in, or long waits in email campaigns.
 
-The checkpoints will be pushed to the same registry as the deployed images. Please see the [Registry setup](#registry-setup) section for more information.
+The checkpoints will be pushed to the same registry as the deployed images. Please see the [registry setup](#registry-setup) section for more information.
 
-### Requirements
+#### Requirements
 
 - Debian, **NOT** a derivative like Ubuntu
 - Additional storage space for the checkpointed containers
 
-### Setup
+#### Setup
 
 Underneath the hood this uses Checkpoint and Restore in Userspace, or [CRIU](https://github.com/checkpoint-restore/criu) in short. We'll have to do a few things to get this working:
 
@@ -329,16 +406,28 @@ git stash pop
 ./stop.sh && ./start.sh
 ```
 
-## Version locking
+## Troubleshooting
 
-There are several reasons to lock the version of your Docker images:
-- **Backwards compatibility.** We try our best to maintain compatibility with older CLI versions, but it's not always possible. If you don't want to update your CLI, you can lock your Docker images to that specific version.
-- **Ensuring full feature support.** Sometimes, new CLI releases will also require new or updated platform features. Running unlocked images can make any issues difficult to debug. Using a specific tag can help here as well.
-
-By default, the images will point at the latest versioned release via the `v3` tag. You can override this by specifying a different tag in your `.env` file. For example:
+- **Deployment fails at the push step.** The machine running `deploy` needs registry access:
 
 ```bash
-TRIGGER_IMAGE_TAG=v3.0.4
+docker login -u <username> <registry>
+# this should now succeed
+npx trigger.dev@latest deploy --self-hosted --push
+```
+
+- **Prod runs fail to start.** The `docker-provider` needs registry access:
+
+```bash
+# single server? run this:
+docker exec -ti \
+  trigger-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
+
+# split webapp and worker? run this on the worker:
+docker exec -ti \
+  trigger-worker-docker-provider-1 \
+  docker login -u <your_dockerhub_username> docker.io
 ```
 
 ## CLI usage

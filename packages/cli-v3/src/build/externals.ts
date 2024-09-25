@@ -13,6 +13,7 @@ import {
 } from "@trigger.dev/core/v3/build";
 import { logger } from "../utilities/logger.js";
 import { CliApiClient } from "../apiClient.js";
+import { resolvePathSync as esmResolveSync } from "mlly";
 
 /**
  * externals in dev might not be resolvable from the worker directory
@@ -65,9 +66,7 @@ async function isExternalResolvable(
   logger: BuildLogger
 ) {
   try {
-    const resolvedPath = nodeResolve.sync(external.name, {
-      basedir: resolveDir,
-    });
+    const resolvedPath = resolveSync(external.name, resolveDir);
 
     logger.debug("[externals][isExternalResolvable] Resolved external", {
       resolveDir,
@@ -145,9 +144,7 @@ function createExternalsCollector(
             const packageName = packageNameForImportPath(args.path);
 
             try {
-              const resolvedPath = nodeResolve.sync(packageName, {
-                basedir: args.resolveDir,
-              });
+              const resolvedPath = resolveSync(packageName, args.resolveDir);
 
               logger.debug("[externals][onResolve] Resolved external", {
                 external,
@@ -382,5 +379,13 @@ export async function resolveAlwaysExternal(client: CliApiClient): Promise<strin
     });
 
     return alwaysExternal;
+  }
+}
+
+function resolveSync(id: string, resolveDir: string) {
+  try {
+    return nodeResolve.sync(id, { basedir: resolveDir });
+  } catch (error) {
+    return esmResolveSync(id, { url: resolveDir });
   }
 }
