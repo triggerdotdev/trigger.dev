@@ -43,6 +43,12 @@ export const runMetadataChildTask = task({
       metadata: metadata.current(),
     });
   },
+  onStart: async () => {
+    logger.info("metadata", { metadata: metadata.current() });
+  },
+  onSuccess: async () => {
+    logger.info("metadata", { metadata: metadata.current() });
+  },
 });
 
 export const runMetadataChildTask2 = task({
