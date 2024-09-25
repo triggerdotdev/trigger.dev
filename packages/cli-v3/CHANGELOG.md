@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.0.7
+
+### Patch Changes
+
+- Fix resolving external packages that are ESM only by falling back to mlly resolvePathSync. This will fix mupdf ([#1346](https://github.com/triggerdotdev/trigger.dev/pull/1346))
+- Add the "dev.vars" file to the list of auto-loaded dotenv files in the dev CLI command ([#1340](https://github.com/triggerdotdev/trigger.dev/pull/1340))
+- Updated dependencies:
+  - `@trigger.dev/build@3.0.7`
+  - `@trigger.dev/core@3.0.7`
+
 ## 3.0.6
 
 ### Patch Changes

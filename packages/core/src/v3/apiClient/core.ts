@@ -4,7 +4,7 @@ import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, Span } from "@opentelemetry/api";
+import { Attributes, Span, context, propagation } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -184,9 +184,11 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
   requestInit?: PromiseOrValue<RequestInit>,
   options?: ZodFetchOptions
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
-  const $requestInit = await requestInit;
+  let $requestInit = await requestInit;
 
   return traceZodFetch({ url, requestInit: $requestInit, options }, async (span) => {
+    $requestInit = injectPropagationHeadersIfInWorker($requestInit);
+
     const result = await _doZodFetchWithRetries(schema, url, $requestInit, options);
 
     if (options?.onResponseBody && span) {
@@ -576,4 +578,24 @@ export function isEmptyObj(obj: Object | null | undefined): boolean {
 // https://eslint.org/docs/latest/rules/no-prototype-builtins
 export function hasOwn(obj: Object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+// If the requestInit has a header x-trigger-worker = true, then we will do
+// propagation.inject(context.active(), headers);
+// and return the new requestInit.
+function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestInit | undefined {
+  const headers = new Headers(requestInit?.headers);
+
+  if (headers.get("x-trigger-worker") !== "true") {
+    return requestInit;
+  }
+
+  const headersObject = Object.fromEntries(headers.entries());
+
+  propagation.inject(context.active(), headersObject);
+
+  return {
+    ...requestInit,
+    headers: new Headers(headersObject),
+  };
 }
