@@ -13,9 +13,9 @@ There are 3 example tasks to follow on this page:
 
 1. [Basic example](/examples/puppeteer#basic-example)
 2. [Generate a PDF from a web page](/examples/puppeteer#generate-a-pdf-from-a-web-page)
-3. [Scrape content from a web page](/examples/puppeteer#scrape-data-from-a-website)
+3. [Scrape content from a web page](/examples/puppeteer#scrape-content-from-a-web-page)
 
-<ScrapingWarning />
+<ScrapingWarning/>
 
 ## Build configurations
 
@@ -34,9 +34,11 @@ export default defineConfig({
 });
 ```
 
+Learn more about [build configurations](/config/config-file#build-configuration) including setting default retry settings, customizing the build environment, and more.
+
 ## Set an environment variable
 
-Add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+Set the following environment variable in your [Trigger.dev dashboard](/deploy-environment-variables) or [using the SDK](/deploy-environment-variables#in-your-code):
 
 ```bash
 PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
@@ -46,7 +48,7 @@ PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
 
 ### Overview
 
-In this example we use Puppeteer to log out the title of a web page, in this case Google.
+In this example we use [Puppeteer](https://pptr.dev/) to log out the title of a web page, in this case from the [Trigger.dev](https://trigger.dev) landing page.
 
 ### Task code
 
@@ -60,7 +62,7 @@ export const puppeteerTask = task({
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
 
-    await page.goto("https://google.com");
+    await page.goto("https://trigger.dev");
 
     const content = await page.title();
     logger.info("Content", { content });
@@ -72,13 +74,13 @@ export const puppeteerTask = task({
 
 ### Testing your task
 
-There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
 
 ## Generate a PDF from a web page
 
 ### Overview
 
-In this example we use Puppeteer to generate a PDF from a web page and upload it to Cloudflare R2.
+In this example we use [Puppeteer](https://pptr.dev/) to generate a PDF from the [Trigger.dev](https://trigger.dev) landing page and upload it to [Cloudflare R2](https://developers.cloudflare.com/r2/).
 
 ### Task code
 
@@ -102,7 +104,7 @@ export const puppeteerWebpageToPDF = task({
   run: async () => {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-    const response = await page.goto("https://google.com");
+    const response = await page.goto("https://trigger.dev");
     const url = response?.url() ?? "No URL found";
 
     // Generate PDF from the web page
@@ -135,15 +137,17 @@ export const puppeteerWebpageToPDF = task({
 
 ### Testing your task
 
-There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
 
 ## Scrape content from a web page
 
 ### Overview
 
-In this example we use Puppeteer with a BrowserBase proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out.
+In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https://www.browserbase.com/) proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out. See [this list](/examples/puppeteer#proxying) for more proxying services we recommend.
 
-<ScrapingWarning />
+<Warning>
+  **WEB SCRAPING:** When web scraping, you MUST use a proxy to comply with our terms of service. Direct scraping of third-party websites without the site owner's permission using Trigger.dev Cloud is prohibited and will result in account suspension.
+</Warning>
 
 ### Task code
 
@@ -195,7 +199,7 @@ export const puppeteerScrapeWithProxy = task({
 
 ### Testing your task
 
-There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard.
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
 
 <LocalDevelopment packages={"the Puppeteer library."} />
 
