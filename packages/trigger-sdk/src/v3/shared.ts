@@ -775,11 +775,7 @@ async function trigger_internal<TPayload, TOutput>(
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<RunHandle<TOutput>> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const payloadPacket = await stringifyIO(payload);
 
@@ -844,11 +840,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchRunHandle<TOutput>> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const response = await apiClient.batchTriggerTask(
     id,
@@ -920,11 +912,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
     throw new Error("triggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const payloadPacket = await stringifyIO(payload);
 
@@ -1015,11 +1003,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
     throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return await tracer.startActiveSpan(
     name,
@@ -1202,20 +1186,6 @@ async function handleTaskRunExecutionResult<TOutput>(
       error: createErrorTaskError(execution.error),
     };
   }
-}
-
-export function apiClientMissingError() {
-  const hasBaseUrl = !!apiClientManager.baseURL;
-  const hasAccessToken = !!apiClientManager.accessToken;
-  if (!hasBaseUrl && !hasAccessToken) {
-    return `You need to set the TRIGGER_API_URL and TRIGGER_SECRET_KEY environment variables.`;
-  } else if (!hasBaseUrl) {
-    return `You need to set the TRIGGER_API_URL environment variable.`;
-  } else if (!hasAccessToken) {
-    return `You need to set the TRIGGER_SECRET_KEY environment variable.`;
-  }
-
-  return `Unknown error`;
 }
 
 async function makeKey(
