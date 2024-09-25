@@ -243,7 +243,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                 height="100%"
                 min-height="100%"
                 max-height="100%"
-                autoFocus
+                autoFocus={!tab || tab === "payload"}
                 placeholder="{ }"
                 className={cn("h-full", tab === "metadata" && "hidden")}
               />
@@ -265,7 +265,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                 height="100%"
                 min-height="100%"
                 max-height="100%"
-                autoFocus
+                autoFocus={tab === "metadata"}
                 placeholder=""
                 className={cn("h-full", tab !== "metadata" && "hidden")}
               />
