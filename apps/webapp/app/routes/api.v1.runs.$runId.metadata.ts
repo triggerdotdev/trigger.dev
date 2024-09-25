@@ -1,21 +1,20 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { AddTagsRequestBody, parsePacket, UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
+import { parsePacket, UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { createTag, getTagsForRunId, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { FINAL_RUN_STATUSES } from "~/v3/taskStatus";
+import { isFinalRunStatus } from "~/v3/taskStatus";
 
 const ParamsSchema = z.object({
   runId: z.string(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure this is a POST request
+  // Ensure this is a PUT request
   if (request.method.toUpperCase() !== "PUT") {
-    return { status: 405, body: "Method Not Allowed" };
+    return json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "PUT" } });
   }
 
   // Authenticate the request
@@ -64,7 +63,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Task Run not found" }, { status: 404 });
     }
 
-    if (FINAL_RUN_STATUSES.includes(taskRun.status)) {
+    if (isFinalRunStatus(taskRun.status)) {
       return json({ error: "Cannot update metadata for a completed run" }, { status: 400 });
     }
 

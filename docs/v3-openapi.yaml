@@ -360,6 +360,86 @@ paths:
 
             const handle = await runs.replay("run_1234");
 
+  "/api/v1/runs/{runId}/metadata":
+    parameters:
+      - $ref: "#/components/parameters/runId"
+    put:
+      operationId: update_run_metadata_v1
+      summary: Update run metadata
+      description: Update the metadata of a run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  description: The new metadata to set on the run.
+                  example: { key: "value" }
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    type: object
+                    description: The updated metadata of the run.
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or missing run ID
+                      - Invalid metadata
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API key
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Task Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Update metadata
+          source: |-
+            import { metadata, task } from "@trigger.dev/sdk/v3";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                await metadata.update({ key: "value" });
+              }
+            });
+
   "/api/v2/runs/{runId}/cancel":
     parameters:
       - $ref: "#/components/parameters/runId"
