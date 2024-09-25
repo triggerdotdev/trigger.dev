@@ -89,8 +89,8 @@
       "destination": "/config/config-file"
     },
     {
-      "source": "/examples/:slug*",
-      "destination": "/guides/:slug*"
+      "source": "/docs/examples/:slug*",
+      "destination": "docs/guides/examples/:slug*"
     }
   ],
   "anchors": [
