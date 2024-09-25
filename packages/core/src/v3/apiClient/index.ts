@@ -22,6 +22,8 @@ import {
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
+  UpdateMetadataRequestBody,
+  UpdateMetadataResponseBody,
   UpdateScheduleOptions,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
@@ -493,6 +495,23 @@ export class ApiClient {
       {
         method: "DELETE",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateRunMetadata(
+    runId: string,
+    body: UpdateMetadataRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      UpdateMetadataResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/metadata`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

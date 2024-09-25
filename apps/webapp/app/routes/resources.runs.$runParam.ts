@@ -1,5 +1,10 @@
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { MachinePresetName, prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  MachinePresetName,
+  parsePacket,
+  prettyPrintPacket,
+  TaskRunError,
+} from "@trigger.dev/core/v3";
 import { typedjson, UseDataFunctionReturn } from "remix-typedjson";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { $replica } from "~/db.server";
@@ -72,6 +77,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       },
       payload: true,
       payloadType: true,
+      metadata: true,
+      metadataType: true,
       maxAttempts: true,
       project: {
         include: {
@@ -151,6 +158,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
+  const metadata = await parsePacket({
+    data: run.metadata ?? undefined,
+    dataType: run.metadataType,
+  });
+
   const context = {
     task: {
       id: run.taskIdentifier,
@@ -169,6 +181,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       baseCostInCents: run.baseCostInCents,
       maxAttempts: run.maxAttempts ?? undefined,
       version: run.lockedToVersion?.version,
+      metadata,
     },
     queue: {
       name: run.queue,

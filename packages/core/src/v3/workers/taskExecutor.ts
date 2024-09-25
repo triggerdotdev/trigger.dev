@@ -3,7 +3,7 @@ import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { parseError, sanitizeError } from "../errors.js";
-import { TriggerConfig } from "../index.js";
+import { runMetadata, TriggerConfig } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
   ServerBackgroundWorker,
@@ -26,7 +26,6 @@ import {
   stringifyIO,
 } from "../utils/ioSerialization.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { accessoryAttributes } from "../utils/styleAttributes.js";
 
 export type TaskExecutorOptions = {
   tracingSDK: TracingSDK;
@@ -72,6 +71,10 @@ export class TaskExecutor {
       ctx,
       worker,
     });
+
+    if (ctx.run.metadata) {
+      runMetadata.enterWithMetadata(ctx.run.metadata);
+    }
 
     this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
       ...taskContext.attributes,

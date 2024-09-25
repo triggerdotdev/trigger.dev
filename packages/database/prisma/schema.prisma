@@ -1751,6 +1751,14 @@ model TaskRun {
   /// The span ID of the "trigger" span in the parent task run
   parentSpanId String?
 
+  /// Run metadata
+  metadata     String?
+  metadataType String  @default("application/json")
+
+  /// Run output
+  output     String?
+  outputType String  @default("application/json")
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])

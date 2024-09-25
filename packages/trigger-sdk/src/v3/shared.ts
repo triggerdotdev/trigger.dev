@@ -39,6 +39,7 @@ import {
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
+import { SerializableJson } from "@trigger.dev/core";
 
 export type Context = TaskRunContext;
 
@@ -496,6 +497,11 @@ export type TaskRunOptions = {
    * ```
    */
   tags?: RunTags;
+
+  /**
+   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 8KB.
+   */
+  metadata?: Record<string, SerializableJson>;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -792,6 +798,7 @@ async function trigger_internal<TPayload, TOutput>(
         tags: options?.tags,
         maxAttempts: options?.maxAttempts,
         parentAttempt: taskContext.ctx?.attempt.id,
+        metadata: options?.metadata,
       },
     },
     {
@@ -863,6 +870,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
               parentAttempt: taskContext.ctx?.attempt.id,
+              metadata: item.options?.metadata,
             },
           };
         })
@@ -939,6 +947,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             ttl: options?.ttl,
             tags: options?.tags,
             maxAttempts: options?.maxAttempts,
+            metadata: options?.metadata,
           },
         },
         {},
@@ -1035,6 +1044,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   ttl: item.options?.ttl,
                   tags: item.options?.tags,
                   maxAttempts: item.options?.maxAttempts,
+                  metadata: item.options?.metadata,
                 },
               };
             })
