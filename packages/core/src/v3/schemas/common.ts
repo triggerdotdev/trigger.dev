@@ -223,7 +223,7 @@ export const TaskRunContext = z.object({
     backgroundWorkerId: true,
     backgroundWorkerTaskId: true,
   }),
-  run: TaskRun.omit({ payload: true, payloadType: true }),
+  run: TaskRun.omit({ payload: true, payloadType: true, metadata: true }),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,

@@ -1,0 +1,48 @@
+---
+title: "Run metadata"
+description: "Attach a small amount of data to a run and update it as the run progresses."
+---
+
+You can attach up to 8KB of metadata to a run, which you can then access from inside the run function, via the API, and in the dashboard. You can use metadata to store additional, structured information on an run. For example, you could store your user’s full name and corresponding unique identifier from your system on every task that is associated with that user:
+
+```ts
+const handle = await myTask.trigger(
+  { message: "hello world" },
+  { metadata: { user: { name: "Eric", id: "user_1234" } } }
+);
+```
+
+Then inside your run function, you can access the metadata like this:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }, { ctx }) => {
+    const user = metadata.get("user");
+    console.log(user.name); // "Eric"
+    console.log(user.id); // "user_1234"
+  },
+});
+```
+
+You can also update the metadata during the run:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }, { ctx }) => {
+    // Do some work
+    await metadata.set("progress", 0.1);
+
+    // Do some more work
+    await metadata.set("progress", 0.5);
+
+    // Do even more work
+    await metadata.set("progress", 1.0);
+  },
+});
+```

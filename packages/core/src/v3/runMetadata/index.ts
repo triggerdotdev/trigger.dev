@@ -25,6 +25,10 @@ export class RunMetadataAPI {
     return this.store;
   }
 
+  public getKey(key: string): DeserializedJson | undefined {
+    return this.store?.[key];
+  }
+
   public async setKey(
     key: string,
     value: DeserializedJson,

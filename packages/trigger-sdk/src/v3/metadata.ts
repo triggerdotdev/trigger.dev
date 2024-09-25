@@ -2,6 +2,7 @@ import { DeserializedJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
   ApiRequestOptions,
+  flattenAttributes,
   mergeRequestOptions,
   runMetadata,
 } from "@trigger.dev/core/v3";
@@ -9,6 +10,7 @@ import { tracer } from "./tracer.js";
 
 export const metadata = {
   current: currentMetadata,
+  get: getMetadataKey,
   set: setMetadataKey,
   del: deleteMetadataKey,
   update: updateMetadata,
@@ -21,6 +23,13 @@ export type RunMetadata = Record<string, DeserializedJson>;
  */
 function currentMetadata(): RunMetadata | undefined {
   return runMetadata.current();
+}
+
+/**
+ * Get a key from the metadata of the current run if inside a task run.
+ */
+function getMetadataKey(key: string): DeserializedJson | undefined {
+  return runMetadata.getKey(key);
 }
 
 /**
@@ -48,7 +57,7 @@ async function setMetadataKey(
           ],
           style: "codepath",
         }),
-        key,
+        ...flattenAttributes(value, key),
       },
     },
     requestOptions
@@ -94,6 +103,9 @@ async function updateMetadata(
       tracer,
       name: "metadata.update()",
       icon: "code-plus",
+      attributes: {
+        ...flattenAttributes(metadata),
+      },
     },
     requestOptions
   );

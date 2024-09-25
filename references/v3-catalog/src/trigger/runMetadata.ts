@@ -19,8 +19,6 @@ export const runMetadataTask = task({
 export const runMetadataChildTask = task({
   id: "run-metadata-child-task",
   run: async (payload: any, { ctx }) => {
-    logger.info("metadata", { metadata: ctx.run.metadata });
-
     await metadata.set("child", "task");
 
     logger.info("metadata", { metadata: metadata.current() });
@@ -41,9 +39,13 @@ export const runMetadataChildTask = task({
       },
     });
 
-    // Now try and update the metadata with something larger than 8KB
-    await metadata.update({
-      large: new Array(10000).fill("a").join(""),
+    await runMetadataChildTask2.triggerAndWait(payload, {
+      metadata: metadata.current(),
     });
   },
+});
+
+export const runMetadataChildTask2 = task({
+  id: "run-metadata-child-task-2",
+  run: async (payload: any, { ctx }) => {},
 });

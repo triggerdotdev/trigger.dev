@@ -192,10 +192,9 @@ export class SpanPresenter extends BasePresenter {
 
     const span = await eventRepository.getSpan(spanId, run.traceId);
 
-    const metadata = await parsePacket({
-      data: run.metadata ?? undefined,
-      dataType: run.metadataType,
-    });
+    const metadata = run.metadata
+      ? await prettyPrintPacket(run.metadata, run.metadataType)
+      : undefined;
 
     const context = {
       task: {
@@ -215,7 +214,6 @@ export class SpanPresenter extends BasePresenter {
         baseCostInCents: run.baseCostInCents,
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.lockedToVersion?.version,
-        metadata,
       },
       queue: {
         name: run.queue,
@@ -285,6 +283,7 @@ export class SpanPresenter extends BasePresenter {
       error,
       links: span?.links,
       context: JSON.stringify(context, null, 2),
+      metadata,
     };
   }
 

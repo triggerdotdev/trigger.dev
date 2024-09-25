@@ -72,8 +72,8 @@ export class TaskExecutor {
       worker,
     });
 
-    if (ctx.run.metadata) {
-      runMetadata.enterWithMetadata(ctx.run.metadata);
+    if (execution.run.metadata) {
+      runMetadata.enterWithMetadata(execution.run.metadata);
     }
 
     this._tracingSDK.asyncResourceDetector.resolveWithAttributes({
