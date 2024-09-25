@@ -25,9 +25,11 @@ This is a basic task which inserts a new row into a table from a Trigger.dev tas
 ```ts trigger/supabase-database-insert.ts
 import { createClient } from "@supabase/supabase-js";
 import { task } from "@trigger.dev/sdk/v3";
+// Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
 
 // Create a single Supabase client for interacting with your database
+// 'Database' supplies the type definitions to supabase-js
 const supabase = createClient<Database>(
   // These details can be found in your Supabase project settings under `API`
   process.env.SUPABASE_PROJECT_URL as string, // e.g. https://abc123.supabase.co - replace 'abc123' with your project ID
@@ -93,6 +95,7 @@ This type of task is useful for managing user subscriptions, updating user detai
 - A [Supabase account](https://supabase.com/dashboard/) and a project set up
 - In your Supabase project, create a table called `user_subscriptions` (if you haven't already)
 - In your `user_subscriptions` table, create these columns (if they don't already exist):
+
   - `user_id`, with the data type: `text`
   - `plan`, with the data type: `text`
   - `updated_at`, with the data type: `timestamptz`
@@ -102,12 +105,14 @@ This type of task is useful for managing user subscriptions, updating user detai
 ```ts trigger/supabase-update-user-subscription.ts
 import { createClient } from "@supabase/supabase-js";
 import { AbortTaskRunError, task } from "@trigger.dev/sdk/v3";
+// Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
 
 // Define the allowed plan types
 type PlanType = "hobby" | "pro" | "enterprise";
 
 // Create a single Supabase client for interacting with your database
+// 'Database' supplies the type definitions to supabase-js
 const supabase = createClient<Database>(
   // These details can be found in your Supabase project settings under `API`
   process.env.SUPABASE_PROJECT_URL as string, // e.g. https://abc123.supabase.co - replace 'abc123' with your project ID
