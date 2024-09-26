@@ -1,21 +1,14 @@
-import {
-  Span,
-  SpanKind,
-  SpanOptions,
-  Tracer,
-  context,
-  propagation,
-  trace,
-} from "@opentelemetry/api";
+import { context, propagation, Span, SpanKind, SpanOptions, Tracer } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
+import { Logger } from "@trigger.dev/core/logger";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
-import { Logger } from "@trigger.dev/core/logger";
 import { AsyncWorker } from "../shared/asyncWorker.js";
+import { attributesFromAuthenticatedEnv, AuthenticatedEnvironment } from "../shared/index.js";
 import {
   MessagePayload,
   QueueCapacities,
@@ -23,13 +16,6 @@ import {
   RunQueueKeyProducer,
   RunQueuePriorityStrategy,
 } from "./types.js";
-import { attributesFromAuthenticatedEnv, AuthenticatedEnvironment } from "../shared/index.js";
-
-const KEY_PREFIX = "runqueue:";
-
-const constants = {
-  MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
-} as const;
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -44,7 +30,6 @@ export type RunQueueOptions = {
   tracer: Tracer;
   redis: RedisOptions;
   defaultEnvConcurrency: number;
-  defaultOrgConcurrency: number;
   windowSize?: number;
   workers: number;
   keysProducer: RunQueueKeyProducer;
@@ -96,17 +81,17 @@ export class RunQueue {
     return this.redis.del(this.keys.queueConcurrencyLimitKey(env, queue));
   }
 
+  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
+    const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
+
+    return result ? Number(result) : undefined;
+  }
+
   public async updateEnvConcurrencyLimits(env: AuthenticatedEnvironment) {
     await this.#callUpdateGlobalConcurrencyLimits({
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKey(env),
       envConcurrencyLimit: env.maximumConcurrencyLimit,
     });
-  }
-
-  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
-    const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
-
-    return result ? Number(result) : undefined;
   }
 
   public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
@@ -544,6 +529,11 @@ export class RunQueue {
         },
       }
     );
+  }
+
+  async quit() {
+    await Promise.all(this.#rebalanceWorkers.map((worker) => worker.stop()));
+    await this.redis.quit();
   }
 
   async #getRandomQueueFromParentQueue(
@@ -1384,18 +1374,15 @@ return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurr
     });
 
     this.redis.defineCommand("updateGlobalConcurrencyLimits", {
-      numberOfKeys: 2,
+      numberOfKeys: 1,
       lua: `
 -- Keys: envConcurrencyLimitKey, orgConcurrencyLimitKey
 local envConcurrencyLimitKey = KEYS[1]
-local orgConcurrencyLimitKey = KEYS[2]
 
 -- Args: envConcurrencyLimit, orgConcurrencyLimit
 local envConcurrencyLimit = ARGV[1]
-local orgConcurrencyLimit = ARGV[2]
 
 redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
-redis.call('SET', orgConcurrencyLimitKey, orgConcurrencyLimit)
       `,
     });
 
