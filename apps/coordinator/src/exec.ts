@@ -166,6 +166,8 @@ export class Buildah {
       } catch (error) {
         this.logger.error("failed to clean up containers", { error, containers: this.containers });
       }
+    } else {
+      this.logger.debug("no containers to clean up");
     }
 
     if (this.images.size > 0) {
@@ -179,6 +181,8 @@ export class Buildah {
       } catch (error) {
         this.logger.error("failed to clean up images", { error, images: this.images });
       }
+    } else {
+      this.logger.debug("no images to clean up");
     }
   }
 
@@ -256,6 +260,8 @@ export class Crictl {
       } catch (error) {
         this.logger.error("failed to clean up archives", { error, archives: this.archives });
       }
+    } else {
+      this.logger.debug("no archives to clean up");
     }
   }
 }
