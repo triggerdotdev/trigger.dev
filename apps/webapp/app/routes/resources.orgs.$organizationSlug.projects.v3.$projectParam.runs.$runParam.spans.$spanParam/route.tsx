@@ -319,38 +319,44 @@ function SpanBody({
                   <Property.Item>
                     <div className="flex flex-col gap-1.5">
                       <Header3>Triggered runs</Header3>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHeaderCell>Run #</TableHeaderCell>
-                            <TableHeaderCell>Task</TableHeaderCell>
-                            <TableHeaderCell>Version</TableHeaderCell>
-                            <TableHeaderCell>Created at</TableHeaderCell>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {span.triggeredRuns.map((run) => {
-                            const path = v3RunSpanPath(
-                              organization,
-                              project,
-                              { friendlyId: run.friendlyId },
-                              { spanId: run.spanId }
-                            );
-                            return (
-                              <TableRow key={run.friendlyId}>
-                                <TableCell to={path}>{run.number}</TableCell>
-                                <TableCell to={path}>{run.taskIdentifier}</TableCell>
-                                <TableCell to={path}>
-                                  {run.lockedToVersion?.version ?? "–"}
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <DateTime date={run.createdAt} />
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
+                      <div className="max-h-[12.5rem] overflow-y-auto rounded border-b border-grid-bright">
+                        <Table className="w-full">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHeaderCell>Run #</TableHeaderCell>
+                              <TableHeaderCell>Task</TableHeaderCell>
+                              <TableHeaderCell>Version</TableHeaderCell>
+                              <TableHeaderCell>Created at</TableHeaderCell>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {span.triggeredRuns.map((run) => {
+                              const path = v3RunSpanPath(
+                                organization,
+                                project,
+                                { friendlyId: run.friendlyId },
+                                { spanId: run.spanId }
+                              );
+                              return (
+                                <TableRow key={run.friendlyId}>
+                                  <TableCell to={path} actionClassName="py-1.5">
+                                    {run.number}
+                                  </TableCell>
+                                  <TableCell to={path} actionClassName="py-1.5">
+                                    {run.taskIdentifier}
+                                  </TableCell>
+                                  <TableCell to={path} actionClassName="py-1.5">
+                                    {run.lockedToVersion?.version ?? "–"}
+                                  </TableCell>
+                                  <TableCell to={path} actionClassName="py-1.5">
+                                    <DateTime date={run.createdAt} />
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   </Property.Item>
                 )}
