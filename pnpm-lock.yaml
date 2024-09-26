@@ -77,9 +77,6 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
-      execa:
-        specifier: ^8.0.1
-        version: 8.0.1
       nanoid:
         specifier: ^5.0.6
         version: 5.0.6
