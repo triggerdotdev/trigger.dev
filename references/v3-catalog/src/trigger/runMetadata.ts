@@ -31,7 +31,7 @@ export const runMetadataChildTask = task({
 
     logger.info("metadata", { metadata: metadata.current() });
 
-    await metadata.update({
+    await metadata.save({
       there: {
         is: {
           something: "here",

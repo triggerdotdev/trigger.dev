@@ -15,7 +15,7 @@ import { tracer } from "./tracer.js";
  * @property {Function} get - Get a specific key from the current run's metadata.
  * @property {Function} set - Set a key in the current run's metadata.
  * @property {Function} del - Delete a key from the current run's metadata.
- * @property {Function} update - Update the entire metadata object for the current run.
+ * @property {Function} save - Update the entire metadata object for the current run.
  */
 
 export const metadata = {
@@ -23,7 +23,7 @@ export const metadata = {
   get: getMetadataKey,
   set: setMetadataKey,
   del: deleteMetadataKey,
-  update: updateMetadata,
+  save: saveMetadata,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;
@@ -142,16 +142,16 @@ async function deleteMetadataKey(key: string, requestOptions?: ApiRequestOptions
  * @returns {Promise<void>} A promise that resolves when the metadata is updated.
  *
  * @example
- * await metadata.update({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
+ * await metadata.save({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
  */
-async function updateMetadata(
+async function saveMetadata(
   metadata: RunMetadata,
   requestOptions?: ApiRequestOptions
 ): Promise<void> {
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "metadata.update()",
+      name: "metadata.save()",
       icon: "code-plus",
       attributes: {
         ...flattenAttributes(metadata),
