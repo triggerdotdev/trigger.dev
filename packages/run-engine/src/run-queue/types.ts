@@ -13,7 +13,6 @@ export const MessagePayload = z.object({
   environmentType: z.nativeEnum(RuntimeEnvironmentType),
   queue: z.string(),
   timestamp: z.number(),
-  parentQueue: z.string(),
   concurrencyKey: z.string().optional(),
 });
 

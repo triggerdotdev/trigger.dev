@@ -28,7 +28,7 @@ const testOptions = {
   logger: new Logger("RunQueue", "debug"),
 };
 
-const authenticatedEnv = {
+const authenticatedEnvProd = {
   id: "e1234",
   type: "PRODUCTION" as const,
   maximumConcurrencyLimit: 10,
@@ -36,7 +36,15 @@ const authenticatedEnv = {
   organization: { id: "o1234" },
 };
 
-const message: MessagePayload = {
+const authenticatedEnvDev = {
+  id: "e1234",
+  type: "DEVELOPMENT" as const,
+  maximumConcurrencyLimit: 10,
+  project: { id: "p1234" },
+  organization: { id: "o1234" },
+};
+
+const messageProd: MessagePayload = {
   version: "1" as const,
   runId: "r1234",
   taskIdentifier: "task/my-task",
@@ -46,7 +54,18 @@ const message: MessagePayload = {
   environmentType: "PRODUCTION",
   queue: "task/my-task",
   timestamp: Date.now(),
-  parentQueue: "parentQueue",
+};
+
+const messageDev: MessagePayload = {
+  version: "1" as const,
+  runId: "r4321",
+  taskIdentifier: "task/my-task",
+  orgId: "o1234",
+  projectId: "p1234",
+  environmentId: "e4321",
+  environmentType: "DEVELOPMENT",
+  queue: "task/my-task",
+  timestamp: Date.now(),
 };
 
 describe("RunQueue", () => {
@@ -61,27 +80,30 @@ describe("RunQueue", () => {
 
       try {
         //initial value
-        const initial = await queue.getQueueConcurrencyLimit(authenticatedEnv, "task/my-task");
+        const initial = await queue.getQueueConcurrencyLimit(authenticatedEnvProd, "task/my-task");
         expect(initial).toBe(undefined);
 
         //set 20
         const result = await queue.updateQueueConcurrencyLimits(
-          authenticatedEnv,
+          authenticatedEnvProd,
           "task/my-task",
           20
         );
         expect(result).toBe("OK");
 
         //get 20
-        const updated = await queue.getQueueConcurrencyLimit(authenticatedEnv, "task/my-task");
+        const updated = await queue.getQueueConcurrencyLimit(authenticatedEnvProd, "task/my-task");
         expect(updated).toBe(20);
 
         //remove
-        const result2 = await queue.removeQueueConcurrencyLimits(authenticatedEnv, "task/my-task");
+        const result2 = await queue.removeQueueConcurrencyLimits(
+          authenticatedEnvProd,
+          "task/my-task"
+        );
         expect(result2).toBe(1);
 
         //get undefined
-        const removed = await queue.getQueueConcurrencyLimit(authenticatedEnv, "task/my-task");
+        const removed = await queue.getQueueConcurrencyLimit(authenticatedEnvProd, "task/my-task");
         expect(removed).toBe(undefined);
       } finally {
         await queue.quit();
@@ -100,17 +122,17 @@ describe("RunQueue", () => {
 
       try {
         //initial value
-        const initial = await queue.getEnvConcurrencyLimit(authenticatedEnv);
+        const initial = await queue.getEnvConcurrencyLimit(authenticatedEnvProd);
         expect(initial).toBe(10);
 
         //set 20
         await queue.updateEnvConcurrencyLimits({
-          ...authenticatedEnv,
+          ...authenticatedEnvProd,
           maximumConcurrencyLimit: 20,
         });
 
         //get 20
-        const updated = await queue.getEnvConcurrencyLimit(authenticatedEnv);
+        const updated = await queue.getEnvConcurrencyLimit(authenticatedEnvProd);
         expect(updated).toBe(20);
       } finally {
         await queue.quit();
@@ -119,7 +141,7 @@ describe("RunQueue", () => {
   );
 
   redisTest(
-    "Enqueue a message (no concurrency key)",
+    "Enqueue/Dequeue a message in env (no concurrency key)",
     { timeout: 5_000 },
     async ({ redisContainer, redis }) => {
       const queue = new RunQueue({
@@ -128,40 +150,28 @@ describe("RunQueue", () => {
       });
 
       try {
-        const result = await queue.lengthOfQueue(authenticatedEnv, message.queue);
+        const result = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result).toBe(0);
 
-        const oldestScore = await queue.oldestMessageInQueue(authenticatedEnv, message.queue);
+        const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(oldestScore).toBe(undefined);
 
-        await queue.enqueueMessage({ env: authenticatedEnv, message });
+        await queue.enqueueMessage({ env: authenticatedEnvDev, message: messageDev });
 
-        const result2 = await queue.lengthOfQueue(authenticatedEnv, message.queue);
+        const result2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result2).toBe(1);
 
-        const oldestScore2 = await queue.oldestMessageInQueue(authenticatedEnv, message.queue);
-        expect(oldestScore2).toBe(message.timestamp);
+        const oldestScore2 = await queue.oldestMessageInQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(oldestScore2).toBe(messageDev.timestamp);
+
+        const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        expect(dequeued?.messageId).toEqual(messageDev.runId);
       } finally {
         await queue.quit();
       }
     }
   );
-
-  //todo after enqueuing
-  // redisTest("Get length of a queue (zero)", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
-  //   const queue = new RunQueue({
-  //     ...testOptions,
-  //     redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
-  //   });
-
-  //   try {
-  //     const result = await queue.lengthOfQueue(authenticatedEnv, "task/my-task");
-  //     expect(result).toBe(0);
-
-  //     const result2 = await queue.lengthOfQueue(authenticatedEnv, "task/my-task", "user_12345");
-  //     expect(result2).toBe(0);
-  //   } finally {
-  //     await queue.quit();
-  //   }
-  // });
 });

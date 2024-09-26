@@ -170,7 +170,7 @@ export class RunQueue {
           queue,
         };
 
-        await this.#callEnqueueMessage(messagePayload);
+        await this.#callEnqueueMessage(messagePayload, parentQueue);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -199,6 +199,10 @@ export class RunQueue {
         );
 
         if (!messageQueue) {
+          this.logger.log("No message queue found", {
+            parentQueue,
+          });
+
           return;
         }
 
@@ -220,7 +224,7 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.message.queue,
           [SemanticAttributes.RUN_ID]: message.message.runId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.message.parentQueue,
+          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
         });
 
         return message;
@@ -307,7 +311,7 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.message.queue,
           [SemanticAttributes.RUN_ID]: message.message.runId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.message.parentQueue,
+          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
         });
 
         return message;
@@ -850,7 +854,7 @@ export class RunQueue {
     });
   }
 
-  async #callEnqueueMessage(message: MessagePayload) {
+  async #callEnqueueMessage(message: MessagePayload, parentQueue: string) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
     const taskConcurrencyTrackerKey = this.keys.currentTaskIdentifierKey({
@@ -870,7 +874,7 @@ export class RunQueue {
 
     return this.redis.enqueueMessage(
       message.queue,
-      message.parentQueue,
+      parentQueue,
       this.keys.messageKey(message.orgId, message.runId),
       concurrencyKey,
       envConcurrencyKey,
@@ -1030,18 +1034,14 @@ export class RunQueue {
   async #callCalculateMessageCapacities({
     currentConcurrencyKey,
     currentEnvConcurrencyKey,
-
     concurrencyLimitKey,
     envConcurrencyLimitKey,
-
     disabledConcurrencyLimitKey,
   }: {
     currentConcurrencyKey: string;
     currentEnvConcurrencyKey: string;
-
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
-
     disabledConcurrencyLimitKey: string | undefined;
   }): Promise<QueueCapacities> {
     const capacities = disabledConcurrencyLimitKey
@@ -1063,12 +1063,11 @@ export class RunQueue {
 
     const queueCurrent = Number(capacities[0]);
     const envLimit = Number(capacities[3]);
-    const isOrgEnabled = Boolean(capacities[5]);
+    const isOrgEnabled = Boolean(capacities[4]);
     const queueLimit = capacities[1]
       ? Number(capacities[1])
       : Math.min(envLimit, isOrgEnabled ? Infinity : 0);
     const envCurrent = Number(capacities[2]);
-    const orgCurrent = Number(capacities[4]);
 
     return {
       queue: { current: queueCurrent, limit: queueLimit },
@@ -1205,7 +1204,9 @@ local messageScore = tonumber(messages[2])
 redis.call('ZREM', childQueue, messageId)
 redis.call('SADD', currentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
-redis.call('SADD', taskConcurrencyKey, messageId)
+
+-- todo add this in here
+-- redis.call('SADD', taskConcurrencyKey, messageId)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
@@ -1327,9 +1328,9 @@ redis.call('SREM', orgCurrentConcurrencyKey, messageId)
 -- Keys
 local currentConcurrencyKey = KEYS[1]
 local currentEnvConcurrencyKey = KEYS[2]
-local concurrencyLimitKey = KEYS[4]
-local envConcurrencyLimitKey = KEYS[5]
-local disabledConcurrencyLimitKey = KEYS[7]
+local concurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitKey = KEYS[4]
+local disabledConcurrencyLimitKey = KEYS[5]
 
 -- Args
 local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
@@ -1349,18 +1350,18 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgIsEnabled } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, orgIsEnabled } 
       `,
     });
 
     this.redis.defineCommand("calculateMessageQueueCapacities", {
-      numberOfKeys: 6,
+      numberOfKeys: 4,
       lua: `
 -- Keys:
 local currentConcurrencyKey = KEYS[1]
 local currentEnvConcurrencyKey = KEYS[2]
-local concurrencyLimitKey = KEYS[4]
-local envConcurrencyLimitKey = KEYS[5]
+local concurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitKey = KEYS[4]
 
 -- Args 
 local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
@@ -1372,7 +1373,7 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, true } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, true } 
       `,
     });
 
@@ -1499,7 +1500,7 @@ declare module "ioredis" {
       envConcurrencyLimitKey: string,
       defaultEnvConcurrencyLimit: string,
       callback?: Callback<number[]>
-    ): Result<[number, number, number, number, number, boolean], Context>;
+    ): Result<[number, number, number, number, boolean], Context>;
 
     calculateMessageQueueCapacitiesWithDisabling(
       currentConcurrencyKey: string,
@@ -1509,7 +1510,7 @@ declare module "ioredis" {
       disabledConcurrencyLimitKey: string,
       defaultEnvConcurrencyLimit: string,
       callback?: Callback<number[]>
-    ): Result<[number, number, number, number, number, boolean], Context>;
+    ): Result<[number, number, number, number, boolean], Context>;
 
     updateGlobalConcurrencyLimits(
       envConcurrencyLimitKey: string,
