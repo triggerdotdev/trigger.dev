@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 3.0.8
+
+### Patch Changes
+
+- Puppeteer extension: set the PUPPETEER_EXECUTABLE_PATH env var ([#1350](https://github.com/triggerdotdev/trigger.dev/pull/1350))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.8`
+
 ## 3.0.7
 
 ### Patch Changes
