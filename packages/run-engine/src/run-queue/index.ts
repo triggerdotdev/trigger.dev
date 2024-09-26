@@ -142,8 +142,11 @@ export class RunQueue {
 
   public async enqueueMessage({
     env,
-    ...message
-  }: { env: AuthenticatedEnvironment } & MessagePayload) {
+    message,
+  }: {
+    env: AuthenticatedEnvironment;
+    message: MessagePayload;
+  }) {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {

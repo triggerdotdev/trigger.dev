@@ -14,6 +14,7 @@ import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { logger } from "@trigger.dev/core/v3";
 import { Logger } from "@trigger.dev/core/logger";
+import { MessagePayload } from "./types.js";
 
 const testOptions = {
   name: "rq",
@@ -33,6 +34,19 @@ const authenticatedEnv = {
   maximumConcurrencyLimit: 10,
   project: { id: "p1234" },
   organization: { id: "o1234" },
+};
+
+const message: MessagePayload = {
+  version: "1" as const,
+  runId: "r1234",
+  taskIdentifier: "task/my-task",
+  orgId: "o1234",
+  projectId: "p1234",
+  environmentId: "e1234",
+  environmentType: "PRODUCTION",
+  queue: "task/my-task",
+  timestamp: Date.now(),
+  parentQueue: "parentQueue",
 };
 
 describe("RunQueue", () => {
@@ -103,4 +117,51 @@ describe("RunQueue", () => {
       }
     }
   );
+
+  redisTest(
+    "Enqueue a message (no concurrency key)",
+    { timeout: 5_000 },
+    async ({ redisContainer, redis }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+      });
+
+      try {
+        const result = await queue.lengthOfQueue(authenticatedEnv, message.queue);
+        expect(result).toBe(0);
+
+        const oldestScore = await queue.oldestMessageInQueue(authenticatedEnv, message.queue);
+        expect(oldestScore).toBe(undefined);
+
+        await queue.enqueueMessage({ env: authenticatedEnv, message });
+
+        const result2 = await queue.lengthOfQueue(authenticatedEnv, message.queue);
+        expect(result2).toBe(1);
+
+        const oldestScore2 = await queue.oldestMessageInQueue(authenticatedEnv, message.queue);
+        expect(oldestScore2).toBe(message.timestamp);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  //todo after enqueuing
+  // redisTest("Get length of a queue (zero)", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+  //   const queue = new RunQueue({
+  //     ...testOptions,
+  //     redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+  //   });
+
+  //   try {
+  //     const result = await queue.lengthOfQueue(authenticatedEnv, "task/my-task");
+  //     expect(result).toBe(0);
+
+  //     const result2 = await queue.lengthOfQueue(authenticatedEnv, "task/my-task", "user_12345");
+  //     expect(result2).toBe(0);
+  //   } finally {
+  //     await queue.quit();
+  //   }
+  // });
 });
