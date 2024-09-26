@@ -39,14 +39,18 @@ export class Exec {
     this.trimArgs = opts.trimArgs ?? true;
   }
 
-  async x(command: string, args?: string[], opts?: { neverThrow?: boolean }) {
+  async x(
+    command: string,
+    args?: string[],
+    opts?: { neverThrow?: boolean; ignoreAbort?: boolean }
+  ) {
     const argsTrimmed = this.trimArgs ? args?.map((arg) => arg.trim()) : args;
 
     const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
     this.logger.debug(`exec: ${commandWithFirstArg}`, { command, args, argsTrimmed });
 
     const result = x(command, argsTrimmed, {
-      signal: this.abortSignal,
+      signal: opts?.ignoreAbort ? undefined : this.abortSignal,
       // We don't use this as it doesn't cover killed and aborted processes
       // throwOnError: true,
     });
@@ -157,7 +161,7 @@ export class Buildah {
   async cleanup() {
     if (this.containers.size > 0) {
       try {
-        const output = await this.x("buildah", ["rm", ...this.containers]);
+        const output = await this.x("buildah", ["rm", ...this.containers], { ignoreAbort: true });
         this.containers.clear();
 
         if (output.stderr.length > 0) {
@@ -172,7 +176,7 @@ export class Buildah {
 
     if (this.images.size > 0) {
       try {
-        const output = await this.x("buildah", ["rmi", ...this.images]);
+        const output = await this.x("buildah", ["rmi", ...this.images], { ignoreAbort: true });
         this.images.clear();
 
         if (output.stderr.length > 0) {
@@ -251,7 +255,7 @@ export class Crictl {
   async cleanup() {
     if (this.archives.size > 0) {
       try {
-        const output = await this.x("rm", ["-v", ...this.archives]);
+        const output = await this.x("rm", ["-v", ...this.archives], { ignoreAbort: true });
         this.archives.clear();
 
         if (output.stderr.length > 0) {
