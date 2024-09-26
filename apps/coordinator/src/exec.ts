@@ -4,26 +4,16 @@ import { homedir } from "os";
 import { type Result, x } from "tinyexec";
 
 class TinyResult {
-  constructor(private result: Result) {}
+  pid?: number;
+  exitCode?: number;
+  aborted: boolean;
+  killed: boolean;
 
-  get pid() {
-    return this.result.pid;
-  }
-
-  get process() {
-    return this.result.process;
-  }
-
-  get exitCode() {
-    return this.result.exitCode;
-  }
-
-  get aborted() {
-    return this.result.aborted;
-  }
-
-  get killed() {
-    return this.result.killed;
+  constructor(result: Result) {
+    this.pid = result.pid;
+    this.exitCode = result.exitCode;
+    this.aborted = result.aborted;
+    this.killed = result.killed;
   }
 }
 
