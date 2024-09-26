@@ -33,13 +33,7 @@ export class Exec {
 
   constructor(opts: ExecOptions) {
     this.logger = opts.logger ?? new SimpleLogger();
-
-    if (opts.abortSignal) {
-      this.abortSignal = opts.abortSignal;
-      this.abortSignal.addEventListener("abort", () => {
-        this.logger.error("abort signal triggered");
-      });
-    }
+    this.abortSignal = opts.abortSignal;
 
     this.logOutput = opts.logOutput ?? true;
     this.trimArgs = opts.trimArgs ?? true;

@@ -399,6 +399,12 @@ export class Checkpointer {
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
 
+    const onAbort = () => {
+      this.#logger.error("Checkpoint aborted", { options });
+      controller.signal.removeEventListener("abort", onAbort);
+    };
+    controller.signal.addEventListener("abort", onAbort);
+
     const shortCode = nanoid(8);
     const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
     const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
@@ -426,6 +432,9 @@ export class Checkpointer {
       } catch (error) {
         this.#logger.error("Error during cleanup", { ...metadata, error });
       }
+
+      this.#abortControllers.delete(runId);
+      controller.signal.removeEventListener("abort", onAbort);
     };
 
     try {
@@ -550,8 +559,6 @@ export class Checkpointer {
 
       return { success: false, reason: "ERROR" };
     } finally {
-      this.#abortControllers.delete(runId);
-
       await cleanup();
 
       if (controller.signal.aborted) {
