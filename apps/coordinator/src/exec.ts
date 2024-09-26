@@ -51,11 +51,13 @@ export class Exec {
     this.logOutput = opts.logOutput ?? false;
   }
 
-  async x(command: string, args?: string[], opts?: { neverThrow?: boolean }) {
-    const commandWithFirstArg = `${command}${args?.length ? ` ${args[0]}` : ""}`;
-    this.logger.debug(`exec: ${commandWithFirstArg}}`, { command, args });
+  async x(command: string, args?: string[], opts?: { neverThrow?: boolean; trimArgs?: boolean }) {
+    const argsTrimmed = opts?.trimArgs === true ? args?.map((arg) => arg.trim()) : args;
 
-    const result = x(command, args, {
+    const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
+    this.logger.debug(`exec: ${commandWithFirstArg}`, { command, args, argsTrimmed });
+
+    const result = x(command, argsTrimmed, {
       signal: this.abortSignal,
       // We don't use this as it doesn't cover killed and aborted processes
       // throwOnError: true,
@@ -64,7 +66,7 @@ export class Exec {
     const output = await result;
 
     if (this.logOutput) {
-      this.logger.debug(`output: ${commandWithFirstArg}}`, { command, args, output });
+      this.logger.debug(`output: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
     }
 
     if (opts?.neverThrow) {
@@ -72,17 +74,22 @@ export class Exec {
     }
 
     if (result.aborted) {
-      this.logger.error(`aborted: ${commandWithFirstArg}`, { command, args, output });
+      this.logger.error(`aborted: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
       throw new TinyResult(result);
     }
 
     if (result.killed) {
-      this.logger.error(`killed: ${commandWithFirstArg}`, { command, args, output });
+      this.logger.error(`killed: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
       throw new TinyResult(result);
     }
 
     if (result.exitCode !== 0) {
-      this.logger.error(`non-zero exit: ${commandWithFirstArg}`, { command, args, output });
+      this.logger.error(`non-zero exit: ${commandWithFirstArg}`, {
+        command,
+        args,
+        argsTrimmed,
+        output,
+      });
       throw new TinyResult(result);
     }
 
