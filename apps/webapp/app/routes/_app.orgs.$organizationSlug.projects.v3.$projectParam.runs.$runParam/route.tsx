@@ -197,7 +197,7 @@ export default function Page() {
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
               >
-                Replay run
+                Replay run…
               </Button>
             </DialogTrigger>
             <ReplayRunDialog
