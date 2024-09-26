@@ -1,10 +1,10 @@
 import { ExponentialBackoff } from "@trigger.dev/core/v3/apps";
-import { testDockerCheckpoint, isExecaChildProcess } from "@trigger.dev/core/v3/apps";
+import { testDockerCheckpoint } from "@trigger.dev/core/v3/apps";
 import { SimpleLogger } from "@trigger.dev/core/v3/apps";
-import { $ } from "execa";
 import { nanoid } from "nanoid";
 import fs from "node:fs/promises";
 import { ChaosMonkey } from "./chaosMonkey";
+import { Buildah, Crictl, Exec } from "./exec";
 
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
@@ -47,8 +47,6 @@ type CheckpointerOptions = {
   simulatePushFailureSeconds?: number;
   chaosMonkey?: ChaosMonkey;
 };
-
-class CheckpointAbortError extends Error {}
 
 async function getFileSize(filePath: string): Promise<number> {
   try {
@@ -138,16 +136,15 @@ export class Checkpointer {
 
       this.#logger.error(testCheckpoint.message, testCheckpoint.error ?? "");
       return this.#getInitReturn(false);
-    } else {
-      try {
-        await $`buildah login --get-login ${this.registryHost}`;
-      } catch (error) {
-        this.#logger.error(`No checkpoint support: Not logged in to registry ${this.registryHost}`);
-        return this.#getInitReturn(false);
-      }
     }
 
-    return this.#getInitReturn(true);
+    const canLogin = await Buildah.canLogin(this.registryHost);
+
+    if (!canLogin) {
+      this.#logger.error(`No checkpoint support: Not logged in to registry ${this.registryHost}`);
+    }
+
+    return this.#getInitReturn(canLogin);
   }
 
   #getInitReturn(canCheckpoint: boolean): CheckpointerInitializeReturn {
@@ -402,73 +399,51 @@ export class Checkpointer {
     const controller = new AbortController();
     this.#abortControllers.set(runId, controller);
 
-    const assertNotAborted = (abortMessage?: string) => {
-      if (controller.signal.aborted) {
-        throw new CheckpointAbortError(abortMessage);
-      }
-
-      this.#logger.debug("Not aborted", { abortMessage });
-    };
-
-    const $$ = $({ signal: controller.signal });
-
     const shortCode = nanoid(8);
     const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
     const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
+    const buildah = new Buildah({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
+    const crictl = new Crictl({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
+
     const cleanup = async () => {
+      const metadata = {
+        runId,
+        exportLocation,
+        imageRef,
+      };
+
       if (this.#dockerMode) {
+        this.#logger.debug("Skipping cleanup in docker mode", metadata);
         return;
       }
 
-      try {
-        await $`rm ${exportLocation}`;
-        this.#logger.log("Deleted checkpoint archive", { exportLocation });
+      this.#logger.log("Cleaning up", metadata);
 
-        await $`buildah rmi ${imageRef}`;
-        this.#logger.log("Deleted checkpoint image", { imageRef });
+      try {
+        await buildah.cleanup();
+        await crictl.cleanup();
       } catch (error) {
-        this.#logger.error("Failure during checkpoint cleanup", { exportLocation, error });
+        this.#logger.error("Error during cleanup", { ...metadata, error });
       }
     };
 
     try {
-      assertNotAborted("chaosMonkey.call");
-      await this.chaosMonkey.call({ $: $$ });
+      await this.chaosMonkey.call();
 
       this.#logger.log("Checkpointing:", { options });
 
       const containterName = this.#getRunContainerName(runId);
-      const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
-        try {
-          if (this.opts.forceSimulate || !this.#canCheckpoint) {
-            this.#logger.log("Simulating checkpoint");
-            this.#logger.debug(await $$`docker pause ${containterNameWithAttempt}`);
-          } else {
-            if (this.simulateCheckpointFailure) {
-              if (performance.now() < this.simulateCheckpointFailureSeconds * 1000) {
-                this.#logger.error("Simulating checkpoint failure", { options });
-                throw new Error("SIMULATE_CHECKPOINT_FAILURE");
-              }
-            }
-
-            if (leaveRunning) {
-              this.#logger.debug(
-                await $$`docker checkpoint create --leave-running ${containterNameWithAttempt} ${exportLocation}`
-              );
-            } else {
-              this.#logger.debug(
-                await $$`docker checkpoint create ${containterNameWithAttempt} ${exportLocation}`
-              );
-            }
-          }
-        } catch (error) {
-          this.#logger.error("Failed while creating docker checkpoint", { exportLocation });
-          throw error;
-        }
+        await this.#createDockerCheckpoint(
+          controller.signal,
+          runId,
+          exportLocation,
+          leaveRunning,
+          attemptNumber
+        );
 
         this.#logger.log("checkpoint created:", {
           runId,
@@ -490,13 +465,7 @@ export class Checkpointer {
         return { success: false, reason: "SKIP_RETRYING" };
       }
 
-      assertNotAborted("cmd: crictl ps");
-      const containerId = this.#logger.debug(
-        // @ts-expect-error
-        await $`crictl ps`
-          .pipeStdout($({ stdin: "pipe" })`grep ${containterName}`)
-          .pipeStdout($({ stdin: "pipe" })`cut -f1 ${"-d "}`)
-      );
+      const containerId = await crictl.ps(containterName, true);
 
       if (!containerId.stdout) {
         this.#logger.error("could not find container id", { options, containterName });
@@ -513,8 +482,7 @@ export class Checkpointer {
       }
 
       // Create checkpoint
-      assertNotAborted("cmd: crictl checkpoint");
-      this.#logger.debug(await $$`crictl checkpoint --export=${exportLocation} ${containerId}`);
+      await crictl.checkpoint(containerId.stdout, exportLocation);
       const postCheckpoint = performance.now();
 
       // Print checkpoint size
@@ -522,27 +490,19 @@ export class Checkpointer {
       this.#logger.log("checkpoint archive created", { size, options });
 
       // Create image from checkpoint
-      assertNotAborted("cmd: buildah from scratch");
-      const container = this.#logger.debug(await $$`buildah from scratch`);
+      const workingContainer = await buildah.from("scratch");
       const postFrom = performance.now();
 
-      assertNotAborted("cmd: buildah add");
-      this.#logger.debug(await $$`buildah add ${container} ${exportLocation} /`);
+      await buildah.add(workingContainer.stdout, exportLocation, "/");
       const postAdd = performance.now();
 
-      assertNotAborted("cmd: buildah config");
-      this.#logger.debug(
-        await $$`buildah config --annotation=io.kubernetes.cri-o.annotations.checkpoint.name=counter ${container}`
-      );
+      await buildah.config(workingContainer.stdout, [
+        `io.kubernetes.cri-o.annotations.checkpoint.name=${shortCode}`,
+      ]);
       const postConfig = performance.now();
 
-      assertNotAborted("cmd: buildah commit");
-      this.#logger.debug(await $$`buildah commit ${container} ${imageRef}`);
+      await buildah.commit(workingContainer.stdout, imageRef);
       const postCommit = performance.now();
-
-      assertNotAborted("cmd: buildah rm");
-      this.#logger.debug(await $$`buildah rm ${container}`);
-      const postRm = performance.now();
 
       if (this.simulatePushFailure) {
         if (performance.now() < this.simulatePushFailureSeconds * 1000) {
@@ -552,10 +512,7 @@ export class Checkpointer {
       }
 
       // Push checkpoint image
-      assertNotAborted("cmd: buildah push");
-      this.#logger.debug(
-        await $$`buildah push --tls-verify=${String(this.registryTlsVerify)} ${imageRef}`
-      );
+      await buildah.push(imageRef, this.registryTlsVerify);
       const postPush = performance.now();
 
       const perf = {
@@ -564,8 +521,7 @@ export class Checkpointer {
         "buildah add": postAdd - postFrom,
         "buildah config": postConfig - postAdd,
         "buildah commit": postCommit - postConfig,
-        "buildah rm": postRm - postCommit,
-        "buildah push": postPush - postRm,
+        "buildah push": postPush - postCommit,
       };
 
       this.#logger.log("Checkpointed and pushed image to:", { location: imageRef, perf });
@@ -578,22 +534,16 @@ export class Checkpointer {
         },
       };
     } catch (error) {
-      if (error instanceof CheckpointAbortError) {
-        this.#logger.error("Checkpoint canceled: CheckpointAbortError", { options, error });
-
-        return { success: false, reason: "CANCELED" };
-      }
-
-      if (isExecaChildProcess(error)) {
-        if (error.isCanceled) {
-          this.#logger.error("Checkpoint canceled: ExecaChildProcess", { options, error });
+      if (error instanceof Exec.Result) {
+        if (error.aborted) {
+          this.#logger.error("Checkpoint canceled: Exec", { options });
 
           return { success: false, reason: "CANCELED" };
+        } else {
+          this.#logger.error("Checkpoint command error", { options, error });
+
+          return { success: false, reason: "ERROR" };
         }
-
-        this.#logger.error("Checkpoint command error", { options, error });
-
-        return { success: false, reason: "ERROR" };
       }
 
       this.#logger.error("Unhandled checkpoint error", { options, error });
@@ -601,7 +551,62 @@ export class Checkpointer {
       return { success: false, reason: "ERROR" };
     } finally {
       this.#abortControllers.delete(runId);
+
       await cleanup();
+
+      if (controller.signal.aborted) {
+        this.#logger.error("Checkpoint canceled: Cleanup", { options });
+
+        // Overrides any prior return value
+        return { success: false, reason: "CANCELED" };
+      }
+    }
+  }
+
+  async #createDockerCheckpoint(
+    abortSignal: AbortSignal,
+    runId: string,
+    exportLocation: string,
+    leaveRunning: boolean,
+    attemptNumber?: number
+  ) {
+    const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
+    const exec = new Exec({ logger: this.#logger, abortSignal, logOutput: true });
+
+    try {
+      if (this.opts.forceSimulate || !this.#canCheckpoint) {
+        this.#logger.log("Simulating checkpoint");
+
+        await exec.x("docker", ["pause", containterNameWithAttempt]);
+
+        return;
+      }
+
+      if (this.simulateCheckpointFailure) {
+        if (performance.now() < this.simulateCheckpointFailureSeconds * 1000) {
+          this.#logger.error("Simulating checkpoint failure", {
+            runId,
+            exportLocation,
+            leaveRunning,
+            attemptNumber,
+          });
+
+          throw new Error("SIMULATE_CHECKPOINT_FAILURE");
+        }
+      }
+
+      const args = ["checkpoint", "create"];
+
+      if (leaveRunning) {
+        args.push("--leave-running");
+      }
+
+      args.push(containterNameWithAttempt, exportLocation);
+
+      await exec.x("docker", args);
+    } catch (error) {
+      this.#logger.error("Failed while creating docker checkpoint", { exportLocation });
+      throw error;
     }
   }
 
