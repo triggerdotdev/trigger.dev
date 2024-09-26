@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { postgresTest, redisTest } from "../test/containerTest";
+import { postgresTest, redisTest } from "../test/containerTest.js";
 
 postgresTest("Prisma create user", { timeout: 15_000 }, async ({ prisma }) => {
   await prisma.user.create({

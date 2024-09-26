@@ -1,8 +1,8 @@
-import { expect, it } from "vitest";
-import { z } from "zod";
-import { redisTest } from "../test/containerTest";
-import { SimpleQueue } from "./index";
 import { describe } from "node:test";
+import { expect } from "vitest";
+import { z } from "zod";
+import { redisTest } from "../test/containerTest.js";
+import { SimpleQueue } from "./index.js";
 
 describe("SimpleQueue", () => {
   redisTest("enqueue/dequeue", { timeout: 20_000 }, async ({ redisContainer }) => {

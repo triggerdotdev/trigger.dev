@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
 import { z } from "zod";
-import { redisTest } from "../test/containerTest";
-import { SimpleQueue } from "./index";
+import { redisTest } from "../test/containerTest.js";
+import { SimpleQueue } from "./index.js";
 import { describe } from "node:test";
-import { createQueueProcessor } from "./processor";
+import { createQueueProcessor } from "./processor.js";
 import { Logger } from "@trigger.dev/core/logger";
 
 describe("SimpleQueue processor", () => {
