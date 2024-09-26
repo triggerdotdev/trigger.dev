@@ -321,6 +321,13 @@ export class SpanPresenter extends BasePresenter {
         friendlyId: true,
         taskIdentifier: true,
         spanId: true,
+        createdAt: true,
+        number: true,
+        lockedToVersion: {
+          select: {
+            version: true,
+          },
+        },
       },
       where: {
         parentSpanId: spanId,
