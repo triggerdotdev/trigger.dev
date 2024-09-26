@@ -1166,7 +1166,7 @@ function ConnectedDevWarning() {
         isVisible ? "opacity-100" : "h-0 opacity-0"
       )}
     >
-      <Callout variant="info">
+      <Callout variant="info" className="mt-2">
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
             Runs usually start within 1 second in{" "}
