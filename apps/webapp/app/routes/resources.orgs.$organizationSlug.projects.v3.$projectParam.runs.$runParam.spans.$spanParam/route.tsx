@@ -319,8 +319,13 @@ function SpanBody({
                   <Property.Item>
                     <div className="flex flex-col gap-1.5">
                       <Header3>Triggered runs</Header3>
-                      <div className="max-h-[12.5rem] overflow-y-auto rounded border-b border-grid-bright">
-                        <Table className="w-full">
+                      <div
+                        className={cn(
+                          "max-h-[12.5rem] overflow-y-auto rounded",
+                          span.triggeredRuns.length > 4 && "border-b border-grid-bright"
+                        )}
+                      >
+                        <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHeaderCell>Run #</TableHeaderCell>
