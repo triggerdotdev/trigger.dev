@@ -112,9 +112,9 @@ export function JSONEditor(opts: JSONEditorProps) {
   return (
     <div
       className={cn(
-        opts.className,
         "grid",
-        showButtons ? "grid-rows-[2.5rem_1fr]" : "grid-rows-[1fr]"
+        showButtons ? "grid-rows-[2.5rem_1fr]" : "grid-rows-[1fr]",
+        opts.className
       )}
     >
       {showButtons && (

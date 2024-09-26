@@ -65,6 +65,13 @@ export class ReplayTaskRunService extends BaseService {
       payloadPacketType: payloadPacket.dataType,
     });
 
+    const metadata = existingTaskRun.seedMetadata
+      ? await parsePacket({
+          data: existingTaskRun.seedMetadata,
+          dataType: existingTaskRun.seedMetadataType,
+        })
+      : undefined;
+
     try {
       const tags = await getTagsForRunId({
         friendlyId: existingTaskRun.friendlyId,
@@ -85,6 +92,7 @@ export class ReplayTaskRunService extends BaseService {
             test: existingTaskRun.isTest,
             payloadType: payloadPacket.dataType,
             tags: tags?.map((t) => t.name) as RunTags,
+            metadata,
           },
         },
         {
