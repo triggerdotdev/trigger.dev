@@ -62,7 +62,7 @@ import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useReplaceLocation } from "~/hooks/useReplaceLocation";
+import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
@@ -141,11 +141,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 type LoaderData = SerializeFrom<typeof loader>;
-
-function getSpanId(location: Location<any>): string | undefined {
-  const search = new URLSearchParams(location.search);
-  return search.get("span") ?? undefined;
-}
 
 export default function Page() {
   const { run, trace, resizable, maximumLiveReloadingSetting } = useLoaderData<typeof loader>();
@@ -259,8 +254,8 @@ export default function Page() {
 function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
   const organization = useOrganization();
   const project = useProject();
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
+  const { searchParams, replaceSearchParam } = useReplaceSearchParams();
+  const selectedSpanId = searchParams.get("span") ?? undefined;
 
   if (!trace) {
     return <></>;

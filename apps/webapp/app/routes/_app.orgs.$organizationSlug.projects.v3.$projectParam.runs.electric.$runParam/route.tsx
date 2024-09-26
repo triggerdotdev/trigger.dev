@@ -64,7 +64,7 @@ import { useDebounce } from "~/hooks/useDebounce";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useReplaceLocation } from "~/hooks/useReplaceLocation";
+import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useSyncRunPage } from "~/hooks/useSyncRunPage";
 import { Trace, TraceEvent } from "~/hooks/useSyncTrace";
@@ -146,11 +146,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 type LoaderData = UseDataFunctionReturn<typeof loader>;
-
-function getSpanId(location: Location<any>): string | undefined {
-  const search = new URLSearchParams(location.search);
-  return search.get("span") ?? undefined;
-}
 
 export default function Page() {
   const { run, resizable } = useTypedLoaderData<typeof loader>();
@@ -265,8 +260,8 @@ type InspectorState =
   | undefined;
 
 function Panels({ resizable, run: originalRun }: LoaderData) {
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
+  const { searchParams, replaceSearchParam } = useReplaceSearchParams();
+  const selectedSpanId = searchParams.get("span") ?? undefined;
 
   const appOrigin = useAppOrigin();
   const { isUpToDate, events, runs } = useSyncRunPage({
