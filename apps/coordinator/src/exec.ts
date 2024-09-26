@@ -237,11 +237,17 @@ export class Crictl {
   }
 
   async ps(containerName: string, quiet?: boolean) {
-    return this.x("crictl", ["ps", "--name", containerName, quiet ? "--quiet" : ""]);
+    return await this.x("crictl", ["ps", "--name", containerName, quiet ? "--quiet" : ""]);
   }
 
   async checkpoint(containerId: string, exportLocation: string) {
-    await this.x("crictl", ["checkpoint", `--export=${exportLocation}`, containerId]);
+    const output = await this.x("crictl", [
+      "checkpoint",
+      `--export=${exportLocation}`,
+      containerId,
+    ]);
+    this.archives.add(exportLocation);
+    return output;
   }
 
   async cleanup() {
