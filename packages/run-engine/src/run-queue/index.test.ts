@@ -1,19 +1,10 @@
-import {
-  Span,
-  SpanKind,
-  SpanOptions,
-  Tracer,
-  context,
-  propagation,
-  trace,
-} from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
+import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { redisTest } from "../test/containerTest.js";
 import { RunQueue } from "./index.js";
 import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
-import { logger } from "@trigger.dev/core/v3";
-import { Logger } from "@trigger.dev/core/logger";
 import { MessagePayload } from "./types.js";
 
 const testOptions = {
@@ -141,7 +132,7 @@ describe("RunQueue", () => {
   );
 
   redisTest(
-    "Enqueue/Dequeue a message in env (no concurrency key)",
+    "Enqueue/Dequeue a message in env (DEV run, no concurrency key)",
     { timeout: 5_000 },
     async ({ redisContainer, redis }) => {
       const queue = new RunQueue({
@@ -169,6 +160,50 @@ describe("RunQueue", () => {
 
         const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
+
+        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        expect(dequeued2).toBe(undefined);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "Enqueue/Dequeue a message from the shared queue (PROD run, no concurrency key)",
+    { timeout: 5_000 },
+    async ({ redisContainer, redis }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+      });
+
+      try {
+        const result = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(result).toBe(0);
+
+        const oldestScore = await queue.oldestMessageInQueue(
+          authenticatedEnvProd,
+          messageProd.queue
+        );
+        expect(oldestScore).toBe(undefined);
+
+        await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+
+        const result2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(result2).toBe(1);
+
+        const oldestScore2 = await queue.oldestMessageInQueue(
+          authenticatedEnvProd,
+          messageProd.queue
+        );
+        expect(oldestScore2).toBe(messageProd.timestamp);
+
+        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345");
+        expect(dequeued?.messageId).toEqual(messageProd.runId);
+
+        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
       }
