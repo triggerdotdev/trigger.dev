@@ -310,24 +310,22 @@ function SpanBody({
                   <Property.Item>
                     <Property.Label>Triggered runs</Property.Label>
                     <Property.Value>
-                      <div className="space-y-1">
-                        {span.triggeredRuns.map((run) => (
-                          <TextLink
-                            to={v3RunSpanPath(
-                              organization,
-                              project,
-                              { friendlyId: run.friendlyId },
-                              { spanId: run.spanId }
-                            )}
-                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
-                          >
-                            {run.taskIdentifier}
-                            <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
-                              ({run.friendlyId})
-                            </span>
-                          </TextLink>
-                        ))}
-                      </div>
+                      {span.triggeredRuns.map((run) => (
+                        <TextLink
+                          to={v3RunSpanPath(
+                            organization,
+                            project,
+                            { friendlyId: run.friendlyId },
+                            { spanId: run.spanId }
+                          )}
+                          className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                        >
+                          {run.taskIdentifier}
+                          <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                            ({run.friendlyId})
+                          </span>
+                        </TextLink>
+                      ))}
                     </Property.Value>
                   </Property.Item>
                 )}
