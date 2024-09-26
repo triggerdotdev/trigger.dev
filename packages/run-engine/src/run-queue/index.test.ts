@@ -6,6 +6,7 @@ import { RunQueue } from "./index.js";
 import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { MessagePayload } from "./types.js";
+import { abort } from "node:process";
 
 const testOptions = {
   name: "rq",
@@ -209,4 +210,30 @@ describe("RunQueue", () => {
       }
     }
   );
+
+  redisTest("Get shared queue details", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      const result = await queue.getSharedQueueDetails();
+      expect(result.selectionId).toBe("getSharedQueueDetails");
+      expect(result.queueCount).toBe(0);
+      expect(result.queueChoice.choice).toStrictEqual({ abort: true });
+
+      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+
+      const result2 = await queue.getSharedQueueDetails();
+      expect(result2.selectionId).toBe("getSharedQueueDetails");
+      expect(result2.queueCount).toBe(1);
+      expect(result2.queues[0].score).toBe(messageProd.timestamp);
+      expect(result2.queueChoice.choice).toBe(
+        "{org:o1234}:proj:p1234:env:e1234:queue:task/my-task"
+      );
+    } finally {
+      await queue.quit();
+    }
+  });
 });
