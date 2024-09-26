@@ -429,14 +429,14 @@ paths:
         - secretKey: []
       x-codeSamples:
         - lang: typescript
-          label: Update metadata
+          label: Save metadata
           source: |-
             import { metadata, task } from "@trigger.dev/sdk/v3";
 
             export const myTask = task({
               id: "my-task",
               run: async () => {
-                await metadata.update({ key: "value" });
+                await metadata.save({ key: "value" });
               }
             });
 
