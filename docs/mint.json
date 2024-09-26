@@ -171,7 +171,8 @@
             "management/runs/retrieve",
             "management/runs/replay",
             "management/runs/cancel",
-            "management/runs/reschedule"
+            "management/runs/reschedule",
+            "management/runs/update-metadata"
           ]
         },
         {
@@ -279,6 +280,7 @@
         "guides/examples/puppeteer",
         "guides/examples/sharp-image-processing",
         "guides/examples/stripe-webhook",
+        "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",
         "guides/examples/react-pdf",
         "guides/examples/resend-email-sequence",

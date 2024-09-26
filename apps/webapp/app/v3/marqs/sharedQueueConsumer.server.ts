@@ -9,6 +9,7 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
+  parsePacket,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -1033,6 +1034,11 @@ class SharedQueueTasks {
 
     const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
 
+    const metadata = await parsePacket({
+      data: taskRun.metadata ?? undefined,
+      dataType: taskRun.metadataType,
+    });
+
     const execution: ProdTaskRunExecution = {
       task: {
         id: backgroundWorkerTask.slug,
@@ -1060,6 +1066,7 @@ class SharedQueueTasks {
         durationMs: taskRun.usageDurationMs,
         costInCents: taskRun.costInCents,
         baseCostInCents: taskRun.baseCostInCents,
+        metadata,
       },
       queue: {
         id: queue.friendlyId,

@@ -7,7 +7,6 @@ import {
   mergeRequestOptions,
   taskContext,
 } from "@trigger.dev/core/v3";
-import { apiClientMissingError } from "./shared.js";
 import { tracer } from "./tracer.js";
 
 export const tags = {
@@ -15,11 +14,7 @@ export const tags = {
 };
 
 async function addTags(tags: RunTags, requestOptions?: ApiRequestOptions) {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const run = taskContext.ctx?.run;
   if (!run) {

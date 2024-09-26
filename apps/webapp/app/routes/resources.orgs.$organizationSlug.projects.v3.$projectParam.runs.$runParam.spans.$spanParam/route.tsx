@@ -444,6 +444,17 @@ function RunBody({
           >
             Context
           </TabButton>
+
+          <TabButton
+            isActive={tab === "metadata"}
+            layoutId="span-run"
+            onClick={() => {
+              replace({ tab: "metadata" });
+            }}
+            shortcut={{ key: "m" }}
+          >
+            Metadata
+          </TabButton>
         </TabContainer>
       </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -690,6 +701,16 @@ function RunBody({
           ) : tab === "context" ? (
             <div className="flex flex-col gap-4 py-3">
               <CodeBlock code={run.context} showLineNumbers={false} />
+            </div>
+          ) : tab === "metadata" ? (
+            <div className="flex flex-col gap-4 py-3">
+              {run.metadata ? (
+                <CodeBlock code={run.metadata} showLineNumbers={false} />
+              ) : (
+                <Callout to="https://trigger.dev/docs/runs/metadata" variant="docs">
+                  No metadata set for this run. View our metadata documentation to learn more.
+                </Callout>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">

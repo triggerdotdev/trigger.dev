@@ -14,7 +14,6 @@ import {
   mergeRequestOptions,
   taskContext,
 } from "@trigger.dev/core/v3";
-import { apiClientMissingError } from "./shared.js";
 import { tracer } from "./tracer.js";
 
 export type { CreateEnvironmentVariableParams, ImportEnvironmentVariablesParams };
@@ -76,11 +75,7 @@ export function upload(
     $params = params;
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.importEnvVars($projectRef, $slug, $params, $requestOptions);
 }
@@ -121,11 +116,7 @@ export function list(
     $requestOptions
   );
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.listEnvVars($projectRef, $slug, $requestOptions);
 }
@@ -187,11 +178,7 @@ export function create(
     $params = params;
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.createEnvVar($projectRef, $slug, $params, $requestOptions);
 }
@@ -238,11 +225,7 @@ export function retrieve(
     throw new Error("slug is required");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.retrieveEnvVar($projectRef, $slug, $name, $requestOptions);
 }
@@ -289,11 +272,7 @@ export function del(
     throw new Error("slug is required");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.deleteEnvVar($projectRef, $slug, $name, $requestOptions);
 }
@@ -362,11 +341,7 @@ export function update(
     $params = params;
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.updateEnvVar($projectRef, $slug, $name, $params, $requestOptions);
 }

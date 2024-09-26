@@ -1,4 +1,9 @@
-import { MachinePresetName, prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  MachinePresetName,
+  parsePacket,
+  prettyPrintPacket,
+  TaskRunError,
+} from "@trigger.dev/core/v3";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
@@ -113,6 +118,8 @@ export class SpanPresenter extends BasePresenter {
         },
         payload: true,
         payloadType: true,
+        metadata: true,
+        metadataType: true,
         maxAttempts: true,
         project: {
           include: {
@@ -197,6 +204,12 @@ export class SpanPresenter extends BasePresenter {
         };
       }
     }
+
+    const span = await eventRepository.getSpan(spanId, run.traceId);
+
+    const metadata = run.metadata
+      ? await prettyPrintPacket(run.metadata, run.metadataType)
+      : undefined;
 
     const context = {
       task: {
@@ -293,6 +306,7 @@ export class SpanPresenter extends BasePresenter {
         parent: run.parentTaskRun ?? undefined,
       },
       context: JSON.stringify(context, null, 2),
+      metadata,
     };
   }
 
