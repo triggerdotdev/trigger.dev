@@ -21,12 +21,15 @@ interface ExecOptions {
   logger?: SimpleLogger;
   abortSignal?: AbortSignal;
   logOutput?: boolean;
+  trimArgs?: boolean;
 }
 
 export class Exec {
   private logger: SimpleLogger;
   private abortSignal: AbortSignal | undefined;
+
   private logOutput: boolean;
+  private trimArgs: boolean;
 
   constructor(opts: ExecOptions) {
     this.logger = opts.logger ?? new SimpleLogger();
@@ -38,11 +41,12 @@ export class Exec {
       });
     }
 
-    this.logOutput = opts.logOutput ?? false;
+    this.logOutput = opts.logOutput ?? true;
+    this.trimArgs = opts.trimArgs ?? true;
   }
 
-  async x(command: string, args?: string[], opts?: { neverThrow?: boolean; trimArgs?: boolean }) {
-    const argsTrimmed = opts?.trimArgs === true ? args?.map((arg) => arg.trim()) : args;
+  async x(command: string, args?: string[], opts?: { neverThrow?: boolean }) {
+    const argsTrimmed = this.trimArgs ? args?.map((arg) => arg.trim()) : args;
 
     const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
     this.logger.debug(`exec: ${commandWithFirstArg}`, { command, args, argsTrimmed });
@@ -55,8 +59,15 @@ export class Exec {
 
     const output = await result;
 
+    const metadata = {
+      command,
+      argsRaw: args,
+      argsTrimmed,
+      ...output,
+    };
+
     if (this.logOutput) {
-      this.logger.debug(`output: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
+      this.logger.debug(`output: ${commandWithFirstArg}`, metadata);
     }
 
     if (opts?.neverThrow) {
@@ -64,22 +75,17 @@ export class Exec {
     }
 
     if (result.aborted) {
-      this.logger.error(`aborted: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
+      this.logger.error(`aborted: ${commandWithFirstArg}`, metadata);
       throw new TinyResult(result);
     }
 
     if (result.killed) {
-      this.logger.error(`killed: ${commandWithFirstArg}`, { command, args, argsTrimmed, output });
+      this.logger.error(`killed: ${commandWithFirstArg}`, metadata);
       throw new TinyResult(result);
     }
 
     if (result.exitCode !== 0) {
-      this.logger.error(`non-zero exit: ${commandWithFirstArg}`, {
-        command,
-        args,
-        argsTrimmed,
-        output,
-      });
+      this.logger.error(`non-zero exit: ${commandWithFirstArg}`, metadata);
       throw new TinyResult(result);
     }
 

@@ -571,7 +571,7 @@ export class Checkpointer {
     attemptNumber?: number
   ) {
     const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
-    const exec = new Exec({ logger: this.#logger, abortSignal, logOutput: true });
+    const exec = new Exec({ logger: this.#logger, abortSignal });
 
     try {
       if (this.opts.forceSimulate || !this.#canCheckpoint) {
