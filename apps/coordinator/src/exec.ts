@@ -52,7 +52,8 @@ export class Exec {
   }
 
   async x(command: string, args?: string[], opts?: { neverThrow?: boolean }) {
-    this.logger.debug(`exec: ${command}${args?.length ? ` ${args[0]}` : ""}`, { command, args });
+    const commandWithFirstArg = `${command}${args?.length ? ` ${args[0]}` : ""}`;
+    this.logger.debug(`exec: ${commandWithFirstArg}}`, { command, args });
 
     const result = x(command, args, {
       signal: this.abortSignal,
@@ -63,7 +64,7 @@ export class Exec {
     const output = await result;
 
     if (this.logOutput) {
-      this.logger.debug("output", { command, args, output });
+      this.logger.debug(`output: ${commandWithFirstArg}}`, { command, args, output });
     }
 
     if (opts?.neverThrow) {
@@ -71,17 +72,17 @@ export class Exec {
     }
 
     if (result.aborted) {
-      this.logger.error("aborted", { command, args, output });
+      this.logger.error(`aborted: ${commandWithFirstArg}`, { command, args, output });
       throw new TinyResult(result);
     }
 
     if (result.killed) {
-      this.logger.error("killed", { command, args, output });
+      this.logger.error(`killed: ${commandWithFirstArg}`, { command, args, output });
       throw new TinyResult(result);
     }
 
     if (result.exitCode !== 0) {
-      this.logger.error("non-zero exit", { command, args, output });
+      this.logger.error(`non-zero exit: ${commandWithFirstArg}`, { command, args, output });
       throw new TinyResult(result);
     }
 
