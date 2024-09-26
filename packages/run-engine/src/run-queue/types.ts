@@ -69,12 +69,10 @@ export interface RunQueueKeyProducer {
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   messageKey(orgId: string, messageId: string): string;
-  globalCurrentConcurrencyKey(queue: string): string;
   stripKeyPrefix(key: string): string;
   extractComponentsFromQueue(queue: string): {
     orgId: string;
     projectId: string;
-    envType: string;
     envId: string;
     queue: string;
     concurrencyKey: string | undefined;

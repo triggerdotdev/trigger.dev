@@ -8,7 +8,6 @@ const constants = {
   CONCURRENCY_LIMIT_PART: "concurrency",
   DISABLED_CONCURRENCY_LIMIT_PART: "disabledConcurrency",
   ENV_PART: "env",
-  ENV_TYPE_PART: "envType",
   ORG_PART: "org",
   PROJECT_PART: "proj",
   QUEUE_PART: "queue",
@@ -25,7 +24,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   queueCurrentConcurrencyScanPattern() {
-    return `${this._prefix}{${constants.ORG_PART}:*}:${constants.PROJECT_PART}:*:${constants.ENV_TYPE_PART}:*:${constants.ENV_PART}:*:${constants.QUEUE_PART}:*:${constants.CURRENT_CONCURRENCY_PART}`;
+    return `${this._prefix}{${constants.ORG_PART}:*}:${constants.PROJECT_PART}:*:${constants.ENV_PART}:*:${constants.QUEUE_PART}:*:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   stripKeyPrefix(key: string): string {
@@ -44,7 +43,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
-      this.envTypeKeySection(env.type),
       this.envKeySection(env.id),
       constants.CONCURRENCY_LIMIT_PART,
     ].join(":");
@@ -54,7 +52,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
-      this.envTypeKeySection(env.type),
       this.envKeySection(env.id),
       this.queueSection(queue),
     ]
@@ -67,7 +64,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
       return [
         this.orgKeySection(env.organization.id),
         this.projKeySection(env.project.id),
-        this.envTypeKeySection(env.type),
         this.envKeySection(env.id),
         constants.SHARED_QUEUE,
       ].join(":");
@@ -144,11 +140,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     ].join(":");
   }
 
-  //todo think about this
-  globalCurrentConcurrencyKey(queue: string): string {
-    return queue.replace(/:env:.+$/, ":*");
-  }
-
   messageKey(orgId: string, messageId: string) {
     return [this.orgKeySection(orgId), `${constants.MESSAGE_PART}:${messageId}`]
       .filter(Boolean)
@@ -160,19 +151,14 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return {
       orgId: parts[1].replace("{", "").replace("}", ""),
       projectId: parts[3],
-      envType: parts[5],
-      envId: parts[7],
-      queue: parts[9],
-      concurrencyKey: parts.at(11),
+      envId: parts[5],
+      queue: parts[7],
+      concurrencyKey: parts.at(9),
     };
   }
 
   private envKeySection(envId: string) {
     return `${constants.ENV_PART}:${envId}`;
-  }
-
-  private envTypeKeySection(envType: RuntimeEnvironmentType) {
-    return `${constants.ENV_TYPE_PART}:${envType === "DEVELOPMENT" ? "dev" : "deployed"}`;
   }
 
   private projKeySection(projId: string) {

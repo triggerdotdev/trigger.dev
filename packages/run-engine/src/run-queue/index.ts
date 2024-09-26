@@ -19,6 +19,7 @@ import { AsyncWorker } from "../shared/asyncWorker.js";
 import {
   MessagePayload,
   QueueCapacities,
+  QueueRange,
   RunQueueKeyProducer,
   RunQueuePriorityStrategy,
 } from "./types.js";
@@ -35,6 +36,7 @@ const SemanticAttributes = {
   PARENT_QUEUE: "runqueue.parentQueue",
   RUN_ID: "runqueue.runId",
   CONCURRENCY_KEY: "runqueue.concurrencyKey",
+  ORG_ID: "runqueue.orgId",
 };
 
 export type RunQueueOptions = {
@@ -44,7 +46,6 @@ export type RunQueueOptions = {
   defaultEnvConcurrency: number;
   defaultOrgConcurrency: number;
   windowSize?: number;
-  visibilityTimeoutInMs?: number;
   workers: number;
   keysProducer: RunQueueKeyProducer;
   queuePriorityStrategy: RunQueuePriorityStrategy;
@@ -220,7 +221,6 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
-          globalConcurrencyTrackerKey: this.keys.globalCurrentConcurrencyKey(messageQueue),
         });
 
         if (!message) {
@@ -308,7 +308,6 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
-          globalConcurrencyTrackerKey: this.keys.globalCurrentConcurrencyKey(messageQueue),
         });
 
         if (!message) {
@@ -335,25 +334,32 @@ export class RunQueue {
     );
   }
 
-  public async acknowledgeMessage(messageId: string) {
+  /**
+   * Acknowledge a message, which will:
+   * - remove all data from the queue
+   * - release all concurrency
+   * This is done when the run is in a final state.
+   * @param orgId
+   * @param messageId
+   */
+  public async acknowledgeMessage(orgId: string, messageId: string) {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
-        span.setAttributes({
-          [SemanticAttributes.RUN_ID]: messageId,
-        });
-
-        const message = await this.#callAcknowledgeMessage({
-          messageKey: this.keys.messageKey(messageId),
-          messageId,
-        });
-
-        span.setAttributes({
-          [SemanticAttributes.RUN_ID]: messageId,
-          [SemanticAttributes.QUEUE]: message.queue,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-        });
+        // span.setAttributes({
+        //   [SemanticAttributes.RUN_ID]: messageId,
+        //   [SemanticAttributes.ORG_ID]: orgId,
+        // });
+        // const message = await this.#callAcknowledgeMessage({
+        //   messageKey: this.keys.messageKey(orgId, messageId),
+        //   messageId,
+        // });
+        // span.setAttributes({
+        //   [SemanticAttributes.RUN_ID]: messageId,
+        //   [SemanticAttributes.QUEUE]: message.queue,
+        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        // });
       },
       {
         kind: SpanKind.CONSUMER,
@@ -366,53 +372,102 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Negative acknowledge a message, which will requeue the message
+   */
+  public async nackMessage(
+    messageId: string,
+    retryAt: number = Date.now(),
+    updates?: Record<string, unknown>
+  ) {
+    return this.#trace(
+      "nackMessage",
+      async (span) => {
+        // const message = await this.readMessage(messageId);
+        // if (!message) {
+        //   logger.log(`[${this.name}].nackMessage() message not found`, {
+        //     messageId,
+        //     retryAt,
+        //     updates,
+        //     service: this.name,
+        //   });
+        //   return;
+        // }
+        // span.setAttributes({
+        //   [SemanticAttributes.QUEUE]: message.queue,
+        //   [SemanticAttributes.MESSAGE_ID]: message.messageId,
+        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        // });
+        // if (updates) {
+        //   await this.replaceMessage(messageId, updates, retryAt, true);
+        // }
+        // await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+        // await this.#callNackMessage({
+        //   messageKey: this.keys.messageKey(messageId),
+        //   messageQueue: message.queue,
+        //   parentQueue: message.parentQueue,
+        //   concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
+        //   envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+        //   orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
+        //   visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+        //   messageId,
+        //   messageScore: retryAt,
+        // });
+        // await this.options.subscriber?.messageNacked(message);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "nack",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
+        },
+      }
+    );
+  }
+
   public async releaseConcurrency(messageId: string, releaseForRun: boolean = false) {
     return this.#trace(
       "releaseConcurrency",
       async (span) => {
-        span.setAttributes({
-          [SemanticAttributes.MESSAGE_ID]: messageId,
-        });
-
-        const message = await this.readMessage(messageId);
-
-        if (!message) {
-          logger.log(`[${this.name}].releaseConcurrency() message not found`, {
-            messageId,
-            releaseForRun,
-            service: this.name,
-          });
-          return;
-        }
-
-        span.setAttributes({
-          [SemanticAttributes.QUEUE]: message.queue,
-          [SemanticAttributes.MESSAGE_ID]: message.messageId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-        });
-
-        const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
-        const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-        const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
-
-        logger.debug("Calling releaseConcurrency", {
-          messageId,
-          queue: message.queue,
-          concurrencyKey,
-          envConcurrencyKey,
-          orgConcurrencyKey,
-          service: this.name,
-          releaseForRun,
-        });
-
-        return this.redis.releaseConcurrency(
-          //don't release the for the run, it breaks concurrencyLimits
-          releaseForRun ? concurrencyKey : "",
-          envConcurrencyKey,
-          orgConcurrencyKey,
-          message.messageId
-        );
+        // span.setAttributes({
+        //   [SemanticAttributes.MESSAGE_ID]: messageId,
+        // });
+        // const message = await this.readMessage(messageId);
+        // if (!message) {
+        //   logger.log(`[${this.name}].releaseConcurrency() message not found`, {
+        //     messageId,
+        //     releaseForRun,
+        //     service: this.name,
+        //   });
+        //   return;
+        // }
+        // span.setAttributes({
+        //   [SemanticAttributes.QUEUE]: message.queue,
+        //   [SemanticAttributes.MESSAGE_ID]: message.messageId,
+        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        // });
+        // const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+        // const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+        // const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
+        // logger.debug("Calling releaseConcurrency", {
+        //   messageId,
+        //   queue: message.queue,
+        //   concurrencyKey,
+        //   envConcurrencyKey,
+        //   orgConcurrencyKey,
+        //   service: this.name,
+        //   releaseForRun,
+        // });
+        // return this.redis.releaseConcurrency(
+        //   //don't release the for the run, it breaks concurrencyLimits
+        //   releaseForRun ? concurrencyKey : "",
+        //   envConcurrencyKey,
+        //   orgConcurrencyKey,
+        //   message.messageId
+        // );
       },
       {
         kind: SpanKind.CONSUMER,
@@ -456,81 +511,11 @@ export class RunQueue {
     );
   }
 
-  /**
-   * Negative acknowledge a message, which will requeue the message
-   */
-  public async nackMessage(
-    messageId: string,
-    retryAt: number = Date.now(),
-    updates?: Record<string, unknown>
-  ) {
-    return this.#trace(
-      "nackMessage",
-      async (span) => {
-        const message = await this.readMessage(messageId);
-
-        if (!message) {
-          logger.log(`[${this.name}].nackMessage() message not found`, {
-            messageId,
-            retryAt,
-            updates,
-            service: this.name,
-          });
-          return;
-        }
-
-        span.setAttributes({
-          [SemanticAttributes.QUEUE]: message.queue,
-          [SemanticAttributes.MESSAGE_ID]: message.messageId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-        });
-
-        if (updates) {
-          await this.replaceMessage(messageId, updates, retryAt, true);
-        }
-
-        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
-
-        await this.#callNackMessage({
-          messageKey: this.keys.messageKey(messageId),
-          messageQueue: message.queue,
-          parentQueue: message.parentQueue,
-          concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
-          envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-          orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-          messageId,
-          messageScore: retryAt,
-        });
-
-        await this.options.subscriber?.messageNacked(message);
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "nack",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-        },
-      }
-    );
-  }
-
-  // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
-  public async heartbeatMessage(messageId: string) {
-    await this.options.visibilityTimeoutStrategy.heartbeat(messageId, this.visibilityTimeoutInMs);
-  }
-
-  get visibilityTimeoutInMs() {
-    return this.options.visibilityTimeoutInMs ?? 300000; // 5 minutes
-  }
-
-  async readMessage(messageId: string) {
+  async readMessage(orgId: string, messageId: string) {
     return this.#trace(
       "readMessage",
       async (span) => {
-        const rawMessage = await this.redis.get(this.keys.messageKey(messageId));
+        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
 
         if (!rawMessage) {
           return;
@@ -563,7 +548,7 @@ export class RunQueue {
 
   async #getRandomQueueFromParentQueue(
     parentQueue: string,
-    queuePriorityStrategy: MarQSQueuePriorityStrategy,
+    queuePriorityStrategy: RunQueuePriorityStrategy,
     calculateCapacities: (queue: string) => Promise<QueueCapacities>,
     consumerId: string
   ) {
@@ -604,7 +589,7 @@ export class RunQueue {
 
         if (this.options.verbose || nextRange.offset > 0) {
           if (typeof choice === "string") {
-            logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
+            this.logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
               range,
@@ -615,7 +600,7 @@ export class RunQueue {
               consumerId,
             });
           } else {
-            logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
+            this.logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
               range,
@@ -736,7 +721,7 @@ export class RunQueue {
   ) {
     const pattern = this.keys.queueCurrentConcurrencyScanPattern();
 
-    logger.debug("Starting queue concurrency scan stream", {
+    this.logger.debug("Starting queue concurrency scan stream", {
       pattern,
       component: "runqueue",
       operation: "queueConcurrencyScanStream",
@@ -776,7 +761,7 @@ export class RunQueue {
         count: 100,
       });
 
-      logger.debug("Streaming parent queues based on pattern", {
+      this.logger.debug("Streaming parent queues based on pattern", {
         pattern,
         component: "runqueue",
         operation: "rebalanceParentQueues",
@@ -792,7 +777,7 @@ export class RunQueue {
 
         stream.pause();
 
-        logger.debug("Rebalancing parent queues", {
+        this.logger.debug("Rebalancing parent queues", {
           component: "runqueue",
           operation: "rebalanceParentQueues",
           parentQueues: uniqueKeys,
@@ -882,9 +867,6 @@ export class RunQueue {
       taskIdentifier: message.taskIdentifier,
     });
     const envConcurrencyTrackerKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-    const globalConcurrencyTrackerKey = this.keys.globalCurrentConcurrencyKey(
-      message.environmentType
-    );
 
     this.logger.debug("Calling enqueueMessage", {
       messagePayload: message,
@@ -896,12 +878,11 @@ export class RunQueue {
     return this.redis.enqueueMessage(
       message.queue,
       message.parentQueue,
-      this.keys.messageKey(message.runId),
+      this.keys.messageKey(message.orgId, message.runId),
       concurrencyKey,
       envConcurrencyKey,
       taskConcurrencyTrackerKey,
       envConcurrencyTrackerKey,
-      globalConcurrencyTrackerKey,
       message.queue,
       message.runId,
       JSON.stringify(message),
@@ -916,7 +897,6 @@ export class RunQueue {
     envConcurrencyLimitKey,
     currentConcurrencyKey,
     envCurrentConcurrencyKey,
-    globalConcurrencyTrackerKey,
   }: {
     messageQueue: string;
     parentQueue: string;
@@ -924,7 +904,6 @@ export class RunQueue {
     envConcurrencyLimitKey: string;
     currentConcurrencyKey: string;
     envCurrentConcurrencyKey: string;
-    globalConcurrencyTrackerKey: string;
   }) {
     const result = await this.redis.dequeueMessage(
       //keys
@@ -934,7 +913,6 @@ export class RunQueue {
       envConcurrencyLimitKey,
       currentConcurrencyKey,
       envCurrentConcurrencyKey,
-      globalConcurrencyTrackerKey,
       //args
       messageQueue,
       String(Date.now()),
@@ -961,7 +939,8 @@ export class RunQueue {
     const [messageId, messageScore] = result;
 
     //read message
-    const message = await this.readMessage(messageId);
+    const { orgId } = this.keys.extractComponentsFromQueue(messageQueue);
+    const message = await this.readMessage(orgId, messageId);
 
     if (!message) {
       this.logger.error(`Dequeued then failed to read message. This is unrecoverable.`, {
@@ -983,39 +962,27 @@ export class RunQueue {
   }
 
   async #callAcknowledgeMessage({
-    parentQueue,
     messageKey,
-    messageQueue,
-    concurrencyKey,
-    envConcurrencyKey,
     messageId,
   }: {
-    parentQueue: string;
     messageKey: string;
-    messageQueue: string;
-    concurrencyKey: string;
-    envConcurrencyKey: string;
     messageId: string;
   }) {
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
-      messageQueue,
-      concurrencyKey,
-      envConcurrencyKey,
       messageId,
-      parentQueue,
       service: this.name,
     });
 
-    return this.redis.acknowledgeMessage(
-      parentQueue,
-      messageKey,
-      messageQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      messageId,
-      messageQueue
-    );
+    // return this.redis.acknowledgeMessage(
+    //   parentQueue,
+    //   messageKey,
+    //   messageQueue,
+    //   concurrencyKey,
+    //   envConcurrencyKey,
+    //   messageId,
+    //   messageQueue
+    // );
   }
 
   async #callNackMessage({
@@ -1161,7 +1128,7 @@ export class RunQueue {
 
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 7,
       lua: `
 local queue = KEYS[1]
 local parentQueue = KEYS[2]
@@ -1170,7 +1137,6 @@ local concurrencyKey = KEYS[4]
 local envCurrentConcurrencyKey = KEYS[5]
 local taskConcurrencyTrackerKey = KEYS[6]
 local envConcurrencyTrackerKey = KEYS[7]
-local globalConcurrencyTrackerKey = KEYS[8]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -1198,12 +1164,11 @@ redis.call('SREM', envCurrentConcurrencyKey, messageId)
 -- Update concurrency tracking (remove)
 redis.call('SREM', taskConcurrencyTrackerKey, messageId)
 redis.call('SREM', envConcurrencyTrackerKey, messageId)
-redis.call('SREM', globalConcurrencyTrackerKey, messageId)
       `,
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 6,
       lua: `
 local childQueue = KEYS[1]
 local parentQueue = KEYS[2]
@@ -1211,7 +1176,6 @@ local concurrencyLimitKey = KEYS[3]
 local envConcurrencyLimitKey = KEYS[4]
 local currentConcurrencyKey = KEYS[5]
 local envCurrentConcurrencyKey = KEYS[6]
-local globalConcurrencyTrackerKey = KEYS[7]
 
 local childQueueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -1479,7 +1443,6 @@ declare module "ioredis" {
       envConcurrencyKey: string,
       taskConcurrencyTrackerKey: string,
       environmentConcurrencyTrackerKey: string,
-      environmentTypeConcurrencyTrackerKey: string,
       //args
       queueName: string,
       messageId: string,
@@ -1496,7 +1459,6 @@ declare module "ioredis" {
       envConcurrencyLimitKey: string,
       currentConcurrencyKey: string,
       envCurrentConcurrencyKey: string,
-      globalCurrentConcurrencyKey: string,
       //args
       childQueueName: string,
       currentTime: string,
