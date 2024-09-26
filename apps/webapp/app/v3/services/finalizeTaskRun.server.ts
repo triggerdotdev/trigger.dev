@@ -66,7 +66,7 @@ export class FinalizeTaskRunService extends BaseService {
       await this.finalizeAttempt({ attemptStatus, error, run });
     }
 
-    if (isFailedRunStatus(run.status)) {
+    if (error) {
       await this.finalizeRunError(run, error);
     }
 
@@ -88,11 +88,7 @@ export class FinalizeTaskRunService extends BaseService {
     return run as Output<T>;
   }
 
-  async finalizeRunError(run: TaskRun, error?: TaskRunError) {
-    if (!error) {
-      return;
-    }
-
+  async finalizeRunError(run: TaskRun, error: TaskRunError) {
     await this._prisma.taskRun.update({
       where: { id: run.id },
       data: {
