@@ -1,9 +1,21 @@
 import { Attributes } from "@opentelemetry/api";
 import { Prisma } from "@trigger.dev/database";
 
-export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+type EnvironmentWithExtras = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
 }>;
+
+export type AuthenticatedEnvironment = {
+  id: EnvironmentWithExtras["id"];
+  type: EnvironmentWithExtras["type"];
+  maximumConcurrencyLimit: EnvironmentWithExtras["maximumConcurrencyLimit"];
+  project: {
+    id: EnvironmentWithExtras["project"]["id"];
+  };
+  organization: {
+    id: EnvironmentWithExtras["organization"]["id"];
+  };
+};
 
 const SemanticEnvResources = {
   ENV_ID: "$trigger.env.id",
@@ -21,12 +33,7 @@ export function attributesFromAuthenticatedEnv(env: AuthenticatedEnvironment): A
   return {
     [SemanticEnvResources.ENV_ID]: env.id,
     [SemanticEnvResources.ENV_TYPE]: env.type,
-    [SemanticEnvResources.ENV_SLUG]: env.slug,
-    [SemanticEnvResources.ORG_ID]: env.organizationId,
-    [SemanticEnvResources.ORG_SLUG]: env.organization.slug,
-    [SemanticEnvResources.ORG_TITLE]: env.organization.title,
-    [SemanticEnvResources.PROJECT_ID]: env.projectId,
-    [SemanticEnvResources.PROJECT_NAME]: env.project.name,
-    [SemanticEnvResources.USER_ID]: env.orgMember?.userId,
+    [SemanticEnvResources.ORG_ID]: env.organization.id,
+    [SemanticEnvResources.PROJECT_ID]: env.project.id,
   };
 }

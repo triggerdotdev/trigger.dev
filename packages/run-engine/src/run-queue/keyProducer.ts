@@ -17,8 +17,6 @@ const constants = {
   MESSAGE_PART: "message",
 } as const;
 
-//org:${orgId}:proj:${projId}:envType:${envType}:env:${envId}queue:${queue}:ck:${concurrencyKey}:currentConcurrency
-
 export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   constructor(private _prefix: string) {}
 
@@ -27,7 +25,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   queueCurrentConcurrencyScanPattern() {
-    return `${this._prefix}${constants.ORG_PART}:*:${constants.PROJECT_PART}:*:${constants.ENV_TYPE_PART}:*:${constants.ENV_PART}:*:${constants.QUEUE_PART}:*:${constants.CURRENT_CONCURRENCY_PART}`;
+    return `${this._prefix}{${constants.ORG_PART}:*}:${constants.PROJECT_PART}:*:${constants.ENV_TYPE_PART}:*:${constants.ENV_PART}:*:${constants.QUEUE_PART}:*:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   stripKeyPrefix(key: string): string {
@@ -43,13 +41,19 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   envConcurrencyLimitKey(env: AuthenticatedEnvironment) {
-    return [this.envKeySection(env.id), constants.CONCURRENCY_LIMIT_PART].join(":");
+    return [
+      this.orgKeySection(env.organization.id),
+      this.projKeySection(env.project.id),
+      this.envTypeKeySection(env.type),
+      this.envKeySection(env.id),
+      constants.CONCURRENCY_LIMIT_PART,
+    ].join(":");
   }
 
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
     return [
-      this.orgKeySection(env.organizationId),
-      this.projKeySection(env.projectId),
+      this.orgKeySection(env.organization.id),
+      this.projKeySection(env.project.id),
       this.envTypeKeySection(env.type),
       this.envKeySection(env.id),
       this.queueSection(queue),
@@ -61,8 +65,9 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   envSharedQueueKey(env: AuthenticatedEnvironment) {
     if (env.type === "DEVELOPMENT") {
       return [
-        this.orgKeySection(env.organizationId),
-        this.projKeySection(env.projectId),
+        this.orgKeySection(env.organization.id),
+        this.projKeySection(env.project.id),
+        this.envTypeKeySection(env.type),
         this.envKeySection(env.id),
         constants.SHARED_QUEUE,
       ].join(":");
@@ -84,7 +89,16 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
-  //orgs:${orgId}:proj:${projectId}:task:${taskIdentifier}:env:${envId}:currentConcurrency
+  currentConcurrencyKey(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): string {
+    return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
+      ":"
+    );
+  }
+
   currentTaskIdentifierKey({
     orgId,
     projectId,
@@ -100,48 +114,57 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
       this.orgKeySection(orgId),
       this.projKeySection(projectId),
       this.taskIdentifierSection(taskIdentifier),
-      environmentId ? this.envKeySection(environmentId) : undefined,
+      this.envKeySection(environmentId),
       constants.CURRENT_CONCURRENCY_PART,
     ]
       .filter(Boolean)
       .join(":");
   }
 
-  currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
-    queue: string,
-    concurrencyKey?: string
-  ): string {
-    return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
-      ":"
-    );
-  }
-
   disabledConcurrencyLimitKeyFromQueue(queue: string) {
     const { orgId } = this.extractComponentsFromQueue(queue);
-    return `${constants.ORG_PART}:${orgId}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
+    return `{${constants.ORG_PART}:${orgId}}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
   }
 
   envConcurrencyLimitKeyFromQueue(queue: string) {
-    const { envId } = this.extractComponentsFromQueue(queue);
-    return `${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
+    const { orgId, envId } = this.extractComponentsFromQueue(queue);
+    return `{${constants.ORG_PART}:${orgId}}:${constants.ENV_PART}:${envId}:${constants.CONCURRENCY_LIMIT_PART}`;
   }
 
   envCurrentConcurrencyKeyFromQueue(queue: string) {
-    const { envId } = this.extractComponentsFromQueue(queue);
-    return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+    const { orgId, envId } = this.extractComponentsFromQueue(queue);
+    return `{${constants.ORG_PART}:${orgId}}:${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
-    return [this.envKeySection(env.id), constants.CURRENT_CONCURRENCY_PART].join(":");
+    return [
+      this.orgKeySection(env.organization.id),
+      this.envKeySection(env.id),
+      constants.CURRENT_CONCURRENCY_PART,
+    ].join(":");
   }
 
+  //todo think about this
   globalCurrentConcurrencyKey(queue: string): string {
     return queue.replace(/:env:.+$/, ":*");
   }
 
-  messageKey(messageId: string) {
-    return `${constants.MESSAGE_PART}:${messageId}`;
+  messageKey(orgId: string, messageId: string) {
+    return [this.orgKeySection(orgId), `${constants.MESSAGE_PART}:${messageId}`]
+      .filter(Boolean)
+      .join(":");
+  }
+
+  extractComponentsFromQueue(queue: string) {
+    const parts = this.normalizeQueue(queue).split(":");
+    return {
+      orgId: parts[1].replace("{", "").replace("}", ""),
+      projectId: parts[3],
+      envType: parts[5],
+      envId: parts[7],
+      queue: parts[9],
+      concurrencyKey: parts.at(11),
+    };
   }
 
   private envKeySection(envId: string) {
@@ -157,7 +180,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   private orgKeySection(orgId: string) {
-    return `${constants.ORG_PART}:${orgId}`;
+    return `{${constants.ORG_PART}:${orgId}}`;
   }
 
   private queueSection(queue: string) {
@@ -170,18 +193,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
 
   private taskIdentifierSection(taskIdentifier: string) {
     return `${constants.TASK_PART}:${taskIdentifier}`;
-  }
-
-  private extractComponentsFromQueue(queue: string) {
-    const parts = this.normalizeQueue(queue).split(":");
-    return {
-      orgId: parts[1],
-      projectId: parts[3],
-      envType: parts[5],
-      envId: parts[7],
-      queue: parts[9],
-      concurrencyKey: parts.at(11),
-    };
   }
 
   // This removes the leading prefix from the queue name if it exists
