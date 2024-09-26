@@ -143,7 +143,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
   const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId);
   const selectedCodeSamplePayload = selectedCodeSample?.payload;
-  const selectedCodeSampleMetadata = selectedCodeSample?.metadata;
+  const selectedCodeSampleMetadata = selectedCodeSample?.seedMetadata;
 
   const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
     selectedCodeSamplePayload ?? startingJson
@@ -281,7 +281,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
               const run = runs.find((r) => r.id === id);
               if (!run) return;
               setPayload(run.payload);
-              run.metadata && setMetadata(run.metadata);
+              run.seedMetadata && setMetadata(run.seedMetadata);
               setSelectedCodeSampleId(id);
             }}
           />
