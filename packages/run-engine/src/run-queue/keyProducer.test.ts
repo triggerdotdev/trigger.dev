@@ -284,4 +284,55 @@ describe("KeyProducer", () => {
     });
     expect(key).toBe("{org:o1234}:env:e1234:currentConcurrency");
   });
+
+  it("messageKey", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:");
+    const key = keyProducer.messageKey("o1234", "m1234");
+    expect(key).toBe("{org:o1234}:message:m1234");
+  });
+
+  it("extractComponentsFromQueue (no concurrencyKey)", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:");
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        maximumConcurrencyLimit: 10,
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const components = keyProducer.extractComponentsFromQueue(queueKey);
+    expect(components).toEqual({
+      orgId: "o1234",
+      projectId: "p1234",
+      envId: "e1234",
+      queue: "task/task-name",
+      concurrencyKey: undefined,
+    });
+  });
+
+  it("extractComponentsFromQueue (w concurrencyKey)", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:");
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        maximumConcurrencyLimit: 10,
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name",
+      "c1234"
+    );
+    const components = keyProducer.extractComponentsFromQueue(queueKey);
+    expect(components).toEqual({
+      orgId: "o1234",
+      projectId: "p1234",
+      envId: "e1234",
+      queue: "task/task-name",
+      concurrencyKey: "c1234",
+    });
+  });
 });
