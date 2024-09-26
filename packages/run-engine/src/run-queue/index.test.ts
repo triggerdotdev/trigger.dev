@@ -25,7 +25,7 @@ const testOptions = {
   workers: 1,
   defaultEnvConcurrency: 10,
   enableRebalancing: false,
-  logger: new Logger("RunQueue", "debug"),
+  logger: new Logger("RunQueue", "warn"),
 };
 
 const authenticatedEnvProd = {
