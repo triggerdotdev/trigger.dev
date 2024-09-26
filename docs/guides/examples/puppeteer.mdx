@@ -11,9 +11,9 @@ import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 
 There are 3 example tasks to follow on this page:
 
-1. [Basic example](/examples/puppeteer#basic-example)
-2. [Generate a PDF from a web page](/examples/puppeteer#generate-a-pdf-from-a-web-page)
-3. [Scrape content from a web page](/examples/puppeteer#scrape-content-from-a-web-page)
+1. [Basic example](/guides/examples/puppeteer#basic-example)
+2. [Generate a PDF from a web page](/guides/examples/puppeteer#generate-a-pdf-from-a-web-page)
+3. [Scrape content from a web page](/guides/examples/puppeteer#scrape-content-from-a-web-page)
 
 <ScrapingWarning/>
 
@@ -143,7 +143,7 @@ There's no payload required for this task so you can just click "Run test" from 
 
 ### Overview
 
-In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https://www.browserbase.com/) proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out. See [this list](/examples/puppeteer#proxying) for more proxying services we recommend.
+In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https://www.browserbase.com/) proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out. See [this list](/guides/examples/puppeteer#proxying) for more proxying services we recommend.
 
 <Note>
   When web scraping, you MUST use the technique below which uses a proxy with Puppeteer. Direct scraping without using `browserWSEndpoint` is prohibited and will result in account suspension.
@@ -163,12 +163,6 @@ export const puppeteerScrapeWithProxy = task({
     });
 
     const page = await browser.newPage();
-
-    // Set up BrowserBase proxy authentication
-    await page.authenticate({
-      username: "api",
-      password: process.env.BROWSERBASE_API_KEY || "",
-    });
 
     try {
       // Navigate to the target website

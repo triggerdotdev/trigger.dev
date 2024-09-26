@@ -12,7 +12,7 @@ import {
   taskCatalog,
 } from "@trigger.dev/core/v3";
 import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
-import { Task, TaskOptions, apiClientMissingError, createTask } from "../shared.js";
+import { Task, TaskOptions, createTask } from "../shared.js";
 import * as SchedulesAPI from "./api.js";
 import { tracer } from "../tracer.js";
 
@@ -86,11 +86,7 @@ export function create(
   options: SchedulesAPI.CreateScheduleOptions,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -124,11 +120,7 @@ export function retrieve(
   scheduleId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -169,11 +161,7 @@ export function update(
   options: SchedulesAPI.UpdateScheduleOptions,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -207,11 +195,7 @@ export function del(
   scheduleId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<DeletedScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -245,11 +229,7 @@ export function deactivate(
   scheduleId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -283,11 +263,7 @@ export function activate(
   scheduleId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -324,11 +300,7 @@ export function list(
   options?: SchedulesAPI.ListScheduleOptions,
   requestOptions?: ApiRequestOptions
 ): OffsetLimitPagePromise<typeof ScheduleObject> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -348,10 +320,6 @@ export function list(
  */
 export function timezones(options?: { excludeUtc?: boolean }) {
   const baseUrl = apiClientManager.baseURL;
-
-  if (!baseUrl) {
-    throw apiClientMissingError();
-  }
 
   return zodfetch(
     TimezonesResult,

@@ -194,13 +194,14 @@ export const taskWithOnStart = task({
 You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onStart: async (payload, { ctx }) => {
     console.log("Task started", ctx.task.id);
   },
-};
+});
 ```
 
 ### `onSuccess` function
@@ -222,13 +223,14 @@ export const taskWithOnSuccess = task({
 You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onSuccess: async (payload, output, { ctx }) => {
     console.log("Task succeeded", ctx.task.id);
   },
-};
+});
 ```
 
 ### `onFailure` function
@@ -250,13 +252,14 @@ export const taskWithOnFailure = task({
 You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onFailure: async (payload, error, { ctx }) => {
     console.log("Task failed", ctx.task.id);
   },
-};
+});
 ```
 
 ### `handleError` functions

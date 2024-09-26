@@ -128,6 +128,12 @@ export class CompleteAttemptService extends BaseService {
           output: completion.output,
           outputType: completion.outputType,
           usageDurationMs: completion.usage?.durationMs,
+          taskRun: {
+            update: {
+              output: completion.output,
+              outputType: completion.outputType,
+            },
+          },
         },
       });
 
@@ -348,6 +354,15 @@ export class CompleteAttemptService extends BaseService {
           })
         );
       } else {
+        await this._prisma.taskRun.update({
+          where: {
+            id: taskRunAttempt.taskRunId,
+          },
+          data: {
+            error: sanitizedError,
+          },
+        });
+
         const finalizeService = new FinalizeTaskRunService();
         await finalizeService.call({
           id: taskRunAttempt.taskRunId,

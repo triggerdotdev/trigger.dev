@@ -87,18 +87,17 @@
     {
       "source": "/trigger-config",
       "destination": "/config/config-file"
+    },
+    {
+      "source": "/examples/:slug*",
+      "destination": "/guides/examples/:slug*"
     }
   ],
   "anchors": [
     {
-      "name": "Guides",
+      "name": "Guides & examples",
       "icon": "book",
       "url": "guides"
-    },
-    {
-      "name": "Examples",
-      "icon": "code",
-      "url": "examples"
     }
   ],
   "navigation": [
@@ -172,7 +171,8 @@
             "management/runs/retrieve",
             "management/runs/replay",
             "management/runs/cancel",
-            "management/runs/reschedule"
+            "management/runs/reschedule",
+            "management/runs/update-metadata"
           ]
         },
         {
@@ -270,30 +270,30 @@
       ]
     },
     {
+      "group": "Example tasks",
+      "pages": [
+        "guides/examples/intro",
+        "guides/examples/dall-e3-generate-image",
+        "guides/examples/ffmpeg-video-processing",
+        "guides/examples/open-ai-with-retrying",
+        "guides/examples/pdf-to-image",
+        "guides/examples/puppeteer",
+        "guides/examples/sharp-image-processing",
+        "guides/examples/stripe-webhook",
+        "guides/examples/supabase-database-operations",
+        "guides/examples/supabase-storage-upload",
+        "guides/examples/react-pdf",
+        "guides/examples/resend-email-sequence",
+        "guides/examples/vercel-ai-sdk"
+      ]
+    },
+    {
       "group": "Dashboard",
       "pages": ["guides/dashboard/creating-a-project"]
     },
     {
       "group": "Migrations",
       "pages": ["guides/use-cases/upgrading-from-v2"]
-    },
-    {
-      "group": "Examples",
-      "pages": [
-        "examples/intro",
-        "examples/dall-e3-generate-image",
-        "examples/ffmpeg-video-processing",
-        "examples/open-ai-with-retrying",
-        "examples/pdf-to-image",
-        "examples/puppeteer",
-        "examples/sharp-image-processing",
-        "examples/stripe-webhook",
-        "examples/supabase-storage-upload",
-        "examples/supabase-database-operations",
-        "examples/react-pdf",
-        "examples/resend-email-sequence",
-        "examples/vercel-ai-sdk"
-      ]
     }
   ],
   "footerSocials": {
