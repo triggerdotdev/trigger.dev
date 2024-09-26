@@ -321,7 +321,7 @@ function SpanBody({
                       <Header3>Triggered runs</Header3>
                       <div
                         className={cn(
-                          "max-h-[12.5rem] overflow-y-auto rounded",
+                          "max-h-[12.5rem] overflow-y-auto rounded-md",
                           span.triggeredRuns.length > 4 && "border-b border-grid-bright"
                         )}
                       >
