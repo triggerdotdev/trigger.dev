@@ -18,7 +18,7 @@ import {
   isRequestOptions,
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
-import { AnyTask, Prettify, RunHandle, Task, apiClientMissingError } from "./shared.js";
+import { AnyTask, Prettify, RunHandle, Task } from "./shared.js";
 import { tracer } from "./tracer.js";
 import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerialization";
 
@@ -57,11 +57,7 @@ function listRuns(
   paramsOrOptions?: ListRunsQueryParams | ListProjectRunsQueryParams | ApiRequestOptions,
   requestOptions?: ApiRequestOptions
 ): CursorPagePromise<typeof ListRunResponseItem> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = listRunsRequestOptions(
     paramsOrProjectRef,
@@ -158,11 +154,7 @@ function retrieveRun<TRunId extends RunHandle<any> | AnyTask | string>(
   runId: RunId<TRunId>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveRunResult<TRunId>> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -216,11 +208,7 @@ function replayRun(
   runId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<ReplayRunResponse> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -250,11 +238,7 @@ function cancelRun(
   runId: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<CanceledRunResponse> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -285,11 +269,7 @@ function rescheduleRun(
   body: RescheduleRunRequestBody,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveRunResponse> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {

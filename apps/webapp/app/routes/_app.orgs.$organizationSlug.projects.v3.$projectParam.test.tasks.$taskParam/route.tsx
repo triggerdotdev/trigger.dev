@@ -27,9 +27,11 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Select } from "~/components/primitives/Select";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { TimezoneList } from "~/components/scheduled/timezones";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
   ScheduledRun,
@@ -39,6 +41,7 @@ import {
 } from "~/presenters/v3/TestTaskPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
@@ -129,27 +132,44 @@ export default function Page() {
 const startingJson = "{\n\n}";
 
 function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: StandardRun[] }) {
+  const { value, replace } = useSearchParams();
+  const tab = value("tab");
+
   //form submission
   const submit = useSubmit();
   const lastSubmission = useActionData();
 
   //recent runs
   const [selectedCodeSampleId, setSelectedCodeSampleId] = useState(runs.at(0)?.id);
-  const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId)?.payload;
+  const selectedCodeSample = runs.find((r) => r.id === selectedCodeSampleId);
+  const selectedCodeSamplePayload = selectedCodeSample?.payload;
+  const selectedCodeSampleMetadata = selectedCodeSample?.metadata;
 
-  const [defaultJson, setDefaultJson] = useState<string>(selectedCodeSample ?? startingJson);
-  const setCode = useCallback((code: string) => {
-    setDefaultJson(code);
+  const [defaultPayloadJson, setDefaultPayloadJson] = useState<string>(
+    selectedCodeSamplePayload ?? startingJson
+  );
+  const setPayload = useCallback((code: string) => {
+    setDefaultPayloadJson(code);
   }, []);
 
-  const currentJson = useRef<string>(defaultJson);
+  const currentPayloadJson = useRef<string>(defaultPayloadJson);
+
+  const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
+    selectedCodeSampleMetadata ?? "{}"
+  );
+  const setMetadata = useCallback((code: string) => {
+    setDefaultMetadataJson(code);
+  }, []);
+
+  const currentMetadataJson = useRef<string>(defaultMetadataJson);
 
   const submitForm = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       submit(
         {
           triggerSource: "STANDARD",
-          payload: currentJson.current,
+          payload: currentPayloadJson.current,
+          metadata: currentMetadataJson.current,
           taskIdentifier: task.taskIdentifier,
           environmentId: task.environment.id,
         },
@@ -160,7 +180,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       );
       e.preventDefault();
     },
-    [currentJson]
+    [currentPayloadJson, currentMetadataJson]
   );
 
   const [form, { environmentId, payload }] = useForm({
@@ -183,28 +203,73 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel id="test-task-main" min="100px" default="60%">
           <div className="h-full bg-charcoal-900">
-            <JSONEditor
-              defaultValue={defaultJson}
-              readOnly={false}
-              basicSetup
-              onChange={(v) => {
-                currentJson.current = v;
+            <TabContainer className="px-3 pt-2">
+              <TabButton
+                isActive={!tab || tab === "payload"}
+                layoutId="test-editor"
+                onClick={() => {
+                  replace({ tab: "payload" });
+                }}
+              >
+                Payload
+              </TabButton>
 
-                //deselect the example if it's been edited
-                if (selectedCodeSampleId) {
-                  if (v !== selectedCodeSample) {
-                    setDefaultJson(v);
-                    setSelectedCodeSampleId(undefined);
+              <TabButton
+                isActive={tab === "metadata"}
+                layoutId="test-editor"
+                onClick={() => {
+                  replace({ tab: "metadata" });
+                }}
+              >
+                Metadata
+              </TabButton>
+            </TabContainer>
+            <div>
+              <JSONEditor
+                defaultValue={defaultPayloadJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => {
+                  currentPayloadJson.current = v;
+
+                  //deselect the example if it's been edited
+                  if (selectedCodeSampleId) {
+                    if (v !== selectedCodeSamplePayload) {
+                      setDefaultPayloadJson(v);
+                      setSelectedCodeSampleId(undefined);
+                    }
                   }
-                }
-              }}
-              height="100%"
-              min-height="100%"
-              max-height="100%"
-              autoFocus
-              placeholder="Use your schema to enter valid JSON or add one of the recent payloads then click 'Run test'"
-              className="h-full"
-            />
+                }}
+                height="100%"
+                min-height="100%"
+                max-height="100%"
+                autoFocus={!tab || tab === "payload"}
+                placeholder="{ }"
+                className={cn("h-full", tab === "metadata" && "hidden")}
+              />
+              <JSONEditor
+                defaultValue={defaultMetadataJson}
+                readOnly={false}
+                basicSetup
+                onChange={(v) => {
+                  currentMetadataJson.current = v;
+
+                  //deselect the example if it's been edited
+                  if (selectedCodeSampleId) {
+                    if (v !== selectedCodeSampleMetadata) {
+                      setDefaultMetadataJson(v);
+                      setSelectedCodeSampleId(undefined);
+                    }
+                  }
+                }}
+                height="100%"
+                min-height="100%"
+                max-height="100%"
+                autoFocus={tab === "metadata"}
+                placeholder=""
+                className={cn("h-full", tab !== "metadata" && "hidden")}
+              />
+            </div>
           </div>
         </ResizablePanel>
         <ResizableHandle id="test-task-handle" />
@@ -213,9 +278,10 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
             runs={runs}
             selectedId={selectedCodeSampleId}
             onSelected={(id) => {
-              const payload = runs.find((r) => r.id === id)?.payload;
-              if (!payload) return;
-              setCode(payload);
+              const run = runs.find((r) => r.id === id);
+              if (!run) return;
+              setPayload(run.payload);
+              run.metadata && setMetadata(run.metadata);
               setSelectedCodeSampleId(id);
             }}
           />

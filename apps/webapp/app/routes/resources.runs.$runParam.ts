@@ -72,6 +72,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       },
       payload: true,
       payloadType: true,
+      metadata: true,
+      metadataType: true,
       maxAttempts: true,
       project: {
         include: {

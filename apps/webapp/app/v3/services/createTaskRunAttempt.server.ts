@@ -1,4 +1,4 @@
-import { TaskRunExecution } from "@trigger.dev/core/v3";
+import { parsePacket, TaskRunExecution } from "@trigger.dev/core/v3";
 import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -157,6 +157,11 @@ export class CreateTaskRunAttemptService extends BaseService {
 
       const machinePreset = machinePresetFromConfig(taskRun.lockedBy.machineConfig ?? {});
 
+      const metadata = await parsePacket({
+        data: taskRun.metadata ?? undefined,
+        dataType: taskRun.metadataType,
+      });
+
       const execution: TaskRunExecution = {
         task: {
           id: taskRun.lockedBy.slug,
@@ -186,6 +191,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           baseCostInCents: taskRun.baseCostInCents,
           maxAttempts: taskRun.maxAttempts ?? undefined,
           version: taskRun.lockedBy.worker.version,
+          metadata,
         },
         queue: {
           id: queue.friendlyId,
