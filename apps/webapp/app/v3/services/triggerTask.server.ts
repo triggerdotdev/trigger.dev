@@ -351,6 +351,8 @@ export class TriggerTaskService extends BaseService {
                   depth,
                   metadata: metadataPacket?.data,
                   metadataType: metadataPacket?.dataType,
+                  seedMetadata: metadataPacket?.data,
+                  seedMetadataType: metadataPacket?.dataType,
                 },
               });
 

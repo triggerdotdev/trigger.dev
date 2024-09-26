@@ -46,8 +46,8 @@ type RawRun = {
   payload: string;
   payloadType: string;
   runtimeEnvironmentId: string;
-  metadata?: string;
-  metadataType?: string;
+  seedMetadata?: string;
+  seedMetadataType?: string;
 };
 
 export type StandardRun = Omit<RawRun, "number"> & {
@@ -128,8 +128,8 @@ export class TestTaskPresenter {
         taskr.status,
         taskr.payload,
         taskr."payloadType",
-        taskr.metadata,
-        taskr."metadataType",
+        taskr."seedMetadata",
+        taskr."seedMetadataType",
         taskr."runtimeEnvironmentId"
     FROM 
         taskruns AS taskr
@@ -165,8 +165,8 @@ export class TestTaskPresenter {
                 ...r,
                 number,
                 payload: await prettyPrintPacket(r.payload, r.payloadType),
-                metadata: r.metadata
-                  ? await prettyPrintPacket(r.metadata, r.metadataType)
+                metadata: r.seedMetadata
+                  ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
                   : undefined,
               };
             })

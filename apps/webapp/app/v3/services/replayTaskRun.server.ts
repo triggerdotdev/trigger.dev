@@ -65,10 +65,10 @@ export class ReplayTaskRunService extends BaseService {
       payloadPacketType: payloadPacket.dataType,
     });
 
-    const metadata = existingTaskRun.metadata
+    const metadata = existingTaskRun.seedMetadata
       ? await parsePacket({
-          data: existingTaskRun.metadata,
-          dataType: existingTaskRun.metadataType,
+          data: existingTaskRun.seedMetadata,
+          dataType: existingTaskRun.seedMetadataType,
         })
       : undefined;
 
