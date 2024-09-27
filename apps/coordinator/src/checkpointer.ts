@@ -5,6 +5,9 @@ import { nanoid } from "nanoid";
 import fs from "node:fs/promises";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Buildah, Crictl, Exec } from "./exec";
+import { setTimeout } from "node:timers/promises";
+import { TempFileCleaner } from "./cleaner";
+import { numFromEnv, boolFromEnv } from "./util";
 
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
@@ -100,6 +103,7 @@ export class Checkpointer {
   private simulatePushFailureSeconds: number;
 
   private chaosMonkey: ChaosMonkey;
+  private tmpCleaner?: TempFileCleaner;
 
   constructor(private opts: CheckpointerOptions) {
     this.#dockerMode = opts.dockerMode;
@@ -116,6 +120,19 @@ export class Checkpointer {
     this.simulatePushFailureSeconds = opts.simulatePushFailureSeconds ?? 300;
 
     this.chaosMonkey = opts.chaosMonkey ?? new ChaosMonkey(!!process.env.CHAOS_MONKEY_ENABLED);
+
+    if (boolFromEnv("TMP_CLEANER_ENABLED", false)) {
+      const pathsOverride = process.env.TMP_CLEANER_PATHS_OVERRIDE?.split(",") ?? [];
+
+      this.tmpCleaner = new TempFileCleaner({
+        paths: pathsOverride.length ? pathsOverride : [Buildah.tmpDir],
+        maxAgeMinutes: numFromEnv("TMP_CLEANER_MAX_AGE_MINUTES", 60),
+        intervalSeconds: numFromEnv("TMP_CLEANER_INTERVAL_SECONDS", 300),
+        leadingEdge: boolFromEnv("TMP_CLEANER_LEADING_EDGE", false),
+      });
+
+      this.tmpCleaner.start();
+    }
   }
 
   async init(): Promise<CheckpointerInitializeReturn> {
@@ -286,7 +303,7 @@ export class Checkpointer {
           });
 
           this.#waitingForRetry.add(runId);
-          await new Promise((resolve) => setTimeout(resolve, delay.milliseconds));
+          await setTimeout(delay.milliseconds);
 
           if (!this.#waitingForRetry.has(runId)) {
             this.#logger.log("Checkpoint canceled while waiting for retry", { runId });

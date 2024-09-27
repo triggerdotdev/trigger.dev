@@ -14,6 +14,7 @@ import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
 import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
+import { boolFromEnv, numFromEnv } from "./util";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 collectDefaultMetrics();
@@ -21,26 +22,6 @@ collectDefaultMetrics();
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
 const NODE_NAME = process.env.NODE_NAME || "coordinator";
 const DEFAULT_RETRY_DELAY_THRESHOLD_IN_MS = 30_000;
-
-const boolFromEnv = (env: string, defaultValue: boolean): boolean => {
-  const value = process.env[env];
-
-  if (!value) {
-    return defaultValue;
-  }
-
-  return ["1", "true"].includes(value);
-};
-
-const numFromEnv = (env: string, defaultValue: number): number => {
-  const value = process.env[env];
-
-  if (!value) {
-    return defaultValue;
-  }
-
-  return parseInt(value, 10);
-};
 
 const PLATFORM_ENABLED = ["1", "true"].includes(process.env.PLATFORM_ENABLED ?? "true");
 const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
