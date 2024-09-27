@@ -141,28 +141,63 @@ describe("RunQueue", () => {
       });
 
       try {
+        //initial queue length
         const result = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result).toBe(0);
 
+        //initial oldest message
         const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(oldestScore).toBe(undefined);
 
+        //enqueue message
         await queue.enqueueMessage({ env: authenticatedEnvDev, message: messageDev });
 
+        //queue length
         const result2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result2).toBe(1);
 
+        //oldest message
         const oldestScore2 = await queue.oldestMessageInQueue(
           authenticatedEnvDev,
           messageDev.queue
         );
         expect(oldestScore2).toBe(messageDev.timestamp);
 
+        //concurrencies
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency).toBe(0);
+        const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency).toBe(0);
+        const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
+        expect(projectConcurrency).toBe(0);
+        const taskConcurrency = await queue.currentConcurrencyOfTask(
+          authenticatedEnvDev,
+          messageDev.taskIdentifier
+        );
+        expect(taskConcurrency).toBe(0);
+
         const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
 
-        //todo check all the currentConcurrency values
+        //concurrencies
+        const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency2).toBe(1);
+        const envConcurrency2 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
+        expect(envConcurrency2).toBe(1);
+        const projectConcurrency2 = await queue.currentConcurrencyOfProject(authenticatedEnvDev);
+        expect(projectConcurrency2).toBe(1);
+        const taskConcurrency2 = await queue.currentConcurrencyOfTask(
+          authenticatedEnvDev,
+          messageDev.taskIdentifier
+        );
+        expect(taskConcurrency2).toBe(1);
 
         const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued2).toBe(undefined);

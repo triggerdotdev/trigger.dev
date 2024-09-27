@@ -140,6 +140,14 @@ export class RunQueue {
     return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
 
+  public async currentConcurrencyOfProject(env: AuthenticatedEnvironment) {
+    return this.redis.scard(this.keys.projectCurrentConcurrencyKey(env));
+  }
+
+  public async currentConcurrencyOfTask(env: AuthenticatedEnvironment, taskIdentifier: string) {
+    return this.redis.scard(this.keys.taskIdentifierCurrentConcurrencyKey(env, taskIdentifier));
+  }
+
   public async enqueueMessage({
     env,
     message,
@@ -199,7 +207,7 @@ export class RunQueue {
         );
 
         if (!messageQueue) {
-          this.logger.log("No message queue found", {
+          this.logger.debug("No message queue found", {
             parentQueue,
           });
 
@@ -213,6 +221,8 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+          projectCurrentConcurrencyKey:
+            this.keys.projectCurrentConcurrencyKeyFromQueue(messageQueue),
           messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
           taskCurrentConcurrentKeyPrefix:
             this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
@@ -303,6 +313,8 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+          projectCurrentConcurrencyKey:
+            this.keys.projectCurrentConcurrencyKeyFromQueue(messageQueue),
           messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
           taskCurrentConcurrentKeyPrefix:
             this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
@@ -478,6 +490,47 @@ export class RunQueue {
     );
   }
 
+  queueConcurrencyScanStream(
+    count: number = 100,
+    onEndCallback?: () => void,
+    onErrorCallback?: (error: Error) => void
+  ) {
+    const pattern = this.keys.queueCurrentConcurrencyScanPattern();
+
+    this.logger.debug("Starting queue concurrency scan stream", {
+      pattern,
+      component: "runqueue",
+      operation: "queueConcurrencyScanStream",
+      service: this.name,
+      count,
+    });
+
+    const redis = this.redis.duplicate();
+
+    const stream = redis.scanStream({
+      match: pattern,
+      type: "set",
+      count,
+    });
+
+    stream.on("end", () => {
+      onEndCallback?.();
+      redis.quit();
+    });
+
+    stream.on("error", (error) => {
+      onErrorCallback?.(error);
+      redis.quit();
+    });
+
+    return { stream, redis };
+  }
+
+  async quit() {
+    await Promise.all(this.#rebalanceWorkers.map((worker) => worker.stop()));
+    await this.redis.quit();
+  }
+
   async #trace<T>(
     name: string,
     fn: (span: Span) => Promise<T>,
@@ -507,46 +560,6 @@ export class RunQueue {
         }
       }
     );
-  }
-
-  async readMessage(orgId: string, messageId: string) {
-    return this.#trace(
-      "readMessage",
-      async (span) => {
-        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
-
-        if (!rawMessage) {
-          return;
-        }
-
-        const message = MessagePayload.safeParse(JSON.parse(rawMessage));
-
-        if (!message.success) {
-          this.logger.error(`[${this.name}] Failed to parse message`, {
-            messageId,
-            error: message.error,
-            service: this.name,
-          });
-
-          return;
-        }
-
-        return message.data;
-      },
-      {
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          [SemanticAttributes.RUN_ID]: messageId,
-        },
-      }
-    );
-  }
-
-  async quit() {
-    await Promise.all(this.#rebalanceWorkers.map((worker) => worker.stop()));
-    await this.redis.quit();
   }
 
   async #getRandomQueueFromParentQueue(
@@ -717,42 +730,6 @@ export class RunQueue {
     }
   }
 
-  queueConcurrencyScanStream(
-    count: number = 100,
-    onEndCallback?: () => void,
-    onErrorCallback?: (error: Error) => void
-  ) {
-    const pattern = this.keys.queueCurrentConcurrencyScanPattern();
-
-    this.logger.debug("Starting queue concurrency scan stream", {
-      pattern,
-      component: "runqueue",
-      operation: "queueConcurrencyScanStream",
-      service: this.name,
-      count,
-    });
-
-    const redis = this.redis.duplicate();
-
-    const stream = redis.scanStream({
-      match: pattern,
-      type: "set",
-      count,
-    });
-
-    stream.on("end", () => {
-      onEndCallback?.();
-      redis.quit();
-    });
-
-    stream.on("error", (error) => {
-      onErrorCallback?.(error);
-      redis.quit();
-    });
-
-    return { stream, redis };
-  }
-
   async #rebalanceParentQueues() {
     return await new Promise<void>((resolve, reject) => {
       // Scan for sorted sets with the parent queue pattern
@@ -863,11 +840,11 @@ export class RunQueue {
   async #callEnqueueMessage(message: MessagePayload, parentQueue: string) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-    const taskConcurrencyTrackerKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+    const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
       message.queue,
       message.taskIdentifier
     );
-    const envConcurrencyTrackerKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const projectConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue);
 
     this.logger.debug("Calling enqueueMessage", {
       messagePayload: message,
@@ -882,8 +859,8 @@ export class RunQueue {
       this.keys.messageKey(message.orgId, message.runId),
       concurrencyKey,
       envConcurrencyKey,
-      taskConcurrencyTrackerKey,
-      envConcurrencyTrackerKey,
+      taskConcurrencyKey,
+      projectConcurrencyKey,
       message.queue,
       message.runId,
       JSON.stringify(message),
@@ -898,6 +875,7 @@ export class RunQueue {
     envConcurrencyLimitKey,
     currentConcurrencyKey,
     envCurrentConcurrencyKey,
+    projectCurrentConcurrencyKey,
     messageKeyPrefix,
     taskCurrentConcurrentKeyPrefix,
   }: {
@@ -907,6 +885,7 @@ export class RunQueue {
     envConcurrencyLimitKey: string;
     currentConcurrencyKey: string;
     envCurrentConcurrencyKey: string;
+    projectCurrentConcurrencyKey: string;
     messageKeyPrefix: string;
     taskCurrentConcurrentKeyPrefix: string;
   }) {
@@ -918,6 +897,7 @@ export class RunQueue {
       envConcurrencyLimitKey,
       currentConcurrencyKey,
       envCurrentConcurrencyKey,
+      projectCurrentConcurrencyKey,
       messageKeyPrefix,
       taskCurrentConcurrentKeyPrefix,
       //args
@@ -1134,9 +1114,9 @@ local queue = KEYS[1]
 local parentQueue = KEYS[2]
 local messageKey = KEYS[3]
 local concurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local taskConcurrencyTrackerKey = KEYS[6]
-local envConcurrencyTrackerKey = KEYS[7]
+local envConcurrencyKey = KEYS[5]
+local taskConcurrencyKey = KEYS[6]
+local projectConcurrencyKey = KEYS[7]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -1159,14 +1139,14 @@ end
 
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-redis.call('SREM', taskConcurrencyTrackerKey, messageId)
-redis.call('SREM', envConcurrencyTrackerKey, messageId)
+redis.call('SREM', envConcurrencyKey, messageId)
+redis.call('SREM', taskConcurrencyKey, messageId)
+redis.call('SREM', projectConcurrencyKey, messageId)
       `,
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 9,
       lua: `
 local childQueue = KEYS[1]
 local parentQueue = KEYS[2]
@@ -1174,8 +1154,9 @@ local concurrencyLimitKey = KEYS[3]
 local envConcurrencyLimitKey = KEYS[4]
 local currentConcurrencyKey = KEYS[5]
 local envCurrentConcurrencyKey = KEYS[6]
-local messageKeyPrefix = KEYS[7]
-local taskCurrentConcurrentKeyPrefix = KEYS[8]
+local projectConcurrencyKey = KEYS[7]
+local messageKeyPrefix = KEYS[8]
+local taskCurrentConcurrentKeyPrefix = KEYS[9]
 
 local childQueueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -1222,10 +1203,8 @@ local taskConcurrencyKey = taskCurrentConcurrentKeyPrefix .. taskIdentifier
 redis.call('ZREM', childQueue, messageId)
 redis.call('SADD', currentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
+redis.call('SADD', projectConcurrencyKey, messageId)
 redis.call('SADD', taskConcurrencyKey, messageId)
-
--- todo add this in here
--- redis.call('SADD', taskConcurrencyKey, messageId)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
@@ -1451,8 +1430,8 @@ declare module "ioredis" {
       messageKey: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
-      taskConcurrencyTrackerKey: string,
-      environmentConcurrencyTrackerKey: string,
+      taskConcurrencyKey: string,
+      projectConcurrencyKey: string,
       //args
       queueName: string,
       messageId: string,
@@ -1468,7 +1447,8 @@ declare module "ioredis" {
       concurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
       currentConcurrencyKey: string,
-      envCurrentConcurrencyKey: string,
+      envConcurrencyKey: string,
+      projectConcurrencyKey: string,
       messageKeyPrefix: string,
       taskCurrentConcurrentKeyPrefix: string,
       //args
