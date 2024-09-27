@@ -259,6 +259,7 @@
         "guides/frameworks/nodejs",
         "guides/frameworks/prisma",
         "guides/frameworks/remix",
+        "guides/frameworks/sequin",
         {
           "group": "Supabase",
           "icon": "bolt",
