@@ -375,19 +375,19 @@ export class RunQueue {
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
         });
 
-        // await this.#callAcknowledgeMessage({
-        //   parentQueue: message.parentQueue,
-        //   messageKey: this.keys.messageKey(orgId, messageId),
-        //   messageQueue: message.queue,
-        //   concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
-        //   envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-        //   projectConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
-        //   taskConcurrencyKey: this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
-        //     message.queue,
-        //     message.taskIdentifier
-        //   ),
-        //   messageId,
-        // });
+        await this.#callAcknowledgeMessage({
+          messageId,
+          messageQueue: message.queue,
+          parentQueue: message.parentQueue,
+          messageKey: this.keys.messageKey(orgId, messageId),
+          concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
+          envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+          taskConcurrencyKey: this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+            message.queue,
+            message.taskIdentifier
+          ),
+          projectConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
+        });
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1000,31 +1000,31 @@ export class RunQueue {
   }
 
   async #callAcknowledgeMessage({
+    messageId,
     parentQueue,
     messageKey,
     messageQueue,
-    visibilityQueue,
     concurrencyKey,
     envConcurrencyKey,
-    orgConcurrencyKey,
-    messageId,
+    taskConcurrencyKey,
+    projectConcurrencyKey,
   }: {
     parentQueue: string;
     messageKey: string;
     messageQueue: string;
-    visibilityQueue: string;
     concurrencyKey: string;
     envConcurrencyKey: string;
-    orgConcurrencyKey: string;
+    taskConcurrencyKey: string;
+    projectConcurrencyKey: string;
     messageId: string;
   }) {
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
       messageQueue,
-      visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
-      orgConcurrencyKey,
+      projectConcurrencyKey,
+      taskConcurrencyKey,
       messageId,
       parentQueue,
       service: this.name,
@@ -1034,12 +1034,11 @@ export class RunQueue {
       parentQueue,
       messageKey,
       messageQueue,
-      visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
-      orgConcurrencyKey,
-      messageId,
-      messageQueue
+      projectConcurrencyKey,
+      taskConcurrencyKey,
+      messageId
     );
   }
 
@@ -1294,18 +1293,17 @@ return {messageId, messageScore, messagePayload} -- Return message details
     this.redis.defineCommand("acknowledgeMessage", {
       numberOfKeys: 7,
       lua: `
--- Keys: parentQueue, messageKey, messageQueue, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
+-- Keys: 
 local parentQueue = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueue = KEYS[3]
-local visibilityQueue = KEYS[4]
-local concurrencyKey = KEYS[5]
-local envCurrentConcurrencyKey = KEYS[6]
-local orgCurrentConcurrencyKey = KEYS[7]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local projectCurrentConcurrencyKey = KEYS[6]
+local taskCurrentConcurrencyKey = KEYS[7]
 
--- Args: messageId, messageQueueName
+-- Args:
 local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -1316,18 +1314,16 @@ redis.call('ZREM', messageQueue, messageId)
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, messageQueueName)
+    redis.call('ZREM', parentQueue, messageQueue)
 else
-    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueName)
+    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
 end
-
--- Remove the message from the timeout queue (deprecated, will eventually remove this)
-redis.call('ZREM', visibilityQueue, messageId)
 
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
-redis.call('SREM', orgCurrentConcurrencyKey, messageId)
+redis.call('SREM', projectCurrentConcurrencyKey, messageId)
+redis.call('SREM', taskCurrentConcurrencyKey, messageId)
 `,
     });
 
@@ -1535,12 +1531,11 @@ declare module "ioredis" {
       parentQueue: string,
       messageKey: string,
       messageQueue: string,
-      visibilityQueue: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
-      orgConcurrencyKey: string,
+      projectConcurrencyKey: string,
+      taskConcurrencyKey: string,
       messageId: string,
-      messageQueueName: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

@@ -283,6 +283,10 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
+        //queue length
+        const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(length2).toBe(0);
+
         const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued2).toBe(undefined);
       } finally {
@@ -312,6 +316,44 @@ describe("RunQueue", () => {
       expect(result2.queueChoice.choice).toBe(
         "{org:o1234}:proj:p1234:env:e1234:queue:task/my-task"
       );
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("Acking", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+
+      const message = await queue.dequeueMessageInSharedQueue("test_12345");
+      expect(message).toBeDefined();
+
+      await queue.acknowledgeMessage(message!.message.orgId, message!.messageId);
+
+      //concurrencies
+      const queueConcurrency = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvProd,
+        messageProd.queue
+      );
+      expect(queueConcurrency).toBe(0);
+      const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+      expect(envConcurrency).toBe(0);
+      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvProd);
+      expect(projectConcurrency).toBe(0);
+      const taskConcurrency = await queue.currentConcurrencyOfTask(
+        authenticatedEnvProd,
+        messageProd.taskIdentifier
+      );
+      expect(taskConcurrency).toBe(0);
+
+      //dequeue
+      const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
+      expect(message2).toBeUndefined();
     } finally {
       await queue.quit();
     }
