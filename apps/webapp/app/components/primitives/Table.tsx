@@ -141,6 +141,13 @@ type TableCellProps = TableCellBasicProps & {
   hasAction?: boolean;
   isSticky?: boolean;
   actionClassName?: string;
+  rowHoverStyle?: keyof typeof rowHoverStyles;
+};
+
+const rowHoverStyles = {
+  default: "group-hover/table-row:bg-charcoal-800",
+  dimmed: "group-hover/table-row:bg-charcoal-850",
+  bright: "group-hover/table-row:bg-charcoal-750",
 };
 
 const stickyStyles =
@@ -158,6 +165,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       onClick,
       hasAction = false,
       isSticky = false,
+      rowHoverStyle = "default",
     },
     ref
   ) => {
@@ -184,12 +192,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400",
-          to || onClick || hasAction
-            ? "cursor-pointer group-hover/table-row:bg-charcoal-800"
-            : "px-3 py-3 align-middle",
+          "text-xs text-charcoal-400 transition-colors",
+          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
+          rowHoverStyles[rowHoverStyle],
           className
         )}
         colSpan={colSpan}

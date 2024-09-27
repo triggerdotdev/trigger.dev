@@ -338,16 +338,32 @@ function SpanBody({
                             );
                             return (
                               <TableRow key={run.friendlyId}>
-                                <TableCell to={path} actionClassName="py-1.5">
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
                                   {run.number}
                                 </TableCell>
-                                <TableCell to={path} actionClassName="py-1.5">
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
                                   {run.taskIdentifier}
                                 </TableCell>
-                                <TableCell to={path} actionClassName="py-1.5">
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
                                   {run.lockedToVersion?.version ?? "–"}
                                 </TableCell>
-                                <TableCell to={path} actionClassName="py-1.5">
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
                                   <DateTime date={run.createdAt} />
                                 </TableCell>
                               </TableRow>
