@@ -17,7 +17,10 @@ export const rootTask = task({
       }
     } else {
       if (useBatch) {
-        await childTask.batchTrigger([{ payload: { useWaits, useBatch } }]);
+        await childTask.batchTrigger([
+          { payload: { useWaits, useBatch } },
+          { payload: { useWaits, useBatch } },
+        ]);
       } else {
         await childTask.trigger({ useWaits, useBatch });
       }

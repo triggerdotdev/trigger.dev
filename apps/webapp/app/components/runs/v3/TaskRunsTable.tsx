@@ -41,6 +41,7 @@ import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { RunTag } from "./RunTag";
+import { Badge } from "~/components/primitives/Badge";
 
 type RunsTableProps = {
   total: number;
@@ -123,7 +124,7 @@ export function TaskRunsTable({
           )}
           <TableHeaderCell alignment="right">Run #</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
-          <TableHeaderCell>Task ID</TableHeaderCell>
+          <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
@@ -278,7 +279,12 @@ export function TaskRunsTable({
                     userName={run.environment.userName}
                   />
                 </TableCell>
-                <TableCell to={path}>{run.taskIdentifier}</TableCell>
+                <TableCell to={path}>
+                  <span className="flex items-center gap-x-1">
+                    {run.taskIdentifier}
+                    {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
+                  </span>
+                </TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
                   <TaskRunStatusCombo status={run.status} />

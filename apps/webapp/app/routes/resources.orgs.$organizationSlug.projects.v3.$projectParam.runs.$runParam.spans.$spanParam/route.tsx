@@ -19,6 +19,14 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -28,6 +36,7 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -265,18 +274,6 @@ function SpanBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
               </Property.Table>
             </div>
           ) : (
@@ -318,21 +315,67 @@ function SpanBody({
                   <Property.Label>Message</Property.Label>
                   <Property.Value>{span.message}</Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
+                {span.triggeredRuns.length > 0 && (
                   <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
+                    <div className="flex flex-col gap-1.5">
+                      <Header3>Triggered runs</Header3>
+                      <Table containerClassName="max-h-[12.5rem]">
+                        <TableHeader className="bg-background-bright">
+                          <TableRow>
+                            <TableHeaderCell>Run #</TableHeaderCell>
+                            <TableHeaderCell>Task</TableHeaderCell>
+                            <TableHeaderCell>Version</TableHeaderCell>
+                            <TableHeaderCell>Created at</TableHeaderCell>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {span.triggeredRuns.map((run) => {
+                            const path = v3RunSpanPath(
+                              organization,
+                              project,
+                              { friendlyId: run.friendlyId },
+                              { spanId: run.spanId }
+                            );
+                            return (
+                              <TableRow key={run.friendlyId}>
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
+                                  {run.number}
+                                </TableCell>
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
+                                  {run.taskIdentifier}
+                                </TableCell>
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
+                                  {run.lockedToVersion?.version ?? "–"}
+                                </TableCell>
+                                <TableCell
+                                  to={path}
+                                  actionClassName="py-1.5"
+                                  rowHoverStyle="bright"
+                                >
+                                  <DateTime date={run.createdAt} />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </Property.Item>
                 )}
               </Property.Table>
-
-              {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
+              {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
               {span.properties !== undefined && (
                 <CodeBlock
                   rowTitle="Properties"
@@ -460,6 +503,78 @@ function RunBody({
                     />
                   </Property.Value>
                 </Property.Item>
+                {run.relationships.root ? (
+                  run.relationships.root.isParent ? (
+                    <Property.Item>
+                      <Property.Label>Root & Parent</Property.Label>
+                      <Property.Value>
+                        <TextLink
+                          to={v3RunSpanPath(
+                            organization,
+                            project,
+                            {
+                              friendlyId: run.relationships.root.friendlyId,
+                            },
+                            { spanId: run.relationships.root.spanId }
+                          )}
+                          className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                        >
+                          {run.relationships.root.taskIdentifier}
+                          <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                            ({run.relationships.root.friendlyId})
+                          </span>
+                        </TextLink>
+                      </Property.Value>
+                    </Property.Item>
+                  ) : (
+                    <>
+                      <Property.Item>
+                        <Property.Label>Root</Property.Label>
+                        <Property.Value>
+                          <TextLink
+                            to={v3RunSpanPath(
+                              organization,
+                              project,
+                              {
+                                friendlyId: run.relationships.root.friendlyId,
+                              },
+                              { spanId: run.relationships.root.spanId }
+                            )}
+                            className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                          >
+                            {run.relationships.root.taskIdentifier}
+                            <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                              ({run.relationships.root.friendlyId})
+                            </span>
+                          </TextLink>
+                        </Property.Value>
+                      </Property.Item>
+                      {run.relationships.parent ? (
+                        <Property.Item>
+                          <Property.Label>Parent</Property.Label>
+                          <Property.Value>
+                            <TextLink
+                              to={v3RunSpanPath(
+                                organization,
+                                project,
+                                {
+                                  friendlyId: run.relationships.parent.friendlyId,
+                                },
+                                { spanId: run.relationships.parent.spanId }
+                              )}
+                              className="group flex flex-wrap items-center gap-x-1 gap-y-0"
+                            >
+                              {run.relationships.parent.taskIdentifier}
+                              <span className="break-all text-text-dimmed transition-colors group-hover:text-text-bright/80">
+                                ({run.relationships.parent.friendlyId})
+                              </span>
+                            </TextLink>
+                          </Property.Value>
+                        </Property.Item>
+                      ) : null}
+                    </>
+                  )
+                ) : null}
                 <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
@@ -562,18 +677,7 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {run.links && run.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {run.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
+
                 <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
@@ -634,6 +738,7 @@ function RunBody({
                 <TaskRunStatusCombo status={run.status} className="text-sm" />
               </div>
               <RunTimeline run={run} />
+
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}

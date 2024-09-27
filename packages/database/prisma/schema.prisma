@@ -1782,6 +1782,7 @@ model TaskRun {
   @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
+  @@index([parentSpanId])
   // Finding completed runs
   @@index([completedAt])
 }
