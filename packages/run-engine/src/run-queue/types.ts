@@ -2,9 +2,9 @@ import { z } from "zod";
 import { AuthenticatedEnvironment } from "../shared/index.js";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { env } from "process";
+import { version } from "os";
 
-export const MessagePayload = z.object({
-  version: z.literal("1"),
+export const InputPayload = z.object({
   runId: z.string(),
   taskIdentifier: z.string(),
   orgId: z.string(),
@@ -12,11 +12,16 @@ export const MessagePayload = z.object({
   environmentId: z.string(),
   environmentType: z.nativeEnum(RuntimeEnvironmentType),
   queue: z.string(),
-  timestamp: z.number(),
   concurrencyKey: z.string().optional(),
+  timestamp: z.number(),
 });
+export type InputPayload = z.infer<typeof InputPayload>;
 
-export type MessagePayload = z.infer<typeof MessagePayload>;
+export const OutputPayload = InputPayload.extend({
+  version: z.literal("1"),
+  parentQueue: z.string(),
+});
+export type OutputPayload = z.infer<typeof OutputPayload>;
 
 export type QueueCapacity = {
   current: number;

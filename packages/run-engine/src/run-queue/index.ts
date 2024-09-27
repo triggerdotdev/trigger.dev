@@ -10,7 +10,8 @@ import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
 import { AsyncWorker } from "../shared/asyncWorker.js";
 import { attributesFromAuthenticatedEnv, AuthenticatedEnvironment } from "../shared/index.js";
 import {
-  MessagePayload,
+  InputPayload,
+  OutputPayload,
   QueueCapacities,
   QueueRange,
   RunQueueKeyProducer,
@@ -153,7 +154,7 @@ export class RunQueue {
     message,
   }: {
     env: AuthenticatedEnvironment;
-    message: MessagePayload;
+    message: InputPayload;
   }) {
     return await this.#trace(
       "enqueueMessage",
@@ -173,9 +174,11 @@ export class RunQueue {
           [SemanticAttributes.PARENT_QUEUE]: parentQueue,
         });
 
-        const messagePayload: MessagePayload = {
+        const messagePayload: OutputPayload = {
           ...message,
+          version: "1",
           queue,
+          parentQueue,
         };
 
         await this.#callEnqueueMessage(messagePayload, parentQueue);
@@ -349,26 +352,41 @@ export class RunQueue {
    * - remove all data from the queue
    * - release all concurrency
    * This is done when the run is in a final state.
-   * @param orgId
    * @param messageId
    */
   public async acknowledgeMessage(orgId: string, messageId: string) {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
-        // span.setAttributes({
-        //   [SemanticAttributes.RUN_ID]: messageId,
-        //   [SemanticAttributes.ORG_ID]: orgId,
-        // });
-        // const message = await this.#callAcknowledgeMessage({
+        const message = await this.#readMessage(orgId, messageId);
+
+        if (!message) {
+          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+            messageId,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.ORG_ID]: message.orgId,
+          [SemanticAttributes.RUN_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        });
+
+        // await this.#callAcknowledgeMessage({
+        //   parentQueue: message.parentQueue,
         //   messageKey: this.keys.messageKey(orgId, messageId),
+        //   messageQueue: message.queue,
+        //   concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
+        //   envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+        //   projectConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
+        //   taskConcurrencyKey: this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+        //     message.queue,
+        //     message.taskIdentifier
+        //   ),
         //   messageId,
-        // });
-        // span.setAttributes({
-        //   [SemanticAttributes.RUN_ID]: messageId,
-        //   [SemanticAttributes.QUEUE]: message.queue,
-        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
         // });
       },
       {
@@ -558,6 +576,41 @@ export class RunQueue {
         } finally {
           span.end();
         }
+      }
+    );
+  }
+
+  async #readMessage(orgId: string, messageId: string) {
+    return this.#trace(
+      "readMessage",
+      async (span) => {
+        const rawMessage = await this.redis.get(this.keys.messageKey(orgId, messageId));
+
+        if (!rawMessage) {
+          return;
+        }
+
+        const message = OutputPayload.safeParse(JSON.parse(rawMessage));
+
+        if (!message.success) {
+          this.logger.error(`[${this.name}] Failed to parse message`, {
+            messageId,
+            error: message.error,
+            service: this.name,
+          });
+
+          return;
+        }
+
+        return message.data;
+      },
+      {
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "receive",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+          [SemanticAttributes.RUN_ID]: messageId,
+        },
       }
     );
   }
@@ -837,7 +890,7 @@ export class RunQueue {
     });
   }
 
-  async #callEnqueueMessage(message: MessagePayload, parentQueue: string) {
+  async #callEnqueueMessage(message: OutputPayload, parentQueue: string) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
     const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
@@ -926,7 +979,7 @@ export class RunQueue {
     const [messageId, messageScore, rawMessage] = result;
 
     //read message
-    const parsedMessage = MessagePayload.safeParse(JSON.parse(rawMessage));
+    const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
     if (!parsedMessage.success) {
       this.logger.error(`[${this.name}] Failed to parse message`, {
         messageId,
@@ -947,27 +1000,47 @@ export class RunQueue {
   }
 
   async #callAcknowledgeMessage({
+    parentQueue,
     messageKey,
+    messageQueue,
+    visibilityQueue,
+    concurrencyKey,
+    envConcurrencyKey,
+    orgConcurrencyKey,
     messageId,
   }: {
+    parentQueue: string;
     messageKey: string;
+    messageQueue: string;
+    visibilityQueue: string;
+    concurrencyKey: string;
+    envConcurrencyKey: string;
+    orgConcurrencyKey: string;
     messageId: string;
   }) {
     this.logger.debug("Calling acknowledgeMessage", {
       messageKey,
+      messageQueue,
+      visibilityQueue,
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
       messageId,
+      parentQueue,
       service: this.name,
     });
 
-    // return this.redis.acknowledgeMessage(
-    //   parentQueue,
-    //   messageKey,
-    //   messageQueue,
-    //   concurrencyKey,
-    //   envConcurrencyKey,
-    //   messageId,
-    //   messageQueue
-    // );
+    return this.redis.acknowledgeMessage(
+      parentQueue,
+      messageKey,
+      messageQueue,
+      visibilityQueue,
+      concurrencyKey,
+      envConcurrencyKey,
+      orgConcurrencyKey,
+      messageId,
+      messageQueue
+    );
   }
 
   async #callNackMessage({
