@@ -3,7 +3,6 @@ import { AuthenticatedEnvironment } from "../shared/index.js";
 import { RunQueueKeyProducer } from "./types.js";
 
 const constants = {
-  SHARED_QUEUE: "sharedQueue",
   CURRENT_CONCURRENCY_PART: "currentConcurrency",
   CONCURRENCY_LIMIT_PART: "concurrency",
   DISABLED_CONCURRENCY_LIMIT_PART: "disabledConcurrency",
@@ -17,10 +16,17 @@ const constants = {
 } as const;
 
 export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
-  constructor(private _prefix: string) {}
+  sharedQueue: string;
+
+  constructor(
+    private _prefix: string,
+    sharedQueue: string
+  ) {
+    this.sharedQueue = `sharedQueue:${sharedQueue}`;
+  }
 
   sharedQueueScanPattern() {
-    return `${this._prefix}*${constants.SHARED_QUEUE}`;
+    return `${this._prefix}*${this.sharedQueue}`;
   }
 
   queueCurrentConcurrencyScanPattern() {
@@ -65,7 +71,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
         this.orgKeySection(env.organization.id),
         this.projKeySection(env.project.id),
         this.envKeySection(env.id),
-        constants.SHARED_QUEUE,
+        this.sharedQueue,
       ].join(":");
     }
 
@@ -73,7 +79,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   sharedQueueKey(): string {
-    return constants.SHARED_QUEUE;
+    return this.sharedQueue;
   }
 
   concurrencyLimitKeyFromQueue(queue: string) {
