@@ -89,6 +89,10 @@ const stories: Story[] = [
     slug: "switch",
   },
   {
+    name: "Tables",
+    slug: "table",
+  },
+  {
     name: "Tabs",
     slug: "tabs",
   },
