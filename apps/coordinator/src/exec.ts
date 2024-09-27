@@ -22,6 +22,7 @@ interface ExecOptions {
   abortSignal?: AbortSignal;
   logOutput?: boolean;
   trimArgs?: boolean;
+  neverThrow?: boolean;
 }
 
 export class Exec {
@@ -30,6 +31,7 @@ export class Exec {
 
   private logOutput: boolean;
   private trimArgs: boolean;
+  private neverThrow: boolean;
 
   constructor(opts: ExecOptions) {
     this.logger = opts.logger ?? new SimpleLogger();
@@ -37,6 +39,7 @@ export class Exec {
 
     this.logOutput = opts.logOutput ?? true;
     this.trimArgs = opts.trimArgs ?? true;
+    this.neverThrow = opts.neverThrow ?? false;
   }
 
   async x(
@@ -68,7 +71,7 @@ export class Exec {
       this.logger.debug(`output: ${commandWithFirstArg}`, metadata);
     }
 
-    if (opts?.neverThrow) {
+    if (this.neverThrow || opts?.neverThrow) {
       return output;
     }
 
