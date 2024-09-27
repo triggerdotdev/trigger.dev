@@ -93,7 +93,6 @@ export class Checkpointer {
   private registryTlsVerify: boolean;
 
   private disableCheckpointSupport: boolean;
-  private checkpointPath: string;
 
   private simulateCheckpointFailure: boolean;
   private simulateCheckpointFailureSeconds: number;
@@ -110,7 +109,6 @@ export class Checkpointer {
     this.registryTlsVerify = opts.registryTlsVerify ?? true;
 
     this.disableCheckpointSupport = opts.disableCheckpointSupport ?? false;
-    this.checkpointPath = opts.checkpointPath ?? "/checkpoints";
 
     this.simulateCheckpointFailure = opts.simulateCheckpointFailure ?? false;
     this.simulateCheckpointFailureSeconds = opts.simulateCheckpointFailureSeconds ?? 300;
@@ -182,7 +180,7 @@ export class Checkpointer {
     if (this.#dockerMode) {
       return basename;
     } else {
-      return `${this.checkpointPath}/${basename}.tar`;
+      return Crictl.getExportLocation(basename);
     }
   }
 

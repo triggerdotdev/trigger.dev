@@ -66,7 +66,6 @@ class TaskCoordinator {
     heartbeat: this.#sendRunHeartbeat.bind(this),
     registryHost: process.env.REGISTRY_HOST,
     registryNamespace: process.env.REGISTRY_NAMESPACE,
-    checkpointPath: process.env.CHECKPOINT_PATH,
     registryTlsVerify: boolFromEnv("REGISTRY_TLS_VERIFY", true),
     disableCheckpointSupport: boolFromEnv("DISABLE_CHECKPOINT_SUPPORT", false),
     simulatePushFailure: boolFromEnv("SIMULATE_PUSH_FAILURE", false),

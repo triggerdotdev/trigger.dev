@@ -268,4 +268,12 @@ export class Crictl {
       this.logger.debug("no archives to clean up");
     }
   }
+
+  static getExportLocation(identifier: string) {
+    return `${this.checkpointDir}/${identifier}.tar`;
+  }
+
+  static get checkpointDir() {
+    return process.env.CRI_CHECKPOINT_DIR ?? "/checkpoints";
+  }
 }
