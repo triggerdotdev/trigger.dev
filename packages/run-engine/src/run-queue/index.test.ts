@@ -11,7 +11,6 @@ import { abort } from "node:process";
 const testOptions = {
   name: "rq",
   tracer: trace.getTracer("rq"),
-  keysProducer: new RunQueueShortKeyProducer("rq:"),
   queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
   envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
   workers: 1,
@@ -162,6 +161,8 @@ describe("RunQueue", () => {
         const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
 
+        //todo check all the currentConcurrency values
+
         const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued2).toBe(undefined);
       } finally {
@@ -202,6 +203,8 @@ describe("RunQueue", () => {
 
         const dequeued = await queue.dequeueMessageInSharedQueue("test_12345");
         expect(dequeued?.messageId).toEqual(messageProd.runId);
+
+        //todo check all the currentConcurrency values
 
         const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued2).toBe(undefined);

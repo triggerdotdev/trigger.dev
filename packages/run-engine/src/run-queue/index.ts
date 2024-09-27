@@ -16,6 +16,7 @@ import {
   RunQueueKeyProducer,
   RunQueuePriorityStrategy,
 } from "./types.js";
+import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -32,7 +33,6 @@ export type RunQueueOptions = {
   defaultEnvConcurrency: number;
   windowSize?: number;
   workers: number;
-  keysProducer: RunQueueKeyProducer;
   queuePriorityStrategy: RunQueuePriorityStrategy;
   envQueuePriorityStrategy: RunQueuePriorityStrategy;
   enableRebalancing?: boolean;
@@ -54,7 +54,7 @@ export class RunQueue {
     this.redis = new Redis(options.redis);
     this.logger = options.logger;
 
-    this.keys = options.keysProducer;
+    this.keys = new RunQueueShortKeyProducer("rq:", options.name);
     this.queuePriorityStrategy = options.queuePriorityStrategy;
 
     this.#startRebalanceWorkers();
@@ -933,6 +933,7 @@ export class RunQueue {
       return;
     }
 
+    //todo refactor to get the message at the same time, and do the task concurrency update
     const [messageId, messageScore] = result;
 
     //read message
@@ -1152,8 +1153,6 @@ end
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
-
--- Update concurrency tracking (remove)
 redis.call('SREM', taskConcurrencyTrackerKey, messageId)
 redis.call('SREM', envConcurrencyTrackerKey, messageId)
       `,
