@@ -1854,6 +1854,13 @@ model TaskRunExecutionSnapshot {
   /// These are only ever appended, so we don't need updatedAt
   createdAt DateTime @default(now())
 
+  ///todo machine spec?
+
+  ///worker
+
+  /// For debugging
+  description String
+
   /// Used to get the latest state quickly
   @@index([runId, createdAt(sort: Desc)])
 }
