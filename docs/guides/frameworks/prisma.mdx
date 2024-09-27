@@ -33,7 +33,7 @@ This guide will show you how to set up Prisma with Trigger.dev, test and view an
   <CliViewRunStep />
 </Steps>
 
-## Creating a task using Prisma and deploying it to production using Trigger.dev
+## Creating a task using Prisma and deploying it to production
 
 <Steps>
 <Step title="Writing the Prisma task">
@@ -107,6 +107,27 @@ export default defineConfig({
 </Note>
 
 </Step>
+
+<Step title="Optional: adding Prisma instrumentation">
+
+We use OpenTelemetry to [instrument](https://trigger.dev/docs/config/config-file#instrumentations) our tasks and collect telemetry data.
+
+If you want to automatically log all Prisma queries and mutations, you can use the Prisma instrumentation extension.
+
+```js /trigger.config.js
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { PrismaInstrumentation } from "@prisma/instrumentation";
+import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
+
+export default defineConfig({
+  //..other stuff
+  instrumentations: [new PrismaInstrumentation(), new OpenAIInstrumentation()],
+});
+```
+
+This provides much more detailed information about your tasks with minimal effort.
+
+</Step>
 <Step title="Deploying your task">
 With the build extension and task configured, you can now deploy your task using the Trigger.dev CLI.
 
@@ -128,9 +149,7 @@ With the build extension and task configured, you can now deploy your task using
 
     </Step>
 
-    <Step title="Adding your environment variable to Trigger.dev">
-
-    Add your `DATABASE_URL` environment variable to Trigger.dev by following these steps:
+    <Step title="Adding your DATABASE_URL environment variable to Trigger.dev">
 
 In the sidebar select the "Environment Variables" page, then press the "New environment variable"
 button. ![Environment variables page](/images/environment-variables-page.jpg)
@@ -159,5 +178,7 @@ Congratulations! You should now see a new completed run, and a new user with the
 </Step>
 
 </Steps>
+
+## Troubleshooting
 
 <UsefulNextSteps />
