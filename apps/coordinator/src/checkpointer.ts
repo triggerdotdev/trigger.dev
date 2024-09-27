@@ -125,7 +125,7 @@ export class Checkpointer {
       const pathsOverride = process.env.TMP_CLEANER_PATHS_OVERRIDE?.split(",") ?? [];
 
       this.tmpCleaner = new TempFileCleaner({
-        paths: pathsOverride.length ? pathsOverride : [Buildah.tmpDir],
+        paths: pathsOverride.length ? pathsOverride : [Buildah.tmpDir, Crictl.checkpointDir],
         maxAgeMinutes: numFromEnv("TMP_CLEANER_MAX_AGE_MINUTES", 60),
         intervalSeconds: numFromEnv("TMP_CLEANER_INTERVAL_SECONDS", 300),
         leadingEdge: boolFromEnv("TMP_CLEANER_LEADING_EDGE", false),
