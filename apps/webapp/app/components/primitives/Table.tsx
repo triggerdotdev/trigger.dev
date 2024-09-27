@@ -22,7 +22,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
           fullWidth && "w-full"
         )}
       >
-        <table ref={ref} className={cn("w-full divide-y", className)}>
+        <table ref={ref} className={cn("w-full", className)}>
           {children}
         </table>
       </div>
@@ -40,7 +40,10 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
     return (
       <thead
         ref={ref}
-        className={cn("rounded-t-md", "relative divide-y divide-grid-dimmed", className)}
+        className={cn(
+          "sticky top-0 z-10 divide-y divide-grid-dimmed rounded-t-md bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-dimmed",
+          className
+        )}
       >
         {children}
       </thead>
@@ -56,7 +59,10 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative divide-y divide-grid-dimmed", className)}>
+      <tbody
+        ref={ref}
+        className={cn("relative divide-y divide-grid-dimmed overflow-y-auto", className)}
+      >
         {children}
       </tbody>
     );
@@ -135,10 +141,17 @@ type TableCellProps = TableCellBasicProps & {
   hasAction?: boolean;
   isSticky?: boolean;
   actionClassName?: string;
+  rowHoverStyle?: keyof typeof rowHoverStyles;
+};
+
+const rowHoverStyles = {
+  default: "group-hover/table-row:bg-charcoal-800",
+  dimmed: "group-hover/table-row:bg-charcoal-850",
+  bright: "group-hover/table-row:bg-charcoal-750",
 };
 
 const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem] before:bg-gradient-to-r before:from-transparent before:to-background before:content-[''] group-hover/table-row:before:to-charcoal-900";
+  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem]";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -152,6 +165,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       onClick,
       hasAction = false,
       isSticky = false,
+      rowHoverStyle = "default",
     },
     ref
   ) => {
@@ -178,12 +192,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400",
-          to || onClick || hasAction
-            ? "cursor-pointer group-hover/table-row:bg-charcoal-900"
-            : "px-3 py-3 align-middle",
+          "text-xs text-charcoal-400 transition-colors",
+          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
+          rowHoverStyles[rowHoverStyle],
           className
         )}
         colSpan={colSpan}
