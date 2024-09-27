@@ -52,21 +52,13 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
-  currentTaskIdentifierKey({
-    orgId,
-    projectId,
-    taskIdentifier,
-    environmentId,
-  }: {
-    orgId: string;
-    projectId: string;
-    taskIdentifier: string;
-    environmentId: string;
-  }): string;
+  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
+  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
   stripKeyPrefix(key: string): string;
   extractComponentsFromQueue(queue: string): {

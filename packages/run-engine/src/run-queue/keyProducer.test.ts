@@ -215,13 +215,18 @@ describe("KeyProducer", () => {
 
   it("currentTaskIdentifierKey", () => {
     const keyProducer = new RunQueueShortKeyProducer("test:", "main");
-    const key = keyProducer.currentTaskIdentifierKey({
-      orgId: "o1234",
-      projectId: "p1234",
-      taskIdentifier: "task/task-name",
-      environmentId: "e1234",
-    });
-    expect(key).toBe("{org:o1234}:proj:p1234:task:task/task-name:env:e1234:currentConcurrency");
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        maximumConcurrencyLimit: 10,
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const key = keyProducer.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queueKey);
+    expect(key).toBe("{org:o1234}:proj:p1234:task:");
   });
 
   it("disabledConcurrencyLimitKeyFromQueue", () => {

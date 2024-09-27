@@ -160,6 +160,7 @@ describe("RunQueue", () => {
 
         const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
+        expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
 
         //todo check all the currentConcurrency values
 
@@ -203,6 +204,7 @@ describe("RunQueue", () => {
 
         const dequeued = await queue.dequeueMessageInSharedQueue("test_12345");
         expect(dequeued?.messageId).toEqual(messageProd.runId);
+        expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
 
         //todo check all the currentConcurrency values
 

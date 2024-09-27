@@ -213,6 +213,9 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+          messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
+          taskCurrentConcurrentKeyPrefix:
+            this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
         });
 
         if (!message) {
@@ -300,6 +303,9 @@ export class RunQueue {
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
           envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
+          messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
+          taskCurrentConcurrentKeyPrefix:
+            this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
         });
 
         if (!message) {
@@ -857,12 +863,10 @@ export class RunQueue {
   async #callEnqueueMessage(message: MessagePayload, parentQueue: string) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-    const taskConcurrencyTrackerKey = this.keys.currentTaskIdentifierKey({
-      orgId: message.orgId,
-      projectId: message.projectId,
-      environmentId: message.environmentId,
-      taskIdentifier: message.taskIdentifier,
-    });
+    const taskConcurrencyTrackerKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+      message.queue,
+      message.taskIdentifier
+    );
     const envConcurrencyTrackerKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
 
     this.logger.debug("Calling enqueueMessage", {
@@ -894,6 +898,8 @@ export class RunQueue {
     envConcurrencyLimitKey,
     currentConcurrencyKey,
     envCurrentConcurrencyKey,
+    messageKeyPrefix,
+    taskCurrentConcurrentKeyPrefix,
   }: {
     messageQueue: string;
     parentQueue: string;
@@ -901,6 +907,8 @@ export class RunQueue {
     envConcurrencyLimitKey: string;
     currentConcurrencyKey: string;
     envCurrentConcurrencyKey: string;
+    messageKeyPrefix: string;
+    taskCurrentConcurrentKeyPrefix: string;
   }) {
     const result = await this.redis.dequeueMessage(
       //keys
@@ -910,6 +918,8 @@ export class RunQueue {
       envConcurrencyLimitKey,
       currentConcurrencyKey,
       envCurrentConcurrencyKey,
+      messageKeyPrefix,
+      taskCurrentConcurrentKeyPrefix,
       //args
       messageQueue,
       String(Date.now()),
@@ -925,7 +935,7 @@ export class RunQueue {
       service: this.name,
     });
 
-    if (result.length !== 2) {
+    if (result.length !== 3) {
       this.logger.error("Invalid dequeue message result", {
         result,
         service: this.name,
@@ -933,24 +943,21 @@ export class RunQueue {
       return;
     }
 
-    //todo refactor to get the message at the same time, and do the task concurrency update
-    const [messageId, messageScore] = result;
+    const [messageId, messageScore, rawMessage] = result;
 
     //read message
-    const { orgId } = this.keys.extractComponentsFromQueue(messageQueue);
-    const message = await this.readMessage(orgId, messageId);
-
-    if (!message) {
-      this.logger.error(`Dequeued then failed to read message. This is unrecoverable.`, {
+    const parsedMessage = MessagePayload.safeParse(JSON.parse(rawMessage));
+    if (!parsedMessage.success) {
+      this.logger.error(`[${this.name}] Failed to parse message`, {
         messageId,
-        messageScore,
+        error: parsedMessage.error,
         service: this.name,
       });
+
       return;
     }
 
-    //update task concurrency
-    await this.redis.sadd(this.keys.currentTaskIdentifierKey(message), messageId);
+    const message = parsedMessage.data;
 
     return {
       messageId,
@@ -1159,7 +1166,7 @@ redis.call('SREM', envConcurrencyTrackerKey, messageId)
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 6,
+      numberOfKeys: 8,
       lua: `
 local childQueue = KEYS[1]
 local parentQueue = KEYS[2]
@@ -1167,6 +1174,8 @@ local concurrencyLimitKey = KEYS[3]
 local envConcurrencyLimitKey = KEYS[4]
 local currentConcurrencyKey = KEYS[5]
 local envCurrentConcurrencyKey = KEYS[6]
+local messageKeyPrefix = KEYS[7]
+local taskCurrentConcurrentKeyPrefix = KEYS[8]
 
 local childQueueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -1199,10 +1208,21 @@ end
 local messageId = messages[1]
 local messageScore = tonumber(messages[2])
 
+-- Get the message payload
+local messageKey = messageKeyPrefix .. messageId
+local messagePayload = redis.call('GET', messageKey)
+
+-- Parse JSON payload and extract taskIdentifier
+local taskIdentifier = cjson.decode(messagePayload).taskIdentifier
+
+-- Perform SADD with taskIdentifier and messageId
+local taskConcurrencyKey = taskCurrentConcurrentKeyPrefix .. taskIdentifier
+
 -- Update concurrency
 redis.call('ZREM', childQueue, messageId)
 redis.call('SADD', currentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
+redis.call('SADD', taskConcurrencyKey, messageId)
 
 -- todo add this in here
 -- redis.call('SADD', taskConcurrencyKey, messageId)
@@ -1215,7 +1235,7 @@ else
     redis.call('ZADD', parentQueue, earliestMessage[2], childQueueName)
 end
 
-return {messageId, messageScore} -- Return message details
+return {messageId, messageScore, messagePayload} -- Return message details
       `,
     });
 
@@ -1449,12 +1469,14 @@ declare module "ioredis" {
       envConcurrencyLimitKey: string,
       currentConcurrencyKey: string,
       envCurrentConcurrencyKey: string,
+      messageKeyPrefix: string,
+      taskCurrentConcurrentKeyPrefix: string,
       //args
       childQueueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
       callback?: Callback<[string, string]>
-    ): Result<[string, string] | null, Context>;
+    ): Result<[string, string, string] | null, Context>;
 
     acknowledgeMessage(
       parentQueue: string,

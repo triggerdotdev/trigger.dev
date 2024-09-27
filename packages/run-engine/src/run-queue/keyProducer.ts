@@ -101,28 +101,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     );
   }
 
-  currentTaskIdentifierKey({
-    orgId,
-    projectId,
-    taskIdentifier,
-    environmentId,
-  }: {
-    orgId: string;
-    projectId: string;
-    taskIdentifier: string;
-    environmentId: string;
-  }) {
-    return [
-      this.orgKeySection(orgId),
-      this.projKeySection(projectId),
-      this.taskIdentifierSection(taskIdentifier),
-      this.envKeySection(environmentId),
-      constants.CURRENT_CONCURRENCY_PART,
-    ]
-      .filter(Boolean)
-      .join(":");
-  }
-
   disabledConcurrencyLimitKeyFromQueue(queue: string) {
     const { orgId } = this.extractComponentsFromQueue(queue);
     return `{${constants.ORG_PART}:${orgId}}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
@@ -144,6 +122,23 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
       this.envKeySection(env.id),
       constants.CURRENT_CONCURRENCY_PART,
     ].join(":");
+  }
+
+  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string) {
+    const { orgId, projectId } = this.extractComponentsFromQueue(queue);
+
+    return `${[this.orgKeySection(orgId), this.projKeySection(projectId), constants.TASK_PART]
+      .filter(Boolean)
+      .join(":")}:`;
+  }
+
+  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string) {
+    return `${this.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue)}:${taskIdentifier}`;
+  }
+
+  messageKeyPrefixFromQueue(queue: string) {
+    const { orgId } = this.extractComponentsFromQueue(queue);
+    return `${this.orgKeySection(orgId)}:${constants.MESSAGE_PART}:`;
   }
 
   messageKey(orgId: string, messageId: string) {
