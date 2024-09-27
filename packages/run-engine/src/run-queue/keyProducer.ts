@@ -133,7 +133,34 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string) {
-    return `${this.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue)}:${taskIdentifier}`;
+    return `${this.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue)}${taskIdentifier}`;
+  }
+
+  taskIdentifierCurrentConcurrencyKey(
+    env: AuthenticatedEnvironment,
+    taskIdentifier: string
+  ): string {
+    return [
+      this.orgKeySection(env.organization.id),
+      this.projKeySection(env.project.id),
+      constants.TASK_PART,
+      taskIdentifier,
+    ].join(":");
+  }
+
+  projectCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+    return [
+      this.orgKeySection(env.organization.id),
+      this.projKeySection(env.project.id),
+      constants.CURRENT_CONCURRENCY_PART,
+    ].join(":");
+  }
+
+  projectCurrentConcurrencyKeyFromQueue(queue: string): string {
+    const { orgId, projectId } = this.extractComponentsFromQueue(queue);
+    return `${this.orgKeySection(orgId)}:${this.projKeySection(projectId)}:${
+      constants.CURRENT_CONCURRENCY_PART
+    }`;
   }
 
   messageKeyPrefixFromQueue(queue: string) {

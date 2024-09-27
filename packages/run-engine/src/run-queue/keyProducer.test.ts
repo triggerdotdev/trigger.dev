@@ -213,7 +213,7 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:currentConcurrency");
   });
 
-  it("currentTaskIdentifierKey", () => {
+  it("taskIdentifierCurrentConcurrencyKeyPrefixFromQueue", () => {
     const keyProducer = new RunQueueShortKeyProducer("test:", "main");
     const queueKey = keyProducer.queueKey(
       {
@@ -227,6 +227,57 @@ describe("KeyProducer", () => {
     );
     const key = keyProducer.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queueKey);
     expect(key).toBe("{org:o1234}:proj:p1234:task:");
+  });
+
+  it("taskIdentifierCurrentConcurrencyKeyFromQueue", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const queueKey = keyProducer.queueKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        maximumConcurrencyLimit: 10,
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task/task-name"
+    );
+    const key = keyProducer.taskIdentifierCurrentConcurrencyKeyFromQueue(queueKey, "task-name");
+    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
+  });
+
+  it("taskIdentifierCurrentConcurrencyKey", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const key = keyProducer.taskIdentifierCurrentConcurrencyKey(
+      {
+        id: "e1234",
+        type: "PRODUCTION",
+        maximumConcurrencyLimit: 10,
+        project: { id: "p1234" },
+        organization: { id: "o1234" },
+      },
+      "task-name"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:task:task-name");
+  });
+
+  it("projectCurrentConcurrencyKey", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const key = keyProducer.projectCurrentConcurrencyKey({
+      id: "e1234",
+      type: "PRODUCTION",
+      maximumConcurrencyLimit: 10,
+      project: { id: "p1234" },
+      organization: { id: "o1234" },
+    });
+    expect(key).toBe("{org:o1234}:proj:p1234:currentConcurrency");
+  });
+
+  it("projectCurrentConcurrencyKeyFromQueue", () => {
+    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const key = keyProducer.projectCurrentConcurrencyKeyFromQueue(
+      "{org:o1234}:proj:p1234:currentConcurrency"
+    );
+    expect(key).toBe("{org:o1234}:proj:p1234:currentConcurrency");
   });
 
   it("disabledConcurrencyLimitKeyFromQueue", () => {

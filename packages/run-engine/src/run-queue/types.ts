@@ -38,13 +38,13 @@ export type QueueWithScores = {
 export type QueueRange = { offset: number; count: number };
 
 export interface RunQueueKeyProducer {
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   envSharedQueueKey(env: AuthenticatedEnvironment): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   queueCurrentConcurrencyScanPattern(): string;
+  //queue
+  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
   currentConcurrencyKey(
@@ -52,14 +52,26 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
-  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
-  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
+  //env oncurrency
+  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  //task concurrency
+  taskIdentifierCurrentConcurrencyKey(
+    env: AuthenticatedEnvironment,
+    taskIdentifier: string
+  ): string;
+  taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
+  taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
+  //project concurrency
+  projectCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  projectCurrentConcurrencyKeyFromQueue(queue: string): string;
+  //message payload
   messageKeyPrefixFromQueue(queue: string): string;
   messageKey(orgId: string, messageId: string): string;
+  //utils
   stripKeyPrefix(key: string): string;
   extractComponentsFromQueue(queue: string): {
     orgId: string;
