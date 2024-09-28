@@ -333,6 +333,11 @@ describe("RunQueue", () => {
       const message = await queue.dequeueMessageInSharedQueue("test_12345");
       expect(message).toBeDefined();
 
+      //check the message is gone
+      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const exists = await redis.exists(key);
+      expect(exists).toBe(1);
+
       await queue.acknowledgeMessage(message!.message.orgId, message!.messageId);
 
       //concurrencies
@@ -350,6 +355,11 @@ describe("RunQueue", () => {
         messageProd.taskIdentifier
       );
       expect(taskConcurrency).toBe(0);
+
+      //check the message is gone
+      const key2 = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const exists2 = await redis.exists(key);
+      expect(exists2).toBe(0);
 
       //dequeue
       const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
