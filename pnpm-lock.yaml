@@ -1335,6 +1335,9 @@ importers:
 
   packages/trigger-sdk:
     dependencies:
+      '@electric-sql/client':
+        specifier: 0.5.1
+        version: 0.5.1
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
@@ -4599,6 +4602,12 @@ packages:
 
   /@electric-sql/client@0.4.0:
     resolution: {integrity: sha512-YVYSqHitqVIDC1RBTfmHMfAfqDNAKMK9/AFVTDFQQxN3Q85dIQS49zThAuJVecYiuYRJvTiqf40c4n39jZSNrQ==}
+    optionalDependencies:
+      '@rollup/rollup-darwin-arm64': 4.21.3
+    dev: false
+
+  /@electric-sql/client@0.5.1:
+    resolution: {integrity: sha512-7SBuZGVYxhdi8mOUN5SwP4lXXfEw/1E/MdPrLyOIjnrfG4AGftMNfCTWBQwHhErAVxKf34mqoAIkCpuIVL3jVA==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
