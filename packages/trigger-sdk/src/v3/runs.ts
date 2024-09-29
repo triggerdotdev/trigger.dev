@@ -1,12 +1,9 @@
-import { DeserializedJson } from "@trigger.dev/core";
 import type {
   ApiRequestOptions,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   RescheduleRunRequestBody,
   RunShape,
-  RunStatus,
-  SerializedError,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -21,12 +18,7 @@ import {
   isRequestOptions,
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
-import {
-  conditionallyImportAndParsePacket,
-  parsePacket,
-  resolvePresignedPacketUrl,
-} from "@trigger.dev/core/v3/utils/ioSerialization";
-import { IOPacket } from "../../../core/dist/commonjs/v3/index.js";
+import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { AnyRunHandle, AnyTask, Prettify, RunHandle, Task } from "./shared.js";
 import { tracer } from "./tracer.js";
 
@@ -45,6 +37,7 @@ export const runs = {
   reschedule: rescheduleRun,
   poll,
   subscribe: subscribeToRun,
+  subscribeToTag,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -349,4 +342,15 @@ async function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.subscribeToRunChanges($runId, callback);
+}
+
+async function subscribeToTag<TTask extends AnyTask>(
+  tag: string,
+  callback: (
+    run: Prettify<RunShape<InferRunId<TTask>["payload"], InferRunId<TTask>["output"]>>
+  ) => void | Promise<void>
+) {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return apiClient.subscribeToRunTag(tag, callback);
 }
