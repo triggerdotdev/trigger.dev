@@ -378,6 +378,7 @@ export class TriggerTaskService extends BaseService {
                   maxDurationInSeconds: body.options?.maxDuration
                     ? clampMaxDuration(body.options.maxDuration)
                     : undefined,
+                  runTags: bodyTags,
                 },
               });
 
