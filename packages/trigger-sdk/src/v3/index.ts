@@ -7,6 +7,7 @@ export * from "./wait.js";
 export * from "./usage.js";
 export * from "./idempotencyKeys.js";
 export * from "./tags.js";
+export * from "./metadata.js";
 export type { Context };
 
 import type { Context } from "./shared.js";

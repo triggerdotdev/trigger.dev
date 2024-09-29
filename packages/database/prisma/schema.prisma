@@ -1761,9 +1761,29 @@ model TaskRun {
   /// The depth of this task run in the task run hierarchy
   depth Int @default(0)
 
+  /// The span ID of the "trigger" span in the parent task run
+  parentSpanId String?
+
+  /// seed run metadata
+  seedMetadata     String?
+  seedMetadataType String  @default("application/json")
+
+  /// Run metadata
+  metadata     String?
+  metadataType String  @default("application/json")
+
+  /// Run output
+  output     String?
+  outputType String  @default("application/json")
+
+  /// Run error
+  error Json?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
+  // Finding ancestor runs
+  @@index([rootTaskRunId])
   // Task activity graph
   @@index([projectId, createdAt, taskIdentifier])
   //Runs list
@@ -1775,6 +1795,7 @@ model TaskRun {
   @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
+  @@index([parentSpanId])
   // Finding completed runs
   @@index([completedAt])
 }

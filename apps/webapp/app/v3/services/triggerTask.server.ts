@@ -20,6 +20,7 @@ import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
+import { handleMetadataPacket } from "~/utils/packets";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -98,6 +99,13 @@ export class TriggerTaskService extends BaseService {
         runFriendlyId,
         environment
       );
+
+      const metadataPacket = body.options?.metadata
+        ? handleMetadataPacket(
+            body.options?.metadata,
+            body.options?.metadataType ?? "application/json"
+          )
+        : undefined;
 
       const dependentAttempt = body.options?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findUnique({
@@ -240,7 +248,7 @@ export class TriggerTaskService extends BaseService {
           incomplete: true,
           immediate: true,
         },
-        async (event, traceContext) => {
+        async (event, traceContext, traceparent) => {
           const run = await autoIncrementCounter.incrementInTransaction(
             `v3-run:${environment.id}:${taskId}`,
             async (num, tx) => {
@@ -307,6 +315,8 @@ export class TriggerTaskService extends BaseService {
                   traceContext: traceContext,
                   traceId: event.traceId,
                   spanId: event.spanId,
+                  parentSpanId:
+                    options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
@@ -339,6 +349,10 @@ export class TriggerTaskService extends BaseService {
                   batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                   resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
                   depth,
+                  metadata: metadataPacket?.data,
+                  metadataType: metadataPacket?.dataType,
+                  seedMetadata: metadataPacket?.data,
+                  seedMetadataType: metadataPacket?.dataType,
                 },
               });
 

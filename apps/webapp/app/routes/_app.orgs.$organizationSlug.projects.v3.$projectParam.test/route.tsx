@@ -75,8 +75,13 @@ export default function Page() {
   const navigation = useNavigation();
 
   const location = useLocation();
+  const locationSearchParams = new URLSearchParams(location.search);
+  const navigationSearchParams = new URLSearchParams(navigation.location?.search);
+
   const isLoadingTasks =
-    navigation.state === "loading" && navigation.location.pathname === location.pathname;
+    navigation.state === "loading" &&
+    navigation.location.pathname === location.pathname &&
+    navigationSearchParams.get("environment") !== locationSearchParams.get("environment");
 
   return (
     <PageContainer>

@@ -4,6 +4,7 @@ sidebarTitle: "trigger.config.ts"
 description: "This file is used to configure your project and how it's built."
 ---
 
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 import BundlePackages from "/snippets/bundle-packages.mdx";
 
 The `trigger.config.ts` file is used to configure your Trigger.dev project. It is a TypeScript file at the root of your project that exports a default configuration object. Here's an example:
@@ -473,6 +474,32 @@ export default defineConfig({
 });
 ```
 
+#### puppeteer
+
+<ScrapingWarning />
+
+To use Puppeteer in your project, add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [puppeteer()],
+  },
+});
+```
+
+And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
+
+```bash
+PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
+```
+
+Follow [this example](/guides/examples/puppeteer) to get setup with Trigger.dev and Puppeteer in your project.
+
 #### ffmpeg
 
 You can add the `ffmpeg` build extension to your build process:
@@ -482,7 +509,7 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-  //..other stuff
+  // Your other config settings...
   build: {
     extensions: [ffmpeg()],
   },
@@ -504,6 +531,8 @@ export default defineConfig({
 ```
 
 This extension will also add the `FFMPEG_PATH` and `FFPROBE_PATH` to your environment variables, making it easy to use popular ffmpeg libraries like `fluent-ffmpeg`.
+
+Follow [this example](/guides/examples/ffmpeg-video-processing) to get setup with Trigger.dev and FFmpeg in your project.
 
 #### esbuild plugins
 

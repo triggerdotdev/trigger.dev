@@ -1,4 +1,3 @@
-import { context, propagation } from "@opentelemetry/api";
 import { z } from "zod";
 import {
   AddTagsRequestBody,
@@ -23,6 +22,8 @@ import {
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
+  UpdateMetadataRequestBody,
+  UpdateMetadataResponseBody,
   UpdateScheduleOptions,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
@@ -499,6 +500,23 @@ export class ApiClient {
     );
   }
 
+  updateRunMetadata(
+    runId: string,
+    body: UpdateMetadataRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      UpdateMetadataResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/metadata`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -509,7 +527,6 @@ export class ApiClient {
     // Only inject the context if we are inside a task
     if (taskContext.isInsideTask) {
       headers["x-trigger-worker"] = "true";
-      propagation.inject(context.active(), headers);
 
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";

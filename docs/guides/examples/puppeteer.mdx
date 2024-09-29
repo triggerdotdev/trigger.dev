@@ -1,0 +1,211 @@
+---
+title: "Puppeteer"
+sidebarTitle: "Puppeteer"
+description: "These examples demonstrate how to use Puppeteer with Trigger.dev."
+---
+
+import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+
+## Overview
+
+There are 3 example tasks to follow on this page:
+
+1. [Basic example](/guides/examples/puppeteer#basic-example)
+2. [Generate a PDF from a web page](/guides/examples/puppeteer#generate-a-pdf-from-a-web-page)
+3. [Scrape content from a web page](/guides/examples/puppeteer#scrape-content-from-a-web-page)
+
+<ScrapingWarning/>
+
+## Build configurations
+
+To use all examples on this page, you'll first need to add these build settings to your `trigger.config.ts` file:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This is required to use the Puppeteer library
+    extensions: [puppeteer()],
+  },
+});
+```
+
+Learn more about [build configurations](/config/config-file#build-configuration) including setting default retry settings, customizing the build environment, and more.
+
+## Set an environment variable
+
+Set the following environment variable in your [Trigger.dev dashboard](/deploy-environment-variables) or [using the SDK](/deploy-environment-variables#in-your-code):
+
+```bash
+PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
+```
+
+## Basic example
+
+### Overview
+
+In this example we use [Puppeteer](https://pptr.dev/) to log out the title of a web page, in this case from the [Trigger.dev](https://trigger.dev) landing page.
+
+### Task code
+
+```ts trigger/puppeteer-basic-example.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer";
+
+export const puppeteerTask = task({
+  id: "puppeteer-log-title",
+  run: async () => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    await page.goto("https://trigger.dev");
+
+    const content = await page.title();
+    logger.info("Content", { content });
+
+    await browser.close();
+  },
+});
+```
+
+### Testing your task
+
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
+
+## Generate a PDF from a web page
+
+### Overview
+
+In this example we use [Puppeteer](https://pptr.dev/) to generate a PDF from the [Trigger.dev](https://trigger.dev) landing page and upload it to [Cloudflare R2](https://developers.cloudflare.com/r2/).
+
+### Task code
+
+```ts trigger/puppeteer-generate-pdf.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const puppeteerWebpageToPDF = task({
+  id: "puppeteer-webpage-to-pdf",
+  run: async () => {
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    const response = await page.goto("https://trigger.dev");
+    const url = response?.url() ?? "No URL found";
+
+    // Generate PDF from the web page
+    const generatePdf = await page.pdf();
+
+    logger.info("PDF generated from URL", { url });
+
+    await browser.close();
+
+    // Upload to R2
+    const s3Key = `pdfs/test.pdf`;
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET,
+      Key: s3Key,
+      Body: generatePdf,
+      ContentType: "application/pdf",
+    };
+
+    logger.log("Uploading to R2 with params", uploadParams);
+
+    // Upload the PDF to R2 and return the URL.
+    await s3Client.send(new PutObjectCommand(uploadParams));
+    const s3Url = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${s3Key}`;
+    logger.log("PDF uploaded to R2", { url: s3Url });
+    return { pdfUrl: s3Url };
+  },
+});
+
+```
+
+### Testing your task
+
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
+
+## Scrape content from a web page
+
+### Overview
+
+In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https://www.browserbase.com/) proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out. See [this list](/guides/examples/puppeteer#proxying) for more proxying services we recommend.
+
+<Note>
+  When web scraping, you MUST use the technique below which uses a proxy with Puppeteer. Direct scraping without using `browserWSEndpoint` is prohibited and will result in account suspension.
+</Note>
+
+### Task code
+
+```ts trigger/scrape-website.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import puppeteer from "puppeteer-core";
+
+export const puppeteerScrapeWithProxy = task({
+  id: "puppeteer-scrape-with-proxy",
+  run: async () => {
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${process.env.BROWSERBASE_API_KEY}`,
+    });
+
+    const page = await browser.newPage();
+
+    try {
+      // Navigate to the target website
+      await page.goto("https://trigger.dev", { waitUntil: "networkidle0" });
+
+      // Scrape the GitHub stars count
+      const starCount = await page.evaluate(() => {
+        const starElement = document.querySelector(".github-star-count");
+        const text = starElement?.textContent ?? "0";
+        const numberText = text.replace(/[^0-9]/g, "");
+        return parseInt(numberText);
+      });
+
+      logger.info("GitHub star count", { starCount });
+
+      return { starCount };
+    } catch (error) {
+      logger.error("Error during scraping", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    } finally {
+      await browser.close();
+    }
+  },
+});
+```
+
+### Testing your task
+
+There's no payload required for this task so you can just click "Run test" from the Test page in the dashboard. Learn more about testing tasks [here](/run-tests).
+
+<LocalDevelopment packages={"the Puppeteer library."} />
+
+## Proxying
+
+If you're using Trigger.dev Cloud and Puppeteer or any other tool to scrape content from websites you don't own, you'll need to proxy your requests. **If you don't you'll risk getting our IP address blocked and we will ban you from our service.**
+
+Here are a list of proxy services we recommend:
+
+- [Browserbase](https://www.browserbase.com/)
+- [Brightdata](https://brightdata.com/)
+- [Browserless](https://browserless.io/)
+- [Oxylabs](https://oxylabs.io/)
+- [ScrapingBee](https://scrapingbee.com/)
+- [Smartproxy](https://smartproxy.com/)

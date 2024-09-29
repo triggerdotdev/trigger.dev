@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.8
+
+### Patch Changes
+
+- Add Run metadata to allow for storing up to 4KB of data on a run and update it during the run ([#1357](https://github.com/triggerdotdev/trigger.dev/pull/1357))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.8`
+
 ## 3.0.7
 
 ### Patch Changes

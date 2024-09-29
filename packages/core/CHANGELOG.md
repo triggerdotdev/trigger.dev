@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.0.8
+
+### Patch Changes
+
+- Add otel propagation headers "below" the API fetch span, to attribute the child runs with the proper parent span ID ([#1352](https://github.com/triggerdotdev/trigger.dev/pull/1352))
+- Add Run metadata to allow for storing up to 4KB of data on a run and update it during the run ([#1357](https://github.com/triggerdotdev/trigger.dev/pull/1357))
+
 ## 3.0.7
 
 ## 3.0.6

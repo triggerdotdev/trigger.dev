@@ -37,6 +37,13 @@ export class RunPresenter {
         status: true,
         completedAt: true,
         logsDeletedAt: true,
+        rootTaskRun: {
+          select: {
+            friendlyId: true,
+            taskIdentifier: true,
+            spanId: true,
+          },
+        },
         runtimeEnvironment: {
           select: {
             id: true,
@@ -80,6 +87,7 @@ export class RunPresenter {
           isFinished: isFinalRunStatus(run.status),
           completedAt: run.completedAt,
           logsDeletedAt: run.logsDeletedAt,
+          rootTaskRun: run.rootTaskRun,
           environment: {
             id: run.runtimeEnvironment.id,
             organizationId: run.runtimeEnvironment.organizationId,
@@ -141,6 +149,7 @@ export class RunPresenter {
         isFinished: isFinalRunStatus(run.status),
         completedAt: run.completedAt,
         logsDeletedAt: run.logsDeletedAt,
+        rootTaskRun: run.rootTaskRun,
         environment: {
           id: run.runtimeEnvironment.id,
           organizationId: run.runtimeEnvironment.organizationId,

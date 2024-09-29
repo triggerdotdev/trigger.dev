@@ -155,6 +155,10 @@ export const taskWithInitReturn = task({
 });
 ```
 
+<Info>
+Errors thrown in the `init` function are ignored.
+</Info>
+
 ### `cleanup` function
 
 This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
@@ -171,9 +175,17 @@ export const taskWithCleanup = task({
 });
 ```
 
+<Info>
+Errors thrown in the `cleanup` function will fail the attempt.
+</Info>
+
 ### `middleware` function
 
 This function is called before the `run` function, it allows you to wrap the run function with custom code.
+
+<Info>
+An error thrown in `middleware` is just like an uncaught error in the run function: it will propagate through to `handleError()` and then will fail the attempt (causing a retry).
+</Info>
 
 ### `onStart` function
 
@@ -194,14 +206,19 @@ export const taskWithOnStart = task({
 You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onStart: async (payload, { ctx }) => {
     console.log("Task started", ctx.task.id);
   },
-};
+});
 ```
+
+<Info>
+Errors thrown in the `onStart` function are ignored.
+</Info>
 
 ### `onSuccess` function
 
@@ -222,14 +239,19 @@ export const taskWithOnSuccess = task({
 You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onSuccess: async (payload, output, { ctx }) => {
     console.log("Task succeeded", ctx.task.id);
   },
-};
+});
 ```
+
+<Info>
+Errors thrown in the `onSuccess` function are ignored.
+</Info>
 
 ### `onFailure` function
 
@@ -250,20 +272,29 @@ export const taskWithOnFailure = task({
 You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
 
 ```ts trigger.config.ts
-import type { TriggerConfig } from "@trigger.dev/sdk/v3";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-export const config: TriggerConfig = {
+export default defineConfig({
+  project: "proj_1234",
   onFailure: async (payload, error, { ctx }) => {
     console.log("Task failed", ctx.task.id);
   },
-};
+});
 ```
+
+<Info>
+Errors thrown in the `onFailure` function are ignored.
+</Info>
 
 ### `handleError` functions
 
 You can define a function that will be called when an error is thrown in the `run` function, that allows you to control how the error is handled and whether the task should be retried.
 
 Read more about `handleError` in our [Errors and Retrying guide](/errors-retrying).
+
+<Info>
+Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.
+</Info>
 
 ## Next steps
 

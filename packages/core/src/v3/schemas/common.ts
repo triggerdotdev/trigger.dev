@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DeserializedJsonSchema } from "../../schemas/json.js";
 
 // Defaults to 0.5
 export const MachineCpu = z.union([
@@ -142,6 +143,7 @@ export const TaskRun = z.object({
   costInCents: z.number().default(0),
   baseCostInCents: z.number().default(0),
   version: z.string().optional(),
+  metadata: z.record(DeserializedJsonSchema).optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -221,7 +223,7 @@ export const TaskRunContext = z.object({
     backgroundWorkerId: true,
     backgroundWorkerTaskId: true,
   }),
-  run: TaskRun.omit({ payload: true, payloadType: true }),
+  run: TaskRun.omit({ payload: true, payloadType: true, metadata: true }),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,
