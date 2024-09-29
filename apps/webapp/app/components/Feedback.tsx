@@ -16,6 +16,8 @@ import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
 import { Select, SelectItem } from "./primitives/Select";
 import { TextArea } from "./primitives/TextArea";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { TextLink } from "./primitives/TextLink";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -66,26 +68,30 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
               <InputGroup className="max-w-full">
                 {type === "feature" && (
                   <InfoPanel
-                    icon={LightBulbIcon}
-                    title="Did you know?"
-                    panelClassName="w-full inline-flex mb-2"
-                    to="https://feedback.trigger.dev"
-                    buttonLabel="Submit feature request"
+                    icon={InformationCircleIcon}
+                    iconClassName="text-blue-500"
+                    panelClassName="w-full mb-2"
                   >
-                    All our feature requests are public and voted on by the community. The best way
-                    to submit your feature request is to post it to our feedback forum.
+                    <Paragraph variant="small">
+                      All our feature requests are public and voted on by the community. The best
+                      way to submit your feature request is to{" "}
+                      <TextLink to="https://feedback.trigger.dev">
+                        post it to our feedback forum
+                      </TextLink>
+                      .
+                    </Paragraph>
                   </InfoPanel>
                 )}
                 {type === "help" && (
                   <InfoPanel
-                    icon={LightBulbIcon}
-                    title="Did you know?"
-                    panelClassName="w-full inline-flex mb-2"
-                    to="https://trigger.dev/discord"
-                    buttonLabel="Join our Discord"
+                    icon={InformationCircleIcon}
+                    iconClassName="text-blue-500"
+                    panelClassName="w-full mb-2"
                   >
-                    Discord is the quickest way to get answers from the Trigger.dev team and
-                    community.
+                    <Paragraph variant="small">
+                      The quickest way to get answers from the Trigger.dev team and community is to{" "}
+                      <TextLink to="https://trigger.dev/discord">ask in our Discord</TextLink>.
+                    </Paragraph>
                   </InfoPanel>
                 )}
                 <Select
