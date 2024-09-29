@@ -548,6 +548,17 @@ export class ApiClient {
     );
   }
 
+  async subscribeToRunTag<TPayload = any, TOutput = any>(
+    tag: string,
+    callback: (shape: RunShape<TPayload, TOutput>) => void | Promise<void>
+  ) {
+    return runShapeStream<TPayload, TOutput>(
+      `${this.baseUrl}/api/v1/shape/tags/${tag}`,
+      this.fetchClient,
+      callback
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
