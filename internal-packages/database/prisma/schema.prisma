@@ -1683,6 +1683,9 @@ model TaskRun {
   attempts TaskRunAttempt[] @relation("attempts")
   tags     TaskRunTag[]
 
+  /// Denormized column that holds the raw tags
+  runTags String[]
+
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
