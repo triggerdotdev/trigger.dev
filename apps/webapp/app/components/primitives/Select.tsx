@@ -440,11 +440,11 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
 }
 
 const selectItemClasses =
-  "group cursor-pointer px-1 pt-1 text-xs text-text-dimmed outline-none last:pb-1";
+  "group cursor-pointer px-1 pt-1 text-sm text-text-dimmed outline-none last:pb-1";
 
 export function SelectItem({
   icon,
-  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
   shortcut,
   ...props
 }: SelectItemProps) {
@@ -477,7 +477,7 @@ export function SelectItem({
       )}
       ref={ref}
     >
-      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+      <div className="flex h-8 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
         {icon}
         <div className="grow truncate">{props.children || props.value}</div>
         {checkIcon}

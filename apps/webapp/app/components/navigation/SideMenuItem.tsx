@@ -3,25 +3,24 @@ import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "../primitives/Buttons";
 import { type IconNames } from "../primitives/NamedIcon";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { Icon } from "../primitives/Icon";
-import { IconExclamationCircle } from "@tabler/icons-react";
 
 export function SideMenuItem({
   icon,
-  iconColor,
+  activeIconColor,
+  inactiveIconColor,
+  trailingIcon,
   name,
   to,
-  hasWarning,
   badge,
   target,
   subItem = false,
 }: {
   icon?: IconNames | React.ComponentType<any>;
-  iconColor?: string;
+  activeIconColor?: string;
+  inactiveIconColor?: string;
+  trailingIcon?: IconNames | React.ComponentType<any>;
   name: string;
   to: string;
-  hasWarning?: string | boolean;
   badge?: string;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   subItem?: boolean;
@@ -35,7 +34,8 @@ export function SideMenuItem({
       fullWidth
       textAlignLeft
       LeadingIcon={icon}
-      leadingIconClassName={isActive ? iconColor : "text-text-dimmed"}
+      leadingIconClassName={isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"}
+      TrailingIcon={trailingIcon}
       to={to}
       target={target}
       className={cn(
@@ -48,20 +48,6 @@ export function SideMenuItem({
         {name}
         <div className="flex items-center gap-1">
           {badge !== undefined && <MenuCount count={badge} />}
-          {typeof hasWarning === "string" ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
-                </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1 border border-error bg-error/20 backdrop-blur-xl">
-                  {hasWarning}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            hasWarning && <Icon icon={IconExclamationCircle} className="h-5 w-5 text-error" />
-          )}
         </div>
       </div>
     </LinkButton>

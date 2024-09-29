@@ -14,7 +14,7 @@ export const feedbackTypeLabel = {
   feature: "Feature request",
   help: "Help me out",
   enterprise: "Enterprise enquiry",
-  "developer preview": "Developer preview feedback",
+  feedback: "General feedback",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;

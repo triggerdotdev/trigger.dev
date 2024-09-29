@@ -100,6 +100,25 @@ function PopoverCustomTrigger({
   );
 }
 
+function PopoverSideMenuTrigger({
+  isOpen,
+  children,
+  className,
+  ...props
+}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  return (
+    <PopoverTrigger
+      {...props}
+      className={cn(
+        "flex h-[1.8rem] shrink-0 select-none items-center gap-x-1.5 rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 group-focus:outline-none hover:bg-charcoal-750",
+        className
+      )}
+    >
+      {children}
+    </PopoverTrigger>
+  );
+}
+
 function PopoverArrowTrigger({
   isOpen,
   children,
@@ -165,6 +184,7 @@ export {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverSideMenuTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };

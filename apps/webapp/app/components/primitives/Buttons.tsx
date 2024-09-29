@@ -115,7 +115,7 @@ const variant = {
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
-      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-800 transition",
+      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-750 transition",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
@@ -124,7 +124,7 @@ const variant = {
   "small-menu-item": {
     textColor: "text-text-bright",
     button:
-      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750 transition",
     icon: "h-4",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
@@ -133,7 +133,7 @@ const variant = {
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
     button:
-      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750 transition",
     icon: undefined,
     iconSpacing: undefined,
     shortcutVariant: undefined,
