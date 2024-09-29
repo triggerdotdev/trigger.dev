@@ -1,6 +1,6 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient } from "../../../database/src";
 import { Redis } from "ioredis";
 import { test, TestAPI } from "vitest";
 import { createPostgresContainer, createRedisContainer } from "./utils";

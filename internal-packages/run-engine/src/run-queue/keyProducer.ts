@@ -1,4 +1,4 @@
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { RuntimeEnvironmentType } from "../../../database/src/index.js";
 import { AuthenticatedEnvironment } from "../shared/index.js";
 import { RunQueueKeyProducer } from "./types.js";
 

@@ -17,8 +17,8 @@
     "paths": {
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
-      "@trigger.dev/database": ["../../packages/database/src/index"],
-      "@trigger.dev/database/*": ["../../packages/database/src/*"]
+      "@trigger.dev/database": ["../database/src/index"],
+      "@trigger.dev/database/*": ["../database/src/*"]
     }
   },
   "exclude": ["node_modules"]

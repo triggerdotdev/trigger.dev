@@ -1,5 +1,5 @@
 import { Attributes } from "@opentelemetry/api";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma } from "../../../database/src";
 
 type EnvironmentWithExtras = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };

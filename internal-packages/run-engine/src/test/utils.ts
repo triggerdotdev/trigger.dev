@@ -1,6 +1,6 @@
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer } from "@testcontainers/redis";
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient } from "../../../database/src";
 import { execSync } from "child_process";
 import path from "path";
 

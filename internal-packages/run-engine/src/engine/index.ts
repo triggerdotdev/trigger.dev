@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "@trigger.dev/database";
+import { PrismaClient, Prisma } from "../../../database/src";
 import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
 
