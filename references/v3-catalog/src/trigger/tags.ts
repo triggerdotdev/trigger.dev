@@ -86,5 +86,9 @@ export const triggerRunsWithTags = task({
       baseCostInCents: run.baseCostInCents,
       durationMs: run.durationMs,
     });
+
+    return {
+      tags: run.tags,
+    };
   },
 });
