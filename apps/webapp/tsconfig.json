@@ -31,7 +31,9 @@
       "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
       "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
       "emails": ["../../internal-packages/emails/src/index"],
-      "emails/*": ["../../internal-packages/emails/src/*"]
+      "emails/*": ["../../internal-packages/emails/src/*"],
+      "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
+      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"]
     },
     "noEmit": true
   }

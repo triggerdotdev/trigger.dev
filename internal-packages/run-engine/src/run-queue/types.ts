@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AuthenticatedEnvironment } from "../shared/index.js";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { RuntimeEnvironmentType } from "../../../database/src/index.js";
 import { env } from "process";
 import { version } from "os";
@@ -43,35 +43,35 @@ export type QueueWithScores = {
 export type QueueRange = { offset: number; count: number };
 
 export interface RunQueueKeyProducer {
-  envSharedQueueKey(env: AuthenticatedEnvironment): string;
+  envSharedQueueKey(env: MinimalAuthenticatedEnvironment): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   queueCurrentConcurrencyScanPattern(): string;
   //queue
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
+  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
   currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   //env oncurrency
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+  envCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   //task concurrency
   taskIdentifierCurrentConcurrencyKey(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     taskIdentifier: string
   ): string;
   taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue: string): string;
   taskIdentifierCurrentConcurrencyKeyFromQueue(queue: string, taskIdentifier: string): string;
   //project concurrency
-  projectCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string;
   projectCurrentConcurrencyKeyFromQueue(queue: string): string;
   //message payload
   messageKeyPrefixFromQueue(queue: string): string;

@@ -1,19 +1,19 @@
 import { Attributes } from "@opentelemetry/api";
 import { Prisma } from "../../../database/src";
 
-type EnvironmentWithExtras = Prisma.RuntimeEnvironmentGetPayload<{
+export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
 }>;
 
-export type AuthenticatedEnvironment = {
-  id: EnvironmentWithExtras["id"];
-  type: EnvironmentWithExtras["type"];
-  maximumConcurrencyLimit: EnvironmentWithExtras["maximumConcurrencyLimit"];
+export type MinimalAuthenticatedEnvironment = {
+  id: AuthenticatedEnvironment["id"];
+  type: AuthenticatedEnvironment["type"];
+  maximumConcurrencyLimit: AuthenticatedEnvironment["maximumConcurrencyLimit"];
   project: {
-    id: EnvironmentWithExtras["project"]["id"];
+    id: AuthenticatedEnvironment["project"]["id"];
   };
   organization: {
-    id: EnvironmentWithExtras["organization"]["id"];
+    id: AuthenticatedEnvironment["organization"]["id"];
   };
 };
 
@@ -29,7 +29,7 @@ const SemanticEnvResources = {
   USER_ID: "$trigger.user.id",
 };
 
-export function attributesFromAuthenticatedEnv(env: AuthenticatedEnvironment): Attributes {
+export function attributesFromAuthenticatedEnv(env: MinimalAuthenticatedEnvironment): Attributes {
   return {
     [SemanticEnvResources.ENV_ID]: env.id,
     [SemanticEnvResources.ENV_TYPE]: env.type,

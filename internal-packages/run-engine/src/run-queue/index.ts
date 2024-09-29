@@ -8,7 +8,10 @@ import { Logger } from "@trigger.dev/core/logger";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
 import { AsyncWorker } from "../shared/asyncWorker.js";
-import { attributesFromAuthenticatedEnv, AuthenticatedEnvironment } from "../shared/index.js";
+import {
+  attributesFromAuthenticatedEnv,
+  MinimalAuthenticatedEnvironment,
+} from "../shared/index.js";
 import {
   InputPayload,
   OutputPayload,
@@ -71,38 +74,38 @@ export class RunQueue {
   }
 
   public async updateQueueConcurrencyLimits(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrency: number
   ) {
     return this.redis.set(this.keys.queueConcurrencyLimitKey(env, queue), concurrency);
   }
 
-  public async removeQueueConcurrencyLimits(env: AuthenticatedEnvironment, queue: string) {
+  public async removeQueueConcurrencyLimits(env: MinimalAuthenticatedEnvironment, queue: string) {
     return this.redis.del(this.keys.queueConcurrencyLimitKey(env, queue));
   }
 
-  public async getQueueConcurrencyLimit(env: AuthenticatedEnvironment, queue: string) {
+  public async getQueueConcurrencyLimit(env: MinimalAuthenticatedEnvironment, queue: string) {
     const result = await this.redis.get(this.keys.queueConcurrencyLimitKey(env, queue));
 
     return result ? Number(result) : undefined;
   }
 
-  public async updateEnvConcurrencyLimits(env: AuthenticatedEnvironment) {
+  public async updateEnvConcurrencyLimits(env: MinimalAuthenticatedEnvironment) {
     await this.#callUpdateGlobalConcurrencyLimits({
       envConcurrencyLimitKey: this.keys.envConcurrencyLimitKey(env),
       envConcurrencyLimit: env.maximumConcurrencyLimit,
     });
   }
 
-  public async getEnvConcurrencyLimit(env: AuthenticatedEnvironment) {
+  public async getEnvConcurrencyLimit(env: MinimalAuthenticatedEnvironment) {
     const result = await this.redis.get(this.keys.envConcurrencyLimitKey(env));
 
     return result ? Number(result) : this.options.defaultEnvConcurrency;
   }
 
   public async lengthOfQueue(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
@@ -110,7 +113,7 @@ export class RunQueue {
   }
 
   public async oldestMessageInQueue(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
@@ -130,22 +133,25 @@ export class RunQueue {
   }
 
   public async currentConcurrencyOfQueue(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ) {
     return this.redis.scard(this.keys.currentConcurrencyKey(env, queue, concurrencyKey));
   }
 
-  public async currentConcurrencyOfEnvironment(env: AuthenticatedEnvironment) {
+  public async currentConcurrencyOfEnvironment(env: MinimalAuthenticatedEnvironment) {
     return this.redis.scard(this.keys.envCurrentConcurrencyKey(env));
   }
 
-  public async currentConcurrencyOfProject(env: AuthenticatedEnvironment) {
+  public async currentConcurrencyOfProject(env: MinimalAuthenticatedEnvironment) {
     return this.redis.scard(this.keys.projectCurrentConcurrencyKey(env));
   }
 
-  public async currentConcurrencyOfTask(env: AuthenticatedEnvironment, taskIdentifier: string) {
+  public async currentConcurrencyOfTask(
+    env: MinimalAuthenticatedEnvironment,
+    taskIdentifier: string
+  ) {
     return this.redis.scard(this.keys.taskIdentifierCurrentConcurrencyKey(env, taskIdentifier));
   }
 
@@ -153,7 +159,7 @@ export class RunQueue {
     env,
     message,
   }: {
-    env: AuthenticatedEnvironment;
+    env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
   }) {
     return await this.#trace(
@@ -195,7 +201,7 @@ export class RunQueue {
     );
   }
 
-  public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {
+  public async dequeueMessageInEnv(env: MinimalAuthenticatedEnvironment) {
     return this.#trace(
       "dequeueMessageInEnv",
       async (span) => {

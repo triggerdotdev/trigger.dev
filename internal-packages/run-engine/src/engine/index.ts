@@ -1,17 +1,54 @@
-import { PrismaClient, Prisma } from "../../../database/src";
+import { PrismaClient, Prisma, PrismaClientOrTransaction } from "@trigger.dev/database";
 import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
+import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared";
+import { QueueOptions } from "@trigger.dev/core/v3";
+import { RunQueue } from "../run-queue";
 
 type Options = {
-  prisma: PrismaClient;
   redis: RedisOptions;
-  //todo
-  // queue: RunQueue;
+  prisma: PrismaClientOrTransaction;
+};
+
+type TriggerParams = {
+  friendlyId: string;
+  number: number;
+  environment: MinimalAuthenticatedEnvironment;
+  idempotencyKey?: string;
+  taskIdentifier: string;
+  payload: string;
+  payloadType: string;
+  context: any;
+  traceContext: Record<string, string | undefined>;
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  lockedToVersionId?: string;
+  concurrencyKey?: string;
+  queueName: string;
+  queue?: QueueOptions;
+  isTest: boolean;
+  delayUntil?: Date;
+  queuedAt?: Date;
+  maxAttempts?: number;
+  ttl?: string;
+  tags: string[];
+  parentTaskRunId?: string;
+  parentTaskRunAttemptId?: string;
+  rootTaskRunId?: string;
+  batchId?: string;
+  resumeParentOnCompletion: boolean;
+  depth: number;
+  metadata?: string;
+  metadataType?: string;
+  seedMetadata?: string;
+  seedMetadataType?: string;
+  isWait: boolean;
 };
 
 export class RunEngine {
-  private prisma: PrismaClient;
   private redis: Redis;
+  private prisma: PrismaClientOrTransaction;
   private redlock: Redlock;
 
   constructor(private readonly options: Options) {
@@ -28,9 +65,192 @@ export class RunEngine {
 
   /** "Triggers" one run, which creates the run
    */
-  async trigger() {
-    // const result = await this.options.prisma.taskRun.create({});
-    // return result;
+  async trigger(
+    {
+      friendlyId,
+      number,
+      environment,
+      idempotencyKey,
+      taskIdentifier,
+      payload,
+      payloadType,
+      context,
+      traceContext,
+      traceId,
+      spanId,
+      parentSpanId,
+      lockedToVersionId,
+      concurrencyKey,
+      queueName,
+      queue,
+      isTest,
+      delayUntil,
+      queuedAt,
+      maxAttempts,
+      ttl,
+      tags,
+      parentTaskRunId,
+      parentTaskRunAttemptId,
+      rootTaskRunId,
+      batchId,
+      resumeParentOnCompletion,
+      depth,
+      metadata,
+      metadataType,
+      seedMetadata,
+      seedMetadataType,
+      isWait,
+    }: TriggerParams,
+    tx?: PrismaClientOrTransaction
+  ) {
+    //todo create a waitable
+    const prisma = tx ?? this.prisma;
+
+    //todo attach waitable to the run
+
+    const taskRun = await prisma.taskRun.create({
+      data: {
+        status: delayUntil ? "DELAYED" : "PENDING",
+        number,
+        friendlyId,
+        runtimeEnvironmentId: environment.id,
+        projectId: environment.project.id,
+        idempotencyKey,
+        taskIdentifier,
+        payload,
+        payloadType,
+        context,
+        traceContext,
+        traceId,
+        spanId,
+        parentSpanId,
+        lockedToVersionId,
+        concurrencyKey,
+        queue: queueName,
+        isTest,
+        delayUntil,
+        queuedAt,
+        maxAttempts,
+        ttl,
+        tags:
+          tags.length === 0
+            ? undefined
+            : {
+                connect: tags.map((id) => ({ id })),
+              },
+        parentTaskRunId,
+        parentTaskRunAttemptId,
+        rootTaskRunId,
+        batchId,
+        resumeParentOnCompletion,
+        depth,
+        metadata,
+        metadataType,
+        seedMetadata,
+        seedMetadataType,
+      },
+    });
+
+    await this.redlock.using([taskRun.id], 5000, async (signal) => {
+      if (signal.aborted) {
+        throw signal.error;
+      }
+
+      if (isWait) {
+        //todo block the parentTaskRun with this runId
+      }
+
+      if (dependentAttempt) {
+        await prisma.taskRunDependency.create({
+          data: {
+            taskRunId: taskRun.id,
+            dependentAttemptId: dependentAttempt.id,
+          },
+        });
+      } else if (dependentBatchRun) {
+        await prisma.taskRunDependency.create({
+          data: {
+            taskRunId: taskRun.id,
+            dependentBatchRunId: dependentBatchRun.id,
+          },
+        });
+      }
+
+      if (queue) {
+        const concurrencyLimit =
+          typeof body.options.queue.concurrencyLimit === "number"
+            ? Math.max(0, body.options.queue.concurrencyLimit)
+            : undefined;
+
+        let taskQueue = await prisma.taskQueue.findFirst({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            name: queueName,
+          },
+        });
+
+        if (taskQueue) {
+          taskQueue = await prisma.taskQueue.update({
+            where: {
+              id: taskQueue.id,
+            },
+            data: {
+              concurrencyLimit,
+              rateLimit: body.options.queue.rateLimit,
+            },
+          });
+        } else {
+          taskQueue = await prisma.taskQueue.create({
+            data: {
+              friendlyId: generateFriendlyId("queue"),
+              name: queueName,
+              concurrencyLimit,
+              runtimeEnvironmentId: environment.id,
+              projectId: environment.projectId,
+              rateLimit: body.options.queue.rateLimit,
+              type: "NAMED",
+            },
+          });
+        }
+
+        if (typeof taskQueue.concurrencyLimit === "number") {
+          await marqs?.updateQueueConcurrencyLimits(
+            environment,
+            taskQueue.name,
+            taskQueue.concurrencyLimit
+          );
+        } else {
+          await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+        }
+      }
+
+      if (taskRun.delayUntil) {
+        //todo create an additional WaitPoint
+
+        await workerQueue.enqueue(
+          "v3.enqueueDelayedRun",
+          { runId: taskRun.id },
+          { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
+        );
+      }
+
+      if (!taskRun.delayUntil && taskRun.ttl) {
+        const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+        if (expireAt) {
+          await workerQueue.enqueue(
+            "v3.expireRun",
+            { runId: taskRun.id },
+            { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
+          );
+        }
+      }
+    });
+
+    return taskRun;
+    //todo waitpoints
+    //todo enqueue
+    //todo release concurrency?
   }
 
   /** Triggers multiple runs.
