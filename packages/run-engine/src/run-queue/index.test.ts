@@ -357,13 +357,75 @@ describe("RunQueue", () => {
       expect(taskConcurrency).toBe(0);
 
       //check the message is gone
-      const key2 = queue.keys.messageKey(message!.message.orgId, message!.messageId);
       const exists2 = await redis.exists(key);
       expect(exists2).toBe(0);
 
       //dequeue
       const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
       expect(message2).toBeUndefined();
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("Nacking", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+
+      const message = await queue.dequeueMessageInSharedQueue("test_12345");
+      expect(message).toBeDefined();
+
+      //check the message is there
+      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const exists = await redis.exists(key);
+      expect(exists).toBe(1);
+
+      //concurrencies
+      const queueConcurrency = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvProd,
+        messageProd.queue
+      );
+      expect(queueConcurrency).toBe(1);
+      const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+      expect(envConcurrency).toBe(1);
+      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvProd);
+      expect(projectConcurrency).toBe(1);
+      const taskConcurrency = await queue.currentConcurrencyOfTask(
+        authenticatedEnvProd,
+        messageProd.taskIdentifier
+      );
+      expect(taskConcurrency).toBe(1);
+
+      await queue.nackMessage(message!.message.orgId, message!.messageId);
+
+      //concurrencies
+      const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvProd,
+        messageProd.queue
+      );
+      expect(queueConcurrency2).toBe(0);
+      const envConcurrency2 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+      expect(envConcurrency2).toBe(0);
+      const projectConcurrency2 = await queue.currentConcurrencyOfProject(authenticatedEnvProd);
+      expect(projectConcurrency2).toBe(0);
+      const taskConcurrency2 = await queue.currentConcurrencyOfTask(
+        authenticatedEnvProd,
+        messageProd.taskIdentifier
+      );
+      expect(taskConcurrency2).toBe(0);
+
+      //check the message is there
+      const exists2 = await redis.exists(key);
+      expect(exists2).toBe(1);
+
+      //dequeue
+      const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
+      expect(message2?.messageId).toBe(messageProd.runId);
     } finally {
       await queue.quit();
     }

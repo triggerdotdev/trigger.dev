@@ -401,48 +401,71 @@ export class RunQueue {
   }
 
   /**
-   * Negative acknowledge a message, which will requeue the message
+   * Negative acknowledge a message, which will requeue the message (with an optional future date)
    */
-  public async nackMessage(
-    messageId: string,
-    retryAt: number = Date.now(),
-    updates?: Record<string, unknown>
-  ) {
+  public async nackMessage(orgId: string, messageId: string, retryAt: number = Date.now()) {
     return this.#trace(
       "nackMessage",
       async (span) => {
-        // const message = await this.readMessage(messageId);
-        // if (!message) {
-        //   logger.log(`[${this.name}].nackMessage() message not found`, {
-        //     messageId,
-        //     retryAt,
-        //     updates,
-        //     service: this.name,
-        //   });
-        //   return;
-        // }
-        // span.setAttributes({
-        //   [SemanticAttributes.QUEUE]: message.queue,
-        //   [SemanticAttributes.MESSAGE_ID]: message.messageId,
-        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-        // });
-        // if (updates) {
-        //   await this.replaceMessage(messageId, updates, retryAt, true);
-        // }
-        // await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
-        // await this.#callNackMessage({
-        //   messageKey: this.keys.messageKey(messageId),
-        //   messageQueue: message.queue,
-        //   parentQueue: message.parentQueue,
-        //   concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
-        //   envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
-        //   orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
-        //   visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
-        //   messageId,
-        //   messageScore: retryAt,
-        // });
-        // await this.options.subscriber?.messageNacked(message);
+        const message = await this.#readMessage(orgId, messageId);
+        if (!message) {
+          this.logger.log(`[${this.name}].nackMessage() message not found`, {
+            orgId,
+            messageId,
+            retryAt,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.RUN_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+        });
+
+        const messageKey = this.keys.messageKey(orgId, messageId);
+        const messageQueue = message.queue;
+        const parentQueue = message.parentQueue;
+        const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
+        const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+        const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+          message.queue,
+          message.taskIdentifier
+        );
+        const projectConcurrencyKey = this.keys.projectCurrentConcurrencyKeyFromQueue(
+          message.queue
+        );
+
+        const messageScore = retryAt;
+
+        this.logger.debug("Calling nackMessage", {
+          messageKey,
+          messageQueue,
+          parentQueue,
+          concurrencyKey,
+          envConcurrencyKey,
+          projectConcurrencyKey,
+          taskConcurrencyKey,
+          messageId,
+          messageScore,
+          service: this.name,
+        });
+
+        await this.redis.nackMessage(
+          //keys
+          messageKey,
+          messageQueue,
+          parentQueue,
+          concurrencyKey,
+          envConcurrencyKey,
+          projectConcurrencyKey,
+          taskConcurrencyKey,
+          //args
+          messageId,
+          String(messageScore)
+        );
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1042,55 +1065,6 @@ export class RunQueue {
     );
   }
 
-  async #callNackMessage({
-    messageKey,
-    messageQueue,
-    parentQueue,
-    concurrencyKey,
-    envConcurrencyKey,
-    orgConcurrencyKey,
-    visibilityQueue,
-    messageId,
-    messageScore,
-  }: {
-    messageKey: string;
-    messageQueue: string;
-    parentQueue: string;
-    concurrencyKey: string;
-    envConcurrencyKey: string;
-    orgConcurrencyKey: string;
-    visibilityQueue: string;
-    messageId: string;
-    messageScore: number;
-  }) {
-    this.logger.debug("Calling nackMessage", {
-      messageKey,
-      messageQueue,
-      parentQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      orgConcurrencyKey,
-      visibilityQueue,
-      messageId,
-      messageScore,
-      service: this.name,
-    });
-
-    return this.redis.nackMessage(
-      messageKey,
-      messageQueue,
-      parentQueue,
-      concurrencyKey,
-      envConcurrencyKey,
-      orgConcurrencyKey,
-      visibilityQueue,
-      messageQueue,
-      messageId,
-      String(Date.now()),
-      String(messageScore)
-    );
-  }
-
   async #callCalculateMessageCapacities({
     currentConcurrencyKey,
     currentEnvConcurrencyKey,
@@ -1330,43 +1304,34 @@ redis.call('SREM', taskCurrentConcurrencyKey, messageId)
     this.redis.defineCommand("nackMessage", {
       numberOfKeys: 7,
       lua: `
--- Keys: childQueueKey, parentQueueKey, visibilityQueue, concurrencyKey, envConcurrencyKey, orgConcurrencyKey, messageId
+-- Keys:
 local messageKey = KEYS[1]
-local childQueueKey = KEYS[2]
+local messageQueueKey = KEYS[2]
 local parentQueueKey = KEYS[3]
 local concurrencyKey = KEYS[4]
 local envConcurrencyKey = KEYS[5]
-local orgConcurrencyKey = KEYS[6]
-local visibilityQueue = KEYS[7]
+local projectConcurrencyKey = KEYS[6]
+local taskConcurrencyKey = KEYS[7]
 
--- Args: childQueueName, messageId, currentTime, messageScore
-local childQueueName = ARGV[1]
-local messageId = ARGV[2]
-local currentTime = tonumber(ARGV[3])
-local messageScore = tonumber(ARGV[4])
+-- Args: 
+local messageId = ARGV[1]
+local messageScore = tonumber(ARGV[2])
 
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envConcurrencyKey, messageId)
-redis.call('SREM', orgConcurrencyKey, messageId)
-
--- Check to see if the message is still in the visibilityQueue
-local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
-
-if messageVisibility > 0 then
--- Remove the message from the timeout queue (deprecated, will eventually remove this)
-    redis.call('ZREM', visibilityQueue, messageId)
-end
+redis.call('SREM', projectConcurrencyKey, messageId)
+redis.call('SREM', taskConcurrencyKey, messageId)
 
 -- Enqueue the message into the queue
-redis.call('ZADD', childQueueKey, messageScore, messageId)
+redis.call('ZADD', messageQueueKey, messageScore, messageId)
 
 -- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueueKey, childQueueName)
+    redis.call('ZREM', parentQueueKey, messageQueueKey)
 else
-    redis.call('ZADD', parentQueueKey, earliestMessage[2], childQueueName)
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], messageQueueKey)
 end
 `,
     });
@@ -1541,15 +1506,13 @@ declare module "ioredis" {
 
     nackMessage(
       messageKey: string,
-      childQueueKey: string,
+      messageQueue: string,
       parentQueueKey: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
-      orgConcurrencyKey: string,
-      visibilityQueue: string,
-      childQueueName: string,
+      projectConcurrencyKey: string,
+      taskConcurrencyKey: string,
       messageId: string,
-      currentTime: string,
       messageScore: string,
       callback?: Callback<void>
     ): Result<void, Context>;
