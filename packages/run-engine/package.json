@@ -4,7 +4,6 @@
   "version": "0.0.1",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "type": "module",
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/semantic-conventions": "^1.27.0",

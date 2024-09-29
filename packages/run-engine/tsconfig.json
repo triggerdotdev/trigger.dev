@@ -2,8 +2,10 @@
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable"],
-    "module": "NodeNext",
-    "moduleResolution": "Node16",
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": false,
     "types": ["vitest/globals"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
