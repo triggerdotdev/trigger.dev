@@ -1,3 +1,5 @@
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
@@ -12,9 +14,7 @@ import {
   CursorArrowRaysIcon,
   EnvelopeIcon,
   IdentificationIcon,
-  InformationCircleIcon,
   KeyIcon,
-  LifebuoyIcon,
   LightBulbIcon,
   RectangleStackIcon,
   ServerStackIcon,
@@ -31,6 +31,7 @@ import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -65,7 +66,6 @@ import {
   v3TestPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
-import { Feedback } from "../Feedback";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { StepContentContainer } from "../StepContentContainer";
@@ -75,7 +75,13 @@ import { Badge } from "../primitives/Badge";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { ClipboardField } from "../primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
+import { Fieldset } from "../primitives/Fieldset";
+import { FormButtons } from "../primitives/FormButtons";
+import { FormError } from "../primitives/FormError";
 import { Icon } from "../primitives/Icon";
+import { InfoPanel } from "../primitives/InfoPanel";
+import { InputGroup } from "../primitives/InputGroup";
+import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -86,22 +92,13 @@ import {
   PopoverSectionHeader,
   PopoverSideMenuTrigger,
 } from "../primitives/Popover";
+import { Select, SelectItem } from "../primitives/Select";
 import { StepNumber } from "../primitives/StepNumber";
+import { TextArea } from "../primitives/TextArea";
 import { TextLink } from "../primitives/TextLink";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { Fieldset } from "../primitives/Fieldset";
-import { conform, useForm } from "@conform-to/react";
-import { Select, SelectItem } from "../primitives/Select";
-import { InputGroup } from "../primitives/InputGroup";
-import { FormError } from "../primitives/FormError";
-import { Label } from "../primitives/Label";
-import { TextArea } from "../primitives/TextArea";
-import { FormButtons } from "../primitives/FormButtons";
-import { FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
-import { parse } from "@conform-to/zod";
-import { InfoPanel } from "../primitives/InfoPanel";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
@@ -309,22 +306,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               </DialogContent>
             </Dialog>
           )}
-
           <HelpAndFeedback />
-          <Feedback
-            button={
-              <Button
-                variant="small-menu-item"
-                LeadingIcon="log"
-                leadingIconClassName="text-primary"
-                data-action="help & feedback"
-                fullWidth
-                textAlignLeft
-              >
-                <span className="text-primary">Help & Feedback</span>
-              </Button>
-            }
-          />
           {isV3Project && isFreeV3User && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
@@ -357,7 +339,7 @@ function HelpAndFeedback({ defaultValue = "bug" }: { defaultValue?: FeedbackType
     <Popover onOpenChange={(open) => setHelpMenuOpen(open)}>
       <PopoverSideMenuTrigger isOpen={isHelpMenuOpen} shortcut={{ key: "h" }}>
         <div className="flex items-center gap-1.5">
-          <ChatBubbleLeftEllipsisIcon className="size-4 text-text-dimmed" />
+          <ChatBubbleLeftEllipsisIcon className="size-4 text-success" />
           Help & Feedback
         </div>
       </PopoverSideMenuTrigger>
