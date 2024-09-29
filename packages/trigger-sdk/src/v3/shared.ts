@@ -234,29 +234,38 @@ export type TaskOptions<
 };
 
 declare const __output: unique symbol;
-type BrandOutput<B> = { [__output]: B };
-export type BrandedOutput<T, B> = T & BrandOutput<B>;
+declare const __payload: unique symbol;
+type BrandRun<P, O> = { [__output]: O; [__payload]: P };
+export type BrandedRun<T, P, O> = T & BrandRun<O, P>;
 
-export type RunHandle<TOutput> = BrandedOutput<
+export type RunHandle<TPayload, TOutput> = BrandedRun<
   {
     id: string;
   },
+  TPayload,
   TOutput
 >;
+
+export type AnyRunHandle = RunHandle<any, any>;
 
 /**
  * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
  */
-export type BatchRunHandle<TOutput> = BrandedOutput<
+export type BatchRunHandle<TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    runs: Array<RunHandle<TOutput>>;
+    runs: Array<RunHandle<TPayload, TOutput>>;
   },
-  TOutput
+  TOutput,
+  TPayload
 >;
 
-export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<infer TOutput>
+export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<any, infer TOutput>
   ? TOutput
+  : never;
+
+export type RunHandlePayload<TRunHandle> = TRunHandle extends RunHandle<infer TPayload, any>
+  ? TPayload
   : never;
 
 export type TaskRunResult<TOutput = any> =
@@ -333,7 +342,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * @returns RunHandle
    * - `id` - The id of the triggered task run.
    */
-  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<RunHandle<TOutput>>;
+  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<RunHandle<TInput, TOutput>>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
@@ -342,7 +351,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * - `batchId` - The id of the triggered batch.
    * - `runs` - The ids of the triggered task runs.
    */
-  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<BatchRunHandle<TOutput>>;
+  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<BatchRunHandle<TInput, TOutput>>;
 
   /**
    * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
@@ -395,16 +404,20 @@ export type TaskOutput<TTask extends AnyTask> = TTask extends Task<string, any, 
   ? TOutput
   : never;
 
-export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
-  ? RunHandle<TOutput>
+export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<
+  string,
+  infer TInput,
+  infer TOutput
+>
+  ? RunHandle<TOutput, TInput>
   : never;
 
 export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
   string,
-  any,
+  infer TInput,
   infer TOutput
 >
-  ? BatchRunHandle<TOutput>
+  ? BatchRunHandle<TOutput, TInput>
   : never;
 
 export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
@@ -658,7 +671,7 @@ export async function trigger<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
-): Promise<RunHandle<TaskOutput<TTask>>> {
+): Promise<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
   return await trigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.trigger()",
     id,
@@ -766,7 +779,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions & PollOptions,
   requestOptions?: ApiRequestOptions
-): Promise<RetrieveRunResult<RunHandle<TaskOutput<TTask>>>> {
+): Promise<RetrieveRunResult<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>>> {
   const handle = await trigger(id, payload, options, requestOptions);
 
   return runs.poll(handle, options, requestOptions);
@@ -776,7 +789,7 @@ export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
   requestOptions?: ApiRequestOptions
-): Promise<BatchRunHandle<TaskOutput<TTask>>> {
+): Promise<BatchRunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
   return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.batchTrigger()",
     id,
@@ -791,7 +804,7 @@ async function trigger_internal<TPayload, TOutput>(
   payload: TPayload,
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
-): Promise<RunHandle<TOutput>> {
+): Promise<RunHandle<TPayload, TOutput>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const payloadPacket = await stringifyIO(payload);
@@ -839,7 +852,7 @@ async function trigger_internal<TPayload, TOutput>(
     }
   );
 
-  return handle as RunHandle<TOutput>;
+  return handle as RunHandle<TPayload, TOutput>;
 }
 
 async function batchTrigger_internal<TPayload, TOutput>(
@@ -848,7 +861,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
   items: Array<BatchItem<TPayload>>,
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
-): Promise<BatchRunHandle<TOutput>> {
+): Promise<BatchRunHandle<TPayload, TOutput>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const response = await apiClient.batchTriggerTask(
@@ -897,7 +910,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
     runs: response.runs.map((id) => ({ id })),
   };
 
-  return handle as BatchRunHandle<TOutput>;
+  return handle as BatchRunHandle<TPayload, TOutput>;
 }
 
 async function triggerAndWait_internal<TPayload, TOutput>(

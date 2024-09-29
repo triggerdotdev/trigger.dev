@@ -73,7 +73,7 @@ export type { ApiRequestOptions };
  * Trigger.dev v3 API client
  */
 export class ApiClient {
-  private readonly baseUrl: string;
+  public readonly baseUrl: string;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
@@ -83,6 +83,24 @@ export class ApiClient {
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+  }
+
+  get fetchClient(): typeof fetch {
+    const headers = this.#getHeaders(false);
+
+    const fetchClient: typeof fetch = (input, requestInit) => {
+      const $requestInit: RequestInit = {
+        ...requestInit,
+        headers: {
+          ...requestInit?.headers,
+          ...headers,
+        },
+      };
+
+      return fetch(input, $requestInit);
+    };
+
+    return fetchClient;
   }
 
   async getRunResult(
