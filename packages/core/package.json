@@ -193,7 +193,8 @@
     "superjson": "^2.2.1",
     "zod": "3.22.3",
     "zod-error": "1.5.0",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "@electric-sql/client": "0.5.1"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",

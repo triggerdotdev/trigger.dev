@@ -7,8 +7,7 @@ async function main() {
   });
 
   await runs.subscribe(anyHandle, (anyRun) => {
-    console.log(anyRun.payload.tags);
-    console.log(anyRun.output?.tags);
+    console.log(anyRun);
   });
 }
 

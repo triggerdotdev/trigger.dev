@@ -285,8 +285,8 @@ export const ScheduledTaskPayload = z.object({
   type: ScheduleType,
   /** When the task was scheduled to run.
    * Note this will be slightly different from `new Date()` because it takes a few ms to run the task.
-   * 
-   * This date is UTC. To output it as a string with a timezone you would do this: 
+   *
+   * This date is UTC. To output it as a string with a timezone you would do this:
    * ```ts
    * const formatted = payload.timestamp.toLocaleString("en-US", {
         timeZone: payload.timezone,
@@ -314,7 +314,7 @@ export const CreateScheduleOptions = z.object({
   /** The id of the task you want to attach to. */
   task: z.string(),
   /**  The schedule in CRON format.
-   * 
+   *
    * ```txt
 *    *    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -446,6 +446,8 @@ export const RunStatus = z.enum([
   "EXPIRED",
   /// Task has reached it's maxDuration and has been stopped
   "TIMED_OUT",
+  /// Fallback status in case there is no matching status coming from the server
+  "UNKNOWN",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -628,3 +630,34 @@ export const UpdateMetadataResponseBody = z.object({
 });
 
 export type UpdateMetadataResponseBody = z.infer<typeof UpdateMetadataResponseBody>;
+
+export const SubscribeRunRawShape = z.object({
+  id: z.string(),
+  idempotencyKey: z.string().nullish(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  startedAt: z.coerce.date().nullish(),
+  delayUntil: z.coerce.date().nullish(),
+  queuedAt: z.coerce.date().nullish(),
+  expiredAt: z.coerce.date().nullish(),
+  completedAt: z.coerce.date().nullish(),
+  taskIdentifier: z.string(),
+  friendlyId: z.string(),
+  number: z.number(),
+  isTest: z.boolean(),
+  status: z.string(),
+  usageDurationMs: z.number(),
+  costInCents: z.number(),
+  baseCostInCents: z.number(),
+  ttl: z.string().nullish(),
+  payload: z.string().nullish(),
+  payloadType: z.string().nullish(),
+  metadata: z.string().nullish(),
+  metadataType: z.string().nullish(),
+  output: z.string().nullish(),
+  outputType: z.string().nullish(),
+  runTags: z.array(z.string()).nullish().default([]),
+  error: SerializedError.nullish(),
+});
+
+export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
