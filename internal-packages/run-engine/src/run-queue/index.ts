@@ -24,7 +24,7 @@ import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
-  PARENT_QUEUE: "runqueue.parentQueue",
+  MASTER_QUEUE: "runqueue.masterQueue",
   RUN_ID: "runqueue.runId",
   CONCURRENCY_KEY: "runqueue.concurrencyKey",
   ORG_ID: "runqueue.orgId",
@@ -58,10 +58,9 @@ export class RunQueue {
     this.redis = new Redis(options.redis);
     this.logger = options.logger;
 
-    this.keys = new RunQueueShortKeyProducer("rq:", options.name);
+    this.keys = new RunQueueShortKeyProducer("rq:");
     this.queuePriorityStrategy = options.queuePriorityStrategy;
 
-    this.#startRebalanceWorkers();
     this.#registerCommands();
   }
 
@@ -158,9 +157,11 @@ export class RunQueue {
   public async enqueueMessage({
     env,
     message,
+    masterQueue,
   }: {
     env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
+    masterQueue: string;
   }) {
     return await this.#trace(
       "enqueueMessage",
@@ -169,25 +170,23 @@ export class RunQueue {
 
         const queue = this.keys.queueKey(env, message.queue, concurrencyKey);
 
-        const parentQueue = this.keys.envSharedQueueKey(env);
-
         propagation.inject(context.active(), message);
 
         span.setAttributes({
           [SemanticAttributes.QUEUE]: queue,
           [SemanticAttributes.RUN_ID]: runId,
           [SemanticAttributes.CONCURRENCY_KEY]: concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
         });
 
         const messagePayload: OutputPayload = {
           ...message,
           version: "1",
           queue,
-          parentQueue,
+          masterQueue,
         };
 
-        await this.#callEnqueueMessage(messagePayload, parentQueue);
+        await this.#callEnqueueMessage(messagePayload, masterQueue);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -201,15 +200,13 @@ export class RunQueue {
     );
   }
 
-  public async dequeueMessageInEnv(env: MinimalAuthenticatedEnvironment) {
+  public async dequeueMessageInEnv(env: MinimalAuthenticatedEnvironment, masterQueue: string) {
     return this.#trace(
       "dequeueMessageInEnv",
       async (span) => {
-        const parentQueue = this.keys.envSharedQueueKey(env);
-
         // Read the parent queue for matching queues
         const messageQueue = await this.#getRandomQueueFromParentQueue(
-          parentQueue,
+          masterQueue,
           this.options.envQueuePriorityStrategy,
           (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: false }),
           env.id
@@ -217,7 +214,7 @@ export class RunQueue {
 
         if (!messageQueue) {
           this.logger.debug("No message queue found", {
-            parentQueue,
+            masterQueue,
           });
 
           return;
@@ -225,7 +222,7 @@ export class RunQueue {
 
         const message = await this.#callDequeueMessage({
           messageQueue,
-          parentQueue,
+          masterQueue,
           concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -246,7 +243,7 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.message.queue,
           [SemanticAttributes.RUN_ID]: message.message.runId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
         });
 
         return message;
@@ -262,14 +259,12 @@ export class RunQueue {
     );
   }
 
-  public async getSharedQueueDetails() {
-    const parentQueue = this.keys.sharedQueueKey();
-
+  public async getSharedQueueDetails(masterQueue: string) {
     const { range } = await this.queuePriorityStrategy.nextCandidateSelection(
-      parentQueue,
+      masterQueue,
       "getSharedQueueDetails"
     );
-    const queues = await this.#getChildQueuesWithScores(parentQueue, range);
+    const queues = await this.#getChildQueuesWithScores(masterQueue, range);
 
     const queuesWithScores = await this.#calculateQueueScores(queues, (queue) =>
       this.#calculateMessageQueueCapacities(queue)
@@ -278,7 +273,7 @@ export class RunQueue {
     // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
     const choice = this.queuePriorityStrategy.chooseQueue(
       queuesWithScores,
-      parentQueue,
+      masterQueue,
       "getSharedQueueDetails",
       range
     );
@@ -296,15 +291,13 @@ export class RunQueue {
   /**
    * Dequeue a message from the shared queue (this should be used in production environments)
    */
-  public async dequeueMessageInSharedQueue(consumerId: string) {
+  public async dequeueMessageInSharedQueue(consumerId: string, masterQueue: string) {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
-        const parentQueue = this.keys.sharedQueueKey();
-
         // Read the parent queue for matching queues
         const messageQueue = await this.#getRandomQueueFromParentQueue(
-          parentQueue,
+          masterQueue,
           this.options.queuePriorityStrategy,
           (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: true }),
           consumerId
@@ -317,7 +310,7 @@ export class RunQueue {
         // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
         const message = await this.#callDequeueMessage({
           messageQueue,
-          parentQueue,
+          masterQueue,
           concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -338,7 +331,7 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.message.queue,
           [SemanticAttributes.RUN_ID]: message.message.runId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
         });
 
         return message;
@@ -384,7 +377,7 @@ export class RunQueue {
         await this.#callAcknowledgeMessage({
           messageId,
           messageQueue: message.queue,
-          parentQueue: message.parentQueue,
+          masterQueue: message.masterQueue,
           messageKey: this.keys.messageKey(orgId, messageId),
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
@@ -428,12 +421,12 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.queue,
           [SemanticAttributes.RUN_ID]: messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+          [SemanticAttributes.MASTER_QUEUE]: message.masterQueue,
         });
 
         const messageKey = this.keys.messageKey(orgId, messageId);
         const messageQueue = message.queue;
-        const parentQueue = message.parentQueue;
+        const parentQueue = message.masterQueue;
         const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
         const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
         const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
@@ -726,7 +719,7 @@ export class RunQueue {
         attributes: {
           [SEMATTRS_MESSAGING_OPERATION]: "receive",
           [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
+          [SemanticAttributes.MASTER_QUEUE]: parentQueue,
         },
       }
     );
@@ -797,128 +790,6 @@ export class RunQueue {
     return result;
   }
 
-  #startRebalanceWorkers() {
-    if (!this.options.enableRebalancing) {
-      return;
-    }
-
-    // Start a new worker to rebalance parent queues periodically
-    for (let i = 0; i < this.options.workers; i++) {
-      const worker = new AsyncWorker(this.#rebalanceParentQueues.bind(this), 60_000);
-
-      this.#rebalanceWorkers.push(worker);
-
-      worker.start();
-    }
-  }
-
-  async #rebalanceParentQueues() {
-    return await new Promise<void>((resolve, reject) => {
-      // Scan for sorted sets with the parent queue pattern
-      const pattern = this.keys.sharedQueueScanPattern();
-      const redis = this.redis.duplicate();
-      const stream = redis.scanStream({
-        match: pattern,
-        type: "zset",
-        count: 100,
-      });
-
-      this.logger.debug("Streaming parent queues based on pattern", {
-        pattern,
-        component: "runqueue",
-        operation: "rebalanceParentQueues",
-        service: this.name,
-      });
-
-      stream.on("data", async (keys) => {
-        const uniqueKeys = Array.from(new Set<string>(keys));
-
-        if (uniqueKeys.length === 0) {
-          return;
-        }
-
-        stream.pause();
-
-        this.logger.debug("Rebalancing parent queues", {
-          component: "runqueue",
-          operation: "rebalanceParentQueues",
-          parentQueues: uniqueKeys,
-          service: this.name,
-        });
-
-        Promise.all(
-          uniqueKeys.map(async (key) => this.#rebalanceParentQueue(this.keys.stripKeyPrefix(key)))
-        ).finally(() => {
-          stream.resume();
-        });
-      });
-
-      stream.on("end", () => {
-        redis.quit().finally(() => {
-          resolve();
-        });
-      });
-
-      stream.on("error", (e) => {
-        redis.quit().finally(() => {
-          reject(e);
-        });
-      });
-    });
-  }
-
-  // Parent queue is a sorted set, the values of which are queue keys and the scores are is the oldest message in the queue
-  // We need to scan the parent queue and rebalance the queues based on the oldest message in the queue
-  async #rebalanceParentQueue(parentQueue: string) {
-    return await new Promise<void>((resolve, reject) => {
-      const redis = this.redis.duplicate();
-
-      const stream = redis.zscanStream(parentQueue, {
-        match: "*",
-        count: 100,
-      });
-
-      stream.on("data", async (childQueues) => {
-        stream.pause();
-
-        // childQueues is a flat array but of the form [queue1, score1, queue2, score2, ...], we want to group them into pairs
-        const childQueuesWithScores: Record<string, string> = {};
-
-        for (let i = 0; i < childQueues.length; i += 2) {
-          childQueuesWithScores[childQueues[i]] = childQueues[i + 1];
-        }
-
-        this.logger.debug("Rebalancing child queues", {
-          parentQueue,
-          childQueuesWithScores,
-          component: "runqueue",
-          operation: "rebalanceParentQueues",
-          service: this.name,
-        });
-
-        await Promise.all(
-          Object.entries(childQueuesWithScores).map(async ([childQueue, currentScore]) =>
-            this.#callRebalanceParentQueueChild({ parentQueue, childQueue, currentScore })
-          )
-        ).finally(() => {
-          stream.resume();
-        });
-      });
-
-      stream.on("end", () => {
-        redis.quit().finally(() => {
-          resolve();
-        });
-      });
-
-      stream.on("error", (e) => {
-        redis.quit().finally(() => {
-          reject(e);
-        });
-      });
-    });
-  }
-
   async #callEnqueueMessage(message: OutputPayload, parentQueue: string) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
@@ -952,7 +823,7 @@ export class RunQueue {
 
   async #callDequeueMessage({
     messageQueue,
-    parentQueue,
+    masterQueue,
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     currentConcurrencyKey,
@@ -962,7 +833,7 @@ export class RunQueue {
     taskCurrentConcurrentKeyPrefix,
   }: {
     messageQueue: string;
-    parentQueue: string;
+    masterQueue: string;
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     currentConcurrencyKey: string;
@@ -974,7 +845,7 @@ export class RunQueue {
     const result = await this.redis.dequeueMessage(
       //keys
       messageQueue,
-      parentQueue,
+      masterQueue,
       concurrencyLimitKey,
       envConcurrencyLimitKey,
       currentConcurrencyKey,
@@ -1030,7 +901,7 @@ export class RunQueue {
 
   async #callAcknowledgeMessage({
     messageId,
-    parentQueue,
+    masterQueue,
     messageKey,
     messageQueue,
     concurrencyKey,
@@ -1038,7 +909,7 @@ export class RunQueue {
     taskConcurrencyKey,
     projectConcurrencyKey,
   }: {
-    parentQueue: string;
+    masterQueue: string;
     messageKey: string;
     messageQueue: string;
     concurrencyKey: string;
@@ -1055,12 +926,12 @@ export class RunQueue {
       projectConcurrencyKey,
       taskConcurrencyKey,
       messageId,
-      parentQueue,
+      masterQueue,
       service: this.name,
     });
 
     return this.redis.acknowledgeMessage(
-      parentQueue,
+      masterQueue,
       messageKey,
       messageQueue,
       concurrencyKey,

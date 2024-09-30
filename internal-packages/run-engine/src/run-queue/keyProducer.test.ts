@@ -6,25 +6,25 @@ import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 describe("KeyProducer", () => {
   it("sharedQueueScanPattern", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
-    const pattern = keyProducer.sharedQueueScanPattern();
+    const keyProducer = new RunQueueShortKeyProducer("test:");
+    const pattern = keyProducer.masterQueueScanPattern("main");
     expect(pattern).toBe("test:*sharedQueue:main");
   });
 
   it("queueCurrentConcurrencyScanPattern", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const pattern = keyProducer.queueCurrentConcurrencyScanPattern();
     expect(pattern).toBe("test:{org:*}:proj:*:env:*:queue:*:currentConcurrency");
   });
 
   it("stripKeyPrefix", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.stripKeyPrefix("test:abc");
     expect(key).toBe("abc");
   });
 
   it("queueConcurrencyLimitKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.queueConcurrencyLimitKey(
       {
         id: "e1234",
@@ -39,7 +39,7 @@ describe("KeyProducer", () => {
   });
 
   it("envConcurrencyLimitKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.envConcurrencyLimitKey({
       id: "e1234",
       type: "PRODUCTION",
@@ -51,7 +51,7 @@ describe("KeyProducer", () => {
   });
 
   it("queueKey (no concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.queueKey(
       {
         id: "e1234",
@@ -66,7 +66,7 @@ describe("KeyProducer", () => {
   });
 
   it("queueKey (w concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.queueKey(
       {
         id: "e1234",
@@ -81,38 +81,8 @@ describe("KeyProducer", () => {
     expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:queue:task/task-name:ck:c1234");
   });
 
-  it("envSharedQueueKey dev", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
-    const key = keyProducer.envSharedQueueKey({
-      id: "e1234",
-      type: "DEVELOPMENT",
-      maximumConcurrencyLimit: 10,
-      project: { id: "p1234" },
-      organization: { id: "o1234" },
-    });
-    expect(key).toBe("{org:o1234}:proj:p1234:env:e1234:sharedQueue:main");
-  });
-
-  it("envSharedQueueKey deployed", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
-    const key = keyProducer.envSharedQueueKey({
-      id: "e1234",
-      type: "PRODUCTION",
-      maximumConcurrencyLimit: 10,
-      project: { id: "p1234" },
-      organization: { id: "o1234" },
-    });
-    expect(key).toBe("sharedQueue:main");
-  });
-
-  it("sharedQueueKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
-    const key = keyProducer.sharedQueueKey();
-    expect(key).toBe("sharedQueue:main");
-  });
-
   it("concurrencyLimitKeyFromQueue (w concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -129,7 +99,7 @@ describe("KeyProducer", () => {
   });
 
   it("concurrencyLimitKeyFromQueue (no concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -145,7 +115,7 @@ describe("KeyProducer", () => {
   });
 
   it("currentConcurrencyKeyFromQueue (w concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -164,7 +134,7 @@ describe("KeyProducer", () => {
   });
 
   it("currentConcurrencyKeyFromQueue (no concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -180,7 +150,7 @@ describe("KeyProducer", () => {
   });
 
   it("currentConcurrencyKey (w concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.currentConcurrencyKey(
       {
         id: "e1234",
@@ -198,7 +168,7 @@ describe("KeyProducer", () => {
   });
 
   it("currentConcurrencyKey (no concurrency)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.currentConcurrencyKey(
       {
         id: "e1234",
@@ -214,7 +184,7 @@ describe("KeyProducer", () => {
   });
 
   it("taskIdentifierCurrentConcurrencyKeyPrefixFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -230,7 +200,7 @@ describe("KeyProducer", () => {
   });
 
   it("taskIdentifierCurrentConcurrencyKeyFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -246,7 +216,7 @@ describe("KeyProducer", () => {
   });
 
   it("taskIdentifierCurrentConcurrencyKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.taskIdentifierCurrentConcurrencyKey(
       {
         id: "e1234",
@@ -261,7 +231,7 @@ describe("KeyProducer", () => {
   });
 
   it("projectCurrentConcurrencyKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.projectCurrentConcurrencyKey({
       id: "e1234",
       type: "PRODUCTION",
@@ -273,7 +243,7 @@ describe("KeyProducer", () => {
   });
 
   it("projectCurrentConcurrencyKeyFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.projectCurrentConcurrencyKeyFromQueue(
       "{org:o1234}:proj:p1234:currentConcurrency"
     );
@@ -281,7 +251,7 @@ describe("KeyProducer", () => {
   });
 
   it("disabledConcurrencyLimitKeyFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -297,7 +267,7 @@ describe("KeyProducer", () => {
   });
 
   it("envConcurrencyLimitKeyFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -313,7 +283,7 @@ describe("KeyProducer", () => {
   });
 
   it("envCurrentConcurrencyKeyFromQueue", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -329,7 +299,7 @@ describe("KeyProducer", () => {
   });
 
   it("envCurrentConcurrencyKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.envCurrentConcurrencyKey({
       id: "e1234",
       type: "PRODUCTION",
@@ -341,13 +311,13 @@ describe("KeyProducer", () => {
   });
 
   it("messageKey", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const key = keyProducer.messageKey("o1234", "m1234");
     expect(key).toBe("{org:o1234}:message:m1234");
   });
 
   it("extractComponentsFromQueue (no concurrencyKey)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",
@@ -369,7 +339,7 @@ describe("KeyProducer", () => {
   });
 
   it("extractComponentsFromQueue (w concurrencyKey)", () => {
-    const keyProducer = new RunQueueShortKeyProducer("test:", "main");
+    const keyProducer = new RunQueueShortKeyProducer("test:");
     const queueKey = keyProducer.queueKey(
       {
         id: "e1234",

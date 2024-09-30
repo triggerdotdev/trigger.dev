@@ -1,8 +1,6 @@
 import { z } from "zod";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { RuntimeEnvironmentType } from "../../../database/src/index.js";
-import { env } from "process";
-import { version } from "os";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
 export const InputPayload = z.object({
   runId: z.string(),
@@ -19,7 +17,7 @@ export type InputPayload = z.infer<typeof InputPayload>;
 
 export const OutputPayload = InputPayload.extend({
   version: z.literal("1"),
-  parentQueue: z.string(),
+  masterQueue: z.string(),
 });
 export type OutputPayload = z.infer<typeof OutputPayload>;
 
@@ -43,9 +41,7 @@ export type QueueWithScores = {
 export type QueueRange = { offset: number; count: number };
 
 export interface RunQueueKeyProducer {
-  envSharedQueueKey(env: MinimalAuthenticatedEnvironment): string;
-  sharedQueueKey(): string;
-  sharedQueueScanPattern(): string;
+  masterQueueScanPattern(masterQueue: string): string;
   queueCurrentConcurrencyScanPattern(): string;
   //queue
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;

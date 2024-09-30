@@ -1,5 +1,4 @@
-import { RuntimeEnvironmentType } from "../../../database/src/index.js";
-import { AuthenticatedEnvironment } from "../shared/index.js";
+import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { RunQueueKeyProducer } from "./types.js";
 
 const constants = {
@@ -16,17 +15,10 @@ const constants = {
 } as const;
 
 export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
-  sharedQueue: string;
+  constructor(private _prefix: string) {}
 
-  constructor(
-    private _prefix: string,
-    sharedQueue: string
-  ) {
-    this.sharedQueue = `sharedQueue:${sharedQueue}`;
-  }
-
-  sharedQueueScanPattern() {
-    return `${this._prefix}*${this.sharedQueue}`;
+  masterQueueScanPattern(masterQueue: string) {
+    return `${this._prefix}*${masterQueue}`;
   }
 
   queueCurrentConcurrencyScanPattern() {
@@ -41,11 +33,11 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return key;
   }
 
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string) {
+  queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
 
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment) {
+  envConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment) {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
@@ -54,7 +46,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     ].join(":");
   }
 
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
+  queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
@@ -63,23 +55,6 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     ]
       .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
       .join(":");
-  }
-
-  envSharedQueueKey(env: AuthenticatedEnvironment) {
-    if (env.type === "DEVELOPMENT") {
-      return [
-        this.orgKeySection(env.organization.id),
-        this.projKeySection(env.project.id),
-        this.envKeySection(env.id),
-        this.sharedQueue,
-      ].join(":");
-    }
-
-    return this.sharedQueueKey();
-  }
-
-  sharedQueueKey(): string {
-    return this.sharedQueue;
   }
 
   concurrencyLimitKeyFromQueue(queue: string) {
@@ -92,7 +67,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     queue: string,
     concurrencyKey?: string
   ): string {
@@ -116,7 +91,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     return `{${constants.ORG_PART}:${orgId}}:${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+  envCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string {
     return [
       this.orgKeySection(env.organization.id),
       this.envKeySection(env.id),
@@ -137,7 +112,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
   }
 
   taskIdentifierCurrentConcurrencyKey(
-    env: AuthenticatedEnvironment,
+    env: MinimalAuthenticatedEnvironment,
     taskIdentifier: string
   ): string {
     return [
@@ -148,7 +123,7 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
     ].join(":");
   }
 
-  projectCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
+  projectCurrentConcurrencyKey(env: MinimalAuthenticatedEnvironment): string {
     return [
       this.orgKeySection(env.organization.id),
       this.projKeySection(env.project.id),
