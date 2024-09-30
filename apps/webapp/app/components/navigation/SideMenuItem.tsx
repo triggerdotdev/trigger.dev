@@ -9,6 +9,7 @@ export function SideMenuItem({
   activeIconColor,
   inactiveIconColor,
   trailingIcon,
+  trailingIconClassName,
   name,
   to,
   badge,
@@ -19,6 +20,7 @@ export function SideMenuItem({
   activeIconColor?: string;
   inactiveIconColor?: string;
   trailingIcon?: IconNames | React.ComponentType<any>;
+  trailingIconClassName?: string;
   name: string;
   to: string;
   badge?: string;
@@ -36,6 +38,7 @@ export function SideMenuItem({
       LeadingIcon={icon}
       leadingIconClassName={isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"}
       TrailingIcon={trailingIcon}
+      trailingIconClassName={trailingIconClassName}
       to={to}
       target={target}
       className={cn(
@@ -54,7 +57,7 @@ export function SideMenuItem({
   );
 }
 
-function MenuCount({ count }: { count: number | string }) {
+export function MenuCount({ count }: { count: number | string }) {
   return (
     <div className="rounded-full bg-charcoal-900 px-2 py-1 text-xxs uppercase tracking-wider text-text-dimmed">
       {count}

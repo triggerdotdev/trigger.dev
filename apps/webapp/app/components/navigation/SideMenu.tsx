@@ -89,7 +89,7 @@ import { StepNumber } from "../primitives/StepNumber";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { SideMenuItem } from "./SideMenuItem";
+import { MenuCount, SideMenuItem } from "./SideMenuItem";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
@@ -249,54 +249,6 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-          {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={SlackIcon}
-                  data-action="join our slack"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Join our Slack
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>Join our Slack</DialogHeader>
-                <div className="mt-2 flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
-                    <Paragraph variant="base/bright">
-                      As a subscriber, you have access to a dedicated Slack channel for 1-to-1
-                      support with the Trigger.dev team.
-                    </Paragraph>
-                  </div>
-                  <hr className="border-charcoal-800" />
-                  <div>
-                    <StepNumber stepNumber="1" title="Email us" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        Send us an email to this address from your Trigger.dev account email
-                        address:
-                        <ClipboardField
-                          variant="primary/medium"
-                          value="priority-support@trigger.dev"
-                          className="my-2"
-                        />
-                      </Paragraph>
-                    </StepContentContainer>
-                    <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        As soon as we can, we'll setup a Slack Connect channel and say hello!
-                      </Paragraph>
-                    </StepContentContainer>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
           <HelpAndFeedback />
           {isV3Project && isFreeV3User && (
             <FreePlanUsage
@@ -332,6 +284,7 @@ function HelpAndFeedback() {
               name="Documentation"
               icon="docs"
               trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-green-500"
               activeIconColor="text-green-500"
               to="https://trigger.dev/docs"
@@ -344,6 +297,7 @@ function HelpAndFeedback() {
               name="Status"
               icon={SignalIcon}
               trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-green-500"
               activeIconColor="text-green-500"
               to="https://status.trigger.dev/"
@@ -358,6 +312,7 @@ function HelpAndFeedback() {
                     name="Suggest a feature"
                     icon={LightBulbIcon}
                     trailingIcon={ArrowUpRightIcon}
+                    trailingIconClassName="text-text-dimmed"
                     inactiveIconColor="text-sun-500"
                     activeIconColor="text-sun-500"
                     to="https://feedback.trigger.dev/"
@@ -374,6 +329,7 @@ function HelpAndFeedback() {
               name="Changelog"
               icon="star"
               trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
               inactiveIconColor="text-sun-500"
               activeIconColor="text-sun-500"
               to="https://trigger.dev/changelog"
@@ -383,7 +339,7 @@ function HelpAndFeedback() {
           </div>
           <div className="flex flex-col gap-1 p-1">
             <Paragraph className="pb-1 pl-1.5 pt-1.5 text-2sm">Get in touch</Paragraph>
-            {currentPlan?.v3Subscription?.plan?.limits.support !== "slack" && (
+            {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
@@ -396,7 +352,10 @@ function HelpAndFeedback() {
                           fullWidth
                           textAlignLeft
                         >
-                          Join our Slack…
+                          <div className="flex w-full items-center justify-between">
+                            <span className="text-text-bright">Join our Slack…</span>
+                            <MenuCount count="PRO" />
+                          </div>
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
@@ -448,6 +407,7 @@ function HelpAndFeedback() {
                     name="Join our Discord"
                     icon={DiscordIcon}
                     trailingIcon={ArrowUpRightIcon}
+                    trailingIconClassName="text-text-dimmed"
                     to="https://trigger.dev/discord"
                     data-action="join our discord"
                     target="_blank"
@@ -466,6 +426,7 @@ function HelpAndFeedback() {
                     name="Book a 15 min call"
                     icon={CalendarDaysIcon}
                     trailingIcon={ArrowUpRightIcon}
+                    trailingIconClassName="text-text-dimmed"
                     inactiveIconColor="text-rose-500"
                     activeIconColor="text-rose-500"
                     to="https://cal.com/team/triggerdotdev/founders-call"
