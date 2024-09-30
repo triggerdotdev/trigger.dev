@@ -6,7 +6,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
-import { zodShapeStream } from "./stream.js";
+import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
 
 export type RunShape<TPayload = any, TOutput = any> = {
   id: string;
@@ -40,105 +40,138 @@ export type RunStreamCallback<TPayload = any, TOutput = any> = (
 export async function runShapeStream<TPayload = any, TOutput = any>(
   url: string,
   fetchClient: typeof fetch,
-  callback: RunStreamCallback<TPayload, TOutput>
-) {
-  const packetCache = new Map<string, any>();
-
-  const abortController = new AbortController();
-
-  abortController.signal.addEventListener("abort", () => {
-    packetCache.clear();
-  });
-
-  const $callback = async (shape: SubscribeRunRawShape) => {
-    const run = await transformRunShape(shape, packetCache);
-
-    await callback(run);
-
-    if (run.finishedAt) {
-      if (!abortController.signal.aborted) {
-        abortController.abort();
-      }
-    }
-  };
-
-  const unsubscribe = await zodShapeStream(SubscribeRunRawShape, url, $callback, {
-    signal: abortController.signal,
-    fetchClient: fetchClient,
-  });
-
-  return () => {
-    packetCache.clear();
-    unsubscribe();
-
-    if (!abortController.signal.aborted) {
-      abortController.abort();
-    }
-  };
+  callback?: RunStreamCallback<TPayload, TOutput>
+): Promise<RunSubscription<TPayload, TOutput>> {
+  const subscription = new RunSubscription<TPayload, TOutput>(url, fetchClient, callback);
+  await subscription.init();
+  return subscription;
 }
 
-async function transformRunShape(
-  row: SubscribeRunRawShape,
-  packetCache: Map<string, any>
-): Promise<RunShape> {
-  const payloadPacket = row.payloadType
-    ? ({ data: row.payload ?? undefined, dataType: row.payloadType } satisfies IOPacket)
-    : undefined;
+export class RunSubscription<TPayload = any, TOutput = any> {
+  private abortController: AbortController;
+  private unsubscribeShape: () => void;
+  private stream: AsyncIterableStream<RunShape<TPayload, TOutput>>;
+  private packetCache = new Map<string, any>();
 
-  const outputPacket = row.outputType
-    ? ({ data: row.output ?? undefined, dataType: row.outputType } satisfies IOPacket)
-    : undefined;
+  constructor(
+    private url: string,
+    private fetchClient: typeof fetch,
+    private callback?: RunStreamCallback<TPayload, TOutput>
+  ) {
+    this.abortController = new AbortController();
+  }
 
-  const [payload, output] = await Promise.all(
-    [
-      { packet: payloadPacket, key: "payload" },
-      { packet: outputPacket, key: "output" },
-    ].map(async ({ packet, key }) => {
-      if (!packet) {
-        return;
-      }
+  async init(): Promise<void> {
+    const source = new ReadableStream<SubscribeRunRawShape>({
+      start: async (controller) => {
+        this.unsubscribeShape = await zodShapeStream(
+          SubscribeRunRawShape,
+          this.url,
+          async (shape) => {
+            controller.enqueue(shape);
+            if (shape.completedAt && !this.abortController.signal.aborted) {
+              controller.close();
+              this.abortController.abort();
+            }
+          },
+          {
+            signal: this.abortController.signal,
+            fetchClient: this.fetchClient,
+          }
+        );
+      },
+      cancel: () => {
+        this.unsubscribe();
+      },
+    });
 
-      const cachedResult = packetCache.get(`${row.friendlyId}/${key}`);
+    this.stream = createAsyncIterableStream(source, {
+      transform: async (chunk, controller) => {
+        const run = await this.transformRunShape(chunk);
 
-      if (typeof cachedResult !== "undefined") {
-        return cachedResult;
-      }
+        if (this.callback) {
+          await this.callback(run);
+        }
+        controller.enqueue(run);
+      },
+    });
+  }
 
-      const result = await conditionallyImportAndParsePacket(packet);
-      packetCache.set(`${row.friendlyId}/${key}`, result);
+  unsubscribe(): void {
+    if (!this.abortController.signal.aborted) {
+      this.abortController.abort();
+    }
+    this.unsubscribeShape();
+  }
 
-      return result;
-    })
-  );
+  [Symbol.asyncIterator](): AsyncIterator<RunShape<TPayload, TOutput>> {
+    return this.stream[Symbol.asyncIterator]();
+  }
 
-  const metadata =
-    row.metadata && row.metadataType
-      ? await parsePacket({ data: row.metadata, dataType: row.metadataType })
+  getReader(): ReadableStreamDefaultReader<RunShape<TPayload, TOutput>> {
+    return this.stream.getReader();
+  }
+
+  private async transformRunShape(row: SubscribeRunRawShape): Promise<RunShape> {
+    const payloadPacket = row.payloadType
+      ? ({ data: row.payload ?? undefined, dataType: row.payloadType } satisfies IOPacket)
       : undefined;
 
-  return {
-    id: row.friendlyId,
-    payload,
-    output,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    taskIdentifier: row.taskIdentifier,
-    number: row.number,
-    status: apiStatusFromRunStatus(row.status),
-    durationMs: row.usageDurationMs,
-    costInCents: row.costInCents,
-    baseCostInCents: row.baseCostInCents,
-    tags: row.runTags ?? [],
-    idempotencyKey: row.idempotencyKey ?? undefined,
-    expiredAt: row.expiredAt ?? undefined,
-    finishedAt: row.completedAt ?? undefined,
-    startedAt: row.startedAt ?? undefined,
-    delayedUntil: row.delayUntil ?? undefined,
-    queuedAt: row.queuedAt ?? undefined,
-    error: row.error ?? undefined,
-    isTest: row.isTest,
-    metadata,
-  };
+    const outputPacket = row.outputType
+      ? ({ data: row.output ?? undefined, dataType: row.outputType } satisfies IOPacket)
+      : undefined;
+
+    const [payload, output] = await Promise.all(
+      [
+        { packet: payloadPacket, key: "payload" },
+        { packet: outputPacket, key: "output" },
+      ].map(async ({ packet, key }) => {
+        if (!packet) {
+          return;
+        }
+
+        const cachedResult = this.packetCache.get(`${row.friendlyId}/${key}`);
+
+        if (typeof cachedResult !== "undefined") {
+          return cachedResult;
+        }
+
+        const result = await conditionallyImportAndParsePacket(packet);
+        this.packetCache.set(`${row.friendlyId}/${key}`, result);
+
+        return result;
+      })
+    );
+
+    const metadata =
+      row.metadata && row.metadataType
+        ? await parsePacket({ data: row.metadata, dataType: row.metadataType })
+        : undefined;
+
+    return {
+      id: row.friendlyId,
+      payload,
+      output,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      taskIdentifier: row.taskIdentifier,
+      number: row.number,
+      status: apiStatusFromRunStatus(row.status),
+      durationMs: row.usageDurationMs,
+      costInCents: row.costInCents,
+      baseCostInCents: row.baseCostInCents,
+      tags: row.runTags ?? [],
+      idempotencyKey: row.idempotencyKey ?? undefined,
+      expiredAt: row.expiredAt ?? undefined,
+      finishedAt: row.completedAt ?? undefined,
+      startedAt: row.startedAt ?? undefined,
+      delayedUntil: row.delayUntil ?? undefined,
+      queuedAt: row.queuedAt ?? undefined,
+      error: row.error ?? undefined,
+      isTest: row.isTest,
+      metadata,
+    };
+  }
 }
 
 function apiStatusFromRunStatus(status: string): RunStatus {

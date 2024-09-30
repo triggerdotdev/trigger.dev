@@ -6,9 +6,11 @@ async function main() {
     tags: ["user:1234", "org:1234"],
   });
 
-  await runs.subscribe(anyHandle, (anyRun) => {
-    console.log(anyRun);
-  });
+  const subscription = await runs.subscribe(anyHandle);
+
+  for await (const run of subscription) {
+    console.log("Received run update:", run);
+  }
 }
 
 main().catch(console.error);
