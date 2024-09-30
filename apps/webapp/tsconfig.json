@@ -33,7 +33,9 @@
       "emails": ["../../internal-packages/emails/src/index"],
       "emails/*": ["../../internal-packages/emails/src/*"],
       "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
-      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"]
+      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"],
+      "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
+      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"]
     },
     "noEmit": true
   }
