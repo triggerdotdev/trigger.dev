@@ -202,11 +202,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={cn(flexClasses, actionClassName)}>
+          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={cn(flexClasses, actionClassName)}>
+          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
             {children}
           </button>
         ) : (

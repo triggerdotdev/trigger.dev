@@ -211,6 +211,12 @@ module.exports = {
         staging: stagingEnv,
         prod: prodEnv,
       },
+      focusStyles: {
+        outline: "2px solid",
+        outlineOffset: "0px",
+        outlineColor: textLink,
+        borderRadius: "2px",
+      },
       borderRadius: {
         lg: radius,
         md: `calc(${radius} - 2px)`,
@@ -281,5 +287,13 @@ module.exports = {
     require("tailwind-scrollbar"),
     require("tailwind-scrollbar-hide"),
     require("tailwindcss-textshadow"),
+    function ({ addUtilities, theme }) {
+      const focusStyles = theme("focusStyles", {});
+      addUtilities({
+        ".focus-custom": {
+          "&:focus-visible": focusStyles,
+        },
+      });
+    },
   ],
 };

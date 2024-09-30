@@ -42,7 +42,7 @@ export function SideMenuItem({
       to={to}
       target={target}
       className={cn(
-        "text-text-bright group-hover:bg-charcoal-750",
+        "text-text-bright group-hover:bg-charcoal-750 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
         subItem ? "text-text-dimmed" : "",
         isActive ? "bg-tertiary text-text-bright" : "group-hover:text-text-bright"
       )}
