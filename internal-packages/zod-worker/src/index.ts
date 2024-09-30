@@ -1,4 +1,5 @@
 import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+import { flattenAttributes } from "@trigger.dev/core/v3";
 import type {
   CronItem,
   CronItemOptions,
@@ -17,14 +18,15 @@ import {
   makeWorkerUtils,
   parseCronItems,
 } from "graphile-worker";
-
-import { flattenAttributes } from "@trigger.dev/core/v3";
 import omit from "lodash.omit";
 import { z } from "zod";
-import { $replica, PrismaClient, PrismaClientOrTransaction } from "~/db.server";
-import { env } from "~/env.server";
-import { PgListenService } from "~/services/db/pgListen.server";
-import { workerLogger as logger } from "~/services/logger.server";
+import { Logger } from "@trigger.dev/core/logger";
+import {
+  PrismaClient,
+  PrismaClientOrTransaction,
+  PrismaReplicaClient,
+} from "@trigger.dev/database";
+import { PgListenService } from "./pgListen.server";
 
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
@@ -123,6 +125,7 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   name: string;
   runnerOptions: RunnerOptions;
   prisma: PrismaClient;
+  replica: PrismaReplicaClient;
   schema: TMessageCatalog;
   tasks: ZodTasks<TMessageCatalog>;
   recurringTasks?: ZodRecurringTasks;
@@ -130,12 +133,15 @@ export type ZodWorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   reporter?: ZodWorkerReporter;
   shutdownTimeoutInMs?: number;
   rateLimiter?: ZodWorkerRateLimiter;
+  verboseLogging?: boolean;
+  logger: Logger;
 };
 
 export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #name: string;
   #schema: TMessageCatalog;
   #prisma: PrismaClient;
+  #replica: PrismaReplicaClient;
   #runnerOptions: RunnerOptions;
   #tasks: ZodTasks<TMessageCatalog>;
   #recurringTasks?: ZodRecurringTasks;
@@ -146,11 +152,14 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   #shutdownTimeoutInMs?: number;
   #shuttingDown = false;
   #workerUtils?: WorkerUtils;
+  #verboseLogging?: boolean;
+  #logger: Logger;
 
   constructor(options: ZodWorkerOptions<TMessageCatalog>) {
     this.#name = options.name;
     this.#schema = options.schema;
     this.#prisma = options.prisma;
+    this.#replica = options.replica;
     this.#runnerOptions = options.runnerOptions;
     this.#tasks = options.tasks;
     this.#recurringTasks = options.recurringTasks;
@@ -158,6 +167,8 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     this.#reporter = options.reporter;
     this.#rateLimiter = options.rateLimiter;
     this.#shutdownTimeoutInMs = options.shutdownTimeoutInMs ?? 60000; // default to 60 seconds
+    this.#verboseLogging = options.verboseLogging;
+    this.#logger = options.logger;
   }
 
   get graphileWorkerSchema() {
@@ -179,9 +190,9 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const graphileLogger = new GraphileLogger((scope) => {
       return (level, message, meta) => {
-        if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+        if (this.#verboseLogging !== true) return;
 
-        logger.debug(`[graphile-worker][${this.#name}][${level}] ${message}`, {
+        this.#logger.debug(`[graphile-worker][${this.#name}][${level}] ${message}`, {
           scope,
           meta,
           workerName: this.#name,
@@ -214,7 +225,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       this.#logDebug("pool:listen:success");
 
       // hijack client instance to listen and react to incoming NOTIFY events
-      const pgListen = new PgListenService(client, this.#name, logger);
+      const pgListen = new PgListenService(client, this.#logger, this.#name);
 
       await pgListen.on("trigger:graphile:migrate", async ({ latestMigration }) => {
         this.#logDebug("Detected incoming migration", { latestMigration });
@@ -270,12 +281,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     this.#runner?.events.on("worker:getJob:start", ({ worker }) => {
-      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+      if (this.#verboseLogging !== true) return;
       this.#logDebug("worker:getJob:start", { workerId: worker.workerId });
     });
 
     this.#runner?.events.on("job:start", ({ worker, job }) => {
-      if (env.VERBOSE_GRAPHILE_LOGGING !== "true") return;
+      if (this.#verboseLogging !== true) return;
       this.#logDebug("job:start", { workerId: worker.workerId, job });
     });
 
@@ -379,7 +390,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       }
     );
 
-    logger.debug("Enqueued worker task", {
+    this.#logger.debug("Enqueued worker task", {
       identifier,
       payload,
       spec,
@@ -396,7 +407,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ): Promise<GraphileJob | undefined> {
     const results = await this.#removeJob(jobKey, option?.tx ?? this.#prisma);
 
-    logger.debug("dequeued worker task", { results, jobKey });
+    this.#logger.debug("dequeued worker task", { results, jobKey });
 
     return results;
   }
@@ -435,7 +446,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const rows = AddJobResultsSchema.safeParse(results);
 
     if (!rows.success) {
-      logger.debug("results returned from add_job could not be parsed", {
+      this.#logger.debug("results returned from add_job could not be parsed", {
         identifier,
         payload,
         spec,
@@ -460,7 +471,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       const job = AddJobResultsSchema.safeParse(result);
 
       if (!job.success) {
-        logger.debug("could not remove job, job_key did not exist", {
+        this.#logger.debug("could not remove job, job_key did not exist", {
           jobKey,
         });
 
@@ -582,7 +593,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const payload = messageSchema.parse(rawPayload);
     const job = helpers.job;
 
-    logger.debug("Received worker task, calling handler", {
+    this.#logger.debug("Received worker task, calling handler", {
       type: String(typeName),
       payload,
       job,
@@ -628,7 +639,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
           }
 
           if (job.attempts >= job.max_attempts) {
-            logger.debug("Job failed after max attempts", {
+            this.#logger.debug("Job failed after max attempts", {
               job,
               attempts: job.attempts,
               max_attempts: job.max_attempts,
@@ -653,7 +664,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   ): Promise<void> {
     const job = helpers.job;
 
-    logger.debug("Received recurring task, calling handler", {
+    this.#logger.debug("Received recurring task, calling handler", {
       type: String(typeName),
       payload: rawPayload,
       job,
@@ -727,7 +738,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const job = helpers.job;
 
-    logger.debug("Received cleanup task", {
+    this.#logger.debug("Received cleanup task", {
       payload: rawPayload,
       job,
     });
@@ -745,12 +756,12 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     // Add the this.#cleanup.ttl to the payload._cron.ts
     const expirationDate = new Date(payload._cron.ts.getTime() - this.#cleanup.ttl);
 
-    logger.debug("Cleaning up old jobs", {
+    this.#logger.debug("Cleaning up old jobs", {
       expirationDate,
       payload,
     });
 
-    const rawResults = await $replica.$queryRawUnsafe(
+    const rawResults = await this.#replica.$queryRawUnsafe(
       `SELECT id
         FROM ${this.graphileWorkerSchema}.jobs
         WHERE run_at < $1
@@ -771,7 +782,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
 
     const completedJobs = await this.#workerUtils.completeJobs(results.map((job) => job.id));
 
-    logger.debug("Cleaned up old jobs", {
+    this.#logger.debug("Cleaned up old jobs", {
       found: results.length,
       deleted: completedJobs.length,
       expirationDate,
@@ -793,7 +804,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       return;
     }
 
-    logger.debug("Received reporter task", {
+    this.#logger.debug("Received reporter task", {
       payload: rawPayload,
     });
 
@@ -813,7 +824,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const schema = z.array(z.object({ count: z.coerce.number() }));
 
     // Count the number of jobs that have been added since the startAt date and before the payload._cron.ts date
-    const rawAddedResults = await $replica.$queryRawUnsafe(
+    const rawAddedResults = await this.#replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs WHERE created_at > $1 AND created_at < $2`,
       startAt,
       payload._cron.ts
@@ -822,13 +833,13 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     const addedCountResults = schema.parse(rawAddedResults)[0];
 
     // Count the total number of jobs in the jobs table
-    const rawTotalResults = await $replica.$queryRawUnsafe(
+    const rawTotalResults = await this.#replica.$queryRawUnsafe(
       `SELECT COUNT(*) FROM ${this.graphileWorkerSchema}.jobs`
     );
 
     const totalCountResults = schema.parse(rawTotalResults)[0];
 
-    logger.debug("Calculated metrics about the jobs table", {
+    this.#logger.debug("Calculated metrics about the jobs table", {
       rawAddedResults,
       rawTotalResults,
       payload,
@@ -842,7 +853,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   }
 
   #logDebug(message: string, args?: any) {
-    logger.debug(`[worker][${this.#name}] ${message}`, args);
+    this.#logger.debug(`[worker][${this.#name}] ${message}`, args);
   }
 }
 
