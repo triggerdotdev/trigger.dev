@@ -38,7 +38,7 @@ import {
   zodfetchOffsetLimitPage,
 } from "./core.js";
 import { ApiError } from "./errors.js";
-import { RunShape, runShapeStream } from "./runStream.js";
+import { RunShape, runShapeStream, RunStreamCallback, RunSubscription } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -69,7 +69,7 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type { ApiRequestOptions };
-export type { RunShape };
+export type { RunShape, RunStreamCallback, RunSubscription };
 
 /**
  * Trigger.dev v3 API client
@@ -539,21 +539,10 @@ export class ApiClient {
 
   async subscribeToRunChanges<TPayload = any, TOutput = any>(
     runId: string,
-    callback: (shape: RunShape<TPayload, TOutput>) => void | Promise<void>
+    callback?: RunStreamCallback<TPayload, TOutput>
   ) {
     return runShapeStream<TPayload, TOutput>(
       `${this.baseUrl}/api/v1/shape/runs/${runId}`,
-      this.fetchClient,
-      callback
-    );
-  }
-
-  async subscribeToRunTag<TPayload = any, TOutput = any>(
-    tag: string,
-    callback: (shape: RunShape<TPayload, TOutput>) => void | Promise<void>
-  ) {
-    return runShapeStream<TPayload, TOutput>(
-      `${this.baseUrl}/api/v1/shape/tags/${tag}`,
       this.fetchClient,
       callback
     );

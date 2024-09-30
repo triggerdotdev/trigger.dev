@@ -4,6 +4,8 @@ import type {
   ListRunsQueryParams,
   RescheduleRunRequestBody,
   RunShape,
+  RunStreamCallback,
+  RunSubscription,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -332,10 +334,8 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
 
 async function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
-  callback: (
-    run: Prettify<RunShape<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]>>
-  ) => void | Promise<void>
-) {
+  callback?: RunStreamCallback<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]>
+): Promise<RunSubscription<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]>> {
   const $runId = typeof runId === "string" ? runId : runId.id;
 
   const apiClient = apiClientManager.clientOrThrow();
