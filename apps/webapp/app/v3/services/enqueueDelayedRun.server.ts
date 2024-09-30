@@ -1,9 +1,9 @@
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { parseNaturalLanguageDuration } from "./triggerTask.server";
 import { workerQueue } from "~/services/worker.server";
 import { $transaction } from "~/db.server";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 
 export class EnqueueDelayedRunService extends BaseService {
   public async call(runId: string) {
