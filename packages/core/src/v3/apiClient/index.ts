@@ -542,7 +542,7 @@ export class ApiClient {
     callback?: RunStreamCallback<TPayload, TOutput>
   ) {
     return runShapeStream<TPayload, TOutput>(
-      `${this.baseUrl}/api/v1/shape/runs/${runId}`,
+      `${this.baseUrl}/realtime/v1/runs/${runId}`,
       this.fetchClient,
       callback
     );

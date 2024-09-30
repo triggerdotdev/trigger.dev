@@ -1,10 +1,8 @@
 import { runs, tasks } from "@trigger.dev/sdk/v3";
-import type { triggerRunsWithTags } from "./trigger/tags.js";
+import type { runMetadataChildTask } from "./trigger/runMetadata.js";
 
 async function main() {
-  const anyHandle = await tasks.trigger<typeof triggerRunsWithTags>("trigger-runs-with-tags", {
-    tags: ["user:1234", "org:1234"],
-  });
+  const anyHandle = await tasks.trigger<typeof runMetadataChildTask>("run-metadata-child-task", {});
 
   const subscription = await runs.subscribe(anyHandle);
 
