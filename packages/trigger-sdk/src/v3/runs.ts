@@ -37,7 +37,6 @@ export const runs = {
   reschedule: rescheduleRun,
   poll,
   subscribe: subscribeToRun,
-  subscribeToTag,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -342,15 +341,4 @@ async function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.subscribeToRunChanges($runId, callback);
-}
-
-async function subscribeToTag<TTask extends AnyTask>(
-  tag: string,
-  callback: (
-    run: Prettify<RunShape<InferRunId<TTask>["payload"], InferRunId<TTask>["output"]>>
-  ) => void | Promise<void>
-) {
-  const apiClient = apiClientManager.clientOrThrow();
-
-  return apiClient.subscribeToRunTag(tag, callback);
 }
