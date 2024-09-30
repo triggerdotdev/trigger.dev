@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.9
+
+### Patch Changes
+
+- Removed the inline-code accessory from the logs when calling trigger or batchTrigger from a run ([#1364](https://github.com/triggerdotdev/trigger.dev/pull/1364))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.9`
+
 ## 3.0.8
 
 ### Patch Changes
