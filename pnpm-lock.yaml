@@ -935,6 +935,40 @@ importers:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
 
+  internal-packages/zod-worker:
+    dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
+      graphile-worker:
+        specifier: 0.16.6
+        version: 0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@4.9.5)
+      lodash.omit:
+        specifier: ^4.5.0
+        version: 4.5.0
+      typescript:
+        specifier: ^4.8.4
+        version: 4.9.5
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
+    devDependencies:
+      '@types/lodash.omit':
+        specifier: ^4.5.7
+        version: 4.5.7
+      '@types/pg':
+        specifier: 8.6.6
+        version: 8.6.6
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.0(@types/node@20.14.14)
+
   packages/build:
     dependencies:
       '@trigger.dev/core':
@@ -6942,7 +6976,7 @@ packages:
     resolution: {integrity: sha512-7kZUAaLscfgbwBQRbvdMYaZOWyMEcPTH/tJjnyAWJ/dvvs9Ef+CERx/qJb9GExJpl1qipaDGn7KqHnFGGixd0w==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
 
   /@npmcli/git@4.1.0:
     resolution: {integrity: sha512-9hwoB3gStVfa0N31ymBmrX+GuDGdVA/QWShZVqE0HK2Af+7QGGrCTbZia/SW0ImUTjTne7SP91qxDmtXvDHRPQ==}
@@ -6954,7 +6988,7 @@ packages:
       proc-log: 3.0.0
       promise-inflight: 1.0.1
       promise-retry: 2.0.1
-      semver: 7.5.4
+      semver: 7.6.3
       which: 3.0.1
     transitivePeerDependencies:
       - bluebird
@@ -14699,9 +14733,8 @@ packages:
     resolution: {integrity: sha512-O2xNmXebtwVekJDD+02udOncjVcMZQuTEQEMpKJ0ZRf5E7/9JJX3izhKUcUifBkyKpljyUM6BTgy2trmviKlpw==}
     dependencies:
       '@types/node': 18.19.20
-      pg-protocol: 1.6.0
+      pg-protocol: 1.6.1
       pg-types: 2.2.0
-    dev: false
 
   /@types/prismjs@1.26.0:
     resolution: {integrity: sha512-ZTaqn/qSqUuAq1YwvOFQfVW1AR/oQJlLSZVustdjwI+GZ8kr0MSHBj0tsXPW1EqHubx50gtBEjbPGsdZwQwCjQ==}
@@ -15254,7 +15287,7 @@ packages:
   /@vitest/snapshot@1.6.0:
     resolution: {integrity: sha512-+Hx43f8Chus+DCmygqqfetcAZrDJwvTj0ymqjQq4CvmpKFSTVteEOBzCusu1x2tt4OJcvBflyHUE0DZSLgEMtQ==}
     dependencies:
-      magic-string: 0.30.8
+      magic-string: 0.30.11
       pathe: 1.1.2
       pretty-format: 29.7.0
     dev: true
@@ -16590,7 +16623,7 @@ packages:
   /builtins@5.0.1:
     resolution: {integrity: sha512-qwVpFEHNfhYJIzNRBvd2C1kyo6jz3ZSMPyyuR47OPdiKWlbYnZNyDWuyR175qDnAJLiCo5fBBqPb3RiXgWlkOQ==}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /bun-types@1.1.17:
@@ -17351,6 +17384,22 @@ packages:
       path-type: 4.0.0
       yaml: 1.10.2
     dev: true
+
+  /cosmiconfig@8.3.6(typescript@4.9.5):
+    resolution: {integrity: sha512-kcZ6+W5QzcJ3P1Mt+83OUv/oHFqZHIx8DuxG6eZ5RGMERoLqp4BuGjhHLYGK+Kf5XVkQvqBSmAy/nGWN3qDgEA==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      typescript: '>=4.9.5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      import-fresh: 3.3.0
+      js-yaml: 4.1.0
+      parse-json: 5.2.0
+      path-type: 4.0.0
+      typescript: 4.9.5
+    dev: false
 
   /cosmiconfig@8.3.6(typescript@5.2.2):
     resolution: {integrity: sha512-kcZ6+W5QzcJ3P1Mt+83OUv/oHFqZHIx8DuxG6eZ5RGMERoLqp4BuGjhHLYGK+Kf5XVkQvqBSmAy/nGWN3qDgEA==}
@@ -18197,7 +18246,7 @@ packages:
       '@one-ini/wasm': 0.1.1
       commander: 10.0.1
       minimatch: 9.0.1
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
 
   /ee-first@1.1.1:
@@ -20480,14 +20529,35 @@ packages:
       '@types/node': 20.14.14
       '@types/semver': 7.5.1
       chalk: 4.1.2
-      debug: 4.3.6
+      debug: 4.3.7
       interpret: 3.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       tslib: 2.6.2
       yargs: 17.7.2
     transitivePeerDependencies:
       - supports-color
     dev: false
+
+  /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@4.9.5):
+    resolution: {integrity: sha512-e7gGYDmGqzju2l83MpzX8vNG/lOtVJiSzI3eZpAFubSxh/cxs7sRrRGBGjzBP1kNG0H+c95etPpNRNlH65PYhw==}
+    engines: {node: '>=14.0.0'}
+    hasBin: true
+    dependencies:
+      '@graphile/logger': 0.2.0
+      '@types/debug': 4.1.12
+      '@types/pg': 8.11.6
+      cosmiconfig: 8.3.6(typescript@4.9.5)
+      graphile-config: 0.0.1-beta.8
+      json5: 2.2.3
+      pg: 8.11.5
+      tslib: 2.6.2
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - pg-native
+      - supports-color
+      - typescript
+    dev: false
+    patched: true
 
   /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@5.2.2):
     resolution: {integrity: sha512-e7gGYDmGqzju2l83MpzX8vNG/lOtVJiSzI3eZpAFubSxh/cxs7sRrRGBGjzBP1kNG0H+c95etPpNRNlH65PYhw==}
@@ -21965,7 +22035,7 @@ packages:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /make-error@1.3.6:
@@ -23116,7 +23186,7 @@ packages:
       make-fetch-happen: 13.0.1
       nopt: 7.2.0
       proc-log: 4.2.0
-      semver: 7.5.4
+      semver: 7.6.3
       tar: 6.2.1
       which: 4.0.0
     transitivePeerDependencies:
@@ -23156,7 +23226,7 @@ packages:
     dependencies:
       hosted-git-info: 6.1.1
       is-core-module: 2.14.0
-      semver: 7.5.4
+      semver: 7.6.3
       validate-npm-package-license: 3.0.4
     dev: true
 
@@ -23192,7 +23262,7 @@ packages:
     resolution: {integrity: sha512-744wat5wAAHsxa4590mWO0tJ8PKxR8ORZsH9wGpQc3nWTzozMAgBN/XyqYw7mg3yqLM8dLwEnwSfKMmXAjF69g==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /npm-normalize-package-bin@2.0.0:
@@ -23211,7 +23281,7 @@ packages:
     dependencies:
       hosted-git-info: 6.1.1
       proc-log: 3.0.0
-      semver: 7.5.4
+      semver: 7.6.3
       validate-npm-package-name: 5.0.0
     dev: true
 
@@ -23233,7 +23303,7 @@ packages:
       npm-install-checks: 6.2.0
       npm-normalize-package-bin: 3.0.1
       npm-package-arg: 10.1.0
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /npm-run-all@4.1.5:
@@ -24016,7 +24086,6 @@ packages:
   /pg-int8@1.0.1:
     resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
     engines: {node: '>=4.0.0'}
-    dev: false
 
   /pg-numeric@1.0.2:
     resolution: {integrity: sha512-BM/Thnrw5jm2kKLE5uJkXqqExRUY/toLHda65XgFTBTFYZyopbKjBe29Ii3RbkvlsMoFwD+tHeGaCjjv0gHlyw==}
@@ -24031,13 +24100,8 @@ packages:
       pg: 8.11.5
     dev: false
 
-  /pg-protocol@1.6.0:
-    resolution: {integrity: sha512-M+PDm637OY5WM307051+bsDia5Xej6d9IR4GwJse1qA1DIhiKlksvrneZOYQq42OM+spubpcNYEo2FcKQrDk+Q==}
-    dev: false
-
   /pg-protocol@1.6.1:
     resolution: {integrity: sha512-jPIlvgoD63hrEuihvIg+tJhoGjUsLPn6poJY9N5CnlPd91c2T18T/9zBtLxZSb1EhYxBRoZJtzScCaWlYLtktg==}
-    dev: false
 
   /pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
@@ -24048,7 +24112,6 @@ packages:
       postgres-bytea: 1.0.0
       postgres-date: 1.0.7
       postgres-interval: 1.2.0
-    dev: false
 
   /pg-types@4.0.2:
     resolution: {integrity: sha512-cRL3JpS3lKMGsKaWndugWQoLOCoP+Cic8oseVcbr0qhPzYD5DWXK+RZ9LY9wxRf7RQia4SCwQlXk0q6FCPrVng==}
@@ -24531,7 +24594,6 @@ packages:
   /postgres-array@2.0.0:
     resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
     engines: {node: '>=4'}
-    dev: false
 
   /postgres-array@3.0.2:
     resolution: {integrity: sha512-6faShkdFugNQCLwucjPcY5ARoW1SlbnrZjmGl0IrrqewpvxvhSLHimCVzqeuULCbG0fQv7Dtk1yDbG3xv7Veog==}
@@ -24541,7 +24603,6 @@ packages:
   /postgres-bytea@1.0.0:
     resolution: {integrity: sha512-xy3pmLuQqRBZBXDULy7KbaitYqLcmxigw14Q5sj8QBVLqEwXfeybIKVWiqAXTlcvdvb0+xkOtDbfQMOf4lST1w==}
     engines: {node: '>=0.10.0'}
-    dev: false
 
   /postgres-bytea@3.0.0:
     resolution: {integrity: sha512-CNd4jim9RFPkObHSjVHlVrxoVQXz7quwNFpz7RY1okNNme49+sVyiTvTRobiLV548Hx/hb1BG+iE7h9493WzFw==}
@@ -24553,7 +24614,6 @@ packages:
   /postgres-date@1.0.7:
     resolution: {integrity: sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==}
     engines: {node: '>=0.10.0'}
-    dev: false
 
   /postgres-date@2.1.0:
     resolution: {integrity: sha512-K7Juri8gtgXVcDfZttFKVmhglp7epKb1K4pgrkLxehjqkrgPhfG6OO8LHLkfaqkbpjNRnra018XwAr1yQFWGcA==}
@@ -24565,7 +24625,6 @@ packages:
     engines: {node: '>=0.10.0'}
     dependencies:
       xtend: 4.0.2
-    dev: false
 
   /postgres-interval@3.0.0:
     resolution: {integrity: sha512-BSNDnbyZCXSxgA+1f5UU2GmwhoI0aU5yMxRGO8CdFEcY2BQF9xm/7MqKnYoM1nJDk8nONNWDk9WeSmePFhQdlw==}
@@ -26437,7 +26496,6 @@ packages:
     resolution: {integrity: sha512-oVekP1cKtI+CTDvHWYFUcMtsK/00wmAEfyqKfNdARm8u1wNVhSgaX7A8d4UuIlUI5e84iEwOhs7ZPYRmzU9U6A==}
     engines: {node: '>=10'}
     hasBin: true
-    dev: false
 
   /send@0.18.0:
     resolution: {integrity: sha512-qqWzuOjSFOuqPjFe4NOsMLafToQQwBSOEpS+FwEt3A2V3vKubTquT3vmLTQpFgMXp8AlFWFuP1qKaJZOtPpVXg==}
@@ -29154,7 +29212,7 @@ packages:
     dependencies:
       '@types/node': 18.11.18
       esbuild: 0.18.11
-      postcss: 8.4.29
+      postcss: 8.4.44
       rollup: 3.29.1
     optionalDependencies:
       fsevents: 2.3.3
