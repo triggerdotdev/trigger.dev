@@ -1,13 +1,16 @@
-import { PrismaClient, Prisma, PrismaClientOrTransaction } from "@trigger.dev/database";
+import { QueueOptions } from "@trigger.dev/core/v3";
+import { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
-import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared";
-import { QueueOptions } from "@trigger.dev/core/v3";
 import { RunQueue } from "../run-queue";
+import { MinimalAuthenticatedEnvironment } from "../shared";
+import { blockRunWithWaitpoint, createRunAssociatedWaitpoint } from "./waitpoint";
+import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
 
 type Options = {
   redis: RedisOptions;
   prisma: PrismaClientOrTransaction;
+  queue: RunQueue;
 };
 
 type TriggerParams = {
@@ -50,6 +53,7 @@ export class RunEngine {
   private redis: Redis;
   private prisma: PrismaClientOrTransaction;
   private redlock: Redlock;
+  private runQueue: RunQueue;
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
@@ -60,6 +64,19 @@ export class RunEngine {
       retryDelay: 200, // time in ms
       retryJitter: 200, // time in ms
       automaticExtensionThreshold: 500, // time in ms
+    });
+
+    //todo change the way dequeuing works so you have to pass in the name of the shared queue?
+
+    this.runQueue = new RunQueue({
+      name: "rq",
+      tracer: trace.getTracer("rq"),
+      queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
+      envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
+      workers: 1,
+      defaultEnvConcurrency: 10,
+      enableRebalancing: false,
+      logger: new Logger("RunQueue", "warn"),
     });
   }
 
@@ -103,11 +120,9 @@ export class RunEngine {
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ) {
-    //todo create a waitable
     const prisma = tx ?? this.prisma;
 
-    //todo attach waitable to the run
-
+    //create run
     const taskRun = await prisma.taskRun.create({
       data: {
         status: delayUntil ? "DELAYED" : "PENDING",
@@ -156,30 +171,24 @@ export class RunEngine {
         throw signal.error;
       }
 
-      if (isWait) {
-        //todo block the parentTaskRun with this runId
-      }
+      //create associated waitpoint (this completes when the run completes)
+      const associatedWaitpoint = await createRunAssociatedWaitpoint(prisma, {
+        projectId: environment.project.id,
+        completedByTaskRunId: taskRun.id,
+      });
 
-      if (dependentAttempt) {
-        await prisma.taskRunDependency.create({
-          data: {
-            taskRunId: taskRun.id,
-            dependentAttemptId: dependentAttempt.id,
-          },
-        });
-      } else if (dependentBatchRun) {
-        await prisma.taskRunDependency.create({
-          data: {
-            taskRunId: taskRun.id,
-            dependentBatchRunId: dependentBatchRun.id,
-          },
+      if (isWait && parentTaskRunId) {
+        //this will block the parent run from continuing until this waitpoint is completed (and removed)
+        await blockRunWithWaitpoint(prisma, {
+          runId: parentTaskRunId,
+          waitpoint: associatedWaitpoint,
         });
       }
 
       if (queue) {
         const concurrencyLimit =
-          typeof body.options.queue.concurrencyLimit === "number"
-            ? Math.max(0, body.options.queue.concurrencyLimit)
+          typeof queue.concurrencyLimit === "number"
+            ? Math.max(0, queue.concurrencyLimit)
             : undefined;
 
         let taskQueue = await prisma.taskQueue.findFirst({
@@ -196,7 +205,7 @@ export class RunEngine {
             },
             data: {
               concurrencyLimit,
-              rateLimit: body.options.queue.rateLimit,
+              rateLimit: queue.rateLimit,
             },
           });
         } else {
@@ -206,28 +215,27 @@ export class RunEngine {
               name: queueName,
               concurrencyLimit,
               runtimeEnvironmentId: environment.id,
-              projectId: environment.projectId,
-              rateLimit: body.options.queue.rateLimit,
+              projectId: environment.project.id,
+              rateLimit: queue.rateLimit,
               type: "NAMED",
             },
           });
         }
 
         if (typeof taskQueue.concurrencyLimit === "number") {
-          await marqs?.updateQueueConcurrencyLimits(
+          await this.runQueue.updateQueueConcurrencyLimits(
             environment,
             taskQueue.name,
             taskQueue.concurrencyLimit
           );
         } else {
-          await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+          await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
         }
       }
 
       if (taskRun.delayUntil) {
-        //todo create an additional WaitPoint
-
-        await workerQueue.enqueue(
+        //todo create a WaitPoint
+        const delayWaitpoint = await workerQueue.enqueue(
           "v3.enqueueDelayedRun",
           { runId: taskRun.id },
           { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
@@ -245,6 +253,8 @@ export class RunEngine {
           );
         }
       }
+
+      await this.runQueue.enqueueMessage({ env: environment, message: {} });
     });
 
     return taskRun;
