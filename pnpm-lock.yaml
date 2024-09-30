@@ -77,9 +77,6 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
-      execa:
-        specifier: ^8.0.1
-        version: 8.0.1
       nanoid:
         specifier: ^5.0.6
         version: 5.0.6
@@ -89,6 +86,9 @@ importers:
       socket.io:
         specifier: 4.7.4
         version: 4.7.4
+      tinyexec:
+        specifier: ^0.3.0
+        version: 0.3.0
     devDependencies:
       '@types/node':
         specifier: ^18
@@ -27492,6 +27492,10 @@ packages:
 
   /tinyexec@0.2.0:
     resolution: {integrity: sha512-au8dwv4xKSDR+Fw52csDo3wcDztPdne2oM1o/7LFro4h6bdFmvyUAeAfX40pwDtzHgRFqz1XWaUqgKS2G83/ig==}
+    dev: false
+
+  /tinyexec@0.3.0:
+    resolution: {integrity: sha512-tVGE0mVJPGb0chKhqmsoosjsS+qUnJVGJpZgsHYQcGoPlG3B51R3PouqTgEGH2Dc9jjFyOqOpix6ZHNMXp1FZg==}
     dev: false
 
   /tinyglobby@0.2.2:
