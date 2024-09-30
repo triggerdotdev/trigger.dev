@@ -9,7 +9,7 @@ import {
   createDateTimeWaitpoint,
   createRunAssociatedWaitpoint,
 } from "./waitpoint";
-import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
+import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import { run } from "node:test";
 
 type Options = {
@@ -33,6 +33,7 @@ type TriggerParams = {
   parentSpanId?: string;
   lockedToVersionId?: string;
   concurrencyKey?: string;
+  masterQueue: string;
   queueName: string;
   queue?: QueueOptions;
   isTest: boolean;
@@ -103,6 +104,7 @@ export class RunEngine {
       parentSpanId,
       lockedToVersionId,
       concurrencyKey,
+      masterQueue,
       queueName,
       queue,
       isTest,
@@ -147,6 +149,7 @@ export class RunEngine {
         lockedToVersionId,
         concurrencyKey,
         queue: queueName,
+        masterQueue,
         isTest,
         delayUntil,
         queuedAt,
@@ -244,13 +247,10 @@ export class RunEngine {
           completedAfter: taskRun.delayUntil,
         });
 
-        //waitpoint
-
-        await workerQueue.enqueue(
-          "v3.enqueueDelayedRun",
-          { runId: taskRun.id },
-          { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-        );
+        await blockRunWithWaitpoint(prisma, {
+          runId: taskRun.id,
+          waitpoint: delayWaitpoint,
+        });
       }
 
       if (!taskRun.delayUntil && taskRun.ttl) {
@@ -267,6 +267,7 @@ export class RunEngine {
 
       await this.runQueue.enqueueMessage({
         env: environment,
+        masterQueue,
         message: {
           runId: taskRun.id,
           taskIdentifier: taskRun.taskIdentifier,
