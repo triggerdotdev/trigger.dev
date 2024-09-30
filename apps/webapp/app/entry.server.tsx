@@ -206,6 +206,7 @@ process.on("uncaughtException", (error, origin) => {
 const sqsEventConsumer = singleton("sqsEventConsumer", getSharedSqsEventConsumer);
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { realtimeRequestRateLimiter } from "./services/realtimeRequestRateLimiter.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 export { registryProxy } from "./v3/registryProxy.server";
