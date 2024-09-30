@@ -4,8 +4,13 @@ import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
 import { RunQueue } from "../run-queue";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-import { blockRunWithWaitpoint, createRunAssociatedWaitpoint } from "./waitpoint";
+import {
+  blockRunWithWaitpoint,
+  createDateTimeWaitpoint,
+  createRunAssociatedWaitpoint,
+} from "./waitpoint";
 import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
+import { run } from "node:test";
 
 type Options = {
   redis: RedisOptions;
@@ -234,8 +239,14 @@ export class RunEngine {
       }
 
       if (taskRun.delayUntil) {
-        //todo create a WaitPoint
-        const delayWaitpoint = await workerQueue.enqueue(
+        const delayWaitpoint = await createDateTimeWaitpoint(prisma, {
+          projectId: environment.project.id,
+          completedAfter: taskRun.delayUntil,
+        });
+
+        //waitpoint
+
+        await workerQueue.enqueue(
           "v3.enqueueDelayedRun",
           { runId: taskRun.id },
           { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
@@ -254,7 +265,20 @@ export class RunEngine {
         }
       }
 
-      await this.runQueue.enqueueMessage({ env: environment, message: {} });
+      await this.runQueue.enqueueMessage({
+        env: environment,
+        message: {
+          runId: taskRun.id,
+          taskIdentifier: taskRun.taskIdentifier,
+          orgId: environment.organization.id,
+          projectId: environment.project.id,
+          environmentId: environment.id,
+          environmentType: environment.type,
+          queue: taskRun.queue,
+          concurrencyKey: taskRun.concurrencyKey ?? undefined,
+          timestamp: Date.now(),
+        },
+      });
     });
 
     return taskRun;
