@@ -120,19 +120,7 @@ export class Checkpointer {
     this.simulatePushFailureSeconds = opts.simulatePushFailureSeconds ?? 300;
 
     this.chaosMonkey = opts.chaosMonkey ?? new ChaosMonkey(!!process.env.CHAOS_MONKEY_ENABLED);
-
-    if (boolFromEnv("TMP_CLEANER_ENABLED", false)) {
-      const pathsOverride = process.env.TMP_CLEANER_PATHS_OVERRIDE?.split(",") ?? [];
-
-      this.tmpCleaner = new TempFileCleaner({
-        paths: pathsOverride.length ? pathsOverride : [Buildah.tmpDir, Crictl.checkpointDir],
-        maxAgeMinutes: numFromEnv("TMP_CLEANER_MAX_AGE_MINUTES", 60),
-        intervalSeconds: numFromEnv("TMP_CLEANER_INTERVAL_SECONDS", 300),
-        leadingEdge: boolFromEnv("TMP_CLEANER_LEADING_EDGE", false),
-      });
-
-      this.tmpCleaner.start();
-    }
+    this.tmpCleaner = this.#createTmpCleaner();
   }
 
   async init(): Promise<CheckpointerInitializeReturn> {
@@ -646,5 +634,35 @@ export class Checkpointer {
 
   #getRunContainerName(suffix: string, attemptNumber?: number) {
     return `task-run-${suffix}${attemptNumber && attemptNumber > 1 ? `-att${attemptNumber}` : ""}`;
+  }
+
+  #createTmpCleaner() {
+    if (!boolFromEnv("TMP_CLEANER_ENABLED", false)) {
+      return;
+    }
+
+    const defaultPaths = [Buildah.tmpDir, Crictl.checkpointDir].filter(Boolean);
+    const pathsOverride = process.env.TMP_CLEANER_PATHS_OVERRIDE?.split(",").filter(Boolean) ?? [];
+    const paths = pathsOverride.length ? pathsOverride : defaultPaths;
+
+    if (paths.length === 0) {
+      this.#logger.error("TempFileCleaner enabled but no paths to clean", {
+        defaultPaths,
+        pathsOverride,
+        TMP_CLEANER_PATHS_OVERRIDE: process.env.TMP_CLEANER_PATHS_OVERRIDE,
+      });
+
+      return;
+    }
+    const cleaner = new TempFileCleaner({
+      paths,
+      maxAgeMinutes: numFromEnv("TMP_CLEANER_MAX_AGE_MINUTES", 60),
+      intervalSeconds: numFromEnv("TMP_CLEANER_INTERVAL_SECONDS", 300),
+      leadingEdge: boolFromEnv("TMP_CLEANER_LEADING_EDGE", false),
+    });
+
+    cleaner.start();
+
+    return cleaner;
   }
 }
