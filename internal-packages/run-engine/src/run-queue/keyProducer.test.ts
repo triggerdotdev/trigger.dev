@@ -1,14 +1,12 @@
-import { expect, it } from "vitest";
-import { z } from "zod";
-import { redisTest } from "../test/containerTest.js";
 import { describe } from "node:test";
+import { expect, it } from "vitest";
 import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 describe("KeyProducer", () => {
   it("sharedQueueScanPattern", () => {
     const keyProducer = new RunQueueShortKeyProducer("test:");
     const pattern = keyProducer.masterQueueScanPattern("main");
-    expect(pattern).toBe("test:*sharedQueue:main");
+    expect(pattern).toBe("test:*main");
   });
 
   it("queueCurrentConcurrencyScanPattern", () => {

@@ -148,7 +148,11 @@ describe("RunQueue", () => {
         expect(oldestScore).toBe(undefined);
 
         //enqueue message
-        await queue.enqueueMessage({ env: authenticatedEnvDev, message: messageDev });
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          masterQueue: "test_12345",
+        });
 
         //queue length
         const result2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
@@ -177,13 +181,11 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency).toBe(0);
 
-        const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev, "test_12345");
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.parentQueue).toEqual(
-          "{org:o1234}:proj:p1234:env:e1234:sharedQueue:rq"
-        );
+        expect(dequeued?.message.masterQueue).toEqual("test_12345");
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -201,7 +203,7 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
-        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev, "test_12345");
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
@@ -231,7 +233,11 @@ describe("RunQueue", () => {
         expect(oldestScore).toBe(undefined);
 
         //enqueue message
-        await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+        await queue.enqueueMessage({
+          env: authenticatedEnvProd,
+          message: messageProd,
+          masterQueue: "main",
+        });
 
         //queue length
         const result2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
@@ -261,11 +267,11 @@ describe("RunQueue", () => {
         expect(taskConcurrency).toBe(0);
 
         //dequeue
-        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345");
+        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345", "main");
         expect(dequeued?.messageId).toEqual(messageProd.runId);
         expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.parentQueue).toEqual("sharedQueue:rq");
+        expect(dequeued?.message.masterQueue).toEqual("main");
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -287,7 +293,7 @@ describe("RunQueue", () => {
         const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(length2).toBe(0);
 
-        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev);
+        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev, "main");
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
@@ -302,14 +308,18 @@ describe("RunQueue", () => {
     });
 
     try {
-      const result = await queue.getSharedQueueDetails();
+      const result = await queue.getSharedQueueDetails("main");
       expect(result.selectionId).toBe("getSharedQueueDetails");
       expect(result.queueCount).toBe(0);
       expect(result.queueChoice.choice).toStrictEqual({ abort: true });
 
-      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueue: "main",
+      });
 
-      const result2 = await queue.getSharedQueueDetails();
+      const result2 = await queue.getSharedQueueDetails("main");
       expect(result2.selectionId).toBe("getSharedQueueDetails");
       expect(result2.queueCount).toBe(1);
       expect(result2.queues[0].score).toBe(messageProd.timestamp);
@@ -328,9 +338,13 @@ describe("RunQueue", () => {
     });
 
     try {
-      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueue: "main",
+      });
 
-      const message = await queue.dequeueMessageInSharedQueue("test_12345");
+      const message = await queue.dequeueMessageInSharedQueue("test_12345", "main");
       expect(message).toBeDefined();
 
       //check the message is gone
@@ -361,7 +375,7 @@ describe("RunQueue", () => {
       expect(exists2).toBe(0);
 
       //dequeue
-      const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
+      const message2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
       expect(message2).toBeUndefined();
     } finally {
       await queue.quit();
@@ -375,9 +389,13 @@ describe("RunQueue", () => {
     });
 
     try {
-      await queue.enqueueMessage({ env: authenticatedEnvProd, message: messageProd });
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueue: "main",
+      });
 
-      const message = await queue.dequeueMessageInSharedQueue("test_12345");
+      const message = await queue.dequeueMessageInSharedQueue("test_12345", "main");
       expect(message).toBeDefined();
 
       //check the message is there
@@ -424,7 +442,7 @@ describe("RunQueue", () => {
       expect(exists2).toBe(1);
 
       //dequeue
-      const message2 = await queue.dequeueMessageInSharedQueue("test_12345");
+      const message2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
       expect(message2?.messageId).toBe(messageProd.runId);
     } finally {
       await queue.quit();
