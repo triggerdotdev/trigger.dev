@@ -58,13 +58,13 @@ export class TempFileCleaner {
     const maxAgeMinutes = this.opts.maxAgeMinutes;
 
     const ignoreStartingPoint = ["!", "-path", startingPoint];
-    const onlyDirectDecendants = ["-maxdepth", "1"];
+    const onlyDirectDescendants = ["-maxdepth", "1"];
     const onlyOldFiles = ["-mmin", `+${maxAgeMinutes}`];
 
     const baseArgs = [
       startingPoint,
       ...ignoreStartingPoint,
-      ...onlyDirectDecendants,
+      ...onlyDirectDescendants,
       ...onlyOldFiles,
     ];
 
@@ -76,7 +76,7 @@ export class TempFileCleaner {
 
     const duLines = duOutput.stdout.trim().split("\n");
     const fileCount = duLines.length - 1; // last line is the total
-    const fileSize = duLines.at(-1)?.split("\t")[0];
+    const fileSize = duLines.at(-1)?.trim().split(/\s+/)[0];
 
     if (fileCount === 0) {
       this.logger.log("nothing to delete", { startingPoint, maxAgeMinutes });
