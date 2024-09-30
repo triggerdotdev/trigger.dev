@@ -304,27 +304,17 @@ function HelpAndFeedback() {
               data-action="status"
               target="_blank"
             />
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <SideMenuItem
-                    name="Suggest a feature"
-                    icon={LightBulbIcon}
-                    trailingIcon={ArrowUpRightIcon}
-                    trailingIconClassName="text-text-dimmed"
-                    inactiveIconColor="text-sun-500"
-                    activeIconColor="text-sun-500"
-                    to="https://feedback.trigger.dev/"
-                    data-action="suggest-a-feature"
-                    target="_blank"
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  Have an idea for a new feature? Let us know!
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <SideMenuItem
+              name="Suggest a feature"
+              icon={LightBulbIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-sun-500"
+              activeIconColor="text-sun-500"
+              to="https://feedback.trigger.dev/"
+              data-action="suggest-a-feature"
+              target="_blank"
+            />
             <SideMenuItem
               name="Changelog"
               icon="star"
@@ -338,107 +328,80 @@ function HelpAndFeedback() {
             />
           </div>
           <div className="flex flex-col gap-1 p-1">
-            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-2sm">Get in touch</Paragraph>
+            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Get in touch</Paragraph>
             {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="small-menu-item"
-                          LeadingIcon={SlackIcon}
-                          data-action="join-our-slack"
-                          fullWidth
-                          textAlignLeft
-                        >
-                          <div className="flex w-full items-center justify-between">
-                            <span className="text-text-bright">Join our Slack…</span>
-                            <MenuCount count="PRO" />
-                          </div>
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>Join our Slack</DialogHeader>
-                        <div className="mt-2 flex flex-col gap-4">
-                          <div className="flex items-center gap-4">
-                            <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
-                            <Paragraph variant="base/bright">
-                              As a subscriber, you have access to a dedicated Slack channel for
-                              1-to-1 support with the Trigger.dev team.
-                            </Paragraph>
-                          </div>
-                          <hr className="border-charcoal-800" />
-                          <div>
-                            <StepNumber stepNumber="1" title="Email us" />
-                            <StepContentContainer>
-                              <Paragraph>
-                                Send us an email to this address from your Trigger.dev account email
-                                address:
-                                <ClipboardField
-                                  variant="secondary/medium"
-                                  value="priority-support@trigger.dev"
-                                  className="my-2"
-                                />
-                              </Paragraph>
-                            </StepContentContainer>
-                            <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
-                            <StepContentContainer>
-                              <Paragraph>
-                                As soon as we can, we'll setup a Slack Connect channel and say
-                                hello!
-                              </Paragraph>
-                            </StepContentContainer>
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    Connect with us on Slack for priority support.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="small-menu-item"
+                      LeadingIcon={SlackIcon}
+                      data-action="join-our-slack"
+                      fullWidth
+                      textAlignLeft
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-text-bright">Join our Slack…</span>
+                        <MenuCount count="PRO" />
+                      </div>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>Join our Slack</DialogHeader>
+                    <div className="mt-2 flex flex-col gap-4">
+                      <div className="flex items-center gap-4">
+                        <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
+                        <Paragraph variant="base/bright">
+                          As a subscriber, you have access to a dedicated Slack channel for 1-to-1
+                          support with the Trigger.dev team.
+                        </Paragraph>
+                      </div>
+                      <hr className="border-charcoal-800" />
+                      <div>
+                        <StepNumber stepNumber="1" title="Email us" />
+                        <StepContentContainer>
+                          <Paragraph>
+                            Send us an email to this address from your Trigger.dev account email
+                            address:
+                            <ClipboardField
+                              variant="secondary/medium"
+                              value="priority-support@trigger.dev"
+                              className="my-2"
+                            />
+                          </Paragraph>
+                        </StepContentContainer>
+                        <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
+                        <StepContentContainer>
+                          <Paragraph>
+                            As soon as we can, we'll setup a Slack Connect channel and say hello!
+                          </Paragraph>
+                        </StepContentContainer>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             )}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <SideMenuItem
-                    name="Join our Discord"
-                    icon={DiscordIcon}
-                    trailingIcon={ArrowUpRightIcon}
-                    trailingIconClassName="text-text-dimmed"
-                    to="https://trigger.dev/discord"
-                    data-action="join our discord"
-                    target="_blank"
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  The quickest way to get answers from the Trigger.dev community.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <SideMenuItem
-                    name="Book a 15 min call"
-                    icon={CalendarDaysIcon}
-                    trailingIcon={ArrowUpRightIcon}
-                    trailingIconClassName="text-text-dimmed"
-                    inactiveIconColor="text-rose-500"
-                    activeIconColor="text-rose-500"
-                    to="https://cal.com/team/triggerdotdev/founders-call"
-                    data-action="book-a-call"
-                    target="_blank"
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  Have a question or want to chat? Book a time to talk with us.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <SideMenuItem
+              name="Join our Discord"
+              icon={DiscordIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              to="https://trigger.dev/discord"
+              data-action="join our discord"
+              target="_blank"
+            />
+            <SideMenuItem
+              name="Book a 15 min call"
+              icon={CalendarDaysIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-rose-500"
+              activeIconColor="text-rose-500"
+              to="https://cal.com/team/triggerdotdev/founders-call"
+              data-action="book-a-call"
+              target="_blank"
+            />
             <Feedback
               button={
                 <Button
