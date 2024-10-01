@@ -7,6 +7,7 @@ import {
   $transaction,
   PrismaClient,
   PrismaClientOrTransaction,
+  TaskRun,
   Waitpoint,
 } from "@trigger.dev/database";
 import { Redis, type RedisOptions } from "ioredis";
@@ -222,10 +223,6 @@ export class RunEngine {
     });
 
     await this.redlock.using([taskRun.id], 5000, async (signal) => {
-      if (signal.aborted) {
-        throw signal.error;
-      }
-
       //create associated waitpoint (this completes when the run completes)
       const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
         projectId: environment.project.id,
@@ -235,6 +232,7 @@ export class RunEngine {
       if (isWait && parentTaskRunId) {
         //this will block the parent run from continuing until this waitpoint is completed (and removed)
         await this.#blockRunWithWaitpoint(prisma, {
+          orgId: environment.organization.id,
           runId: parentTaskRunId,
           waitpoint: associatedWaitpoint,
         });
@@ -295,6 +293,7 @@ export class RunEngine {
         });
 
         await this.#blockRunWithWaitpoint(prisma, {
+          orgId: environment.organization.id,
           runId: taskRun.id,
           waitpoint: delayWaitpoint,
         });
@@ -312,27 +311,13 @@ export class RunEngine {
         }
       }
 
-      await this.runQueue.enqueueMessage({
-        env: environment,
-        masterQueue,
-        message: {
-          runId: taskRun.id,
-          taskIdentifier: taskRun.taskIdentifier,
-          orgId: environment.organization.id,
-          projectId: environment.project.id,
-          environmentId: environment.id,
-          environmentType: environment.type,
-          queue: taskRun.queue,
-          concurrencyKey: taskRun.concurrencyKey ?? undefined,
-          timestamp: Date.now(),
-        },
-      });
+      await this.enqueueRun(taskRun, environment, prisma);
     });
 
+    //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
+    //todo if this has been triggered with triggerAndWait or batchTriggerAndWait
+
     return taskRun;
-    //todo waitpoints
-    //todo enqueue
-    //todo release concurrency?
   }
 
   /** Triggers multiple runs.
@@ -341,7 +326,29 @@ export class RunEngine {
   async batchTrigger() {}
 
   /** The run can be added to the queue. When it's pulled from the queue it will be executed. */
-  async prepareForQueue(runId: string) {}
+  async enqueueRun(
+    run: TaskRun,
+    env: MinimalAuthenticatedEnvironment,
+    tx?: PrismaClientOrTransaction
+  ) {
+    await this.runQueue.enqueueMessage({
+      env,
+      masterQueue: run.masterQueue,
+      message: {
+        runId: run.id,
+        taskIdentifier: run.taskIdentifier,
+        orgId: env.organization.id,
+        projectId: env.project.id,
+        environmentId: env.id,
+        environmentType: env.type,
+        queue: run.queue,
+        concurrencyKey: run.concurrencyKey ?? undefined,
+        timestamp: Date.now(),
+      },
+    });
+
+    //todo update the TaskRunExecutionSnapshot
+  }
 
   /** We want to actually execute the run, this could be a continuation of a previous execution.
    * This is called from the queue, when the run has been pulled. */
@@ -357,7 +364,6 @@ export class RunEngine {
   async expireRun(runId: string) {}
 
   //MARK: - Waitpoints
-
   async #createRunAssociatedWaitpoint(
     tx: PrismaClientOrTransaction,
     { projectId, completedByTaskRunId }: { projectId: string; completedByTaskRunId: string }
@@ -400,8 +406,12 @@ export class RunEngine {
 
   async #blockRunWithWaitpoint(
     tx: PrismaClientOrTransaction,
-    { runId, waitpoint }: { runId: string; waitpoint: Waitpoint }
+    { orgId, runId, waitpoint }: { orgId: string; runId: string; waitpoint: Waitpoint }
   ) {
+    //todo it would be better if we didn't remove from the queue, because this removes the payload
+    //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
+    await this.runQueue.acknowledgeMessage(orgId, runId);
+
     return tx.taskRunWaitpoint.create({
       data: {
         taskRunId: runId,
@@ -425,20 +435,50 @@ export class RunEngine {
       return;
     }
 
-    $transaction(
+    await $transaction(
       prisma,
       async (tx) => {
-        const blockedRuns = await tx.taskRunWaitpoint.findMany({
+        const blockers = await tx.taskRunWaitpoint.findMany({
           where: { waitpointId: id },
         });
 
-        for (const blockedRun of blockedRuns) {
-          const otherWaitpoints = await tx.taskRunWaitpoint.findMany({
-            where: { taskRunId: blockedRun.taskRunId },
+        for (const blocker of blockers) {
+          //remove the waitpoint
+          await tx.taskRunWaitpoint.delete({
+            where: { id: blocker.id },
           });
 
-          //todo remove the blocker
-          //todo if there are no other blockers then queue the run to be executed
+          const blockedRun = await tx.taskRun.findFirst({
+            where: { id: blocker.taskRunId },
+            include: {
+              _count: {
+                select: {
+                  blockedByWaitpoints: true,
+                },
+              },
+              runtimeEnvironment: {
+                select: {
+                  id: true,
+                  type: true,
+                  maximumConcurrencyLimit: true,
+                  project: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                  organization: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (blockedRun && blockedRun._count.blockedByWaitpoints === 0) {
+            await this.enqueueRun(blockedRun, blockedRun.runtimeEnvironment, tx);
+          }
         }
 
         await tx.waitpoint.update({
