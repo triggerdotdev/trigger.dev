@@ -1,3 +1,4 @@
+import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
 import type { RuntimeManager } from "../runtime/manager.js";
@@ -54,4 +55,5 @@ type TriggerDotDevGlobalAPI = {
   ["task-catalog"]?: TaskCatalog;
   ["task-context"]?: TaskContext;
   ["api-client"]?: ApiClientConfiguration;
+  ["run-metadata"]?: Record<string, DeserializedJson>;
 };

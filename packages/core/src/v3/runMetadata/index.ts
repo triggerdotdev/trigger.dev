@@ -1,11 +1,13 @@
 import { DeserializedJson } from "../../schemas/json.js";
 import { apiClientManager } from "../apiClientManager-api.js";
 import { taskContext } from "../task-context-api.js";
+import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
+
+const API_NAME = "run-metadata";
 
 export class RunMetadataAPI {
   private static _instance?: RunMetadataAPI;
-  private store: Record<string, DeserializedJson> | undefined;
 
   private constructor() {}
 
@@ -17,8 +19,16 @@ export class RunMetadataAPI {
     return this._instance;
   }
 
+  get store(): Record<string, DeserializedJson> | undefined {
+    return getGlobal(API_NAME);
+  }
+
+  set store(value: Record<string, DeserializedJson> | undefined) {
+    registerGlobal(API_NAME, value, true);
+  }
+
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
-    this.store = metadata;
+    registerGlobal(API_NAME, metadata);
   }
 
   public current(): Record<string, DeserializedJson> | undefined {
