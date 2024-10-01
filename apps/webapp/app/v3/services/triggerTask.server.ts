@@ -21,6 +21,7 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -435,11 +436,7 @@ export class TriggerTaskService extends BaseService {
                 const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                 if (expireAt) {
-                  await workerQueue.enqueue(
-                    "v3.expireRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
-                  );
+                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
                 }
               }
 

@@ -2,8 +2,22 @@ import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { eventRepository } from "../eventRepository.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { workerQueue } from "~/services/worker.server";
+import { PrismaClientOrTransaction } from "~/db.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
+  public static async dequeue(runId: string, tx?: PrismaClientOrTransaction) {
+    return await workerQueue.dequeue(`v3.expireRun:${runId}`, { tx });
+  }
+
+  public static async enqueue(runId: string, runAt?: Date, tx?: PrismaClientOrTransaction) {
+    return await workerQueue.enqueue(
+      "v3.expireRun",
+      { runId },
+      { runAt, jobKey: `v3.expireRun:${runId}` }
+    );
+  }
+
   public async call(runId: string) {
     const run = await this._prisma.taskRun.findUnique({
       where: {
