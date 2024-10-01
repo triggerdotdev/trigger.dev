@@ -257,9 +257,7 @@
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/nodejs",
-        "guides/frameworks/prisma",
         "guides/frameworks/remix",
-        "guides/frameworks/sequin",
         {
           "group": "Supabase",
           "icon": "bolt",
@@ -271,6 +269,10 @@
           ]
         }
       ]
+    },
+    {
+      "group": "Guides",
+      "pages": ["guides/frameworks/prisma", "guides/frameworks/sequin"]
     },
     {
       "group": "Example tasks",
