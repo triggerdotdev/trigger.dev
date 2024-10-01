@@ -279,6 +279,7 @@
       "pages": [
         "guides/examples/intro",
         "guides/examples/dall-e3-generate-image",
+        "guides/examples/deepgram-transcribe-audio",
         "guides/examples/ffmpeg-video-processing",
         "guides/examples/open-ai-with-retrying",
         "guides/examples/pdf-to-image",
