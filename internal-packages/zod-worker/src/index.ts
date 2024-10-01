@@ -28,6 +28,8 @@ import {
 } from "@trigger.dev/database";
 import { PgListenService } from "./pgListen.server";
 
+export type { RunnerOptions };
+
 const tracer = trace.getTracer("zodWorker", "3.0.0.dp.1");
 
 export interface MessageCatalogSchema {

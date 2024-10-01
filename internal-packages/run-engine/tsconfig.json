@@ -15,6 +15,8 @@
     "noEmit": true,
     "strict": true,
     "paths": {
+      "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
+      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/database": ["../database/src/index"],

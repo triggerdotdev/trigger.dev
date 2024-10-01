@@ -1,21 +1,29 @@
+import { RunnerOptions, ZodWorker } from "@internal/zod-worker";
+import { trace } from "@opentelemetry/api";
+import { Logger } from "@trigger.dev/core/logger";
 import { QueueOptions } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import {
+  $transaction,
+  PrismaClient,
+  PrismaClientOrTransaction,
+  Waitpoint,
+} from "@trigger.dev/database";
 import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
+import { z } from "zod";
 import { RunQueue } from "../run-queue";
+import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-import {
-  blockRunWithWaitpoint,
-  createDateTimeWaitpoint,
-  createRunAssociatedWaitpoint,
-} from "./waitpoint";
-import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
-import { run } from "node:test";
+
+import { nanoid } from "nanoid";
 
 type Options = {
   redis: RedisOptions;
-  prisma: PrismaClientOrTransaction;
-  queue: RunQueue;
+  prisma: PrismaClient;
+  zodWorker: RunnerOptions & {
+    shutdownTimeoutInMs: number;
+  };
 };
 
 type TriggerParams = {
@@ -55,11 +63,23 @@ type TriggerParams = {
   isWait: boolean;
 };
 
+const schema = {
+  "runengine.waitpointCompleteDateTime": z.object({
+    waitpointId: z.string(),
+  }),
+  "runengine.expireRun": z.object({
+    runId: z.string(),
+  }),
+};
+
+type EngineWorker = ZodWorker<typeof schema>;
+
 export class RunEngine {
   private redis: Redis;
-  private prisma: PrismaClientOrTransaction;
+  private prisma: PrismaClient;
   private redlock: Redlock;
   private runQueue: RunQueue;
+  private zodWorker: EngineWorker;
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
@@ -72,8 +92,6 @@ export class RunEngine {
       automaticExtensionThreshold: 500, // time in ms
     });
 
-    //todo change the way dequeuing works so you have to pass in the name of the shared queue?
-
     this.runQueue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
@@ -83,8 +101,37 @@ export class RunEngine {
       defaultEnvConcurrency: 10,
       enableRebalancing: false,
       logger: new Logger("RunQueue", "warn"),
+      redis: options.redis,
+    });
+
+    this.zodWorker = new ZodWorker({
+      name: "runQueueWorker",
+      prisma: options.prisma,
+      replica: options.prisma,
+      logger: new Logger("RunQueueWorker", "debug"),
+      runnerOptions: options.zodWorker,
+      shutdownTimeoutInMs: options.zodWorker.shutdownTimeoutInMs,
+      schema,
+      tasks: {
+        "runengine.waitpointCompleteDateTime": {
+          priority: 0,
+          maxAttempts: 10,
+          handler: async (payload, job) => {
+            await this.#completeWaitpoint(this.prisma, payload.waitpointId);
+          },
+        },
+        "runengine.expireRun": {
+          priority: 0,
+          maxAttempts: 10,
+          handler: async (payload, job) => {
+            await this.expireRun(payload.runId);
+          },
+        },
+      },
     });
   }
+
+  //MARK: - Run functions
 
   /** "Triggers" one run, which creates the run
    */
@@ -180,14 +227,14 @@ export class RunEngine {
       }
 
       //create associated waitpoint (this completes when the run completes)
-      const associatedWaitpoint = await createRunAssociatedWaitpoint(prisma, {
+      const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
         projectId: environment.project.id,
         completedByTaskRunId: taskRun.id,
       });
 
       if (isWait && parentTaskRunId) {
         //this will block the parent run from continuing until this waitpoint is completed (and removed)
-        await blockRunWithWaitpoint(prisma, {
+        await this.#blockRunWithWaitpoint(prisma, {
           runId: parentTaskRunId,
           waitpoint: associatedWaitpoint,
         });
@@ -242,12 +289,12 @@ export class RunEngine {
       }
 
       if (taskRun.delayUntil) {
-        const delayWaitpoint = await createDateTimeWaitpoint(prisma, {
+        const delayWaitpoint = await this.#createDateTimeWaitpoint(prisma, {
           projectId: environment.project.id,
           completedAfter: taskRun.delayUntil,
         });
 
-        await blockRunWithWaitpoint(prisma, {
+        await this.#blockRunWithWaitpoint(prisma, {
           runId: taskRun.id,
           waitpoint: delayWaitpoint,
         });
@@ -257,10 +304,10 @@ export class RunEngine {
         const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
         if (expireAt) {
-          await workerQueue.enqueue(
-            "v3.expireRun",
+          await this.zodWorker.enqueue(
+            "runengine.expireRun",
             { runId: taskRun.id },
-            { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
+            { tx, runAt: expireAt, jobKey: `runengine.expireRun.${taskRun.id}` }
           );
         }
       }
@@ -306,6 +353,104 @@ export class RunEngine {
   async prepareForAttempt(runId: string) {}
 
   async complete(runId: string, completion: any) {}
+
+  async expireRun(runId: string) {}
+
+  //MARK: - Waitpoints
+
+  async #createRunAssociatedWaitpoint(
+    tx: PrismaClientOrTransaction,
+    { projectId, completedByTaskRunId }: { projectId: string; completedByTaskRunId: string }
+  ) {
+    return tx.waitpoint.create({
+      data: {
+        type: "RUN",
+        status: "PENDING",
+        idempotencyKey: nanoid(24),
+        userProvidedIdempotencyKey: false,
+        projectId,
+        completedByTaskRunId,
+      },
+    });
+  }
+
+  async #createDateTimeWaitpoint(
+    tx: PrismaClientOrTransaction,
+    { projectId, completedAfter }: { projectId: string; completedAfter: Date }
+  ) {
+    const waitpoint = await tx.waitpoint.create({
+      data: {
+        type: "DATETIME",
+        status: "PENDING",
+        idempotencyKey: nanoid(24),
+        userProvidedIdempotencyKey: false,
+        projectId,
+        completedAfter,
+      },
+    });
+
+    await this.zodWorker.enqueue(
+      "runengine.waitpointCompleteDateTime",
+      { waitpointId: waitpoint.id },
+      { tx, runAt: completedAfter, jobKey: `waitpointCompleteDateTime.${waitpoint.id}` }
+    );
+
+    return waitpoint;
+  }
+
+  async #blockRunWithWaitpoint(
+    tx: PrismaClientOrTransaction,
+    { runId, waitpoint }: { runId: string; waitpoint: Waitpoint }
+  ) {
+    return tx.taskRunWaitpoint.create({
+      data: {
+        taskRunId: runId,
+        waitpointId: waitpoint.id,
+        projectId: waitpoint.projectId,
+      },
+    });
+  }
+
+  /** Any runs blocked by this waitpoint will get continued (if no other waitpoints exist) */
+  async #completeWaitpoint(prisma: PrismaClientOrTransaction, id: string) {
+    const waitpoint = await prisma.waitpoint.findUnique({
+      where: { id },
+    });
+
+    if (!waitpoint) {
+      throw new Error(`Waitpoint ${id} not found`);
+    }
+
+    if (waitpoint.status === "COMPLETED") {
+      return;
+    }
+
+    $transaction(
+      prisma,
+      async (tx) => {
+        const blockedRuns = await tx.taskRunWaitpoint.findMany({
+          where: { waitpointId: id },
+        });
+
+        for (const blockedRun of blockedRuns) {
+          const otherWaitpoints = await tx.taskRunWaitpoint.findMany({
+            where: { taskRunId: blockedRun.taskRunId },
+          });
+
+          //todo remove the blocker
+          //todo if there are no other blockers then queue the run to be executed
+        }
+
+        await tx.waitpoint.update({
+          where: { id },
+          data: { status: "COMPLETED" },
+        });
+      },
+      (error) => {
+        throw error;
+      }
+    );
+  }
 }
 
 /* 
