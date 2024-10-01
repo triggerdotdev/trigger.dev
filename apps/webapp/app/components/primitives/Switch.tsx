@@ -6,14 +6,14 @@ import { cn } from "~/utils/cn";
 
 const variations = {
   large: {
-    container: "flex items-center gap-x-2 rounded-md hover:bg-tertiary p-2 transition",
+    container: "flex items-center gap-x-2 rounded-md hover:bg-tertiary p-2 transition focus-custom",
     root: "h-6 w-11",
     thumb: "h-5 w-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
     text: "text-sm text-charcoal-400 group-hover:text-charcoal-200 transition",
   },
   small: {
     container:
-      "flex items-center gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 transition",
+      "flex items-center gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 transition focus-custom",
     root: "h-3 w-6",
     thumb: "h-2.5 w-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
     text: "text-xs text-charcoal-400 group-hover:text-charcoal-200 hover:cursor-pointer transition",
