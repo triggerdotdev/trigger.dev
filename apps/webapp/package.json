@@ -102,6 +102,8 @@
     "@trigger.dev/yalt": "npm:@trigger.dev/yalt",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
+    "@unkey/cache": "^1.5.0",
+    "@unkey/error": "^0.2.0",
     "@upstash/ratelimit": "^1.1.3",
     "@whatwg-node/fetch": "^0.9.14",
     "assert-never": "^1.2.1",
