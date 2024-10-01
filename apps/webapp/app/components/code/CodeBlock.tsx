@@ -241,7 +241,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 onMouseEnter={() => setMouseOver(true)}
                 onMouseLeave={() => setMouseOver(false)}
                 className={cn(
-                  "absolute right-3 z-50 transition-colors duration-100 hover:cursor-pointer",
+                  "absolute right-3 z-50 transition-colors duration-100 focus-custom hover:cursor-pointer",
                   showChrome ? "top-10" : "top-2.5",
                   copied ? "text-emerald-500" : "text-charcoal-500 hover:text-charcoal-300"
                 )}
