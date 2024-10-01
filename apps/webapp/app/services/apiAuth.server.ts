@@ -84,19 +84,33 @@ export async function authenticateApiKey(
   }
 }
 
+export async function authenticateAuthorizationHeader(
+  authorization: string,
+  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+): Promise<ApiAuthenticationResult | undefined> {
+  const apiKey = getApiKeyFromHeader(authorization);
+
+  if (!apiKey) {
+    return;
+  }
+
+  return authenticateApiKey(apiKey, { allowPublicKey });
+}
+
 export function isPublicApiKey(key: string) {
   return key.startsWith("pk_");
 }
 
 export function getApiKeyFromRequest(request: Request) {
-  const rawAuthorization = request.headers.get("Authorization");
+  return getApiKeyFromHeader(request.headers.get("Authorization"));
+}
 
-  const authorization = AuthorizationHeaderSchema.safeParse(rawAuthorization);
-  if (!authorization.success) {
+export function getApiKeyFromHeader(authorization?: string | null) {
+  if (typeof authorization !== "string" || !authorization) {
     return;
   }
 
-  const apiKey = authorization.data.replace(/^Bearer /, "");
+  const apiKey = authorization.replace(/^Bearer /, "");
   return apiKey;
 }
 

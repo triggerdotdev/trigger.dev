@@ -1,146 +1,176 @@
+import { DefaultStatefulContext, Namespace, Cache as UnkeyCache, createCache } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { env } from "~/env.server";
+import { authenticateApiKey, authenticateAuthorizationHeader } from "./apiAuth.server";
 import { logger } from "./logger.server";
-import { Duration, Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
-import { DefaultStatefulContext, Namespace, createCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { Prettify } from "@trigger.dev/core/v3";
 
-type WindowConfig = {
-  /**
-   * The interval for the window
-   */
-  interval: Duration;
-  /**
-   * Maximum number of requests allowed in the window
-   */
-  maxRequests: number;
-};
+const DurationSchema = z.custom<Duration>((value) => {
+  if (typeof value !== "string") {
+    throw new Error("Duration must be a string");
+  }
 
-type LimiterOptions =
-  | {
-      type: "tokenBucket";
-      /**
-       * How many tokens are refilled per `interval`
-       *
-       * An interval of `10s` and refillRate of 5 will cause a new token to be added every 2 seconds.
-       */
-      refillRate: number;
-      /**
-       * The interval for the `refillRate`
-       */
-      interval: Duration;
-      /**
-       * Maximum number of tokens.
-       * A newly created bucket starts with this many tokens.
-       * Useful to allow higher burst limits.
-       */
-      maxTokens: number;
-    }
-  | {
-      type: "leakyBucket";
-      /**
-       * How many tokens are refilled per `interval`
-       *
-       * An interval of `10s` and refillRate of 5 will cause a new token to be added every 2 seconds.
-       */
-      refillRate: number;
-      /**
-       * The interval for the `refillRate`
-       */
-      interval: Duration;
-      /**
-       * Maximum number of tokens.
-       * A newly created bucket starts with this many tokens.
-       * Useful to allow higher burst limits.
-       */
-      maxTokens: number;
-    }
-  | {
-      type: "fixedWindow";
-      /**
-       * The interval for the window
-       */
-      interval: Duration;
-      /**
-       * Maximum number of requests allowed in the window
-       */
-      maxRequests: number;
-    };
+  return value as Duration;
+});
 
-type TransformUnionToObject<T extends { type: string }> = {
-  [K in T["type"]]: Extract<T, { type: K }> extends { type: K } & infer R
-    ? Prettify<Omit<R, "type">>
-    : never;
-};
+export const RateLimitFixedWindowConfig = z.object({
+  type: z.literal("fixedWindow"),
+  window: DurationSchema,
+  tokens: z.number(),
+});
 
-type TransformedLimiterOptions = TransformUnionToObject<LimiterOptions>;
+export type RateLimitFixedWindowConfig = z.infer<typeof RateLimitFixedWindowConfig>;
 
-type Options<TLimiter extends LimiterOptions> = {
+export const RateLimitSlidingWindowConfig = z.object({
+  type: z.literal("slidingWindow"),
+  window: DurationSchema,
+  tokens: z.number(),
+});
+
+export type RateLimitSlidingWindowConfig = z.infer<typeof RateLimitSlidingWindowConfig>;
+
+export const RateLimitTokenBucketConfig = z.object({
+  type: z.literal("tokenBucket"),
+  refillRate: z.number(),
+  interval: DurationSchema,
+  maxTokens: z.number(),
+});
+
+export type RateLimitTokenBucketConfig = z.infer<typeof RateLimitTokenBucketConfig>;
+
+export const RateLimiterConfig = z.discriminatedUnion("type", [
+  RateLimitFixedWindowConfig,
+  RateLimitSlidingWindowConfig,
+  RateLimitTokenBucketConfig,
+]);
+
+export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
+
+type LimitConfigOverrideFunction = (authorizationValue: string) => Promise<unknown>;
+
+type Options = {
   redis?: RedisOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
-  limiter: TLimiter;
-  resolveLimiterConfig?: (
-    authorizationValue: string,
-    options: TLimiter
-  ) => Promise<TransformedLimiterOptions[TLimiter["type"]]>;
+  defaultLimiter: RateLimiterConfig;
+  limiterConfigOverride?: LimitConfigOverrideFunction;
+  limiterCache?: {
+    fresh: number;
+    stale: number;
+  };
   log?: {
     requests?: boolean;
     rejections?: boolean;
+    limiter?: boolean;
   };
 };
 
+async function resolveLimitConfig(
+  authorizationValue: string,
+  hashedAuthorizationValue: string,
+  defaultLimiter: RateLimiterConfig,
+  cache: UnkeyCache<{ limiter: RateLimiterConfig }>,
+  logsEnabled: boolean,
+  limiterConfigOverride?: LimitConfigOverrideFunction
+): Promise<RateLimiterConfig> {
+  if (!limiterConfigOverride) {
+    return defaultLimiter;
+  }
+
+  if (logsEnabled) {
+    logger.info("RateLimiter: checking for override", {
+      authorizationValue: hashedAuthorizationValue,
+      defaultLimiter,
+    });
+  }
+
+  const cacheResult = await cache.limiter.swr(hashedAuthorizationValue, async (key) => {
+    const override = await limiterConfigOverride(authorizationValue);
+
+    if (!override) {
+      if (logsEnabled) {
+        logger.info("RateLimiter: no override found", {
+          authorizationValue,
+          defaultLimiter,
+        });
+      }
+
+      return defaultLimiter;
+    }
+
+    const parsedOverride = RateLimiterConfig.safeParse(override);
+
+    if (!parsedOverride.success) {
+      logger.error("Error parsing rate limiter override", {
+        override,
+        errors: parsedOverride.error.errors,
+      });
+
+      return defaultLimiter;
+    }
+
+    if (logsEnabled && parsedOverride.data) {
+      logger.info("RateLimiter: override found", {
+        authorizationValue,
+        defaultLimiter,
+        override: parsedOverride.data,
+      });
+    }
+
+    return parsedOverride.data;
+  });
+
+  return cacheResult.val ?? defaultLimiter;
+}
+
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header
-export function authorizationRateLimitMiddleware<TLimiter extends LimiterOptions>({
+export function authorizationRateLimitMiddleware({
   redis,
   keyPrefix,
-  limiter,
+  defaultLimiter,
   pathMatchers,
   pathWhiteList = [],
   log = {
     rejections: true,
     requests: true,
   },
-  resolveLimiterConfig,
-}: Options<TLimiter>) {
+  limiterCache,
+  limiterConfigOverride,
+}: Options) {
   const ctx = new DefaultStatefulContext();
   const memory = new MemoryStore({ persistentMap: new Map() });
   const redisCacheStore = new RedisCacheStore({
     connection: {
-      keyPrefix: `${keyPrefix}:rate-limit-cache:`,
+      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:`,
       ...redis,
     },
   });
 
-  const tokenBucketNamespace = new Namespace<TransformedLimiterOptions["tokenBucket"]>(ctx, {
-    stores: [memory, redisCacheStore],
-    fresh: 30_000,
-    stale: 60_000,
-  });
-
-  const leakyBucketNamespace = new Namespace<TransformedLimiterOptions["leakyBucket"]>(ctx, {
-    stores: [memory, redisCacheStore],
-    fresh: 30_000,
-    stale: 60_000,
-  });
-
-  const fixedWindowNamespace = new Namespace<TransformedLimiterOptions["fixedWindow"]>(ctx, {
-    stores: [memory, redisCacheStore],
-    fresh: 30_000,
-    stale: 60_000,
-  });
-
   const cache = createCache({
-    tokenBucket: tokenBucketNamespace,
-    leakyBucket: leakyBucketNamespace,
-    fixedWindow: fixedWindowNamespace,
+    limiter: new Namespace<RateLimiterConfig>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: limiterCache?.fresh ?? 30_000,
+      stale: limiterCache?.stale ?? 60_000,
+    }),
   });
+
+  const redisClient = createRedisRateLimitClient(
+    redis ?? {
+      port: env.REDIS_PORT,
+      host: env.REDIS_HOST,
+      username: env.REDIS_USERNAME,
+      password: env.REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    }
+  );
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     if (log.requests) {
@@ -206,21 +236,35 @@ export function authorizationRateLimitMiddleware<TLimiter extends LimiterOptions
     hash.update(authorizationValue);
     const hashedAuthorizationValue = hash.digest("hex");
 
-    const limiterOptions = resolveLimiterConfig
-      ? await resolveLimiterConfig(hashedAuthorizationValue, limiter)
-      : { type: limiter.type, ...limiter.defaults };
+    const limiterConfig = await resolveLimitConfig(
+      authorizationValue,
+      hashedAuthorizationValue,
+      defaultLimiter,
+      cache,
+      typeof log.limiter === "boolean" ? log.limiter : false,
+      limiterConfigOverride
+    );
+
+    const limiter =
+      limiterConfig.type === "fixedWindow"
+        ? Ratelimit.fixedWindow(limiterConfig.tokens, limiterConfig.window)
+        : limiterConfig.type === "tokenBucket"
+        ? Ratelimit.tokenBucket(
+            limiterConfig.refillRate,
+            limiterConfig.interval,
+            limiterConfig.maxTokens
+          )
+        : Ratelimit.slidingWindow(limiterConfig.tokens, limiterConfig.window);
 
     const rateLimiter = new RateLimiter({
-      redis,
+      redisClient,
       keyPrefix,
       limiter,
       logSuccess: log.requests,
       logFailure: log.rejections,
     });
 
-    const { success, pending, limit, reset, remaining } = await rateLimiter.limit(
-      hashedAuthorizationValue
-    );
+    const { success, limit, reset, remaining } = await rateLimiter.limit(hashedAuthorizationValue);
 
     const $remaining = Math.max(0, remaining); // remaining can be negative if the user has exceeded the limit, so clamp it to 0
 
@@ -256,13 +300,25 @@ export function authorizationRateLimitMiddleware<TLimiter extends LimiterOptions
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   keyPrefix: "api",
-  limiter: {
+  defaultLimiter: {
     type: "tokenBucket",
     refillRate: env.API_RATE_LIMIT_REFILL_RATE,
     interval: env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
     maxTokens: env.API_RATE_LIMIT_MAX,
   },
-  resolveLimiterConfig: async (authorizationValue, options) => {},
+  limiterCache: {
+    fresh: 60_000 * 10, // Data is fresh for 10 minutes
+    stale: 60_000 * 20, // Date is stale after 20 minutes
+  },
+  limiterConfigOverride: async (authorizationValue) => {
+    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue);
+
+    if (!authenticatedEnv) {
+      return;
+    }
+
+    return authenticatedEnv.environment.organization.apiRateLimiterConfig;
+  },
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
@@ -282,6 +338,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
+    limiter: env.API_RATE_LIMIT_LIMITER_LOGS_ENABLED === "1",
   },
 });
 

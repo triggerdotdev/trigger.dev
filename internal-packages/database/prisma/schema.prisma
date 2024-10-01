@@ -138,6 +138,9 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
+  apiRateLimiterConfig      Json?
+  realtimeRateLimiterConfig Json?
+
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]

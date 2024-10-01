@@ -3,7 +3,6 @@ import type { Entry, Store } from "@unkey/cache/stores";
 import type { RedisOptions } from "ioredis";
 import { Redis } from "ioredis";
 import { CacheError } from "@unkey/cache";
-import superjson from "superjson";
 
 export type RedisCacheStoreConfig = {
   connection: RedisOptions;
@@ -45,6 +44,7 @@ export class RedisCacheStore<TNamespace extends string, TValue = any>
     }
 
     try {
+      const superjson = await import("superjson");
       const entry = superjson.parse(raw) as Entry<TValue>;
       return Ok(entry);
     } catch (err) {
@@ -65,6 +65,7 @@ export class RedisCacheStore<TNamespace extends string, TValue = any>
   ): Promise<Result<void, CacheError>> {
     const cacheKey = this.buildCacheKey(namespace, key);
     try {
+      const superjson = await import("superjson");
       await this.redis.set(cacheKey, superjson.stringify(entry), "PXAT", entry.staleUntil);
       return Ok();
     } catch (err) {
