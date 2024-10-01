@@ -5,13 +5,91 @@ import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
 import { Duration, Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
+import { DefaultStatefulContext, Namespace, createCache } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
+import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { Prettify } from "@trigger.dev/core/v3";
 
-type Options = {
+type WindowConfig = {
+  /**
+   * The interval for the window
+   */
+  interval: Duration;
+  /**
+   * Maximum number of requests allowed in the window
+   */
+  maxRequests: number;
+};
+
+type LimiterOptions =
+  | {
+      type: "tokenBucket";
+      /**
+       * How many tokens are refilled per `interval`
+       *
+       * An interval of `10s` and refillRate of 5 will cause a new token to be added every 2 seconds.
+       */
+      refillRate: number;
+      /**
+       * The interval for the `refillRate`
+       */
+      interval: Duration;
+      /**
+       * Maximum number of tokens.
+       * A newly created bucket starts with this many tokens.
+       * Useful to allow higher burst limits.
+       */
+      maxTokens: number;
+    }
+  | {
+      type: "leakyBucket";
+      /**
+       * How many tokens are refilled per `interval`
+       *
+       * An interval of `10s` and refillRate of 5 will cause a new token to be added every 2 seconds.
+       */
+      refillRate: number;
+      /**
+       * The interval for the `refillRate`
+       */
+      interval: Duration;
+      /**
+       * Maximum number of tokens.
+       * A newly created bucket starts with this many tokens.
+       * Useful to allow higher burst limits.
+       */
+      maxTokens: number;
+    }
+  | {
+      type: "fixedWindow";
+      /**
+       * The interval for the window
+       */
+      interval: Duration;
+      /**
+       * Maximum number of requests allowed in the window
+       */
+      maxRequests: number;
+    };
+
+type TransformUnionToObject<T extends { type: string }> = {
+  [K in T["type"]]: Extract<T, { type: K }> extends { type: K } & infer R
+    ? Prettify<Omit<R, "type">>
+    : never;
+};
+
+type TransformedLimiterOptions = TransformUnionToObject<LimiterOptions>;
+
+type Options<TLimiter extends LimiterOptions> = {
   redis?: RedisOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
-  limiter: Limiter;
+  limiter: TLimiter;
+  resolveLimiterConfig?: (
+    authorizationValue: string,
+    options: TLimiter
+  ) => Promise<TransformedLimiterOptions[TLimiter["type"]]>;
   log?: {
     requests?: boolean;
     rejections?: boolean;
@@ -19,7 +97,7 @@ type Options = {
 };
 
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header
-export function authorizationRateLimitMiddleware({
+export function authorizationRateLimitMiddleware<TLimiter extends LimiterOptions>({
   redis,
   keyPrefix,
   limiter,
@@ -29,13 +107,39 @@ export function authorizationRateLimitMiddleware({
     rejections: true,
     requests: true,
   },
-}: Options) {
-  const rateLimiter = new RateLimiter({
-    redis,
-    keyPrefix,
-    limiter,
-    logSuccess: log.requests,
-    logFailure: log.rejections,
+  resolveLimiterConfig,
+}: Options<TLimiter>) {
+  const ctx = new DefaultStatefulContext();
+  const memory = new MemoryStore({ persistentMap: new Map() });
+  const redisCacheStore = new RedisCacheStore({
+    connection: {
+      keyPrefix: `${keyPrefix}:rate-limit-cache:`,
+      ...redis,
+    },
+  });
+
+  const tokenBucketNamespace = new Namespace<TransformedLimiterOptions["tokenBucket"]>(ctx, {
+    stores: [memory, redisCacheStore],
+    fresh: 30_000,
+    stale: 60_000,
+  });
+
+  const leakyBucketNamespace = new Namespace<TransformedLimiterOptions["leakyBucket"]>(ctx, {
+    stores: [memory, redisCacheStore],
+    fresh: 30_000,
+    stale: 60_000,
+  });
+
+  const fixedWindowNamespace = new Namespace<TransformedLimiterOptions["fixedWindow"]>(ctx, {
+    stores: [memory, redisCacheStore],
+    fresh: 30_000,
+    stale: 60_000,
+  });
+
+  const cache = createCache({
+    tokenBucket: tokenBucketNamespace,
+    leakyBucket: leakyBucketNamespace,
+    fixedWindow: fixedWindowNamespace,
   });
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
@@ -102,6 +206,18 @@ export function authorizationRateLimitMiddleware({
     hash.update(authorizationValue);
     const hashedAuthorizationValue = hash.digest("hex");
 
+    const limiterOptions = resolveLimiterConfig
+      ? await resolveLimiterConfig(hashedAuthorizationValue, limiter)
+      : { type: limiter.type, ...limiter.defaults };
+
+    const rateLimiter = new RateLimiter({
+      redis,
+      keyPrefix,
+      limiter,
+      logSuccess: log.requests,
+      logFailure: log.rejections,
+    });
+
     const { success, pending, limit, reset, remaining } = await rateLimiter.limit(
       hashedAuthorizationValue
     );
@@ -140,11 +256,13 @@ export function authorizationRateLimitMiddleware({
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   keyPrefix: "api",
-  limiter: Ratelimit.tokenBucket(
-    env.API_RATE_LIMIT_REFILL_RATE,
-    env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
-    env.API_RATE_LIMIT_MAX
-  ),
+  limiter: {
+    type: "tokenBucket",
+    refillRate: env.API_RATE_LIMIT_REFILL_RATE,
+    interval: env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
+    maxTokens: env.API_RATE_LIMIT_MAX,
+  },
+  resolveLimiterConfig: async (authorizationValue, options) => {},
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
