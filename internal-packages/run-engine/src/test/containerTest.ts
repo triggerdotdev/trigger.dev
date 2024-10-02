@@ -1,8 +1,8 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
-import { PrismaClient } from "../../../database/src";
 import { Redis } from "ioredis";
-import { test, TestAPI } from "vitest";
+import { test } from "vitest";
+import { PrismaClient } from "../../../database/src";
 import { createPostgresContainer, createRedisContainer } from "./utils";
 
 type PostgresContext = {
@@ -65,3 +65,46 @@ export const containerTest = test.extend<ContainerContext>({
   redisContainer,
   redis,
 });
+
+export function createContainerWithSetup(setup: (prisma: PrismaClient) => Promise<void>) {
+  return containerTest.extend<{}>({
+    prisma: async ({ prisma }: ContainerContext, use: (prisma: PrismaClient) => Promise<void>) => {
+      await setup(prisma);
+      await use(prisma);
+    },
+  });
+}
+
+async function setupTestDatabase(prisma: PrismaClient): Promise<void> {
+  // Your database setup logic here
+  const org = await prisma.organization.create({
+    data: {
+      title: "Test Organization",
+      slug: "test-organization",
+    },
+  });
+
+  const project = await prisma.project.create({
+    data: {
+      name: "Test Project",
+      slug: "test-project",
+      externalRef: "proj_1234",
+      organizationId: org.id,
+    },
+  });
+
+  const environment = await prisma.runtimeEnvironment.create({
+    data: {
+      type: "PRODUCTION",
+      slug: "prod",
+      projectId: project.id,
+      organizationId: org.id,
+      apiKey: "api_key",
+      pkApiKey: "pk_api_key",
+      shortcode: "short_code",
+    },
+  });
+}
+
+export const containerTestWithAuthenticatedEnvironment =
+  createContainerWithSetup(setupTestDatabase);
