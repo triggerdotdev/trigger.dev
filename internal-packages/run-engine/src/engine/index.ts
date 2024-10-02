@@ -79,7 +79,7 @@ export class RunEngine {
   private redis: Redis;
   private prisma: PrismaClient;
   private redlock: Redlock;
-  private runQueue: RunQueue;
+  runQueue: RunQueue;
   private zodWorker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
 
@@ -172,7 +172,6 @@ export class RunEngine {
       metadataType,
       seedMetadata,
       seedMetadataType,
-      
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ) {

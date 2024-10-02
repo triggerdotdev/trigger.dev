@@ -46,6 +46,26 @@ describe("RunEngine", () => {
 
       expect(run).toBeDefined();
       expect(run.friendlyId).toBe("run_1234");
+
+      //check the waitpoint is created
+      const runWaitpoint = await prisma.waitpoint.findMany({
+        where: {
+          completedByTaskRunId: run.id,
+        },
+      });
+      expect(runWaitpoint.length).toBe(1);
+      expect(runWaitpoint[0].type).toBe("RUN");
+
+      //check the queue length
+      const queueLength = await engine.runQueue.lengthOfQueue(authenticatedEnvironment, run.queue);
+      expect(queueLength).toBe(1);
+
+      //dequeue the run
+      const dequeued = await engine.runQueue.dequeueMessageInSharedQueue(
+        "test_12345",
+        run.masterQueue
+      );
+      expect(dequeued?.messageId).toBe(run.id);
     }
   );
 });
