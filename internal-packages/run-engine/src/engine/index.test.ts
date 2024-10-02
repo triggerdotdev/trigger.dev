@@ -5,7 +5,7 @@ import { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 
 describe("RunEngine", () => {
   containerTest(
-    "Trigger a run",
+    "Trigger a simple run",
     { timeout: 15_000 },
     async ({ postgresContainer, prisma, redisContainer }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -47,6 +47,15 @@ describe("RunEngine", () => {
       expect(run).toBeDefined();
       expect(run.friendlyId).toBe("run_1234");
 
+      //check it's actually in the db
+      const runFromDb = await prisma.taskRun.findUnique({
+        where: {
+          friendlyId: "run_1234",
+        },
+      });
+      expect(runFromDb).toBeDefined();
+      expect(runFromDb?.id).toBe(run.id);
+
       //check the waitpoint is created
       const runWaitpoint = await prisma.waitpoint.findMany({
         where: {
@@ -60,14 +69,41 @@ describe("RunEngine", () => {
       const queueLength = await engine.runQueue.lengthOfQueue(authenticatedEnvironment, run.queue);
       expect(queueLength).toBe(1);
 
+      //concurrency before
+      const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+      expect(envConcurrencyBefore).toBe(0);
+
       //dequeue the run
       const dequeued = await engine.runQueue.dequeueMessageInSharedQueue(
         "test_12345",
         run.masterQueue
       );
       expect(dequeued?.messageId).toBe(run.id);
+
+      const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+      expect(envConcurrencyAfter).toBe(1);
     }
   );
+
+  //todo triggerAndWait
+
+  //todo batchTriggerAndWait
+
+  //todo checkpoints
+
+  //todo heartbeats
+
+  //todo failing a run
+
+  //todo cancelling a run
+
+  //todo expiring a run
+
+  //todo delaying a run
 });
 
 async function setupAuthenticatedEnvironment(prisma: PrismaClient, type: RuntimeEnvironmentType) {
@@ -97,6 +133,7 @@ async function setupAuthenticatedEnvironment(prisma: PrismaClient, type: Runtime
       apiKey: "api_key",
       pkApiKey: "pk_api_key",
       shortcode: "short_code",
+      maximumConcurrencyLimit: 10,
     },
   });
 

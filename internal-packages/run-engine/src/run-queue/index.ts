@@ -200,65 +200,6 @@ export class RunQueue {
     );
   }
 
-  public async dequeueMessageInEnv(env: MinimalAuthenticatedEnvironment, masterQueue: string) {
-    return this.#trace(
-      "dequeueMessageInEnv",
-      async (span) => {
-        // Read the parent queue for matching queues
-        const messageQueue = await this.#getRandomQueueFromParentQueue(
-          masterQueue,
-          this.options.envQueuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: false }),
-          env.id
-        );
-
-        if (!messageQueue) {
-          this.logger.debug("No message queue found", {
-            masterQueue,
-          });
-
-          return;
-        }
-
-        const message = await this.#callDequeueMessage({
-          messageQueue,
-          masterQueue,
-          concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
-          currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
-          envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
-          envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
-          projectCurrentConcurrencyKey:
-            this.keys.projectCurrentConcurrencyKeyFromQueue(messageQueue),
-          messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
-          taskCurrentConcurrentKeyPrefix:
-            this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
-        });
-
-        if (!message) {
-          return;
-        }
-
-        span.setAttributes({
-          [SEMATTRS_MESSAGE_ID]: message.messageId,
-          [SemanticAttributes.QUEUE]: message.message.queue,
-          [SemanticAttributes.RUN_ID]: message.message.runId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
-        });
-
-        return message;
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          ...attributesFromAuthenticatedEnv(env),
-        },
-      }
-    );
-  }
-
   public async getSharedQueueDetails(masterQueue: string) {
     const { range } = await this.queuePriorityStrategy.nextCandidateSelection(
       masterQueue,
