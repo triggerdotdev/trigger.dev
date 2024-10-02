@@ -2,7 +2,7 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { EnvelopeIcon, LightBulbIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import { type FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
@@ -33,24 +33,26 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
 
   const [form, { path, feedbackType, message }] = useForm({
     id: "accept-invite",
-    // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
       return parse(formData, { schema });
     },
+    shouldRevalidate: "onInput",
   });
 
-  if (
-    open &&
-    navigation.formAction === "/resources/feedback" &&
-    form.error === undefined &&
-    form.errors.length === 0
-  ) {
-    setOpen(false);
-  }
+  useEffect(() => {
+    if (
+      navigation.formAction === "/resources/feedback" &&
+      navigation.state === "loading" &&
+      form.error === undefined &&
+      form.errors.length === 0
+    ) {
+      setOpen(false);
+    }
+  }, [navigation, form]);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{button}</DialogTrigger>
       <DialogContent>
         <DialogHeader>Contact us</DialogHeader>
