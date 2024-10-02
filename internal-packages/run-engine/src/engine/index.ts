@@ -135,7 +135,7 @@ export class RunEngine {
 
   //MARK: - Run functions
 
-  /** "Triggers" one run, which creates the run
+  /** "Triggers" one run.
    */
   async trigger(
     {
@@ -177,10 +177,12 @@ export class RunEngine {
   ) {
     const prisma = tx ?? this.prisma;
 
+    const status = delayUntil ? "DELAYED" : "PENDING";
+
     //create run
     const taskRun = await prisma.taskRun.create({
       data: {
-        status: delayUntil ? "DELAYED" : "PENDING",
+        status,
         number,
         friendlyId,
         runtimeEnvironmentId: environment.id,
@@ -219,6 +221,14 @@ export class RunEngine {
         metadataType,
         seedMetadata,
         seedMetadataType,
+        executionSnapshot: {
+          create: {
+            engine: "V2",
+            executionStatus: "RUN_CREATED",
+            description: "Run was created",
+            runStatus: status,
+          },
+        },
       },
     });
 
@@ -354,6 +364,13 @@ export class RunEngine {
     });
 
     //todo update the TaskRunExecutionSnapshot
+  }
+
+  async dequeueRun(consumerId: string, masterQueue: string) {
+    const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
+    //todo update the TaskRunExecutionSnapshot
+    //todo update the TaskRun status?
+    return message;
   }
 
   /** We want to actually execute the run, this could be a continuation of a previous execution.
