@@ -71,9 +71,12 @@ export const taskWithSpecialCharacters = task({
 
 export const createJsonHeroDoc = task({
   id: "create-jsonhero-doc",
+  queue: {
+    concurrencyLimit: 1,
+  },
   run: async (payload: { title: string; content: any }, { ctx }) => {
     // Sleep for 5 seconds
-    await wait.for({ seconds: 5 });
+    await wait.for({ seconds: 30 });
 
     const response = await fetch("https://jsonhero.io/api/create.json", {
       method: "POST",

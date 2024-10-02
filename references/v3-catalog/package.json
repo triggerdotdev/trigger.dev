@@ -11,7 +11,7 @@
     "management": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/management.ts",
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
-    "client": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/clientUsage.ts",
+    "client": "tsx -r dotenv/config ./src/clientUsage.ts",
     "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
     "generate:prisma": "prisma generate --sql"
   },

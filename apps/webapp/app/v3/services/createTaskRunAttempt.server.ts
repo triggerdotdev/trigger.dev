@@ -1,15 +1,15 @@
 import { parsePacket, TaskRunExecution } from "@trigger.dev/core/v3";
-import { $transaction, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
+import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { BaseService, ServiceValidationError } from "./baseService.server";
-import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
-import { machinePresetFromConfig } from "../machinePresets.server";
-import { workerQueue } from "~/services/worker.server";
-import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
-import { CrashTaskRunService } from "./crashTaskRun.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
+import { generateFriendlyId } from "../friendlyIdentifiers";
+import { machinePresetFromConfig } from "../machinePresets.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
+import { CrashTaskRunService } from "./crashTaskRun.server";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call(
@@ -139,6 +139,10 @@ export class CreateTaskRunAttemptService extends BaseService {
               status: "EXECUTING",
             },
           });
+
+          if (taskRun.ttl) {
+            await ExpireEnqueuedRunService.dequeue(taskRun.id, tx);
+          }
         }
 
         return taskRunAttempt;

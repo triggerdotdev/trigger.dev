@@ -7,6 +7,7 @@ import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, type FINAL_RUN_STATUSES } fr
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 type BaseInput = {
   id: string;
@@ -61,6 +62,10 @@ export class FinalizeTaskRunService extends BaseService {
       data: { status, expiredAt, completedAt },
       ...(include ? { include } : {}),
     });
+
+    if (run.ttl) {
+      await ExpireEnqueuedRunService.dequeue(run.id);
+    }
 
     if (attemptStatus || error) {
       await this.finalizeAttempt({ attemptStatus, error, run });
