@@ -147,11 +147,13 @@ describe("RunQueue", () => {
         const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(oldestScore).toBe(undefined);
 
+        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
+
         //enqueue message
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueue: "test_12345",
+          masterQueue: `env:${authenticatedEnvDev.id}`,
         });
 
         //queue length
@@ -181,11 +183,11 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency).toBe(0);
 
-        const dequeued = await queue.dequeueMessageInEnv(authenticatedEnvDev, "test_12345");
+        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345", envMasterQueue);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueue).toEqual("test_12345");
+        expect(dequeued?.message.masterQueue).toEqual(envMasterQueue);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -203,7 +205,7 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
-        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev, "test_12345");
+        const dequeued2 = await queue.dequeueMessageInSharedQueue("test_12345", envMasterQueue);
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
@@ -293,7 +295,7 @@ describe("RunQueue", () => {
         const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(length2).toBe(0);
 
-        const dequeued2 = await queue.dequeueMessageInEnv(authenticatedEnvDev, "main");
+        const dequeued2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
