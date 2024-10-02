@@ -85,16 +85,20 @@ export class ResumeTaskDependencyService extends BaseService {
         return;
       }
 
-      await marqs?.replaceMessage(dependentRun.id, {
-        type: "RESUME",
-        completedAttemptIds: [sourceTaskAttemptId],
-        resumableAttemptId: dependency.dependentAttempt.id,
-        checkpointEventId: dependency.checkpointEventId ?? undefined,
-        taskIdentifier: dependency.taskRun.taskIdentifier,
-        projectId: dependency.taskRun.runtimeEnvironment.projectId,
-        environmentId: dependency.taskRun.runtimeEnvironment.id,
-        environmentType: dependency.taskRun.runtimeEnvironment.type,
-      });
+      await marqs?.replaceMessage(
+        dependentRun.id,
+        {
+          type: "RESUME",
+          completedAttemptIds: [sourceTaskAttemptId],
+          resumableAttemptId: dependency.dependentAttempt.id,
+          checkpointEventId: dependency.checkpointEventId ?? undefined,
+          taskIdentifier: dependency.taskRun.taskIdentifier,
+          projectId: dependency.taskRun.runtimeEnvironment.projectId,
+          environmentId: dependency.taskRun.runtimeEnvironment.id,
+          environmentType: dependency.taskRun.runtimeEnvironment.type,
+        },
+        dependentRun.createdAt.getTime()
+      );
     }
   }
 
