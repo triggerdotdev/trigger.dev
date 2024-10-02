@@ -69,6 +69,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         friendlyId: true,
         isTest: true,
+        maxDurationInSeconds: true,
         tags: {
           select: {
             name: true,
@@ -229,6 +230,7 @@ export class SpanPresenter extends BasePresenter {
         baseCostInCents: run.baseCostInCents,
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.lockedToVersion?.version,
+        maxDuration: run.maxDurationInSeconds ?? undefined,
       },
       queue: {
         name: run.queue,
@@ -307,6 +309,7 @@ export class SpanPresenter extends BasePresenter {
       },
       context: JSON.stringify(context, null, 2),
       metadata,
+      maxDurationInSeconds: run.maxDurationInSeconds,
     };
   }
 

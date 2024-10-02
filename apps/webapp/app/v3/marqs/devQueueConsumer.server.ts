@@ -378,6 +378,8 @@ export class DevQueueConsumer {
         status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
         startedAt: existingTaskRun.startedAt ?? new Date(),
+        maxDurationInSeconds:
+          existingTaskRun.maxDurationInSeconds ?? backgroundTask.maxDurationInSeconds,
       },
       include: {
         attempts: {

@@ -119,6 +119,7 @@ export function batchTaskRunItemStatusForRunStatus(
     case TaskRunStatus.SYSTEM_FAILURE:
     case TaskRunStatus.CRASHED:
     case TaskRunStatus.EXPIRED:
+    case TaskRunStatus.TIMED_OUT:
       return BatchTaskRunItemStatus.FAILED;
     case TaskRunStatus.PENDING:
     case TaskRunStatus.WAITING_FOR_DEPLOY:

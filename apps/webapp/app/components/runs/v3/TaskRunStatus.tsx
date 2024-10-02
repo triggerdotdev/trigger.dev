@@ -8,6 +8,7 @@ import {
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
+  StopIcon,
   TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
@@ -65,6 +66,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
   EXPIRED: "Task has surpassed its ttl and won't be executed",
+  TIMED_OUT: "Task has reached it's maxDuration and has been stopped",
 };
 
 export const QUEUED_STATUSES = [
@@ -140,6 +142,8 @@ export function TaskRunStatusIcon({
       return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXPIRED":
       return <TrashIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "TIMED_OUT":
+      return <StopIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       assertNever(status);
@@ -173,6 +177,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "SYSTEM_FAILURE":
       return "text-error";
     case "CRASHED":
+      return "text-error";
+    case "TIMED_OUT":
       return "text-error";
     default: {
       assertNever(status);
@@ -210,6 +216,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "Crashed";
     case "EXPIRED":
       return "Expired";
+    case "TIMED_OUT":
+      return "Timed out";
     default: {
       assertNever(status);
     }

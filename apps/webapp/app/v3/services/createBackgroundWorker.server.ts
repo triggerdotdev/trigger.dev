@@ -156,6 +156,7 @@ export async function createBackgroundTasks(
           machineConfig: task.machine,
           triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
           fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
+          maxDurationInSeconds: task.maxDuration ? Math.max(task.maxDuration, 5) : null,
         },
       });
 

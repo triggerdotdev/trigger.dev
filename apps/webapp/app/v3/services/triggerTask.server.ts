@@ -373,6 +373,9 @@ export class TriggerTaskService extends BaseService {
                   metadataType: metadataPacket?.dataType,
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
+                  maxDurationInSeconds: body.options?.maxDuration
+                    ? Math.max(body.options.maxDuration, 5)
+                    : undefined,
                 },
               });
 
