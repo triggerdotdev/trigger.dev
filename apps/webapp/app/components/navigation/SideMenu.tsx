@@ -328,7 +328,7 @@ function HelpAndFeedback() {
             />
           </div>
           <div className="flex flex-col gap-1 p-1">
-            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Get in touch</Paragraph>
+            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Need help?</Paragraph>
             {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
               <div>
                 <Dialog>
@@ -383,7 +383,7 @@ function HelpAndFeedback() {
               </div>
             )}
             <SideMenuItem
-              name="Join our Discord"
+              name="Ask in our Discord"
               icon={DiscordIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
