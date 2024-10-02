@@ -1,21 +1,93 @@
 import { expect } from "vitest";
-import { postgresTest, redisTest } from "../test/containerTest.js";
+import { containerTest } from "../test/containerTest.js";
+import { RunEngine } from "./index.js";
+import { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 
-postgresTest("Prisma create user", { timeout: 15_000 }, async ({ prisma }) => {
-  await prisma.user.create({
+describe("RunEngine", () => {
+  containerTest(
+    "Trigger a run",
+    { timeout: 15_000 },
+    async ({ postgresContainer, prisma, redisContainer }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        zodWorker: {
+          connectionString: postgresContainer.getConnectionUri(),
+          shutdownTimeoutInMs: 100,
+        },
+      });
+
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier: "test-task",
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queueName: "task/test-task",
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      expect(run).toBeDefined();
+      expect(run.friendlyId).toBe("run_1234");
+    }
+  );
+});
+
+async function setupAuthenticatedEnvironment(prisma: PrismaClient, type: RuntimeEnvironmentType) {
+  // Your database setup logic here
+  const org = await prisma.organization.create({
     data: {
-      authenticationMethod: "MAGIC_LINK",
-      email: "test@example.com",
+      title: "Test Organization",
+      slug: "test-organization",
     },
   });
 
-  const result = await prisma.user.findMany();
-  expect(result.length).toEqual(1);
-  expect(result[0].email).toEqual("test@example.com");
-});
+  const project = await prisma.project.create({
+    data: {
+      name: "Test Project",
+      slug: "test-project",
+      externalRef: "proj_1234",
+      organizationId: org.id,
+    },
+  });
 
-redisTest("Set/get values", async ({ redis }) => {
-  await redis.set("mykey", "value");
-  const value = await redis.get("mykey");
-  expect(value).toEqual("value");
-});
+  const environment = await prisma.runtimeEnvironment.create({
+    data: {
+      type,
+      slug: "slug",
+      projectId: project.id,
+      organizationId: org.id,
+      apiKey: "api_key",
+      pkApiKey: "pk_api_key",
+      shortcode: "short_code",
+    },
+  });
+
+  return await prisma.runtimeEnvironment.findUniqueOrThrow({
+    where: {
+      id: environment.id,
+    },
+    include: {
+      project: true,
+      organization: true,
+      orgMember: true,
+    },
+  });
+}
