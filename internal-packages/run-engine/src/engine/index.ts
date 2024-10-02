@@ -5,6 +5,7 @@ import { QueueOptions } from "@trigger.dev/core/v3";
 import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
+  Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
@@ -55,13 +56,12 @@ type TriggerParams = {
   parentTaskRunAttemptId?: string;
   rootTaskRunId?: string;
   batchId?: string;
-  resumeParentOnCompletion: boolean;
-  depth: number;
+  resumeParentOnCompletion?: boolean;
+  depth?: number;
   metadata?: string;
   metadataType?: string;
   seedMetadata?: string;
   seedMetadataType?: string;
-  isWait: boolean;
 };
 
 const schema = {
@@ -81,6 +81,7 @@ export class RunEngine {
   private redlock: Redlock;
   private runQueue: RunQueue;
   private zodWorker: EngineWorker;
+  private logger = new Logger("RunEngine", "debug");
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
@@ -118,7 +119,7 @@ export class RunEngine {
           priority: 0,
           maxAttempts: 10,
           handler: async (payload, job) => {
-            await this.#completeWaitpoint(this.prisma, payload.waitpointId);
+            await this.#completeWaitpoint(payload.waitpointId);
           },
         },
         "runengine.expireRun": {
@@ -171,7 +172,7 @@ export class RunEngine {
       metadataType,
       seedMetadata,
       seedMetadataType,
-      isWait,
+      
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ) {
@@ -223,13 +224,19 @@ export class RunEngine {
     });
 
     await this.redlock.using([taskRun.id], 5000, async (signal) => {
+      //todo add this in some places throughout this code
+      if (signal.aborted) {
+        throw signal.error;
+      }
+
       //create associated waitpoint (this completes when the run completes)
       const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
         projectId: environment.project.id,
         completedByTaskRunId: taskRun.id,
       });
 
-      if (isWait && parentTaskRunId) {
+      //triggerAndWait or batchTriggerAndWait
+      if (resumeParentOnCompletion && parentTaskRunId) {
         //this will block the parent run from continuing until this waitpoint is completed (and removed)
         await this.#blockRunWithWaitpoint(prisma, {
           orgId: environment.organization.id,
@@ -410,7 +417,11 @@ export class RunEngine {
   ) {
     //todo it would be better if we didn't remove from the queue, because this removes the payload
     //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
-    await this.runQueue.acknowledgeMessage(orgId, runId);
+    //todo
+    // await this.runQueue.acknowledgeMessage(orgId, runId);
+
+    //todo release concurrency and make sure the run isn't in the queue
+    // await this.runQueue.blockMessage(orgId, runId);
 
     return tx.taskRunWaitpoint.create({
       data: {
@@ -421,9 +432,10 @@ export class RunEngine {
     });
   }
 
-  /** Any runs blocked by this waitpoint will get continued (if no other waitpoints exist) */
-  async #completeWaitpoint(prisma: PrismaClientOrTransaction, id: string) {
-    const waitpoint = await prisma.waitpoint.findUnique({
+  /** This completes a waitpoint and then continues any runs blocked by the waitpoint,
+   * if they're no longer blocked. This doesn't suffer from race conditions. */
+  async #completeWaitpoint(id: string) {
+    const waitpoint = await this.prisma.waitpoint.findUnique({
       where: { id },
     });
 
@@ -436,59 +448,59 @@ export class RunEngine {
     }
 
     await $transaction(
-      prisma,
+      this.prisma,
       async (tx) => {
-        const blockers = await tx.taskRunWaitpoint.findMany({
+        // 1. Find the TaskRuns associated with this waitpoint
+        const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
+          where: { waitpointId: id },
+          select: { taskRunId: true },
+        });
+
+        if (affectedTaskRuns.length === 0) {
+          throw new Error(`No TaskRunWaitpoints found for waitpoint ${id}`);
+        }
+
+        // 2. Delete the TaskRunWaitpoint entries for this specific waitpoint
+        await tx.taskRunWaitpoint.deleteMany({
           where: { waitpointId: id },
         });
 
-        for (const blocker of blockers) {
-          //remove the waitpoint
-          await tx.taskRunWaitpoint.delete({
-            where: { id: blocker.id },
-          });
-
-          const blockedRun = await tx.taskRun.findFirst({
-            where: { id: blocker.taskRunId },
-            include: {
-              _count: {
-                select: {
-                  blockedByWaitpoints: true,
-                },
-              },
-              runtimeEnvironment: {
-                select: {
-                  id: true,
-                  type: true,
-                  maximumConcurrencyLimit: true,
-                  project: {
-                    select: {
-                      id: true,
-                    },
-                  },
-                  organization: {
-                    select: {
-                      id: true,
-                    },
-                  },
-                },
-              },
-            },
-          });
-
-          if (blockedRun && blockedRun._count.blockedByWaitpoints === 0) {
-            await this.enqueueRun(blockedRun, blockedRun.runtimeEnvironment, tx);
-          }
-        }
-
+        // 3. Update the waitpoint status
         await tx.waitpoint.update({
           where: { id },
           data: { status: "COMPLETED" },
         });
+
+        // 4. Check which of the affected TaskRuns now have no waitpoints
+        const taskRunsToResume = await tx.taskRun.findMany({
+          where: {
+            id: { in: affectedTaskRuns.map((run) => run.taskRunId) },
+            blockedByWaitpoints: { none: {} },
+            status: { in: ["PENDING", "WAITING_TO_RESUME"] },
+          },
+          include: {
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                maximumConcurrencyLimit: true,
+                project: { select: { id: true } },
+                organization: { select: { id: true } },
+              },
+            },
+          },
+        });
+
+        // 5. Continue the runs that have no more waitpoints
+        for (const run of taskRunsToResume) {
+          await this.enqueueRun(run, run.runtimeEnvironment, tx);
+        }
       },
       (error) => {
+        this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
         throw error;
-      }
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
     );
   }
 }

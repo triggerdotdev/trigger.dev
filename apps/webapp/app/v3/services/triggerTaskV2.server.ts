@@ -40,6 +40,7 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
+//todo move this to a singleton somewhere
 const engine = new RunEngine({
   prisma,
   redis: {
@@ -49,6 +50,15 @@ const engine = new RunEngine({
     password: env.REDIS_PASSWORD,
     enableAutoPipelining: true,
     ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+  },
+  zodWorker: {
+    connectionString: env.DATABASE_URL,
+    concurrency: env.WORKER_CONCURRENCY,
+    pollInterval: env.WORKER_POLL_INTERVAL,
+    noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
+    schema: env.WORKER_SCHEMA,
+    maxPoolSize: env.WORKER_CONCURRENCY + 1,
+    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
   },
 });
 
@@ -336,6 +346,8 @@ export class TriggerTaskService extends BaseService {
                   concurrencyKey: body.options?.concurrencyKey,
                   queueName,
                   queue: body.options?.queue,
+                  //todo multiple worker pools support
+                  masterQueue: "main",
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
@@ -352,7 +364,6 @@ export class TriggerTaskService extends BaseService {
                   metadataType: metadataPacket?.dataType,
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
-                  isWait: true,
                 },
                 this._prisma
               );
