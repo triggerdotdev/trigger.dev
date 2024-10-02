@@ -63,7 +63,8 @@ export class ResumeTaskDependencyService extends BaseService {
           environmentId: dependency.taskRun.runtimeEnvironment.id,
           environmentType: dependency.taskRun.runtimeEnvironment.type,
         },
-        dependentRun.concurrencyKey ?? undefined
+        dependentRun.concurrencyKey ?? undefined,
+        dependentRun.createdAt.getTime()
       );
     } else {
       logger.debug("Task dependency resume: Attempt is not paused or there's no checkpoint event", {
