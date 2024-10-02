@@ -14,7 +14,7 @@ export class ExpireEnqueuedRunService extends BaseService {
     return await workerQueue.enqueue(
       "v3.expireRun",
       { runId },
-      { runAt, jobKey: `v3.expireRun:${runId}` }
+      { runAt, jobKey: `v3.expireRun:${runId}`, tx }
     );
   }
 
