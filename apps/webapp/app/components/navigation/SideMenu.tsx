@@ -87,7 +87,6 @@ import {
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
 import { TextLink } from "../primitives/TextLink";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
 
@@ -99,7 +98,7 @@ type SideMenuProps = {
   project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
-  button: ReactNode;
+  button?: ReactNode;
   defaultValue?: FeedbackType;
 };
 
