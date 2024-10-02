@@ -1857,37 +1857,47 @@ enum RunEngineVersion {
 /// It has the required information to transactionally progress a run through states,
 /// and prevent side effects like heartbeats failing a run that has progressed.
 /// It is optimised for performance and is designed to be cleared at some point, 
-/// so there are no foreign key relationships to other models.
+/// so there are no cascading relationships to other models.
 model TaskRunExecutionSnapshot {
   id String @id @default(cuid())
 
+  /// This should never be V1
   engine RunEngineVersion @default(V2)
 
-  runId String
-  run   TaskRun @relation(fields: [runId], references: [id])
+  /// The execution status
+  executionStatus TaskRunExecutionStatus
+  /// For debugging
+  description     String
 
+  /// Run
+  runId     String
+  run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
 
-  currentAttemptId String?
-  currentAttempt   TaskAttempt? @relation(fields: [currentAttemptId], references: [id])
-
+  /// Attempt
+  currentAttemptId     String?
+  currentAttempt       TaskAttempt?       @relation(fields: [currentAttemptId], references: [id])
   currentAttemptStatus TaskAttemptStatus?
 
-  /// When set, we can clear the state
-  completedAt DateTime?
+  /// todo Checkpoint
 
   /// These are only ever appended, so we don't need updatedAt
   createdAt DateTime @default(now())
 
   ///todo machine spec?
 
-  ///worker
-
-  /// For debugging
-  description String
+  ///todo worker
 
   /// Used to get the latest state quickly
   @@index([runId, createdAt(sort: Desc)])
+}
+
+enum TaskRunExecutionStatus {
+  RUN_CREATED
+  DEQUEUED_FOR_EXECUTION
+  EXECUTING
+  BLOCKED_BY_WAITPOINTS
+  FINISHED
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed
