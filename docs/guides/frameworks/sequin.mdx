@@ -9,9 +9,7 @@ icon: "database"
 
 Often, task runs coincide with database changes. For instance, you might want to use a Trigger.dev task to generate an embedding for each post in your database:
 
-<Frame>
-  <img src="/images/sequin-intro.svg" alt="Sequin and Trigger.dev Overview" />
-</Frame>
+<img src="/images/sequin-intro.png" alt="Sequin and Trigger.dev Overview" />
 
 In this guide, you'll learn how to use Sequin to trigger Trigger.dev tasks from database changes.
 
@@ -119,7 +117,7 @@ Start by creating a new Trigger.dev task that takes in a Sequin change event as 
   ```
   </CodeGroup>
 
-  This task takes in a Sequin record event, creates an embedding, and then uppserts the embedding into a `post_embeddings` table.
+  This task takes in a Sequin record event, creates an embedding, and then upserts the embedding into a `post_embeddings` table.
   </Step>
   <Step title="Add the task to your Trigger.dev project">
   Register the `create-embedding-for-post` task to your Trigger.dev cloud project by running the following command:
@@ -184,7 +182,7 @@ This guide covers how to setup an API endpoint using the Next.js App Router. You
   DATABASE_URL=postgresql://
   ```
 
-  The `SEQUIN_WEBHOOK_SECRET` ensures that only Sequin can access your APIendpoint.
+  The `SEQUIN_WEBHOOK_SECRET` ensures that only Sequin can access your API endpoint.
 
   The `TRIGGER_SECRET_KEY` is used to authenticate requests to Trigger.dev and can be found in the **API keys** tab of the Trigger.dev dashboard.
 
@@ -205,7 +203,7 @@ You'll now configure Sequin to send every row in your `posts` table to your Trig
         1. Login to your Sequin account and click the **Add New Database** button.
         2. Enter the connection details for your Postgres database.
         <Info>
-        If you need to connect to a local dev database, flip the **use localhost** switch and follow the instructions to create a tunnel using the [Sequin CLI](/cli).
+        If you need to connect to a local dev database, flip the **use localhost** switch and follow the instructions to create a tunnel using the [Sequin CLI](https://sequinstream.com/docs/cli).
         </Info>
         3. Follow the instructions to create a publication and a replication slot by running two SQL commands in your database:
 
@@ -219,14 +217,14 @@ You'll now configure Sequin to send every row in your `posts` table to your Trig
         Sequin will connect to your database and ensure that it's configured properly.
 
         <Note>
-        If you need step-by-step connection instructions to connect Sequin to your database, check out our [quickstart guide](/quickstart).
+        If you need step-by-step connection instructions to connect Sequin to your database, check out our [quickstart guide](https://sequinstream.com/docs/quickstart).
         </Note>
     </Step>
     <Step title="Tunnel to your local endpoint">
     Now, create a tunnel to your local endpoint so Sequin can deliver change payloads to your local API:
 
     1. In the Sequin console, open the **HTTP Endpoint** tab and click the **Create HTTP Endpoint** button.
-    2. Enter a name for your endpoint (i.e. `local_endpoint`) and flip the **Use localhost** switch. Follow the instructions in the Sequin console to [install the Sequin CLI](/cli), then run:
+    2. Enter a name for your endpoint (i.e. `local_endpoint`) and flip the **Use localhost** switch. Follow the instructions in the Sequin console to [install the Sequin CLI](https://sequinstream.com/docs/cli), then run:
 
       ```bash
       sequin tunnel --ports=3001:local_endpoint
@@ -297,7 +295,7 @@ You'll now configure Sequin to send every row in your `posts` table to your Trig
     ```
     </Step>
     <Step title="Observe the task run in the Trigger.dev dashboard">
-    Finally, in the Trigger.dev dashboard, navigate to the [**Runs**](https://trigger.dev/runs) tab and confirm that the task run completed successfully:
+    Finally, in the [**Trigger.dev dashboard**](https://cloud.trigger.dev/), navigate to the Runs page and confirm that the task run completed successfully:
 
     <Frame>
         <img src="/images/sequin-final-run.png" alt="Task run" />
