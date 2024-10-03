@@ -445,7 +445,7 @@ export const RunStatus = z.enum([
   /// Task has expired and won't be executed
   "EXPIRED",
   /// Task has reached it's maxDuration and has been stopped
-  "TIMED_OUT",
+  "MAX_DURATION_EXCEEDED",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;

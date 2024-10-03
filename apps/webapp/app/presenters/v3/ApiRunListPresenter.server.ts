@@ -310,7 +310,7 @@ export class ApiRunListPresenter extends BasePresenter {
       case "EXPIRED": {
         return "EXPIRED";
       }
-      case "TIMED_OUT": {
+      case "MAX_DURATION_EXCEEDED": {
         return "TIMED_OUT";
       }
       default: {
