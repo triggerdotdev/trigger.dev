@@ -69,7 +69,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
   EXPIRED: "Task has surpassed its ttl and won't be executed",
-  TIMED_OUT: "Task has reached its maxDuration and has been stopped",
+  TIMED_OUT: "Task has failed because it exceeded its maxDuration",
 };
 
 export const QUEUED_STATUSES = [
