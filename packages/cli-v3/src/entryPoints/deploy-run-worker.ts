@@ -338,7 +338,13 @@ const zodIpc = new ZodIpcConnection({
             }
           });
 
-          const { result } = await executor.execute(execution, metadata, traceContext, measurement);
+          const { result } = await executor.execute(
+            execution,
+            metadata,
+            traceContext,
+            measurement,
+            signal
+          );
 
           const usageSample = usage.stop(measurement);
 

@@ -403,6 +403,8 @@ export class SharedQueueConsumer {
             startedAt: existingTaskRun.startedAt ?? new Date(),
             baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
+            maxDurationInSeconds:
+              existingTaskRun.maxDurationInSeconds ?? backgroundTask.maxDurationInSeconds,
           },
           include: {
             runtimeEnvironment: true,
@@ -1067,6 +1069,7 @@ class SharedQueueTasks {
         costInCents: taskRun.costInCents,
         baseCostInCents: taskRun.baseCostInCents,
         metadata,
+        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
       },
       queue: {
         id: queue.friendlyId,
