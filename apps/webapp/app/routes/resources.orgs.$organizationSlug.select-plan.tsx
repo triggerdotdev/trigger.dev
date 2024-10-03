@@ -4,7 +4,7 @@ import {
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Form, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import {
   FreePlanDefinition,
@@ -34,6 +34,12 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { useState } from "react";
+import { XCircleIcon } from "@heroicons/react/24/outline";
+import { DateTime } from "~/components/primitives/DateTime";
+import { Header2 } from "~/components/primitives/Headers";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { TextArea } from "~/components/primitives/TextArea";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -134,6 +140,7 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   showGithubVerificationBadge?: boolean;
+  periodEnd: Date; // Add this line
 };
 
 export function PricingPlans({
@@ -142,6 +149,7 @@ export function PricingPlans({
   organizationSlug,
   hasPromotedPlan,
   showGithubVerificationBadge,
+  periodEnd, // Add this line
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -151,6 +159,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           showGithubVerificationBadge={showGithubVerificationBadge}
+          periodEnd={periodEnd} // Add this line
         />
         <TierHobby
           plan={plans.hobby}
@@ -172,16 +181,19 @@ export function TierFree({
   subscription,
   organizationSlug,
   showGithubVerificationBadge,
+  periodEnd, // Add this line
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
   showGithubVerificationBadge?: boolean;
+  periodEnd: Date; // Add this line
 }) {
   const location = useLocation();
   const navigation = useNavigation();
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const status = subscription?.freeTierStatus ?? "requires_connect";
 
@@ -290,25 +302,99 @@ export function TierFree({
                 </DialogContent>
               </Dialog>
             ) : (
-              <Button
-                variant="tertiary/large"
-                fullWidth
-                className="text-md font-medium"
-                disabled={
-                  isLoading ||
-                  subscription?.plan?.type === plan.type ||
-                  subscription?.canceledAt !== undefined
-                }
-                LeadingIcon={
-                  isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
-                }
-              >
-                {subscription?.plan === undefined
-                  ? "Select plan"
-                  : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-                  ? "Current plan"
-                  : `Downgrade to ${plan.title}`}
-              </Button>
+              <>
+                {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
+                  <>
+                    <Button
+                      variant="tertiary/large"
+                      fullWidth
+                      className="text-md font-medium"
+                      onClick={() => setIsDialogOpen(true)}
+                    >
+                      {`Downgrade to ${plan.title}`}
+                    </Button>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>Cancel plan</DialogHeader>
+                        <div className="mb-2 mt-4 flex items-start gap-3">
+                          <span>
+                            <XCircleIcon className="size-12 text-error" />
+                          </span>
+                          <Paragraph variant="base/bright" className="text-text-bright">
+                            Are you sure you want to cancel? If you do, you will retain your current
+                            plan's features until <DateTime includeTime={false} date={periodEnd} />.
+                          </Paragraph>
+                        </div>
+                        <div>
+                          <input type="hidden" name="type" value="free" />
+                          <input type="hidden" name="callerPath" value={location.pathname} />
+                          <div className="mb-4">
+                            <Header2 className="mb-1">Why are you thinking of canceling?</Header2>
+                            <ul className="space-y-1">
+                              {[
+                                "Subscription or usage costs too expensive",
+                                "Bugs or technical issues",
+                                "No longer need the service",
+                                "Found a better alternative",
+                                "Lacking features I need",
+                              ].map((label, index) => (
+                                <li key={index}>
+                                  <CheckboxWithLabel
+                                    id={`reason-${index + 1}`}
+                                    name="reason"
+                                    value={label}
+                                    variant="simple"
+                                    label={label}
+                                    labelClassName="text-text-dimmed"
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="mb-2">
+                            <Header2 className="mb-1">What can we do to improve?</Header2>
+                            <TextArea id="improvement-suggestions" name="message" />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                            Dismiss
+                          </Button>
+                          <Button
+                            variant="danger/medium"
+                            type="submit"
+                            disabled={isLoading}
+                            LeadingIcon={isLoading ? Spinner : undefined}
+                          >
+                            Confirm downgrade
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                ) : (
+                  <Button
+                    variant="tertiary/large"
+                    fullWidth
+                    className="text-md font-medium"
+                    disabled={
+                      isLoading ||
+                      subscription?.plan?.type === plan.type ||
+                      subscription?.canceledAt !== undefined
+                    }
+                    LeadingIcon={
+                      isLoading && navigation.formData?.get("planCode") === null
+                        ? Spinner
+                        : undefined
+                    }
+                  >
+                    {subscription?.plan === undefined
+                      ? "Select plan"
+                      : subscription.plan.type === "free" ||
+                        (subscription.canceledAt !== undefined && "Current plan")}
+                  </Button>
+                )}
+              </>
             )}
           </div>
           <ul className="flex flex-col gap-2.5">
