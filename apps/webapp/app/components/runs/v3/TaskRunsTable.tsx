@@ -39,9 +39,16 @@ import {
 import { CancelRunDialog } from "./CancelRunDialog";
 import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
-import { TaskRunStatusCombo } from "./TaskRunStatus";
+import {
+  descriptionForTaskRunStatus,
+  filterableTaskRunStatuses,
+  runStatusTitle,
+  TaskRunStatusCombo,
+  TaskRunStatusIcon,
+} from "./TaskRunStatus";
 import { RunTag } from "./RunTag";
 import { Badge } from "~/components/primitives/Badge";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 type RunsTableProps = {
   total: number;
@@ -126,7 +133,24 @@ export function TaskRunsTable({
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex max-w-xs flex-col gap-3 p-1">
+                {filterableTaskRunStatuses.map((status) => (
+                  <div>
+                    <div className="mb-0.5 flex items-center gap-1.5">
+                      <TaskRunStatusCombo status={status} />
+                    </div>
+                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                      {descriptionForTaskRunStatus(status)}
+                    </Paragraph>
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            Status
+          </TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell
             colSpan={3}
@@ -287,7 +311,10 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
-                  <TaskRunStatusCombo status={run.status} />
+                  <SimpleTooltip
+                    content={descriptionForTaskRunStatus(run.status)}
+                    button={<TaskRunStatusCombo status={run.status} />}
+                  />
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}

@@ -45,10 +45,18 @@ export const childTask = task({
 
 export const maxDurationTask = task({
   id: "max-duration",
-  run: async (payload: { sleepFor: number }, { signal }) => {
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 1_000,
+    maxTimeoutInMs: 2_000,
+    factor: 1.4,
+  },
+  run: async (payload: { sleepFor: number }, { signal, ctx }) => {
     await setTimeout(payload.sleepFor * 1000, { signal });
 
-    return usage.getCurrent();
+    if (ctx.attempt.number < 5) {
+      throw new Error("Example error");
+    }
   },
 });
 
