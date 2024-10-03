@@ -4,8 +4,11 @@ import {
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
   FreePlanDefinition,
   Limits,
@@ -14,11 +17,14 @@ import {
   SetPlanBody,
   SubscriptionResult,
 } from "@trigger.dev/platform/v3";
-import { GitHubLightIcon } from "@trigger.dev/companyicons";
+import { useState } from "react";
+import { inspect } from "util";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
 import { Feedback } from "~/components/Feedback";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
@@ -26,20 +32,18 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TextArea } from "~/components/primitives/TextArea";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { useState } from "react";
-import { XCircleIcon } from "@heroicons/react/24/outline";
-import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { TextArea } from "~/components/primitives/TextArea";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -49,6 +53,8 @@ const schema = z.object({
   type: z.enum(["free", "paid"]),
   planCode: z.string().optional(),
   callerPath: z.string(),
+  reason: z.string().optional(),
+  message: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -58,10 +64,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { organizationSlug } = Params.parse(params);
 
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
 
-  const formData = Object.fromEntries(await request.formData());
-  const form = schema.parse(formData);
+  const formData = await request.formData();
+  const form = schema.parse(Object.fromEntries(formData));
 
   const organization = await prisma.organization.findUnique({
     where: { slug: organizationSlug },
@@ -75,9 +81,111 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (form.type) {
     case "free": {
+      try {
+        if (!env.PLAIN_API_KEY) {
+          console.error("PLAIN_API_KEY is not set");
+          throw new Error("PLAIN_API_KEY is not set");
+        }
+
+        const client = new PlainClient({
+          apiKey: env.PLAIN_API_KEY,
+        });
+
+        const upsertCustomerRes = await client.upsertCustomer({
+          identifier: {
+            emailAddress: user.email,
+          },
+          onCreate: {
+            externalId: user.id,
+            fullName: user.name ?? "",
+            email: {
+              email: user.email,
+              isVerified: true,
+            },
+          },
+          onUpdate: {
+            externalId: { value: user.id },
+            fullName: { value: user.name ?? "" },
+            email: {
+              email: user.email,
+              isVerified: true,
+            },
+          },
+        });
+
+        if (upsertCustomerRes.error) {
+          console.error(
+            inspect(upsertCustomerRes.error, {
+              showHidden: false,
+              depth: null,
+              colors: true,
+            })
+          );
+          throw new Error(upsertCustomerRes.error.message);
+        }
+
+        const formData = await request.formData();
+        const reasons = formData.getAll("reason") as string[];
+        const message = formData.get("message") as string | null;
+
+        // Only create a thread if there are reasons or a message
+        if (reasons.length > 0 || message) {
+          const createThreadRes = await client.createThread({
+            customerIdentifier: {
+              customerId: upsertCustomerRes.data.customer.id,
+            },
+            title: "Plan cancelation feedback",
+            components: [
+              uiComponent.text({
+                text: `${user.name} (${user.email}) just canceled their plan.`,
+              }),
+              uiComponent.divider({ spacingSize: "M" }),
+              ...(reasons.length > 0
+                ? [
+                    uiComponent.spacer({ size: "L" }),
+                    uiComponent.text({
+                      size: "S",
+                      color: "ERROR",
+                      text: "Reasons:",
+                    }),
+                    uiComponent.text({
+                      text: reasons.join(", "),
+                    }),
+                  ]
+                : []),
+              ...(message
+                ? [
+                    uiComponent.spacer({ size: "L" }),
+                    uiComponent.text({
+                      size: "S",
+                      color: "ERROR",
+                      text: "Comment:",
+                    }),
+                    uiComponent.text({
+                      text: message,
+                    }),
+                  ]
+                : []),
+            ],
+          });
+
+          if (createThreadRes.error) {
+            console.error(
+              inspect(createThreadRes.error, {
+                showHidden: false,
+                depth: null,
+                colors: true,
+              })
+            );
+            throw new Error(createThreadRes.error.message);
+          }
+        }
+      } catch (e) {
+        logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
+      }
       payload = {
         type: "free" as const,
-        userId,
+        userId: user.id,
       };
       break;
     }
@@ -88,7 +196,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       payload = {
         type: "paid" as const,
         planCode: form.planCode,
-        userId,
+        userId: user.id,
       };
       break;
     }
@@ -140,7 +248,7 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   showGithubVerificationBadge?: boolean;
-  periodEnd: Date; // Add this line
+  periodEnd: Date;
 };
 
 export function PricingPlans({
@@ -149,7 +257,7 @@ export function PricingPlans({
   organizationSlug,
   hasPromotedPlan,
   showGithubVerificationBadge,
-  periodEnd, // Add this line
+  periodEnd,
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -159,7 +267,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           showGithubVerificationBadge={showGithubVerificationBadge}
-          periodEnd={periodEnd} // Add this line
+          periodEnd={periodEnd}
         />
         <TierHobby
           plan={plans.hobby}
@@ -181,13 +289,13 @@ export function TierFree({
   subscription,
   organizationSlug,
   showGithubVerificationBadge,
-  periodEnd, // Add this line
+  periodEnd,
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
   showGithubVerificationBadge?: boolean;
-  periodEnd: Date; // Add this line
+  periodEnd: Date;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -304,74 +412,73 @@ export function TierFree({
             ) : (
               <>
                 {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
-                  <>
-                    <Button
-                      variant="tertiary/large"
-                      fullWidth
-                      className="text-md font-medium"
-                      onClick={() => setIsDialogOpen(true)}
-                    >
-                      {`Downgrade to ${plan.title}`}
-                    </Button>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                      <DialogContent className="max-w-md">
-                        <DialogHeader>Cancel plan</DialogHeader>
-                        <div className="mb-2 mt-4 flex items-start gap-3">
-                          <span>
-                            <XCircleIcon className="size-12 text-error" />
-                          </span>
-                          <Paragraph variant="base/bright" className="text-text-bright">
-                            Are you sure you want to cancel? If you do, you will retain your current
-                            plan's features until <DateTime includeTime={false} date={periodEnd} />.
-                          </Paragraph>
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                        {`Downgrade to ${plan.title}`}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>Downgrade plan</DialogHeader>
+                      <div className="mb-2 mt-4 flex items-start gap-3">
+                        <span>
+                          <XCircleIcon className="size-12 text-error" />
+                        </span>
+                        <Paragraph variant="base/bright" className="text-text-bright">
+                          Are you sure you want to downgrade? If you do, you will retain your
+                          current plan's features until{" "}
+                          <DateTime includeTime={false} date={periodEnd} />.
+                        </Paragraph>
+                      </div>
+                      <div>
+                        <input type="hidden" name="type" value="free" />
+                        <input type="hidden" name="callerPath" value={location.pathname} />
+                        <div className="mb-4">
+                          <Header2 className="mb-1">Why are you thinking of canceling?</Header2>
+                          <ul className="space-y-1">
+                            {[
+                              "Subscription or usage costs too expensive",
+                              "Bugs or technical issues",
+                              "No longer need the service",
+                              "Found a better alternative",
+                              "Lacking features I need",
+                            ].map((label, index) => (
+                              <li key={index}>
+                                <CheckboxWithLabel
+                                  id={`reason-${index + 1}`}
+                                  name="reason"
+                                  value={label}
+                                  variant="simple"
+                                  label={label}
+                                  labelClassName="text-text-dimmed"
+                                />
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                         <div>
-                          <input type="hidden" name="type" value="free" />
-                          <input type="hidden" name="callerPath" value={location.pathname} />
-                          <div className="mb-4">
-                            <Header2 className="mb-1">Why are you thinking of canceling?</Header2>
-                            <ul className="space-y-1">
-                              {[
-                                "Subscription or usage costs too expensive",
-                                "Bugs or technical issues",
-                                "No longer need the service",
-                                "Found a better alternative",
-                                "Lacking features I need",
-                              ].map((label, index) => (
-                                <li key={index}>
-                                  <CheckboxWithLabel
-                                    id={`reason-${index + 1}`}
-                                    name="reason"
-                                    value={label}
-                                    variant="simple"
-                                    label={label}
-                                    labelClassName="text-text-dimmed"
-                                  />
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="mb-2">
-                            <Header2 className="mb-1">What can we do to improve?</Header2>
-                            <TextArea id="improvement-suggestions" name="message" />
-                          </div>
+                          <Header2 className="mb-1">What can we do to improve?</Header2>
+                          <TextArea id="improvement-suggestions" name="message" />
                         </div>
-                        <DialogFooter>
-                          <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
-                            Dismiss
-                          </Button>
-                          <Button
-                            variant="danger/medium"
-                            type="submit"
-                            disabled={isLoading}
-                            LeadingIcon={isLoading ? Spinner : undefined}
-                          >
-                            Confirm downgrade
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                          Dismiss
+                        </Button>
+                        <Button
+                          variant="danger/medium"
+                          type="submit"
+                          form="subscribe"
+                          disabled={isLoading}
+                          LeadingIcon={
+                            isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
+                          }
+                        >
+                          Downgrade plan
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 ) : (
                   <Button
                     variant="tertiary/large"
