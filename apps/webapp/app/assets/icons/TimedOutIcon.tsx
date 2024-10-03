@@ -1,4 +1,4 @@
-export function RunsIcon({ className }: { className?: string }) {
+export function TimedOutIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}

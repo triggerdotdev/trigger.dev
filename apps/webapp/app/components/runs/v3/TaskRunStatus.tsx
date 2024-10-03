@@ -15,6 +15,7 @@ import {
 import { TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
+import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -68,7 +69,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
   EXPIRED: "Task has surpassed its ttl and won't be executed",
-  TIMED_OUT: "Task has reached it's maxDuration and has been stopped",
+  TIMED_OUT: "Task has reached its maxDuration and has been stopped",
 };
 
 export const QUEUED_STATUSES = [
@@ -145,7 +146,7 @@ export function TaskRunStatusIcon({
     case "EXPIRED":
       return <TrashIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "TIMED_OUT":
-      return <StopIcon className={cn(runStatusClassNameColor(status), className)} />;
+      return <TimedOutIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       assertNever(status);
