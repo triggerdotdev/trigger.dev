@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { containerTest } from "../test/containerTest.js";
+import { containerTest } from "@internal/testcontainers";
 import { RunEngine } from "./index.js";
 import { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 

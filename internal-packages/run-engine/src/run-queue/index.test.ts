@@ -1,7 +1,7 @@
 import { trace } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
-import { redisTest } from "../test/containerTest.js";
+import { redisTest } from "@internal/testcontainers";
 import { RunQueue } from "./index.js";
 import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
