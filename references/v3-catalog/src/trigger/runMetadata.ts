@@ -19,6 +19,8 @@ export const runMetadataTask = task({
 export const runMetadataChildTask = task({
   id: "run-metadata-child-task",
   run: async (payload: any, { ctx }) => {
+    logger.info("metadata", { metadata: metadata.current() });
+
     await metadata.set("child", "task");
 
     logger.info("metadata", { metadata: metadata.current() });

@@ -1,4 +1,3 @@
-import type { Execa$ } from "execa";
 import { setTimeout as timeout } from "node:timers/promises";
 
 class ChaosMonkeyError extends Error {
@@ -35,11 +34,9 @@ export class ChaosMonkey {
   }
 
   async call({
-    $,
     throwErrors = !this.disableErrors,
     addDelays = !this.disableDelays,
   }: {
-    $?: Execa$<string>;
     throwErrors?: boolean;
     addDelays?: boolean;
   } = {}) {
@@ -60,11 +57,7 @@ export class ChaosMonkey {
       chaosEvents.push(async () => {
         console.log("🍌 Chaos monkey: Add delay");
 
-        if ($) {
-          await $`sleep ${this.delayInSeconds}`;
-        } else {
-          await timeout(this.delayInSeconds * 1000);
-        }
+        await timeout(this.delayInSeconds * 1000);
       });
     }
 
@@ -72,11 +65,7 @@ export class ChaosMonkey {
       chaosEvents.push(async () => {
         console.log("🍌 Chaos monkey: Throw error");
 
-        if ($) {
-          await $`false`;
-        } else {
-          throw new ChaosMonkey.Error("🍌 Chaos monkey: Throw error");
-        }
+        throw new ChaosMonkey.Error("🍌 Chaos monkey: Throw error");
       });
     }
 

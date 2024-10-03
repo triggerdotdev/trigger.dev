@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.9
+
+### Patch Changes
+
+- fix: run metadata not working when using npx/pnpm dlx ([`4c1ee3d6e`](https://github.com/triggerdotdev/trigger.dev/commit/4c1ee3d6ea5f2e1dfc9f475c99ecd236bf780a19))
+
 ## 3.0.8
 
 ### Patch Changes
