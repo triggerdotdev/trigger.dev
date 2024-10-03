@@ -26,6 +26,7 @@ export interface MarQSKeyProducer {
   envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
   orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  envQueueKey(env: AuthenticatedEnvironment): string;
   envSharedQueueKey(env: AuthenticatedEnvironment): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;

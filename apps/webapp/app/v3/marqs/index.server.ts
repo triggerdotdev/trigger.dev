@@ -139,6 +139,10 @@ export class MarQS {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
   }
 
+  public async lengthOfEnvQueue(env: AuthenticatedEnvironment) {
+    return this.redis.zcard(this.keys.envQueueKey(env));
+  }
+
   public async oldestMessageInQueue(
     env: AuthenticatedEnvironment,
     queue: string,

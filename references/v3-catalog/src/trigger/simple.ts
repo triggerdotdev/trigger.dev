@@ -2,6 +2,7 @@ import "server-only";
 import { logger, SubtaskUnwrapError, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import { traceAsync } from "@/telemetry.js";
 import { HeaderGenerator } from "header-generator";
+import { setTimeout as setTimeoutP } from "node:timers/promises";
 
 let headerGenerator = new HeaderGenerator({
   browsers: [{ name: "firefox", minVersion: 90 }, { name: "chrome", minVersion: 110 }, "safari"],
@@ -213,5 +214,24 @@ export const retryTask = task({
   id: "retry-task",
   run: async (payload: any) => {
     throw new Error("This task will always fail");
+  },
+});
+
+export const maximumQueueDepthParent = task({
+  id: "maximum-queue-depth-parent",
+  run: async (payload: any) => {
+    await maximumQueueDepthChild.trigger({});
+    await maximumQueueDepthChild.trigger({});
+    await maximumQueueDepthChild.trigger({});
+  },
+});
+
+export const maximumQueueDepthChild = task({
+  id: "maximum-queue-depth-child",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async (payload: any) => {
+    await setTimeoutP(10_000);
   },
 });

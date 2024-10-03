@@ -134,6 +134,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${constants.ENV_PART}:${envId}:${constants.QUEUE_PART}`;
   }
 
+  envQueueKey(env: AuthenticatedEnvironment): string {
+    return [constants.ENV_PART, this.shortId(env.id), constants.QUEUE_PART].join(":");
+  }
+
   messageKey(messageId: string) {
     return `${constants.MESSAGE_PART}:${messageId}`;
   }
