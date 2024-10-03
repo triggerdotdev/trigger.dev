@@ -5,7 +5,6 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@internal/testcontainers": "workspace:*",
     "@internal/zod-worker": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/semantic-conventions": "^1.27.0",
@@ -18,9 +17,7 @@
     "zod": "3.22.3"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "^10.13.1",
-    "@testcontainers/redis": "^10.13.1",
-    "testcontainers": "^10.13.1",
+    "@internal/testcontainers": "workspace:*",
     "vitest": "^1.4.0"
   },
   "scripts": {

@@ -895,6 +895,37 @@ importers:
         specifier: ^5.5.0
         version: 5.5.4
 
+  internal-packages/redis-worker:
+    dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.3.2
+      lodash.omit:
+        specifier: ^4.5.0
+        version: 4.5.0
+      typescript:
+        specifier: ^4.8.4
+        version: 4.9.5
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
+      '@types/lodash.omit':
+        specifier: ^4.5.7
+        version: 4.5.7
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.0(@types/node@20.14.14)
+
   internal-packages/run-engine:
     dependencies:
       '@internal/zod-worker':
@@ -927,6 +958,28 @@ importers:
       zod:
         specifier: 3.22.3
         version: 3.22.3
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.0(@types/node@20.14.14)
+
+  internal-packages/testcontainers:
+    dependencies:
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.3.2
+      typescript:
+        specifier: ^4.8.4
+        version: 4.9.5
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^10.13.1
@@ -2347,7 +2400,7 @@ packages:
       '@babel/traverse': 7.24.7
       '@babel/types': 7.24.0
       convert-source-map: 1.9.0
-      debug: 4.3.4
+      debug: 4.3.7
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -3903,7 +3956,7 @@ packages:
       '@babel/helper-split-export-declaration': 7.22.6
       '@babel/parser': 7.24.7
       '@babel/types': 7.24.0
-      debug: 4.3.4
+      debug: 4.3.7
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -6075,7 +6128,7 @@ packages:
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     dependencies:
       ajv: 6.12.6
-      debug: 4.3.4
+      debug: 4.3.7
       espree: 9.6.0
       globals: 13.19.0
       ignore: 5.2.4
@@ -6333,7 +6386,7 @@ packages:
     engines: {node: '>=10.10.0'}
     dependencies:
       '@humanwhocodes/object-schema': 1.2.1
-      debug: 4.3.4
+      debug: 4.3.7
       minimatch: 3.1.2
     transitivePeerDependencies:
       - supports-color
@@ -15029,7 +15082,7 @@ packages:
     dependencies:
       '@typescript-eslint/typescript-estree': 5.59.6(typescript@5.2.2)
       '@typescript-eslint/utils': 5.59.6(eslint@8.31.0)(typescript@5.2.2)
-      debug: 4.3.4
+      debug: 4.3.7
       eslint: 8.31.0
       tsutils: 3.21.0(typescript@5.2.2)
       typescript: 5.2.2
@@ -15053,7 +15106,7 @@ packages:
     dependencies:
       '@typescript-eslint/types': 5.59.6
       '@typescript-eslint/visitor-keys': 5.59.6
-      debug: 4.3.4
+      debug: 4.3.7
       globby: 11.1.0
       is-glob: 4.0.3
       semver: 7.5.4
@@ -17865,6 +17918,7 @@ packages:
         optional: true
     dependencies:
       ms: 2.1.2
+    dev: true
 
   /debug@4.3.7:
     resolution: {integrity: sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==}
@@ -19045,7 +19099,7 @@ packages:
       eslint: '*'
       eslint-plugin-import: '*'
     dependencies:
-      debug: 4.3.4
+      debug: 4.3.7
       enhanced-resolve: 5.15.0
       eslint: 8.31.0
       eslint-module-utils: 2.7.4(@typescript-eslint/parser@5.59.6)(eslint-import-resolver-node@0.3.7)(eslint-import-resolver-typescript@3.5.5)(eslint@8.31.0)
@@ -21080,7 +21134,7 @@ packages:
     dependencies:
       '@ioredis/commands': 1.2.0
       cluster-key-slot: 1.1.2
-      debug: 4.3.6
+      debug: 4.3.7
       denque: 2.1.0
       lodash.defaults: 4.2.0
       lodash.isarguments: 3.1.0
@@ -24947,7 +25001,7 @@ packages:
     engines: {node: '>= 14'}
     dependencies:
       agent-base: 7.1.0
-      debug: 4.3.6
+      debug: 4.3.7
       http-proxy-agent: 7.0.0
       https-proxy-agent: 7.0.1
       lru-cache: 7.18.3
@@ -26141,7 +26195,7 @@ packages:
     resolution: {integrity: sha512-OScOjQjrrjhAdFpQmnkE/qbIBGCRFhQB/YaJhcC3CPOlmhe7llnW46Ac1J5+EjcNXOTnDdpF96Erw/yedsGksQ==}
     engines: {node: '>=8.6.0'}
     dependencies:
-      debug: 4.3.6
+      debug: 4.3.7
       module-details-from-path: 1.0.3
       resolve: 1.22.8
     transitivePeerDependencies:
@@ -29056,7 +29110,7 @@ packages:
     hasBin: true
     dependencies:
       cac: 6.7.14
-      debug: 4.3.6
+      debug: 4.3.7
       pathe: 1.1.2
       picocolors: 1.0.0
       vite: 5.2.7(@types/node@18.11.18)
