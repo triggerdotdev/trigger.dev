@@ -1,6 +1,6 @@
-import Redis, { RedisOptions } from "ioredis";
-import { z } from "zod";
 import { Logger } from "@trigger.dev/core/logger";
+import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
+import { z } from "zod";
 
 export class SimpleQueue<T extends z.ZodType> {
   name: string;
@@ -8,7 +8,17 @@ export class SimpleQueue<T extends z.ZodType> {
   private schema: T;
   private logger: Logger;
 
-  constructor(name: string, schema: T, redisOptions: RedisOptions, logger?: Logger) {
+  constructor({
+    name,
+    schema,
+    redisOptions,
+    logger,
+  }: {
+    name: string;
+    schema: T;
+    redisOptions: RedisOptions;
+    logger?: Logger;
+  }) {
     this.name = name;
     this.redis = new Redis({
       ...redisOptions,
@@ -19,6 +29,7 @@ export class SimpleQueue<T extends z.ZodType> {
       },
       maxRetriesPerRequest: 3,
     });
+    this.#registerCommands();
     this.schema = schema;
 
     this.logger = logger ?? new Logger("SimpleQueue", "debug");
@@ -37,21 +48,11 @@ export class SimpleQueue<T extends z.ZodType> {
       const score = availableAt ? availableAt.getTime() : Date.now();
       const serializedItem = JSON.stringify(item);
 
-      const result = await this.redis
-        .multi()
-        .zadd(`queue`, score, id)
-        .hset(`items`, id, serializedItem)
-        .exec();
+      const result = await this.redis.enqueueItem(`queue`, `items`, id, score, serializedItem);
 
-      if (!result) {
-        throw new Error("Redis multi command returned null");
+      if (result !== 1) {
+        throw new Error("Enqueue operation failed");
       }
-
-      result.forEach((res, index) => {
-        if (res[0]) {
-          throw new Error(`Redis operation ${index} failed: ${res[0]}`);
-        }
-      });
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.enqueue(): error enqueuing`, {
         queue: this.name,
@@ -67,46 +68,14 @@ export class SimpleQueue<T extends z.ZodType> {
     const now = Date.now();
 
     try {
-      const result = await this.redis
-        .multi()
-        .zrangebyscore(`queue`, "-inf", now, "WITHSCORES", "LIMIT", 0, 1)
-        .exec();
+      const result = await this.redis.dequeueItem(`queue`, `items`, now);
 
       if (!result) {
-        throw new Error("Redis multi command returned null");
-      }
-
-      result.forEach((res, index) => {
-        if (res[0]) {
-          throw new Error(`Redis operation ${index} failed: ${res[0]}`);
-        }
-      });
-
-      if (!result[0][1] || (result[0][1] as string[]).length === 0) {
         return null;
       }
 
-      const [id, score] = result[0][1] as string[];
+      const [id, serializedItem] = result;
 
-      // Check if the item is available now
-      if (parseInt(score) > now) {
-        return null;
-      }
-
-      // Remove the item from the sorted set
-      await this.redis.zrem(`queue`, id);
-
-      const serializedItem = await this.redis.hget(`items`, id);
-
-      if (!serializedItem) {
-        this.logger.warn(`Item ${id} not found in hash, might have been deleted`, {
-          queue: this.name,
-          id,
-        });
-        return null;
-      }
-
-      await this.redis.hdel(`items`, id);
       const parsedItem = JSON.parse(serializedItem);
       const validatedItem = this.schema.safeParse(parsedItem);
 
@@ -145,5 +114,81 @@ export class SimpleQueue<T extends z.ZodType> {
 
   async close(): Promise<void> {
     await this.redis.quit();
+  }
+
+  #registerCommands() {
+    this.redis.defineCommand("enqueueItem", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+
+        redis.call('ZADD', queue, score, id)
+        redis.call('HSET', items, id, serializedItem)
+
+        return 1
+      `,
+    });
+
+    this.redis.defineCommand("dequeueItem", {
+      numberOfKeys: 2,
+      lua: `
+          local queue = KEYS[1]
+          local items = KEYS[2]
+          local now = tonumber(ARGV[1])
+
+          local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
+
+          if #result == 0 then
+            return nil
+          end
+
+          local id = result[1]
+          local score = tonumber(result[2])
+
+          if score > now then
+            return nil
+          end
+
+          redis.call('ZREM', queue, id)
+
+          local serializedItem = redis.call('HGET', items, id)
+
+          if not serializedItem then
+            return nil
+          end
+
+          redis.call('HDEL', items, id)
+
+          return {id, serializedItem}
+        `,
+    });
+  }
+}
+
+declare module "ioredis" {
+  interface RedisCommander<Context> {
+    enqueueItem(
+      //keys
+      queue: string,
+      items: string,
+      //args
+      id: string,
+      score: number,
+      serializedItem: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    dequeueItem(
+      //keys
+      queue: string,
+      items: string,
+      //args
+      now: number,
+      callback?: Callback<[string, string] | null>
+    ): Result<[string, string] | null, Context>;
   }
 }

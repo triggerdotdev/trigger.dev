@@ -6,17 +6,17 @@ import { SimpleQueue } from "./queue.js";
 
 describe("SimpleQueue", () => {
   redisTest("enqueue/dequeue", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const queue = new SimpleQueue(
-      "test-1",
-      z.object({
+    const queue = new SimpleQueue({
+      name: "test-1",
+      schema: z.object({
         value: z.number(),
       }),
-      {
+      redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
-      }
-    );
+      },
+    });
 
     try {
       await queue.enqueue("1", { value: 1 });
@@ -33,17 +33,17 @@ describe("SimpleQueue", () => {
   });
 
   redisTest("no items", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const queue = new SimpleQueue(
-      "test-2",
-      z.object({
+    const queue = new SimpleQueue({
+      name: "test-2",
+      schema: z.object({
         value: z.number(),
       }),
-      {
+      redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
-      }
-    );
+      },
+    });
 
     try {
       const missOne = await queue.dequeue();
@@ -61,17 +61,17 @@ describe("SimpleQueue", () => {
   });
 
   redisTest("future item", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const queue = new SimpleQueue(
-      "test-3",
-      z.object({
+    const queue = new SimpleQueue({
+      name: "test-3",
+      schema: z.object({
         value: z.number(),
       }),
-      {
+      redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
-      }
-    );
+      },
+    });
 
     try {
       await queue.enqueue("1", { value: 1 }, new Date(Date.now() + 50));

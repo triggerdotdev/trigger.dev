@@ -7,17 +7,17 @@ import { createQueueProcessor } from "./processor.js";
 
 describe("SimpleQueue processor", () => {
   redisTest("Read items", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const queue = new SimpleQueue(
-      "processor-1",
-      z.object({
+    const queue = new SimpleQueue({
+      name: "processor-1",
+      schema: z.object({
         value: z.number(),
       }),
-      {
+      redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
-      }
-    );
+      },
+    });
 
     try {
       let itemCount = 10;
@@ -44,17 +44,17 @@ describe("SimpleQueue processor", () => {
   });
 
   redisTest("Retrying", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const queue = new SimpleQueue(
-      "processor-2",
-      z.object({
+    const queue = new SimpleQueue({
+      name: "processor-2",
+      schema: z.object({
         value: z.number(),
       }),
-      {
+      redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
-      }
-    );
+      },
+    });
 
     try {
       await queue.enqueue("1", { value: 1 });
