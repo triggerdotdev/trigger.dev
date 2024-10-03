@@ -15,6 +15,7 @@ import { projectPubSub } from "./projectPubSub.server";
 import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskScheduleInstance.server";
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -156,6 +157,7 @@ export async function createBackgroundTasks(
           machineConfig: task.machine,
           triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
           fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
+          maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         },
       });
 

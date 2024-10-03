@@ -17,6 +17,7 @@ export default defineConfig({
   machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
+  maxDuration: 60,
   retries: {
     enabledInDev: false,
     default: {
@@ -33,7 +34,11 @@ export default defineConfig({
     console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
   },
   onFailure: async (payload, error, { ctx }) => {
-    console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
+    console.log(
+      `Task ${ctx.task.id} failed ${ctx.run.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   },
   build: {
     conditions: ["react-server"],

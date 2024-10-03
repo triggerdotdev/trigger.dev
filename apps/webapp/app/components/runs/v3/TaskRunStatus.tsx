@@ -8,12 +8,14 @@ import {
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
+  StopIcon,
   TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { SnowflakeIcon } from "lucide-react";
+import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -27,6 +29,7 @@ export const allTaskRunStatuses = [
   "COMPLETED_SUCCESSFULLY",
   "CANCELED",
   "COMPLETED_WITH_ERRORS",
+  "TIMED_OUT",
   "CRASHED",
   "PAUSED",
   "INTERRUPTED",
@@ -44,6 +47,7 @@ export const filterableTaskRunStatuses = [
   "COMPLETED_SUCCESSFULLY",
   "CANCELED",
   "COMPLETED_WITH_ERRORS",
+  "TIMED_OUT",
   "CRASHED",
   "INTERRUPTED",
   "SYSTEM_FAILURE",
@@ -65,6 +69,7 @@ const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
   PAUSED: "Task has been paused by the user",
   CRASHED: "Task has crashed and won't be retried",
   EXPIRED: "Task has surpassed its ttl and won't be executed",
+  TIMED_OUT: "Task has reached its maxDuration and has been stopped",
 };
 
 export const QUEUED_STATUSES = [
@@ -140,6 +145,8 @@ export function TaskRunStatusIcon({
       return <FireIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "EXPIRED":
       return <TrashIcon className={cn(runStatusClassNameColor(status), className)} />;
+    case "TIMED_OUT":
+      return <TimedOutIcon className={cn(runStatusClassNameColor(status), className)} />;
 
     default: {
       assertNever(status);
@@ -173,6 +180,8 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "SYSTEM_FAILURE":
       return "text-error";
     case "CRASHED":
+      return "text-error";
+    case "TIMED_OUT":
       return "text-error";
     default: {
       assertNever(status);
@@ -210,6 +219,8 @@ export function runStatusTitle(status: TaskRunStatus): string {
       return "Crashed";
     case "EXPIRED":
       return "Expired";
+    case "TIMED_OUT":
+      return "Timed out";
     default: {
       assertNever(status);
     }

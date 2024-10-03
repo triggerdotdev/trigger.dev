@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev:trigger": "trigger dev",
-    "deploy": "trigger deploy",
+    "deploy": "trigger deploy --self-hosted --load-image",
     "management": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/management.ts",
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",

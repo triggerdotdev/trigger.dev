@@ -42,6 +42,7 @@ export const TaskRunStatus = {
   CRASHED: "CRASHED",
   DELAYED: "DELAYED",
   EXPIRED: "EXPIRED",
+  TIMED_OUT: "TIMED_OUT",
 } as const satisfies Record<TaskRunStatusType, TaskRunStatusType>;
 
 export const JobRunStatus = {

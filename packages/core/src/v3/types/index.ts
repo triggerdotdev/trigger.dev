@@ -10,19 +10,27 @@ export type RunFnParams<TInitOutput extends InitOutput> = Prettify<{
   ctx: Context;
   /** If you use the `init` function, this will be whatever you returned. */
   init?: TInitOutput;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
+  signal?: AbortSignal;
 }>;
 
 export type MiddlewareFnParams = Prettify<{
   ctx: Context;
   next: () => Promise<void>;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
+  signal?: AbortSignal;
 }>;
 
 export type InitFnParams = Prettify<{
   ctx: Context;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
+  signal?: AbortSignal;
 }>;
 
 export type StartFnParams = Prettify<{
   ctx: Context;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
+  signal?: AbortSignal;
 }>;
 
 export type Context = TaskRunContext;
@@ -57,6 +65,8 @@ export type HandleErrorArgs = {
   retry?: RetryOptions;
   retryAt?: Date;
   retryDelayInMs?: number;
+  /** Abort signal that is aborted when a task run exceeds it's maxDuration. Can be used to automatically cancel downstream requests */
+  signal?: AbortSignal;
 };
 
 export type HandleErrorFunction = (
