@@ -208,3 +208,10 @@ export const childTask = task({
     };
   },
 });
+
+export const retryTask = task({
+  id: "retry-task",
+  run: async (payload: any) => {
+    throw new Error("This task will always fail");
+  },
+});

@@ -128,6 +128,12 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return [this.envKeySection(env.id), constants.CURRENT_CONCURRENCY_PART].join(":");
   }
 
+  envQueueKeyFromQueue(queue: string) {
+    const envId = this.normalizeQueue(queue).split(":")[3];
+
+    return `${constants.ENV_PART}:${envId}:${constants.QUEUE_PART}`;
+  }
+
   messageKey(messageId: string) {
     return `${constants.MESSAGE_PART}:${messageId}`;
   }

@@ -18,7 +18,7 @@ export default defineConfig({
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
   retries: {
-    enabledInDev: false,
+    enabledInDev: true,
     default: {
       maxAttempts: 10,
       minTimeoutInMs: 5_000,
