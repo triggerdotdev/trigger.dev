@@ -7,7 +7,7 @@ export async function createPostgresContainer() {
   const container = await new PostgreSqlContainer().start();
 
   // Run migrations
-  const databasePath = path.resolve(__dirname, "../../../database");
+  const databasePath = path.resolve(__dirname, "../../database");
 
   execSync(`npx prisma db push --schema ${databasePath}/prisma/schema.prisma`, {
     env: {
