@@ -23,6 +23,7 @@ import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.ser
 import { handleMetadataPacket } from "~/utils/packets";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -374,7 +375,7 @@ export class TriggerTaskService extends BaseService {
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
                   maxDurationInSeconds: body.options?.maxDuration
-                    ? Math.max(body.options.maxDuration, 5)
+                    ? clampMaxDuration(body.options.maxDuration)
                     : undefined,
                 },
               });
