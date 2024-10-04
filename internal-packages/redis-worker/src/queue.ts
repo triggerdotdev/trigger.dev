@@ -110,65 +110,76 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       throw e;
     }
   }
-
-  async dequeue(): Promise<{
-    id: string;
-    job: MessageCatalogKey<TMessageCatalog>;
-    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
-    visibilityTimeoutMs: number;
-  } | null> {
+  async dequeue(count: number = 1): Promise<
+    Array<{
+      id: string;
+      job: MessageCatalogKey<TMessageCatalog>;
+      item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+      visibilityTimeoutMs: number;
+    }>
+  > {
     const now = Date.now();
 
     try {
-      const result = await this.redis.dequeueItem(`queue`, `items`, now);
+      const results = await this.redis.dequeueItems(`queue`, `items`, now, count);
 
-      if (!result) {
-        return null;
+      if (!results || results.length === 0) {
+        return [];
       }
 
-      const [id, serializedItem] = result;
+      const dequeuedItems = [];
 
-      const parsedItem = JSON.parse(serializedItem);
-      if (typeof parsedItem.job !== "string") {
-        this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
-        return null;
-      }
+      for (const [id, serializedItem] of results) {
+        const parsedItem = JSON.parse(serializedItem);
+        if (typeof parsedItem.job !== "string") {
+          this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
+          continue;
+        }
 
-      const schema = this.schema[parsedItem.job];
+        const schema = this.schema[parsedItem.job];
 
-      if (!schema) {
-        this.logger.error(`Invalid item in queue, schema not found`, {
-          queue: this.name,
+        if (!schema) {
+          this.logger.error(`Invalid item in queue, schema not found`, {
+            queue: this.name,
+            id,
+            item: parsedItem,
+            job: parsedItem.job,
+          });
+          continue;
+        }
+
+        const validatedItem = schema.schema.safeParse(parsedItem.item);
+
+        if (!validatedItem.success) {
+          this.logger.error("Invalid item in queue", {
+            queue: this.name,
+            id,
+            item: parsedItem,
+            errors: validatedItem.error,
+          });
+          continue;
+        }
+
+        const visibilityTimeoutMs =
+          (parsedItem.visibilityTimeoutMs as number) || schema.defaultVisibilityTimeoutMs;
+        const invisibleUntil = now + visibilityTimeoutMs;
+
+        await this.redis.zadd(`queue`, invisibleUntil, id);
+
+        dequeuedItems.push({
           id,
-          item: parsedItem,
           job: parsedItem.job,
+          item: validatedItem.data,
+          visibilityTimeoutMs,
         });
-        return null;
       }
 
-      const validatedItem = schema.schema.safeParse(parsedItem.item);
-
-      if (!validatedItem.success) {
-        this.logger.error("Invalid item in queue", {
-          queue: this.name,
-          id,
-          item: parsedItem,
-          errors: validatedItem.error,
-        });
-        return null;
-      }
-
-      const visibilityTimeoutMs =
-        (parsedItem.visibilityTimeoutMs as number) || schema.defaultVisibilityTimeoutMs;
-      const invisibleUntil = now + visibilityTimeoutMs;
-
-      await this.redis.zadd(`queue`, invisibleUntil, id);
-
-      return { id, job: parsedItem.job, item: validatedItem.data, visibilityTimeoutMs };
+      return dequeuedItems;
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.dequeue(): error dequeuing`, {
         queue: this.name,
         error: e,
+        count,
       });
       throw e;
     }
@@ -228,39 +239,43 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       `,
     });
 
-    this.redis.defineCommand("dequeueItem", {
+    this.redis.defineCommand("dequeueItems", {
       numberOfKeys: 2,
       lua: `
         local queue = KEYS[1]
         local items = KEYS[2]
         local now = tonumber(ARGV[1])
+        local count = tonumber(ARGV[2])
 
-        local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
+        local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, count)
 
         if #result == 0 then
-          return nil
+          return {}
         end
 
-        local id = result[1]
-        local score = tonumber(result[2])
+        local dequeued = {}
 
-        if score > now then
-          return nil
+        for i = 1, #result, 2 do
+          local id = result[i]
+          local score = tonumber(result[i + 1])
+
+          if score > now then
+            break
+          end
+
+          local serializedItem = redis.call('HGET', items, id)
+
+          if serializedItem then
+            local item = cjson.decode(serializedItem)
+            local visibilityTimeoutMs = tonumber(item.visibilityTimeoutMs)
+            local invisibleUntil = now + visibilityTimeoutMs
+
+            redis.call('ZADD', queue, invisibleUntil, id)
+            table.insert(dequeued, {id, serializedItem})
+          end
         end
 
-        local serializedItem = redis.call('HGET', items, id)
-
-        if not serializedItem then
-          return nil
-        end
-
-        local item = cjson.decode(serializedItem)
-        local visibilityTimeoutMs = tonumber(item.visibilityTimeoutMs)
-        local invisibleUntil = now + visibilityTimeoutMs
-
-        redis.call('ZADD', queue, invisibleUntil, id)
-
-        return {id, serializedItem}
+        return dequeued
       `,
     });
 
@@ -292,15 +307,15 @@ declare module "ioredis" {
       serializedItem: string,
       callback?: Callback<number>
     ): Result<number, Context>;
-
-    dequeueItem(
+    dequeueItems(
       //keys
       queue: string,
       items: string,
       //args
       now: number,
-      callback?: Callback<[string, string] | null>
-    ): Result<[string, string] | null, Context>;
+      count: number,
+      callback?: Callback<Array<[string, string]>>
+    ): Result<Array<[string, string]>, Context>;
 
     ackItem(
       queue: string,

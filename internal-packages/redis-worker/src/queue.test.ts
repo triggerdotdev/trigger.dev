@@ -32,7 +32,7 @@ describe("SimpleQueue", () => {
       await queue.enqueue({ id: "2", job: "test", item: { value: 2 } });
       expect(await queue.size()).toBe(2);
 
-      const first = await queue.dequeue();
+      const [first] = await queue.dequeue(1);
       expect(first).toEqual({
         id: "1",
         job: "test",
@@ -42,10 +42,10 @@ describe("SimpleQueue", () => {
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(2);
 
-      await queue.ack(first!.id);
+      await queue.ack(first.id);
       expect(await queue.size({ includeFuture: true })).toBe(1);
 
-      const second = await queue.dequeue();
+      const [second] = await queue.dequeue(1);
       expect(second).toEqual({
         id: "2",
         job: "test",
@@ -53,7 +53,7 @@ describe("SimpleQueue", () => {
         visibilityTimeoutMs: 2000,
       });
 
-      await queue.ack(second!.id);
+      await queue.ack(second.id);
       expect(await queue.size({ includeFuture: true })).toBe(0);
     } finally {
       await queue.close();
@@ -80,11 +80,11 @@ describe("SimpleQueue", () => {
     });
 
     try {
-      const missOne = await queue.dequeue();
-      expect(missOne).toBeNull();
+      const missOne = await queue.dequeue(1);
+      expect(missOne).toEqual([]);
 
       await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
-      const hitOne = await queue.dequeue();
+      const [hitOne] = await queue.dequeue(1);
       expect(hitOne).toEqual({
         id: "1",
         job: "test",
@@ -92,8 +92,8 @@ describe("SimpleQueue", () => {
         visibilityTimeoutMs: 2000,
       });
 
-      const missTwo = await queue.dequeue();
-      expect(missTwo).toBeNull();
+      const missTwo = await queue.dequeue(1);
+      expect(missTwo).toEqual([]);
     } finally {
       await queue.close();
     }
@@ -126,12 +126,12 @@ describe("SimpleQueue", () => {
         availableAt: new Date(Date.now() + 50),
       });
 
-      const miss = await queue.dequeue();
-      expect(miss).toBeNull();
+      const miss = await queue.dequeue(1);
+      expect(miss).toEqual([]);
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      const first = await queue.dequeue();
+      const [first] = await queue.dequeue();
       expect(first).toEqual({
         id: "1",
         job: "test",
@@ -165,7 +165,7 @@ describe("SimpleQueue", () => {
     try {
       await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 1_000 });
 
-      const first = await queue.dequeue();
+      const [first] = await queue.dequeue();
       expect(first).toEqual({
         id: "1",
         job: "test",
@@ -173,12 +173,12 @@ describe("SimpleQueue", () => {
         visibilityTimeoutMs: 1_000,
       });
 
-      const missImmediate = await queue.dequeue();
-      expect(missImmediate).toBeNull();
+      const missImmediate = await queue.dequeue(1);
+      expect(missImmediate).toEqual([]);
 
       await new Promise((resolve) => setTimeout(resolve, 1_000));
 
-      const second = await queue.dequeue();
+      const [second] = await queue.dequeue();
       expect(second).toEqual({
         id: "1",
         job: "test",
