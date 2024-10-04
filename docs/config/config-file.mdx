@@ -152,6 +152,21 @@ export default defineConfig({
 
 The `logLevel` only determines which logs are sent to the Trigger.dev instance when using the `logger` API. All `console` based logs are always sent.
 
+## Max duration
+
+You can set the default `maxDuration` for all tasks in your project:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  //..other stuff
+  maxDuration: 60, // 60 seconds
+});
+```
+
+See our [maxDuration guide](/runs/max-duration) for more information.
+
 ## Build configuration
 
 You can customize the build process using the `build` option:
