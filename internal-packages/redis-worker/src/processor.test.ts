@@ -22,13 +22,13 @@ describe("SimpleQueue processor", () => {
     try {
       let itemCount = 10;
       for (let i = 0; i < itemCount; i++) {
-        await queue.enqueue(i.toString(), { value: i });
+        await queue.enqueue({ id: i.toString(), item: { value: i } });
       }
 
       let itemsProcessed = 0;
 
       const processor = createQueueProcessor(queue, {
-        onItem: async (id, item) => {
+        onItem: async (id, job, item) => {
           expect(item).toEqual({ value: parseInt(id) });
           itemsProcessed++;
         },
@@ -57,7 +57,7 @@ describe("SimpleQueue processor", () => {
     });
 
     try {
-      await queue.enqueue("1", { value: 1 });
+      await queue.enqueue({ id: "1", item: { value: 1 } });
 
       let attempts = 0;
       let itemsProcessed = 0;
