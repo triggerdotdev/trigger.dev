@@ -190,3 +190,67 @@ describe("SimpleQueue", () => {
     }
   });
 });
+
+redisTest("dequeue multiple items", { timeout: 20_000 }, async ({ redisContainer }) => {
+  const queue = new SimpleQueue({
+    name: "test-multi",
+    schema: {
+      test: {
+        schema: z.object({
+          value: z.number(),
+        }),
+        defaultVisibilityTimeoutMs: 2000,
+      },
+    },
+    redisOptions: {
+      host: redisContainer.getHost(),
+      port: redisContainer.getPort(),
+      password: redisContainer.getPassword(),
+    },
+    logger: new Logger("test", "log"),
+  });
+
+  try {
+    await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+    await queue.enqueue({ id: "2", job: "test", item: { value: 2 } });
+    await queue.enqueue({ id: "3", job: "test", item: { value: 3 } });
+
+    expect(await queue.size()).toBe(3);
+
+    const dequeued = await queue.dequeue(2);
+    expect(dequeued).toHaveLength(2);
+    expect(dequeued[0]).toEqual({
+      id: "1",
+      job: "test",
+      item: { value: 1 },
+      visibilityTimeoutMs: 2000,
+    });
+    expect(dequeued[1]).toEqual({
+      id: "2",
+      job: "test",
+      item: { value: 2 },
+      visibilityTimeoutMs: 2000,
+    });
+
+    expect(await queue.size()).toBe(1);
+    expect(await queue.size({ includeFuture: true })).toBe(3);
+
+    await queue.ack(dequeued[0].id);
+    await queue.ack(dequeued[1].id);
+
+    expect(await queue.size({ includeFuture: true })).toBe(1);
+
+    const [last] = await queue.dequeue(1);
+    expect(last).toEqual({
+      id: "3",
+      job: "test",
+      item: { value: 3 },
+      visibilityTimeoutMs: 2000,
+    });
+
+    await queue.ack(last.id);
+    expect(await queue.size({ includeFuture: true })).toBe(0);
+  } finally {
+    await queue.close();
+  }
+});
