@@ -1,7 +1,7 @@
+import { redisTest } from "@internal/testcontainers";
 import { describe } from "node:test";
 import { expect } from "vitest";
 import { z } from "zod";
-import { redisTest } from "@internal/testcontainers";
 import { SimpleQueue } from "./queue.js";
 
 describe("SimpleQueue", () => {
@@ -22,13 +22,24 @@ describe("SimpleQueue", () => {
 
     try {
       await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+      expect(await queue.size()).toBe(1);
+
       await queue.enqueue({ id: "2", job: "test", item: { value: 2 } });
+      expect(await queue.size()).toBe(2);
 
       const first = await queue.dequeue();
       expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      expect(await queue.size()).toBe(1);
+      expect(await queue.size({ includeFuture: true })).toBe(2);
+
+      await queue.ack(first!.id);
+      expect(await queue.size({ includeFuture: true })).toBe(1);
 
       const second = await queue.dequeue();
       expect(second).toEqual({ id: "2", job: "test", item: { value: 2 } });
+
+      await queue.ack(second!.id);
+      expect(await queue.size({ includeFuture: true })).toBe(0);
     } finally {
       await queue.close();
     }
@@ -94,6 +105,39 @@ describe("SimpleQueue", () => {
 
       const first = await queue.dequeue();
       expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+    } finally {
+      await queue.close();
+    }
+  });
+
+  redisTest("invisibility timeout", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const queue = new SimpleQueue({
+      name: "test-4",
+      schema: {
+        test: z.object({
+          value: z.number(),
+        }),
+      },
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+    });
+
+    try {
+      await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+
+      const first = await queue.dequeue(2_000);
+      expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+
+      const missImmediate = await queue.dequeue();
+      expect(missImmediate).toBeNull();
+
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+      const second = await queue.dequeue();
+      expect(second).toEqual({ id: "1", job: "test", item: { value: 1 } });
     } finally {
       await queue.close();
     }

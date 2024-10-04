@@ -98,13 +98,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
-  async dequeue(visibilityTimeoutSeconds: number = 120): Promise<{
+  async dequeue(visibilityTimeoutMs: number = 120_000): Promise<{
     id: string;
     job: MessageCatalogKey<TMessageCatalog>;
     item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
   } | null> {
     const now = Date.now();
-    const invisibleUntil = now + visibilityTimeoutSeconds * 1000;
+    const invisibleUntil = now + visibilityTimeoutMs;
 
     try {
       const result = await this.redis.dequeueItem(`queue`, `items`, now, invisibleUntil);
@@ -155,14 +155,34 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
-  async size(): Promise<number> {
+  async ack(id: string): Promise<void> {
     try {
-      const result = await this.redis.zcard(`queue`);
-      return result;
+      await this.redis.ackItem(`queue`, `items`, id);
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.ack(): error acknowledging item`, {
+        queue: this.name,
+        error: e,
+        id,
+      });
+      throw e;
+    }
+  }
+
+  async size({ includeFuture = false }: { includeFuture?: boolean } = {}): Promise<number> {
+    try {
+      if (includeFuture) {
+        // If includeFuture is true, return the total count of all items
+        return await this.redis.zcard(`queue`);
+      } else {
+        // If includeFuture is false, return the count of items available now
+        const now = Date.now();
+        return await this.redis.zcount(`queue`, "-inf", now);
+      }
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.size(): error getting queue size`, {
         queue: this.name,
         error: e,
+        includeFuture,
       });
       throw e;
     }
@@ -192,33 +212,47 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.redis.defineCommand("dequeueItem", {
       numberOfKeys: 2,
       lua: `
-      local queue = KEYS[1]
-      local items = KEYS[2]
-      local now = tonumber(ARGV[1])
-      local invisibleUntil = tonumber(ARGV[2])
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local now = tonumber(ARGV[1])
+        local invisibleUntil = tonumber(ARGV[2])
 
-      local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
+        local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
 
-      if #result == 0 then
-        return nil
-      end
+        if #result == 0 then
+          return nil
+        end
 
-      local id = result[1]
-      local score = tonumber(result[2])
+        local id = result[1]
+        local score = tonumber(result[2])
 
-      if score > now then
-        return nil
-      end
+        if score > now then
+          return nil
+        end
 
-      redis.call('ZADD', queue, invisibleUntil, id)
+        redis.call('ZADD', queue, invisibleUntil, id)
 
-      local serializedItem = redis.call('HGET', items, id)
+        local serializedItem = redis.call('HGET', items, id)
 
-      if not serializedItem then
-        return nil
-      end
+        if not serializedItem then
+          return nil
+        end
 
-      return {id, serializedItem}
+        return {id, serializedItem}
+        `,
+    });
+
+    this.redis.defineCommand("ackItem", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local id = ARGV[1]
+
+        redis.call('ZREM', queue, id)
+        redis.call('HDEL', items, id)
+
+        return 1
         `,
     });
   }
@@ -246,5 +280,12 @@ declare module "ioredis" {
       invisibleUntil: number,
       callback?: Callback<[string, string] | null>
     ): Result<[string, string] | null, Context>;
+
+    ackItem(
+      queue: string,
+      items: string,
+      id: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
   }
 }
