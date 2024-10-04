@@ -4,7 +4,7 @@ import {
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { XCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowDownCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
@@ -44,6 +44,7 @@ import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import React from "react";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -302,6 +303,7 @@ export function TierFree({
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
 
   const status = subscription?.freeTierStatus ?? "requires_connect";
 
@@ -418,7 +420,7 @@ export function TierFree({
                         {`Downgrade to ${plan.title}`}
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-md">
+                    <DialogContent className="sm:max-w-md">
                       <DialogHeader>Downgrade plan</DialogHeader>
                       <div className="mb-2 mt-4 flex items-start gap-3">
                         <span>
@@ -451,13 +453,22 @@ export function TierFree({
                                   variant="simple"
                                   label={label}
                                   labelClassName="text-text-dimmed"
+                                  onChange={(isChecked: boolean) => {
+                                    if (label === "Lacking features I need") {
+                                      setIsLackingFeaturesChecked(isChecked);
+                                    }
+                                  }}
                                 />
                               </li>
                             ))}
                           </ul>
                         </div>
                         <div>
-                          <Header2 className="mb-1">What can we do to improve?</Header2>
+                          <Header2 className="mb-1">
+                            {isLackingFeaturesChecked
+                              ? "What features do you need? Or how can we improve?"
+                              : "What can we do to improve?"}
+                          </Header2>
                           <TextArea id="improvement-suggestions" name="message" />
                         </div>
                       </div>
@@ -467,12 +478,11 @@ export function TierFree({
                         </Button>
                         <Button
                           variant="danger/medium"
-                          type="submit"
-                          form="subscribe"
                           disabled={isLoading}
                           LeadingIcon={
                             isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
                           }
+                          form="subscribe"
                         >
                           Downgrade plan
                         </Button>
@@ -543,6 +553,7 @@ export function TierHobby({
   const navigation = useNavigation();
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   return (
     <TierContainer isHighlighted={isHighlighted}>
@@ -555,26 +566,68 @@ export function TierHobby({
           <input type="hidden" name="type" value="paid" />
           <input type="hidden" name="planCode" value={plan.code} />
           <input type="hidden" name="callerPath" value={location.pathname} />
-          <Button
-            variant={isHighlighted ? "primary/large" : "tertiary/large"}
-            fullWidth
-            className="text-md font-medium"
-            disabled={
-              isLoading ||
-              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
-            }
-            LeadingIcon={
-              isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
-            }
-          >
-            {subscription?.plan === undefined
-              ? "Select plan"
-              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-              ? `Upgrade to ${plan.title}`
-              : subscription.plan.code === plan.code
-              ? "Current plan"
-              : `Downgrade to ${plan.title}`}
-          </Button>
+          {subscription?.plan !== undefined &&
+          subscription.plan.type !== "free" &&
+          subscription.canceledAt === undefined &&
+          subscription.plan.code !== plan.code ? (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                  {`Downgrade to ${plan.title}`}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>Downgrade plan</DialogHeader>
+                <div className="mb-2 mt-4 flex items-start gap-3">
+                  <span>
+                    <ArrowDownCircleIcon className="size-12 text-blue-500" />
+                  </span>
+                  <Paragraph variant="base/bright" className="text-text-bright">
+                    By downgrading you will lose access to your current plan’s features and your
+                    included credits will be reduced.
+                  </Paragraph>
+                </div>
+                <DialogFooter>
+                  <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                    Dismiss
+                  </Button>
+                  <Button
+                    variant="tertiary/medium"
+                    disabled={isLoading}
+                    LeadingIcon={
+                      isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
+                    }
+                    form="subscribe"
+                  >
+                    {`Downgrade to ${plan.title}`}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Button
+              variant={isHighlighted ? "primary/large" : "tertiary/large"}
+              fullWidth
+              className="text-md font-medium"
+              disabled={
+                isLoading ||
+                (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
+              }
+              LeadingIcon={
+                isLoading && navigation.formData?.get("planCode") === plan.code
+                  ? Spinner
+                  : undefined
+              }
+            >
+              {subscription?.plan === undefined
+                ? "Select plan"
+                : subscription.plan.type === "free" || subscription.canceledAt !== undefined
+                ? `Upgrade to ${plan.title}`
+                : subscription.plan.code === plan.code
+                ? "Current plan"
+                : `Upgrade to ${plan.title}`}
+            </Button>
+          )}
         </div>
       </Form>
       <ul className="flex flex-col gap-2.5">
