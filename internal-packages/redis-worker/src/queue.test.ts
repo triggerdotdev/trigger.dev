@@ -10,12 +10,9 @@ describe("SimpleQueue", () => {
     const queue = new SimpleQueue({
       name: "test-1",
       schema: {
-        test: {
-          schema: z.object({
-            value: z.number(),
-          }),
-          defaultVisibilityTimeoutMs: 2000,
-        },
+        test: z.object({
+          value: z.number(),
+        }),
       },
       redisOptions: {
         host: redisContainer.getHost(),
@@ -26,10 +23,10 @@ describe("SimpleQueue", () => {
     });
 
     try {
-      await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+      await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
       expect(await queue.size()).toBe(1);
 
-      await queue.enqueue({ id: "2", job: "test", item: { value: 2 } });
+      await queue.enqueue({ id: "2", job: "test", item: { value: 2 }, visibilityTimeoutMs: 2000 });
       expect(await queue.size()).toBe(2);
 
       const [first] = await queue.dequeue(1);
@@ -64,12 +61,9 @@ describe("SimpleQueue", () => {
     const queue = new SimpleQueue({
       name: "test-1",
       schema: {
-        test: {
-          schema: z.object({
-            value: z.number(),
-          }),
-          defaultVisibilityTimeoutMs: 2000,
-        },
+        test: z.object({
+          value: z.number(),
+        }),
       },
       redisOptions: {
         host: redisContainer.getHost(),
@@ -103,12 +97,9 @@ describe("SimpleQueue", () => {
     const queue = new SimpleQueue({
       name: "test-1",
       schema: {
-        test: {
-          schema: z.object({
-            value: z.number(),
-          }),
-          defaultVisibilityTimeoutMs: 2000,
-        },
+        test: z.object({
+          value: z.number(),
+        }),
       },
       redisOptions: {
         host: redisContainer.getHost(),
@@ -124,6 +115,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         availableAt: new Date(Date.now() + 50),
+        visibilityTimeoutMs: 2000,
       });
 
       const miss = await queue.dequeue(1);
@@ -147,12 +139,9 @@ describe("SimpleQueue", () => {
     const queue = new SimpleQueue({
       name: "test-1",
       schema: {
-        test: {
-          schema: z.object({
-            value: z.number(),
-          }),
-          defaultVisibilityTimeoutMs: 2000,
-        },
+        test: z.object({
+          value: z.number(),
+        }),
       },
       redisOptions: {
         host: redisContainer.getHost(),
@@ -193,14 +182,11 @@ describe("SimpleQueue", () => {
 
 redisTest("dequeue multiple items", { timeout: 20_000 }, async ({ redisContainer }) => {
   const queue = new SimpleQueue({
-    name: "test-multi",
+    name: "test-1",
     schema: {
-      test: {
-        schema: z.object({
-          value: z.number(),
-        }),
-        defaultVisibilityTimeoutMs: 2000,
-      },
+      test: z.object({
+        value: z.number(),
+      }),
     },
     redisOptions: {
       host: redisContainer.getHost(),
@@ -211,9 +197,9 @@ redisTest("dequeue multiple items", { timeout: 20_000 }, async ({ redisContainer
   });
 
   try {
-    await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
-    await queue.enqueue({ id: "2", job: "test", item: { value: 2 } });
-    await queue.enqueue({ id: "3", job: "test", item: { value: 3 } });
+    await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
+    await queue.enqueue({ id: "2", job: "test", item: { value: 2 }, visibilityTimeoutMs: 2000 });
+    await queue.enqueue({ id: "3", job: "test", item: { value: 3 }, visibilityTimeoutMs: 2000 });
 
     expect(await queue.size()).toBe(3);
 

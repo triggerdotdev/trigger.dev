@@ -4,17 +4,14 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 
 export interface MessageCatalogSchema {
-  [key: string]: {
-    schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
-    defaultVisibilityTimeoutMs: number;
-  };
+  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
 
 export type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
 export type MessageCatalogValue<
   TMessageCatalog extends MessageCatalogSchema,
   TKey extends MessageCatalogKey<TMessageCatalog>,
-> = z.infer<TMessageCatalog[TKey]["schema"]>;
+> = z.infer<TMessageCatalog[TKey]>;
 
 export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   name: string;
@@ -77,16 +74,14 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     job: MessageCatalogKey<TMessageCatalog>;
     item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
     availableAt?: Date;
-    visibilityTimeoutMs?: number;
+    visibilityTimeoutMs: number;
   }): Promise<void> {
     try {
       const score = availableAt ? availableAt.getTime() : Date.now();
-      const jobSchema = this.schema[job];
-      const actualVisibilityTimeoutMs = visibilityTimeoutMs ?? jobSchema.defaultVisibilityTimeoutMs;
       const serializedItem = JSON.stringify({
         job,
         item,
-        visibilityTimeoutMs: actualVisibilityTimeoutMs,
+        visibilityTimeoutMs,
       });
 
       const result = await this.redis.enqueueItem(
@@ -148,7 +143,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           continue;
         }
 
-        const validatedItem = schema.schema.safeParse(parsedItem.item);
+        const validatedItem = schema.safeParse(parsedItem.item);
 
         if (!validatedItem.success) {
           this.logger.error("Invalid item in queue", {
@@ -160,8 +155,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           continue;
         }
 
-        const visibilityTimeoutMs =
-          (parsedItem.visibilityTimeoutMs as number) || schema.defaultVisibilityTimeoutMs;
+        const visibilityTimeoutMs = parsedItem.visibilityTimeoutMs as number;
         const invisibleUntil = now + visibilityTimeoutMs;
 
         await this.redis.zadd(`queue`, invisibleUntil, id);
