@@ -10,8 +10,8 @@ export interface MessageCatalogSchema {
   };
 }
 
-type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
-type MessageCatalogValue<
+export type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
+export type MessageCatalogValue<
   TMessageCatalog extends MessageCatalogSchema,
   TKey extends MessageCatalogKey<TMessageCatalog>,
 > = z.infer<TMessageCatalog[TKey]["schema"]>;
