@@ -3,6 +3,7 @@ import { describe } from "node:test";
 import { expect } from "vitest";
 import { z } from "zod";
 import { SimpleQueue } from "./queue.js";
+import { Logger } from "@trigger.dev/core/logger";
 
 describe("SimpleQueue", () => {
   redisTest("enqueue/dequeue", { timeout: 20_000 }, async ({ redisContainer }) => {
@@ -18,6 +19,7 @@ describe("SimpleQueue", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
+      logger: new Logger("test", "log"),
     });
 
     try {
@@ -58,6 +60,7 @@ describe("SimpleQueue", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
+      logger: new Logger("test", "error"),
     });
 
     try {
@@ -88,6 +91,7 @@ describe("SimpleQueue", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
+      logger: new Logger("test", "error"),
     });
 
     try {
@@ -123,6 +127,7 @@ describe("SimpleQueue", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
+      logger: new Logger("test", "error"),
     });
 
     try {

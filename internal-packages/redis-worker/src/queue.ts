@@ -3,12 +3,6 @@ import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-//todo maybe move the shutdown to the consumer.
-//todo when we dequeue we need to keep it in the queue with a future date.
-//todo add an ack method so when an item has been successfully processed it is removed.
-//todo can we dequeue multiple items at once, pass in the number of items to dequeue.
-//todo change the queue so it has a catalog instead of a schema.
-
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 }
@@ -57,7 +51,15 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     });
 
     this.redis.on("connect", () => {
-      // this.logger.log(`Redis connected for queue ${this.name}`);
+      this.logger.log(`Redis connected for queue ${this.name}`);
+    });
+
+    this.redis.on("reconnecting", () => {
+      this.logger.warn(`Redis reconnecting for queue ${this.name}`);
+    });
+
+    this.redis.on("close", () => {
+      this.logger.warn(`Redis connection closed for queue ${this.name}`);
     });
   }
 
