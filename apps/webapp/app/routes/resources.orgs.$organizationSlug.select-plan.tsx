@@ -561,74 +561,70 @@ export function TierHobby({
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
-      <Form action={formAction} method="post" id="subscribe">
-        <div className="py-6">
-          <input type="hidden" name="type" value="paid" />
-          <input type="hidden" name="planCode" value={plan.code} />
-          <input type="hidden" name="callerPath" value={location.pathname} />
-          {subscription?.plan !== undefined &&
-          subscription.plan.type !== "free" &&
-          subscription.canceledAt === undefined &&
-          subscription.plan.code !== plan.code ? (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+      <Form action={formAction} method="post" id="subscribe-hobby" className="py-6">
+        <input type="hidden" name="type" value="paid" />
+        <input type="hidden" name="planCode" value={plan.code} />
+        <input type="hidden" name="callerPath" value={location.pathname} />
+        {subscription?.plan !== undefined &&
+        subscription.plan.type !== "free" &&
+        subscription.canceledAt === undefined &&
+        subscription.plan.code !== plan.code ? (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                {`Downgrade to ${plan.title}`}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>Downgrade plan</DialogHeader>
+              <div className="mb-2 mt-4 flex items-start gap-3">
+                <span>
+                  <ArrowDownCircleIcon className="size-12 text-blue-500" />
+                </span>
+                <Paragraph variant="base/bright" className="text-text-bright">
+                  By downgrading you will lose access to your current plan’s features and your
+                  included credits will be reduced.
+                </Paragraph>
+              </div>
+              <DialogFooter>
+                <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                  Dismiss
+                </Button>
+                <Button
+                  variant="tertiary/medium"
+                  disabled={isLoading}
+                  LeadingIcon={
+                    isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
+                  }
+                  form="subscribe-hobby"
+                >
                   {`Downgrade to ${plan.title}`}
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>Downgrade plan</DialogHeader>
-                <div className="mb-2 mt-4 flex items-start gap-3">
-                  <span>
-                    <ArrowDownCircleIcon className="size-12 text-blue-500" />
-                  </span>
-                  <Paragraph variant="base/bright" className="text-text-bright">
-                    By downgrading you will lose access to your current plan’s features and your
-                    included credits will be reduced.
-                  </Paragraph>
-                </div>
-                <DialogFooter>
-                  <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
-                    Dismiss
-                  </Button>
-                  <Button
-                    variant="tertiary/medium"
-                    disabled={isLoading}
-                    LeadingIcon={
-                      isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
-                    }
-                    form="subscribe"
-                  >
-                    {`Downgrade to ${plan.title}`}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <Button
-              variant={isHighlighted ? "primary/large" : "tertiary/large"}
-              fullWidth
-              className="text-md font-medium"
-              disabled={
-                isLoading ||
-                (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
-              }
-              LeadingIcon={
-                isLoading && navigation.formData?.get("planCode") === plan.code
-                  ? Spinner
-                  : undefined
-              }
-            >
-              {subscription?.plan === undefined
-                ? "Select plan"
-                : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-                ? `Upgrade to ${plan.title}`
-                : subscription.plan.code === plan.code
-                ? "Current plan"
-                : `Upgrade to ${plan.title}`}
-            </Button>
-          )}
-        </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <Button
+            variant={isHighlighted ? "primary/large" : "tertiary/large"}
+            fullWidth
+            className="text-md font-medium"
+            disabled={
+              isLoading ||
+              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
+            }
+            LeadingIcon={
+              isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
+            }
+          >
+            {subscription?.plan === undefined
+              ? "Select plan"
+              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
+              ? `Upgrade to ${plan.title}`
+              : subscription.plan.code === plan.code
+              ? "Current plan"
+              : `Upgrade to ${plan.title}`}
+          </Button>
+        )}
       </Form>
       <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits} />
