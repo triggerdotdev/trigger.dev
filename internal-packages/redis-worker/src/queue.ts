@@ -1,11 +1,28 @@
 import { Logger } from "@trigger.dev/core/logger";
 import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
-export class SimpleQueue<T extends z.ZodType> {
+//todo maybe move the shutdown to the consumer.
+//todo when we dequeue we need to keep it in the queue with a future date.
+//todo add an ack method so when an item has been successfully processed it is removed.
+//todo can we dequeue multiple items at once, pass in the number of items to dequeue.
+//todo change the queue so it has a catalog instead of a schema.
+
+export interface MessageCatalogSchema {
+  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+}
+
+type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
+type MessageCatalogValue<
+  TMessageCatalog extends MessageCatalogSchema,
+  TKey extends MessageCatalogKey<TMessageCatalog>,
+> = z.infer<TMessageCatalog[TKey]>;
+
+export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   name: string;
   private redis: Redis;
-  private schema: T;
+  private schema: TMessageCatalog;
   private logger: Logger;
 
   constructor({
@@ -15,9 +32,10 @@ export class SimpleQueue<T extends z.ZodType> {
     logger,
   }: {
     name: string;
-    schema: T;
+    schema: TMessageCatalog;
     redisOptions: RedisOptions;
     logger?: Logger;
+    shutdownTimeMs?: number;
   }) {
     this.name = name;
     this.redis = new Redis({
@@ -43,12 +61,28 @@ export class SimpleQueue<T extends z.ZodType> {
     });
   }
 
-  async enqueue(id: string, item: z.infer<T>, availableAt?: Date): Promise<void> {
+  async enqueue({
+    id,
+    job,
+    item,
+    availableAt,
+  }: {
+    id?: string;
+    job: MessageCatalogKey<TMessageCatalog>;
+    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    availableAt?: Date;
+  }): Promise<void> {
     try {
       const score = availableAt ? availableAt.getTime() : Date.now();
-      const serializedItem = JSON.stringify(item);
+      const serializedItem = JSON.stringify({ job, item });
 
-      const result = await this.redis.enqueueItem(`queue`, `items`, id, score, serializedItem);
+      const result = await this.redis.enqueueItem(
+        `queue`,
+        `items`,
+        id ?? nanoid(),
+        score,
+        serializedItem
+      );
 
       if (result !== 1) {
         throw new Error("Enqueue operation failed");
@@ -64,11 +98,16 @@ export class SimpleQueue<T extends z.ZodType> {
     }
   }
 
-  async dequeue(): Promise<{ id: string; item: z.infer<T> } | null> {
+  async dequeue(visibilityTimeoutSeconds: number = 120): Promise<{
+    id: string;
+    job: MessageCatalogKey<TMessageCatalog>;
+    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+  } | null> {
     const now = Date.now();
+    const invisibleUntil = now + visibilityTimeoutSeconds * 1000;
 
     try {
-      const result = await this.redis.dequeueItem(`queue`, `items`, now);
+      const result = await this.redis.dequeueItem(`queue`, `items`, now, invisibleUntil);
 
       if (!result) {
         return null;
@@ -77,7 +116,24 @@ export class SimpleQueue<T extends z.ZodType> {
       const [id, serializedItem] = result;
 
       const parsedItem = JSON.parse(serializedItem);
-      const validatedItem = this.schema.safeParse(parsedItem);
+      if (typeof parsedItem.job !== "string") {
+        this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
+        return null;
+      }
+
+      const schema = this.schema[parsedItem.job];
+
+      if (!schema) {
+        this.logger.error(`Invalid item in queue, schema not found`, {
+          queue: this.name,
+          id,
+          item: parsedItem,
+          job: parsedItem.job,
+        });
+        return null;
+      }
+
+      const validatedItem = schema.safeParse(parsedItem.item);
 
       if (!validatedItem.success) {
         this.logger.error("Invalid item in queue", {
@@ -89,7 +145,7 @@ export class SimpleQueue<T extends z.ZodType> {
         return null;
       }
 
-      return { id, item: validatedItem.data };
+      return { id, job: parsedItem.job, item: validatedItem.data };
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.dequeue(): error dequeuing`, {
         queue: this.name,
@@ -136,34 +192,33 @@ export class SimpleQueue<T extends z.ZodType> {
     this.redis.defineCommand("dequeueItem", {
       numberOfKeys: 2,
       lua: `
-          local queue = KEYS[1]
-          local items = KEYS[2]
-          local now = tonumber(ARGV[1])
+      local queue = KEYS[1]
+      local items = KEYS[2]
+      local now = tonumber(ARGV[1])
+      local invisibleUntil = tonumber(ARGV[2])
 
-          local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
+      local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
 
-          if #result == 0 then
-            return nil
-          end
+      if #result == 0 then
+        return nil
+      end
 
-          local id = result[1]
-          local score = tonumber(result[2])
+      local id = result[1]
+      local score = tonumber(result[2])
 
-          if score > now then
-            return nil
-          end
+      if score > now then
+        return nil
+      end
 
-          redis.call('ZREM', queue, id)
+      redis.call('ZADD', queue, invisibleUntil, id)
 
-          local serializedItem = redis.call('HGET', items, id)
+      local serializedItem = redis.call('HGET', items, id)
 
-          if not serializedItem then
-            return nil
-          end
+      if not serializedItem then
+        return nil
+      end
 
-          redis.call('HDEL', items, id)
-
-          return {id, serializedItem}
+      return {id, serializedItem}
         `,
     });
   }
@@ -188,6 +243,7 @@ declare module "ioredis" {
       items: string,
       //args
       now: number,
+      invisibleUntil: number,
       callback?: Callback<[string, string] | null>
     ): Result<[string, string] | null, Context>;
   }
