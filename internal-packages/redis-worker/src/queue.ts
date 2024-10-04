@@ -4,14 +4,17 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 
 export interface MessageCatalogSchema {
-  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+  [key: string]: {
+    schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+    defaultVisibilityTimeoutMs: number;
+  };
 }
 
 type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
 type MessageCatalogValue<
   TMessageCatalog extends MessageCatalogSchema,
   TKey extends MessageCatalogKey<TMessageCatalog>,
-> = z.infer<TMessageCatalog[TKey]>;
+> = z.infer<TMessageCatalog[TKey]["schema"]>;
 
 export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   name: string;
@@ -68,15 +71,23 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     job,
     item,
     availableAt,
+    visibilityTimeoutMs,
   }: {
     id?: string;
     job: MessageCatalogKey<TMessageCatalog>;
     item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
     availableAt?: Date;
+    visibilityTimeoutMs?: number;
   }): Promise<void> {
     try {
       const score = availableAt ? availableAt.getTime() : Date.now();
-      const serializedItem = JSON.stringify({ job, item });
+      const jobSchema = this.schema[job];
+      const actualVisibilityTimeoutMs = visibilityTimeoutMs ?? jobSchema.defaultVisibilityTimeoutMs;
+      const serializedItem = JSON.stringify({
+        job,
+        item,
+        visibilityTimeoutMs: actualVisibilityTimeoutMs,
+      });
 
       const result = await this.redis.enqueueItem(
         `queue`,
@@ -100,16 +111,16 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
-  async dequeue(visibilityTimeoutMs: number = 120_000): Promise<{
+  async dequeue(): Promise<{
     id: string;
     job: MessageCatalogKey<TMessageCatalog>;
     item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    visibilityTimeoutMs: number;
   } | null> {
     const now = Date.now();
-    const invisibleUntil = now + visibilityTimeoutMs;
 
     try {
-      const result = await this.redis.dequeueItem(`queue`, `items`, now, invisibleUntil);
+      const result = await this.redis.dequeueItem(`queue`, `items`, now);
 
       if (!result) {
         return null;
@@ -135,7 +146,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         return null;
       }
 
-      const validatedItem = schema.safeParse(parsedItem.item);
+      const validatedItem = schema.schema.safeParse(parsedItem.item);
 
       if (!validatedItem.success) {
         this.logger.error("Invalid item in queue", {
@@ -147,7 +158,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         return null;
       }
 
-      return { id, job: parsedItem.job, item: validatedItem.data };
+      const visibilityTimeoutMs =
+        (parsedItem.visibilityTimeoutMs as number) || schema.defaultVisibilityTimeoutMs;
+      const invisibleUntil = now + visibilityTimeoutMs;
+
+      await this.redis.zadd(`queue`, invisibleUntil, id);
+
+      return { id, job: parsedItem.job, item: validatedItem.data, visibilityTimeoutMs };
     } catch (e) {
       this.logger.error(`SimpleQueue ${this.name}.dequeue(): error dequeuing`, {
         queue: this.name,
@@ -217,7 +234,6 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local queue = KEYS[1]
         local items = KEYS[2]
         local now = tonumber(ARGV[1])
-        local invisibleUntil = tonumber(ARGV[2])
 
         local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 1)
 
@@ -232,16 +248,20 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           return nil
         end
 
-        redis.call('ZADD', queue, invisibleUntil, id)
-
         local serializedItem = redis.call('HGET', items, id)
 
         if not serializedItem then
           return nil
         end
 
+        local item = cjson.decode(serializedItem)
+        local visibilityTimeoutMs = tonumber(item.visibilityTimeoutMs)
+        local invisibleUntil = now + visibilityTimeoutMs
+
+        redis.call('ZADD', queue, invisibleUntil, id)
+
         return {id, serializedItem}
-        `,
+      `,
     });
 
     this.redis.defineCommand("ackItem", {
@@ -279,7 +299,6 @@ declare module "ioredis" {
       items: string,
       //args
       now: number,
-      invisibleUntil: number,
       callback?: Callback<[string, string] | null>
     ): Result<[string, string] | null, Context>;
 

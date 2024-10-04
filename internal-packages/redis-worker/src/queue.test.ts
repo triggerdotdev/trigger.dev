@@ -10,9 +10,12 @@ describe("SimpleQueue", () => {
     const queue = new SimpleQueue({
       name: "test-1",
       schema: {
-        test: z.object({
-          value: z.number(),
-        }),
+        test: {
+          schema: z.object({
+            value: z.number(),
+          }),
+          defaultVisibilityTimeoutMs: 2000,
+        },
       },
       redisOptions: {
         host: redisContainer.getHost(),
@@ -30,7 +33,12 @@ describe("SimpleQueue", () => {
       expect(await queue.size()).toBe(2);
 
       const first = await queue.dequeue();
-      expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      expect(first).toEqual({
+        id: "1",
+        job: "test",
+        item: { value: 1 },
+        visibilityTimeoutMs: 2000,
+      });
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(2);
 
@@ -38,7 +46,12 @@ describe("SimpleQueue", () => {
       expect(await queue.size({ includeFuture: true })).toBe(1);
 
       const second = await queue.dequeue();
-      expect(second).toEqual({ id: "2", job: "test", item: { value: 2 } });
+      expect(second).toEqual({
+        id: "2",
+        job: "test",
+        item: { value: 2 },
+        visibilityTimeoutMs: 2000,
+      });
 
       await queue.ack(second!.id);
       expect(await queue.size({ includeFuture: true })).toBe(0);
@@ -49,27 +62,35 @@ describe("SimpleQueue", () => {
 
   redisTest("no items", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
-      name: "test-2",
+      name: "test-1",
       schema: {
-        test: z.object({
-          value: z.number(),
-        }),
+        test: {
+          schema: z.object({
+            value: z.number(),
+          }),
+          defaultVisibilityTimeoutMs: 2000,
+        },
       },
       redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      logger: new Logger("test", "error"),
+      logger: new Logger("test", "log"),
     });
 
     try {
       const missOne = await queue.dequeue();
       expect(missOne).toBeNull();
 
-      await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+      await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
       const hitOne = await queue.dequeue();
-      expect(hitOne).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      expect(hitOne).toEqual({
+        id: "1",
+        job: "test",
+        item: { value: 1 },
+        visibilityTimeoutMs: 2000,
+      });
 
       const missTwo = await queue.dequeue();
       expect(missTwo).toBeNull();
@@ -80,18 +101,21 @@ describe("SimpleQueue", () => {
 
   redisTest("future item", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
-      name: "test-3",
+      name: "test-1",
       schema: {
-        test: z.object({
-          value: z.number(),
-        }),
+        test: {
+          schema: z.object({
+            value: z.number(),
+          }),
+          defaultVisibilityTimeoutMs: 2000,
+        },
       },
       redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      logger: new Logger("test", "error"),
+      logger: new Logger("test", "log"),
     });
 
     try {
@@ -108,7 +132,12 @@ describe("SimpleQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const first = await queue.dequeue();
-      expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      expect(first).toEqual({
+        id: "1",
+        job: "test",
+        item: { value: 1 },
+        visibilityTimeoutMs: 2000,
+      });
     } finally {
       await queue.close();
     }
@@ -116,33 +145,46 @@ describe("SimpleQueue", () => {
 
   redisTest("invisibility timeout", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
-      name: "test-4",
+      name: "test-1",
       schema: {
-        test: z.object({
-          value: z.number(),
-        }),
+        test: {
+          schema: z.object({
+            value: z.number(),
+          }),
+          defaultVisibilityTimeoutMs: 2000,
+        },
       },
       redisOptions: {
         host: redisContainer.getHost(),
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      logger: new Logger("test", "error"),
+      logger: new Logger("test", "log"),
     });
 
     try {
-      await queue.enqueue({ id: "1", job: "test", item: { value: 1 } });
+      await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 1_000 });
 
-      const first = await queue.dequeue(2_000);
-      expect(first).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      const first = await queue.dequeue();
+      expect(first).toEqual({
+        id: "1",
+        job: "test",
+        item: { value: 1 },
+        visibilityTimeoutMs: 1_000,
+      });
 
       const missImmediate = await queue.dequeue();
       expect(missImmediate).toBeNull();
 
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
 
       const second = await queue.dequeue();
-      expect(second).toEqual({ id: "1", job: "test", item: { value: 1 } });
+      expect(second).toEqual({
+        id: "1",
+        job: "test",
+        item: { value: 1 },
+        visibilityTimeoutMs: 1_000,
+      });
     } finally {
       await queue.close();
     }
