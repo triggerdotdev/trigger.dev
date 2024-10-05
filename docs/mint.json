@@ -89,6 +89,14 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks/introduction",
+      "destination": "/guides/overview"
+    },
+    {
+      "source": "/guides/examples/intro",
+      "destination": "/guides/overview"
+    },
+    {
       "source": "/examples/:slug*",
       "destination": "/guides/examples/:slug*"
     }
@@ -251,13 +259,12 @@
       "pages": ["community", "help-slack", "help-email"]
     },
     {
-      "group": "Overview",
-      "pages": ["guides/overview"]
+      "group": "",
+      "pages": ["guides/introduction"]
     },
     {
       "group": "Frameworks",
       "pages": [
-        "guides/frameworks/introduction",
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/nodejs",
@@ -281,7 +288,6 @@
     {
       "group": "Example tasks",
       "pages": [
-        "guides/examples/intro",
         "guides/examples/dall-e3-generate-image",
         "guides/examples/deepgram-transcribe-audio",
         "guides/examples/ffmpeg-video-processing",
