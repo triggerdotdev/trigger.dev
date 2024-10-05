@@ -69,7 +69,15 @@ export class OrgIntegrationRepository {
         return new WebClient(
           options?.forceBotToken
             ? secret.botAccessToken
-            : secret.userAccessToken ?? secret.botAccessToken
+            : secret.userAccessToken ?? secret.botAccessToken,
+          {
+            retryConfig: {
+              retries: 2,
+              randomize: true,
+              maxTimeout: 5000,
+              maxRetryTime: 10000,
+            },
+          }
         ) as AuthenticatedClientForIntegration<TService>;
       }
       default: {

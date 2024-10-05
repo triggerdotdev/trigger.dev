@@ -20,6 +20,10 @@ import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
+import { handleMetadataPacket } from "~/utils/packets";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -80,6 +84,24 @@ export class TriggerTaskService extends BaseService {
         }
       }
 
+      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+
+      logger.debug("Queue size guard result", {
+        queueSizeGuard,
+        environment: {
+          id: environment.id,
+          type: environment.type,
+          organization: environment.organization,
+          project: environment.project,
+        },
+      });
+
+      if (!queueSizeGuard.isWithinLimits) {
+        throw new ServiceValidationError(
+          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+        );
+      }
+
       if (
         body.options?.tags &&
         typeof body.options.tags !== "string" &&
@@ -99,6 +121,13 @@ export class TriggerTaskService extends BaseService {
         environment
       );
 
+      const metadataPacket = body.options?.metadata
+        ? handleMetadataPacket(
+            body.options?.metadata,
+            body.options?.metadataType ?? "application/json"
+          )
+        : undefined;
+
       const dependentAttempt = body.options?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findUnique({
             where: { friendlyId: body.options.dependentAttempt },
@@ -108,6 +137,8 @@ export class TriggerTaskService extends BaseService {
                   id: true,
                   status: true,
                   taskIdentifier: true,
+                  rootTaskRunId: true,
+                  depth: true,
                 },
               },
             },
@@ -134,6 +165,23 @@ export class TriggerTaskService extends BaseService {
         }
       }
 
+      const parentAttempt = body.options?.parentAttempt
+        ? await this._prisma.taskRunAttempt.findUnique({
+            where: { friendlyId: body.options.parentAttempt },
+            include: {
+              taskRun: {
+                select: {
+                  id: true,
+                  status: true,
+                  taskIdentifier: true,
+                  rootTaskRunId: true,
+                  depth: true,
+                },
+              },
+            },
+          })
+        : undefined;
+
       const dependentBatchRun = body.options?.dependentBatch
         ? await this._prisma.batchTaskRun.findUnique({
             where: { friendlyId: body.options.dependentBatch },
@@ -145,6 +193,8 @@ export class TriggerTaskService extends BaseService {
                       id: true,
                       status: true,
                       taskIdentifier: true,
+                      rootTaskRunId: true,
+                      depth: true,
                     },
                   },
                 },
@@ -176,6 +226,26 @@ export class TriggerTaskService extends BaseService {
         }
       }
 
+      const parentBatchRun = body.options?.parentBatch
+        ? await this._prisma.batchTaskRun.findUnique({
+            where: { friendlyId: body.options.parentBatch },
+            include: {
+              dependentTaskAttempt: {
+                include: {
+                  taskRun: {
+                    select: {
+                      id: true,
+                      status: true,
+                      taskIdentifier: true,
+                      rootTaskRunId: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : undefined;
+
       return await eventRepository.traceEvent(
         taskId,
         {
@@ -199,7 +269,7 @@ export class TriggerTaskService extends BaseService {
           incomplete: true,
           immediate: true,
         },
-        async (event, traceContext) => {
+        async (event, traceContext, traceparent) => {
           const run = await autoIncrementCounter.incrementInTransaction(
             `v3-run:${environment.id}:${taskId}`,
             async (num, tx) => {
@@ -243,6 +313,14 @@ export class TriggerTaskService extends BaseService {
                 }
               }
 
+              const depth = dependentAttempt
+                ? dependentAttempt.taskRun.depth + 1
+                : parentAttempt
+                ? parentAttempt.taskRun.depth + 1
+                : dependentBatchRun?.dependentTaskAttempt
+                ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
+                : 0;
+
               const taskRun = await tx.taskRun.create({
                 data: {
                   status: delayUntil ? "DELAYED" : "PENDING",
@@ -258,6 +336,8 @@ export class TriggerTaskService extends BaseService {
                   traceContext: traceContext,
                   traceId: event.traceId,
                   spanId: event.spanId,
+                  parentSpanId:
+                    options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
@@ -272,6 +352,31 @@ export class TriggerTaskService extends BaseService {
                       : {
                           connect: tagIds.map((id) => ({ id })),
                         },
+                  parentTaskRunId:
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                  parentTaskRunAttemptId:
+                    dependentAttempt?.id ??
+                    parentAttempt?.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.id,
+                  rootTaskRunId:
+                    dependentAttempt?.taskRun.rootTaskRunId ??
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.rootTaskRunId ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                  batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
+                  resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
+                  depth,
+                  metadata: metadataPacket?.data,
+                  metadataType: metadataPacket?.dataType,
+                  seedMetadata: metadataPacket?.data,
+                  seedMetadataType: metadataPacket?.dataType,
+                  maxDurationInSeconds: body.options?.maxDuration
+                    ? clampMaxDuration(body.options.maxDuration)
+                    : undefined,
                 },
               });
 
@@ -354,11 +459,7 @@ export class TriggerTaskService extends BaseService {
                 const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                 if (expireAt) {
-                  await workerQueue.enqueue(
-                    "v3.expireRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
-                  );
+                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
                 }
               }
 

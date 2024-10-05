@@ -1,0 +1,26 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["typedSql"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// user.prisma
+model User {
+  id    Int    @id @default(autoincrement())
+  name  String
+  posts Post[]
+}
+
+// post.prisma
+model Post {
+  id       Int    @id @default(autoincrement())
+  title    String
+  content  String
+  authorId Int
+  author   User   @relation(fields: [authorId], references: [id])
+}

@@ -167,6 +167,8 @@ export class RunListPresenter extends BasePresenter {
         baseCostInCents: number;
         usageDurationMs: BigInt;
         tags: string[];
+        depth: number;
+        rootTaskRunId: string | null;
       }[]
     >`
     SELECT
@@ -190,6 +192,8 @@ export class RunListPresenter extends BasePresenter {
     tr."baseCostInCents" AS "baseCostInCents",
     tr."costInCents" AS "costInCents",
     tr."usageDurationMs" AS "usageDurationMs",
+    tr."depth" AS "depth",
+    tr."rootTaskRunId" AS "rootTaskRunId",
     array_remove(array_agg(tag.name), NULL) AS "tags"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
@@ -333,6 +337,8 @@ WHERE
           baseCostInCents: run.baseCostInCents,
           usageDurationMs: Number(run.usageDurationMs),
           tags: run.tags.sort((a, b) => a.localeCompare(b)),
+          depth: run.depth,
+          rootTaskRunId: run.rootTaskRunId,
         };
       }),
       pagination: {

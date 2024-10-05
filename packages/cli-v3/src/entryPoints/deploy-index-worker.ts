@@ -115,6 +115,20 @@ if (typeof config.machine === "string") {
   });
 }
 
+// If the config has a maxDuration, we need to apply it to all tasks that don't have a maxDuration
+if (typeof config.maxDuration === "number") {
+  tasks = tasks.map((task) => {
+    if (typeof task.maxDuration !== "number") {
+      return {
+        ...task,
+        maxDuration: config.maxDuration,
+      };
+    }
+
+    return task;
+  });
+}
+
 await sendMessageInCatalog(
   indexerToWorkerMessages,
   "INDEX_COMPLETE",

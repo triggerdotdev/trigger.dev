@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:trigger": "triggerdev dev",
-    "deploy": "triggerdev deploy"
+    "dev:trigger": "trigger dev",
+    "deploy": "trigger deploy"
   },
   "dependencies": {
     "@trigger.dev/sdk": "workspace:*"

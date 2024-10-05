@@ -79,13 +79,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new TriggerTaskService();
 
   try {
-    const traceContext = traceparent
-      ? !triggerVersion // If the trigger version is NOT set, we are in an older version of the SDK
+    const traceContext =
+      traceparent && isFromWorker /// If the request is from a worker, we should pass the trace context
         ? { traceparent, tracestate }
-        : isFromWorker // If the trigger version is set, and the request is from a worker, we should pass the trace context
-        ? { traceparent, tracestate }
-        : undefined
-      : undefined;
+        : undefined;
 
     logger.debug("Triggering task", {
       taskId,

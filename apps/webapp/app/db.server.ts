@@ -1,10 +1,10 @@
-import { PrismaClient, Prisma } from "@trigger.dev/database";
+import { Prisma, PrismaClient } from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { logger } from "./services/logger.server";
 import { env } from "./env.server";
-import { singleton } from "./utils/singleton";
+import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import { singleton } from "./utils/singleton";
 
 export type PrismaTransactionClient = Omit<
   PrismaClient,
@@ -94,6 +94,7 @@ function getClient() {
         url: databaseUrl.href,
       },
     },
+    // @ts-expect-error
     log: [
       {
         emit: "stdout",
@@ -107,24 +108,15 @@ function getClient() {
         emit: "stdout",
         level: "warn",
       },
-      // {
-      //   emit: "stdout",
-      //   level: "query",
-      // },
-      // {
-      //   emit: "event",
-      //   level: "query",
-      // },
-    ],
+    ].concat(
+      process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            { emit: "event", level: "query" },
+            { emit: "stdout", level: "query" },
+          ]
+        : []
+    ),
   });
-
-  // client.$on("query", (e) => {
-  //   console.log(`Query tooks ${e.duration}ms`, {
-  //     query: e.query,
-  //     params: e.params,
-  //     duration: e.duration,
-  //   });
-  // });
 
   // connect eagerly
   client.$connect();
@@ -153,6 +145,7 @@ function getReplicaClient() {
         url: replicaUrl.href,
       },
     },
+    // @ts-expect-error
     log: [
       {
         emit: "stdout",
@@ -166,7 +159,14 @@ function getReplicaClient() {
         emit: "stdout",
         level: "warn",
       },
-    ],
+    ].concat(
+      process.env.VERBOSE_PRISMA_LOGS === "1"
+        ? [
+            { emit: "event", level: "query" },
+            { emit: "stdout", level: "query" },
+          ]
+        : []
+    ),
   });
 
   // connect eagerly

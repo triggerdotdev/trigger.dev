@@ -41,6 +41,7 @@ export const FINAL_RUN_STATUSES = [
   "SYSTEM_FAILURE",
   "EXPIRED",
   "CRASHED",
+  "TIMED_OUT",
 ] satisfies TaskRunStatus[];
 
 export type FINAL_RUN_STATUSES = (typeof FINAL_RUN_STATUSES)[number];
@@ -50,7 +51,12 @@ export const FINAL_ATTEMPT_STATUSES = [
   "COMPLETED",
   "FAILED",
 ] satisfies TaskRunAttemptStatus[];
+
 export type FINAL_ATTEMPT_STATUSES = (typeof FINAL_ATTEMPT_STATUSES)[number];
+
+export const FAILED_ATTEMPT_STATUSES = ["FAILED", "CANCELED"] satisfies TaskRunAttemptStatus[];
+
+export type FAILED_ATTEMPT_STATUSES = (typeof FAILED_ATTEMPT_STATUSES)[number];
 
 export const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
 export const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
@@ -91,6 +97,7 @@ export const FAILED_RUN_STATUSES = [
   "COMPLETED_WITH_ERRORS",
   "SYSTEM_FAILURE",
   "CRASHED",
+  "TIMED_OUT",
 ] satisfies TaskRunStatus[];
 
 export function isFailedRunStatus(status: TaskRunStatus): boolean {

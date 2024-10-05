@@ -362,6 +362,7 @@ async function selfHostedBuildImage(
 
     for await (const line of pushProcess) {
       logger.debug(line);
+      errors.push(line);
     }
 
     if (pushProcess.exitCode !== 0) {
@@ -492,7 +493,7 @@ COPY --chown=bun:bun . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER bun
 WORKDIR /app
@@ -601,7 +602,7 @@ COPY --chown=node:node . .
 
 ${postInstallCommands}
 
-from build as indexer
+FROM build AS indexer
 
 USER node
 WORKDIR /app

@@ -1,0 +1,84 @@
+name: "#️⃣ Get image tag (action)"
+
+description: This action gets the image tag from the commit ref or input (if provided)
+
+outputs:
+  tag:
+    description: The image tag
+    value: ${{ steps.get_tag.outputs.tag }}
+  is_semver:
+    description: Whether the tag is a semantic version
+    value: ${{ steps.check_semver.outputs.is_semver }}
+
+inputs:
+  tag:
+    description: The image tag. If this is set it will return the tag as is.
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: "#️⃣ Get image tag (step)"
+      id: get_tag
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.tag }}" ]]; then
+          tag="${{ inputs.tag }}"
+        elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ "${{ github.ref_name }}" == infra-*-* ]]; then
+            env=$(echo ${{ github.ref_name }} | cut -d- -f2)
+            sha=$(echo ${{ github.sha }} | head -c7)
+            ts=$(date +%s)
+            tag=${env}-${sha}-${ts}
+          elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
+            version="${GITHUB_REF_NAME#v.docker.}"
+            tag="v${version}"
+          elif [[ "${{ github.ref_name }}" == build-* ]]; then
+            tag="${GITHUB_REF_NAME#build-}"
+          else
+            echo "Invalid git tag: ${{ github.ref_name }}"
+            exit 1
+          fi
+        elif [[ "${{ github.ref_name }}" == "main" ]]; then
+          tag="main"
+        else
+          echo "Invalid git ref: ${{ github.ref }}"
+          exit 1
+        fi
+        echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+    - name: 🔍 Check for validity
+      id: check_validity
+      shell: bash
+      env:
+        tag: ${{ steps.get_tag.outputs.tag }}
+      run: |
+        if [[ "${tag}" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+          echo "Tag is valid: ${tag}"
+        else
+          echo "Tag is not valid: ${tag}"
+          exit 1
+        fi
+
+    - name: 🆚 Check for semver
+      id: check_semver
+      shell: bash
+      env:
+        tag: ${{ steps.get_tag.outputs.tag }}
+      # Will match most semver formats except build metadata, i.e. v1.2.3+build.1
+      # Valid matches:
+      # v1.2.3
+      # v1.2.3-alpha
+      # v1.2.3-alpha.1
+      # v1.2.3-rc.1
+      # v1.2.3-beta-1
+      run: |
+        if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+          echo "Tag is a semantic version: ${tag}"
+          is_semver=true
+        else
+          echo "Tag is not a semantic version: ${tag}"
+          is_semver=false
+        fi
+        echo "is_semver=${is_semver}" >> "$GITHUB_OUTPUT"

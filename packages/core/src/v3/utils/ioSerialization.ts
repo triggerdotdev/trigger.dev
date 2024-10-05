@@ -366,7 +366,18 @@ function getPacketExtension(outputType: string): string {
 }
 
 async function loadSuperJSON() {
-  return await import("superjson");
+  const superjson = await import("superjson");
+
+  superjson.registerCustom<Buffer, number[]>(
+    {
+      isApplicable: (v): v is Buffer => v instanceof Buffer,
+      serialize: (v) => [...v],
+      deserialize: (v) => Buffer.from(v),
+    },
+    "buffer"
+  );
+
+  return superjson;
 }
 
 function safeJsonParse(value: string): any {

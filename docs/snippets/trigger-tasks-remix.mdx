@@ -1,0 +1,47 @@
+Run your Remix app:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash pnpm
+    pnpm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+    </CodeGroup>
+
+    Run the dev server from Step 2. of the [Initial Setup](/guides/frameworks/remix#initial-setup) section above if it's not already running:
+
+    <CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest dev
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest dev
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@latest dev
+    ```
+
+    </CodeGroup>
+
+    Now visit the URL in your browser to trigger the task. Ensure the port number is the same as the one you're running your Remix app on. For example, if you're running your Remix app on port 3000, visit:
+
+    ```bash
+    http://localhost:3000/api/trigger
+    ```
+
+    You should see the CLI log the task run with a link to view the logs in the dashboard.
+
+    ![Trigger.dev CLI showing a successful run](/images/trigger-cli-run-success.png)
+
+    Visit the [Trigger.dev dashboard](https://cloud.trigger.dev) to see your run.

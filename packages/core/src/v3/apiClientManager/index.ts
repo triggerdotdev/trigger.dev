@@ -5,6 +5,13 @@ import { ApiClientConfiguration } from "./types.js";
 
 const API_NAME = "api-client";
 
+export class ApiClientMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApiClientMissingError";
+  }
+}
+
 export class APIClientManagerAPI {
   private static _instance?: APIClientManagerAPI;
 
@@ -44,7 +51,29 @@ export class APIClientManagerAPI {
     return new ApiClient(this.baseURL, this.accessToken);
   }
 
+  clientOrThrow(): ApiClient {
+    if (!this.baseURL || !this.accessToken) {
+      throw new ApiClientMissingError(this.apiClientMissingError());
+    }
+
+    return new ApiClient(this.baseURL, this.accessToken);
+  }
+
   #getConfig(): ApiClientConfiguration | undefined {
     return getGlobal(API_NAME);
+  }
+
+  apiClientMissingError() {
+    const hasBaseUrl = !!this.baseURL;
+    const hasAccessToken = !!this.accessToken;
+    if (!hasBaseUrl && !hasAccessToken) {
+      return `You need to set the TRIGGER_API_URL and TRIGGER_SECRET_KEY environment variables. See https://trigger.dev/docs/management/overview#authentication`;
+    } else if (!hasBaseUrl) {
+      return `You need to set the TRIGGER_API_URL environment variable. See https://trigger.dev/docs/management/overview#authentication`;
+    } else if (!hasAccessToken) {
+      return `You need to set the TRIGGER_SECRET_KEY environment variable. See https://trigger.dev/docs/management/overview#authentication`;
+    }
+
+    return `Unknown error`;
   }
 }

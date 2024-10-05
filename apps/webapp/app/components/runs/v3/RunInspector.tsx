@@ -325,6 +325,12 @@ export function RunInspector({
                   </Property.Item>
                 )}
                 <Property.Item>
+                  <Property.Label>Max duration</Property.Label>
+                  <Property.Value>
+                    {run.maxDurationInSeconds ? `${run.maxDurationInSeconds}s` : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
                     {run.baseCostInCents > 0
@@ -353,6 +359,10 @@ export function RunInspector({
                       ? formatDurationMilliseconds(run.usageDurationMs, { style: "short" })
                       : "–"}
                   </Property.Value>
+                </Property.Item>
+                <Property.Item>
+                  <Property.Label>Run ID</Property.Label>
+                  <Property.Value>{run.id}</Property.Value>
                 </Property.Item>
               </Property.Table>
             </div>

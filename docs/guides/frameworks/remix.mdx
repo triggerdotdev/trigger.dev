@@ -11,6 +11,9 @@ import CliDevStep from '/snippets/step-cli-dev.mdx';
 import CliRunTestStep from '/snippets/step-run-test.mdx';
 import CliViewRunStep from '/snippets/step-view-run.mdx';
 import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
+import TriggerTaskRemix from "/snippets/trigger-tasks-remix.mdx";
+import AddEnvironmentVariables from "/snippets/add-environment-variables.mdx";
+import DeployingYourTask from "/snippets/deplopying-your-task.mdx";
 
 <Prerequisites framework="Remix" />
 
@@ -22,5 +25,180 @@ import UsefulNextSteps from '/snippets/useful-next-steps.mdx';
     <CliRunTestStep />
     <CliViewRunStep />
 </Steps>
+
+## Set your secret key locally
+
+Set your `TRIGGER_SECRET_KEY` environment variable in your `.env` file. This key is used to authenticate with Trigger.dev, so you can trigger runs from your Remix app. Visit the API Keys page in the dashboard and select the DEV secret key.
+
+![How to find your secret key](/images/api-keys.png)
+
+For more information on authenticating with Trigger.dev, see the [API keys page](/apikeys).
+
+## Triggering your task in Remix
+
+<Steps>
+
+  <Step title="Create an API route">
+
+  Create a new file called `api.hello-world.ts` (or `api.hello-world.js`) in the `app/routes` directory like this: `app/routes/api.hello-world.ts`.
+
+  </Step>
+
+  <Step title="Add your task">
+
+  Add this code to your `api.hello-world.ts` file which imports your task:
+
+  ```ts app/routes/api.hello-world.ts
+  import type { helloWorldTask } from "../../src/trigger/example";
+  import { tasks } from "@trigger.dev/sdk/v3";
+
+  export async function loader() {
+    const handle = await tasks.trigger<typeof helloWorldTask>(
+      "hello-world",
+      "James"
+    );
+
+    return new Response(JSON.stringify(handle), {
+      headers: { "Content-Type": "application/json" },
+    });
+}
+```
+
+  </Step>
+
+  <Step title="Trigger your task">
+
+    <TriggerTaskRemix/>
+
+  </Step>
+
+</Steps>
+
+<AddEnvironmentVariables/>
+
+<DeployingYourTask/>
+
+## Deploying to Vercel Edge Functions
+
+Before we start, it's important to note that:
+- We'll be using a type-only import for the task to ensure compatibility with the edge runtime.
+- The `@trigger.dev/sdk/v3` package supports the edge runtime out of the box.
+
+There are a few extra steps to follow to deploy your `/api/hello-world` API endpoint to Vercel Edge Functions.
+
+<Steps>
+
+<Step title="Update your API route">
+
+Update your API route to use the `runtime: "edge"` option and change it to an `action()` so we can trigger the task from a curl request later on.
+
+```ts app/routes/api.hello-world.ts
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { helloWorldTask } from "../../src/trigger/example";
+//      👆 **type-only** import
+
+// include this at the top of your API route file
+export const config = {
+  runtime: "edge",
+};
+export async function action({ request }: { request: Request }) {
+  // This is where you'd authenticate the request
+  const payload = await request.json();
+  const handle = await tasks.trigger<typeof helloWorldTask>(
+    "hello-world",
+    payload
+  );
+  return new Response(JSON.stringify(handle), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
+
+</Step>
+
+<Step title="Update the Vercel configuration">
+
+Create or update the `vercel.json` file with the following:
+
+```json vercel.json
+{
+  "buildCommand": "npm run vercel-build",
+  "devCommand": "npm run dev",
+  "framework": "remix",
+  "installCommand": "npm install",
+  "outputDirectory": "build/client"
+}
+```
+
+</Step>
+
+<Step title="Update package.json scripts">
+
+Update your `package.json` to include the following scripts:
+
+```json package.json
+"scripts": {
+    "build": "remix vite:build",
+    "dev": "remix vite:dev",
+    "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
+    "start": "remix-serve ./build/server/index.js",
+    "typecheck": "tsc",
+    "vercel-build": "remix vite:build && cp -r ./public ./build/client"
+},
+```
+
+</Step>
+
+<Step title="Deploy to Vercel">
+
+Push your code to a Git repository and create a new project in the Vercel dashboard. Select your repository and follow the prompts to complete the deployment.
+
+</Step>
+
+
+<Step title="Add your Vercel environment variables">
+
+In the Vercel project settings, add your Trigger.dev secret key:
+
+```bash
+TRIGGER_SECRET_KEY=your-secret-key
+```
+
+You can find this key in the Trigger.dev dashboard under API Keys and select the environment key you want to use.
+
+![How to find your secret key](/images/api-keys.png)
+
+</Step>
+
+<Step title="Deploy your project">
+
+Once you've added the environment variable, deploy your project to Vercel.
+
+<Note>Ensure you have also deployed your Trigger.dev task. See [deploy your task step](/guides/frameworks/remix#deploying-your-task-to-trigger-dev).</Note>
+
+</Step>
+
+<Step title="Test your task in production">
+
+After deployment, you can test your task in production by running this curl command:
+
+```bash
+curl -X POST https://your-app.vercel.app/api/hello-world \
+-H "Content-Type: application/json" \
+-d '{"name": "James"}'
+```
+
+This sends a POST request to your API endpoint with a JSON payload.
+
+</Step>
+
+</Steps>
+
+### Additional notes
+
+The `vercel-build` script in `package.json` is specific to Remix projects on Vercel, ensuring that static assets are correctly copied to the build output.
+
+The `runtime: "edge"` configuration in the API route allows for better performance on Vercel's Edge Network.
+
 
 <UsefulNextSteps />

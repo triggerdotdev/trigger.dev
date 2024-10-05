@@ -6,6 +6,7 @@ export const superParentTask = task({
     const result = await superChildTask.triggerAndWait({
       foo: "bar",
       whenToDo: new Date(),
+      buffer: Buffer.from("foo"),
     });
 
     if (result.ok) {
@@ -24,10 +25,11 @@ export const superParentTask = task({
 
 export const superChildTask = task({
   id: "super-child-task",
-  run: async (payload: { whenToDo: Date; foo: string }) => {
+  run: async (payload: { whenToDo: Date; foo: string; buffer: Buffer }) => {
     logger.log("super-child-task payload: ", { payload });
     logger.log(`typeof payload.whenToDo = ${typeof payload.whenToDo}`);
     logger.log(`typeof payload.foo = ${typeof payload.foo}`);
+    logger.log(`typeof payload.buffer = ${payload.buffer.toString("utf-8")}`);
 
     return {
       date: new Date(),

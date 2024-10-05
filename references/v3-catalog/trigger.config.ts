@@ -4,6 +4,7 @@ import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 import { esbuildPlugin } from "@trigger.dev/build";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 import { ffmpeg, syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript";
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -16,6 +17,8 @@ export default defineConfig({
   machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
+  // Set the maxDuration to 300s for all tasks. See https://trigger.dev/docs/runs/max-duration
+  // maxDuration: 300,
   retries: {
     enabledInDev: false,
     default: {
@@ -32,7 +35,11 @@ export default defineConfig({
     console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
   },
   onFailure: async (payload, error, { ctx }) => {
-    console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);
+    console.log(
+      `Task ${ctx.task.id} failed ${ctx.run.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   },
   build: {
     conditions: ["react-server"],
@@ -79,6 +86,7 @@ export default defineConfig({
           value: secret.secretValue,
         }));
       }),
+      puppeteer(),
     ],
     external: ["re2"],
   },

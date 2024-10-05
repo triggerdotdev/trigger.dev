@@ -1,8 +1,10 @@
+import { DeserializedJson } from "../../schemas/json.js";
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
 import type { RuntimeManager } from "../runtime/manager.js";
 import { TaskCatalog } from "../task-catalog/catalog.js";
 import { TaskContext } from "../taskContext/types.js";
+import { TimeoutManager } from "../timeout/types.js";
 import { UsageManager } from "../usage/types.js";
 import { _globalThis } from "./platform.js";
 
@@ -54,4 +56,6 @@ type TriggerDotDevGlobalAPI = {
   ["task-catalog"]?: TaskCatalog;
   ["task-context"]?: TaskContext;
   ["api-client"]?: ApiClientConfiguration;
+  ["run-metadata"]?: Record<string, DeserializedJson>;
+  ["timeout"]?: TimeoutManager;
 };

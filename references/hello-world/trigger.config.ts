@@ -3,6 +3,7 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 export default defineConfig({
   project: "proj_rrkpdguyagvsoktglnod",
   logLevel: "log",
+  maxDuration: 60,
   retries: {
     enabledInDev: true,
     default: {

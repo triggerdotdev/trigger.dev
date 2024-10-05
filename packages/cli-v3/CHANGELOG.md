@@ -1,5 +1,53 @@
 # trigger.dev
 
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.10`
+  - `@trigger.dev/build@3.0.10`
+
+## 3.0.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.9`
+  - `@trigger.dev/build@3.0.9`
+
+## 3.0.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@3.0.8`
+  - `@trigger.dev/core@3.0.8`
+
+## 3.0.7
+
+### Patch Changes
+
+- Fix resolving external packages that are ESM only by falling back to mlly resolvePathSync. This will fix mupdf ([#1346](https://github.com/triggerdotdev/trigger.dev/pull/1346))
+- Add the "dev.vars" file to the list of auto-loaded dotenv files in the dev CLI command ([#1340](https://github.com/triggerdotdev/trigger.dev/pull/1340))
+- Updated dependencies:
+  - `@trigger.dev/build@3.0.7`
+  - `@trigger.dev/core@3.0.7`
+
+## 3.0.6
+
+### Patch Changes
+
+- 64862db84: Ignore OTEL_EXPORTER_OTLP_ENDPOINT environment variable from `.env` files, to prevent the internal OTEL_EXPORTER_OTLP_ENDPOINT being overwritten with a user-supplied value.
+- b4be73655: prismaExtension fixes for #1325 and #1327
+- Updated dependencies [b4be73655]
+- Updated dependencies [4e0bc485a]
+- Updated dependencies [c65d4822b]
+- Updated dependencies [1f5bcc73b]
+  - @trigger.dev/build@3.0.6
+  - @trigger.dev/core@3.0.6
+
 ## 3.0.5
 
 ### Patch Changes

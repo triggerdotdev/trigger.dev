@@ -17,10 +17,10 @@
   "license": "MIT",
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
-    "execa": "^8.0.1",
     "nanoid": "^5.0.6",
     "prom-client": "^15.1.0",
-    "socket.io": "4.7.4"
+    "socket.io": "4.7.4",
+    "tinyexec": "^0.3.0"
   },
   "devDependencies": {
     "@types/node": "^18",

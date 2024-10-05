@@ -127,8 +127,9 @@ export class PrismaExtension implements BuildExtension {
     if (this.options.typedSql) {
       generatorFlags.push(`--sql`);
 
-      const schemaDir = dirname(this._resolvedSchemaPath);
-      const prismaDir = dirname(schemaDir);
+      const prismaDir = usingSchemaFolder
+        ? dirname(dirname(this._resolvedSchemaPath))
+        : dirname(this._resolvedSchemaPath);
 
       context.logger.debug(`Using typedSql`);
 
@@ -226,15 +227,29 @@ export class PrismaExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(manifest.runtime)} node_modules/prisma/build/index.js migrate deploy`
       );
+    }
 
-      env.DATABASE_URL = manifest.deploy.env?.DATABASE_URL;
+    env.DATABASE_URL = manifest.deploy.env?.DATABASE_URL;
 
-      if (this.options.directUrlEnvVarName) {
-        env[this.options.directUrlEnvVarName] =
-          manifest.deploy.env?.[this.options.directUrlEnvVarName];
-      } else {
-        env.DIRECT_URL = manifest.deploy.env?.DIRECT_URL;
+    if (this.options.directUrlEnvVarName) {
+      env[this.options.directUrlEnvVarName] =
+        manifest.deploy.env?.[this.options.directUrlEnvVarName] ??
+        process.env[this.options.directUrlEnvVarName];
+
+      if (!env[this.options.directUrlEnvVarName]) {
+        context.logger.warn(
+          `prismaExtension could not resolve the ${this.options.directUrlEnvVarName} environment variable. Make sure you add it to your environment variables or provide it as an environment variable to the deploy CLI command. See our docs for more info: https://trigger.dev/docs/deploy-environment-variables`
+        );
       }
+    } else {
+      env.DIRECT_URL = manifest.deploy.env?.DIRECT_URL;
+      env.DIRECT_DATABASE_URL = manifest.deploy.env?.DIRECT_DATABASE_URL;
+    }
+
+    if (!env.DATABASE_URL) {
+      context.logger.warn(
+        `prismaExtension could not resolve the DATABASE_URL environment variable. Make sure you add it to your environment variables. See our docs for more info: https://trigger.dev/docs/deploy-environment-variables`
+      );
     }
 
     context.logger.debug(`Adding the prisma layer with the following commands`, {
