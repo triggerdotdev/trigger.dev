@@ -13,6 +13,7 @@ import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
 import { hasTTY } from "std-env";
 import nodeResolve from "resolve";
+import * as semver from "semver";
 
 export const UpdateCommandOptions = CommonCommandOptions.pick({
   logLevel: true,
@@ -112,7 +113,7 @@ export async function updateTriggerPackages(
     }
 
     const isDowngrade = mismatches.some((dep) => {
-      return dep.version > targetVersion;
+      return semver.gt(dep.version, targetVersion);
     });
 
     return {

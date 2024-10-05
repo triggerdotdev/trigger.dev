@@ -576,9 +576,6 @@ importers:
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
-      semver:
-        specifier: ^7.5.0
-        version: 7.5.0
       simple-oauth2:
         specifier: ^5.0.0
         version: 5.0.0
@@ -718,9 +715,6 @@ importers:
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
-      '@types/semver':
-        specifier: ^7.3.13
-        version: 7.3.13
       '@types/simple-oauth2':
         specifier: ^5.0.4
         version: 5.0.4
@@ -976,6 +970,9 @@ importers:
       resolve:
         specifier: ^1.22.8
         version: 1.22.8
+      semver:
+        specifier: ^7.5.0
+        version: 7.6.3
       signal-exit:
         specifier: ^4.1.0
         version: 4.1.0
@@ -1029,7 +1026,7 @@ importers:
         specifier: ^4.0.5
         version: 4.0.5
       '@types/semver':
-        specifier: ^7.3.13
+        specifier: ^7.5.0
         version: 7.5.1
       '@types/source-map-support':
         specifier: 0.5.10
@@ -1713,7 +1710,7 @@ packages:
       commander: 10.0.1
       marked: 9.1.6
       marked-terminal: 7.1.0(marked@9.1.6)
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /@arethetypeswrong/core@0.15.1:
@@ -1722,7 +1719,7 @@ packages:
     dependencies:
       '@andrewbranch/untar.js': 1.0.3
       fflate: 0.8.2
-      semver: 7.5.4
+      semver: 7.6.3
       ts-expose-internals-conditionally: 1.0.0-empty.0
       typescript: 5.3.3
       validate-npm-package-name: 5.0.0
@@ -3913,7 +3910,7 @@ packages:
       outdent: 0.5.0
       prettier: 2.8.8
       resolve-from: 5.0.0
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
 
   /@changesets/assemble-release-plan@5.2.4(patch_hash=3wuhjtl4hjck4itk3w32z4cd5u):
@@ -3924,7 +3921,7 @@ packages:
       '@changesets/get-dependents-graph': 1.3.6
       '@changesets/types': 5.2.1
       '@manypkg/get-packages': 1.1.3
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
     patched: true
 
@@ -3967,7 +3964,7 @@ packages:
       p-limit: 2.3.0
       preferred-pm: 3.0.3
       resolve-from: 5.0.0
-      semver: 7.5.4
+      semver: 7.6.3
       spawndamnit: 2.0.0
       term-size: 2.2.1
       tty-table: 4.1.6
@@ -3998,7 +3995,7 @@ packages:
       '@manypkg/get-packages': 1.1.3
       chalk: 2.4.2
       fs-extra: 7.0.1
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
 
   /@changesets/get-github-info@0.5.2:
@@ -6889,7 +6886,7 @@ packages:
     resolution: {integrity: sha512-7kZUAaLscfgbwBQRbvdMYaZOWyMEcPTH/tJjnyAWJ/dvvs9Ef+CERx/qJb9GExJpl1qipaDGn7KqHnFGGixd0w==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
 
   /@npmcli/git@4.1.0:
     resolution: {integrity: sha512-9hwoB3gStVfa0N31ymBmrX+GuDGdVA/QWShZVqE0HK2Af+7QGGrCTbZia/SW0ImUTjTne7SP91qxDmtXvDHRPQ==}
@@ -6901,7 +6898,7 @@ packages:
       proc-log: 3.0.0
       promise-inflight: 1.0.1
       promise-retry: 2.0.1
-      semver: 7.5.4
+      semver: 7.6.3
       which: 3.0.1
     transitivePeerDependencies:
       - bluebird
@@ -6917,7 +6914,7 @@ packages:
       json-parse-even-better-errors: 3.0.0
       normalize-package-data: 5.0.0
       proc-log: 3.0.0
-      semver: 7.5.4
+      semver: 7.6.3
     transitivePeerDependencies:
       - bluebird
     dev: true
@@ -7254,7 +7251,7 @@ packages:
       '@opentelemetry/core': 1.22.0(@opentelemetry/api@1.4.1)
       '@opentelemetry/instrumentation': 0.49.1(@opentelemetry/api@1.4.1)
       '@opentelemetry/semantic-conventions': 1.22.0
-      semver: 7.5.4
+      semver: 7.6.3
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -7269,7 +7266,7 @@ packages:
       '@opentelemetry/core': 1.25.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/instrumentation': 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.25.1
-      semver: 7.5.4
+      semver: 7.6.3
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -7298,7 +7295,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.1
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7315,7 +7312,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.1
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7332,7 +7329,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.1
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7349,7 +7346,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.7.4
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7366,7 +7363,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.11.0
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7383,7 +7380,7 @@ packages:
       '@types/shimmer': 1.0.2
       import-in-the-middle: 1.11.0
       require-in-the-middle: 7.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       shimmer: 1.2.1
     transitivePeerDependencies:
       - supports-color
@@ -7753,7 +7750,7 @@ packages:
       '@opentelemetry/propagator-b3': 1.22.0(@opentelemetry/api@1.4.1)
       '@opentelemetry/propagator-jaeger': 1.22.0(@opentelemetry/api@1.4.1)
       '@opentelemetry/sdk-trace-base': 1.22.0(@opentelemetry/api@1.4.1)
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /@opentelemetry/sdk-trace-node@1.25.1(@opentelemetry/api@1.4.1):
@@ -7768,7 +7765,7 @@ packages:
       '@opentelemetry/propagator-b3': 1.25.1(@opentelemetry/api@1.4.1)
       '@opentelemetry/propagator-jaeger': 1.25.1(@opentelemetry/api@1.4.1)
       '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.4.1)
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /@opentelemetry/sdk-trace-node@1.25.1(@opentelemetry/api@1.9.0):
@@ -7783,7 +7780,7 @@ packages:
       '@opentelemetry/propagator-b3': 1.25.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/propagator-jaeger': 1.25.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.9.0)
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
 
   /@opentelemetry/sdk-trace-web@1.22.0(@opentelemetry/api@1.4.1):
@@ -12819,7 +12816,7 @@ packages:
       react-refresh: 0.14.0
       remark-frontmatter: 4.0.1
       remark-mdx-frontmatter: 1.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       tar-fs: 2.1.1
       tsconfig-paths: 4.2.0
       typescript: 5.2.2
@@ -14686,10 +14683,6 @@ packages:
     resolution: {integrity: sha512-KQf+QAMWKMrtBMsB8/24w53tEsxllMj6TuA80TT/5igJalLI/zm0L3oXRbIAl4Ohfc85gyHX/jhMwsVkmhLU4A==}
     dev: true
 
-  /@types/semver@7.3.13:
-    resolution: {integrity: sha512-21cFJr9z3g5dW8B0CVI9g2O9beqaThGQ6ZFBqHfwhzLDKUxaqTIy3vnfah/UPkfOiF2pLq+tGz+W8RyCskuslw==}
-    dev: true
-
   /@types/semver@7.5.1:
     resolution: {integrity: sha512-cJRQXpObxfNKkFAZbJl2yjWtJCqELQIdShsogr1d2MilP8dKD9TE/nEKHkJgUNHdGKCQaf9HbIynuV2csLGVLg==}
 
@@ -14806,7 +14799,7 @@ packages:
       grapheme-splitter: 1.0.4
       ignore: 5.2.4
       natural-compare-lite: 1.4.0
-      semver: 7.5.4
+      semver: 7.6.3
       tsutils: 3.21.0(typescript@5.2.2)
       typescript: 5.2.2
     transitivePeerDependencies:
@@ -14880,7 +14873,7 @@ packages:
       debug: 4.3.4
       globby: 11.1.0
       is-glob: 4.0.3
-      semver: 7.5.4
+      semver: 7.6.3
       tsutils: 3.21.0(typescript@5.2.2)
       typescript: 5.2.2
     transitivePeerDependencies:
@@ -14895,13 +14888,13 @@ packages:
     dependencies:
       '@eslint-community/eslint-utils': 4.4.0(eslint@8.31.0)
       '@types/json-schema': 7.0.13
-      '@types/semver': 7.3.13
+      '@types/semver': 7.5.1
       '@typescript-eslint/scope-manager': 5.59.6
       '@typescript-eslint/types': 5.59.6
       '@typescript-eslint/typescript-estree': 5.59.6(typescript@5.2.2)
       eslint: 8.31.0
       eslint-scope: 5.1.1
-      semver: 7.5.4
+      semver: 7.6.3
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -15526,7 +15519,7 @@ packages:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
     dependencies:
-      debug: 4.3.6
+      debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -16420,7 +16413,7 @@ packages:
   /builtins@5.0.1:
     resolution: {integrity: sha512-qwVpFEHNfhYJIzNRBvd2C1kyo6jz3ZSMPyyuR47OPdiKWlbYnZNyDWuyR175qDnAJLiCo5fBBqPb3RiXgWlkOQ==}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /bun-types@1.1.17:
@@ -17357,7 +17350,7 @@ packages:
       postcss-modules-scope: 3.1.1(postcss@8.4.35)
       postcss-modules-values: 4.0.0(postcss@8.4.35)
       postcss-value-parser: 4.2.0
-      semver: 7.5.4
+      semver: 7.6.3
       webpack: 5.88.2(@swc/core@1.3.26)(esbuild@0.15.18)
     dev: true
 
@@ -17970,7 +17963,7 @@ packages:
       '@one-ini/wasm': 0.1.1
       commander: 10.0.1
       minimatch: 9.0.1
-      semver: 7.5.4
+      semver: 7.6.3
     dev: false
 
   /ee-first@1.1.1:
@@ -20256,7 +20249,7 @@ packages:
       chalk: 4.1.2
       debug: 4.3.4
       interpret: 3.1.1
-      semver: 7.5.4
+      semver: 7.6.3
       tslib: 2.6.2
       yargs: 17.7.2
     transitivePeerDependencies:
@@ -20526,7 +20519,7 @@ packages:
     engines: {node: '>= 6'}
     dependencies:
       agent-base: 6.0.2
-      debug: 4.3.6
+      debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -21679,8 +21672,11 @@ packages:
   /lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+    requiresBuild: true
     dependencies:
       yallist: 4.0.0
+    dev: false
+    optional: true
 
   /lru-cache@7.18.3:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
@@ -21739,7 +21735,7 @@ packages:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /make-error@1.3.6:
@@ -22886,7 +22882,7 @@ packages:
       make-fetch-happen: 13.0.1
       nopt: 7.2.0
       proc-log: 4.2.0
-      semver: 7.5.4
+      semver: 7.6.3
       tar: 6.2.1
       which: 4.0.0
     transitivePeerDependencies:
@@ -22926,7 +22922,7 @@ packages:
     dependencies:
       hosted-git-info: 6.1.1
       is-core-module: 2.14.0
-      semver: 7.5.4
+      semver: 7.6.3
       validate-npm-package-license: 3.0.4
     dev: true
 
@@ -22962,7 +22958,7 @@ packages:
     resolution: {integrity: sha512-744wat5wAAHsxa4590mWO0tJ8PKxR8ORZsH9wGpQc3nWTzozMAgBN/XyqYw7mg3yqLM8dLwEnwSfKMmXAjF69g==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
     dependencies:
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /npm-normalize-package-bin@2.0.0:
@@ -22981,7 +22977,7 @@ packages:
     dependencies:
       hosted-git-info: 6.1.1
       proc-log: 3.0.0
-      semver: 7.5.4
+      semver: 7.6.3
       validate-npm-package-name: 5.0.0
     dev: true
 
@@ -23003,7 +22999,7 @@ packages:
       npm-install-checks: 6.2.0
       npm-normalize-package-bin: 3.0.1
       npm-package-arg: 10.1.0
-      semver: 7.5.4
+      semver: 7.6.3
     dev: true
 
   /npm-run-all@4.1.5:
@@ -24087,7 +24083,7 @@ packages:
       cosmiconfig: 9.0.0(typescript@5.2.2)
       jiti: 1.21.0
       postcss: 8.4.44
-      semver: 7.5.4
+      semver: 7.6.3
       webpack: 5.88.2(@swc/core@1.3.26)(esbuild@0.15.18)
     transitivePeerDependencies:
       - typescript
@@ -26178,26 +26174,10 @@ packages:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
     hasBin: true
 
-  /semver@7.5.0:
-    resolution: {integrity: sha512-+XC0AD/R7Q2mPSRuy2Id0+CGTZ98+8f+KvwirxOKIEyid+XSx6HbC63p+O4IndTHuX5Z+JxQ0TghCkO5Cg/2HA==}
-    engines: {node: '>=10'}
-    hasBin: true
-    dependencies:
-      lru-cache: 6.0.0
-    dev: false
-
-  /semver@7.5.4:
-    resolution: {integrity: sha512-1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==}
-    engines: {node: '>=10'}
-    hasBin: true
-    dependencies:
-      lru-cache: 6.0.0
-
   /semver@7.6.3:
     resolution: {integrity: sha512-oVekP1cKtI+CTDvHWYFUcMtsK/00wmAEfyqKfNdARm8u1wNVhSgaX7A8d4UuIlUI5e84iEwOhs7ZPYRmzU9U6A==}
     engines: {node: '>=10'}
     hasBin: true
-    dev: false
 
   /send@0.18.0:
     resolution: {integrity: sha512-qqWzuOjSFOuqPjFe4NOsMLafToQQwBSOEpS+FwEt3A2V3vKubTquT3vmLTQpFgMXp8AlFWFuP1qKaJZOtPpVXg==}
