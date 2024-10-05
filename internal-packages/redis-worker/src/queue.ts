@@ -29,7 +29,6 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     schema: TMessageCatalog;
     redisOptions: RedisOptions;
     logger?: Logger;
-    shutdownTimeMs?: number;
   }) {
     this.name = name;
     this.redis = new Redis({

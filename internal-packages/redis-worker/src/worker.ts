@@ -1,23 +1,38 @@
-import {
-  MessageCatalogSchema,
-  SimpleQueue,
-  MessageCatalogKey,
-  MessageCatalogValue,
-} from "./queue.js";
 import { Logger } from "@trigger.dev/core/logger";
-import { Worker as NodeWorker } from "worker_threads";
+import { type RedisOptions } from "ioredis";
 import os from "os";
+import { Worker as NodeWorker } from "worker_threads";
+import { z } from "zod";
+import { SimpleQueue } from "./queue.js";
 
-type JobHandler<TMessageCatalog extends MessageCatalogSchema> = (params: {
+type WorkerCatalog = {
+  [key: string]: {
+    schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+    visibilityTimeoutMs: number;
+    retry: {
+      maxAttempts: number;
+      minDelayMs?: number;
+      scaleFactor?: number;
+    };
+  };
+};
+
+type QueueCatalogFromWorkerCatalog<Catalog extends WorkerCatalog> = {
+  [K in keyof Catalog]: Catalog[K]["schema"];
+};
+
+type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (params: {
   id: string;
-  payload: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+  payload: z.infer<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
 }) => Promise<void>;
 
-type WorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
-  queue: SimpleQueue<TMessageCatalog>;
+type WorkerOptions<TCatalog extends WorkerCatalog> = {
+  name: string;
+  redisOptions: RedisOptions;
+  catalog: TCatalog;
   jobs: {
-    [K in MessageCatalogKey<TMessageCatalog>]: JobHandler<TMessageCatalog>;
+    [K in keyof TCatalog]: JobHandler<TCatalog, K>;
   };
   concurrency?: {
     workers?: number;
@@ -26,18 +41,31 @@ type WorkerOptions<TMessageCatalog extends MessageCatalogSchema> = {
   logger?: Logger;
 };
 
-class Worker<TMessageCatalog extends MessageCatalogSchema> {
-  private queue: SimpleQueue<TMessageCatalog>;
-  private jobs: WorkerOptions<TMessageCatalog>["jobs"];
+class Worker<TCatalog extends WorkerCatalog> {
+  private queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
+  private jobs: WorkerOptions<TCatalog>["jobs"];
   private logger: Logger;
   private workers: NodeWorker[] = [];
   private isShuttingDown = false;
-  private concurrency: Required<NonNullable<WorkerOptions<TMessageCatalog>["concurrency"]>>;
+  private concurrency: Required<NonNullable<WorkerOptions<TCatalog>["concurrency"]>>;
+  private catalog: TCatalog;
 
-  constructor(options: WorkerOptions<TMessageCatalog>) {
-    this.queue = options.queue;
-    this.jobs = options.jobs;
+  constructor(options: WorkerOptions<TCatalog>) {
+    this.catalog = options.catalog;
     this.logger = options.logger ?? new Logger("Worker", "debug");
+
+    const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
+      Object.entries(options.catalog).map(([key, value]) => [key, value.schema])
+    ) as QueueCatalogFromWorkerCatalog<TCatalog>;
+
+    this.queue = new SimpleQueue({
+      name: options.name,
+      redisOptions: options.redisOptions,
+      logger: this.logger,
+      schema,
+    });
+
+    this.jobs = options.jobs;
 
     const { workers = os.cpus().length, tasksPerWorker = 1 } = options.concurrency ?? {};
     this.concurrency = { workers, tasksPerWorker };
@@ -48,6 +76,26 @@ class Worker<TMessageCatalog extends MessageCatalogSchema> {
     }
 
     this.setupShutdownHandlers();
+  }
+
+  enqueue<K extends keyof TCatalog>({
+    id,
+    job,
+    payload,
+    visibilityTimeoutMs,
+  }: {
+    id?: string;
+    job: K;
+    payload: z.infer<TCatalog[K]["schema"]>;
+    visibilityTimeoutMs?: number;
+  }) {
+    const timeout = visibilityTimeoutMs ?? this.catalog[job].visibilityTimeoutMs;
+    return this.queue.enqueue({
+      id,
+      job,
+      item: payload,
+      visibilityTimeoutMs: timeout,
+    });
   }
 
   private createWorker(tasksPerWorker: number) {
@@ -101,7 +149,7 @@ class Worker<TMessageCatalog extends MessageCatalogSchema> {
       worker.postMessage({ type: "process", items });
 
       for (const { id, job, item, visibilityTimeoutMs } of items) {
-        const handler = this.jobs[job];
+        const handler = this.jobs[job as any];
         if (!handler) {
           this.logger.error(`No handler found for job type: ${job as string}`);
           continue;
