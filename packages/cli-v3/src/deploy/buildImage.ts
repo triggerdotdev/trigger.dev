@@ -362,6 +362,7 @@ async function selfHostedBuildImage(
 
     for await (const line of pushProcess) {
       logger.debug(line);
+      errors.push(line);
     }
 
     if (pushProcess.exitCode !== 0) {
