@@ -7,55 +7,120 @@ import { Logger } from "@trigger.dev/core/logger";
 import { SimpleQueue } from "./queue.js";
 
 describe("Worker", () => {
-  // Tests will be added here
-});
+  redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
+    const processedItems: number[] = [];
+    const worker = new Worker({
+      name: "test-worker",
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      catalog: {
+        testJob: {
+          schema: z.object({ value: z.number() }),
+          visibilityTimeoutMs: 5000,
+          retry: { maxAttempts: 3 },
+        },
+      },
+      jobs: {
+        testJob: async ({ payload }) => {
+          await new Promise((resolve) => setTimeout(resolve, 30)); // Simulate work
+          processedItems.push(payload.value);
+        },
+      },
+      concurrency: {
+        workers: 2,
+        tasksPerWorker: 3,
+      },
+      logger: new Logger("test", "log"),
+    });
 
-redisTest("concurrency settings", { timeout: 30_000 }, async ({ redisContainer }) => {
-  const processedItems: number[] = [];
-  const worker = new Worker({
-    name: "test-worker",
-    redisOptions: {
-      host: redisContainer.getHost(),
-      port: redisContainer.getPort(),
-      password: redisContainer.getPassword(),
-    },
-    catalog: {
-      testJob: {
-        schema: z.object({ value: z.number() }),
+    // Enqueue 10 items
+    for (let i = 0; i < 10; i++) {
+      await worker.enqueue({
+        id: `item-${i}`,
+        job: "testJob",
+        payload: { value: i },
         visibilityTimeoutMs: 5000,
-        retry: { maxAttempts: 3 },
-      },
-    },
-    jobs: {
-      testJob: async ({ payload }) => {
-        await new Promise((resolve) => setTimeout(resolve, 30)); // Simulate work
-        processedItems.push(payload.value);
-      },
-    },
-    concurrency: {
-      workers: 2,
-      tasksPerWorker: 3,
-    },
-    logger: new Logger("test", "log"),
+      });
+    }
+
+    worker.start();
+
+    // Wait for items to be processed
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    worker.stop();
+
+    expect(processedItems.length).toBe(10);
+    expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
   });
 
-  // Enqueue 10 items
-  for (let i = 0; i < 10; i++) {
-    await worker.enqueue({
-      id: `item-${i}`,
-      job: "testJob",
-      payload: { value: i },
-      visibilityTimeoutMs: 5000,
-    });
-  }
+  redisTest(
+    "Process items that throw an error",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedItems: number[] = [];
+      const hadAttempt = new Set<string>();
 
-  worker.start();
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.number() }),
+            visibilityTimeoutMs: 5000,
+            retry: { maxAttempts: 3, minDelayMs: 10 },
+          },
+        },
+        jobs: {
+          testJob: async ({ id, payload }) => {
+            if (!hadAttempt.has(id)) {
+              hadAttempt.add(id);
+              throw new Error("Test error");
+            }
 
-  // Wait for items to be processed
-  await new Promise((resolve) => setTimeout(resolve, 600));
+            await new Promise((resolve) => setTimeout(resolve, 30)); // Simulate work
+            processedItems.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 2,
+          tasksPerWorker: 3,
+        },
+        pollIntervalMs: 50,
+        logger: new Logger("test", "error"),
+      });
 
-  worker.stop();
+      // Enqueue 10 items
+      for (let i = 0; i < 10; i++) {
+        await worker.enqueue({
+          id: `item-${i}`,
+          job: "testJob",
+          payload: { value: i },
+          visibilityTimeoutMs: 5000,
+        });
+      }
 
-  expect(processedItems.length).toBe(10);
-  expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
+      worker.start();
+
+      // Wait for items to be processed
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      worker.stop();
+
+      expect(processedItems.length).toBe(10);
+      expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
+    }
+  );
 });
+
+//todo test throwing an error and that retrying works
+//todo test that throwing an error doesn't screw up the other items
+//todo change the processItems to be in parallel using Promise.allResolved
+//process more items when finished

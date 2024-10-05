@@ -38,6 +38,7 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
     workers?: number;
     tasksPerWorker?: number;
   };
+  pollIntervalMs?: number;
   logger?: Logger;
 };
 
@@ -48,14 +49,12 @@ class Worker<TCatalog extends WorkerCatalog> {
   private workers: NodeWorker[] = [];
   private isShuttingDown = false;
   private concurrency: Required<NonNullable<WorkerOptions<TCatalog>["concurrency"]>>;
-  private catalog: TCatalog;
 
-  constructor(options: WorkerOptions<TCatalog>) {
-    this.catalog = options.catalog;
+  constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
 
     const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
-      Object.entries(options.catalog).map(([key, value]) => [key, value.schema])
+      Object.entries(this.options.catalog).map(([key, value]) => [key, value.schema])
     ) as QueueCatalogFromWorkerCatalog<TCatalog>;
 
     this.queue = new SimpleQueue({
@@ -89,7 +88,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
   }) {
-    const timeout = visibilityTimeoutMs ?? this.catalog[job].visibilityTimeoutMs;
+    const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
     return this.queue.enqueue({
       id,
       job,
@@ -139,34 +138,77 @@ class Worker<TCatalog extends WorkerCatalog> {
   private async processItems(worker: NodeWorker, count: number) {
     if (this.isShuttingDown) return;
 
+    const pollIntervalMs = this.options.pollIntervalMs ?? 1000;
+
     try {
       const items = await this.queue.dequeue(count);
       if (items.length === 0) {
-        setTimeout(() => this.processItems(worker, count), 1000); // Wait before trying again
+        setTimeout(() => this.processItems(worker, count), pollIntervalMs);
         return;
       }
 
-      worker.postMessage({ type: "process", items });
+      await Promise.all(
+        items.map(async ({ id, job, item, visibilityTimeoutMs }) => {
+          const catalogItem = this.options.catalog[job as any];
+          const handler = this.jobs[job as any];
+          if (!handler) {
+            this.logger.error(`No handler found for job type: ${job as string}`);
+            return;
+          }
 
-      for (const { id, job, item, visibilityTimeoutMs } of items) {
-        const handler = this.jobs[job as any];
-        if (!handler) {
-          this.logger.error(`No handler found for job type: ${job as string}`);
-          continue;
-        }
-
-        try {
-          await handler({ id, payload: item, visibilityTimeoutMs });
-          await this.queue.ack(id);
-        } catch (error) {
-          this.logger.error(`Error processing item ${id}:`, { error });
-          // Here you might want to implement a retry mechanism or dead-letter queue
-        }
-      }
+          try {
+            await handler({ id, payload: item, visibilityTimeoutMs });
+            await this.queue.ack(id);
+          } catch (error) {
+            this.logger.error(`Error processing item, it threw an error:`, {
+              name: this.options.name,
+              id,
+              job,
+              item,
+              visibilityTimeoutMs,
+              error,
+            });
+            // Requeue the failed item with a delay
+            try {
+              const retryDelay = catalogItem.retry.minDelayMs ?? 1_000;
+              const retryDate = new Date(Date.now() + retryDelay);
+              this.logger.info(`Requeued failed item ${id} with delay`, {
+                name: this.options.name,
+                id,
+                job,
+                item,
+                retryDate,
+                retryDelay,
+                visibilityTimeoutMs,
+              });
+              await this.queue.enqueue({
+                id,
+                job,
+                item,
+                availableAt: retryDate,
+                visibilityTimeoutMs,
+              });
+            } catch (requeueError) {
+              this.logger.error(`Failed to requeue item, threw error:`, {
+                name: this.options.name,
+                id,
+                job,
+                item,
+                visibilityTimeoutMs,
+                error: requeueError,
+              });
+            }
+          }
+        })
+      );
     } catch (error) {
-      this.logger.error("Error dequeuing items:", { error });
-      setTimeout(() => this.processItems(worker, count), 1000); // Wait before trying again
+      this.logger.error("Error dequeuing items:", { name: this.options.name, error });
+      setTimeout(() => this.processItems(worker, count), pollIntervalMs);
+      return;
     }
+
+    // Immediately process next batch because there were items in the queue
+    this.processItems(worker, count);
   }
 
   private setupShutdownHandlers() {
