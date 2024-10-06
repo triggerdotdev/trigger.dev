@@ -5,7 +5,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
-import { Form, useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
@@ -17,7 +17,7 @@ import {
   SetPlanBody,
   SubscriptionResult,
 } from "@trigger.dev/platform/v3";
-import { useState } from "react";
+import React, { useState } from "react";
 import { inspect } from "util";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
@@ -44,7 +44,6 @@ import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import React from "react";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -68,7 +67,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();
+
+  // Log the form data for debugging
+  console.log("Form data:", Object.fromEntries(formData));
+
   const form = schema.parse(Object.fromEntries(formData));
+
+  // Log the parsed form data
+  console.log("Parsed form data:", form);
 
   const organization = await prisma.organization.findUnique({
     where: { slug: organizationSlug },
@@ -82,6 +88,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (form.type) {
     case "free": {
+      console.log("Entering free case");
       try {
         if (!env.PLAIN_API_KEY) {
           console.error("PLAIN_API_KEY is not set");
@@ -122,7 +129,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
               colors: true,
             })
           );
-          throw new Error(upsertCustomerRes.error.message);
+          throw redirectWithErrorMessage(form.callerPath, request, upsertCustomerRes.error.message);
         }
 
         const formData = await request.formData();
@@ -145,8 +152,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 ? [
                     uiComponent.spacer({ size: "L" }),
                     uiComponent.text({
-                      size: "S",
-                      color: "ERROR",
+                      size: "L",
+                      color: "NORMAL",
                       text: "Reasons:",
                     }),
                     uiComponent.text({
@@ -158,8 +165,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 ? [
                     uiComponent.spacer({ size: "L" }),
                     uiComponent.text({
-                      size: "S",
-                      color: "ERROR",
+                      size: "L",
+                      color: "NORMAL",
                       text: "Comment:",
                     }),
                     uiComponent.text({
@@ -178,10 +185,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 colors: true,
               })
             );
-            throw new Error(createThreadRes.error.message);
+            throw redirectWithErrorMessage(form.callerPath, request, createThreadRes.error.message);
           }
         }
       } catch (e) {
+        console.error("Error in free case:", e);
         logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
       }
       payload = {
@@ -201,8 +209,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       };
       break;
     }
+    default: {
+      console.error("Invalid form type:", form.type);
+      throw new Error("Invalid form type");
+    }
   }
 
+  console.log("Final payload:", payload);
   return setPlan(organization, request, form.callerPath, payload);
 }
 
@@ -414,7 +427,7 @@ export function TierFree({
             ) : (
               <>
                 {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
-                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
                     <DialogTrigger asChild>
                       <Button variant="tertiary/large" fullWidth className="text-md font-medium">
                         {`Downgrade to ${plan.title}`}
@@ -482,6 +495,7 @@ export function TierFree({
                           LeadingIcon={
                             isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
                           }
+                          type="submit"
                           form="subscribe"
                         >
                           Downgrade plan
@@ -569,7 +583,7 @@ export function TierHobby({
         subscription.plan.type !== "free" &&
         subscription.canceledAt === undefined &&
         subscription.plan.code !== plan.code ? (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="downgrade">
             <DialogTrigger asChild>
               <Button variant="tertiary/large" fullWidth className="text-md font-medium">
                 {`Downgrade to ${plan.title}`}
@@ -608,6 +622,7 @@ export function TierHobby({
             variant={isHighlighted ? "primary/large" : "tertiary/large"}
             fullWidth
             className="text-md font-medium"
+            form="subscribe-hobby"
             disabled={
               isLoading ||
               (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
@@ -667,7 +682,7 @@ export function TierPro({
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
-      <Form action={formAction} method="post" id="subscribe">
+      <Form action={formAction} method="post" id="subscribe-pro">
         <div className="py-6">
           <input type="hidden" name="type" value="paid" />
           <input type="hidden" name="planCode" value={plan.code} />
@@ -675,6 +690,7 @@ export function TierPro({
           <Button
             variant="tertiary/large"
             fullWidth
+            form="subscribe-pro"
             className="text-md font-medium"
             disabled={
               isLoading ||
