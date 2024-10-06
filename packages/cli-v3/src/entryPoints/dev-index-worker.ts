@@ -95,9 +95,23 @@ async function bootstrap() {
   };
 }
 
-const { buildManifest, importErrors } = await bootstrap();
+const { buildManifest, importErrors, config } = await bootstrap();
 
-const tasks = taskCatalog.listTaskManifests();
+let tasks = taskCatalog.listTaskManifests();
+
+// If the config has a maxDuration, we need to apply it to all tasks that don't have a maxDuration
+if (typeof config.maxDuration === "number") {
+  tasks = tasks.map((task) => {
+    if (typeof task.maxDuration !== "number") {
+      return {
+        ...task,
+        maxDuration: config.maxDuration,
+      };
+    }
+
+    return task;
+  });
+}
 
 await sendMessageInCatalog(
   indexerToWorkerMessages,

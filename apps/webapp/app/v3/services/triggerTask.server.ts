@@ -21,6 +21,9 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -79,6 +82,24 @@ export class TriggerTaskService extends BaseService {
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
+      }
+
+      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+
+      logger.debug("Queue size guard result", {
+        queueSizeGuard,
+        environment: {
+          id: environment.id,
+          type: environment.type,
+          organization: environment.organization,
+          project: environment.project,
+        },
+      });
+
+      if (!queueSizeGuard.isWithinLimits) {
+        throw new ServiceValidationError(
+          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+        );
       }
 
       if (
@@ -353,6 +374,9 @@ export class TriggerTaskService extends BaseService {
                   metadataType: metadataPacket?.dataType,
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
+                  maxDurationInSeconds: body.options?.maxDuration
+                    ? clampMaxDuration(body.options.maxDuration)
+                    : undefined,
                 },
               });
 
@@ -435,11 +459,7 @@ export class TriggerTaskService extends BaseService {
                 const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                 if (expireAt) {
-                  await workerQueue.enqueue(
-                    "v3.expireRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
-                  );
+                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
                 }
               }
 
