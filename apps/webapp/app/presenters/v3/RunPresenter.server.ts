@@ -21,11 +21,13 @@ export class RunPresenter {
     projectSlug,
     organizationSlug,
     runFriendlyId,
+    showDeletedLogs,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
     runFriendlyId: string;
+    showDeletedLogs: boolean;
   }) {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
@@ -148,7 +150,7 @@ export class RunPresenter {
         status: run.status,
         isFinished: isFinalRunStatus(run.status),
         completedAt: run.completedAt,
-        logsDeletedAt: run.logsDeletedAt,
+        logsDeletedAt: showDeletedLogs ? false : run.logsDeletedAt,
         rootTaskRun: run.rootTaskRun,
         environment: {
           id: run.runtimeEnvironment.id,
