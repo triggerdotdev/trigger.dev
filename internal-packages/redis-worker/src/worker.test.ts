@@ -75,7 +75,7 @@ describe("Worker", () => {
           testJob: {
             schema: z.object({ value: z.number() }),
             visibilityTimeoutMs: 5000,
-            retry: { maxAttempts: 3, minDelayMs: 10 },
+            retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 10 },
           },
         },
         jobs: {

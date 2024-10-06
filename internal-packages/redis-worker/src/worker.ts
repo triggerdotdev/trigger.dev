@@ -1,4 +1,6 @@
 import { Logger } from "@trigger.dev/core/logger";
+import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
+import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RedisOptions } from "ioredis";
 import os from "os";
 import { Worker as NodeWorker } from "worker_threads";
@@ -9,11 +11,7 @@ type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
     visibilityTimeoutMs: number;
-    retry: {
-      maxAttempts: number;
-      minDelayMs?: number;
-      scaleFactor?: number;
-    };
+    retry: RetryOptions;
   };
 };
 
@@ -25,6 +23,7 @@ type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (param
   id: string;
   payload: z.infer<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
+  attempt: number;
 }) => Promise<void>;
 
 type WorkerOptions<TCatalog extends WorkerCatalog> = {
@@ -148,7 +147,7 @@ class Worker<TCatalog extends WorkerCatalog> {
       }
 
       await Promise.all(
-        items.map(async ({ id, job, item, visibilityTimeoutMs }) => {
+        items.map(async ({ id, job, item, visibilityTimeoutMs, attempt }) => {
           const catalogItem = this.options.catalog[job as any];
           const handler = this.jobs[job as any];
           if (!handler) {
@@ -157,7 +156,7 @@ class Worker<TCatalog extends WorkerCatalog> {
           }
 
           try {
-            await handler({ id, payload: item, visibilityTimeoutMs });
+            await handler({ id, payload: item, visibilityTimeoutMs, attempt });
             await this.queue.ack(id);
           } catch (error) {
             this.logger.error(`Error processing item, it threw an error:`, {
@@ -170,7 +169,23 @@ class Worker<TCatalog extends WorkerCatalog> {
             });
             // Requeue the failed item with a delay
             try {
-              const retryDelay = catalogItem.retry.minDelayMs ?? 1_000;
+              attempt = attempt + 1;
+
+              const retryDelay = calculateNextRetryDelay(catalogItem.retry, attempt);
+
+              if (!retryDelay) {
+                this.logger.error(`Failed item ${id} has reached max attempts, acking.`, {
+                  name: this.options.name,
+                  id,
+                  job,
+                  item,
+                  visibilityTimeoutMs,
+                  attempt,
+                });
+                await this.queue.ack(id);
+                return;
+              }
+
               const retryDate = new Date(Date.now() + retryDelay);
               this.logger.info(`Requeued failed item ${id} with delay`, {
                 name: this.options.name,
@@ -180,23 +195,28 @@ class Worker<TCatalog extends WorkerCatalog> {
                 retryDate,
                 retryDelay,
                 visibilityTimeoutMs,
+                attempt,
               });
               await this.queue.enqueue({
                 id,
                 job,
                 item,
                 availableAt: retryDate,
+                attempt,
                 visibilityTimeoutMs,
               });
             } catch (requeueError) {
-              this.logger.error(`Failed to requeue item, threw error:`, {
-                name: this.options.name,
-                id,
-                job,
-                item,
-                visibilityTimeoutMs,
-                error: requeueError,
-              });
+              this.logger.error(
+                `Failed to requeue item, threw error. Will automatically get rescheduled after the visilibity timeout.`,
+                {
+                  name: this.options.name,
+                  id,
+                  job,
+                  item,
+                  visibilityTimeoutMs,
+                  error: requeueError,
+                }
+              );
             }
           }
         })
