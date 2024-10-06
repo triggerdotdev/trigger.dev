@@ -212,9 +212,8 @@ export const videoProcessAndUpdate = task({
       // Find the row by its ID
       .eq("id", id);
 
-    // If there was an error updating the subscription, throw an error
     if (updateError) {
-      throw new Error(`Failed to update user subscription: ${updateError.message}`);
+      throw new Error(`Failed to update transcription: ${updateError.message}`);
     }
 
     return {
@@ -224,6 +223,12 @@ export const videoProcessAndUpdate = task({
   },
 });
 ```
+
+<Warning>
+  When updating your tables from a Trigger.dev task which has been triggered by a database change,
+  be extremely careful to not cause an infinite loop. Ensure you have the correct conditions in
+  place to prevent this.
+</Warning>
 
 ### Adding the FFmpeg build extension
 
@@ -400,7 +405,11 @@ You can use the following public video URL for testing: `https://content.trigger
 
 Once the new table row has been inserted, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a processing `videoProcessAndUpdate` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the video url to your `video_transcriptions` table.
 
+![Supabase successful run](/images/supabase-run-result.png)
+
 Once the run has completed successfully, go back to your Supabase `video_transcriptions` table, and you should see that in the row containing the original video URL, the transcription has now been added to the `transcription` column.
+
+![Supabase successful table update](/images/supabase-table-result.png)
 
 **Congratulations! You have completed the full workflow from Supabase to Trigger.dev and back again.**
 
