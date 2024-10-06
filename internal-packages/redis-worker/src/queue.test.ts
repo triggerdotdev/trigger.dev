@@ -35,6 +35,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         visibilityTimeoutMs: 2000,
+        attempt: 0,
       });
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(2);
@@ -48,6 +49,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 2 },
         visibilityTimeoutMs: 2000,
+        attempt: 0,
       });
 
       await queue.ack(second.id);
@@ -84,6 +86,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         visibilityTimeoutMs: 2000,
+        attempt: 0,
       });
 
       const missTwo = await queue.dequeue(1);
@@ -116,6 +119,7 @@ describe("SimpleQueue", () => {
         item: { value: 1 },
         availableAt: new Date(Date.now() + 50),
         visibilityTimeoutMs: 2000,
+        attempt: 0,
       });
 
       const miss = await queue.dequeue(1);
@@ -129,6 +133,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         visibilityTimeoutMs: 2000,
+        attempt: 0,
       });
     } finally {
       await queue.close();
@@ -160,6 +165,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         visibilityTimeoutMs: 1_000,
+        attempt: 0,
       });
 
       const missImmediate = await queue.dequeue(1);
@@ -173,6 +179,7 @@ describe("SimpleQueue", () => {
         job: "test",
         item: { value: 1 },
         visibilityTimeoutMs: 1_000,
+        attempt: 0,
       });
     } finally {
       await queue.close();
@@ -210,12 +217,14 @@ redisTest("dequeue multiple items", { timeout: 20_000 }, async ({ redisContainer
       job: "test",
       item: { value: 1 },
       visibilityTimeoutMs: 2000,
+      attempt: 0,
     });
     expect(dequeued[1]).toEqual({
       id: "2",
       job: "test",
       item: { value: 2 },
       visibilityTimeoutMs: 2000,
+      attempt: 0,
     });
 
     expect(await queue.size()).toBe(1);
@@ -232,6 +241,7 @@ redisTest("dequeue multiple items", { timeout: 20_000 }, async ({ redisContainer
       job: "test",
       item: { value: 3 },
       visibilityTimeoutMs: 2000,
+      attempt: 0,
     });
 
     await queue.ack(last.id);

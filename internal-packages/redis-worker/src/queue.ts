@@ -66,12 +66,14 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     id,
     job,
     item,
+    attempt,
     availableAt,
     visibilityTimeoutMs,
   }: {
     id?: string;
     job: MessageCatalogKey<TMessageCatalog>;
     item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    attempt?: number;
     availableAt?: Date;
     visibilityTimeoutMs: number;
   }): Promise<void> {
@@ -81,6 +83,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         job,
         item,
         visibilityTimeoutMs,
+        attempt,
       });
 
       const result = await this.redis.enqueueItem(
@@ -110,6 +113,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       job: MessageCatalogKey<TMessageCatalog>;
       item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
       visibilityTimeoutMs: number;
+      attempt: number;
     }>
   > {
     const now = Date.now();
@@ -150,6 +154,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             id,
             item: parsedItem,
             errors: validatedItem.error,
+            attempt: parsedItem.attempt,
           });
           continue;
         }
@@ -164,6 +169,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           job: parsedItem.job,
           item: validatedItem.data,
           visibilityTimeoutMs,
+          attempt: parsedItem.attempt ?? 0,
         });
       }
 
