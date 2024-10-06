@@ -527,7 +527,10 @@ class TaskCoordinator {
             }
 
             if (!lazyAttempt.success) {
-              logger.error("failed to get lazy attempt payload", { runId: socket.data.runId });
+              logger.error("failed to get lazy attempt payload", {
+                runId: socket.data.runId,
+                reason: lazyAttempt.reason,
+              });
 
               await crashRun({
                 name: "ReadyForLazyAttemptError",
@@ -1007,7 +1010,10 @@ class TaskCoordinator {
           });
 
           if (!createAttempt?.success) {
-            logger.debug("no ack while creating attempt", message);
+            logger.debug("no ack while creating attempt", {
+              runId: message.runId,
+              reason: createAttempt?.reason,
+            });
             callback({ success: false, reason: createAttempt?.reason });
             return;
           }
