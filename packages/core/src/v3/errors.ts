@@ -265,7 +265,7 @@ export class UnexpectedExitError extends Error {
     public signal: NodeJS.Signals | null,
     public stderr: string | undefined
   ) {
-    super(`Unexpected exit with code ${code}`);
+    super(`Unexpected exit with code ${code} after signal ${signal}`);
 
     this.name = "UnexpectedExitError";
   }
