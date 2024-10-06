@@ -185,7 +185,7 @@ npx supabase gen types --lang=typescript --project-id "vuzgnncyyceddococcgj" --s
 You will need to install some additional dependencies for this task:
 
 ```bash
-npm install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg node-fetch
+npm install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg
 ```
 
 These dependencies will allow you to interact with the Deepgram and Supabase APIs, extract audio from a video using FFmpeg, and fetch the video from a URL.
@@ -197,7 +197,6 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
-import fetch from "node-fetch";
 import { Readable } from "node:stream";
 import os from "os";
 import path from "path";
@@ -215,14 +214,19 @@ const deepgram = createDeepgramClient(process.env.DEEPGRAM_SECRET_KEY);
 
 export const videoProcessAndUpdate = task({
   id: "video-process-and-update",
-  run: async (payload: { videoUrl: string }) => {
-    const { videoUrl } = payload;
-
-    logger.log(`Processing video at URL: ${videoUrl}`);
-
+  init: () => {
     // Generate temporary file names
     const tempDirectory = os.tmpdir();
     const outputPath = path.join(tempDirectory, `audio_${Date.now()}.wav`);
+
+    return {
+      outputPath,
+    };
+  },
+  run: async (payload: { id: string; videoUrl: string }, { init }) => {
+    const { videoUrl } = payload;
+
+    logger.log(`Processing video at URL: ${videoUrl}`);
 
     // Fetch the video
     const response = await fetch(videoUrl);
@@ -240,7 +244,7 @@ export const videoProcessAndUpdate = task({
           "-ar 44100", // Set audio sample rate to 44.1 kHz
           "-ac 2", // Set audio channels to stereo
         ])
-        .output(outputPath)
+        .output(init.outputPath)
         .on("end", resolve)
         .on("error", reject)
         .run();
@@ -264,22 +268,16 @@ export const videoProcessAndUpdate = task({
       throw error;
     }
 
-    console.dir(result, { depth: null });
-
     // Convert the result object to a string
     const transcription = result.results.channels[0].alternatives[0].paragraphs?.transcript;
 
     logger.log(`Transcription: ${transcription}`);
 
-    // Delete the temporary audio file
-    fs.unlinkSync(outputPath);
-    logger.log(`Temporary audio file deleted`, { outputPath });
-
     const { error: updateError } = await supabase
       .from("video_transcriptions")
       // Set the plan to the new plan and update the timestamp
-      .update({ transcription: transcription, video_url: videoUrl })
-      .eq("video_url", videoUrl);
+      .update({ transcription: transcription })
+      .eq("id", payload.id);
 
     // If there was an error updating the subscription, throw an error
     if (updateError) {
@@ -290,6 +288,11 @@ export const videoProcessAndUpdate = task({
       message: `Summary of the audio: ${transcription}`,
       result,
     };
+  },
+  cleanup: ({ init }) => {
+    // Delete the temporary audio file
+    fs.unlinkSync(init.outputPath);
+    logger.log(`Temporary audio file deleted`, { outputPath: init.outputPath });
   },
 });
 ```
@@ -357,8 +360,7 @@ Finally, we need to replace your `video-processing-handler` Edge Function code w
 ```ts functions/video-processing-handler/index.ts
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
-import { tasks } from "npm:@trigger.dev/@sdk<your-sdk-version>/v3";
+import { tasks } from "npm:@trigger.dev/sdk@latest/v3";
 // Import the videoProcessAndUpdate task from the trigger folder
 import type { videoProcessAndUpdate } from "../../../src/trigger/videoProcessAndUpdate.ts";
 //     👆 type only import
