@@ -118,9 +118,7 @@ describe("Worker", () => {
       expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
     }
   );
-});
 
-//todo test throwing an error and that retrying works
-//todo test that throwing an error doesn't screw up the other items
-//todo change the processItems to be in parallel using Promise.allResolved
-//process more items when finished
+  //todo test that throwing an error doesn't screw up the other items
+  //todo process more items when finished
+});
