@@ -23,7 +23,7 @@ import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
   CleanupProcessError,
-  getFriendlyErrorMessage,
+  internalErrorFromUnexpectedExit,
   GracefulExitTimeoutError,
   UnexpectedExitError,
 } from "@trigger.dev/core/v3/errors";
@@ -386,7 +386,7 @@ export class TaskRunProcess {
     return this._childPid;
   }
 
-  static parseExecuteError(error: unknown): TaskRunInternalError {
+  static parseExecuteError(error: unknown, dockerMode = false): TaskRunInternalError {
     if (error instanceof CancelledProcessError) {
       return {
         type: "INTERNAL_ERROR",
@@ -402,12 +402,7 @@ export class TaskRunProcess {
     }
 
     if (error instanceof UnexpectedExitError) {
-      return {
-        type: "INTERNAL_ERROR",
-        code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
-        message: getFriendlyErrorMessage(error.code, error.signal, error.stderr),
-        stackTrace: error.stderr,
-      };
+      return internalErrorFromUnexpectedExit(error, dockerMode);
     }
 
     return {

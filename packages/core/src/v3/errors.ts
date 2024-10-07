@@ -400,32 +400,37 @@ export function exceptionEventEnhancer(
   return exception;
 }
 
-export function getFriendlyErrorMessage(
-  code: number,
-  signal: NodeJS.Signals | null,
-  stderr: string | undefined,
+export function internalErrorFromUnexpectedExit(
+  error: UnexpectedExitError,
   dockerMode = true
-) {
-  if (code === 137) {
+): TaskRunInternalError {
+  if (error.code === 137) {
     if (dockerMode) {
-      return message(
-        "Process ran out of memory! Try choosing a machine preset with more memory for this task."
-      );
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
+      };
     } else {
-      // Note: containerState reason and message should be checked to clarify the error
-      return message(
-        "Process most likely ran out of memory, but we can't be certain. Try choosing a machine preset with more memory for this task."
-      );
+      // Note: containerState reason and message could be checked to clarify the error, maybe the task monitor should be allowed to override these
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
+      };
     }
   }
 
-  if (stderr?.includes("OOMErrorHandler")) {
-    return message(
-      "Process ran out of memory! Try choosing a machine preset with more memory for this task."
-    );
+  if (error.stderr?.includes("OOMErrorHandler")) {
+    return {
+      type: "INTERNAL_ERROR",
+      code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
+    };
   }
 
-  return message(`Process exited with code ${code}.`);
+  return {
+    type: "INTERNAL_ERROR",
+    code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+    message: `Process exited with code ${error.code} after signal ${error.signal}.`,
+  };
 }
 
 export function serializeIndexingError(error: unknown, stderr?: string): DeploymentErrorData {

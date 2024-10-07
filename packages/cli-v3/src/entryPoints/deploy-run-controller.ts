@@ -795,7 +795,7 @@ class ProdWorker {
                 id: execution.run.id,
                 ok: false,
                 retry: undefined,
-                error: TaskRunProcess.parseExecuteError(error),
+                error: TaskRunProcess.parseExecuteError(error, !this.runningInKubernetes),
               });
             } catch (error) {
               this.#failRun(message.lazyPayload.runId, error);
