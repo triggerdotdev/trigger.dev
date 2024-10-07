@@ -405,6 +405,13 @@ export class TaskRunProcess {
       return internalErrorFromUnexpectedExit(error, dockerMode);
     }
 
+    if (error instanceof GracefulExitTimeoutError) {
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
+      };
+    }
+
     return {
       type: "INTERNAL_ERROR",
       code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
