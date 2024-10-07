@@ -5,7 +5,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
-import { sanitizeError } from "@trigger.dev/core/v3";
+import { sanitizeError, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export type CrashTaskRunServiceOptions = {
@@ -15,6 +15,7 @@ export type CrashTaskRunServiceOptions = {
   crashAttempts?: boolean;
   crashedAt?: Date;
   overrideCompletion?: boolean;
+  errorCode?: TaskRunInternalError["code"];
 };
 
 export class CrashTaskRunService extends BaseService {
@@ -25,6 +26,8 @@ export class CrashTaskRunService extends BaseService {
       crashedAt: new Date(),
       ...options,
     };
+
+    logger.debug("CrashTaskRunService.call", { runId, opts });
 
     const taskRun = await this._prisma.taskRun.findFirst({
       where: {
@@ -71,7 +74,7 @@ export class CrashTaskRunService extends BaseService {
       attemptStatus: "FAILED",
       error: {
         type: "INTERNAL_ERROR",
-        code: "TASK_RUN_CRASHED",
+        code: opts.errorCode ?? "TASK_RUN_CRASHED",
         message: opts.reason,
         stackTrace: opts.logs,
       },
@@ -129,6 +132,7 @@ export class CrashTaskRunService extends BaseService {
     error: {
       reason: string;
       logs?: string;
+      code?: TaskRunInternalError["code"];
     }
   ) {
     return await this.traceWithEnv("failAttempt()", environment, async (span) => {
@@ -146,7 +150,7 @@ export class CrashTaskRunService extends BaseService {
           completedAt: failedAt,
           error: sanitizeError({
             type: "INTERNAL_ERROR",
-            code: "TASK_RUN_CRASHED",
+            code: error.code ?? "TASK_RUN_CRASHED",
             message: error.reason,
             stackTrace: error.logs,
           }),

@@ -95,6 +95,9 @@ export const TaskRunErrorCodes = {
   GRACEFUL_EXIT_TIMEOUT: "GRACEFUL_EXIT_TIMEOUT",
   TASK_RUN_CRASHED: "TASK_RUN_CRASHED",
   MAX_DURATION_EXCEEDED: "MAX_DURATION_EXCEEDED",
+  DISK_SPACE_EXCEEDED: "DISK_SPACE_EXCEEDED",
+  POD_EVICTED: "POD_EVICTED",
+  POD_UNKNOWN_ERROR: "POD_UNKNOWN_ERROR",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -118,6 +121,9 @@ export const TaskRunInternalError = z.object({
     "TASK_RUN_HEARTBEAT_TIMEOUT",
     "TASK_RUN_CRASHED",
     "MAX_DURATION_EXCEEDED",
+    "DISK_SPACE_EXCEEDED",
+    "POD_EVICTED",
+    "POD_UNKNOWN_ERROR",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
