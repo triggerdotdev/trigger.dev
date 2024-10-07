@@ -60,6 +60,13 @@ export class SimpleStructuredLogger implements StructuredLogger {
     this.#structuredLog(console.debug, message, "debug", ...args);
   }
 
+  addFields(fields: Record<string, unknown>) {
+    this.fields = {
+      ...this.fields,
+      ...fields,
+    };
+  }
+
   #structuredLog(
     loggerFunction: (message: string, ...args: any[]) => void,
     message: string,

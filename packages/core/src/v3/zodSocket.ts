@@ -68,6 +68,7 @@ export type ZodSocketMessageHandlerOptions<TMessageCatalog extends ZodSocketMess
     schema: TMessageCatalog;
     handlers?: ZodSocketMessageHandlers<TMessageCatalog>;
     logger?: StructuredLogger;
+    logPayloads?: boolean;
   };
 
 type MessageFromSocketSchema<
@@ -92,12 +93,14 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
   #schema: TRPCCatalog;
   #handlers: ZodSocketMessageHandlers<TRPCCatalog> | undefined;
   #logger: StructuredLogger;
+  #logPayloads: boolean;
 
   constructor(options: ZodSocketMessageHandlerOptions<TRPCCatalog>) {
     this.#schema = options.schema;
     this.#handlers = options.handlers;
     this.#logger =
       options.logger ?? new SimpleStructuredLogger("socket-message-handler", LogLevel.info);
+    this.#logPayloads = options.logPayloads ?? !!process.env.LOG_SOCKET_HANDLER_PAYLOADS ?? false;
   }
 
   public async handleMessage(message: unknown) {
@@ -120,7 +123,7 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
     const handler = this.#handlers[type];
 
     if (!handler) {
-      console.error(`No handler for message type: ${String(type)}`);
+      this.#logger.error("No handler for message type", { type, payload });
       return;
     }
 
@@ -164,7 +167,7 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
     const parsedPayload = schema.safeParse(messageWithVersion);
 
     if (!parsedPayload.success) {
-      console.error("Failed to parse message payload", {
+      this.#logger.error("Failed to parse message payload", {
         message,
         payload: messageWithVersion,
       });
@@ -194,8 +197,9 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
 
     for (const eventName of Object.keys(this.#handlers)) {
       emitter.on(eventName, async (message: any, callback?: any): Promise<void> => {
-        log.info(`handling ${eventName}`, {
-          payload: message,
+        log.info(`Incoming event ${eventName}`, {
+          eventName,
+          ...(this.#logPayloads ? { eventMessage: message } : {}),
           hasCallback: !!callback,
         });
 
@@ -344,6 +348,7 @@ interface ZodSocketConnectionOptions<
   handlers?: ZodSocketMessageHandlers<TServerMessages>;
   authToken?: string;
   ioOptions?: Partial<ManagerOptions & SocketOptions>;
+  logHandlerPayloads?: boolean;
   onConnection?: (
     socket: ZodSocket<TServerMessages, TClientMessages>,
     handler: ZodSocketMessageHandler<TServerMessages>,
@@ -399,6 +404,7 @@ export class ZodSocketConnection<
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.serverMessages,
       handlers: opts.handlers,
+      logPayloads: opts.logHandlerPayloads,
     });
     this.#handler.registerHandlers(this.socket, this.#logger);
 

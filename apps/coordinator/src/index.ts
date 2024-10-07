@@ -3,6 +3,7 @@ import { Server } from "socket.io";
 import {
   CoordinatorToPlatformMessages,
   CoordinatorToProdWorkerMessages,
+  omit,
   PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorMessages,
@@ -127,16 +128,27 @@ class TaskCoordinator {
       clientMessages: CoordinatorToPlatformMessages,
       serverMessages: PlatformToCoordinatorMessages,
       authToken: PLATFORM_SECRET,
+      logHandlerPayloads: false,
       handlers: {
         RESUME_AFTER_DEPENDENCY: async (message) => {
+          const log = logger.child({
+            eventName: "RESUME_AFTER_DEPENDENCY",
+            ...omit(message, "completions", "executions"),
+            completions: message.completions.map((c) => c.id),
+            executions: message.executions.length,
+          });
+
+          log.debug("Handling RESUME_AFTER_DEPENDENCY");
+
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", {
-              attemptFriendlyId: message.attemptFriendlyId,
-            });
+            log.debug("Socket for attempt not found");
             return;
           }
+
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for RESUME_AFTER_DEPENDENCY");
 
           await chaosMonkey.call();
 
@@ -146,12 +158,17 @@ class TaskCoordinator {
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
         RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
+          const log = logger.child({
+            eventName: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
+            ...omit(message, "completions", "executions"),
+          });
+
+          log.debug("Handling RESUME_AFTER_DEPENDENCY_WITH_ACK");
+
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
-            logger.log("Socket for attempt not found", {
-              attemptFriendlyId: message.attemptFriendlyId,
-            });
+            log.debug("Socket for attempt not found");
             return {
               success: false,
               error: {
@@ -161,11 +178,12 @@ class TaskCoordinator {
             };
           }
 
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for RESUME_AFTER_DEPENDENCY_WITH_ACK");
+
           //if this is set, we want to kill the process because it will be resumed with the checkpoint from the queue
           if (taskSocket.data.requiresCheckpointResumeWithMessage) {
-            logger.log("RESUME_AFTER_DEPENDENCY_WITH_ACK: Checkpoint is set so going to nack", {
-              socketData: taskSocket.data,
-            });
+            log.log("RESUME_AFTER_DEPENDENCY_WITH_ACK: Checkpoint is set so going to nack");
 
             return {
               success: false,
@@ -189,6 +207,13 @@ class TaskCoordinator {
           };
         },
         RESUME_AFTER_DURATION: async (message) => {
+          const log = logger.child({
+            eventName: "RESUME_AFTER_DURATION",
+            ...message,
+          });
+
+          log.debug("Handling RESUME_AFTER_DURATION");
+
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
@@ -197,12 +222,20 @@ class TaskCoordinator {
             });
             return;
           }
+
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for RESUME_AFTER_DURATION");
 
           await chaosMonkey.call();
 
           taskSocket.emit("RESUME_AFTER_DURATION", message);
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
+          const log = logger.child({
+            eventName: "REQUEST_ATTEMPT_CANCELLATION",
+            ...message,
+          });
+
           const taskSocket = await this.#getAttemptSocket(message.attemptFriendlyId);
 
           if (!taskSocket) {
@@ -212,9 +245,17 @@ class TaskCoordinator {
             return;
           }
 
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for REQUEST_ATTEMPT_CANCELLATION");
+
           taskSocket.emit("REQUEST_ATTEMPT_CANCELLATION", message);
         },
         REQUEST_RUN_CANCELLATION: async (message) => {
+          const log = logger.child({
+            eventName: "REQUEST_RUN_CANCELLATION",
+            ...message,
+          });
+
           const taskSocket = await this.#getRunSocket(message.runId);
 
           if (!taskSocket) {
@@ -223,6 +264,9 @@ class TaskCoordinator {
             });
             return;
           }
+
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for REQUEST_RUN_CANCELLATION");
 
           this.#cancelCheckpoint(message.runId);
 
@@ -239,6 +283,11 @@ class TaskCoordinator {
           }
         },
         READY_FOR_RETRY: async (message) => {
+          const log = logger.child({
+            eventName: "READY_FOR_RETRY",
+            ...message,
+          });
+
           const taskSocket = await this.#getRunSocket(message.runId);
 
           if (!taskSocket) {
@@ -248,11 +297,19 @@ class TaskCoordinator {
             return;
           }
 
+          log.addFields({ socketData: taskSocket.data });
+          log.log("Found task socket for READY_FOR_RETRY");
+
           await chaosMonkey.call();
 
           taskSocket.emit("READY_FOR_RETRY", message);
         },
         DYNAMIC_CONFIG: async (message) => {
+          const log = logger.child({
+            eventName: "DYNAMIC_CONFIG",
+            ...message,
+          });
+
           this.#delayThresholdInMs = message.checkpointThresholdInMs;
 
           // The first time we receive a dynamic config, the worker namespace will be created
