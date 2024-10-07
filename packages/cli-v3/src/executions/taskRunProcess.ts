@@ -386,7 +386,7 @@ export class TaskRunProcess {
     return this._childPid;
   }
 
-  static parseExecuteError(error: unknown, dockerMode = false): TaskRunInternalError {
+  static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {
     if (error instanceof CancelledProcessError) {
       return {
         type: "INTERNAL_ERROR",
