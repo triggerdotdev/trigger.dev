@@ -1,4 +1,5 @@
 import {
+  exceptionEventEnhancer,
   isExceptionSpanEvent,
   type ExceptionEventProperties,
   type SpanEvent as OtelSpanEvent,
@@ -64,19 +65,26 @@ export function SpanEventError({
   spanEvent: OtelSpanEvent;
   exception: ExceptionEventProperties;
 }) {
+  const enhancedException = exceptionEventEnhancer(exception);
+
   return (
     <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
       <SpanEventHeader
-        title={exception.type ?? "Error"}
+        title={enhancedException.type ?? "Error"}
         time={spanEvent.time}
         titleClassName="text-rose-500"
       />
-      {exception.message && <Callout variant="error">{exception.message}</Callout>}
-      {exception.stacktrace && (
+      {enhancedException.message && <Callout variant="error">{enhancedException.message}</Callout>}
+      {enhancedException.link && (
+        <Callout variant="docs" to={enhancedException.link.href}>
+          {enhancedException.link.name}
+        </Callout>
+      )}
+      {enhancedException.stacktrace && (
         <CodeBlock
           showCopyButton={false}
           showLineNumbers={false}
-          code={exception.stacktrace}
+          code={enhancedException.stacktrace}
           maxLines={20}
         />
       )}
