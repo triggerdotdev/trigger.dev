@@ -21,11 +21,13 @@ export class RunPresenter {
     projectSlug,
     organizationSlug,
     runFriendlyId,
+    showDeletedLogs,
   }: {
     userId: string;
     projectSlug: string;
     organizationSlug: string;
     runFriendlyId: string;
+    showDeletedLogs: boolean;
   }) {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
@@ -72,31 +74,41 @@ export class RunPresenter {
       },
     });
 
+    const showLogs = showDeletedLogs ? true : run.logsDeletedAt ? false : true;
+
+    const runData = {
+      id: run.id,
+      number: run.number,
+      friendlyId: run.friendlyId,
+      traceId: run.traceId,
+      spanId: run.spanId,
+      status: run.status,
+      isFinished: isFinalRunStatus(run.status),
+      completedAt: run.completedAt,
+      logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
+      rootTaskRun: run.rootTaskRun,
+      environment: {
+        id: run.runtimeEnvironment.id,
+        organizationId: run.runtimeEnvironment.organizationId,
+        type: run.runtimeEnvironment.type,
+        slug: run.runtimeEnvironment.slug,
+        userId: run.runtimeEnvironment.orgMember?.user.id,
+        userName: getUsername(run.runtimeEnvironment.orgMember?.user),
+      },
+    };
+
+    if (!showLogs) {
+      return {
+        run: runData,
+        trace: undefined,
+      };
+    }
+
     // get the events
     const traceSummary = await eventRepository.getTraceSummary(run.traceId);
-
     if (!traceSummary) {
       return {
-        run: {
-          id: run.id,
-          number: run.number,
-          friendlyId: run.friendlyId,
-          traceId: run.traceId,
-          spanId: run.spanId,
-          status: run.status,
-          isFinished: isFinalRunStatus(run.status),
-          completedAt: run.completedAt,
-          logsDeletedAt: run.logsDeletedAt,
-          rootTaskRun: run.rootTaskRun,
-          environment: {
-            id: run.runtimeEnvironment.id,
-            organizationId: run.runtimeEnvironment.organizationId,
-            type: run.runtimeEnvironment.type,
-            slug: run.runtimeEnvironment.slug,
-            userId: run.runtimeEnvironment.orgMember?.user.id,
-            userName: getUsername(run.runtimeEnvironment.orgMember?.user),
-          },
-        },
+        run: runData,
         trace: undefined,
       };
     }
@@ -139,26 +151,7 @@ export class RunPresenter {
     }
 
     return {
-      run: {
-        id: run.id,
-        number: run.number,
-        friendlyId: run.friendlyId,
-        traceId: run.traceId,
-        spanId: run.spanId,
-        status: run.status,
-        isFinished: isFinalRunStatus(run.status),
-        completedAt: run.completedAt,
-        logsDeletedAt: run.logsDeletedAt,
-        rootTaskRun: run.rootTaskRun,
-        environment: {
-          id: run.runtimeEnvironment.id,
-          organizationId: run.runtimeEnvironment.organizationId,
-          type: run.runtimeEnvironment.type,
-          slug: run.runtimeEnvironment.slug,
-          userId: run.runtimeEnvironment.orgMember?.user.id,
-          userName: getUsername(run.runtimeEnvironment.orgMember?.user),
-        },
-      },
+      run: runData,
       trace: {
         rootSpanStatus,
         events: events,
