@@ -67,12 +67,12 @@ export class SimpleStructuredLogger implements StructuredLogger {
     ...args: StructuredArgs
   ) {
     const structuredLog = {
+      timestamp: new Date(),
+      $name: this.name,
+      message,
+      $level: level,
       ...(args.length === 1 ? args[0] : args),
       ...this.fields,
-      timestamp: new Date(),
-      name: this.name,
-      message,
-      level,
     };
 
     loggerFunction(JSON.stringify(structuredLog));

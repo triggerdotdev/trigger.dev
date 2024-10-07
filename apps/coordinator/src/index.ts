@@ -11,12 +11,12 @@ import {
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
 import { boolFromEnv, numFromEnv } from "./util";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 collectDefaultMetrics();
 
 const HTTP_SERVER_PORT = Number(process.env.HTTP_SERVER_PORT || 8020);
@@ -29,7 +29,7 @@ const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
-const logger = new SimpleLogger(`[${NODE_NAME}]`);
+const logger = new SimpleStructuredLogger(NODE_NAME);
 const chaosMonkey = new ChaosMonkey(
   !!process.env.CHAOS_MONKEY_ENABLED,
   !!process.env.CHAOS_MONKEY_DISABLE_ERRORS,
@@ -335,10 +335,20 @@ class TaskCoordinator {
         next();
       },
       onConnection: async (socket, handler, sender) => {
-        const logger = new SimpleLogger(`[prod-worker][${socket.id}]`);
+        const logger = new SimpleStructuredLogger("prod-worker", undefined, {
+          socketId: socket.id,
+        });
 
         const getAttemptNumber = () => {
           return socket.data.attemptNumber ? parseInt(socket.data.attemptNumber) : undefined;
+        };
+
+        const exitRun = () => {
+          logger.log("exitRun", { runId: socket.data.runId });
+
+          socket.emit("REQUEST_EXIT", {
+            version: "v1",
+          });
         };
 
         const crashRun = async (error: { name: string; message: string; stack?: string }) => {
@@ -349,9 +359,7 @@ class TaskCoordinator {
               error,
             });
           } finally {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
+            exitRun();
           }
         };
 
@@ -669,9 +677,7 @@ class TaskCoordinator {
           });
 
           if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
+            exitRun();
           }
         });
 
@@ -687,9 +693,7 @@ class TaskCoordinator {
             completion,
           });
 
-          socket.emit("REQUEST_EXIT", {
-            version: "v1",
-          });
+          exitRun();
         });
 
         // MARK: CHECKPOINT
@@ -784,9 +788,7 @@ class TaskCoordinator {
           }
 
           if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
+            exitRun();
           }
         });
 
@@ -867,9 +869,7 @@ class TaskCoordinator {
           }
 
           if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
+            exitRun();
           }
         });
 
@@ -951,9 +951,7 @@ class TaskCoordinator {
           }
 
           if (!checkpoint.docker || !willSimulate) {
-            socket.emit("REQUEST_EXIT", {
-              version: "v1",
-            });
+            exitRun();
           }
         });
 
@@ -1081,7 +1079,7 @@ class TaskCoordinator {
   // MARK: HTTP SERVER
   #createHttpServer() {
     const httpServer = createServer(async (req, res) => {
-      logger.log(`[${req.method}]`, req.url);
+      logger.log(`[${req.method}]`, { url: req.url });
 
       const reply = new HttpReply(res);
 
@@ -1111,7 +1109,7 @@ class TaskCoordinator {
     });
 
     httpServer.on("listening", () => {
-      logger.log("server listening on port", HTTP_SERVER_PORT);
+      logger.log("server listening on port", { port: HTTP_SERVER_PORT });
     });
 
     return httpServer;

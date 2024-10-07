@@ -8,6 +8,7 @@ import { Buildah, Crictl, Exec } from "./exec";
 import { setTimeout } from "node:timers/promises";
 import { TempFileCleaner } from "./cleaner";
 import { numFromEnv, boolFromEnv } from "./util";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
 type CheckpointerInitializeReturn = {
   canCheckpoint: boolean;
@@ -86,7 +87,7 @@ export class Checkpointer {
   #canCheckpoint = false;
   #dockerMode: boolean;
 
-  #logger = new SimpleLogger("[checkptr]");
+  #logger = new SimpleStructuredLogger("checkpointer");
   #abortControllers = new Map<string, AbortController>();
   #failedCheckpoints = new Map<string, unknown>();
   #waitingForRetry = new Set<string>();
@@ -137,7 +138,7 @@ export class Checkpointer {
         return this.#getInitReturn(true);
       }
 
-      this.#logger.error(testCheckpoint.message, testCheckpoint.error ?? "");
+      this.#logger.error(testCheckpoint.message, { error: testCheckpoint.error });
       return this.#getInitReturn(false);
     }
 
