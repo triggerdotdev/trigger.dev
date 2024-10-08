@@ -913,8 +913,8 @@ importers:
         specifier: ^5.0.7
         version: 5.0.7
       typescript:
-        specifier: ^4.8.4
-        version: 4.9.5
+        specifier: ^5.5.4
+        version: 5.5.4
       zod:
         specifier: 3.22.3
         version: 3.22.3
@@ -956,8 +956,8 @@ importers:
         specifier: 5.0.0-beta.2
         version: 5.0.0-beta.2
       typescript:
-        specifier: ^4.8.4
-        version: 4.9.5
+        specifier: ^5.5.4
+        version: 5.5.4
       zod:
         specifier: 3.22.3
         version: 3.22.3
@@ -1010,13 +1010,13 @@ importers:
         version: link:../database
       graphile-worker:
         specifier: 0.16.6
-        version: 0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@4.9.5)
+        version: 0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@5.5.4)
       lodash.omit:
         specifier: ^4.5.0
         version: 4.5.0
       typescript:
-        specifier: ^4.8.4
-        version: 4.9.5
+        specifier: ^5.5.4
+        version: 5.5.4
       zod:
         specifier: 3.22.3
         version: 3.22.3
@@ -17447,22 +17447,6 @@ packages:
       yaml: 1.10.2
     dev: true
 
-  /cosmiconfig@8.3.6(typescript@4.9.5):
-    resolution: {integrity: sha512-kcZ6+W5QzcJ3P1Mt+83OUv/oHFqZHIx8DuxG6eZ5RGMERoLqp4BuGjhHLYGK+Kf5XVkQvqBSmAy/nGWN3qDgEA==}
-    engines: {node: '>=14'}
-    peerDependencies:
-      typescript: '>=4.9.5'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-    dependencies:
-      import-fresh: 3.3.0
-      js-yaml: 4.1.0
-      parse-json: 5.2.0
-      path-type: 4.0.0
-      typescript: 4.9.5
-    dev: false
-
   /cosmiconfig@8.3.6(typescript@5.2.2):
     resolution: {integrity: sha512-kcZ6+W5QzcJ3P1Mt+83OUv/oHFqZHIx8DuxG6eZ5RGMERoLqp4BuGjhHLYGK+Kf5XVkQvqBSmAy/nGWN3qDgEA==}
     engines: {node: '>=14'}
@@ -17477,6 +17461,22 @@ packages:
       parse-json: 5.2.0
       path-type: 4.0.0
       typescript: 5.2.2
+    dev: false
+
+  /cosmiconfig@8.3.6(typescript@5.5.4):
+    resolution: {integrity: sha512-kcZ6+W5QzcJ3P1Mt+83OUv/oHFqZHIx8DuxG6eZ5RGMERoLqp4BuGjhHLYGK+Kf5XVkQvqBSmAy/nGWN3qDgEA==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      typescript: '>=4.9.5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      import-fresh: 3.3.0
+      js-yaml: 4.1.0
+      parse-json: 5.2.0
+      path-type: 4.0.0
+      typescript: 5.5.4
     dev: false
 
   /cosmiconfig@9.0.0(typescript@5.2.2):
@@ -19480,6 +19480,7 @@ packages:
   /eslint@8.45.0:
     resolution: {integrity: sha512-pd8KSxiQpdYRfYa9Wufvdoct3ZPQQuVuU5O6scNgMuOMYuxvH0IGaYK0wUFjo4UYYQQCUndlXiMbnxopwvvTiw==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     dependencies:
       '@eslint-community/eslint-utils': 4.4.0(eslint@8.45.0)
@@ -20601,7 +20602,7 @@ packages:
       - supports-color
     dev: false
 
-  /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@4.9.5):
+  /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@5.2.2):
     resolution: {integrity: sha512-e7gGYDmGqzju2l83MpzX8vNG/lOtVJiSzI3eZpAFubSxh/cxs7sRrRGBGjzBP1kNG0H+c95etPpNRNlH65PYhw==}
     engines: {node: '>=14.0.0'}
     hasBin: true
@@ -20609,7 +20610,7 @@ packages:
       '@graphile/logger': 0.2.0
       '@types/debug': 4.1.12
       '@types/pg': 8.11.6
-      cosmiconfig: 8.3.6(typescript@4.9.5)
+      cosmiconfig: 8.3.6(typescript@5.2.2)
       graphile-config: 0.0.1-beta.8
       json5: 2.2.3
       pg: 8.11.5
@@ -20622,7 +20623,7 @@ packages:
     dev: false
     patched: true
 
-  /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@5.2.2):
+  /graphile-worker@0.16.6(patch_hash=hdpetta7btqcc7xb5wfkcnanoa)(typescript@5.5.4):
     resolution: {integrity: sha512-e7gGYDmGqzju2l83MpzX8vNG/lOtVJiSzI3eZpAFubSxh/cxs7sRrRGBGjzBP1kNG0H+c95etPpNRNlH65PYhw==}
     engines: {node: '>=14.0.0'}
     hasBin: true
@@ -20630,7 +20631,7 @@ packages:
       '@graphile/logger': 0.2.0
       '@types/debug': 4.1.12
       '@types/pg': 8.11.6
-      cosmiconfig: 8.3.6(typescript@5.2.2)
+      cosmiconfig: 8.3.6(typescript@5.5.4)
       graphile-config: 0.0.1-beta.8
       json5: 2.2.3
       pg: 8.11.5
