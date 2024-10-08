@@ -1,5 +1,7 @@
 # internal-platform
 
+## 3.0.11
+
 ## 3.0.10
 
 ### Patch Changes
