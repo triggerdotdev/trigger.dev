@@ -78,8 +78,8 @@ export class SimpleStructuredLogger implements StructuredLogger {
       $name: this.name,
       message,
       $level: level,
-      ...(args.length === 1 ? args[0] : args),
       ...this.fields,
+      ...(args.length === 1 ? args[0] : args),
     };
 
     loggerFunction(JSON.stringify(structuredLog));
