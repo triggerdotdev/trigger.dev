@@ -1,4 +1,4 @@
-import { RunnerOptions, ZodWorker } from "@internal/zod-worker";
+import { Worker, type WorkerCatalog, type WorkerConcurrencyOptions } from "@internal/redis-worker";
 import { trace } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
 import { QueueOptions } from "@trigger.dev/core/v3";
@@ -23,8 +23,8 @@ import { nanoid } from "nanoid";
 type Options = {
   redis: RedisOptions;
   prisma: PrismaClient;
-  zodWorker: RunnerOptions & {
-    shutdownTimeoutInMs: number;
+  worker: WorkerConcurrencyOptions & {
+    pollIntervalMs?: number;
   };
 };
 
@@ -64,23 +64,29 @@ type TriggerParams = {
   seedMetadataType?: string;
 };
 
-const schema = {
-  "runengine.waitpointCompleteDateTime": z.object({
-    waitpointId: z.string(),
-  }),
-  "runengine.expireRun": z.object({
-    runId: z.string(),
-  }),
+const workerCatalog = {
+  waitpointCompleteDateTime: {
+    schema: z.object({
+      waitpointId: z.string(),
+    }),
+    visibilityTimeoutMs: 5000,
+  },
+  expireRun: {
+    schema: z.object({
+      runId: z.string(),
+    }),
+    visibilityTimeoutMs: 5000,
+  },
 };
 
-type EngineWorker = ZodWorker<typeof schema>;
+type EngineWorker = Worker<typeof workerCatalog>;
 
 export class RunEngine {
   private redis: Redis;
   private prisma: PrismaClient;
   private redlock: Redlock;
   runQueue: RunQueue;
-  private zodWorker: EngineWorker;
+  private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
 
   constructor(private readonly options: Options) {
@@ -106,28 +112,19 @@ export class RunEngine {
       redis: options.redis,
     });
 
-    this.zodWorker = new ZodWorker({
-      name: "runQueueWorker",
-      prisma: options.prisma,
-      replica: options.prisma,
-      logger: new Logger("RunQueueWorker", "debug"),
-      runnerOptions: options.zodWorker,
-      shutdownTimeoutInMs: options.zodWorker.shutdownTimeoutInMs,
-      schema,
-      tasks: {
-        "runengine.waitpointCompleteDateTime": {
-          priority: 0,
-          maxAttempts: 10,
-          handler: async (payload, job) => {
-            await this.#completeWaitpoint(payload.waitpointId);
-          },
+    this.worker = new Worker({
+      name: "runengineworker",
+      redisOptions: options.redis,
+      catalog: workerCatalog,
+      concurrency: options.worker,
+      pollIntervalMs: options.worker.pollIntervalMs,
+      logger: new Logger("RunEngineWorker", "debug"),
+      jobs: {
+        waitpointCompleteDateTime: async ({ payload }) => {
+          await this.#completeWaitpoint(payload.waitpointId);
         },
-        "runengine.expireRun": {
-          priority: 0,
-          maxAttempts: 10,
-          handler: async (payload, job) => {
-            await this.expireRun(payload.runId);
-          },
+        expireRun: async ({ payload }) => {
+          await this.expireRun(payload.runId);
         },
       },
     });
@@ -319,11 +316,7 @@ export class RunEngine {
         const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
         if (expireAt) {
-          await this.zodWorker.enqueue(
-            "runengine.expireRun",
-            { runId: taskRun.id },
-            { tx, runAt: expireAt, jobKey: `runengine.expireRun.${taskRun.id}` }
-          );
+          await this.worker.enqueue({ job: "expireRun", payload: { runId: taskRun.id } });
         }
       }
 
@@ -418,11 +411,11 @@ export class RunEngine {
       },
     });
 
-    await this.zodWorker.enqueue(
-      "runengine.waitpointCompleteDateTime",
-      { waitpointId: waitpoint.id },
-      { tx, runAt: completedAfter, jobKey: `waitpointCompleteDateTime.${waitpoint.id}` }
-    );
+    await this.worker.enqueue({
+      id: `waitpointCompleteDateTime.${waitpoint.id}`,
+      job: "waitpointCompleteDateTime",
+      payload: { waitpointId: waitpoint.id },
+    });
 
     return waitpoint;
   }
@@ -521,7 +514,7 @@ export class RunEngine {
   }
 }
 
-/* 
+/*
 Starting execution flow:
 
 1. Run id is pulled from a queue
