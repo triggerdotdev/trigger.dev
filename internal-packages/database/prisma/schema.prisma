@@ -1638,6 +1638,8 @@ model BackgroundWorkerTask {
   retryConfig   Json?
   machineConfig Json?
 
+  maxDurationInSeconds Int?
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   @@unique([workerId, slug])
@@ -1786,6 +1788,8 @@ model TaskRun {
   /// Run error
   error Json?
 
+  maxDurationInSeconds Int?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
@@ -1846,8 +1850,11 @@ enum TaskRunStatus {
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   CRASHED
 
-  // Task reached the ttl without being executed
+  /// Task reached the ttl without being executed
   EXPIRED
+
+  /// Task has been timed out when using maxDuration
+  TIMED_OUT
 }
 
 enum RunEngineVersion {

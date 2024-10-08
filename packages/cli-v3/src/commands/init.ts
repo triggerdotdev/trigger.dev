@@ -22,7 +22,6 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
-import { CLOUD_API_URL } from "../consts.js";
 import { cliLink } from "../utilities/cliOutput.js";
 import {
   createFileFromTemplate,

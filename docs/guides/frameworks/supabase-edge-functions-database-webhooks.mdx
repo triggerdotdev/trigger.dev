@@ -1,15 +1,11 @@
 ---
-title: "Triggering tasks from Supabase database webhooks"
+title: "Triggering tasks from Supabase Database Webhooks"
 sidebarTitle: "Database webhooks"
-description: "This guide will show you how to trigger a task when a row is added to a table using a Supabase database webhook and edge function."
+description: "This guide shows you how to trigger a transcribing task when a row is added to a table in a Supabase database, using a Database Webhook and Edge Function."
 ---
 
 import Prerequisites from "/snippets/framework-prerequisites.mdx";
 import SupabasePrerequisites from "/snippets/supabase-prerequisites.mdx";
-import CliInitStep from "/snippets/step-cli-init.mdx";
-import CliDevStep from "/snippets/step-cli-dev.mdx";
-import CliRunTestStep from "/snippets/step-run-test.mdx";
-import CliViewRunStep from "/snippets/step-view-run.mdx";
 import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
 import TriggerTaskNextjs from "/snippets/trigger-tasks-nextjs.mdx";
 import NextjsTroubleshootingMissingApiKey from "/snippets/nextjs-missing-api-key.mdx";
@@ -19,174 +15,260 @@ import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
 ## Overview
 
-Database webhooks allow you to send realtime data from your database to another system whenever an event occurs in your table e.g. when a row is inserted, updated, or deleted, or when a specific column is updated.
+Supabase and Trigger.dev can be used together to create powerful workflows triggered by real-time changes in your database tables:
 
-This guide shows you how to set up a Supabase database webhook and deploy a simple edge function that triggers a "Hello world" task every time a new row is inserted into your table.
+- A Supabase Database Webhook triggers an Edge Function when a row including a video URL is inserted into a table
+- The Edge Function triggers a Trigger.dev task, passing the `video_url` column data from the new table row as the payload
+- The Trigger.dev task then:
+  - Uses [FFmpeg](https://www.ffmpeg.org/) to extract the audio track from a video URL
+  - Uses [Deepgram](https://deepgram.com) to transcribe the extracted audio
+  - Updates the original table row using the `record.id` in Supabase with the new transcription using `update`
 
 ## Prerequisites
 
 - Ensure you have the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started) installed
+- Since Supabase CLI version 1.123.4, you must have [Docker Desktop installed](https://supabase.com/docs/guides/functions/deploy#deploy-your-edge-functions) to deploy Edge Functions
 - Ensure TypeScript is installed
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
 - [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
+- [Create a new Deepgram account](https://deepgram.com/) and get your API key from the dashboard
 
 ## Initial setup
 
 <Steps>
   <SupabasePrerequisites />
-  <CliInitStep />
-  <CliDevStep />
-  <CliRunTestStep />
-  <CliViewRunStep />
-</Steps>
+  <Step title="Run the CLI `init` command">
 
-## Create and deploy a new Supabase edge function and create a new database webhook
+The easiest way to get started is to use the CLI. It will add Trigger.dev to your existing project, create a `/trigger` folder and give you an example task.
 
-<Steps>
+Run this command in the root of your project to get started:
 
-<Step title="Add your Trigger.dev prod secret key in Supabase">
+<CodeGroup>
 
-First, go to your Trigger.dev [project dashboard](https://cloud.trigger.dev) and copy the `prod` secret key from the API keys page.
-
-![How to find your prod secret key](/images/api-key-prod.png)
-
-Then, in [Supabase](https://supabase.com/dashboard/projects), select the project you want to use, navigate to 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, click 'Edge functions' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> in the configurations menu, and then click the 'Add new secret' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> button.
-
-Add `TRIGGER_SECRET_KEY` <Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> with the pasted value of your Trigger.dev `prod` secret key.
-
-![Add secret key in Supabase](/images/supabase-keys-1.png)
-
-</Step>
-
-<Step title="Create a new edge function using the Supabase CLI">
-
-Now create a new edge function using the Supabase CLI. We will call it `database-webhook`.
-
-```bash
-supabase functions new database-webhook
+```bash npm
+npx trigger.dev@latest init
 ```
 
+```bash pnpm
+pnpm dlx trigger.dev@latest init
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest init
+```
+
+</CodeGroup>
+
+It will do a few things:
+
+1. Log you into the CLI if you're not already logged in.
+2. Create a `trigger.config.ts` file in the root of your project.
+3. Ask where you'd like to create the `/trigger` directory.
+4. Create the `/trigger` directory with an example task, `/trigger/example.[ts/js]`.
+
+Choose "None" when prompted to install an example task. We will create a new task for this guide.
+
 </Step>
 
-<Step title="Update the edge function code">
+</Steps>
 
-Replace the `database-webhook` placeholder code with the following code:
+## Create a new table in your Supabase database
 
-```ts functions/database-webhook/index.ts
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-// Import the Trigger.dev SDK - replace "<your-sdk-version>" with the version of the SDK you are using, e.g. "3.0.0". You can find this in your package.json file.
-import { tasks } from "npm:@trigger.dev/sdk@3.0.0/v3";
-// Import your task type from your /trigger folder
-import type { helloWorldTask } from "../../../src/trigger/example.ts";
-//     👆 **type-only** import
+First, in the Supabase project dashboard, you'll need to create a new table to store the video URL and transcription.
 
-console.log("Hello from 'database-webhook' function!");
+To do this, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu and create a new table. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
 
-Deno.serve(async (req) => {
-  // Listens for incoming JSON requests
-  const payload = await req.json();
-  // Triggers the "hello-world" task with the payload
-  await tasks.trigger<typeof helloWorldTask>(
-    // Your task id
-    "hello-world",
-    // Your task payload. This will be the data you receive from the database webhook
-    payload
-  );
-  return new Response("ok");
+![How to create a new Supabase table](/images/supabase-new-table-1.png)
+
+Call your table `video_transcriptions`. <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
+
+Add two new columns, one called `video_url` with the type `text` <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and another called `transcription`, also with the type `text` <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to create a new Supabase table 2](/images/supabase-new-table-2.png)
+
+## Create and deploy the Trigger.dev task
+
+### Generate the Database type definitions
+
+To allow you to use TypeScript to interact with your table, you need to [generate the type definitions](https://supabase.com/docs/guides/api/rest/generating-types) for your Supabase table using the Supabase CLI.
+
+```bash
+supabase gen types --lang=typescript --project-id <project-ref> --schema public > database.types.ts
+```
+
+<Note> Replace `<project-ref>` with your Supabase project reference ID. This can be found in your Supabase project settings under 'General'. </Note>
+
+### Create the transcription task
+
+Create a new task file in your `/trigger` folder. Call it `videoProcessAndUpdate.ts`.
+
+This task takes a video from a public video url, extracts the audio using FFmpeg and transcribes the audio using Deepgram. The transcription summary will then be updated back to the original row in the `video_transcriptions` table in Supabase.
+
+You will need to install some additional dependencies for this task:
+
+<CodeGroup>
+
+```bash npm
+npm install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg
+```
+
+```bash pnpm
+pnpm install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg
+```
+
+```bash yarn
+yarn install @deepgram/sdk @supabase/supabase-js fluent-ffmpeg
+```
+
+</CodeGroup>
+
+These dependencies will allow you to interact with the Deepgram and Supabase APIs and extract audio from a video using FFmpeg.
+
+```ts /trigger/videoProcessAndUpdate.ts
+// Install any missing dependencies below
+import { createClient as createDeepgramClient } from "@deepgram/sdk";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs";
+import { Readable } from "node:stream";
+import os from "os";
+import path from "path";
+import { Database } from "../../database.types";
+
+// Create a single Supabase client for interacting with your database
+// 'Database' supplies the type definitions to supabase-js
+const supabase = createSupabaseClient<Database>(
+  // These details can be found in your Supabase project settings under `API`
+  process.env.SUPABASE_PROJECT_URL as string, // e.g. https://abc123.supabase.co - replace 'abc123' with your project ID
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string // Your service role secret key
+);
+
+// Your DEEPGRAM_SECRET_KEY can be found in your Deepgram dashboard
+const deepgram = createDeepgramClient(process.env.DEEPGRAM_SECRET_KEY);
+
+export const videoProcessAndUpdate = task({
+  id: "video-process-and-update",
+  run: async (payload: { videoUrl: string; id: number }) => {
+    const { videoUrl, id } = payload;
+
+    logger.log(`Processing video at URL: ${videoUrl}`);
+
+    // Generate temporary file names
+    const tempDirectory = os.tmpdir();
+    const outputPath = path.join(tempDirectory, `audio_${Date.now()}.wav`);
+
+    // Fetch the video
+    const response = await fetch(videoUrl);
+
+    // Extract the audio
+    await new Promise((resolve, reject) => {
+      if (!response.body) {
+        return reject(new Error("Failed to fetch video"));
+      }
+
+      ffmpeg(Readable.from(response.body))
+        .outputOptions([
+          "-vn", // Disable video output
+          "-acodec pcm_s16le", // Use PCM 16-bit little-endian encoding
+          "-ar 44100", // Set audio sample rate to 44.1 kHz
+          "-ac 2", // Set audio channels to stereo
+        ])
+        .output(outputPath)
+        .on("end", resolve)
+        .on("error", reject)
+        .run();
+    });
+
+    logger.log(`Audio extracted from video`, { outputPath });
+
+    // Transcribe the audio using Deepgram
+    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+      fs.readFileSync(outputPath),
+      {
+        model: "nova-2", // Use the Nova 2 model
+        smart_format: true, // Automatically format the transcription
+        diarize: true, // Enable speaker diarization
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    // Convert the result object to a string
+    const transcription = result.results.channels[0].alternatives[0].paragraphs?.transcript;
+
+    logger.log(`Transcription: ${transcription}`);
+
+    // Delete the temporary audio file
+    fs.unlinkSync(outputPath);
+    logger.log(`Temporary audio file deleted`, { outputPath });
+
+    const { error: updateError } = await supabase
+      .from("video_transcriptions")
+      // Set the plan to the new plan and update the timestamp
+      .update({ transcription: transcription, video_url: videoUrl })
+      // Find the row by its ID
+      .eq("id", id);
+
+    if (updateError) {
+      throw new Error(`Failed to update transcription: ${updateError.message}`);
+    }
+
+    return {
+      message: `Summary of the audio: ${transcription}`,
+      result,
+    };
+  },
 });
 ```
 
-This code sets up a Deno server that listens for incoming JSON requests, triggers a "hello-world" task, logs the received payload, and responds with "ok". This setup is typical for a webhook endpoint that processes incoming data and triggers some action (in this case, the "hello-world" task) based on that data.
+<Warning>
+  When updating your tables from a Trigger.dev task which has been triggered by a database change,
+  be extremely careful to not cause an infinite loop. Ensure you have the correct conditions in
+  place to prevent this.
+</Warning>
 
-<Note>You can only import the `type` from the task.</Note>
-<Note>
-  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run,
-  especially if you are using a different runtime like Deno. Also do not add "`npm:`" to imports
-  inside your task files, for the same reason.
-</Note>
+### Adding the FFmpeg build extension
 
-</Step>
+Before you can deploy the task, you'll need to add the FFmpeg build extension to your `trigger.config.ts` file.
 
-<Step title="Deploy your edge function using the Supabase CLI">
+```ts trigger.config.ts
+// Add this import
+import { ffmpeg } from "@trigger.dev/build/extensions/core";
+import { defineConfig } from "@trigger.dev/sdk/v3";
 
-Now deploy your edge function with the following command:
-
-```bash
-supabase functions deploy database-webhook
+export default defineConfig({
+  project: "<project ref>", // Replace with your project ref
+  // Your other config settings...
+  build: {
+    // Add the FFmpeg build extension
+    extensions: [ffmpeg()],
+  },
+});
 ```
 
-Follow the CLI instructions, selecting the same project you added your `prod` secret key to, and once complete you should see your new edge function deployment in your Supabase edge functions dashboard.
+<Note>
+  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  customize the build process or the resulting bundle and container image (in the case of
+  deploying). You can use pre-built extensions or create your own.
+</Note>
 
-There will be a link to the dashboard in your terminal output, or you can find it at this URL:
+<Note>
+  You'll also need to add `@trigger.dev/build` to your `package.json` file under `devDependencies`
+  if you don't already have it there.
+</Note>
 
-`https://supabase.com/dashboard/project/<your-project-id>/functions`
+### Add your Deepgram and Supabase environment variables to your Trigger.dev project
 
-<Note>Replace `your-project-id` with your actual project ID.</Note>
+You will need to add your `DEEPGRAM_SECRET_KEY`, `SUPABASE_PROJECT_URL` and `SUPABASE_SERVICE_ROLE_KEY` as environment variables in your Trigger.dev project. This can be done in the 'Environment Variables' page in your project dashboard.
 
-</Step>
+![Adding environment variables](/images/environment-variables-page.jpg)
 
-<Step title="Create a new table">
+### Deploying your task
 
-Next, in your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu and create a new table. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
-
-![How to create a new table](/images/supabase-new-table-1.png)
-
-In this example we will call our table `skynet`. <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
-
-Add a new column called `name` with the type `text`. <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />
-
-![How to add a new column](/images/supabase-new-table-2.png)
-
-</Step>
-
-<Step title="Configure JWT settings">
-
-By default, Supabase edge functions require a JSON Web Token [JWT](https://supabase.com/docs/guides/auth/jwts) in the authorization header. This is to ensure that only authorized users can access your edge functions.
-
-In your Supabase project dashboard, click 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, then the 'API' tab <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and copy the `anon` `public` API key from the table <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
-
-![How to find your Supabase API keys](/images/supabase-api-key.png)
-
-Then, go to 'Database' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> click on 'Webhooks' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and then click 'Create a new hook' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
-
-![How to create a new webhook](/images/supabase-create-webhook-1.png)
-
-<Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> Call the hook `edge-function-hook`.
-
-<Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> Select the new table you have created:
-`public` `skynet`.
-
-<Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> Choose the `insert` event.
-
-![How to create a new webhook 2](/images/supabase-create-webhook-2.png)
-
-<Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> Under 'Webhook configuration', select
-'Supabase Edge functions'{" "}
-
-<Icon icon="circle-5" iconType="solid" size={20} color="A8FF53" /> Under 'Edge function', choose `POST`
-and select the edge function you have created: `database-webhook`.{" "}
-
-<Icon icon="circle-6" iconType="solid" size={20} color="A8FF53" /> Under 'HTTP Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
-
-<Icon icon="circle-7" iconType="solid" size={20} color="A8FF53" /> Click 'Create webhook'.{" "}
-
-![How to create a new webhook 3](/images/supabase-create-webhook-3.png)
-
-Your database webhook is now ready to use.
-
-</Step>
-
-</Steps>
-
-## Deploy your task and trigger it from your new `database-webhook` edge function
-
-<Steps>
-
-<Step title="Deploy your 'Hello World' task">
-
-The next step is to deploy your `hello-world` task to [Trigger.dev cloud](https://cloud.trigger.dev).
-
-To do this, run the following command in the terminal:
+Now you can now deploy your task using the following command:
 
 <CodeGroup>
 
@@ -204,34 +286,131 @@ yarn dlx trigger.dev@latest deploy
 
 </CodeGroup>
 
-</Step>
+## Create and deploy the Supabase Edge Function
 
-<Step title="Trigger the task from your edge function">
+### Add your Trigger.dev prod secret key to the Supabase dashboard
 
-Your `database-webhook` edge function is now set up to trigger the `hello-world` task every time a new row is inserted into your `skynet` table.
+Go to your Trigger.dev [project dashboard](https://cloud.trigger.dev) and copy the `prod` secret key from the API keys page.
 
-To do this, go back to your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu, click on the `skynet` table <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> , and then click 'Insert', 'Insert Row' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+![How to find your prod secret key](/images/api-key-prod.png)
+
+Then, in [Supabase](https://supabase.com/dashboard/projects), select the project you want to use, navigate to 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, click 'Edge Functions' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> in the configurations menu, and then click the 'Add new secret' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> button.
+
+Add `TRIGGER_SECRET_KEY` <Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> with the pasted value of your Trigger.dev `prod` secret key.
+
+![Add secret key in Supabase](/images/supabase-keys-1.png)
+
+### Create a new Edge Function using the Supabase CLI
+
+Now create an Edge Function using the Supabase CLI. Call it `video-processing-handler`. This function will be triggered by the Database Webhook.
+
+```bash
+supabase functions new video-processing-handler
+```
+
+```ts functions/video-processing-handler/index.ts
+// Setup type definitions for built-in Supabase Runtime APIs
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { tasks } from "npm:@trigger.dev/sdk@latest/v3";
+// Import the videoProcessAndUpdate task from the trigger folder
+import type { videoProcessAndUpdate } from "../../../src/trigger/videoProcessAndUpdate.ts";
+//     👆 type only import
+
+// Sets up a Deno server that listens for incoming JSON requests
+Deno.serve(async (req) => {
+  const payload = await req.json();
+
+  // This payload will contain the video url and id from the new row in the table
+  const videoUrl = payload.record.video_url;
+  const id = payload.record.id;
+
+  // Trigger the videoProcessAndUpdate task with the videoUrl payload
+  await tasks.trigger<typeof videoProcessAndUpdate>("video-process-and-update", { videoUrl, id });
+  console.log(payload ?? "No name provided");
+
+  return new Response("ok");
+});
+```
+
+<Note>
+  Tasks in the `trigger` folder use Node, so they must stay in there or they will not run,
+  especially if you are using a different runtime like Deno. Also do not add "`npm:`" to imports
+  inside your task files, for the same reason.
+</Note>
+
+### Deploy the Edge Function
+
+Now deploy your new Edge Function with the following command:
+
+```bash
+supabase functions deploy video-processing-handler
+```
+
+Follow the CLI instructions, selecting the same project you added your `prod` secret key to, and once complete you should see your new Edge Function deployment in your Supabase Edge Functions dashboard.
+
+There will be a link to the dashboard in your terminal output.
+
+## Create the Database Webhook
+
+In your Supabase project dashboard, click 'Project settings' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, then the 'API' tab <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and copy the `anon` `public` API key from the table <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to find your Supabase API keys](/images/supabase-api-key.png)
+
+Then, go to 'Database' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> click on 'Webhooks' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />, and then click 'Create a new hook' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
+
+![How to create a new webhook](/images/supabase-create-webhook-1.png)
+
+<Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> Call the hook `edge-function-hook`.
+
+<Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> Select the new table you have created:
+`public` `video_transcriptions`.
+
+<Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" /> Choose the `insert` event.
+
+![How to create a new webhook 2](/images/supabase-create-webhook-2.png)
+
+<Icon icon="circle-4" iconType="solid" size={20} color="A8FF53" /> Under 'Webhook configuration', select
+'Supabase Edge Functions'{" "}
+
+<Icon icon="circle-5" iconType="solid" size={20} color="A8FF53" /> Under 'Edge Function', choose `POST`
+and select the Edge Function you have created: `video-processing-handler`.{" "}
+
+<Icon icon="circle-6" iconType="solid" size={20} color="A8FF53" /> Under 'HTTP Headers', add a new header with the key `Authorization` and the value `Bearer <your-api-key>` (replace `<your-api-key>` with the `anon` `public` API key you copied earlier).
+
+<Info>
+  Supabase Edge Functions require a JSON Web Token [JWT](https://supabase.com/docs/guides/auth/jwts)
+  in the authorization header. This is to ensure that only authorized users can access your edge
+  functions.
+</Info>
+
+<Icon icon="circle-7" iconType="solid" size={20} color="A8FF53" /> Click 'Create webhook'.{" "}
+
+![How to create a new webhook 3](/images/supabase-create-webhook-3.png)
+
+Your Database Webhook is now ready to use.
+
+## Triggering the entire workflow
+
+Your `video-processing-handler` Edge Function is now set up to trigger the `videoProcessAndUpdate` task every time a new row is inserted into your `video_transcriptions` table.
+
+To do this, go back to your Supabase project dashboard, click on 'Table Editor' <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> in the left-hand menu, click on the `video_transcriptions` table <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> , and then click 'Insert', 'Insert Row' <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />.
 
 ![How to insert a new row 1](/images/supabase-new-table-3.png)
 
-Add a new item under `name`, with the value `Sarah Connor` (this can be any string). <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />
+Add a new item under `video_url`, with a public video url. <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />.
+
+You can use the following public video URL for testing: `https://content.trigger.dev/Supabase%20Edge%20Functions%20Quickstart.mp4`.
 
 ![How to insert a new row 2](/images/supabase-new-table-4.png)
 
-Go back to your edge function dashboard <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> , and under 'Logs' <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> you should see a new run of your `database-webhook` edge function. <Icon icon="circle-3" iconType="solid" size={20} color="A8FF53" />
+Once the new table row has been inserted, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a processing `videoProcessAndUpdate` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the video url to your `video_transcriptions` table.
 
-![How to view the logs](/images/supabase-logs.png)
+![Supabase successful run](/images/supabase-run-result.png)
 
-Then, check your [cloud.trigger.dev](http://cloud.trigger.dev) project 'Runs' list <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" /> and you should see a successful `hello-world` task <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" /> which has been triggered when you added a new row with the `name` `Sarah Connor` to your `skynet` Supabase table.
+Once the run has completed successfully, go back to your Supabase `video_transcriptions` table, and you should see that in the row containing the original video URL, the transcription has now been added to the `transcription` column.
 
-Inside that run you will see the payload that was sent from the database webhook, including the `name` and other table information.
+![Supabase successful table update](/images/supabase-table-result.png)
 
-![How to insert a new row 2](/images/supabase-trigger-screenshot.png)
-
-**Congratulations, you have successfully triggered a task from a Supabase edge function using a database webhook!**
-
-</Step>
-
-</Steps>
+**Congratulations! You have completed the full workflow from Supabase to Trigger.dev and back again.**
 
 <SupabaseDocsCards />

@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.11
+
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+
 ## 3.0.9
 
 ### Patch Changes

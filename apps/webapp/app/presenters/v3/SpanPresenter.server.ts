@@ -9,6 +9,7 @@ import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
+import { getMaxDuration } from "~/v3/utils/maxDuration";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -69,6 +70,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         friendlyId: true,
         isTest: true,
+        maxDurationInSeconds: true,
         tags: {
           select: {
             name: true,
@@ -229,6 +231,7 @@ export class SpanPresenter extends BasePresenter {
         baseCostInCents: run.baseCostInCents,
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.lockedToVersion?.version,
+        maxDuration: run.maxDurationInSeconds ?? undefined,
       },
       queue: {
         name: run.queue,
@@ -307,6 +310,7 @@ export class SpanPresenter extends BasePresenter {
       },
       context: JSON.stringify(context, null, 2),
       metadata,
+      maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
     };
   }
 

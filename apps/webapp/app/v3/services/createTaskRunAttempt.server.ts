@@ -196,6 +196,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           maxAttempts: taskRun.maxAttempts ?? undefined,
           version: taskRun.lockedBy.worker.version,
           metadata,
+          maxDuration: taskRun.maxDurationInSeconds ?? undefined,
         },
         queue: {
           id: queue.friendlyId,
