@@ -7,6 +7,8 @@ import { Worker as NodeWorker } from "worker_threads";
 import { z } from "zod";
 import { SimpleQueue } from "./queue.js";
 
+import Redis from "ioredis";
+
 type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
@@ -42,6 +44,8 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
 };
 
 class Worker<TCatalog extends WorkerCatalog> {
+  private subscriber: Redis;
+
   queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
   private jobs: WorkerOptions<TCatalog>["jobs"];
   private logger: Logger;
@@ -55,7 +59,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
       Object.entries(this.options.catalog).map(([key, value]) => [key, value.schema])
     ) as QueueCatalogFromWorkerCatalog<TCatalog>;
-
+    //
     this.queue = new SimpleQueue({
       name: options.name,
       redisOptions: options.redisOptions,
@@ -74,6 +78,9 @@ class Worker<TCatalog extends WorkerCatalog> {
     }
 
     this.setupShutdownHandlers();
+
+    this.subscriber = new Redis(options.redisOptions);
+    this.setupSubscriber();
   }
 
   enqueue<K extends keyof TCatalog>({
@@ -240,6 +247,32 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.processItems(worker, count);
   }
 
+  private setupSubscriber() {
+    const channel = `${this.options.name}:redrive`;
+    this.subscriber.subscribe(channel, (err) => {
+      if (err) {
+        this.logger.error(`Failed to subscribe to ${channel}`, { error: err });
+      } else {
+        this.logger.log(`Subscribed to ${channel}`);
+      }
+    });
+
+    this.subscriber.on("message", this.handleRedriveMessage.bind(this));
+  }
+
+  private async handleRedriveMessage(channel: string, message: string) {
+    try {
+      const { id } = JSON.parse(message);
+      if (typeof id !== "string") {
+        throw new Error("Invalid message format: id must be a string");
+      }
+      await this.queue.redriveFromDeadLetterQueue(id);
+      this.logger.log(`Redrived item ${id} from Dead Letter Queue`);
+    } catch (error) {
+      this.logger.error("Error processing redrive message", { error, message });
+    }
+  }
+
   private setupShutdownHandlers() {
     process.on("SIGTERM", this.shutdown.bind(this));
     process.on("SIGINT", this.shutdown.bind(this));
@@ -254,8 +287,10 @@ class Worker<TCatalog extends WorkerCatalog> {
       worker.terminate();
     }
 
+    await this.subscriber.unsubscribe();
+    await this.subscriber.quit();
     await this.queue.close();
-    this.logger.log("All workers shut down.");
+    this.logger.log("All workers and subscribers shut down.");
   }
 
   public start() {

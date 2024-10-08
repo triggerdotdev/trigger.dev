@@ -4,6 +4,7 @@ import { describe } from "node:test";
 import { expect } from "vitest";
 import { z } from "zod";
 import { Worker } from "./worker.js";
+import Redis from "ioredis";
 
 describe("Worker", () => {
   redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
@@ -185,6 +186,89 @@ describe("Worker", () => {
         // Check that the failed item is in the DLQ
         const dlqSize = await worker.queue.sizeOfDeadLetterQueue();
         expect(dlqSize).toBe(1);
+      } finally {
+        worker.stop();
+      }
+    }
+  );
+
+  redisTest(
+    "Redrive an item from DLQ and process it successfully",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const processedItems: number[] = [];
+      const failedItemId = "fail-then-redrive-item";
+      let attemptCount = 0;
+
+      const worker = new Worker({
+        name: "test-worker",
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.number() }),
+            visibilityTimeoutMs: 1000,
+            retry: { maxAttempts: 3, minTimeoutInMs: 10, maxTimeoutInMs: 50 },
+          },
+        },
+        jobs: {
+          testJob: async ({ id, payload }) => {
+            if (id === failedItemId && attemptCount < 3) {
+              attemptCount++;
+              throw new Error("Temporary failure");
+            }
+            processedItems.push(payload.value);
+          },
+        },
+        concurrency: {
+          workers: 1,
+          tasksPerWorker: 1,
+        },
+        pollIntervalMs: 50,
+        logger: new Logger("test", "error"),
+      });
+
+      try {
+        // Enqueue the item that will fail 3 times
+        await worker.enqueue({
+          id: failedItemId,
+          job: "testJob",
+          payload: { value: 999 },
+        });
+
+        worker.start();
+
+        // Wait for the item to be processed and moved to DLQ
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Check that the item is in the DLQ
+        let dlqSize = await worker.queue.sizeOfDeadLetterQueue();
+        expect(dlqSize).toBe(1);
+
+        // Create a Redis client to publish the redrive message
+        const redisClient = new Redis({
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        });
+
+        // Publish redrive message
+        await redisClient.publish("test-worker:redrive", JSON.stringify({ id: failedItemId }));
+
+        // Wait for the item to be redrived and processed
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Check that the item was processed successfully
+        expect(processedItems).toEqual([999]);
+
+        // Check that the DLQ is now empty
+        dlqSize = await worker.queue.sizeOfDeadLetterQueue();
+        expect(dlqSize).toBe(0);
+
+        await redisClient.quit();
       } finally {
         worker.stop();
       }
