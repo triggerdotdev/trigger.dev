@@ -92,7 +92,11 @@ export class ZodNamespace<
   constructor(
     opts: ZodNamespaceOptions<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>
   ) {
-    this.#logger = opts.logger ?? new SimpleStructuredLogger(opts.name);
+    this.#logger =
+      opts.logger ??
+      new SimpleStructuredLogger(`ns-${opts.name}`, undefined, {
+        namespace: opts.name,
+      });
 
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.clientMessages,

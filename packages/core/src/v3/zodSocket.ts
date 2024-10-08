@@ -383,7 +383,14 @@ export class ZodSocketConnection<
       opts.port ?? (opts.secure ? "443" : "80")
     }/${opts.namespace}`;
 
-    const logger = new SimpleStructuredLogger(opts.namespace, LogLevel.info);
+    const logger = new SimpleStructuredLogger(`socket-${opts.namespace}`, LogLevel.info, {
+      namespace: opts.namespace,
+      host: opts.host,
+      port: opts.port,
+      secure: opts.secure,
+      extraHeaders: opts.extraHeaders,
+    });
+
     logger.log("new zod socket", { uri });
 
     this.socket = io(uri, {
