@@ -42,7 +42,7 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
 };
 
 class Worker<TCatalog extends WorkerCatalog> {
-  private queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
+  queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
   private jobs: WorkerOptions<TCatalog>["jobs"];
   private logger: Logger;
   private workers: NodeWorker[] = [];
@@ -157,8 +157,11 @@ class Worker<TCatalog extends WorkerCatalog> {
 
           try {
             await handler({ id, payload: item, visibilityTimeoutMs, attempt });
+
+            //succeeded, acking the item
             await this.queue.ack(id);
           } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             this.logger.error(`Error processing item, it threw an error:`, {
               name: this.options.name,
               id,
@@ -166,6 +169,7 @@ class Worker<TCatalog extends WorkerCatalog> {
               item,
               visibilityTimeoutMs,
               error,
+              errorMessage,
             });
             // Requeue the failed item with a delay
             try {
@@ -174,15 +178,20 @@ class Worker<TCatalog extends WorkerCatalog> {
               const retryDelay = calculateNextRetryDelay(catalogItem.retry, attempt);
 
               if (!retryDelay) {
-                this.logger.error(`Failed item ${id} has reached max attempts, acking.`, {
-                  name: this.options.name,
-                  id,
-                  job,
-                  item,
-                  visibilityTimeoutMs,
-                  attempt,
-                });
-                await this.queue.ack(id);
+                this.logger.error(
+                  `Failed item ${id} has reached max attempts, moving to the DLQ.`,
+                  {
+                    name: this.options.name,
+                    id,
+                    job,
+                    item,
+                    visibilityTimeoutMs,
+                    attempt,
+                    errorMessage,
+                  }
+                );
+
+                await this.queue.moveToDeadLetterQueue(id, errorMessage);
                 return;
               }
 
