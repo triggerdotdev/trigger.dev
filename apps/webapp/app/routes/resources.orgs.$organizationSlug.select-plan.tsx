@@ -53,11 +53,12 @@ const schema = z.object({
   type: z.enum(["free", "paid"]),
   planCode: z.string().optional(),
   callerPath: z.string(),
-  reason: z.string().optional(),
+  reasons: z.union([z.string(), z.array(z.string())]).optional(),
   message: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  console.log("Action function called");
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
   }
@@ -68,13 +69,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const formData = await request.formData();
 
-  // Log the form data for debugging
-  console.log("Form data:", Object.fromEntries(formData));
+  console.log("All form data:", Object.fromEntries(formData));
 
-  const form = schema.parse(Object.fromEntries(formData));
+  // Log the entire formData
+  console.log("Form Data:");
+  for (const [key, value] of formData.entries()) {
+    console.log(`${key}: ${value}`);
+  }
 
-  // Log the parsed form data
-  console.log("Parsed form data:", form);
+  const reasons = formData.getAll("reasons");
+  const message = formData.get("message");
+
+  const form = schema.parse({
+    ...Object.fromEntries(formData),
+    reasons: reasons.length > 1 ? reasons : reasons[0] || undefined,
+    message: message || undefined,
+  });
 
   const organization = await prisma.organization.findUnique({
     where: { slug: organizationSlug },
@@ -132,12 +142,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
           throw redirectWithErrorMessage(form.callerPath, request, upsertCustomerRes.error.message);
         }
 
-        const formData = await request.formData();
-        const reasons = formData.getAll("reason") as string[];
-        const message = formData.get("message") as string | null;
-
         // Only create a thread if there are reasons or a message
-        if (reasons.length > 0 || message) {
+        if (reasons.length > 0 || (message && message.toString().trim() !== "")) {
           const createThreadRes = await client.createThread({
             customerIdentifier: {
               customerId: upsertCustomerRes.data.customer.id,
@@ -157,7 +163,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                       text: "Reasons:",
                     }),
                     uiComponent.text({
-                      text: reasons.join(", "),
+                      text: Array.isArray(reasons) ? reasons.join(", ") : reasons,
                     }),
                   ]
                 : []),
@@ -170,7 +176,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                       text: "Comment:",
                     }),
                     uiComponent.text({
-                      text: message,
+                      text: message.toString(),
                     }),
                   ]
                 : []),
@@ -189,7 +195,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
           }
         }
       } catch (e) {
-        console.error("Error in free case:", e);
         logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
       }
       payload = {
@@ -210,12 +215,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       break;
     }
     default: {
-      console.error("Invalid form type:", form.type);
       throw new Error("Invalid form type");
     }
   }
 
-  console.log("Final payload:", payload);
   return setPlan(organization, request, form.callerPath, payload);
 }
 
@@ -262,7 +265,7 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   showGithubVerificationBadge?: boolean;
-  periodEnd: Date;
+  periodEnd?: Date;
 };
 
 export function PricingPlans({
@@ -281,7 +284,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           showGithubVerificationBadge={showGithubVerificationBadge}
-          periodEnd={periodEnd}
+          periodEnd={periodEnd ?? new Date()}
         />
         <TierHobby
           plan={plans.hobby}
@@ -317,13 +320,15 @@ export function TierFree({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
-
   const status = subscription?.freeTierStatus ?? "requires_connect";
 
   return (
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
+        <TierLimit href="https://trigger.dev/pricing#computePricing">
+          ${plan.limits.includedUsage / 100} free usage
+        </TierLimit>
         {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
@@ -377,157 +382,102 @@ export function TierFree({
           </div>
         </div>
       ) : (
-        <Form action={formAction} method="post" id="subscribe">
-          <input type="hidden" name="type" value="free" />
-          <input type="hidden" name="callerPath" value={location.pathname} />
-          <TierLimit href="https://trigger.dev/pricing#computePricing">
-            ${plan.limits.includedUsage / 100} free usage
-          </TierLimit>
-          <div className="py-6">
-            {status === "requires_connect" ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="tertiary/large"
-                    fullWidth
-                    className="text-md font-medium"
-                    disabled={isLoading}
-                    LeadingIcon={isLoading ? Spinner : undefined}
-                  >
-                    Unlock free plan
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>Unlock the Free plan</DialogHeader>
-                  <div className="mb-3 mt-4 flex flex-col items-center gap-4 px-6">
-                    <GitHubLightIcon className="size-16" />
-                    <Paragraph variant="base/bright" className="text-center">
-                      To unlock the Free plan, we need to verify that you have an active GitHub
-                      account.
-                    </Paragraph>
-                    <Paragraph className="text-center">
-                      We do this to prevent malicious use of our platform. We only ask for the
-                      minimum permissions to verify your account.
+        <>
+          {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
+              <DialogTrigger asChild>
+                <Button variant="tertiary/large" fullWidth className="text-md my-6 font-medium">
+                  {`Downgrade to ${plan.title}`}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <Form action={formAction} method="post" id="subscribe">
+                  <input type="hidden" name="type" value="free" />
+                  <input type="hidden" name="callerPath" value={location.pathname} />
+                  <DialogHeader>Downgrade plan</DialogHeader>
+                  <div className="flex items-start gap-3 pb-6 pr-4 pt-6">
+                    <ArrowDownCircleIcon className="size-12 min-w-12 text-error" />
+                    <Paragraph variant="base/bright" className="text-text-bright">
+                      Are you sure you want to downgrade? If you do, you will retain your current
+                      plan's features until <DateTime includeTime={false} date={periodEnd} />.
                     </Paragraph>
                   </div>
-                  <DialogFooter>
+                  <div>
+                    <div className="mb-4">
+                      <Header2 className="mb-1">Why are you thinking of downgrading?</Header2>
+                      <ul className="space-y-1">
+                        {[
+                          "Subscription or usage costs too expensive",
+                          "Bugs or technical issues",
+                          "No longer need the service",
+                          "Found a better alternative",
+                          "Lacking features I need",
+                        ].map((label, index) => (
+                          <li key={index}>
+                            <CheckboxWithLabel
+                              id={`reason-${index + 1}`}
+                              name="reasons"
+                              value={label}
+                              variant="simple"
+                              label={label}
+                              labelClassName="text-text-dimmed"
+                              onChange={(isChecked: boolean) => {
+                                if (label === "Lacking features I need") {
+                                  setIsLackingFeaturesChecked(isChecked);
+                                }
+                              }}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <Header2 className="mb-1">
+                        {isLackingFeaturesChecked
+                          ? "What features do you need? Or how can we improve?"
+                          : "What can we do to improve?"}
+                      </Header2>
+                      <TextArea id="improvement-suggestions" name="message" />
+                    </div>
+                  </div>
+                  <DialogFooter className="mt-2">
+                    <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                      Dismiss
+                    </Button>
                     <Button
-                      variant="primary/large"
-                      fullWidth
+                      variant="danger/medium"
                       disabled={isLoading}
-                      LeadingIcon={isLoading ? Spinner : undefined}
-                      form="subscribe"
+                      LeadingIcon={
+                        isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
+                      }
+                      type="submit"
                     >
-                      Connect to GitHub
+                      Downgrade plan
                     </Button>
                   </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            ) : (
-              <>
-                {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
-                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
-                    <DialogTrigger asChild>
-                      <Button variant="tertiary/large" fullWidth className="text-md font-medium">
-                        {`Downgrade to ${plan.title}`}
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>Downgrade plan</DialogHeader>
-                      <div className="mb-2 mt-4 flex items-start gap-3">
-                        <span>
-                          <XCircleIcon className="size-12 text-error" />
-                        </span>
-                        <Paragraph variant="base/bright" className="text-text-bright">
-                          Are you sure you want to downgrade? If you do, you will retain your
-                          current plan's features until{" "}
-                          <DateTime includeTime={false} date={periodEnd} />.
-                        </Paragraph>
-                      </div>
-                      <div>
-                        <input type="hidden" name="type" value="free" />
-                        <input type="hidden" name="callerPath" value={location.pathname} />
-                        <div className="mb-4">
-                          <Header2 className="mb-1">Why are you thinking of canceling?</Header2>
-                          <ul className="space-y-1">
-                            {[
-                              "Subscription or usage costs too expensive",
-                              "Bugs or technical issues",
-                              "No longer need the service",
-                              "Found a better alternative",
-                              "Lacking features I need",
-                            ].map((label, index) => (
-                              <li key={index}>
-                                <CheckboxWithLabel
-                                  id={`reason-${index + 1}`}
-                                  name="reason"
-                                  value={label}
-                                  variant="simple"
-                                  label={label}
-                                  labelClassName="text-text-dimmed"
-                                  onChange={(isChecked: boolean) => {
-                                    if (label === "Lacking features I need") {
-                                      setIsLackingFeaturesChecked(isChecked);
-                                    }
-                                  }}
-                                />
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <Header2 className="mb-1">
-                            {isLackingFeaturesChecked
-                              ? "What features do you need? Or how can we improve?"
-                              : "What can we do to improve?"}
-                          </Header2>
-                          <TextArea id="improvement-suggestions" name="message" />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
-                          Dismiss
-                        </Button>
-                        <Button
-                          variant="danger/medium"
-                          disabled={isLoading}
-                          LeadingIcon={
-                            isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
-                          }
-                          type="submit"
-                          form="subscribe"
-                        >
-                          Downgrade plan
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                ) : (
-                  <Button
-                    variant="tertiary/large"
-                    fullWidth
-                    className="text-md font-medium"
-                    disabled={
-                      isLoading ||
-                      subscription?.plan?.type === plan.type ||
-                      subscription?.canceledAt !== undefined
-                    }
-                    LeadingIcon={
-                      isLoading && navigation.formData?.get("planCode") === null
-                        ? Spinner
-                        : undefined
-                    }
-                  >
-                    {subscription?.plan === undefined
-                      ? "Select plan"
-                      : subscription.plan.type === "free" ||
-                        (subscription.canceledAt !== undefined && "Current plan")}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Button
+              variant="tertiary/large"
+              fullWidth
+              className="text-md my-6 font-medium"
+              disabled={
+                isLoading ||
+                subscription?.plan?.type === plan.type ||
+                subscription?.canceledAt !== undefined
+              }
+              LeadingIcon={
+                isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
+              }
+            >
+              {subscription?.plan === undefined
+                ? "Select plan"
+                : subscription.plan.type === "free" ||
+                  (subscription.canceledAt !== undefined && "Current plan")}
+            </Button>
+          )}
           <ul className="flex flex-col gap-2.5">
             <ConcurrentRuns limits={plan.limits} />
             <FeatureItem checked>
@@ -546,7 +496,7 @@ export function TierFree({
             <SupportLevel limits={plan.limits} />
             <Alerts limits={plan.limits} />
           </ul>
-        </Form>
+        </>
       )}
     </TierContainer>
   );
