@@ -84,7 +84,6 @@ export const TriggerTaskRequestBody = z.object({
       maxAttempts: z.number().int().optional(),
       metadata: z.any(),
       metadataType: z.string().optional(),
-      maxDuration: z.number().optional(),
     })
     .optional(),
 });
@@ -444,8 +443,6 @@ export const RunStatus = z.enum([
   "DELAYED",
   /// Task has expired and won't be executed
   "EXPIRED",
-  /// Task has reached it's maxDuration and has been stopped
-  "TIMED_OUT",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;

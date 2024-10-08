@@ -13,7 +13,6 @@ import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 import { clock } from "./clock-api.js";
 import { usage } from "./usage-api.js";
 import { taskContext } from "./task-context-api.js";
-import { recordSpanException } from "./otel/index.js";
 
 export type TriggerTracerConfig =
   | {
@@ -58,14 +57,11 @@ export class TriggerTracer {
     name: string,
     fn: (span: Span) => Promise<T>,
     options?: SpanOptions,
-    ctx?: Context,
-    signal?: AbortSignal
+    ctx?: Context
   ): Promise<T> {
     const parentContext = ctx ?? context.active();
 
     const attributes = options?.attributes ?? {};
-
-    let spanEnded = false;
 
     return this.tracer.startActiveSpan(
       name,
@@ -76,14 +72,6 @@ export class TriggerTracer {
       },
       parentContext,
       async (span) => {
-        signal?.addEventListener("abort", () => {
-          if (!spanEnded) {
-            spanEnded = true;
-            recordSpanException(span, signal.reason);
-            span.end();
-          }
-        });
-
         if (taskContext.ctx) {
           this.tracer
             .startSpan(
@@ -106,33 +94,27 @@ export class TriggerTracer {
         try {
           return await fn(span);
         } catch (e) {
-          if (!spanEnded) {
-            if (typeof e === "string" || e instanceof Error) {
-              span.recordException(e);
-            }
-
-            span.setStatus({ code: SpanStatusCode.ERROR });
+          if (typeof e === "string" || e instanceof Error) {
+            span.recordException(e);
           }
+
+          span.setStatus({ code: SpanStatusCode.ERROR });
 
           throw e;
         } finally {
-          if (!spanEnded) {
-            spanEnded = true;
+          if (taskContext.ctx) {
+            const usageSample = usage.stop(usageMeasurement);
+            const machine = taskContext.ctx.machine;
 
-            if (taskContext.ctx) {
-              const usageSample = usage.stop(usageMeasurement);
-              const machine = taskContext.ctx.machine;
-
-              span.setAttributes({
-                [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
-                [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
-                  ? usageSample.cpuTime * machine.centsPerMs
-                  : 0,
-              });
-            }
-
-            span.end(clock.preciseNow());
+            span.setAttributes({
+              [SemanticInternalAttributes.USAGE_DURATION_MS]: usageSample.cpuTime,
+              [SemanticInternalAttributes.USAGE_COST_IN_CENTS]: machine?.centsPerMs
+                ? usageSample.cpuTime * machine.centsPerMs
+                : 0,
+            });
           }
+
+          span.end(clock.preciseNow());
         }
       }
     );

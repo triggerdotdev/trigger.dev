@@ -92,7 +92,6 @@ export const TaskRunErrorCodes = {
   HANDLE_ERROR_ERROR: "HANDLE_ERROR_ERROR",
   GRACEFUL_EXIT_TIMEOUT: "GRACEFUL_EXIT_TIMEOUT",
   TASK_RUN_CRASHED: "TASK_RUN_CRASHED",
-  MAX_DURATION_EXCEEDED: "MAX_DURATION_EXCEEDED",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -113,7 +112,6 @@ export const TaskRunInternalError = z.object({
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
     "TASK_RUN_CRASHED",
-    "MAX_DURATION_EXCEEDED",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -146,7 +144,6 @@ export const TaskRun = z.object({
   baseCostInCents: z.number().default(0),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
-  maxDuration: z.number().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;

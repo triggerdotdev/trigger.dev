@@ -2,7 +2,6 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const helloWorldTask = task({
   id: "hello-world",
-  maxDuration: 300, // 5 minutes
   run: async (payload, { ctx }) => {
     logger.log("Hello, world!", { payload, ctx });
 

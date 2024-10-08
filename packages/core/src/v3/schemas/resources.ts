@@ -11,7 +11,6 @@ export const TaskResource = z.object({
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
-  maxDuration: z.number().optional(),
 });
 
 export type TaskResource = z.infer<typeof TaskResource>;

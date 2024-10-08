@@ -14,7 +14,6 @@ import {
   TriggerTracer,
   WorkerManifest,
   ExecutorToWorkerMessageCatalog,
-  timeout,
 } from "@trigger.dev/core/v3";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import {
@@ -30,7 +29,6 @@ import {
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
-  UsageTimeoutManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -84,15 +82,13 @@ const usageEventUrl = getEnvVar("USAGE_EVENT_URL");
 const triggerJWT = getEnvVar("TRIGGER_JWT");
 const heartbeatIntervalMs = getEnvVar("HEARTBEAT_INTERVAL_MS");
 
-const devUsageManager = new DevUsageManager();
-const prodUsageManager = new ProdUsageManager(devUsageManager, {
+const prodUsageManager = new ProdUsageManager(new DevUsageManager(), {
   heartbeatIntervalMs: usageIntervalMs ? parseInt(usageIntervalMs, 10) : undefined,
   url: usageEventUrl,
   jwt: triggerJWT,
 });
 
 usage.setGlobalUsageManager(prodUsageManager);
-timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 const durableClock = new DurableClock();
@@ -305,60 +301,19 @@ const zodIpc = new ZodIpcConnection({
 
           const measurement = usage.start();
 
-          // This lives outside of the executor because this will eventually be moved to the controller level
-          const signal = execution.run.maxDuration
-            ? timeout.abortAfterTimeout(execution.run.maxDuration)
-            : undefined;
-
-          signal?.addEventListener("abort", async (e) => {
-            if (_isRunning) {
-              _isRunning = false;
-              _execution = undefined;
-
-              const usageSample = usage.stop(measurement);
-
-              await sender.send("TASK_RUN_COMPLETED", {
-                execution,
-                result: {
-                  ok: false,
-                  id: execution.run.id,
-                  error: {
-                    type: "INTERNAL_ERROR",
-                    code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-                    message:
-                      signal.reason instanceof Error
-                        ? signal.reason.message
-                        : String(signal.reason),
-                  },
-                  usage: {
-                    durationMs: usageSample.cpuTime,
-                  },
-                },
-              });
-            }
-          });
-
-          const { result } = await executor.execute(
-            execution,
-            metadata,
-            traceContext,
-            measurement,
-            signal
-          );
+          const { result } = await executor.execute(execution, metadata, traceContext, measurement);
 
           const usageSample = usage.stop(measurement);
 
-          if (_isRunning) {
-            return sender.send("TASK_RUN_COMPLETED", {
-              execution,
-              result: {
-                ...result,
-                usage: {
-                  durationMs: usageSample.cpuTime,
-                },
+          return sender.send("TASK_RUN_COMPLETED", {
+            execution,
+            result: {
+              ...result,
+              usage: {
+                durationMs: usageSample.cpuTime,
               },
-            });
-          }
+            },
+          });
         } finally {
           _execution = undefined;
           _isRunning = false;

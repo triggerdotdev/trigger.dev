@@ -121,22 +121,6 @@ export const heavyTask = task({
 });
 ```
 
-### `maxDuration` option
-
-By default tasks can execute indefinitely, which can be great! But you also might want to set a `maxDuration` to prevent a task from running too long. You can set the `maxDuration` on a task, and all runs of that task will be stopped if they exceed the duration.
-
-```ts /trigger/long-task.ts
-export const longTask = task({
-  id: "long-task",
-  maxDuration: 300, // 300 seconds or 5 minutes
-  run: async (payload: any, { ctx }) => {
-    //...
-  },
-});
-```
-
-See our [maxDuration guide](/runs/max-duration) for more information.
-
 ## Lifecycle functions
 
 ![Lifecycle functions](/images/lifecycle-functions.png)
@@ -171,7 +155,9 @@ export const taskWithInitReturn = task({
 });
 ```
 
-<Info>Errors thrown in the `init` function are ignored.</Info>
+<Info>
+Errors thrown in the `init` function are ignored.
+</Info>
 
 ### `cleanup` function
 
@@ -189,15 +175,16 @@ export const taskWithCleanup = task({
 });
 ```
 
-<Info>Errors thrown in the `cleanup` function will fail the attempt.</Info>
+<Info>
+Errors thrown in the `cleanup` function will fail the attempt.
+</Info>
 
 ### `middleware` function
 
 This function is called before the `run` function, it allows you to wrap the run function with custom code.
 
 <Info>
-  An error thrown in `middleware` is just like an uncaught error in the run function: it will
-  propagate through to `handleError()` and then will fail the attempt (causing a retry).
+An error thrown in `middleware` is just like an uncaught error in the run function: it will propagate through to `handleError()` and then will fail the attempt (causing a retry).
 </Info>
 
 ### `onStart` function
@@ -229,7 +216,9 @@ export default defineConfig({
 });
 ```
 
-<Info>Errors thrown in the `onStart` function are ignored.</Info>
+<Info>
+Errors thrown in the `onStart` function are ignored.
+</Info>
 
 ### `onSuccess` function
 
@@ -260,7 +249,9 @@ export default defineConfig({
 });
 ```
 
-<Info>Errors thrown in the `onSuccess` function are ignored.</Info>
+<Info>
+Errors thrown in the `onSuccess` function are ignored.
+</Info>
 
 ### `onFailure` function
 
@@ -291,7 +282,9 @@ export default defineConfig({
 });
 ```
 
-<Info>Errors thrown in the `onFailure` function are ignored.</Info>
+<Info>
+Errors thrown in the `onFailure` function are ignored.
+</Info>
 
 ### `handleError` functions
 
@@ -299,7 +292,9 @@ You can define a function that will be called when an error is thrown in the `ru
 
 Read more about `handleError` in our [Errors and Retrying guide](/errors-retrying).
 
-<Info>Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.</Info>
+<Info>
+Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.
+</Info>
 
 ## Next steps
 

@@ -22,7 +22,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Sheet, SheetBody, SheetContent, SheetHeader } from "~/components/primitives/Sheet";
 import { ClientEndpoint } from "~/presenters/EnvironmentsPresenter.server";
 import { endpointStreamingPath } from "~/utils/pathBuilder";
-import { EndpointIndexStatus, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { EndpointIndexStatus, RuntimeEnvironmentType } from "../../../../../packages/database/src";
 import { bodySchema } from "../resources.environments.$environmentParam.endpoint";
 
 type ConfigureEndpointSheetProps = {

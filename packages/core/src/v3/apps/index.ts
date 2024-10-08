@@ -5,5 +5,3 @@ export * from "./checkpoints.js";
 export * from "./http.js";
 export * from "./provider.js";
 export * from "./isExecaChildProcess.js";
-export * from "./friendlyId.js";
-export * from "./duration.js";

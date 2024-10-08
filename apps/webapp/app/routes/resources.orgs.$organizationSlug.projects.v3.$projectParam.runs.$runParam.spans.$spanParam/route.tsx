@@ -677,12 +677,7 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
-                <Property.Item>
-                  <Property.Label>Max duration</Property.Label>
-                  <Property.Value>
-                    {run.maxDurationInSeconds ? `${run.maxDurationInSeconds}s` : "–"}
-                  </Property.Value>
-                </Property.Item>
+
                 <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>

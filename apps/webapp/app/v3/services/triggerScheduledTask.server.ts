@@ -41,23 +41,6 @@ export class TriggerScheduledTaskService extends BaseService {
 
       if (!instance.taskSchedule.active) {
         shouldTrigger = false;
-      } else if (instance.environment.organization.deletedAt) {
-        logger.debug("Organization is deleted, disabling schedule", {
-          instanceId,
-          scheduleId: instance.taskSchedule.friendlyId,
-          organizationId: instance.environment.organization.id,
-        });
-
-        await this._prisma.taskSchedule.update({
-          where: {
-            id: instance.taskSchedule.id,
-          },
-          data: {
-            active: false,
-          },
-        });
-
-        shouldTrigger = false;
       }
 
       if (!instance.nextScheduledTimestamp) {

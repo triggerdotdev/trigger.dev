@@ -57,8 +57,7 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     worker: ServerBackgroundWorker,
     traceContext: Record<string, unknown>,
-    usage: UsageMeasurement,
-    signal?: AbortSignal
+    usage: UsageMeasurement
   ): Promise<{ result: TaskRunExecutionResult }> {
     const ctx = TaskRunContext.parse(execution);
     const attemptMessage = `Attempt ${execution.attempt.number}`;
@@ -96,14 +95,14 @@ export class TaskExecutor {
             parsedPayload = await parsePacket(payloadPacket);
 
             if (execution.attempt.number === 1) {
-              await this.#callOnStartFunctions(parsedPayload, ctx, signal);
+              await this.#callOnStartFunctions(parsedPayload, ctx);
             }
 
-            initOutput = await this.#callInitFunctions(parsedPayload, ctx, signal);
+            initOutput = await this.#callInitFunctions(parsedPayload, ctx);
 
-            const output = await this.#callRun(parsedPayload, ctx, initOutput, signal);
+            const output = await this.#callRun(parsedPayload, ctx, initOutput);
 
-            await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput, signal);
+            await this.#callOnSuccessFunctions(parsedPayload, output, ctx, initOutput);
 
             try {
               const stringifiedOutput = await stringifyIO(output);
@@ -154,8 +153,7 @@ export class TaskExecutor {
                 execution,
                 runError,
                 parsedPayload,
-                ctx,
-                signal
+                ctx
               );
 
               recordSpanException(span, handleErrorResult.error ?? runError);
@@ -165,8 +163,7 @@ export class TaskExecutor {
                   parsedPayload,
                   handleErrorResult.error ?? runError,
                   ctx,
-                  initOutput,
-                  signal
+                  initOutput
                 );
               }
 
@@ -200,7 +197,7 @@ export class TaskExecutor {
               } satisfies TaskRunExecutionResult;
             }
           } finally {
-            await this.#callTaskCleanup(parsedPayload, ctx, initOutput, signal);
+            await this.#callTaskCleanup(parsedPayload, ctx, initOutput);
           }
         });
       },
@@ -210,14 +207,13 @@ export class TaskExecutor {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
         },
       },
-      this._tracer.extractContext(traceContext),
-      signal
+      this._tracer.extractContext(traceContext)
     );
 
     return { result };
   }
 
-  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown, signal?: AbortSignal) {
+  async #callRun(payload: unknown, ctx: TaskRunContext, init: unknown) {
     const runFn = this.task.fns.run;
     const middlewareFn = this.task.fns.middleware;
 
@@ -226,18 +222,14 @@ export class TaskExecutor {
     }
 
     if (!middlewareFn) {
-      return runFn(payload, { ctx, init, signal });
+      return runFn(payload, { ctx, init });
     }
 
-    return middlewareFn(payload, {
-      ctx,
-      signal,
-      next: async () => runFn(payload, { ctx, init, signal }),
-    });
+    return middlewareFn(payload, { ctx, next: async () => runFn(payload, { ctx, init }) });
   }
 
-  async #callInitFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
-    await this.#callConfigInit(payload, ctx, signal);
+  async #callInitFunctions(payload: unknown, ctx: TaskRunContext) {
+    await this.#callConfigInit(payload, ctx);
 
     const initFn = this.task.fns.init;
 
@@ -248,7 +240,7 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "init",
       async (span) => {
-        return await initFn(payload, { ctx, signal });
+        return await initFn(payload, { ctx });
       },
       {
         attributes: {
@@ -258,7 +250,7 @@ export class TaskExecutor {
     );
   }
 
-  async #callConfigInit(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
+  async #callConfigInit(payload: unknown, ctx: TaskRunContext) {
     const initFn = this._importedConfig?.init;
 
     if (!initFn) {
@@ -268,7 +260,7 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "config.init",
       async (span) => {
-        return await initFn(payload, { ctx, signal });
+        return await initFn(payload, { ctx });
       },
       {
         attributes: {
@@ -282,8 +274,7 @@ export class TaskExecutor {
     payload: unknown,
     output: any,
     ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
+    initOutput: any
   ) {
     await this.#callOnSuccessFunction(
       this.task.fns.onSuccess,
@@ -291,8 +282,7 @@ export class TaskExecutor {
       payload,
       output,
       ctx,
-      initOutput,
-      signal
+      initOutput
     );
 
     await this.#callOnSuccessFunction(
@@ -301,8 +291,7 @@ export class TaskExecutor {
       payload,
       output,
       ctx,
-      initOutput,
-      signal
+      initOutput
     );
   }
 
@@ -312,8 +301,7 @@ export class TaskExecutor {
     payload: unknown,
     output: any,
     ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
+    initOutput: any
   ) {
     if (!onSuccessFn) {
       return;
@@ -323,7 +311,7 @@ export class TaskExecutor {
       await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onSuccessFn(payload, output, { ctx, init: initOutput, signal });
+          return await onSuccessFn(payload, output, { ctx, init: initOutput });
         },
         {
           attributes: {
@@ -340,8 +328,7 @@ export class TaskExecutor {
     payload: unknown,
     error: unknown,
     ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
+    initOutput: any
   ) {
     await this.#callOnFailureFunction(
       this.task.fns.onFailure,
@@ -349,8 +336,7 @@ export class TaskExecutor {
       payload,
       error,
       ctx,
-      initOutput,
-      signal
+      initOutput
     );
 
     await this.#callOnFailureFunction(
@@ -359,8 +345,7 @@ export class TaskExecutor {
       payload,
       error,
       ctx,
-      initOutput,
-      signal
+      initOutput
     );
   }
 
@@ -370,8 +355,7 @@ export class TaskExecutor {
     payload: unknown,
     error: unknown,
     ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
+    initOutput: any
   ) {
     if (!onFailureFn) {
       return;
@@ -381,7 +365,7 @@ export class TaskExecutor {
       return await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onFailureFn(payload, error, { ctx, init: initOutput, signal });
+          return await onFailureFn(payload, error, { ctx, init: initOutput });
         },
         {
           attributes: {
@@ -394,24 +378,16 @@ export class TaskExecutor {
     }
   }
 
-  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
+  async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext) {
     await this.#callOnStartFunction(
       this._importedConfig?.onStart,
       "config.onStart",
       payload,
       ctx,
-      {},
-      signal
+      {}
     );
 
-    await this.#callOnStartFunction(
-      this.task.fns.onStart,
-      "task.onStart",
-      payload,
-      ctx,
-      {},
-      signal
-    );
+    await this.#callOnStartFunction(this.task.fns.onStart, "task.onStart", payload, ctx, {});
   }
 
   async #callOnStartFunction(
@@ -419,8 +395,7 @@ export class TaskExecutor {
     name: string,
     payload: unknown,
     ctx: TaskRunContext,
-    initOutput: any,
-    signal?: AbortSignal
+    initOutput: any
   ) {
     if (!onStartFn) {
       return;
@@ -430,7 +405,7 @@ export class TaskExecutor {
       await this._tracer.startActiveSpan(
         name,
         async (span) => {
-          return await onStartFn(payload, { ctx, signal });
+          return await onStartFn(payload, { ctx });
         },
         {
           attributes: {
@@ -443,12 +418,7 @@ export class TaskExecutor {
     }
   }
 
-  async #callTaskCleanup(
-    payload: unknown,
-    ctx: TaskRunContext,
-    init: unknown,
-    signal?: AbortSignal
-  ) {
+  async #callTaskCleanup(payload: unknown, ctx: TaskRunContext, init: unknown) {
     const cleanupFn = this.task.fns.cleanup;
 
     if (!cleanupFn) {
@@ -456,7 +426,7 @@ export class TaskExecutor {
     }
 
     return this._tracer.startActiveSpan("cleanup", async (span) => {
-      return await cleanupFn(payload, { ctx, init, signal });
+      return await cleanupFn(payload, { ctx, init });
     });
   }
 
@@ -464,8 +434,7 @@ export class TaskExecutor {
     execution: TaskRunExecution,
     error: unknown,
     payload: any,
-    ctx: TaskRunContext,
-    signal?: AbortSignal
+    ctx: TaskRunContext
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
     | { status: "skipped"; error?: unknown } // skipped is different than noop, it means that the task was skipped from retrying, instead of just not retrying
@@ -517,7 +486,6 @@ export class TaskExecutor {
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
             })
           : this._importedConfig
           ? await this._handleErrorFn?.(payload, error, {
@@ -525,7 +493,6 @@ export class TaskExecutor {
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
-              signal,
             })
           : undefined;
 

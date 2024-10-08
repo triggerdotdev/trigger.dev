@@ -363,16 +363,10 @@ export class CompleteAttemptService extends BaseService {
           },
         });
 
-        const status =
-          sanitizedError.type === "INTERNAL_ERROR" &&
-          sanitizedError.code === "MAX_DURATION_EXCEEDED"
-            ? "TIMED_OUT"
-            : "COMPLETED_WITH_ERRORS";
-
         const finalizeService = new FinalizeTaskRunService();
         await finalizeService.call({
           id: taskRunAttempt.taskRunId,
-          status,
+          status: "COMPLETED_WITH_ERRORS",
           completedAt: new Date(),
         });
       }

@@ -1,1 +1,7 @@
-export { generateFriendlyId } from "@trigger.dev/core/v3/apps";
+import { customAlphabet } from "nanoid";
+
+const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
+
+export function generateFriendlyId(prefix: string, size?: number) {
+  return `${prefix}_${idGenerator(size)}`;
+}

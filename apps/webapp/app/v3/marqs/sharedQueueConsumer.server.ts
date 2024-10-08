@@ -44,7 +44,6 @@ import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
-import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -404,10 +403,6 @@ export class SharedQueueConsumer {
             startedAt: existingTaskRun.startedAt ?? new Date(),
             baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
-            maxDurationInSeconds: getMaxDuration(
-              existingTaskRun.maxDurationInSeconds,
-              backgroundTask.maxDurationInSeconds
-            ),
           },
           include: {
             runtimeEnvironment: true,
@@ -1072,7 +1067,6 @@ class SharedQueueTasks {
         costInCents: taskRun.costInCents,
         baseCostInCents: taskRun.baseCostInCents,
         metadata,
-        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
       },
       queue: {
         id: queue.friendlyId,

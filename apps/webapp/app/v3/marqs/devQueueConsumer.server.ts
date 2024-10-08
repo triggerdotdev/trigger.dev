@@ -24,7 +24,6 @@ import {
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
-import { getMaxDuration } from "../utils/maxDuration";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -379,10 +378,6 @@ export class DevQueueConsumer {
         status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
         startedAt: existingTaskRun.startedAt ?? new Date(),
-        maxDurationInSeconds: getMaxDuration(
-          existingTaskRun.maxDurationInSeconds,
-          backgroundTask.maxDurationInSeconds
-        ),
       },
       include: {
         attempts: {

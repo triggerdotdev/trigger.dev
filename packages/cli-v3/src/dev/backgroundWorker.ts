@@ -319,9 +319,9 @@ export class BackgroundWorker {
     const processOptions: TaskRunProcessOptions = {
       payload,
       env: {
+        ...sanitizeEnvVars(this.params.env),
         // TODO: this needs the stripEmptyValues stuff too
         ...sanitizeEnvVars(payload.environment ?? {}),
-        ...sanitizeEnvVars(this.params.env),
         TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
       },
       serverWorker: this.serverWorker,

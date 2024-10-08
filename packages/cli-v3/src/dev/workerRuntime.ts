@@ -310,8 +310,6 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     const execution = attemptResponse.data;
 
-    logger.debug("Executing task run lazy attempt", { execution });
-
     const completion = await this.backgroundWorkerCoordinator.executeTaskRun(
       id,
       { execution, traceContext: payload.traceContext, environment: payload.environment },

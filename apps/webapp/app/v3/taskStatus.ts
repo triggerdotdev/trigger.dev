@@ -41,7 +41,6 @@ export const FINAL_RUN_STATUSES = [
   "SYSTEM_FAILURE",
   "EXPIRED",
   "CRASHED",
-  "TIMED_OUT",
 ] satisfies TaskRunStatus[];
 
 export type FINAL_RUN_STATUSES = (typeof FINAL_RUN_STATUSES)[number];
@@ -97,7 +96,6 @@ export const FAILED_RUN_STATUSES = [
   "COMPLETED_WITH_ERRORS",
   "SYSTEM_FAILURE",
   "CRASHED",
-  "TIMED_OUT",
 ] satisfies TaskRunStatus[];
 
 export function isFailedRunStatus(status: TaskRunStatus): boolean {

@@ -1,9 +1,9 @@
-import { DeliverEmailSchema } from "emails";
+import { DeliverEmailSchema } from "@/../../packages/emails/src";
 import { ScheduledPayloadSchema, addMissingVersionField } from "@trigger.dev/core";
-import { ZodWorker } from "@internal/zod-worker";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { ZodWorker } from "~/platform/zodWorker.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
@@ -54,7 +54,6 @@ import {
   CancelDevSessionRunsService,
   CancelDevSessionRunsServiceOptions,
 } from "~/v3/services/cancelDevSessionRuns.server";
-import { logger } from "./logger.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -280,7 +279,6 @@ function getWorkerQueue() {
   return new ZodWorker({
     name: "workerQueue",
     prisma,
-    replica: $replica,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.WORKER_CONCURRENCY,
@@ -289,7 +287,6 @@ function getWorkerQueue() {
       schema: env.WORKER_SCHEMA,
       maxPoolSize: env.WORKER_CONCURRENCY + 1,
     },
-    logger: logger,
     shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
     schema: workerCatalog,
     recurringTasks: {
@@ -735,8 +732,6 @@ function getExecutionWorkerQueue() {
   return new ZodWorker({
     name: "executionWorker",
     prisma,
-    replica: $replica,
-    logger: logger,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.EXECUTION_WORKER_CONCURRENCY,
@@ -791,8 +786,6 @@ function getTaskOperationWorkerQueue() {
   return new ZodWorker({
     name: "taskOperationWorker",
     prisma,
-    replica: $replica,
-    logger: logger,
     runnerOptions: {
       connectionString: env.DATABASE_URL,
       concurrency: env.TASK_OPERATION_WORKER_CONCURRENCY,
