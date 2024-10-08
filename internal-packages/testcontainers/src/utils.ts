@@ -9,7 +9,7 @@ export async function createPostgresContainer() {
   // Run migrations
   const databasePath = path.resolve(__dirname, "../../database");
 
-  execSync(`npx prisma generate --schema ${databasePath}/prisma/schema.prisma`, {
+  execSync(`npx prisma@5.4.1 generate --schema ${databasePath}/prisma/schema.prisma`, {
     env: {
       ...process.env,
       DATABASE_URL: container.getConnectionUri(),
@@ -17,7 +17,7 @@ export async function createPostgresContainer() {
     },
   });
 
-  execSync(`npx prisma db push --schema ${databasePath}/prisma/schema.prisma`, {
+  execSync(`npx prisma@5.4.1 db push --schema ${databasePath}/prisma/schema.prisma`, {
     env: {
       ...process.env,
       DATABASE_URL: container.getConnectionUri(),
