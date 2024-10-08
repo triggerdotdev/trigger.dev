@@ -1,14 +1,14 @@
 import {
+  ArrowUpRightIcon,
   CheckIcon,
   ExclamationTriangleIcon,
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { ArrowDownCircleIcon, XCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowDownCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
-import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
   FreePlanDefinition,
   Limits,
@@ -331,7 +331,7 @@ export function TierFree({
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
         <TierLimit href="https://trigger.dev/pricing#computePricing">
-          ${plan.limits.includedUsage / 100} free usage
+          ${plan.limits.includedUsage / 100} free monthly usage
         </TierLimit>
         {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
@@ -810,21 +810,28 @@ function PricingHeader({
 function TierLimit({ children, href }: { children: React.ReactNode; href?: string }) {
   return (
     <>
+      <hr className="my-6 border-grid-bright" />
       {href ? (
-        <div>
-          <hr className="my-6 border-grid-bright" />
-          <a
-            href={href}
-            className="hover:decoration-bright font-sans text-lg font-normal text-text-bright underline decoration-charcoal-500 underline-offset-4 transition"
-          >
-            {children}
-          </a>
-        </div>
+        <SimpleTooltip
+          buttonClassName="text-left w-fit"
+          disableHoverableContent
+          button={
+            <a
+              href={href}
+              className="text-left font-sans text-lg font-normal text-text-bright underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright"
+            >
+              {children}
+            </a>
+          }
+          content={
+            <div className="flex items-center gap-1">
+              <Paragraph variant="small">View detailed compute pricing information</Paragraph>
+              <ArrowUpRightIcon className="size-4 text-text-dimmed" />
+            </div>
+          }
+        />
       ) : (
-        <div>
-          <hr className="my-6 border-grid-bright" />
-          <div className="font-sans text-lg font-normal text-text-bright">{children}</div>
-        </div>
+        <div className="font-sans text-lg font-normal text-text-bright">{children}</div>
       )}
     </>
   );
