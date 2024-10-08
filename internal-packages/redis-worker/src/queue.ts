@@ -33,7 +33,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.name = name;
     this.redis = new Redis({
       ...redisOptions,
-      keyPrefix: `queue:${name}:`,
+      keyPrefix: `{queue:${name}:}`,
       retryStrategy(times) {
         const delay = Math.min(times * 50, 1000);
         return delay;
