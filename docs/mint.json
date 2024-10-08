@@ -90,11 +90,11 @@
     },
     {
       "source": "/guides/frameworks/introduction",
-      "destination": "/guides/overview"
+      "destination": "/guides/introduction"
     },
     {
       "source": "/guides/examples/intro",
-      "destination": "/guides/overview"
+      "destination": "/guides/introduction"
     },
     {
       "source": "/examples/:slug*",
