@@ -928,9 +928,9 @@ importers:
 
   internal-packages/run-engine:
     dependencies:
-      '@internal/zod-worker':
+      '@internal/redis-worker':
         specifier: workspace:*
-        version: link:../zod-worker
+        version: link:../redis-worker
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0

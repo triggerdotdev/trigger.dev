@@ -17,8 +17,8 @@
     "paths": {
       "@internal/testcontainers": ["../../internal-packages/testcontainers/src/index"],
       "@internal/testcontainers/*": ["../../internal-packages/testcontainers/src/*"],
-      "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
-      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
+      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
+      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"],
       "@trigger.dev/core": ["../../packages/core/src/index"],
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/database": ["../database/src/index"],
