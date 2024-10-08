@@ -217,6 +217,72 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  async moveToDeadLetterQueue(id: string, errorMessage: string): Promise<void> {
+    try {
+      const result = await this.redis.moveToDeadLetterQueue(
+        `queue`,
+        `items`,
+        `dlq`,
+        `dlq:items`,
+        id,
+        errorMessage
+      );
+
+      if (result !== 1) {
+        throw new Error("Move to Dead Letter Queue operation failed");
+      }
+    } catch (e) {
+      this.logger.error(
+        `SimpleQueue ${this.name}.moveToDeadLetterQueue(): error moving item to DLQ`,
+        {
+          queue: this.name,
+          error: e,
+          id,
+          errorMessage,
+        }
+      );
+      throw e;
+    }
+  }
+
+  async sizeOfDeadLetterQueue(): Promise<number> {
+    try {
+      return await this.redis.zcard(`dlq`);
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.dlqSize(): error getting DLQ size`, {
+        queue: this.name,
+        error: e,
+      });
+      throw e;
+    }
+  }
+
+  async redriveFromDeadLetterQueue(id: string): Promise<void> {
+    try {
+      const result = await this.redis.redriveFromDeadLetterQueue(
+        `queue`,
+        `items`,
+        `dlq`,
+        `dlq:items`,
+        id
+      );
+
+      if (result !== 1) {
+        throw new Error("Redrive from Dead Letter Queue operation failed");
+      }
+    } catch (e) {
+      this.logger.error(
+        `SimpleQueue ${this.name}.redriveFromDeadLetterQueue(): error redriving item from DLQ`,
+        {
+          queue: this.name,
+          error: e,
+          id,
+        }
+      );
+      throw e;
+    }
+  }
+
   async close(): Promise<void> {
     await this.redis.quit();
   }
@@ -291,6 +357,61 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         return 1
         `,
     });
+
+    this.redis.defineCommand("moveToDeadLetterQueue", {
+      numberOfKeys: 4,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local dlq = KEYS[3]
+        local dlqItems = KEYS[4]
+        local id = ARGV[1]
+        local errorMessage = ARGV[2]
+
+        local item = redis.call('HGET', items, id)
+        if not item then
+          return 0
+        end
+
+        local parsedItem = cjson.decode(item)
+        parsedItem.errorMessage = errorMessage
+
+        redis.call('ZREM', queue, id)
+        redis.call('HDEL', items, id)
+
+        redis.call('ZADD', dlq, redis.call('TIME')[1], id)
+        redis.call('HSET', dlqItems, id, cjson.encode(parsedItem))
+
+        return 1
+      `,
+    });
+
+    this.redis.defineCommand("redriveFromDeadLetterQueue", {
+      numberOfKeys: 4,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local dlq = KEYS[3]
+        local dlqItems = KEYS[4]
+        local id = ARGV[1]
+
+        local item = redis.call('HGET', dlqItems, id)
+        if not item then
+          return 0
+        end
+
+        local parsedItem = cjson.decode(item)
+        parsedItem.errorMessage = nil
+
+        redis.call('ZREM', dlq, id)
+        redis.call('HDEL', dlqItems, id)
+
+        redis.call('ZADD', queue, redis.call('TIME')[1], id)
+        redis.call('HSET', items, id, cjson.encode(parsedItem))
+
+        return 1
+      `,
+    });
   }
 }
 
@@ -306,6 +427,7 @@ declare module "ioredis" {
       serializedItem: string,
       callback?: Callback<number>
     ): Result<number, Context>;
+
     dequeueItems(
       //keys
       queue: string,
@@ -320,6 +442,25 @@ declare module "ioredis" {
       queue: string,
       items: string,
       id: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    redriveFromDeadLetterQueue(
+      queue: string,
+      items: string,
+      dlq: string,
+      dlqItems: string,
+      id: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    moveToDeadLetterQueue(
+      queue: string,
+      items: string,
+      dlq: string,
+      dlqItems: string,
+      id: string,
+      errorMessage: string,
       callback?: Callback<number>
     ): Result<number, Context>;
   }
