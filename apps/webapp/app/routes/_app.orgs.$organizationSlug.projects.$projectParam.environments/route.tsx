@@ -39,7 +39,7 @@ import {
   projectEnvironmentsStreamingPath,
 } from "~/utils/pathBuilder";
 import { requestUrl } from "~/utils/requestUrl.server";
-import { RuntimeEnvironmentType } from "../../../../../packages/database/src";
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ConfigureEndpointSheet } from "./ConfigureEndpointSheet";
 import { FirstEndpointSheet } from "./FirstEndpointSheet";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
