@@ -34,6 +34,7 @@ describe("Worker", () => {
       },
       logger: new Logger("test", "log"),
     });
+
     try {
       // Enqueue 10 items
       for (let i = 0; i < 10; i++) {
