@@ -58,7 +58,11 @@ export function createErrorTaskError(error: TaskRunError): any {
       return JSON.parse(error.raw);
     }
     case "INTERNAL_ERROR": {
-      return new Error(`trigger.dev internal error (${error.code})`);
+      const e = new Error(error.message ?? `Internal error (${error.code})`);
+      e.name = error.code;
+      e.stack = error.stackTrace;
+
+      return e;
     }
   }
 }

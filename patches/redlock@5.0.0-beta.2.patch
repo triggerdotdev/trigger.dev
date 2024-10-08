@@ -1,0 +1,15 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+deleted file mode 100644
+index 8700963f5c9ec9fc1fdc53846846130bfc2f2108..0000000000000000000000000000000000000000
+diff --git a/package.json b/package.json
+index 606d1775fb0c11aab4918c50d20d72bce1684158..45e6d46410792ef273d7d2b2bc92cd5964a3eef5 100644
+--- a/package.json
++++ b/package.json
+@@ -15,6 +15,7 @@
+   "types": "./dist/index.d.ts",
+   "exports": {
+     ".": {
++      "types": "./dist/index.d.ts",
+       "import": "./dist/esm/index.js",
+       "require": "./dist/cjs/index.js"
+     }

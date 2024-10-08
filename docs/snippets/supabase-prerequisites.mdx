@@ -15,38 +15,22 @@ supabase init
 
 </Step>
 
-<Step title="Optional step 2: create package.json and tsconfig.json files">
+<Step title="Optional step 2: create a package.json file">
 
-If your project does not already have `package.json` or/and `tsconfig.json` files (e.g. if you are using Deno), create them manually and add them to your project root folder.
+If your project does not already have `package.json` file (e.g. if you are using Deno), create it manually in your project's root folder.
 
-<Info> If your project has these files you can skip this step.</Info>
+<Info> If your project has a `package.json` file you can skip this step.</Info>
 
-Both of these files are required for the Trigger.dev SDK to work correctly.
+This is required for the Trigger.dev SDK to work correctly.
 
 ```ts package.json
 {
   "devDependencies": {
-    // This should be the version of typescript you are using
     "typescript": "^5.6.2"
   }
 }
 ```
 
-```ts tsconfig.json
-{
-  "compilerOptions": {
-    "target": "esnext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "esModuleInterop": true,
-    "strict": true,
-    "outDir": "dist",
-    "skipLibCheck": true,
-    "lib": ["DOM", "DOM.Iterable"],
-    "noEmit": true
-  },
-  "include": ["./src/**/*.ts", "trigger.config.ts"]
-}
-```
+<Note> Update your Typescript version to the latest version available. </Note>
 
 </Step>

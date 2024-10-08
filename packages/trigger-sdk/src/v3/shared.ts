@@ -157,6 +157,13 @@ export type TaskOptions<
       | "large-2x";
   };
 
+  /**
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds
+   */
+  maxDuration?: number;
+
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
    * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
@@ -502,6 +509,15 @@ export type TaskRunOptions = {
    * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
    */
   metadata?: Record<string, SerializableJson>;
+
+  /**
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * This will override the task's maxDuration.
+   *
+   * Minimum value is 5 seconds
+   */
+  maxDuration?: number;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -602,6 +618,7 @@ export function createTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
+    maxDuration: params.maxDuration,
     fns: {
       run: params.run,
       init: params.init,
@@ -795,6 +812,7 @@ async function trigger_internal<TPayload, TOutput>(
         maxAttempts: options?.maxAttempts,
         parentAttempt: taskContext.ctx?.attempt.id,
         metadata: options?.metadata,
+        maxDuration: options?.maxDuration,
       },
     },
     {
@@ -854,6 +872,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
               maxAttempts: item.options?.maxAttempts,
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
+              maxDuration: item.options?.maxDuration,
             },
           };
         })
@@ -918,6 +937,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             tags: options?.tags,
             maxAttempts: options?.maxAttempts,
             metadata: options?.metadata,
+            maxDuration: options?.maxDuration,
           },
         },
         {},
@@ -1011,6 +1031,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   tags: item.options?.tags,
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
+                  maxDuration: item.options?.maxDuration,
                 },
               };
             })

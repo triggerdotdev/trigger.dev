@@ -1,5 +1,25 @@
 # trigger.dev
 
+## 3.0.11
+
+### Patch Changes
+
+- Fix downgrade check by correctly comparing semvers ([#1380](https://github.com/triggerdotdev/trigger.dev/pull/1380))
+- Local env files like `.env` will now correctly override dev env vars configured in the dashboard ([#1388](https://github.com/triggerdotdev/trigger.dev/pull/1388))
+- Always include push output in logs for self-hosted deploys ([#1382](https://github.com/triggerdotdev/trigger.dev/pull/1382))
+- Updated dependencies:
+  - `@trigger.dev/build@3.0.11`
+  - `@trigger.dev/core@3.0.11`
+
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.10`
+  - `@trigger.dev/build@3.0.10`
+
 ## 3.0.9
 
 ### Patch Changes

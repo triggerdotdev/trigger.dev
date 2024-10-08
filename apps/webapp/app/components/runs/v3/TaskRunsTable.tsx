@@ -9,11 +9,13 @@ import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
+import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironments } from "~/hooks/useEnvironments";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -39,9 +41,12 @@ import {
 import { CancelRunDialog } from "./CancelRunDialog";
 import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
-import { TaskRunStatusCombo } from "./TaskRunStatus";
 import { RunTag } from "./RunTag";
-import { Badge } from "~/components/primitives/Badge";
+import {
+  descriptionForTaskRunStatus,
+  filterableTaskRunStatuses,
+  TaskRunStatusCombo,
+} from "./TaskRunStatus";
 
 type RunsTableProps = {
   total: number;
@@ -126,7 +131,27 @@ export function TaskRunsTable({
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex flex-col divide-y divide-grid-dimmed">
+                {filterableTaskRunStatuses.map((status) => (
+                  <div
+                    key={status}
+                    className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                  >
+                    <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                      <TaskRunStatusCombo status={status} />
+                    </div>
+                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                      {descriptionForTaskRunStatus(status)}
+                    </Paragraph>
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            Status
+          </TableHeaderCell>
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell
             colSpan={3}
@@ -287,7 +312,11 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
-                  <TaskRunStatusCombo status={run.status} />
+                  <SimpleTooltip
+                    content={descriptionForTaskRunStatus(run.status)}
+                    disableHoverableContent
+                    button={<TaskRunStatusCombo status={run.status} />}
+                  />
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}

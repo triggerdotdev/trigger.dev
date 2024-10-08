@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "internal-packages/*"
   - "apps/**"
   - "references/*"
   - "docs"

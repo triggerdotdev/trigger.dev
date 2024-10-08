@@ -89,6 +89,14 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks/introduction",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/guides/examples/intro",
+      "destination": "/guides/introduction"
+    },
+    {
       "source": "/examples/:slug*",
       "destination": "/guides/examples/:slug*"
     }
@@ -151,9 +159,9 @@
         "machines",
         "idempotency",
         "replaying",
+        "runs/max-duration",
         "tags",
         "runs/metadata",
-        "notifications",
         "run-usage"
       ]
     },
@@ -251,13 +259,23 @@
       "pages": ["community", "help-slack", "help-email"]
     },
     {
+      "group": "",
+      "pages": ["guides/introduction"]
+    },
+    {
       "group": "Frameworks",
       "pages": [
-        "guides/frameworks/introduction",
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/nodejs",
-        "guides/frameworks/remix",
+        "guides/frameworks/remix"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/frameworks/prisma",
+        "guides/frameworks/sequin",
         {
           "group": "Supabase",
           "icon": "bolt",
@@ -271,13 +289,8 @@
       ]
     },
     {
-      "group": "Guides",
-      "pages": ["guides/frameworks/prisma", "guides/frameworks/sequin"]
-    },
-    {
       "group": "Example tasks",
       "pages": [
-        "guides/examples/intro",
         "guides/examples/dall-e3-generate-image",
         "guides/examples/deepgram-transcribe-audio",
         "guides/examples/ffmpeg-video-processing",

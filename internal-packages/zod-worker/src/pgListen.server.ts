@@ -1,8 +1,6 @@
 import { Logger } from "@trigger.dev/core/logger";
 import type { PoolClient } from "pg";
 import { z } from "zod";
-import { logger } from "~/services/logger.server";
-import { safeJsonParse } from "~/utils/json";
 import { NotificationCatalog, NotificationChannel, notificationCatalog } from "./types";
 
 export class PgListenService {
@@ -10,9 +8,9 @@ export class PgListenService {
   #logger: Logger;
   #loggerNamespace: string;
 
-  constructor(poolClient: PoolClient, loggerNamespace?: string, loggerInstance?: Logger) {
+  constructor(poolClient: PoolClient, logger: Logger, loggerNamespace?: string) {
     this.#poolClient = poolClient;
-    this.#logger = loggerInstance ?? logger;
+    this.#logger = logger;
     this.#loggerNamespace = loggerNamespace ?? "";
   }
 
@@ -62,5 +60,17 @@ export class PgListenService {
   #logDebug(message: string, args?: any) {
     const namespace = this.#loggerNamespace ? `[${this.#loggerNamespace}]` : "";
     this.#logger.debug(`[pgListen]${namespace} ${message}`, args);
+  }
+}
+
+export function safeJsonParse(json?: string): unknown {
+  if (!json) {
+    return;
+  }
+
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
   }
 }
