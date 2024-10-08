@@ -9,11 +9,11 @@ import { SimpleQueue } from "./queue.js";
 
 import Redis from "ioredis";
 
-type WorkerCatalog = {
+export type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
     visibilityTimeoutMs: number;
-    retry: RetryOptions;
+    retry?: RetryOptions;
   };
 };
 
@@ -28,6 +28,11 @@ type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (param
   attempt: number;
 }) => Promise<void>;
 
+export type WorkerConcurrencyOptions = {
+  workers?: number;
+  tasksPerWorker?: number;
+};
+
 type WorkerOptions<TCatalog extends WorkerCatalog> = {
   name: string;
   redisOptions: RedisOptions;
@@ -35,12 +40,20 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   jobs: {
     [K in keyof TCatalog]: JobHandler<TCatalog, K>;
   };
-  concurrency?: {
-    workers?: number;
-    tasksPerWorker?: number;
-  };
+  concurrency?: WorkerConcurrencyOptions;
   pollIntervalMs?: number;
   logger?: Logger;
+};
+
+// This results in attempt 12 being a delay of 1 hour
+const defaultRetrySettings = {
+  maxAttempts: 12,
+  factor: 2,
+  //one second
+  minTimeoutInMs: 1_000,
+  //one hour
+  maxTimeoutInMs: 3_600_000,
+  randomize: true,
 };
 
 class Worker<TCatalog extends WorkerCatalog> {
@@ -182,7 +195,12 @@ class Worker<TCatalog extends WorkerCatalog> {
             try {
               attempt = attempt + 1;
 
-              const retryDelay = calculateNextRetryDelay(catalogItem.retry, attempt);
+              const retrySettings = {
+                ...defaultRetrySettings,
+                ...catalogItem.retry,
+              };
+
+              const retryDelay = calculateNextRetryDelay(retrySettings, attempt);
 
               if (!retryDelay) {
                 this.logger.error(
