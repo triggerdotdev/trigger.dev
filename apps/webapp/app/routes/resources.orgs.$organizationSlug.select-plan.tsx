@@ -398,12 +398,17 @@ export function TierFree({
                 <Form action={formAction} method="post" id="subscribe">
                   <input type="hidden" name="type" value="free" />
                   <input type="hidden" name="callerPath" value={location.pathname} />
-                  <DialogHeader>Downgrade plan</DialogHeader>
-                  <div className="flex items-start gap-3 pb-6 pr-4 pt-8">
+                  <DialogHeader>Downgrade plan?</DialogHeader>
+                  <div className="flex items-start gap-3 pb-6 pr-2 pt-8">
                     <ArrowDownCircleIcon className="size-12 min-w-12 text-error" />
                     <Paragraph variant="base/bright" className="text-text-bright">
-                      Are you sure you want to downgrade? If you do, you will retain your current
-                      plan's features until <DateTime includeTime={false} date={periodEnd} />.
+                      Are you sure you want to downgrade? You will lose access to your current
+                      plan's features on{" "}
+                      <DateTime
+                        includeTime={false}
+                        date={new Date(periodEnd.getTime() + 86400000)}
+                      />
+                      .
                     </Paragraph>
                   </div>
                   <div>
@@ -548,7 +553,7 @@ export function TierHobby({
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
-              <DialogHeader>Downgrade plan</DialogHeader>
+              <DialogHeader>Downgrade plan?</DialogHeader>
               <div className="mb-2 mt-4 flex items-start gap-3">
                 <span>
                   <ArrowDownCircleIcon className="size-12 text-blue-500" />
