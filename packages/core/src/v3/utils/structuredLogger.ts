@@ -75,8 +75,8 @@ export class SimpleStructuredLogger implements StructuredLogger {
   ) {
     const structuredLog = {
       timestamp: new Date(),
-      $name: this.name,
       message,
+      $name: this.name,
       $level: level,
       ...this.fields,
       ...(args.length === 1 ? args[0] : args),
