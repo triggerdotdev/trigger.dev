@@ -1,39 +1,24 @@
-import { Prisma, PrismaClient } from "@trigger.dev/database";
+import {
+  Prisma,
+  PrismaClient,
+  PrismaClientOrTransaction,
+  PrismaReplicaClient,
+  PrismaTransactionClient,
+  PrismaTransactionOptions,
+} from "@trigger.dev/database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
+import { $transaction as transac } from "@trigger.dev/database";
 
-export type PrismaTransactionClient = Omit<
-  PrismaClient,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
->;
-
-export type PrismaClientOrTransaction = PrismaClient | PrismaTransactionClient;
-
-function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is PrismaTransactionClient {
-  return !("$transaction" in prisma);
-}
-
-function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
-  return (
-    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
-  );
-}
-
-export type PrismaTransactionOptions = {
-  /** The maximum amount of time (in ms) Prisma Client will wait to acquire a transaction from the database. The default value is 2000ms. */
-  maxWait?: number;
-
-  /** The maximum amount of time (in ms) the interactive transaction can run before being canceled and rolled back. The default value is 5000ms. */
-  timeout?: number;
-
-  /**  Sets the transaction isolation level. By default this is set to the value currently configured in your database. */
-  isolationLevel?: Prisma.TransactionIsolationLevel;
-
-  swallowPrismaErrors?: boolean;
+export type {
+  PrismaTransactionClient,
+  PrismaClientOrTransaction,
+  PrismaTransactionOptions,
+  PrismaReplicaClient,
 };
 
 export async function $transaction<R>(
@@ -41,14 +26,10 @@ export async function $transaction<R>(
   fn: (prisma: PrismaTransactionClient) => Promise<R>,
   options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
-  if (isTransactionClient(prisma)) {
-    return fn(prisma);
-  }
-
-  try {
-    return await (prisma as PrismaClient).$transaction(fn, options);
-  } catch (error) {
-    if (isPrismaKnownError(error)) {
+  return transac(
+    prisma,
+    fn,
+    (error) => {
       logger.error("prisma.$transaction error", {
         code: error.code,
         meta: error.meta,
@@ -56,21 +37,14 @@ export async function $transaction<R>(
         message: error.message,
         name: error.name,
       });
-
-      if (options?.swallowPrismaErrors) {
-        return;
-      }
-    }
-
-    throw error;
-  }
+    },
+    options
+  );
 }
 
 export { Prisma };
 
 export const prisma = singleton("prisma", getClient);
-
-export type PrismaReplicaClient = Omit<PrismaClient, "$transaction">;
 
 export const $replica: PrismaReplicaClient = singleton(
   "replica",

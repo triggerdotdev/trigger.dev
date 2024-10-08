@@ -3,6 +3,8 @@ title: "Self-hosting"
 description: "You can self-host Trigger.dev on your own infrastructure."
 ---
 
+<Warning>Security, scaling, and reliability concerns are not fully addressed here. This guide is meant for evaluation purposes and won't result in a production-ready deployment.</Warning>
+
 <Note>This guide is for Docker only. We don't currently provide documentation for Kubernetes.</Note>
 
 ## Overview
@@ -23,27 +25,18 @@ It's dangerous to go alone! Join the self-hosting channel on our [Discord server
 
 <Note>The v3 worker components don't have ARM support yet.</Note>
 
-This guide outlines a quick way to start self-hosting Trigger.dev. Scaling, security, and reliability concerns are not fully addressed here. It's unlikely to result in a production-ready deployment on its own, but it's a good starting point.
+This guide outlines a quick way to start self-hosting Trigger.dev for evaluation purposes - it won't result in a production-ready deployment. Security, scaling, and reliability concerns are not fully addressed here.
 
-As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for scaling up or improving security and reliability.
+As self-hosted deployments tend to have unique requirements and configurations, we don't provide specific advice for securing your deployment, scaling up, or improving reliability.
 
 Should the burden ever get too much, we'd be happy to see you on [Trigger.dev cloud](https://trigger.dev/pricing) where we deal with these concerns for you.
 
 <Accordion title="Please consider these additional warnings">
-  - The Docker [checkpoint command](https://docs.docker.com/reference/cli/docker/checkpoint/) is an
-  experimental feature which may not work as expected. It won't be enabled by default. Instead, the
-  containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume
-  RAM. - The Docker provider does not currently enforce any resource limits. This means your tasks
-  can consume up to the total machine CPU and RAM. Having no limits may be preferable when
-  self-hosting, but can impact the performance of other services. - The worker components (not the
-  tasks!) have direct access to the Docker socket. This means they can run any Docker command. To
-  restrict access, you may want to consider using [Docker Socket
-  Proxy](https://github.com/Tecnativa/docker-socket-proxy). - The task containers are running with
-  host networking. This means there is no network isolation between them and the host machine. They
-  will be able to access any networked service on the host. - There is currently no support for
-  adding multiple worker machines. This would require a more elaborate provider, or possibly a
-  switch to Docker Swarm. This is not currently planned, but you are welcome to
-  [contribute](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md).
+  - The [docker checkpoint](https://docs.docker.com/reference/cli/docker/checkpoint/) command is an experimental feature which may not work as expected. It won't be enabled by default. Instead, the containers will stay up and their processes frozen. They won't consume CPU but they _will_ consume RAM.
+  - The `docker-provider` does not currently enforce any resource limits. This means your tasks can consume up to the total machine CPU and RAM. Having no limits may be preferable when self-hosting, but can impact the performance of other services.
+  - The worker components (not the tasks!) have direct access to the Docker socket. This means they can run any Docker command. To restrict access, you may want to consider using [Docker Socket Proxy](https://github.com/Tecnativa/docker-socket-proxy).
+  - The task containers are running with host networking. This means there is no network isolation between them and the host machine. They will be able to access any networked service on the host.
+  - There is currently no support for adding multiple worker machines, but we're working on it.
 </Accordion>
 
 ## Requirements
@@ -67,24 +60,34 @@ Some very basic steps to get started:
 2. [Install Docker Compose](https://docs.docker.com/compose/install/)
 3. [Install Ngrok](https://ngrok.com/download)
 
-On a Debian server, you can install everything you need with the following commands:
-
+<Accordion title="On a Debian server, you can run these commands">
 ```bash
+# add ngrok repo
 curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
     sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
     echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
     sudo tee /etc/apt/sources.list.d/ngrok.list
 
+# add docker repo
+curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    sudo chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# update and install
 sudo apt-get update
 sudo apt-get install -y \
     docker.io \
-    docker-compose \
+    docker-compose-plugin \
     ngrok
 ```
+</Accordion>
 
 ### Trigger.dev setup
 
-1. Clone the [Trigger.dev docker repository](https://github.com/triggerdotdev/docker) and checkout the v3 branch
+1. Clone the [Trigger.dev docker repository](https://github.com/triggerdotdev/docker)
 
 ```bash
 git clone https://github.com/triggerdotdev/docker
