@@ -74,7 +74,7 @@ export class RunPresenter {
       },
     });
 
-    const showLogs = showDeletedLogs ? true : run.logsDeletedAt ? false : true;
+    const showLogs = showDeletedLogs || !run.logsDeletedAt;
 
     const runData = {
       id: run.id,
