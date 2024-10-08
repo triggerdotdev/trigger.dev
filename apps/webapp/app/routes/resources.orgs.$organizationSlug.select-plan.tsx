@@ -17,7 +17,7 @@ import {
   SetPlanBody,
   SubscriptionResult,
 } from "@trigger.dev/platform/v3";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { inspect } from "util";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
@@ -322,6 +322,10 @@ export function TierFree({
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
   const status = subscription?.freeTierStatus ?? "requires_connect";
 
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [subscription]);
+
   return (
     <TierContainer>
       <div className="relative">
@@ -395,7 +399,7 @@ export function TierFree({
                   <input type="hidden" name="type" value="free" />
                   <input type="hidden" name="callerPath" value={location.pathname} />
                   <DialogHeader>Downgrade plan</DialogHeader>
-                  <div className="flex items-start gap-3 pb-6 pr-4 pt-6">
+                  <div className="flex items-start gap-3 pb-6 pr-4 pt-8">
                     <ArrowDownCircleIcon className="size-12 min-w-12 text-error" />
                     <Paragraph variant="base/bright" className="text-text-bright">
                       Are you sure you want to downgrade? If you do, you will retain your current
@@ -519,6 +523,10 @@ export function TierHobby({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [subscription]);
+
   return (
     <TierContainer isHighlighted={isHighlighted}>
       <PricingHeader title={plan.title} isHighlighted={isHighlighted} cost={plan.tierPrice} />
@@ -546,7 +554,7 @@ export function TierHobby({
                   <ArrowDownCircleIcon className="size-12 text-blue-500" />
                 </span>
                 <Paragraph variant="base/bright" className="text-text-bright">
-                  By downgrading you will lose access to your current plan’s features and your
+                  By downgrading you will lose access to your current plan's features and your
                   included credits will be reduced.
                 </Paragraph>
               </div>
