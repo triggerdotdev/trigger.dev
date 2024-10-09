@@ -10,6 +10,7 @@
     "@opentelemetry/semantic-conventions": "^1.27.0",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
+    "assert-never": "^1.2.1",
     "ioredis": "^5.3.2",
     "nanoid": "^3.3.4",
     "redlock": "5.0.0-beta.2",

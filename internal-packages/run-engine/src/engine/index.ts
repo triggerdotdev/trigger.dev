@@ -1,4 +1,4 @@
-import { Worker, type WorkerCatalog, type WorkerConcurrencyOptions } from "@internal/redis-worker";
+import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
 import { trace } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
 import { QueueOptions } from "@trigger.dev/core/v3";
@@ -11,6 +11,7 @@ import {
   TaskRun,
   Waitpoint,
 } from "@trigger.dev/database";
+import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
 import Redlock from "redlock";
 import { z } from "zod";
@@ -73,6 +74,7 @@ const workerCatalog = {
   },
   heartbeatSnapshot: {
     schema: z.object({
+      runId: z.string(),
       snapshotId: z.string(),
     }),
     visibilityTimeoutMs: 5000,
@@ -129,7 +131,9 @@ export class RunEngine {
         waitpointCompleteDateTime: async ({ payload }) => {
           await this.#completeWaitpoint(payload.waitpointId);
         },
-        heartbeatSnapshot: async ({ payload }) => {},
+        heartbeatSnapshot: async ({ payload }) => {
+          await this.#handleStalledSnapshot(payload);
+        },
         expireRun: async ({ payload }) => {
           await this.expireRun(payload.runId);
         },
@@ -636,6 +640,14 @@ export class RunEngine {
 
   async #handleStalledSnapshot({ runId, snapshotId }: { runId: string; snapshotId: string }) {
     const latestSnapshot = await this.#getLatestExecutionSnapshot(runId);
+    if (!latestSnapshot) {
+      this.logger.error("RunEngine.#handleStalledSnapshot() no latest snapshot found", {
+        runId,
+        snapshotId,
+      });
+      return;
+    }
+
     if (latestSnapshot?.id !== snapshotId) {
       this.logger.log(
         "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
@@ -648,6 +660,36 @@ export class RunEngine {
 
       await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
       return;
+    }
+
+    switch (latestSnapshot.executionStatus) {
+      case "BLOCKED_BY_WAITPOINTS": {
+        //we need to check if the waitpoints are still blocking the run
+        throw new Error("Not implemented BLOCKED_BY_WAITPOINTS");
+      }
+      case "DEQUEUED_FOR_EXECUTION": {
+        //we need to check if the run is still dequeued
+        throw new Error("Not implemented DEQUEUED_FOR_EXECUTION");
+      }
+      case "ENQUEUED": {
+        //we need to check if the run is still enqueued
+        throw new Error("Not implemented ENQUEUED");
+      }
+      case "EXECUTING": {
+        //we need to check if the run is still executing
+        throw new Error("Not implemented EXECUTING");
+      }
+      case "FINISHED": {
+        //we need to check if the run is still finished
+        throw new Error("Not implemented FINISHED");
+      }
+      case "RUN_CREATED": {
+        //we need to check if the run is still created
+        throw new Error("Not implemented RUN_CREATED");
+      }
+      default: {
+        assertNever(latestSnapshot.executionStatus);
+      }
     }
 
     //todo we need to return the run to the queue in the correct state.
