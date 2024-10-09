@@ -401,13 +401,16 @@ class TaskCoordinator {
               success: true,
             };
           } catch (error) {
-            logger.error("Error while waiting for checkpointable state", { error });
+            logger.error("Error while waiting for checkpointable state", {
+              error,
+              runId: socket.data.runId,
+            });
 
             if (error instanceof CheckpointReadinessTimeoutError) {
-              await crashRun({
-                name: error.name,
-                message: `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
-              });
+              logger.error(
+                `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
+                { runId: socket.data.runId }
+              );
 
               return {
                 success: false,
@@ -490,7 +493,7 @@ class TaskCoordinator {
             updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
             updateAttemptNumber(executionAck.payload.execution.attempt.number);
           } catch (error) {
-            logger.error("Error", { error });
+            logger.error("READY_FOR_EXECUTION error", { error, runId: socket.data.runId });
 
             await crashRun({
               name: "ReadyForExecutionError",
@@ -524,7 +527,10 @@ class TaskCoordinator {
             }
 
             if (!lazyAttempt.success) {
-              logger.error("failed to get lazy attempt payload", { runId: socket.data.runId });
+              logger.error("failed to get lazy attempt payload", {
+                runId: socket.data.runId,
+                reason: lazyAttempt.reason,
+              });
 
               await crashRun({
                 name: "ReadyForLazyAttemptError",
@@ -546,7 +552,7 @@ class TaskCoordinator {
               return;
             }
 
-            logger.error("Error", { error });
+            logger.error("READY_FOR_LAZY_ATTEMPT error", { error, runId: socket.data.runId });
 
             await crashRun({
               name: "ReadyForLazyAttemptError",
@@ -1004,7 +1010,10 @@ class TaskCoordinator {
           });
 
           if (!createAttempt?.success) {
-            logger.debug("no ack while creating attempt", message);
+            logger.debug("no ack while creating attempt", {
+              runId: message.runId,
+              reason: createAttempt?.reason,
+            });
             callback({ success: false, reason: createAttempt?.reason });
             return;
           }
