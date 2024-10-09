@@ -30,6 +30,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return { status: 405, body: "Method Not Allowed" };
   }
 
+  logger.debug("TriggerTask action", { headers: Object.fromEntries(request.headers) });
+
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 

@@ -6,7 +6,7 @@ import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors
 
 import { Attributes, Span, context, propagation } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { TriggerTracer } from "../tracer.js";
+import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
 import {
   CursorPage,
