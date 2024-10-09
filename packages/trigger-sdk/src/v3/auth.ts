@@ -25,6 +25,7 @@ export function configure(options: ApiClientConfiguration) {
 export const auth = {
   configure,
   generateJWT,
+  context,
 };
 
 export type GenerateJWTOptions = {
@@ -45,4 +46,11 @@ async function generateJWT(options?: GenerateJWTOptions): Promise<string> {
     },
     expirationTime: options?.expirationTime,
   });
+}
+
+async function context<R extends (...args: any[]) => Promise<any>>(
+  config: ApiClientConfiguration,
+  fn: R
+): Promise<ReturnType<R>> {
+  return apiClientManager.runWithConfig(config, fn);
 }

@@ -38,7 +38,10 @@ export class APIClientManagerAPI {
   get accessToken(): string | undefined {
     const config = this.#getConfig();
     return (
-      config?.secretKey ?? getEnvVar("TRIGGER_SECRET_KEY") ?? getEnvVar("TRIGGER_ACCESS_TOKEN")
+      config?.secretKey ??
+      config?.accessToken ??
+      getEnvVar("TRIGGER_SECRET_KEY") ??
+      getEnvVar("TRIGGER_ACCESS_TOKEN")
     );
   }
 
@@ -64,10 +67,6 @@ export class APIClientManagerAPI {
   ): Promise<ReturnType<R>> {
     const asyncLocalStorage = this.#getStorage();
 
-    if (!asyncLocalStorage) {
-      throw new ApiClientMissingError(this.apiClientMissingError());
-    }
-
     const currentConfig = asyncLocalStorage.getStore();
     const $config = { ...currentConfig, ...config };
 
@@ -81,8 +80,14 @@ export class APIClientManagerAPI {
     return registerGlobal(API_NAME, asyncLocalStorage);
   }
 
-  #getStorage(): SafeAsyncLocalStorage<ApiClientConfiguration> | undefined {
-    return getGlobal(API_NAME);
+  #getStorage(): SafeAsyncLocalStorage<ApiClientConfiguration> {
+    const storage = getGlobal(API_NAME);
+
+    if (!storage) {
+      registerGlobal(API_NAME, new SafeAsyncLocalStorage<ApiClientConfiguration>());
+    }
+
+    return getGlobal(API_NAME)!;
   }
 
   #getConfig(): ApiClientConfiguration | undefined {
