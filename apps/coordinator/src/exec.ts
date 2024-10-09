@@ -1,4 +1,4 @@
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import { type Result, x } from "tinyexec";
@@ -18,7 +18,7 @@ class TinyResult {
 }
 
 interface ExecOptions {
-  logger?: SimpleLogger;
+  logger?: SimpleStructuredLogger;
   abortSignal?: AbortSignal;
   logOutput?: boolean;
   trimArgs?: boolean;
@@ -26,7 +26,7 @@ interface ExecOptions {
 }
 
 export class Exec {
-  private logger: SimpleLogger;
+  private logger: SimpleStructuredLogger;
   private abortSignal: AbortSignal | undefined;
 
   private logOutput: boolean;
@@ -34,7 +34,7 @@ export class Exec {
   private neverThrow: boolean;
 
   constructor(opts: ExecOptions) {
-    this.logger = opts.logger ?? new SimpleLogger();
+    this.logger = opts.logger ?? new SimpleStructuredLogger("exec");
     this.abortSignal = opts.abortSignal;
 
     this.logOutput = opts.logOutput ?? true;
@@ -103,7 +103,7 @@ interface BuildahOptions {
 
 export class Buildah {
   private id: string;
-  private logger: SimpleLogger;
+  private logger: SimpleStructuredLogger;
   private exec: Exec;
 
   private containers = new Set<string>();
@@ -111,7 +111,7 @@ export class Buildah {
 
   constructor(opts: BuildahOptions) {
     this.id = opts.id ?? randomUUID();
-    this.logger = new SimpleLogger(`[buildah][${this.id}]`);
+    this.logger = new SimpleStructuredLogger("buildah", undefined, { id: this.id });
 
     this.exec = new Exec({
       logger: this.logger,
@@ -220,14 +220,14 @@ interface CrictlOptions {
 
 export class Crictl {
   private id: string;
-  private logger: SimpleLogger;
+  private logger: SimpleStructuredLogger;
   private exec: Exec;
 
   private archives = new Set<string>();
 
   constructor(opts: CrictlOptions) {
     this.id = opts.id ?? randomUUID();
-    this.logger = new SimpleLogger(`[crictl][${this.id}]`);
+    this.logger = new SimpleStructuredLogger("crictl", undefined, { id: this.id });
 
     this.exec = new Exec({
       logger: this.logger,
