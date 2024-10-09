@@ -314,10 +314,12 @@ export class RunEngine {
           completedAfter: taskRun.delayUntil,
         });
 
-        await this.#blockRunWithWaitpoint(prisma, {
-          orgId: environment.organization.id,
-          runId: taskRun.id,
-          waitpoint: delayWaitpoint,
+        await prisma.taskRunWaitpoint.create({
+          data: {
+            taskRunId: taskRun.id,
+            waitpointId: delayWaitpoint.id,
+            projectId: delayWaitpoint.projectId,
+          },
         });
       }
 
@@ -334,7 +336,10 @@ export class RunEngine {
         throw signal.error;
       }
 
-      await this.#enqueueRun(taskRun, environment, prisma);
+      //enqueue the run if it's not delayed
+      if (!taskRun.delayUntil) {
+        await this.#enqueueRun(taskRun, environment, prisma);
+      }
     });
 
     //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
@@ -453,6 +458,15 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     await this.redlock.using([run.id], 5000, async (signal) => {
+      const snapshot = await this.#getLatestExecutionSnapshot(run.id);
+      if (!snapshot) {
+        throw new Error(`RunEngine.#continueRun(): No snapshot found for run: ${run.id}`);
+      }
+
+      if (snapshot.executionStatus === "EXECUTING") {
+        throw new Error("RunEngine.#continueRun(): continue executing run, not implemented yet");
+      }
+
       await prisma.taskRunExecutionSnapshot.create({
         data: {
           runId: run.id,
@@ -517,6 +531,7 @@ export class RunEngine {
       id: `waitpointCompleteDateTime.${waitpoint.id}`,
       job: "waitpointCompleteDateTime",
       payload: { waitpointId: waitpoint.id },
+      availableAt: completedAfter,
     });
 
     return waitpoint;
@@ -704,7 +719,6 @@ export class RunEngine {
         throw new Error("Not implemented BLOCKED_BY_WAITPOINTS");
       }
       case "DEQUEUED_FOR_EXECUTION": {
-        //todo probably put it back in the queue
         //we need to check if the run is still dequeued
         throw new Error("Not implemented DEQUEUED_FOR_EXECUTION");
       }
