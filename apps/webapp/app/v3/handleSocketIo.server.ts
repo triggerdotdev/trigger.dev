@@ -188,7 +188,7 @@ function createCoordinatorNamespace(io: Server) {
           const environment = await findEnvironmentById(message.envId);
 
           if (!environment) {
-            logger.error("Environment not found", { id: message.envId });
+            logger.error("CREATE_TASK_RUN_ATTEMPT: Environment not found", message);
             return { success: false, reason: "Environment not found" };
           }
 
@@ -198,16 +198,14 @@ function createCoordinatorNamespace(io: Server) {
           const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(attempt.id, true);
 
           if (!payload) {
-            logger.error("Failed to retrieve payload after attempt creation", {
-              id: message.envId,
-            });
+            logger.error("Failed to retrieve payload after attempt creation", message);
             return { success: false, reason: "Failed to retrieve payload" };
           }
 
           return { success: true, executionPayload: payload };
         } catch (error) {
           logger.error("Error while creating attempt", {
-            runId: message.runId,
+            ...message,
             error,
           });
           return { success: false };

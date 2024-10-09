@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { DeploymentErrorData } from "./schemas/api.js";
 import { ImportTaskFileErrors, WorkerManifest } from "./schemas/build.js";
-import { SerializedError, TaskRunError } from "./schemas/common.js";
+import {
+  SerializedError,
+  TaskRunError,
+  TaskRunErrorCodes,
+  TaskRunInternalError,
+} from "./schemas/common.js";
 import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
+import { links } from "./links.js";
+import { ExceptionEventProperties } from "./schemas/openTelemetry.js";
 
 export class AbortTaskRunError extends Error {
   constructor(message: string) {
@@ -68,27 +75,29 @@ export function createErrorTaskError(error: TaskRunError): any {
 }
 
 export function createJsonErrorObject(error: TaskRunError): SerializedError {
-  switch (error.type) {
+  const enhancedError = taskRunErrorEnhancer(error);
+
+  switch (enhancedError.type) {
     case "BUILT_IN_ERROR": {
       return {
-        name: error.name,
-        message: error.message,
-        stackTrace: error.stackTrace,
+        name: enhancedError.name,
+        message: enhancedError.message,
+        stackTrace: enhancedError.stackTrace,
       };
     }
     case "STRING_ERROR": {
       return {
-        message: error.raw,
+        message: enhancedError.raw,
       };
     }
     case "CUSTOM_ERROR": {
       return {
-        message: error.raw,
+        message: enhancedError.raw,
       };
     }
     case "INTERNAL_ERROR": {
       return {
-        message: `trigger.dev internal error (${error.code})`,
+        message: `trigger.dev internal error (${enhancedError.code})`,
       };
     }
   }
@@ -265,7 +274,7 @@ export class UnexpectedExitError extends Error {
     public signal: NodeJS.Signals | null,
     public stderr: string | undefined
   ) {
-    super(`Unexpected exit with code ${code}`);
+    super(`Unexpected exit with code ${code} after signal ${signal}`);
 
     this.name = "UnexpectedExitError";
   }
@@ -303,40 +312,132 @@ export class GracefulExitTimeoutError extends Error {
   }
 }
 
-export function getFriendlyErrorMessage(
-  code: number,
-  signal: NodeJS.Signals | null,
-  stderr: string | undefined,
+const prettyInternalErrors: Partial<
+  Record<TaskRunInternalError["code"], { message: string; link?: { name: string; href: string } }>
+> = {
+  TASK_PROCESS_OOM_KILLED: {
+    message:
+      "Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.",
+    link: {
+      name: "Machines",
+      href: links.docs.machines.home,
+    },
+  },
+  TASK_PROCESS_MAYBE_OOM_KILLED: {
+    message:
+      "We think your task ran out of memory, but we can't be certain. If this keeps happening, try increasing the machine specs.",
+    link: {
+      name: "Machines",
+      href: links.docs.machines.home,
+    },
+  },
+};
+
+type EnhanceError<T extends TaskRunError | ExceptionEventProperties> = T & {
+  link?: { name: string; href: string };
+};
+
+export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunError> {
+  switch (error.type) {
+    case "BUILT_IN_ERROR": {
+      if (error.name === "UnexpectedExitError") {
+        if (error.message.startsWith("Unexpected exit with code -1")) {
+          return {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
+            ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
+          };
+        }
+      }
+      break;
+    }
+    case "STRING_ERROR": {
+      break;
+    }
+    case "CUSTOM_ERROR": {
+      break;
+    }
+    case "INTERNAL_ERROR": {
+      if (error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE) {
+        return {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
+          ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
+        };
+      }
+
+      const prettyError = prettyInternalErrors[error.code];
+
+      if (prettyError) {
+        return {
+          ...error,
+          ...prettyError,
+        };
+      }
+
+      break;
+    }
+  }
+
+  return error;
+}
+
+export function exceptionEventEnhancer(
+  exception: ExceptionEventProperties
+): EnhanceError<ExceptionEventProperties> {
+  switch (exception.type) {
+    case "UnexpectedExitError": {
+      if (exception.message?.startsWith("Unexpected exit with code -1")) {
+        return {
+          ...exception,
+          ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
+        };
+      }
+      break;
+    }
+    case TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED:
+    case TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED: {
+      return {
+        ...exception,
+        ...prettyInternalErrors[exception.type],
+      };
+    }
+  }
+
+  return exception;
+}
+
+export function internalErrorFromUnexpectedExit(
+  error: UnexpectedExitError,
   dockerMode = true
-) {
-  const message = (text: string) => {
-    if (signal) {
-      return `[${signal}] ${text}`;
-    } else {
-      return text;
-    }
-  };
-
-  if (code === 137) {
+): TaskRunInternalError {
+  if (error.code === 137) {
     if (dockerMode) {
-      return message(
-        "Process ran out of memory! Try choosing a machine preset with more memory for this task."
-      );
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
+      };
     } else {
-      // Note: containerState reason and message should be checked to clarify the error
-      return message(
-        "Process most likely ran out of memory, but we can't be certain. Try choosing a machine preset with more memory for this task."
-      );
+      // Note: containerState reason and message could be checked to clarify the error, maybe the task monitor should be allowed to override these
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
+      };
     }
   }
 
-  if (stderr?.includes("OOMErrorHandler")) {
-    return message(
-      "Process ran out of memory! Try choosing a machine preset with more memory for this task."
-    );
+  if (error.stderr?.includes("OOMErrorHandler")) {
+    return {
+      type: "INTERNAL_ERROR",
+      code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
+    };
   }
 
-  return message(`Process exited with code ${code}.`);
+  return {
+    type: "INTERNAL_ERROR",
+    code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+    message: `Process exited with code ${error.code} after signal ${error.signal}.`,
+  };
 }
 
 export function serializeIndexingError(error: unknown, stderr?: string): DeploymentErrorData {

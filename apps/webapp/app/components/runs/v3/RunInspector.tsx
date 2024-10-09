@@ -1,6 +1,11 @@
 import { CheckIcon, ClockIcon, CloudArrowDownIcon, QueueListIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
-import { formatDuration, formatDurationMilliseconds, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  formatDuration,
+  formatDurationMilliseconds,
+  TaskRunError,
+  taskRunErrorEnhancer,
+} from "@trigger.dev/core/v3";
 import { useEffect } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -553,7 +558,9 @@ function RunTimeline({ run }: { run: RawRun }) {
 }
 
 function RunError({ error }: { error: TaskRunError }) {
-  switch (error.type) {
+  const enhancedError = taskRunErrorEnhancer(error);
+
+  switch (enhancedError.type) {
     case "STRING_ERROR":
     case "CUSTOM_ERROR": {
       return (
@@ -561,7 +568,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <CodeBlock
             showCopyButton={false}
             showLineNumbers={false}
-            code={error.raw}
+            code={enhancedError.raw}
             maxLines={20}
           />
         </div>
@@ -569,16 +576,21 @@ function RunError({ error }: { error: TaskRunError }) {
     }
     case "BUILT_IN_ERROR":
     case "INTERNAL_ERROR": {
-      const name = "name" in error ? error.name : error.code;
+      const name = "name" in enhancedError ? enhancedError.name : enhancedError.code;
       return (
         <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
           <Header3 className="text-rose-500">{name}</Header3>
-          {error.message && <Callout variant="error">{error.message}</Callout>}
-          {error.stackTrace && (
+          {enhancedError.message && <Callout variant="error">{enhancedError.message}</Callout>}
+          {enhancedError.link && (
+            <Callout variant="docs" to={enhancedError.link.href}>
+              {enhancedError.link.name}
+            </Callout>
+          )}
+          {enhancedError.stackTrace && (
             <CodeBlock
               showCopyButton={false}
               showLineNumbers={false}
-              code={error.stackTrace}
+              code={enhancedError.stackTrace}
               maxLines={20}
             />
           )}

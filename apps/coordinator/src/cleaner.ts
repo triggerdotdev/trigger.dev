@@ -1,4 +1,4 @@
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { Exec } from "./exec";
 import { setTimeout } from "timers/promises";
 
@@ -10,14 +10,18 @@ interface TempFileCleanerOptions {
 }
 
 export class TempFileCleaner {
-  private logger = new SimpleLogger("[tmp-cleaner]");
   private enabled = false;
-  private exec = new Exec({ logger: this.logger });
 
-  constructor(private opts: TempFileCleanerOptions) {}
+  private logger: SimpleStructuredLogger;
+  private exec: Exec;
+
+  constructor(private opts: TempFileCleanerOptions) {
+    this.logger = new SimpleStructuredLogger("tmp-cleaner", undefined, { ...this.opts });
+    this.exec = new Exec({ logger: this.logger });
+  }
 
   async start() {
-    this.logger.log("start", this.opts);
+    this.logger.log("TempFileCleaner.start");
     this.enabled = true;
 
     if (!this.opts.leadingEdge) {
@@ -28,7 +32,7 @@ export class TempFileCleaner {
       try {
         await this.clean();
       } catch (error) {
-        this.logger.error("error during tick", error);
+        this.logger.error("error during tick", { error });
       }
 
       await this.wait();
@@ -36,7 +40,7 @@ export class TempFileCleaner {
   }
 
   stop() {
-    this.logger.log("stop", this.opts);
+    this.logger.log("TempFileCleaner.stop");
     this.enabled = false;
   }
 
@@ -89,7 +93,7 @@ export class TempFileCleaner {
     const rmOutput = await rm;
 
     if (rmOutput.stderr.length > 0) {
-      this.logger.error("delete unsuccessful", rmOutput);
+      this.logger.error("delete unsuccessful", { rmOutput });
       return;
     }
 

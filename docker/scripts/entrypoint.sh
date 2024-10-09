@@ -9,7 +9,7 @@ fi
 pnpm --filter @trigger.dev/database db:migrate:deploy
 
 # Copy over required prisma files
-cp packages/database/prisma/schema.prisma apps/webapp/prisma/
+cp internal-packages/database/prisma/schema.prisma apps/webapp/prisma/
 cp node_modules/@prisma/engines/*.node apps/webapp/prisma/
 
 cd /triggerdotdev/apps/webapp

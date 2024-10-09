@@ -1,9 +1,11 @@
 import {
   ExecutorToWorkerMessageCatalog,
   ServerBackgroundWorker,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  type TaskRunInternalError,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
@@ -21,10 +23,10 @@ import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
   CleanupProcessError,
+  internalErrorFromUnexpectedExit,
   GracefulExitTimeoutError,
   UnexpectedExitError,
 } from "@trigger.dev/core/v3/errors";
-import { env } from "std-env";
 
 export type OnWaitForDurationMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
@@ -382,6 +384,39 @@ export class TaskRunProcess {
 
   get pid() {
     return this._childPid;
+  }
+
+  static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {
+    if (error instanceof CancelledProcessError) {
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
+      };
+    }
+
+    if (error instanceof CleanupProcessError) {
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_EXECUTION_ABORTED,
+      };
+    }
+
+    if (error instanceof UnexpectedExitError) {
+      return internalErrorFromUnexpectedExit(error, dockerMode);
+    }
+
+    if (error instanceof GracefulExitTimeoutError) {
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
+      };
+    }
+
+    return {
+      type: "INTERNAL_ERROR",
+      code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
+      message: String(error),
+    };
   }
 }
 

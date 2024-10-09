@@ -784,7 +784,16 @@ class ProdWorker {
               error,
             });
 
-            this.#failRun(message.lazyPayload.runId, error);
+            try {
+              await this.#submitAttemptCompletion(execution, {
+                id: execution.run.id,
+                ok: false,
+                retry: undefined,
+                error: TaskRunProcess.parseExecuteError(error, !this.runningInKubernetes),
+              });
+            } catch (error) {
+              this.#failRun(message.lazyPayload.runId, error);
+            }
           }
         },
         REQUEST_ATTEMPT_CANCELLATION: async (message) => {
