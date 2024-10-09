@@ -97,7 +97,7 @@ export class CrashTaskRunService extends BaseService {
           event: event,
           crashedAt: opts.crashedAt,
           exception: {
-            type: "Worker crashed",
+            type: opts.errorCode ?? "TASK_RUN_CRASHED",
             message: opts.reason,
             stacktrace: opts.logs,
           },
@@ -119,6 +119,7 @@ export class CrashTaskRunService extends BaseService {
         {
           reason: opts.reason,
           logs: opts.logs,
+          code: opts.errorCode,
         }
       );
     }
