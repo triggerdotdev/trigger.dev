@@ -311,7 +311,10 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     stale: 60_000 * 20, // Date is stale after 20 minutes
   },
   limiterConfigOverride: async (authorizationValue) => {
-    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue);
+    // TODO: we need to add an option to "allowJWT" auth and then handle this differently
+    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
+      allowPublicKey: true,
+    });
 
     if (!authenticatedEnv) {
       return;
@@ -333,6 +336,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
     "/api/v1/usage/ingest",
+    "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
   ],
   log: {

@@ -43,7 +43,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   const wss: WebSocketServer | undefined = build.entry.module.wss;
   const registryProxy: RegistryProxy | undefined = build.entry.module.registryProxy;
   const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
-  const realtimeRateLimiter: RateLimitMiddleware = build.entry.module.realtimeRequestRateLimiter;
   const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
 
   if (registryProxy && process.env.ENABLE_REGISTRY_PROXY === "true") {
@@ -83,7 +82,6 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
     app.use(apiRateLimiter);
-    app.use(realtimeRateLimiter);
 
     app.all(
       "*",

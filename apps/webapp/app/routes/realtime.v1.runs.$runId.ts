@@ -2,6 +2,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { permittedToReadRun } from "~/services/accessControl.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
@@ -12,7 +13,8 @@ const ParamsSchema = z.object({
 
 export async function loader({ request, params }: ActionFunctionArgs) {
   // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authenticationResult = await authenticateApiRequest(request, { allowJWT: true });
+
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API Key" }, { status: 401 });
   }
@@ -24,6 +26,10 @@ export async function loader({ request, params }: ActionFunctionArgs) {
       { error: "Invalid request parameters", issues: parsedParams.error.issues },
       { status: 400 }
     );
+  }
+
+  if (!permittedToReadRun(authenticationResult, parsedParams.data.runId)) {
+    return json({ error: "Unauthorized" }, { status: 403 });
   }
 
   try {

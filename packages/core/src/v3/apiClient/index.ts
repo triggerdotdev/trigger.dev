@@ -76,13 +76,11 @@ export type { RunShape, RunStreamCallback, RunSubscription };
  */
 export class ApiClient {
   public readonly baseUrl: string;
+  public readonly accessToken: string;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
-  constructor(
-    baseUrl: string,
-    private readonly accessToken: string,
-    requestOptions: ApiRequestOptions = {}
-  ) {
+  constructor(baseUrl: string, accessToken: string, requestOptions: ApiRequestOptions = {}) {
+    this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
   }
@@ -545,6 +543,20 @@ export class ApiClient {
       `${this.baseUrl}/realtime/v1/runs/${runId}`,
       this.fetchClient,
       callback
+    );
+  }
+
+  async generateJWTClaims(
+    requestOptions?: ZodFetchOptions
+  ): Promise<{ claims: Record<string, any> }> {
+    return zodfetch(
+      z.object({ claims: z.record(z.any()) }),
+      `${this.baseUrl}/api/v1/auth/jwt/claims`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }
 
