@@ -18,9 +18,10 @@ describe("RunEngine", () => {
           password: redisContainer.getPassword(),
           enableAutoPipelining: true,
         },
-        zodWorker: {
-          connectionString: postgresContainer.getConnectionUri(),
-          shutdownTimeoutInMs: 100,
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
         },
       });
 
