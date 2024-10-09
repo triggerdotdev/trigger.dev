@@ -9,9 +9,9 @@ description: "Learn how to trigger a task from a webhook in a Remix app."
 - [A Remix project, set up with Trigger.dev](/guides/frameworks/remix)
 - [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
 
-## Adding a webhook handler
+## Adding the webhook handler
 
-The webhook handler will be an API route. Create a new file in `app/routes/api.webhook-handler.ts` or `app/routes/api.webhook-handler.js`.
+The webhook handler in this guide will be an API route. Create a new file `app/routes/api.webhook-handler.ts` or `app/routes/api.webhook-handler.js`.
 
 In your new file, add the following code:
 
@@ -20,15 +20,8 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { helloWorldTask } from "src/trigger/example";
 
-// This function can handle GET requests to check if the webhook is active in the browser - not required for Trigger but helpful for testing
-export async function loader() {
-  return new Response("Webhook endpoint is active", { status: 200 });
-}
-
-// This function handles the actual webhook payload and triggers the helloWorldTask
 export async function action({ request }: ActionFunctionArgs) {
   const payload = await request.json();
-  console.log("Received webhook payload:", payload);
 
   // Trigger the helloWorldTask with the webhook data as the payload
   await tasks.trigger<typeof helloWorldTask>("hello-world", payload);
@@ -36,3 +29,78 @@ export async function action({ request }: ActionFunctionArgs) {
   return new Response("OK", { status: 200 });
 }
 ```
+
+This code will handle the webhook payload and trigger the 'Hello World' task.
+
+## Triggering the task locally
+
+Now that you have a webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
+
+<Steps>
+
+<Step title="Run your Remix app and the Trigger.dev dev server">
+
+First, run your Remix app.
+
+<CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash pnpm
+    pnpm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+</CodeGroup>
+
+Then, open up a second terminal window and start the Trigger.dev dev server:
+
+<CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest dev
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest dev
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@latest dev
+    ```
+
+    </CodeGroup>
+
+</Step>
+
+<Step title="Trigger the webhook with some dummy data">
+
+To send a POST request to your webhook handler, open up a terminal window on your local machine and run the following command:
+
+<Tip>
+  If `http://localhost:5173` isn't the URL of your locally running Remix app, replace the URL in the
+  below command with that URL instead.
+</Tip>
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"Name": "John Doe", "Age": "87"}' http://localhost:5173/api/webhook-handler
+```
+
+This will send a POST request to your webhook handler, with a JSON payload.
+
+</Step>
+
+<Step title="Check the task ran successfully">
+
+After running the command, you should see a successful dev run and a 200 response in your terminals.
+
+If you now go to your [Trigger.dev dashboard](https://cloud.trigger.dev), you should also see a successful run for the 'Hello World' task, with the payload you sent, in this case; `{"name": "John Doe", "age": "87"}`.
+
+</Step>
+
+</Steps>

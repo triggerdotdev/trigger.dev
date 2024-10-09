@@ -9,9 +9,9 @@ description: "Learn how to trigger a task from a webhook in a Next.js app."
 - [A Next.js project, set up with Trigger.dev](/guides/frameworks/nextjs)
 - [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
 
-## Adding a webhook handler
+## Adding the webhook handler
 
-The webhook handler will be an API route. The location of the route file will be different depending on whether you are using the pages router or the app router.
+The webhook handler in this guide will be an API route. The location of the route file will be different depending on whether you are using the Next.js pages router or the app router.
 
 - **Pages router** - create a new file `pages/api/webhook-handler.ts` or `pages/api/webhook-hander.js`.
 
@@ -27,22 +27,19 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  try {
-    // Parse the webhook payload
-    const webhookData = await req.json();
+  // Parse the webhook payload
+  const payload = await req.json();
 
-    // Trigger the helloWorldTask with the webhook data as the payload
-    const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", webhookData);
+  // Trigger the helloWorldTask with the webhook data as the payload
+  await tasks.trigger<typeof helloWorldTask>("hello-world", payload);
 
-    return NextResponse.json({ result: handle, ok: true });
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ message: "something went wrong", ok: false }, { status: 500 });
-  }
+  return NextResponse.json("OK", { status: 200 });
 }
 ```
 
-## Triggering a task locally
+This code will handle the webhook payload and trigger the 'Hello World' task.
+
+## Triggering the task locally
 
 Now that you have a webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
 
@@ -90,11 +87,11 @@ Then, open up a second terminal window and start the Trigger.dev dev server:
 
 <Step title="Trigger the webhook with some dummy data">
 
-To send a POST request to your webhook handler, open up a terminal window on your local machine and run the following command:π
+To send a POST request to your webhook handler, open up a terminal window on your local machine and run the following command:
 
 <Tip>
-  If `http://localhost:3000` isn't the URL of your locally running Next.js app, replace the URL with
-  that URL instead.
+  If `http://localhost:3000` isn't the URL of your locally running Next.js app, replace the URL in
+  the below command with that URL instead.
 </Tip>
 
 ```bash
