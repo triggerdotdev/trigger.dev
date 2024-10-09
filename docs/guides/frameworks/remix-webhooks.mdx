@@ -1,0 +1,38 @@
+---
+title: "Triggering tasks with webhooks in Remix"
+sidebarTitle: "Remix webhooks"
+description: "Learn how to trigger a task from a webhook in a Remix app."
+---
+
+## Prerequisites
+
+- [A Remix project, set up with Trigger.dev](/guides/frameworks/remix)
+- [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
+
+## Adding a webhook handler
+
+The webhook handler will be an API route. Create a new file in `app/routes/api.webhook-handler.ts` or `app/routes/api.webhook-handler.js`.
+
+In your new file, add the following code:
+
+```ts /api/webhook-handler.ts
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { tasks } from "@trigger.dev/sdk/v3";
+import { helloWorldTask } from "src/trigger/example";
+
+// This function can handle GET requests to check if the webhook is active in the browser - not required for Trigger but helpful for testing
+export async function loader() {
+  return new Response("Webhook endpoint is active", { status: 200 });
+}
+
+// This function handles the actual webhook payload and triggers the helloWorldTask
+export async function action({ request }: ActionFunctionArgs) {
+  const payload = await request.json();
+  console.log("Received webhook payload:", payload);
+
+  // Trigger the helloWorldTask with the webhook data as the payload
+  await tasks.trigger<typeof helloWorldTask>("hello-world", payload);
+
+  return new Response("OK", { status: 200 });
+}
+```

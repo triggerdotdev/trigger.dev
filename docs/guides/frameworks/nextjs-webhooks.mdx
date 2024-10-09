@@ -1,36 +1,15 @@
 ---
-title: "Setting up webhooks"
-sidebarTitle: "Webhooks"
-description: "Guides for using webhooks with Trigger.dev."
-icon: "webhook"
+title: "Triggering tasks with webhooks in Next.js"
+sidebarTitle: "Next.js webhooks"
+description: "Learn how to trigger a task from a webhook in a Next.js app."
 ---
 
-## Overview
-
-Webhooks are a way to send and receive events from external services. Triggering tasks using webhooks allow you to add real-time, event driven functionality to your app.
-
-A webhook handler is code that executes in response to an event. They can be endpoints in your framework's routing which will be triggered by an external service, for example.
-
-In this guide you'll learn how to set up webhook handlers and trigger tasks from them using popular frameworks.
-
-## Frameworks featured in this guide
-
-- [Next.js](/guides/frameworks/webhooks#nextjs-webhook-configuration), pages or app router
-- [Remix](/guides/frameworks/webhooks#remix-webhook-configuration)
-
-<Note>
-  If you would like to see a webhook guide for your framework, please request it in our [Discord
-  server](https://trigger.dev/discord).
-</Note>
-
-## Next.js webhook configuration
-
-### Prerequisites
+## Prerequisites
 
 - [A Next.js project, set up with Trigger.dev](/guides/frameworks/nextjs)
 - [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
 
-### Adding a webhook handler
+## Adding a webhook handler
 
 The webhook handler will be an API route. The location of the route file will be different depending on whether you are using the pages router or the app router.
 
@@ -63,7 +42,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### Triggering a task locally
+## Triggering a task locally
 
 Now that you have a webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
 
@@ -135,9 +114,3 @@ If you now go to your [Trigger.dev dashboard](https://cloud.trigger.dev), you sh
 </Step>
 
 </Steps>
-
-## Remix webhook configuration
-
-### Prerequisites
-
-- [A Remix project, set up with Trigger.dev](/guides/frameworks/remix)
