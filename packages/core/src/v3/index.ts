@@ -27,8 +27,6 @@ export {
   nanosecondsToMilliseconds,
 } from "./utils/durations.js";
 
-export { TriggerTracer } from "./tracer.js";
-
 export type { LogLevel } from "./logger/taskLogger.js";
 
 export { eventFilterMatches } from "../eventFilterMatches.js";

@@ -2,7 +2,6 @@ import { ApiClient } from "../apiClient/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { ApiClientConfiguration } from "./types.js";
-import { SafeAsyncLocalStorage } from "../utils/safeAsyncLocalStorage.js";
 
 const API_NAME = "api-client";
 
@@ -65,33 +64,21 @@ export class APIClientManagerAPI {
     config: ApiClientConfiguration,
     fn: R
   ): Promise<ReturnType<R>> {
-    const asyncLocalStorage = this.#getStorage();
+    const originalConfig = this.#getConfig();
+    const $config = { ...originalConfig, ...config };
+    registerGlobal(API_NAME, $config, true);
 
-    const currentConfig = asyncLocalStorage.getStore();
-    const $config = { ...currentConfig, ...config };
-
-    return asyncLocalStorage.runWith($config, fn);
+    return fn().finally(() => {
+      registerGlobal(API_NAME, originalConfig, true);
+    });
   }
 
   public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
-    const asyncLocalStorage = new SafeAsyncLocalStorage<ApiClientConfiguration>();
-    asyncLocalStorage.enterWith(config);
-
-    return registerGlobal(API_NAME, asyncLocalStorage);
-  }
-
-  #getStorage(): SafeAsyncLocalStorage<ApiClientConfiguration> {
-    const storage = getGlobal(API_NAME);
-
-    if (!storage) {
-      registerGlobal(API_NAME, new SafeAsyncLocalStorage<ApiClientConfiguration>());
-    }
-
-    return getGlobal(API_NAME)!;
+    return registerGlobal(API_NAME, config);
   }
 
   #getConfig(): ApiClientConfiguration | undefined {
-    return getGlobal(API_NAME)?.getStore();
+    return getGlobal(API_NAME);
   }
 
   apiClientMissingError() {

@@ -10,11 +10,13 @@ async function main() {
 
   // The JWT will be passed to the client
   await auth.context({ accessToken: jwt }, async () => {
-    const subscription = await runs.subscribe(anyHandle);
-
-    for await (const run of subscription) {
+    const subscription = runs.subscribe(anyHandle, (run) => {
       console.log("Received run update:", run);
-    }
+    });
+
+    // for await (const run of subscription) {
+
+    // }
   });
 }
 

@@ -37,14 +37,13 @@ export type RunStreamCallback<TPayload = any, TOutput = any> = (
   run: RunShape<TPayload, TOutput>
 ) => void | Promise<void>;
 
-export async function runShapeStream<TPayload = any, TOutput = any>(
+export function runShapeStream<TPayload = any, TOutput = any>(
   url: string,
-  fetchClient: typeof fetch,
-  callback?: RunStreamCallback<TPayload, TOutput>
-): Promise<RunSubscription<TPayload, TOutput>> {
-  const subscription = new RunSubscription<TPayload, TOutput>(url, fetchClient, callback);
-  await subscription.init();
-  return subscription;
+  fetchClient: typeof fetch
+): RunSubscription<TPayload, TOutput> {
+  const subscription = new RunSubscription<TPayload, TOutput>(url, fetchClient);
+
+  return subscription.init();
 }
 
 export class RunSubscription<TPayload = any, TOutput = any> {
@@ -55,13 +54,12 @@ export class RunSubscription<TPayload = any, TOutput = any> {
 
   constructor(
     private url: string,
-    private fetchClient: typeof fetch,
-    private callback?: RunStreamCallback<TPayload, TOutput>
+    private fetchClient: typeof fetch
   ) {
     this.abortController = new AbortController();
   }
 
-  async init(): Promise<void> {
+  init(): this {
     const source = new ReadableStream<SubscribeRunRawShape>({
       start: async (controller) => {
         this.unsubscribeShape = await zodShapeStream(
@@ -89,19 +87,18 @@ export class RunSubscription<TPayload = any, TOutput = any> {
       transform: async (chunk, controller) => {
         const run = await this.transformRunShape(chunk);
 
-        if (this.callback) {
-          await this.callback(run);
-        }
         controller.enqueue(run);
       },
     });
+
+    return this;
   }
 
   unsubscribe(): void {
     if (!this.abortController.signal.aborted) {
       this.abortController.abort();
     }
-    this.unsubscribeShape();
+    this.unsubscribeShape?.();
   }
 
   [Symbol.asyncIterator](): AsyncIterator<RunShape<TPayload, TOutput>> {
