@@ -58,25 +58,13 @@ const schema = z.object({
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  console.log("Action function called");
   if (request.method.toLowerCase() !== "post") {
     return new Response("Method not allowed", { status: 405 });
   }
 
   const { organizationSlug } = Params.parse(params);
-
   const user = await requireUser(request);
-
   const formData = await request.formData();
-
-  console.log("All form data:", Object.fromEntries(formData));
-
-  // Log the entire formData
-  console.log("Form Data:");
-  for (const [key, value] of formData.entries()) {
-    console.log(`${key}: ${value}`);
-  }
-
   const reasons = formData.getAll("reasons");
   const message = formData.get("message");
 
@@ -98,10 +86,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (form.type) {
     case "free": {
-      console.log("Entering free case");
       try {
         if (!env.PLAIN_API_KEY) {
-          console.error("PLAIN_API_KEY is not set");
           throw new Error("PLAIN_API_KEY is not set");
         }
 
