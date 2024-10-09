@@ -101,11 +101,13 @@ class Worker<TCatalog extends WorkerCatalog> {
     job,
     payload,
     visibilityTimeoutMs,
+    availableAt,
   }: {
     id?: string;
     job: K;
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
+    availableAt?: Date;
   }) {
     const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
     return this.queue.enqueue({
@@ -113,7 +115,12 @@ class Worker<TCatalog extends WorkerCatalog> {
       job,
       item: payload,
       visibilityTimeoutMs: timeout,
+      availableAt,
     });
+  }
+
+  ack(id: string) {
+    return this.queue.ack(id);
   }
 
   private createWorker(tasksPerWorker: number) {
