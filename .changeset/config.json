@@ -7,26 +7,12 @@
     }
   ],
   "commit": false,
-  "fixed": [
-    [
-      "@trigger.dev/*",
-      "trigger.dev"
-    ]
-  ],
+  "fixed": [["@trigger.dev/*", "trigger.dev"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "webapp",
-    "emails",
-    "proxy",
-    "@trigger.dev/database",
-    "coordinator",
-    "docker-provider",
-    "kubernetes-provider",
-    "@trigger.dev/otlp-importer"
-  ],
+  "ignore": ["webapp", "proxy", "coordinator", "docker-provider", "kubernetes-provider"],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

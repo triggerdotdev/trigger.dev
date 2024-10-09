@@ -5,6 +5,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
+  TaskRunInternalError,
 } from "./common.js";
 import { TaskResource } from "./resources.js";
 import {
@@ -252,6 +253,7 @@ export const ProviderToPlatformMessages = {
       message: z.string().optional(),
       logs: z.string().optional(),
       overrideCompletion: z.boolean().optional(),
+      errorCode: TaskRunInternalError.shape.code.optional(),
     }),
   },
   INDEXING_FAILED: {

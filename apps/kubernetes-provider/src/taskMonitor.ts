@@ -3,13 +3,14 @@ import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core/v3/apps";
 import { setTimeout } from "timers/promises";
 import PQueue from "p-queue";
-import type { Prettify } from "@trigger.dev/core/v3";
+import { TaskRunErrorCodes, type Prettify, type TaskRunInternalError } from "@trigger.dev/core/v3";
 
 type FailureDetails = Prettify<{
   exitCode: number;
   reason: string;
   logs: string;
   overrideCompletion: boolean;
+  errorCode: TaskRunInternalError["code"];
 }>;
 
 type IndexFailureHandler = (deploymentId: string, details: FailureDetails) => Promise<any>;
@@ -160,18 +161,23 @@ export class TaskMonitor {
     let reason = rawReason || "Unknown error";
     let logs = rawLogs || "";
     let overrideCompletion = false;
+    let errorCode: TaskRunInternalError["code"] = TaskRunErrorCodes.POD_UNKNOWN_ERROR;
 
     switch (rawReason) {
       case "Error":
         reason = "Unknown error.";
+        errorCode = TaskRunErrorCodes.POD_UNKNOWN_ERROR;
         break;
       case "Evicted":
         if (message.startsWith("Pod ephemeral local storage usage")) {
           reason = "Storage limit exceeded.";
+          errorCode = TaskRunErrorCodes.DISK_SPACE_EXCEEDED;
         } else if (message) {
           reason = `Evicted: ${message}`;
+          errorCode = TaskRunErrorCodes.POD_EVICTED;
         } else {
           reason = "Evicted for unknown reason.";
+          errorCode = TaskRunErrorCodes.POD_EVICTED;
         }
 
         if (logs.startsWith("failed to try resolving symlinks")) {
@@ -183,6 +189,7 @@ export class TaskMonitor {
         reason = `${
           exitCode === EXIT_CODE_CHILD_NONZERO ? "Child process" : "Parent process"
         } ran out of memory! Try choosing a machine preset with more memory for this task.`;
+        errorCode = TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED;
         break;
       default:
         break;
@@ -193,6 +200,7 @@ export class TaskMonitor {
       reason,
       logs,
       overrideCompletion,
+      errorCode,
     } satisfies FailureDetails;
 
     const app = pod.metadata?.labels?.app;

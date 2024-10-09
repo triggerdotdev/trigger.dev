@@ -1160,7 +1160,7 @@ class SharedQueueTasks {
     const environment = await findEnvironmentById(envId);
 
     if (!environment) {
-      logger.error("Environment not found", { id: envId });
+      logger.error("getLazyAttemptPayload: Environment not found", { runId, envId });
       return;
     }
 
@@ -1182,7 +1182,7 @@ class SharedQueueTasks {
     });
 
     if (!run) {
-      logger.error("Run not found", { id: runId, envId });
+      logger.error("getLazyAttemptPayload: Run not found", { runId, envId });
       return;
     }
 

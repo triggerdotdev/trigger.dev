@@ -1869,7 +1869,7 @@ model TaskRunDependency {
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId String?                 @unique
 
-  /// An attempt that is dependent on this task run. 
+  /// An attempt that is dependent on this task run.
   dependentAttempt   TaskRunAttempt? @relation(fields: [dependentAttemptId], references: [id])
   dependentAttemptId String?
 

@@ -493,10 +493,10 @@ class TaskCoordinator {
             log.error("Error while waiting for checkpointable state", { error });
 
             if (error instanceof CheckpointReadinessTimeoutError) {
-              await crashRun({
-                name: error.name,
-                message: `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
-              });
+              logger.error(
+                `Failed to become checkpointable in ${CHECKPOINTABLE_TIMEOUT_SECONDS}s for ${reason}`,
+                { runId: socket.data.runId }
+              );
 
               return {
                 success: false,
@@ -585,7 +585,7 @@ class TaskCoordinator {
             updateAttemptFriendlyId(executionAck.payload.execution.attempt.id);
             updateAttemptNumber(executionAck.payload.execution.attempt.number);
           } catch (error) {
-            log.error("Error", { error });
+            log.error("READY_FOR_EXECUTION error", { error });
 
             await crashRun({
               name: "ReadyForExecutionError",
@@ -625,7 +625,7 @@ class TaskCoordinator {
             }
 
             if (!lazyAttempt.success) {
-              log.error("failed to get lazy attempt payload");
+              log.error("failed to get lazy attempt payload", { reason: lazyAttempt.reason });
 
               await crashRun({
                 name: "ReadyForLazyAttemptError",
@@ -647,7 +647,7 @@ class TaskCoordinator {
               return;
             }
 
-            log.error("Error", { error });
+            log.error("READY_FOR_LAZY_ATTEMPT error", { error });
 
             await crashRun({
               name: "ReadyForLazyAttemptError",
@@ -1152,7 +1152,7 @@ class TaskCoordinator {
           });
 
           if (!createAttempt?.success) {
-            log.debug("no ack while creating attempt");
+            log.debug("no ack while creating attempt", { reason: createAttempt?.reason });
             callback({ success: false, reason: createAttempt?.reason });
             return;
           }

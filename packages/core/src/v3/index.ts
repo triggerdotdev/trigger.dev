@@ -17,6 +17,7 @@ export * from "./schemas/index.js";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 export * from "./task-catalog-api.js";
 export * from "./types/index.js";
+export { links } from "./links.js";
 export {
   formatDuration,
   formatDurationInDays,
