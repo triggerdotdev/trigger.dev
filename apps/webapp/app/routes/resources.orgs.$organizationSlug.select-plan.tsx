@@ -9,6 +9,7 @@ import { ArrowDownCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
   FreePlanDefinition,
   Limits,
@@ -373,7 +374,55 @@ export function TierFree({
         </div>
       ) : (
         <>
-          {subscription?.plan?.type !== "free" && subscription?.canceledAt === undefined ? (
+          {status === "requires_connect" ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <div className="my-6">
+                  <Button
+                    type="button"
+                    variant="tertiary/large"
+                    fullWidth
+                    className="text-md font-medium"
+                    disabled={isLoading}
+                    LeadingIcon={isLoading ? Spinner : undefined}
+                  >
+                    Unlock Free plan
+                  </Button>
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <Form action={formAction} method="post" id="subscribe-free">
+                  <input type="hidden" name="type" value="free" />
+                  <input type="hidden" name="callerPath" value={location.pathname} />
+                  <DialogHeader>Unlock the Free plan</DialogHeader>
+                  <div className="mb-5 mt-7 flex flex-col items-center gap-4 px-6">
+                    <GitHubLightIcon className="size-16" />
+                    <Paragraph variant="base/bright" className="text-center">
+                      To unlock the Free plan, we need to verify that you have an active GitHub
+                      account.
+                    </Paragraph>
+                    <Paragraph className="text-center">
+                      We do this to prevent malicious use of our platform. We only ask for the
+                      minimum permissions to verify your account.
+                    </Paragraph>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="primary/large"
+                      fullWidth
+                      disabled={isLoading}
+                      LeadingIcon={isLoading ? Spinner : undefined}
+                      form="subscribe-free"
+                    >
+                      Connect to GitHub
+                    </Button>
+                  </DialogFooter>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          ) : subscription?.plan !== undefined &&
+            subscription.plan.type !== "free" &&
+            subscription.canceledAt === undefined ? (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
               <DialogTrigger asChild>
                 <Button variant="tertiary/large" fullWidth className="text-md my-6 font-medium">
@@ -467,8 +516,11 @@ export function TierFree({
             >
               {subscription?.plan === undefined
                 ? "Select plan"
-                : subscription.plan.type === "free" ||
-                  (subscription.canceledAt !== undefined && "Current plan")}
+                : subscription.plan.type === "free"
+                ? "Current plan"
+                : subscription.canceledAt !== undefined
+                ? "Current plan"
+                : "Select plan"}
             </Button>
           )}
           <ul className="flex flex-col gap-2.5">
