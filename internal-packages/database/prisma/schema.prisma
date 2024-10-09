@@ -1904,7 +1904,7 @@ model TaskRunExecutionSnapshot {
 
 enum TaskRunExecutionStatus {
   RUN_CREATED
-  ENQUEUED
+  QUEUED
   DEQUEUED_FOR_EXECUTION
   EXECUTING
   BLOCKED_BY_WAITPOINTS

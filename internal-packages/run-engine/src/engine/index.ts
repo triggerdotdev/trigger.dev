@@ -18,7 +18,6 @@ import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-
 import { nanoid } from "nanoid";
 
 type Options = {
@@ -143,8 +142,7 @@ export class RunEngine {
 
   //MARK: - Run functions
 
-  /** "Triggers" one run.
-   */
+  /** "Triggers" one run. */
   async trigger(
     {
       friendlyId,
@@ -336,7 +334,7 @@ export class RunEngine {
         throw signal.error;
       }
 
-      await this.enqueueRun(taskRun, environment, prisma);
+      await this.#enqueueRun(taskRun, environment, prisma);
     });
 
     //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
@@ -349,43 +347,6 @@ export class RunEngine {
    * This doesn't start execution, but it will create a batch and schedule them for execution.
    */
   async batchTrigger() {}
-
-  /** The run can be added to the queue. When it's pulled from the queue it will be executed. */
-  async enqueueRun(
-    run: TaskRun,
-    env: MinimalAuthenticatedEnvironment,
-    tx?: PrismaClientOrTransaction
-  ) {
-    const prisma = tx ?? this.prisma;
-
-    await prisma.taskRunExecutionSnapshot.create({
-      data: {
-        runId: run.id,
-        engine: "V2",
-        executionStatus: "ENQUEUED",
-        description: "Run was enqueued",
-        runStatus: run.status,
-      },
-    });
-
-    await this.runQueue.enqueueMessage({
-      env,
-      masterQueue: run.masterQueue,
-      message: {
-        runId: run.id,
-        taskIdentifier: run.taskIdentifier,
-        orgId: env.organization.id,
-        projectId: env.project.id,
-        environmentId: env.id,
-        environmentType: env.type,
-        queue: run.queue,
-        concurrencyKey: run.concurrencyKey ?? undefined,
-        timestamp: Date.now(),
-      },
-    });
-
-    //todo update the TaskRunExecutionSnapshot
-  }
 
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
@@ -407,7 +368,7 @@ export class RunEngine {
         );
       }
 
-      if (!["ENQUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
+      if (!["QUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
         throw new Error(
           `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
         );
@@ -437,18 +398,88 @@ export class RunEngine {
     return newSnapshot;
   }
 
-  /** We want to actually execute the run, this could be a continuation of a previous execution.
-   * This is called from the queue, when the run has been pulled. */
-  //todo think more about this, when do we create the attempt?
-  //todo what does this actually do?
-  //todo how does it get sent to the worker? DEV and PROD
-  async prepareForExecution(runId: string) {}
+  async createRunAttempt(runId: string, snapshotId: string) {
+    //todo create the run attempt, update the execution status, start a heartbeat
+  }
 
-  async prepareForAttempt(runId: string) {}
+  async waitForDuration() {}
 
   async complete(runId: string, completion: any) {}
 
   async expireRun(runId: string) {}
+
+  //MARK: RunQueue
+
+  /** The run can be added to the queue. When it's pulled from the queue it will be executed. */
+  async #enqueueRun(
+    run: TaskRun,
+    env: MinimalAuthenticatedEnvironment,
+    tx?: PrismaClientOrTransaction
+  ) {
+    const prisma = tx ?? this.prisma;
+
+    await prisma.taskRunExecutionSnapshot.create({
+      data: {
+        runId: run.id,
+        engine: "V2",
+        executionStatus: "QUEUED",
+        description: "Run was QUEUED",
+        runStatus: run.status,
+      },
+    });
+
+    await this.runQueue.enqueueMessage({
+      env,
+      masterQueue: run.masterQueue,
+      message: {
+        runId: run.id,
+        taskIdentifier: run.taskIdentifier,
+        orgId: env.organization.id,
+        projectId: env.project.id,
+        environmentId: env.id,
+        environmentType: env.type,
+        queue: run.queue,
+        concurrencyKey: run.concurrencyKey ?? undefined,
+        timestamp: Date.now(),
+      },
+    });
+  }
+
+  async #continueRun(
+    run: TaskRun,
+    env: MinimalAuthenticatedEnvironment,
+    tx?: PrismaClientOrTransaction
+  ) {
+    const prisma = tx ?? this.prisma;
+
+    await this.redlock.using([run.id], 5000, async (signal) => {
+      await prisma.taskRunExecutionSnapshot.create({
+        data: {
+          runId: run.id,
+          engine: "V2",
+          executionStatus: "QUEUED",
+          description: "Run was QUEUED",
+          runStatus: run.status,
+        },
+      });
+
+      await this.runQueue.enqueueMessage({
+        env,
+        masterQueue: run.masterQueue,
+        message: {
+          runId: run.id,
+          taskIdentifier: run.taskIdentifier,
+          orgId: env.organization.id,
+          projectId: env.project.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          queue: run.queue,
+          concurrencyKey: run.concurrencyKey ?? undefined,
+          timestamp: Date.now(),
+        },
+      });
+    });
+  }
 
   //MARK: - Waitpoints
   async #createRunAssociatedWaitpoint(
@@ -573,7 +604,7 @@ export class RunEngine {
 
         // 5. Continue the runs that have no more waitpoints
         for (const run of taskRunsToResume) {
-          await this.enqueueRun(run, run.runtimeEnvironment, tx);
+          await this.#continueRun(run, run.runtimeEnvironment, tx);
         }
       },
       (error) => {
@@ -662,18 +693,24 @@ export class RunEngine {
       return;
     }
 
+    this.logger.log("RunEngine.#handleStalledSnapshot() handling stalled snapshot", {
+      runId,
+      snapshot: latestSnapshot,
+    });
+
     switch (latestSnapshot.executionStatus) {
       case "BLOCKED_BY_WAITPOINTS": {
         //we need to check if the waitpoints are still blocking the run
         throw new Error("Not implemented BLOCKED_BY_WAITPOINTS");
       }
       case "DEQUEUED_FOR_EXECUTION": {
+        //todo probably put it back in the queue
         //we need to check if the run is still dequeued
         throw new Error("Not implemented DEQUEUED_FOR_EXECUTION");
       }
-      case "ENQUEUED": {
-        //we need to check if the run is still enqueued
-        throw new Error("Not implemented ENQUEUED");
+      case "QUEUED": {
+        //we need to check if the run is still QUEUED
+        throw new Error("Not implemented QUEUED");
       }
       case "EXECUTING": {
         //we need to check if the run is still executing
