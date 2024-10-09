@@ -57,6 +57,17 @@ describe("RunEngine", () => {
       expect(runFromDb).toBeDefined();
       expect(runFromDb?.id).toBe(run.id);
 
+      const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
+        where: {
+          runId: run.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+      expect(snapshot).toBeDefined();
+      expect(snapshot?.executionStatus).toBe("ENQUEUED");
+
       //check the waitpoint is created
       const runWaitpoint = await prisma.waitpoint.findMany({
         where: {
@@ -77,11 +88,9 @@ describe("RunEngine", () => {
       expect(envConcurrencyBefore).toBe(0);
 
       //dequeue the run
-      const dequeued = await engine.runQueue.dequeueMessageInSharedQueue(
-        "test_12345",
-        run.masterQueue
-      );
-      expect(dequeued?.messageId).toBe(run.id);
+      const dequeued = await engine.dequeueFromMasterQueue("test_12345", run.masterQueue);
+      expect(dequeued?.runId).toBe(run.id);
+      expect(dequeued?.executionStatus).toBe("DEQUEUED_FOR_EXECUTION");
 
       const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
         authenticatedEnvironment

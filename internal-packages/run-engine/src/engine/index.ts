@@ -71,6 +71,12 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 5000,
   },
+  heartbeatSnapshot: {
+    schema: z.object({
+      snapshotId: z.string(),
+    }),
+    visibilityTimeoutMs: 5000,
+  },
   expireRun: {
     schema: z.object({
       runId: z.string(),
@@ -123,6 +129,7 @@ export class RunEngine {
         waitpointCompleteDateTime: async ({ payload }) => {
           await this.#completeWaitpoint(payload.waitpointId);
         },
+        heartbeatSnapshot: async ({ payload }) => {},
         expireRun: async ({ payload }) => {
           await this.expireRun(payload.runId);
         },
@@ -230,11 +237,6 @@ export class RunEngine {
     });
 
     await this.redlock.using([taskRun.id], 5000, async (signal) => {
-      //todo add this in some places throughout this code
-      if (signal.aborted) {
-        throw signal.error;
-      }
-
       //create associated waitpoint (this completes when the run completes)
       const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
         projectId: environment.project.id,
@@ -249,6 +251,11 @@ export class RunEngine {
           runId: parentTaskRunId,
           waitpoint: associatedWaitpoint,
         });
+      }
+
+      //Make sure lock extension succeeded
+      if (signal.aborted) {
+        throw signal.error;
       }
 
       if (queue) {
@@ -320,6 +327,11 @@ export class RunEngine {
         }
       }
 
+      //Make sure lock extension succeeded
+      if (signal.aborted) {
+        throw signal.error;
+      }
+
       await this.enqueueRun(taskRun, environment, prisma);
     });
 
@@ -340,6 +352,18 @@ export class RunEngine {
     env: MinimalAuthenticatedEnvironment,
     tx?: PrismaClientOrTransaction
   ) {
+    const prisma = tx ?? this.prisma;
+
+    await prisma.taskRunExecutionSnapshot.create({
+      data: {
+        runId: run.id,
+        engine: "V2",
+        executionStatus: "ENQUEUED",
+        description: "Run was enqueued",
+        runStatus: run.status,
+      },
+    });
+
     await this.runQueue.enqueueMessage({
       env,
       masterQueue: run.masterQueue,
@@ -359,11 +383,54 @@ export class RunEngine {
     //todo update the TaskRunExecutionSnapshot
   }
 
-  async dequeueRun(consumerId: string, masterQueue: string) {
+  /**
+   * Gets a fairly selected run from the specified master queue, returning the information required to run it.
+   * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
+   * @param masterQueue: The shared queue to pull from, can be an individual environment (for dev)
+   * @returns
+   */
+  async dequeueFromMasterQueue(consumerId: string, masterQueue: string) {
     const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
-    //todo update the TaskRunExecutionSnapshot
-    //todo update the TaskRun status?
-    return message;
+    if (!message) {
+      return null;
+    }
+
+    const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
+      const snapshot = await this.#getLatestExecutionSnapshot(message.messageId);
+      if (!snapshot) {
+        throw new Error(
+          `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
+        );
+      }
+
+      if (!["ENQUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
+        throw new Error(
+          `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
+        );
+      }
+
+      //create new snapshot
+      const newSnapshot = await this.prisma.taskRunExecutionSnapshot.create({
+        data: {
+          runId: message.messageId,
+          engine: "V2",
+          executionStatus: "DEQUEUED_FOR_EXECUTION",
+          description: "Run was dequeued for execution",
+          runStatus: snapshot.runStatus,
+        },
+      });
+
+      //todo create heartbeat, associated with this snapshot
+      await this.#startHeartbeating({
+        runId: message.messageId,
+        snapshotId: newSnapshot.id,
+        intervalSeconds: 60,
+      });
+
+      return newSnapshot;
+    });
+
+    return newSnapshot;
   }
 
   /** We want to actually execute the run, this could be a continuation of a previous execution.
@@ -426,11 +493,11 @@ export class RunEngine {
   ) {
     //todo it would be better if we didn't remove from the queue, because this removes the payload
     //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
-    //todo
-    // await this.runQueue.acknowledgeMessage(orgId, runId);
 
     //todo release concurrency and make sure the run isn't in the queue
     // await this.runQueue.blockMessage(orgId, runId);
+
+    throw new Error("Not implemented #blockRunWithWaitpoint");
 
     return tx.taskRunWaitpoint.create({
       data: {
@@ -511,6 +578,79 @@ export class RunEngine {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
     );
+  }
+
+  //MARK: - TaskRunExecutionSnapshots
+  async #getLatestExecutionSnapshot(runId: string) {
+    return this.prisma.taskRunExecutionSnapshot.findFirst({
+      where: { runId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  //MARK: - Heartbeat
+  async #startHeartbeating({
+    runId,
+    snapshotId,
+    intervalSeconds,
+  }: {
+    runId: string;
+    snapshotId: string;
+    intervalSeconds: number;
+  }) {
+    await this.worker.enqueue({
+      id: `heartbeatSnapshot.${snapshotId}`,
+      job: "heartbeatSnapshot",
+      payload: { snapshotId, runId },
+      availableAt: new Date(Date.now() + intervalSeconds * 1000),
+    });
+  }
+
+  async #extendHeartbeatTimeout({
+    runId,
+    snapshotId,
+    intervalSeconds,
+  }: {
+    runId: string;
+    snapshotId: string;
+    intervalSeconds: number;
+  }) {
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(runId);
+    if (latestSnapshot?.id !== snapshotId) {
+      this.logger.log(
+        "RunEngine.#extendHeartbeatTimeout() no longer the latest snapshot, stopping the heartbeat.",
+        {
+          runId,
+          snapshotId,
+          latestSnapshot: latestSnapshot,
+        }
+      );
+
+      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+      return;
+    }
+
+    //it's the same as creating a new heartbeat
+    await this.#startHeartbeating({ runId, snapshotId, intervalSeconds });
+  }
+
+  async #handleStalledSnapshot({ runId, snapshotId }: { runId: string; snapshotId: string }) {
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(runId);
+    if (latestSnapshot?.id !== snapshotId) {
+      this.logger.log(
+        "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
+        {
+          runId,
+          snapshotId,
+          latestSnapshot: latestSnapshot,
+        }
+      );
+
+      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+      return;
+    }
+
+    //todo we need to return the run to the queue in the correct state.
   }
 }
 

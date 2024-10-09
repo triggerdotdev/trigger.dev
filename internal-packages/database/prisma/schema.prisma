@@ -1866,7 +1866,7 @@ enum RunEngineVersion {
 /// Used by the RunEngine during TaskRun execution
 /// It has the required information to transactionally progress a run through states,
 /// and prevent side effects like heartbeats failing a run that has progressed.
-/// It is optimised for performance and is designed to be cleared at some point, 
+/// It is optimised for performance and is designed to be cleared at some point,
 /// so there are no cascading relationships to other models.
 model TaskRunExecutionSnapshot {
   id String @id @default(cuid())
@@ -1904,6 +1904,7 @@ model TaskRunExecutionSnapshot {
 
 enum TaskRunExecutionStatus {
   RUN_CREATED
+  ENQUEUED
   DEQUEUED_FOR_EXECUTION
   EXECUTING
   BLOCKED_BY_WAITPOINTS
@@ -1924,7 +1925,7 @@ model Waitpoint {
   idempotencyKey             String
   userProvidedIdempotencyKey Boolean
 
-  /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field. 
+  /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field.
   /// This is a workaround because Prisma doesn't support partial indexes.
   inactiveIdempotencyKey String?
 
@@ -2011,7 +2012,7 @@ model TaskRunDependency {
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId String?                 @unique
 
-  /// An attempt that is dependent on this task run. 
+  /// An attempt that is dependent on this task run.
   dependentAttempt   TaskRunAttempt? @relation(fields: [dependentAttemptId], references: [id])
   dependentAttemptId String?
 
