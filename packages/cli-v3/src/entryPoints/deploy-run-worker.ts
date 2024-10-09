@@ -11,11 +11,11 @@ import {
   TaskRunExecution,
   WorkerToExecutorMessageCatalog,
   TriggerConfig,
-  TriggerTracer,
   WorkerManifest,
   ExecutorToWorkerMessageCatalog,
   timeout,
 } from "@trigger.dev/core/v3";
+import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
 import {
   ConsoleInterceptor,

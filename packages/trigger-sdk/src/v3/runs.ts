@@ -31,6 +31,9 @@ export type RetrieveRunResult<TPayload = any, TOutput = any> = Prettify<
   }
 >;
 
+export type { RunShape };
+export type AnyRunShape = RunShape<any, any>;
+
 export const runs = {
   replay: replayRun,
   cancel: cancelRun,
@@ -332,13 +335,12 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   );
 }
 
-async function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
-  runId: RunId<TRunId>,
-  callback?: RunStreamCallback<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]>
-): Promise<RunSubscription<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]>> {
+function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
+  runId: RunId<TRunId>
+): RunSubscription<InferRunId<TRunId>["payload"], InferRunId<TRunId>["output"]> {
   const $runId = typeof runId === "string" ? runId : runId.id;
 
   const apiClient = apiClientManager.clientOrThrow();
 
-  return apiClient.subscribeToRunChanges($runId, callback);
+  return apiClient.subscribeToRunChanges($runId);
 }

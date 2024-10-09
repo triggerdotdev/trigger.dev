@@ -14,7 +14,6 @@ export type { Context };
 import type { Context } from "./shared.js";
 
 import type { ApiClientConfiguration } from "@trigger.dev/core/v3";
-import { apiClientManager } from "@trigger.dev/core/v3";
 
 export type { ApiClientConfiguration };
 
@@ -33,7 +32,7 @@ export {
   type LogLevel,
 } from "@trigger.dev/core/v3";
 
-export { runs } from "./runs.js";
+export { runs, type RunShape, type AnyRunShape } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export * as envvars from "./envvars.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";

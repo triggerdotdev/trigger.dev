@@ -535,14 +535,10 @@ export class ApiClient {
     );
   }
 
-  async subscribeToRunChanges<TPayload = any, TOutput = any>(
-    runId: string,
-    callback?: RunStreamCallback<TPayload, TOutput>
-  ) {
+  subscribeToRunChanges<TPayload = any, TOutput = any>(runId: string) {
     return runShapeStream<TPayload, TOutput>(
       `${this.baseUrl}/realtime/v1/runs/${runId}`,
-      this.fetchClient,
-      callback
+      this.fetchClient
     );
   }
 

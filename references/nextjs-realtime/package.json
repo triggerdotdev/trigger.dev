@@ -1,0 +1,36 @@
+{
+  "name": "references-nextjs-realtime",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "dev:trigger": "trigger dev"
+  },
+  "dependencies": {
+    "@radix-ui/react-icons": "^1.3.0",
+    "@radix-ui/react-scroll-area": "^1.2.0",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@trigger.dev/sdk": "workspace:^3",
+    "@trigger.dev/core": "workspace:^3",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.451.0",
+    "next": "14.2.15",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwind-merge": "^2.5.3",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "trigger.dev": "workspace:^3",
+    "typescript": "^5"
+  }
+}

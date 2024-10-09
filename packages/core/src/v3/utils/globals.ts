@@ -7,7 +7,6 @@ import { TaskContext } from "../taskContext/types.js";
 import { TimeoutManager } from "../timeout/types.js";
 import { UsageManager } from "../usage/types.js";
 import { _globalThis } from "./platform.js";
-import { SafeAsyncLocalStorage } from "./safeAsyncLocalStorage.js";
 
 const GLOBAL_TRIGGER_DOT_DEV_KEY = Symbol.for(`dev.trigger.ts.api`);
 
@@ -56,7 +55,7 @@ type TriggerDotDevGlobalAPI = {
   usage?: UsageManager;
   ["task-catalog"]?: TaskCatalog;
   ["task-context"]?: TaskContext;
-  ["api-client"]?: SafeAsyncLocalStorage<ApiClientConfiguration>;
+  ["api-client"]?: ApiClientConfiguration;
   ["run-metadata"]?: Record<string, DeserializedJson>;
   ["timeout"]?: TimeoutManager;
 };
