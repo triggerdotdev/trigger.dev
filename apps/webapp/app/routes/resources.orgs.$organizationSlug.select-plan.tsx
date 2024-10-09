@@ -442,9 +442,7 @@ export function TierFree({
                     <Button
                       variant="danger/medium"
                       disabled={isLoading}
-                      LeadingIcon={
-                        isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
-                      }
+                      LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
                       type="submit"
                     >
                       Downgrade plan
@@ -556,9 +554,7 @@ export function TierHobby({
                 <Button
                   variant="tertiary/medium"
                   disabled={isLoading}
-                  LeadingIcon={
-                    isLoading && "submitting" ? () => <Spinner color="white" /> : undefined
-                  }
+                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
                   form="subscribe-hobby"
                 >
                   {`Downgrade to ${plan.title}`}
