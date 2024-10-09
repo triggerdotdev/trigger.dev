@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.0.12
+
+### Patch Changes
+
+- Prettier and more specific errors with links to docs ([#1387](https://github.com/triggerdotdev/trigger.dev/pull/1387))
+- Improvements to structured logger and conditional payload logging ([#1389](https://github.com/triggerdotdev/trigger.dev/pull/1389))
+- Correctly display errors on attempts and during indexing ([#1397](https://github.com/triggerdotdev/trigger.dev/pull/1397))
+
 ## 3.0.11
 
 ## 3.0.10
