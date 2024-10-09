@@ -285,7 +285,8 @@
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
-        }
+        },
+        "guides/frameworks/webhooks"
       ]
     },
     {

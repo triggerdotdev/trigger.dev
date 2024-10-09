@@ -1,0 +1,143 @@
+---
+title: "Setting up webhooks"
+sidebarTitle: "Webhooks"
+description: "Guides and examples for using webhooks with Trigger.dev."
+icon: "webhook"
+---
+
+## Overview
+
+Webhooks are a way to send and receive events from external services. Triggering tasks using webhooks allow you to add real-time, event driven functionality to your app.
+
+A webhook handler is code that executes in response to an event. They can be endpoints in your framework's routing which will be triggered by an external service, for example.
+
+In this guide you'll learn how to set up webhook handlers and trigger tasks from them using popular frameworks.
+
+## Frameworks featured in this guide
+
+- [Next.js](/guides/frameworks/webhooks#nextjs-webhook-configuration), pages or app router
+- [Remix](/guides/frameworks/webhooks#remix-webhook-configuration)
+
+<Note>
+  If you would like to see a webhook guide for your framework, please request it in our [Discord
+  server](https://trigger.dev/discord).
+</Note>
+
+## Next.js webhook configuration
+
+### Prerequisites
+
+- [A Next.js project, set up with Trigger.dev](/guides/frameworks/nextjs)
+- [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
+
+### Adding a webhook handler
+
+The webhook handler will be an API route. The location of the route file will be different depending on whether you are using the pages router or the app router.
+
+- **Pages router** - create a new file `pages/api/webhook-handler.ts` or `pages/api/webhook-hander.js`.
+
+- **App router** - create a new file in the `app/api/webhook-handler/route.ts` or `app/api/webhook-handler/route.js`.
+
+The handler code will be the same for both routers. In this guide will use the 'Hello World' task as the example.
+
+In your new file, add the following code:
+
+```ts
+import type { helloWorldTask } from "@/trigger/example";
+import { tasks } from "@trigger.dev/sdk/v3";
+import { NextResponse } from "next/server";
+
+export async function POST(req: Request) {
+  try {
+    // Parse the webhook payload
+    const webhookData = await req.json();
+
+    // Trigger the helloWorldTask with the webhook data as the payload
+    const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", webhookData);
+
+    return NextResponse.json({ result: handle, ok: true });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ message: "something went wrong", ok: false }, { status: 500 });
+  }
+}
+```
+
+### Triggering a task locally
+
+Now that you have a webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
+
+<Steps>
+
+<Step title="Run your Next.js app and the Trigger.dev dev server">
+
+First, run your Next.js app.
+
+<CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash pnpm
+    pnpm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+</CodeGroup>
+
+Then, open up a second terminal window and start the Trigger.dev dev server:
+
+<CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest dev
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest dev
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@latest dev
+    ```
+
+    </CodeGroup>
+
+</Step>
+
+<Step title="Trigger the webhook with some dummy data">
+
+To send a POST request to your webhook handler, open up a terminal window on your local machine and run the following command:
+
+<Tip>
+  If `http://localhost:3000` isn't the URL of your locally running Next.js app, replace the URL with
+  that URL instead.
+</Tip>
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"Name": "John Doe", "Age": "87"}' http://localhost:3000/api/webhook-handler
+```
+
+This will send a POST request to your webhook handler, with a JSON payload.
+
+</Step>
+
+<Step title="Check the task ran successfully">
+
+After running the command, you should see a successful dev run and a 200 response in your terminals.
+
+If you now go to your [Trigger.dev dashboard](https://cloud.trigger.dev), you should also see a successful run for the 'Hello World' task, with the payload you sent, in this case; `{"name": "John Doe", "age": "87"}`.
+
+</Step>
+
+</Steps>
+
+## Remix webhook configuration
+
+### Prerequisites
+
+- [A Remix project, set up with Trigger.dev](/guides/frameworks/remix)
