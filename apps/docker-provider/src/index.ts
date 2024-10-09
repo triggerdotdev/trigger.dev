@@ -20,7 +20,7 @@ const OTEL_EXPORTER_OTLP_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://0.0.0.0:4318";
 
 const FORCE_CHECKPOINT_SIMULATION = ["1", "true"].includes(
-  process.env.FORCE_CHECKPOINT_SIMULATION ?? "true"
+  process.env.FORCE_CHECKPOINT_SIMULATION ?? "false"
 );
 
 const logger = new SimpleLogger(`[${MACHINE_NAME}]`);

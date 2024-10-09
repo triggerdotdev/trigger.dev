@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chalkError, chalkWarning, cliLink } from "../utilities/cliOutput.js";
 import { createTempDir } from "../utilities/fileSystem.js";
-import { docs, getInTouch } from "../utilities/links.js";
+import { links } from "@trigger.dev/core/v3";
 
 export type WarningsCheckReturn =
   | {
@@ -46,27 +46,27 @@ export function checkLogsForErrors(logs: string) {
   const errors: LogParserOptions = [
     {
       regex: /Error: Provided --schema at (?<schema>.*) doesn't exist/,
-      message: `Prisma generate failed to find the specified schema at "$schema".\nDid you include it in config.additionalFiles? ${cliLink(
-        "Config docs",
-        docs.config.prisma
+      message: `Prisma generate failed to find the specified schema at "$schema".\nDid you configure the Prisma extension correctly? ${cliLink(
+        "Extension docs",
+        links.docs.config.prisma
       )}`,
     },
     {
       regex: /@prisma\/client did not initialize yet/,
-      message: `Prisma client not initialized yet.\nDid you forget to add the postinstall script? ${cliLink(
-        "Config docs",
-        docs.config.prisma
+      message: `Prisma client not initialized yet.\nDid you configure the Prisma extension? ${cliLink(
+        "Extension docs",
+        links.docs.config.prisma
       )}`,
     },
     {
       regex: /sh: 1: (?<packageOrBinary>.*): not found/,
-      message: `$packageOrBinary not found\n\nIf it's a package: Include it in ${cliLink(
-        "config.additionalPackages",
-        docs.config.prisma
-      )}\nIf it's a binary:  Please ${cliLink(
-        "get in touch",
-        getInTouch
-      )} and we'll see what we can do!`,
+      message: `$packageOrBinary not found\n\nIf it's a package: Use the ${cliLink(
+        "additionalPackages extension",
+        links.docs.config.additionalPackages
+      )}\nIf it's a binary:  Check the other ${cliLink(
+        "build extensions",
+        links.docs.config.extensions
+      )}`,
     },
   ];
 
@@ -101,10 +101,10 @@ export function checkLogsForWarnings(logs: string): WarningsCheckReturn {
   const warnings: LogParserOptions = [
     {
       regex: /prisma:warn We could not find your Prisma schema/,
-      message: `Prisma generate failed to find the default schema. Did you include it in config.additionalFiles? ${cliLink(
-        "Config docs",
-        docs.config.prisma
-      )}\nCustom schema paths require a postinstall script like this: \`prisma generate --schema=./custom/path/to/schema.prisma\``,
+      message: `Prisma generate failed to find the default schema. Did you configure the Prisma extension correctly? ${cliLink(
+        "Extension docs",
+        links.docs.config.prisma
+      )}`,
       shouldFail: true,
     },
   ];
