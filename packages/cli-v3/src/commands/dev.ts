@@ -27,7 +27,7 @@ export function configureDevCommand(program: Command) {
     program
       .command("dev")
       .description("Run your Trigger.dev tasks locally")
-      .option("-c, --config <config file>", "The name of the config file, found at [path].")
+      .option("-c, --config <config file>", "The name of the config file")
       .option(
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
@@ -38,7 +38,7 @@ export function configureDevCommand(program: Command) {
       )
       .option("--debug-otel", "Enable OpenTelemetry debugging")
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
-  ).action(async (_, options) => {
+  ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
     });
