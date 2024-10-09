@@ -395,6 +395,13 @@ export function exceptionEventEnhancer(
       }
       break;
     }
+    case TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED:
+    case TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED: {
+      return {
+        ...exception,
+        ...prettyInternalErrors[exception.type],
+      };
+    }
   }
 
   return exception;
