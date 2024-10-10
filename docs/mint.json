@@ -293,7 +293,8 @@
           "pages": [
             "guides/frameworks/webhooks-guides-overview",
             "guides/frameworks/nextjs-webhooks",
-            "guides/frameworks/remix-webhooks"
+            "guides/frameworks/remix-webhooks",
+            "guides/examples/stripe-webhook"
           ]
         }
       ]
@@ -308,7 +309,6 @@
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",
         "guides/examples/sharp-image-processing",
-        "guides/examples/stripe-webhook",
         "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",
         "guides/examples/react-pdf",
