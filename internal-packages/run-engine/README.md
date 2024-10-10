@@ -217,6 +217,13 @@ export const myTask = task({
 
 It's very important that a run can only be acted on by one process at a time. We lock runs using RedLock while they're being mutated. This prevents some network-related race conditions like the timing of checkpoints and heartbeats permanently hanging runs.
 
+# Sending messages to the worker
+
+Sending messages to the worker is challenging because we many servers and we're going to have many workers. We need to make sure that the message is sent to the correct worker.
+
+## #continueRun
+When all waitpoints are finished, we need to continue a run. Sometimes they're still running in the cluster.
+
 # Legacy system
 
 These are all the TaskRun mutations happening right now:
