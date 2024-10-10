@@ -940,36 +940,6 @@ export class RunQueue {
     );
   }
 
-  async #callRebalanceParentQueueChild({
-    parentQueue,
-    childQueue,
-    currentScore,
-  }: {
-    parentQueue: string;
-    childQueue: string;
-    currentScore: string;
-  }) {
-    const rebalanceResult = await this.redis.rebalanceParentQueueChild(
-      childQueue,
-      parentQueue,
-      childQueue,
-      currentScore
-    );
-
-    if (rebalanceResult) {
-      this.logger.debug("Rebalanced parent queue child", {
-        parentQueue,
-        childQueue,
-        currentScore,
-        rebalanceResult,
-        operation: "rebalanceParentQueueChild",
-        service: this.name,
-      });
-    }
-
-    return rebalanceResult;
-  }
-
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
       numberOfKeys: 7,
@@ -1085,7 +1055,7 @@ return {messageId, messageScore, messagePayload} -- Return message details
     this.redis.defineCommand("acknowledgeMessage", {
       numberOfKeys: 7,
       lua: `
--- Keys: 
+-- Keys:
 local parentQueue = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueue = KEYS[3]
@@ -1131,7 +1101,7 @@ local envConcurrencyKey = KEYS[5]
 local projectConcurrencyKey = KEYS[6]
 local taskConcurrencyKey = KEYS[7]
 
--- Args: 
+-- Args:
 local messageId = ARGV[1]
 local messageScore = tonumber(ARGV[2])
 
@@ -1200,7 +1170,7 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, orgIsEnabled } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, orgIsEnabled }
       `,
     });
 
@@ -1213,7 +1183,7 @@ local currentEnvConcurrencyKey = KEYS[2]
 local concurrencyLimitKey = KEYS[3]
 local envConcurrencyLimitKey = KEYS[4]
 
--- Args 
+-- Args
 local defaultEnvConcurrencyLimit = tonumber(ARGV[1])
 
 local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrencyKey) or '0')
@@ -1223,7 +1193,7 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, true } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, true }
       `,
     });
 
