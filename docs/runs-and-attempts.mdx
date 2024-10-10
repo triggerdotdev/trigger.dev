@@ -1,9 +1,9 @@
 ---
 title: "Runs & Attempts"
-description: "Understanding the lifecycle of task execution in trigger.dev v3"
+description: "Understanding the lifecycle of task execution in Trigger.dev"
 ---
 
-In trigger.dev v3, the concepts of Runs and Attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a Run can go through during its lifecycle.
+In Trigger.dev, the concepts of Runs and Attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a Run can go through during its lifecycle.
 
 ## What are Runs?
 
@@ -16,31 +16,43 @@ A Run is created when you trigger a task (e.g calling `yourTask.trigger({ foo: "
 
 ## The Run Lifecycle
 
-A Run can go through various states during its lifecycle. The following diagrams illustrate the possible state transitions:
+A Run can go through **various** states during its lifecycle. The following diagrams illustrate the possible state transitions:
 
-[Insert the first image here]
+![Run Lifecycle](/images/run-lifecycle.png)
 
 ### Initial States
 
-1. **Waiting for deploy**: If a task is triggered before it has been deployed, the Run enters this state and waits for the task to be deployed.
-2. **Delayed**: When a Run is triggered with a delay, it enters this state until the specified delay period has passed.
-3. **Queued**: The Run is ready to be executed and is waiting in the queue.
+<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**: If a task is triggered before it has been deployed, the Run enters this state and waits for the task to be deployed.
+
+<Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a Run is triggered with a delay, it enters this state until the specified delay period has passed.
+
+<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The Run is ready to be executed and is waiting in the queue.
 
 ### Execution States
 
-4. **Executing**: The task is currently running.
-5. **Waiting to resume**: The task is paused and waiting to be resumed.
-6. **Reattempting**: The task has failed and is being retried.
+<Icon icon="spinner-third" iconType="duotone" color="#3B82F6" size={17} /> **Executing**: The task is currently running.
+
+<Icon icon="arrows-rotate" iconType="solid" color="#3B82F6" size={17} /> **Reattempting**: The task has failed and is being retried.
+
+<Icon icon="snowflake" iconType="solid" color="#68BAF2" size={17} /> **Frozen**: Task has been frozen and is waiting to be resumed.
 
 ### Final States
 
-7. **Completed**: The task has successfully finished execution.
-8. **Failed**: The task has failed to complete successfully.
-9. **Crashed**: The worker process crashed during execution (likely due to an Out of Memory error).
-10. **Expired**: The Run's Time-to-Live (TTL) has passed before it could start executing.
-11. **System failure**: An unrecoverable system error has occurred.
-12. **Canceled**: The Run was manually canceled by the user.
-13. **Interrupted**: In development mode, when the CLI is disconnected.
+<Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully finished execution.
+
+<Icon icon="ban" iconType="solid" color="#878C99" size={17} /> **Canceled**: The Run was manually canceled by the user.
+
+<Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed to complete successfully.
+
+<Icon icon="alarm-exclamation" iconType="solid" color="#E11D48" size={17} /> **Timed out**: Task has failed because it exceeded its `maxDuration`.
+
+<Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed during execution (likely due to an Out of Memory error).
+
+<Icon icon="bolt-slash" iconType="solid" color="#E11D48" size={17} /> **Interrupted**: In development mode, when the CLI is disconnected.
+
+<Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system error has occurred.
+
+<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The Run's Time-to-Live (TTL) has passed before it could start executing.
 
 [Insert the second and third images here]
 
@@ -73,8 +85,8 @@ When triggering a task, you can provide an idempotency key to ensure the task is
 yourTask.trigger({ foo: "bar" }, { idempotencyKey: "unique-key" });
 ```
 
-    •	If a Run with the same idempotency key is already in progress, the new trigger will be ignored.
-    •	If the Run has already finished, the previous output or error will be returned.
+- If a Run with the same idempotency key is already in progress, the new trigger will be ignored.
+- If the Run has already finished, the previous output or error will be returned.
 
 ## Canceling Runs
 
