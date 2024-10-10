@@ -53,6 +53,7 @@ import {
   ListRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import { generateJWT } from "../jwt.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -167,7 +168,26 @@ export class ApiClient {
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
-    );
+    )
+      .withResponse()
+      .then(async ({ response, data }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            permissions: [data.id],
+          },
+          expirationTime: "1h",
+        });
+
+        return {
+          ...data,
+          jwt,
+        };
+      });
   }
 
   batchTriggerTask(
@@ -187,7 +207,26 @@ export class ApiClient {
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
-    );
+    )
+      .withResponse()
+      .then(async ({ response, data }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            permissions: [data.batchId],
+          },
+          expirationTime: "1h",
+        });
+
+        return {
+          ...data,
+          jwt,
+        };
+      });
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
@@ -545,7 +584,20 @@ export class ApiClient {
   subscribeToRunChanges<TPayload = any, TOutput = any>(runId: string) {
     return runShapeStream<TPayload, TOutput>(
       `${this.baseUrl}/realtime/v1/runs/${runId}`,
-      this.fetchClient
+      this.fetchClient,
+      {
+        closeOnComplete: true,
+      }
+    );
+  }
+
+  subscribeToBatchChanges<TPayload = any, TOutput = any>(batchId: string) {
+    return runShapeStream<TPayload, TOutput>(
+      `${this.baseUrl}/realtime/v1/batches/${batchId}`,
+      this.fetchClient,
+      {
+        closeOnComplete: false,
+      }
     );
   }
 

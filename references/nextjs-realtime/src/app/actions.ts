@@ -1,9 +1,9 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import type { exampleTask } from "@/trigger/example";
-import { auth, tasks } from "@trigger.dev/sdk/v3";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 
 export async function triggerExampleTask() {
@@ -11,11 +11,32 @@ export async function triggerExampleTask() {
     id: randomUUID(),
   });
 
-  const jwt = await auth.generateJWT({ permissions: [handle.id] });
-
   // Set JWT in a secure, HTTP-only cookie
-  cookies().set("run_jwt", jwt);
+  cookies().set("run_jwt", handle.jwt);
 
   // Redirect to the details page
   redirect(`/runs/${handle.id}`);
+}
+
+export async function batchTriggerExampleTask() {
+  console.log("Batch trigger example task");
+
+  const handle = await tasks.batchTrigger<typeof exampleTask>("example", [
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+    { payload: { id: randomUUID() } },
+  ]);
+
+  console.log("Setting the run JWT in a cookie", handle.jwt);
+
+  // Set JWT in a secure, HTTP-only cookie
+  cookies().set("run_jwt", handle.jwt);
+
+  // Redirect to the details page
+  redirect(`/batches/${handle.batchId}`);
 }

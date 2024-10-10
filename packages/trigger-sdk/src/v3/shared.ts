@@ -582,6 +582,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
   const handle = {
     batchId: response.batchId,
     runs: response.runs.map((id) => ({ id })),
+    jwt: response.jwt,
   };
 
   return handle as BatchRunHandle<TPayload, TOutput>;

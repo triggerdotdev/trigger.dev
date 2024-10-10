@@ -341,6 +341,7 @@ export type BrandedRun<T, P, O> = T & BrandRun<O, P>;
 export type RunHandle<TPayload, TOutput> = BrandedRun<
   {
     id: string;
+    jwt: string;
   },
   TPayload,
   TOutput
@@ -355,6 +356,7 @@ export type BatchRunHandle<TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
     runs: Array<RunHandle<TPayload, TOutput>>;
+    jwt: string;
   },
   TOutput,
   TPayload
