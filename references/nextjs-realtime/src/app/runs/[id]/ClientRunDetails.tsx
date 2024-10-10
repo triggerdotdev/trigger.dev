@@ -40,8 +40,6 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
 }
 
 export default function ClientRunDetails({ runId, jwt }: { runId: string; jwt: string }) {
-  console.log("ClientRunDetails", runId, jwt);
-
   return (
     <TriggerAuthContext.Provider value={{ accessToken: jwt, baseURL: "http://localhost:3030" }}>
       <RunDetailsWrapper runId={runId} />

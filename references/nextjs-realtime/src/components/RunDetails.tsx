@@ -1,8 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { AnyRunShape } from "@trigger.dev/sdk/v3";
-import { TaskRunShape } from "@trigger.dev/core/v3";
+import type { TaskRunShape } from "@trigger.dev/sdk/v3";
 import { exampleTask } from "@/trigger/example";
 
 function formatDate(date: Date | undefined) {
