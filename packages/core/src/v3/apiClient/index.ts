@@ -38,7 +38,13 @@ import {
   zodfetchOffsetLimitPage,
 } from "./core.js";
 import { ApiError } from "./errors.js";
-import { RunShape, runShapeStream, RunStreamCallback, RunSubscription } from "./runStream.js";
+import {
+  RunShape,
+  AnyRunShape,
+  runShapeStream,
+  RunStreamCallback,
+  RunSubscription,
+} from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -69,7 +75,7 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type { ApiRequestOptions };
-export type { RunShape, RunStreamCallback, RunSubscription };
+export type { RunShape, AnyRunShape, RunStreamCallback, RunSubscription };
 
 /**
  * Trigger.dev v3 API client
