@@ -425,9 +425,11 @@ export function TierFree({
             subscription.canceledAt === undefined ? (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
               <DialogTrigger asChild>
-                <Button variant="tertiary/large" fullWidth className="text-md my-6 font-medium">
-                  {`Downgrade to ${plan.title}`}
-                </Button>
+                <div className="my-6">
+                  <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                    {`Downgrade to ${plan.title}`}
+                  </Button>
+                </div>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <Form action={formAction} method="post" id="subscribe">
@@ -501,27 +503,33 @@ export function TierFree({
               </DialogContent>
             </Dialog>
           ) : (
-            <Button
-              variant="tertiary/large"
-              fullWidth
-              className="text-md my-6 font-medium"
-              disabled={
-                isLoading ||
-                subscription?.plan?.type === plan.type ||
-                subscription?.canceledAt !== undefined
-              }
-              LeadingIcon={
-                isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
-              }
-            >
-              {subscription?.plan === undefined
-                ? "Select plan"
-                : subscription.plan.type === "free"
-                ? "Current plan"
-                : subscription.canceledAt !== undefined
-                ? "Current plan"
-                : "Select plan"}
-            </Button>
+            <Form action={formAction} method="post" id="subscribe-verified" className="my-6">
+              <input type="hidden" name="type" value="free" />
+              <input type="hidden" name="callerPath" value={location.pathname} />
+              <Button
+                variant="tertiary/large"
+                type="submit"
+                form="subscribe-verified"
+                fullWidth
+                className="text-md font-medium"
+                disabled={
+                  isLoading ||
+                  subscription?.plan?.type === plan.type ||
+                  subscription?.canceledAt !== undefined
+                }
+                LeadingIcon={
+                  isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
+                }
+              >
+                {subscription?.plan === undefined
+                  ? "Select plan"
+                  : subscription.plan.type === "free"
+                  ? "Current plan"
+                  : subscription.canceledAt !== undefined
+                  ? "Current plan"
+                  : "Select plan"}
+              </Button>
+            </Form>
           )}
           <ul className="flex flex-col gap-2.5">
             <ConcurrentRuns limits={plan.limits} />
