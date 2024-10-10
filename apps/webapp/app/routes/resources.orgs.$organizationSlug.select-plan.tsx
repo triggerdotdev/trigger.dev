@@ -252,7 +252,7 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   showGithubVerificationBadge?: boolean;
-  periodEnd?: Date;
+  periodEnd: Date;
 };
 
 export function PricingPlans({
@@ -271,7 +271,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           showGithubVerificationBadge={showGithubVerificationBadge}
-          periodEnd={periodEnd ?? new Date()}
+          periodEnd={periodEnd}
         />
         <TierHobby
           plan={plans.hobby}
