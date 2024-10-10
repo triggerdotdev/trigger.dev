@@ -1,11 +1,11 @@
 "use client";
 
-import { type AnyRunShape } from "@trigger.dev/core/v3";
+import { AnyTask, TaskRunShape } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
 import { useApiClient } from "./useApiClient.js";
 
-export function useRun(runId: string) {
-  const [runShape, setRunShape] = useState<AnyRunShape | undefined>(undefined);
+export function useRun<TTask extends AnyTask>(runId: string) {
+  const [runShape, setRunShape] = useState<TaskRunShape<TTask> | undefined>(undefined);
   const [error, setError] = useState<Error | null>(null);
   const apiClient = useApiClient();
 
