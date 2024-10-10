@@ -54,6 +54,10 @@ function initializeSocketIOServerInstance() {
       username: env.REDIS_USERNAME,
       password: env.REDIS_PASSWORD,
       enableAutoPipelining: true,
+      // Force support for both IPv6 and IPv4, by default ioredis sets this to 4,
+      // only allowing IPv4 connections:
+      // https://github.com/redis/ioredis/issues/1576
+      family: 0,
       ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     });
     const subClient = pubClient.duplicate();
