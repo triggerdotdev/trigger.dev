@@ -37,11 +37,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const currentPlan = await getCurrentPlan(organization.id);
 
-  return typedjson({ ...plans, ...currentPlan, organizationSlug });
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  return typedjson({ ...plans, ...currentPlan, organizationSlug, periodEnd });
 }
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug } = useTypedLoaderData<typeof loader>();
+  const { plans, v3Subscription, organizationSlug, periodEnd } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <MainCenteredContainer className="flex max-w-[80rem] flex-col items-center gap-8 p-3">
@@ -52,6 +56,7 @@ export default function ChoosePlanPage() {
         organizationSlug={organizationSlug}
         hasPromotedPlan
         showGithubVerificationBadge
+        periodEnd={periodEnd}
       />
     </MainCenteredContainer>
   );
