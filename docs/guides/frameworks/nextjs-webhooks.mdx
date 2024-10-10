@@ -11,17 +11,41 @@ description: "Learn how to trigger a task from a webhook in a Next.js app."
 
 ## Adding the webhook handler
 
-The webhook handler in this guide will be an API route. The location of the route file will be different depending on whether you are using the Next.js pages router or the app router.
+The webhook handler in this guide will be an API route.
 
-- **Pages router** - create a new file `pages/api/webhook-handler.ts` or `pages/api/webhook-hander.js`.
+This will be different depending on whether you are using the Next.js pages router or the app router.
 
-- **App router** - create a new file in the `app/api/webhook-handler/route.ts` or `app/api/webhook-handler/route.js`.
+### Pages router: creating the webhook handler
 
-The handler code will be the same for both routers. In this guide will use the 'Hello World' task as the example.
+Create a new file `pages/api/webhook-handler.ts` or `pages/api/webhook-hander.js`.
 
 In your new file, add the following code:
 
-```ts
+```ts /pages/api/webhook-handler.ts
+import { helloWorldTask } from "@/trigger/example";
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { NextApiRequest, NextApiResponse } from "next";
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Parse the webhook payload
+  const payload = req.body;
+
+  // Trigger the helloWorldTask with the webhook data as the payload
+  await tasks.trigger<typeof helloWorldTask>("hello-world", payload);
+
+  res.status(200).json({ message: "OK" });
+}
+```
+
+This code will handle the webhook payload and trigger the 'Hello World' task.
+
+### App router: creating the webhook handler
+
+Create a new file in the `app/api/webhook-handler/route.ts` or `app/api/webhook-handler/route.js`.
+
+In your new file, add the following code:
+
+```ts /app/api/webhook-handler/route.ts
 import type { helloWorldTask } from "@/trigger/example";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { NextResponse } from "next/server";
@@ -41,7 +65,7 @@ This code will handle the webhook payload and trigger the 'Hello World' task.
 
 ## Triggering the task locally
 
-Now that you have a webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
+Now that you have your webhook handler set up, you can trigger the 'Hello World' task from it. We will do this locally using cURL.
 
 <Steps>
 
