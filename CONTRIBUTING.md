@@ -223,7 +223,7 @@ pnpm run db:studio
 
 ## Adding and running migrations
 
-1. Modify packages/database/prisma/schema.prisma file
+1. Modify internal-packages/database/prisma/schema.prisma file
 2. Change directory to the packages/database folder
 
    ```sh

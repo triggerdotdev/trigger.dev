@@ -1,4 +1,4 @@
-import { logger, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, task, timeout, usage, wait } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
 
 export const helloWorldTask = task({
@@ -40,5 +40,31 @@ export const childTask = task({
     if (Math.random() > 0.5) {
       throw new Error("Random error at end");
     }
+  },
+});
+
+export const maxDurationTask = task({
+  id: "max-duration",
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 1_000,
+    maxTimeoutInMs: 2_000,
+    factor: 1.4,
+  },
+  maxDuration: 5,
+  run: async (payload: { sleepFor: number }, { signal, ctx }) => {
+    await setTimeout(payload.sleepFor * 1000, { signal });
+  },
+});
+
+export const maxDurationParentTask = task({
+  id: "max-duration-parent",
+  run: async (payload: { sleepFor?: number; maxDuration?: number }, { ctx, signal }) => {
+    const result = await maxDurationTask.triggerAndWait(
+      { sleepFor: payload.sleepFor ?? 10 },
+      { maxDuration: timeout.None }
+    );
+
+    return result;
   },
 });

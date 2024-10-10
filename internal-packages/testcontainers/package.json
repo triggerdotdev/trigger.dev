@@ -1,0 +1,22 @@
+{
+  "name": "@internal/testcontainers",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@trigger.dev/database": "workspace:*",
+    "ioredis": "^5.3.2",
+    "typescript": "^4.8.4"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.13.1",
+    "@testcontainers/redis": "^10.13.1",
+    "testcontainers": "^10.13.1",
+    "vitest": "^1.4.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

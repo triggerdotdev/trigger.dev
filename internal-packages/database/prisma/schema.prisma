@@ -114,6 +114,9 @@ model Organization {
   /// This is deprecated and will be removed in the future
   maximumSchedulesLimit          Int @default(5)
 
+  maximumDevQueueSize      Int?
+  maximumDeployedQueueSize Int?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1631,6 +1634,8 @@ model BackgroundWorkerTask {
   retryConfig   Json?
   machineConfig Json?
 
+  maxDurationInSeconds Int?
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   @@unique([workerId, slug])
@@ -1766,6 +1771,8 @@ model TaskRun {
   /// Run error
   error Json?
 
+  maxDurationInSeconds Int?
+
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
@@ -1826,8 +1833,11 @@ enum TaskRunStatus {
   /// Task has crashed and won't be retried, most likely the worker ran out of resources, e.g. memory or storage
   CRASHED
 
-  // Task reached the ttl without being executed
+  /// Task reached the ttl without being executed
   EXPIRED
+
+  /// Task has been timed out when using maxDuration
+  TIMED_OUT
 }
 
 model TaskRunTag {
@@ -1859,7 +1869,7 @@ model TaskRunDependency {
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId String?                 @unique
 
-  /// An attempt that is dependent on this task run. 
+  /// An attempt that is dependent on this task run.
   dependentAttempt   TaskRunAttempt? @relation(fields: [dependentAttemptId], references: [id])
   dependentAttemptId String?
 

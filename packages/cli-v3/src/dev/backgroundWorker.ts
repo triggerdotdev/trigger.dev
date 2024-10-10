@@ -3,7 +3,6 @@ import {
   CreateBackgroundWorkerResponse,
   ServerBackgroundWorker,
   TaskRunBuiltInError,
-  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
@@ -14,13 +13,7 @@ import {
 import { Evt } from "evt";
 
 import { join } from "node:path";
-import {
-  CancelledProcessError,
-  CleanupProcessError,
-  SigKillTimeoutProcessError,
-  UnexpectedExitError,
-  getFriendlyErrorMessage,
-} from "@trigger.dev/core/v3/errors";
+import { SigKillTimeoutProcessError } from "@trigger.dev/core/v3/errors";
 import { TaskRunProcess, TaskRunProcessOptions } from "../executions/taskRunProcess.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { prettyError } from "../utilities/cliOutput.js";
@@ -319,9 +312,9 @@ export class BackgroundWorker {
     const processOptions: TaskRunProcessOptions = {
       payload,
       env: {
-        ...sanitizeEnvVars(this.params.env),
         // TODO: this needs the stripEmptyValues stuff too
         ...sanitizeEnvVars(payload.environment ?? {}),
+        ...sanitizeEnvVars(this.params.env),
         TRIGGER_WORKER_MANIFEST_PATH: this.workerManifestPath,
       },
       serverWorker: this.serverWorker,
@@ -490,7 +483,7 @@ export class BackgroundWorker {
       const error = result.error;
 
       if (error.type === "BUILT_IN_ERROR") {
-        const mappedError = await this.#correctError(error, payload.execution);
+        const mappedError = await this.#correctError(error);
 
         return {
           ...result,
@@ -500,61 +493,16 @@ export class BackgroundWorker {
 
       return result;
     } catch (e) {
-      if (e instanceof CancelledProcessError) {
-        return {
-          id: payload.execution.run.id,
-          ok: false,
-          retry: undefined,
-          error: {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
-          },
-        };
-      }
-
-      if (e instanceof CleanupProcessError) {
-        return {
-          id: payload.execution.run.id,
-          ok: false,
-          retry: undefined,
-          error: {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_EXECUTION_ABORTED,
-          },
-        };
-      }
-
-      if (e instanceof UnexpectedExitError) {
-        return {
-          id: payload.execution.run.id,
-          ok: false,
-          retry: undefined,
-          error: {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
-            message: getFriendlyErrorMessage(e.code, e.signal, e.stderr),
-            stackTrace: e.stderr,
-          },
-        };
-      }
-
       return {
         id: payload.execution.run.id,
         ok: false,
         retry: undefined,
-        error: {
-          type: "INTERNAL_ERROR",
-          code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
-          message: String(e),
-        },
+        error: TaskRunProcess.parseExecuteError(e),
       };
     }
   }
 
-  async #correctError(
-    error: TaskRunBuiltInError,
-    execution: TaskRunExecution
-  ): Promise<TaskRunBuiltInError> {
+  async #correctError(error: TaskRunBuiltInError): Promise<TaskRunBuiltInError> {
     return {
       ...error,
       stackTrace: correctErrorStackTrace(error.stackTrace, this.params.cwd),

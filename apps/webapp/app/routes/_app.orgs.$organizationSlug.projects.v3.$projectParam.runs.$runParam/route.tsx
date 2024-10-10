@@ -80,6 +80,7 @@ import {
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.v3.$projectParam.runs.$runParam.spans.$spanParam/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
+import { getImpersonationId } from "~/services/impersonation.server";
 
 const resizableSettings = {
   parent: {
@@ -115,12 +116,14 @@ type TraceEvent = NonNullable<SerializeFrom<typeof loader>["trace"]>["events"][0
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
+  const impersonationId = await getImpersonationId(request);
   const { projectParam, organizationSlug, runParam } = v3RunParamsSchema.parse(params);
 
   const presenter = new RunPresenter();
   const result = await presenter.call({
     userId,
     organizationSlug,
+    showDeletedLogs: !!impersonationId,
     projectSlug: projectParam,
     runFriendlyId: runParam,
   });

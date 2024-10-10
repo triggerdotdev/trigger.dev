@@ -60,6 +60,13 @@ export class SimpleStructuredLogger implements StructuredLogger {
     this.#structuredLog(console.debug, message, "debug", ...args);
   }
 
+  addFields(fields: Record<string, unknown>) {
+    this.fields = {
+      ...this.fields,
+      ...fields,
+    };
+  }
+
   #structuredLog(
     loggerFunction: (message: string, ...args: any[]) => void,
     message: string,
@@ -67,12 +74,12 @@ export class SimpleStructuredLogger implements StructuredLogger {
     ...args: StructuredArgs
   ) {
     const structuredLog = {
-      ...(args.length === 1 ? args[0] : args),
-      ...this.fields,
       timestamp: new Date(),
-      name: this.name,
       message,
-      level,
+      $name: this.name,
+      $level: level,
+      ...this.fields,
+      ...(args.length === 1 ? args[0] : args),
     };
 
     loggerFunction(JSON.stringify(structuredLog));

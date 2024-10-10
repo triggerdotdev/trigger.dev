@@ -270,6 +270,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "EXPIRED": {
         return "EXPIRED";
       }
+      case "TIMED_OUT": {
+        return "TIMED_OUT";
+      }
       default: {
         assertNever(status);
       }

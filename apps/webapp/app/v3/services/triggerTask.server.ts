@@ -21,6 +21,10 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -79,6 +83,24 @@ export class TriggerTaskService extends BaseService {
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
+      }
+
+      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+
+      logger.debug("Queue size guard result", {
+        queueSizeGuard,
+        environment: {
+          id: environment.id,
+          type: environment.type,
+          organization: environment.organization,
+          project: environment.project,
+        },
+      });
+
+      if (!queueSizeGuard.isWithinLimits) {
+        throw new ServiceValidationError(
+          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+        );
       }
 
       if (
@@ -353,6 +375,9 @@ export class TriggerTaskService extends BaseService {
                   metadataType: metadataPacket?.dataType,
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
+                  maxDurationInSeconds: body.options?.maxDuration
+                    ? clampMaxDuration(body.options.maxDuration)
+                    : undefined,
                 },
               });
 
@@ -435,11 +460,7 @@ export class TriggerTaskService extends BaseService {
                 const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                 if (expireAt) {
-                  await workerQueue.enqueue(
-                    "v3.expireRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: expireAt, jobKey: `v3.expireRun.${taskRun.id}` }
-                  );
+                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
                 }
               }
 
@@ -624,58 +645,6 @@ export async function parseDelay(value?: string | Date): Promise<Date | undefine
   } catch (error) {
     return parseNaturalLanguageDuration(value);
   }
-}
-
-export function parseNaturalLanguageDuration(duration: string): Date | undefined {
-  const regexPattern = /^(\d+w)?(\d+d)?(\d+h)?(\d+m)?(\d+s)?$/;
-
-  const result: Date = new Date();
-  let hasMatch = false;
-
-  const elements = duration.match(regexPattern);
-  if (elements) {
-    if (elements[1]) {
-      const weeks = Number(elements[1].slice(0, -1));
-      if (weeks >= 0) {
-        result.setDate(result.getDate() + 7 * weeks);
-        hasMatch = true;
-      }
-    }
-    if (elements[2]) {
-      const days = Number(elements[2].slice(0, -1));
-      if (days >= 0) {
-        result.setDate(result.getDate() + days);
-        hasMatch = true;
-      }
-    }
-    if (elements[3]) {
-      const hours = Number(elements[3].slice(0, -1));
-      if (hours >= 0) {
-        result.setHours(result.getHours() + hours);
-        hasMatch = true;
-      }
-    }
-    if (elements[4]) {
-      const minutes = Number(elements[4].slice(0, -1));
-      if (minutes >= 0) {
-        result.setMinutes(result.getMinutes() + minutes);
-        hasMatch = true;
-      }
-    }
-    if (elements[5]) {
-      const seconds = Number(elements[5].slice(0, -1));
-      if (seconds >= 0) {
-        result.setSeconds(result.getSeconds() + seconds);
-        hasMatch = true;
-      }
-    }
-  }
-
-  if (hasMatch) {
-    return result;
-  }
-
-  return undefined;
 }
 
 function stringifyDuration(seconds: number): string | undefined {

@@ -89,6 +89,14 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks/introduction",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/guides/examples/intro",
+      "destination": "/guides/introduction"
+    },
+    {
       "source": "/examples/:slug*",
       "destination": "/guides/examples/:slug*"
     }
@@ -151,9 +159,9 @@
         "machines",
         "idempotency",
         "replaying",
+        "runs/max-duration",
         "tags",
         "runs/metadata",
-        "notifications",
         "run-usage"
       ]
     },
@@ -251,13 +259,22 @@
       "pages": ["community", "help-slack", "help-email"]
     },
     {
+      "group": "",
+      "pages": ["guides/introduction"]
+    },
+    {
       "group": "Frameworks",
       "pages": [
-        "guides/frameworks/introduction",
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/nodejs",
-        "guides/frameworks/remix",
+        "guides/frameworks/remix"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/frameworks/prisma",
         "guides/frameworks/sequin",
         {
           "group": "Supabase",
@@ -268,17 +285,23 @@
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
+        },
+        {
+          "group": "Webhooks",
+          "icon": "webhook",
+          "iconType": "solid",
+          "pages": [
+            "guides/frameworks/webhooks-guides-overview",
+            "guides/frameworks/nextjs-webhooks",
+            "guides/frameworks/remix-webhooks",
+            "guides/examples/stripe-webhook"
+          ]
         }
       ]
     },
     {
-      "group": "Guides",
-      "pages": ["guides/frameworks/prisma", "guides/frameworks/sequin"]
-    },
-    {
       "group": "Example tasks",
       "pages": [
-        "guides/examples/intro",
         "guides/examples/dall-e3-generate-image",
         "guides/examples/deepgram-transcribe-audio",
         "guides/examples/ffmpeg-video-processing",
@@ -286,7 +309,6 @@
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",
         "guides/examples/sharp-image-processing",
-        "guides/examples/stripe-webhook",
         "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",
         "guides/examples/react-pdf",

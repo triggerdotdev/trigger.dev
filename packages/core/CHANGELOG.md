@@ -1,5 +1,21 @@
 # internal-platform
 
+## 3.0.12
+
+### Patch Changes
+
+- Prettier and more specific errors with links to docs ([#1387](https://github.com/triggerdotdev/trigger.dev/pull/1387))
+- Improvements to structured logger and conditional payload logging ([#1389](https://github.com/triggerdotdev/trigger.dev/pull/1389))
+- Correctly display errors on attempts and during indexing ([#1397](https://github.com/triggerdotdev/trigger.dev/pull/1397))
+
+## 3.0.11
+
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+
 ## 3.0.9
 
 ### Patch Changes

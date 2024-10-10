@@ -27,5 +27,8 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
       - name: 🧪 Run Unit Tests
         run: pnpm run test

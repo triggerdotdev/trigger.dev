@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.0.9",
+  "version": "3.0.12",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -188,6 +188,7 @@
     "@opentelemetry/semantic-conventions": "1.25.1",
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",
+    "nanoid": "^3.3.4",
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
     "zod": "3.22.3",

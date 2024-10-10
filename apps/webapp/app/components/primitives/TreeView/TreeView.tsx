@@ -235,9 +235,11 @@ export function useTree<TData, TFilterValue>({
     getItemKey: (index) => state.visibleNodeIds[index],
     getScrollElement: () => parentRef.current,
     estimateSize: (index: number) => {
+      const treeItem = tree[index];
+      if (!treeItem) return 0;
       return estimatedRowHeight({
-        node: tree[index],
-        state: state.nodes[tree[index].id],
+        node: treeItem,
+        state: state.nodes[treeItem.id],
         index,
       });
     },

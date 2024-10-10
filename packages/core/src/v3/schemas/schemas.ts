@@ -154,6 +154,7 @@ const taskMetadata = {
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
+  maxDuration: z.number().optional(),
 };
 
 export const TaskMetadata = z.object(taskMetadata);
