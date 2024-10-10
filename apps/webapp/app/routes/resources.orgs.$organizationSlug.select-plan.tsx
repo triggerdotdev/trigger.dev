@@ -71,7 +71,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const form = schema.parse({
     ...Object.fromEntries(formData),
-    reasons: reasons.length > 1 ? reasons : reasons[0] || undefined,
+    reasons,
     message: message || undefined,
   });
 
@@ -150,7 +150,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                       text: "Reasons:",
                     }),
                     uiComponent.text({
-                      text: Array.isArray(reasons) ? reasons.join(", ") : reasons,
+                      text: reasons.join(", "),
                     }),
                   ]
                 : []),
