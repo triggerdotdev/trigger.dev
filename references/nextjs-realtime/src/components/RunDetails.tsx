@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnyRunShape } from "@trigger.dev/sdk/v3";
+import { TaskRunShape } from "@trigger.dev/core/v3";
+import { exampleTask } from "@/trigger/example";
 
 function formatDate(date: Date | undefined) {
   return date ? new Date(date).toLocaleString() : "N/A";
@@ -15,7 +17,7 @@ function JsonDisplay({ data }: { data: any }) {
   );
 }
 
-export default function RunDetails({ record }: { record: AnyRunShape }) {
+export default function RunDetails({ record }: { record: TaskRunShape<typeof exampleTask> }) {
   return (
     <Card className="w-full max-w-screen-xl mx-auto">
       <CardHeader>
@@ -115,7 +117,7 @@ export default function RunDetails({ record }: { record: AnyRunShape }) {
         {record.output && (
           <div>
             <h3 className="font-semibold mb-1">Output</h3>
-            <JsonDisplay data={record.output} />
+            <p className="text-sm">{record.output.message}</p>
           </div>
         )}
 

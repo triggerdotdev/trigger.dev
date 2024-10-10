@@ -1,7 +1,9 @@
-import { RetryOptions, TaskMetadata, TaskManifest, TaskRunContext } from "../schemas/index.js";
+import { RetryOptions, TaskMetadata, TaskRunContext } from "../schemas/index.js";
 import { Prettify } from "./utils.js";
 
 export * from "./utils.js";
+export * from "./tasks.js";
+export * from "./idempotencyKeys.js";
 
 export type InitOutput = Record<string, any> | void | undefined;
 

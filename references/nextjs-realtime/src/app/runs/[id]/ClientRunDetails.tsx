@@ -3,9 +3,10 @@
 import RunDetails from "@/components/RunDetails";
 import { Card, CardContent } from "@/components/ui/card";
 import { TriggerAuthContext, useRun } from "@trigger.dev/react-hooks";
+import type { exampleTask } from "@/trigger/example";
 
 function RunDetailsWrapper({ runId }: { runId: string }) {
-  const { run, error } = useRun(runId);
+  const { run, error } = useRun<typeof exampleTask>(runId);
 
   if (error) {
     return (
