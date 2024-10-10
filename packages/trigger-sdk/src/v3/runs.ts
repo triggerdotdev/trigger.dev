@@ -6,6 +6,7 @@ import type {
   RunShape,
   AnyRunShape,
   RunSubscription,
+  Prettify,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -21,7 +22,7 @@ import {
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
 import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { AnyRunHandle, AnyTask, Prettify, RunHandle, Task } from "./shared.js";
+import { AnyRunHandle, AnyTask, RunHandle, Task } from "./shared.js";
 import { tracer } from "./tracer.js";
 
 export type RetrieveRunResult<TPayload = any, TOutput = any> = Prettify<

@@ -18,6 +18,16 @@ export class AbortTaskRunError extends Error {
   }
 }
 
+export class TaskPayloadParsedError extends Error {
+  constructor(cause: unknown) {
+    const causeMessage = cause instanceof Error ? cause.message : String(cause);
+
+    super("Parsing payload with schema failed: " + causeMessage);
+    this.name = "TaskPayloadParsedError";
+    this.cause = cause;
+  }
+}
+
 export function parseError(error: unknown): TaskRunError {
   if (error instanceof Error) {
     return {

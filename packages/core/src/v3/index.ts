@@ -59,6 +59,7 @@ export {
 } from "./utils/ioSerialization.js";
 
 export * from "./config.js";
+export { getSchemaParseFn, type AnySchemaParseFn, type SchemaParseFn } from "./types/schemas.js";
 
 import { VERSION } from "../version.js";
 

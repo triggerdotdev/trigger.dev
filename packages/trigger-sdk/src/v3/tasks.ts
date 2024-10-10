@@ -1,46 +1,46 @@
-import { InitOutput } from "@trigger.dev/core/v3";
 import {
   batchTrigger,
   batchTriggerAndWait,
   createTask,
+  createSchemaTask,
+  SubtaskUnwrapError,
   trigger,
   triggerAndPoll,
   triggerAndWait,
-  SubtaskUnwrapError,
 } from "./shared.js";
 
 export { SubtaskUnwrapError };
 
 import type {
-  TaskOptions,
-  Task,
+  AnyTask,
+  BatchItem,
+  BatchResult,
+  BatchRunHandle,
   Queue,
   RunHandle,
-  BatchRunHandle,
-  TaskRunResult,
-  BatchResult,
-  BatchItem,
-  TaskPayload,
-  TaskOutput,
+  Task,
   TaskIdentifier,
+  TaskOptions,
+  TaskOutput,
+  TaskPayload,
   TaskRunOptions,
-  AnyTask,
+  TaskRunResult,
 } from "./shared.js";
 
 export type {
-  TaskOptions,
-  Task,
+  AnyTask,
+  BatchItem,
+  BatchResult,
+  BatchRunHandle,
   Queue,
   RunHandle,
-  BatchRunHandle,
-  TaskRunResult,
-  BatchResult,
-  BatchItem,
-  TaskPayload,
-  TaskOutput,
+  Task,
   TaskIdentifier,
+  TaskOptions,
+  TaskOutput,
+  TaskPayload,
   TaskRunOptions,
-  AnyTask,
+  TaskRunResult,
 };
 
 /** Creates a task that can be triggered
@@ -61,16 +61,9 @@ export type {
  * 
  * @returns A task that can be triggered
  */
-export function task<
-  TIdentifier extends string,
-  TInput = void,
-  TOutput = unknown,
-  TInitOutput extends InitOutput = any,
->(
-  options: TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
-): Task<TIdentifier, TInput, TOutput> {
-  return createTask<TIdentifier, TInput, TOutput, TInitOutput>(options);
-}
+export const task = createTask;
+
+export const schemaTask = createSchemaTask;
 
 export const tasks = {
   trigger,
