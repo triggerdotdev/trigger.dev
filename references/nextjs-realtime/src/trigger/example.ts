@@ -1,9 +1,18 @@
-import { task, metadata } from "@trigger.dev/sdk/v3";
+import { logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
+import { z } from "zod";
 
-export const exampleTask = task({
+export const ExampleTaskPayload = z.object({
+  id: z.string(),
+  isAdmin: z.boolean().default(false),
+});
+
+export const exampleTask = schemaTask({
   id: "example",
-  run: async (payload: any, { ctx }) => {
+  schema: ExampleTaskPayload,
+  run: async (payload, { ctx }) => {
+    logger.log("Running example task with payload", { payload });
+
     await metadata.set("status", { type: "started", progress: 0.1 });
 
     await setTimeout(2000);
