@@ -15,13 +15,18 @@ import {
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
+import { nanoid } from "nanoid";
 import Redlock from "redlock";
 import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-import { nanoid } from "nanoid";
-import { error } from "node:console";
+
+class NotImplementedError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
 
 type Options = {
   redis: RedisOptions;
@@ -362,14 +367,23 @@ export class RunEngine {
    * @param masterQueue: The shared queue to pull from, can be an individual environment (for dev)
    * @returns
    */
-  async dequeueFromMasterQueue(consumerId: string, masterQueue: string) {
+  async dequeueFromMasterQueue({
+    consumerId,
+    masterQueue,
+    tx,
+  }: {
+    consumerId: string;
+    masterQueue: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
     const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
     if (!message) {
       return null;
     }
 
     const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(this.prisma, message.messageId);
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, message.messageId);
       if (!snapshot) {
         throw new Error(
           `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
@@ -383,7 +397,7 @@ export class RunEngine {
         );
       }
 
-      const newSnapshot = await this.#createExecutionSnapshot(this.prisma, {
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
         run: {
           id: message.messageId,
           status: snapshot.runStatus,
@@ -400,15 +414,27 @@ export class RunEngine {
     return newSnapshot;
   }
 
-  async createRunAttempt(runId: string, snapshotId: string, tx?: PrismaClientOrTransaction) {
+  async createRunAttempt({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
     const prisma = tx ?? this.prisma;
 
     const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
     if (!latestSnapshot) {
-      return this.systemFailure(runId, {
-        type: "INTERNAL_ERROR",
-        code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
-        message: "Task had no execution snapshot when trying to create a run attempt",
+      return this.systemFailure({
+        runId,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
+          message: "Task had no execution snapshot when trying to create a run attempt",
+        },
+        tx: prisma,
       });
     }
 
@@ -421,7 +447,15 @@ export class RunEngine {
 
   async expire(runId: string) {}
 
-  async systemFailure(runId: string, error: TaskRunInternalError) {}
+  async systemFailure({
+    runId,
+    error,
+    tx,
+  }: {
+    runId: string;
+    error: TaskRunInternalError;
+    tx?: PrismaClientOrTransaction;
+  }) {}
 
   //MARK: RunQueue
 
@@ -483,7 +517,9 @@ export class RunEngine {
 
         //todo send a message to the worker somehow
         // await this.#sendMessageToWorker();
-        throw new Error("RunEngine.#continueRun(): continue executing run, not implemented yet");
+        throw new NotImplementedError(
+          "RunEngine.#continueRun(): continue executing run, not implemented yet"
+        );
       }
 
       const newSnapshot = await this.#createExecutionSnapshot(prisma, {
@@ -564,7 +600,7 @@ export class RunEngine {
     //todo release concurrency and make sure the run isn't in the queue
     // await this.runQueue.blockMessage(orgId, runId);
 
-    throw new Error("Not implemented #blockRunWithWaitpoint");
+    throw new NotImplementedError("Not implemented #blockRunWithWaitpoint");
 
     return tx.taskRunWaitpoint.create({
       data: {
@@ -786,27 +822,27 @@ export class RunEngine {
     switch (latestSnapshot.executionStatus) {
       case "BLOCKED_BY_WAITPOINTS": {
         //we need to check if the waitpoints are still blocking the run
-        throw new Error("Not implemented BLOCKED_BY_WAITPOINTS");
+        throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
       }
       case "DEQUEUED_FOR_EXECUTION": {
         //we need to check if the run is still dequeued
-        throw new Error("Not implemented DEQUEUED_FOR_EXECUTION");
+        throw new NotImplementedError("Not implemented DEQUEUED_FOR_EXECUTION");
       }
       case "QUEUED": {
         //we need to check if the run is still QUEUED
-        throw new Error("Not implemented QUEUED");
+        throw new NotImplementedError("Not implemented QUEUED");
       }
       case "EXECUTING": {
         //we need to check if the run is still executing
-        throw new Error("Not implemented EXECUTING");
+        throw new NotImplementedError("Not implemented EXECUTING");
       }
       case "FINISHED": {
         //we need to check if the run is still finished
-        throw new Error("Not implemented FINISHED");
+        throw new NotImplementedError("Not implemented FINISHED");
       }
       case "RUN_CREATED": {
         //we need to check if the run is still created
-        throw new Error("Not implemented RUN_CREATED");
+        throw new NotImplementedError("Not implemented RUN_CREATED");
       }
       default: {
         assertNever(latestSnapshot.executionStatus);
