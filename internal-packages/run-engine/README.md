@@ -221,6 +221,8 @@ It's very important that a run can only be acted on by one process at a time. We
 
 Sending messages to the worker is challenging because we many servers and we're going to have many workers. We need to make sure that the message is sent to the correct worker.
 
+We could add timeouts using the heartbeat system
+
 ## #continueRun
 When all waitpoints are finished, we need to continue a run. Sometimes they're still running in the cluster.
 

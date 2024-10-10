@@ -764,12 +764,14 @@ export class RunEngine {
     runId,
     snapshotId,
     intervalSeconds,
+    tx,
   }: {
     runId: string;
     snapshotId: string;
     intervalSeconds: number;
+    tx?: PrismaClientOrTransaction;
   }) {
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(runId);
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
     if (latestSnapshot?.id !== snapshotId) {
       this.logger.log(
         "RunEngine.#extendHeartbeatTimeout() no longer the latest snapshot, stopping the heartbeat.",
@@ -788,8 +790,16 @@ export class RunEngine {
     await this.#startHeartbeating({ runId, snapshotId, intervalSeconds });
   }
 
-  async #handleStalledSnapshot({ runId, snapshotId }: { runId: string; snapshotId: string }) {
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(runId);
+  async #handleStalledSnapshot({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
     if (!latestSnapshot) {
       this.logger.error("RunEngine.#handleStalledSnapshot() no latest snapshot found", {
         runId,
@@ -848,8 +858,6 @@ export class RunEngine {
         assertNever(latestSnapshot.executionStatus);
       }
     }
-
-    //todo we need to return the run to the queue in the correct state.
   }
 }
 
