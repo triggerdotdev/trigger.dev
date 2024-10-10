@@ -42,11 +42,16 @@ export type RunStreamCallback<TPayload = any, TOutput = any> = (
   run: RunShape<TPayload, TOutput>
 ) => void | Promise<void>;
 
+export type RunShapeStreamOptions = {
+  closeOnComplete?: boolean;
+};
+
 export function runShapeStream<TPayload = any, TOutput = any>(
   url: string,
-  fetchClient: typeof fetch
+  fetchClient: typeof fetch,
+  options?: RunShapeStreamOptions
 ): RunSubscription<TPayload, TOutput> {
-  const subscription = new RunSubscription<TPayload, TOutput>(url, fetchClient);
+  const subscription = new RunSubscription<TPayload, TOutput>(url, fetchClient, options);
 
   return subscription.init();
 }
@@ -59,7 +64,8 @@ export class RunSubscription<TPayload = any, TOutput = any> {
 
   constructor(
     private url: string,
-    private fetchClient: typeof fetch
+    private fetchClient: typeof fetch,
+    private options?: RunShapeStreamOptions
   ) {
     this.abortController = new AbortController();
   }
@@ -72,7 +78,11 @@ export class RunSubscription<TPayload = any, TOutput = any> {
           this.url,
           async (shape) => {
             controller.enqueue(shape);
-            if (shape.completedAt && !this.abortController.signal.aborted) {
+            if (
+              this.options?.closeOnComplete &&
+              shape.completedAt &&
+              !this.abortController.signal.aborted
+            ) {
               controller.close();
               this.abortController.abort();
             }
