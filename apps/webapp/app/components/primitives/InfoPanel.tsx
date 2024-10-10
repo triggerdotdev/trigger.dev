@@ -1,7 +1,7 @@
-import { LinkButton } from "./Buttons";
-import { Header3 } from "./Headers";
-import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
+import { LinkButton } from "./Buttons";
+import { Header2 } from "./Headers";
+import { Paragraph } from "./Paragraph";
 
 const variants = {
   info: {
@@ -57,7 +57,7 @@ export function InfoPanel({
         )}
       </div>
       <div className="flex flex-col gap-1">
-        {title && <Header3 className="text-text-bright">{title}</Header3>}
+        {title && <Header2 className="text-text-bright">{title}</Header2>}
         {typeof children === "string" ? (
           <Paragraph variant={"small"} className="text-text-dimmed">
             {children}

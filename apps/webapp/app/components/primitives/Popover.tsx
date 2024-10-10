@@ -6,6 +6,8 @@ import * as React from "react";
 import { cn } from "~/utils/cn";
 import { type ButtonContentPropsType, LinkButton } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
+import { ShortcutKey } from "./ShortcutKey";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -91,11 +93,50 @@ function PopoverCustomTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition hover:bg-charcoal-850 hover:text-text-bright",
+        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-charcoal-850 hover:text-text-bright",
         className
       )}
     >
       {children}
+    </PopoverTrigger>
+  );
+}
+
+function PopoverSideMenuTrigger({
+  isOpen,
+  children,
+  className,
+  shortcut,
+  ...props
+}: { isOpen?: boolean; shortcut?: ShortcutDefinition } & React.ComponentPropsWithoutRef<
+  typeof PopoverTrigger
+>) {
+  const ref = React.useRef<HTMLButtonElement>(null);
+  useShortcutKeys({
+    shortcut: shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ref.current) {
+        ref.current.click();
+      }
+    },
+  });
+
+  return (
+    <PopoverTrigger
+      {...props}
+      ref={ref}
+      className={cn(
+        "flex h-[1.8rem] shrink-0 select-none items-center gap-x-1.5 rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        shortcut ? "justify-between" : "",
+        className
+      )}
+    >
+      {children}
+      {shortcut && (
+        <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+      )}
     </PopoverTrigger>
   );
 }
@@ -116,7 +157,7 @@ function PopoverArrowTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex h-6 items-center gap-1 rounded px-2 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright",
+        "group flex h-6 items-center gap-1 rounded px-2 text-text-dimmed transition focus-custom hover:bg-charcoal-700 hover:text-text-bright",
         fullWidth && "w-full justify-between",
         className
       )}
@@ -149,7 +190,7 @@ function PopoverVerticalEllipseTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded px-1.5 py-1.5 text-text-dimmed transition hover:bg-charcoal-750 hover:text-text-bright",
+        "group flex items-center justify-end gap-1 rounded px-1.5 py-1.5 text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright",
         className
       )}
     >
@@ -165,6 +206,7 @@ export {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverSideMenuTrigger,
   PopoverTrigger,
   PopoverVerticalEllipseTrigger,
 };

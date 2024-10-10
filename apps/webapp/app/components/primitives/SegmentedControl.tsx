@@ -65,10 +65,7 @@ export default function SegmentedControl({
               value={option.value}
               className={({ active, checked }) =>
                 cn(
-                  "relative flex h-full grow cursor-pointer text-center font-normal focus:outline-none",
-                  active
-                    ? "ring-offset-2 focus-visible:ring focus-visible:ring-secondary focus-visible:ring-opacity-60"
-                    : "",
+                  "relative flex h-full grow cursor-pointer text-center font-normal focus-custom",
                   checked
                     ? variants[variant].active
                     : "text-text-dimmed transition hover:text-text-bright"

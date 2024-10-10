@@ -151,7 +151,7 @@ const rowHoverStyles = {
 };
 
 const stickyStyles =
-  "sticky right-0 z-10 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem]";
+  "sticky right-0 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem]";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -202,11 +202,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={cn(flexClasses, actionClassName)}>
+          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={cn(flexClasses, actionClassName)}>
+          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
             {children}
           </button>
         ) : (

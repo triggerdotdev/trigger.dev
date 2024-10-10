@@ -75,7 +75,7 @@ export function RunInspector({
   if (!run) {
     return (
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-        <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
+        <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
           <div className="flex items-center gap-1 overflow-x-hidden">
             <RunIcon name={"task"} spanName="" className="h-4 min-h-4 w-4 min-w-4" />
             <Header2 className={cn("overflow-x-hidden text-blue-500")}>
@@ -101,7 +101,7 @@ export function RunInspector({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
-      <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={"task"}
