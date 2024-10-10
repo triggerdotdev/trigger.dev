@@ -1896,7 +1896,9 @@ model TaskRunExecutionSnapshot {
 
   ///todo machine spec?
 
-  ///todo worker
+  ///todo add worker, we'll use it to call back out to the worker
+  workerId String?
+  worker   Worker? @relation(fields: [workerId], references: [id])
 
   /// Used to get the latest state quickly
   @@index([runId, createdAt(sort: Desc)])
@@ -1981,6 +1983,17 @@ model TaskRunWaitpoint {
   @@unique([taskRunId, waitpointId])
   @@index([taskRunId])
   @@index([waitpointId])
+}
+
+model Worker {
+  id                 String                     @id @default(cuid())
+  executionSnapshots TaskRunExecutionSnapshot[]
+}
+
+model WorkerGroup {
+  id String @id @default(cuid())
+
+  masterQueue String
 }
 
 model TaskRunTag {

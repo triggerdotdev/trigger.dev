@@ -1,7 +1,7 @@
 import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
 import { trace } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
-import { QueueOptions } from "@trigger.dev/core/v3";
+import { QueueOptions, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
@@ -9,6 +9,8 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunExecutionStatus,
+  TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
@@ -19,6 +21,7 @@ import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
 import { nanoid } from "nanoid";
+import { error } from "node:console";
 
 type Options = {
   redis: RedisOptions;
@@ -134,7 +137,7 @@ export class RunEngine {
           await this.#handleStalledSnapshot(payload);
         },
         expireRun: async ({ payload }) => {
-          await this.expireRun(payload.runId);
+          await this.expire(payload.runId);
         },
       },
     });
@@ -366,7 +369,7 @@ export class RunEngine {
     }
 
     const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(message.messageId);
+      const snapshot = await this.#getLatestExecutionSnapshot(this.prisma, message.messageId);
       if (!snapshot) {
         throw new Error(
           `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
@@ -374,27 +377,21 @@ export class RunEngine {
       }
 
       if (!["QUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
+        //todo put run in a system failure state
         throw new Error(
           `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
         );
       }
 
-      //create new snapshot
-      const newSnapshot = await this.prisma.taskRunExecutionSnapshot.create({
-        data: {
-          runId: message.messageId,
-          engine: "V2",
+      const newSnapshot = await this.#createExecutionSnapshot(this.prisma, {
+        run: {
+          id: message.messageId,
+          status: snapshot.runStatus,
+        },
+        snapshot: {
           executionStatus: "DEQUEUED_FOR_EXECUTION",
           description: "Run was dequeued for execution",
-          runStatus: snapshot.runStatus,
         },
-      });
-
-      //todo create heartbeat, associated with this snapshot
-      await this.#startHeartbeating({
-        runId: message.messageId,
-        snapshotId: newSnapshot.id,
-        intervalSeconds: 60,
       });
 
       return newSnapshot;
@@ -403,15 +400,28 @@ export class RunEngine {
     return newSnapshot;
   }
 
-  async createRunAttempt(runId: string, snapshotId: string) {
-    //todo create the run attempt, update the execution status, start a heartbeat
+  async createRunAttempt(runId: string, snapshotId: string, tx?: PrismaClientOrTransaction) {
+    const prisma = tx ?? this.prisma;
+
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+    if (!latestSnapshot) {
+      return this.systemFailure(runId, {
+        type: "INTERNAL_ERROR",
+        code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
+        message: "Task had no execution snapshot when trying to create a run attempt",
+      });
+    }
+
+    //todo check if the snapshot is the latest one
   }
 
   async waitForDuration() {}
 
   async complete(runId: string, completion: any) {}
 
-  async expireRun(runId: string) {}
+  async expire(runId: string) {}
+
+  async systemFailure(runId: string, error: TaskRunInternalError) {}
 
   //MARK: RunQueue
 
@@ -423,13 +433,11 @@ export class RunEngine {
   ) {
     const prisma = tx ?? this.prisma;
 
-    await prisma.taskRunExecutionSnapshot.create({
-      data: {
-        runId: run.id,
-        engine: "V2",
+    const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+      run: run,
+      snapshot: {
         executionStatus: "QUEUED",
         description: "Run was QUEUED",
-        runStatus: run.status,
       },
     });
 
@@ -458,22 +466,31 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     await this.redlock.using([run.id], 5000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(run.id);
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, run.id);
       if (!snapshot) {
         throw new Error(`RunEngine.#continueRun(): No snapshot found for run: ${run.id}`);
       }
 
-      if (snapshot.executionStatus === "EXECUTING") {
+      //run is still executing, send a message to the worker
+      if (snapshot.executionStatus === "EXECUTING" && snapshot.worker) {
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+          run: run,
+          snapshot: {
+            executionStatus: "EXECUTING",
+            description: "Run was continued, whilst still executing.",
+          },
+        });
+
+        //todo send a message to the worker somehow
+        // await this.#sendMessageToWorker();
         throw new Error("RunEngine.#continueRun(): continue executing run, not implemented yet");
       }
 
-      await prisma.taskRunExecutionSnapshot.create({
-        data: {
-          runId: run.id,
-          engine: "V2",
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run: run,
+        snapshot: {
           executionStatus: "QUEUED",
-          description: "Run was QUEUED",
-          runStatus: run.status,
+          description: "Run was QUEUED, because it needs to be continued.",
         },
       });
 
@@ -631,8 +648,59 @@ export class RunEngine {
   }
 
   //MARK: - TaskRunExecutionSnapshots
-  async #getLatestExecutionSnapshot(runId: string) {
-    return this.prisma.taskRunExecutionSnapshot.findFirst({
+  async #createExecutionSnapshot(
+    prisma: PrismaClientOrTransaction,
+    {
+      run,
+      snapshot,
+    }: {
+      run: { id: string; status: TaskRunStatus };
+      snapshot: {
+        executionStatus: TaskRunExecutionStatus;
+        description: string;
+      };
+    }
+  ) {
+    const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
+      data: {
+        runId: run.id,
+        engine: "V2",
+        executionStatus: snapshot.executionStatus,
+        description: snapshot.description,
+        runStatus: run.status,
+      },
+    });
+
+    //create heartbeat (if relevant)
+    switch (snapshot.executionStatus) {
+      case "RUN_CREATED":
+      case "QUEUED":
+      case "BLOCKED_BY_WAITPOINTS":
+      case "FINISHED":
+      case "DEQUEUED_FOR_EXECUTION": {
+        await this.#startHeartbeating({
+          runId: run.id,
+          snapshotId: newSnapshot.id,
+          intervalSeconds: 60,
+        });
+        break;
+      }
+      case "EXECUTING": {
+        await this.#startHeartbeating({
+          runId: run.id,
+          snapshotId: newSnapshot.id,
+          intervalSeconds: 60 * 15,
+        });
+        break;
+      }
+    }
+
+    return newSnapshot;
+  }
+
+  async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
+    return prisma.taskRunExecutionSnapshot.findFirst({
+      include: { worker: true },
       where: { runId },
       orderBy: { createdAt: "desc" },
     });
@@ -712,6 +780,8 @@ export class RunEngine {
       runId,
       snapshot: latestSnapshot,
     });
+
+    //todo fail attempt if there is one?
 
     switch (latestSnapshot.executionStatus) {
       case "BLOCKED_BY_WAITPOINTS": {
