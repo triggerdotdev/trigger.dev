@@ -1,13 +1,11 @@
 "use client";
 
-import { AuthProvider } from "@/contexts/AuthContext";
-import { useRunSubscription } from "@/hooks/useRunSubscription";
 import RunDetails from "@/components/RunDetails";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
+import { TriggerAuthContext, useRun } from "@trigger.dev/react-hooks";
 
 function RunDetailsWrapper({ runId }: { runId: string }) {
-  const { runUpdates, error } = useRunSubscription(runId);
+  const { run, error } = useRun(runId);
 
   if (error) {
     return (
@@ -21,7 +19,7 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
     );
   }
 
-  if (runUpdates.length === 0) {
+  if (!run) {
     return (
       <div className="w-full min-h-screen bg-gray-100 p-4">
         <Card className="w-full bg-white shadow-md">
@@ -33,41 +31,19 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
     );
   }
 
-  const latestRun = runUpdates[runUpdates.length - 1];
-
   return (
     <div className="w-full min-h-screen bg-gray-100 p-4 space-y-6">
-      <Card className="w-full bg-white shadow-md">
-        <CardHeader>
-          <CardTitle>Latest Run State</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RunDetails record={latestRun} />
-        </CardContent>
-      </Card>
-
-      <Card className="w-full bg-white shadow-md">
-        <CardHeader>
-          <CardTitle>Run Update History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[400px]">
-            {runUpdates.map((run, index) => (
-              <div key={index} className="mb-4 p-4 border rounded">
-                <RunDetails record={run} />
-              </div>
-            ))}
-          </ScrollArea>
-        </CardContent>
-      </Card>
+      <RunDetails record={run} />
     </div>
   );
 }
 
 export default function ClientRunDetails({ runId, jwt }: { runId: string; jwt: string }) {
+  console.log("ClientRunDetails", runId, jwt);
+
   return (
-    <AuthProvider accessToken={jwt} baseURL="http://localhost:3030">
+    <TriggerAuthContext.Provider value={{ accessToken: jwt, baseURL: "http://localhost:3030" }}>
       <RunDetailsWrapper runId={runId} />
-    </AuthProvider>
+    </TriggerAuthContext.Provider>
   );
 }

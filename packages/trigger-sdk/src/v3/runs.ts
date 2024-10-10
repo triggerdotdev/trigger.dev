@@ -4,7 +4,7 @@ import type {
   ListRunsQueryParams,
   RescheduleRunRequestBody,
   RunShape,
-  RunStreamCallback,
+  AnyRunShape,
   RunSubscription,
 } from "@trigger.dev/core/v3";
 import {
@@ -31,8 +31,7 @@ export type RetrieveRunResult<TPayload = any, TOutput = any> = Prettify<
   }
 >;
 
-export type { RunShape };
-export type AnyRunShape = RunShape<any, any>;
+export type { RunShape, AnyRunShape };
 
 export const runs = {
   replay: replayRun,

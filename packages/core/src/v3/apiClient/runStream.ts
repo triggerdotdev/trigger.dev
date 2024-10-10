@@ -33,6 +33,8 @@ export type RunShape<TPayload = any, TOutput = any> = {
   isTest: boolean;
 };
 
+export type AnyRunShape = RunShape<any, any>;
+
 export type RunStreamCallback<TPayload = any, TOutput = any> = (
   run: RunShape<TPayload, TOutput>
 ) => void | Promise<void>;

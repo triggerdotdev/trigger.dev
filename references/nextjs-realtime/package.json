@@ -15,6 +15,7 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@trigger.dev/sdk": "workspace:^3",
     "@trigger.dev/core": "workspace:^3",
+    "@trigger.dev/react-hooks": "workspace:^3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.451.0",
