@@ -44,6 +44,7 @@ import {
   runShapeStream,
   RunStreamCallback,
   RunSubscription,
+  TaskRunShape,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -75,7 +76,7 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type { ApiRequestOptions };
-export type { RunShape, AnyRunShape, RunStreamCallback, RunSubscription };
+export type { RunShape, AnyRunShape, TaskRunShape, RunStreamCallback, RunSubscription };
 
 /**
  * Trigger.dev v3 API client

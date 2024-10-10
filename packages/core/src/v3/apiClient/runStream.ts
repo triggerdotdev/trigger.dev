@@ -1,6 +1,7 @@
 import { DeserializedJson } from "../../schemas/json.js";
 import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
+import { AnyTask, TaskOutput, TaskPayload } from "../types/tasks.js";
 import {
   conditionallyImportAndParsePacket,
   IOPacket,
@@ -34,6 +35,8 @@ export type RunShape<TPayload = any, TOutput = any> = {
 };
 
 export type AnyRunShape = RunShape<any, any>;
+
+export type TaskRunShape<TTask extends AnyTask> = RunShape<TaskPayload<TTask>, TaskOutput<TTask>>;
 
 export type RunStreamCallback<TPayload = any, TOutput = any> = (
   run: RunShape<TPayload, TOutput>
