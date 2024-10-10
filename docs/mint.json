@@ -285,6 +285,16 @@
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
+        },
+        {
+          "group": "Webhooks",
+          "icon": "webhook",
+          "iconType": "solid",
+          "pages": [
+            "guides/frameworks/webhooks-guides-overview",
+            "guides/frameworks/nextjs-webhooks",
+            "guides/frameworks/remix-webhooks"
+          ]
         }
       ]
     },
