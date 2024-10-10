@@ -66,7 +66,7 @@ describe("RunEngine", () => {
         },
       });
       expect(snapshot).toBeDefined();
-      expect(snapshot?.executionStatus).toBe("ENQUEUED");
+      expect(snapshot?.executionStatus).toBe("QUEUED");
 
       //check the waitpoint is created
       const runWaitpoint = await prisma.waitpoint.findMany({
