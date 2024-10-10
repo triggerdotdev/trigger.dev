@@ -1345,6 +1345,43 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.14.14)
 
+  packages/react-hooks:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:3.0.11
+        version: link:../core
+      react:
+        specifier: '>=18 || >=19.0.0-beta'
+        version: 18.3.1
+      react-dom:
+        specifier: '>=18 || >=19.0.0-beta'
+        version: 18.2.0(react@18.3.1)
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
+      '@types/node':
+        specifier: ^20.14.14
+        version: 20.14.14
+      '@types/react':
+        specifier: '*'
+        version: 18.3.1
+      '@types/react-dom':
+        specifier: '*'
+        version: 18.2.7
+      rimraf:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tshy:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
+
   packages/trigger-sdk:
     dependencies:
       '@opentelemetry/api':
@@ -1485,6 +1522,9 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:^3
         version: link:../../packages/core
+      '@trigger.dev/react-hooks':
+        specifier: workspace:^3
+        version: link:../../packages/react-hooks
       '@trigger.dev/sdk':
         specifier: workspace:^3
         version: link:../../packages/trigger-sdk
