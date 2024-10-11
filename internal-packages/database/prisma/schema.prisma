@@ -1113,8 +1113,6 @@ model TaskAttempt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  executionSnapshot TaskRunExecutionSnapshot[]
-
   @@unique([taskId, number])
 }
 
@@ -1727,7 +1725,7 @@ model TaskRun {
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
-  executionSnapshot      TaskRunExecutionSnapshot[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
 
   alerts ProjectAlert[]
 
@@ -1886,8 +1884,8 @@ model TaskRunExecutionSnapshot {
 
   /// Attempt
   currentAttemptId     String?
-  currentAttempt       TaskAttempt?       @relation(fields: [currentAttemptId], references: [id])
-  currentAttemptStatus TaskAttemptStatus?
+  currentAttempt       TaskRunAttempt?       @relation(fields: [currentAttemptId], references: [id])
+  currentAttemptStatus TaskRunAttemptStatus?
 
   /// todo Checkpoint
 
@@ -2098,7 +2096,8 @@ model TaskRunAttempt {
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   alerts                 ProjectAlert[]
-  childRuns              TaskRun[]                @relation("TaskParentRunAttempt")
+  childRuns              TaskRun[]                  @relation("TaskParentRunAttempt")
+  executionSnapshots     TaskRunExecutionSnapshot[]
 
   @@unique([taskRunId, number])
   @@index([taskRunId])
