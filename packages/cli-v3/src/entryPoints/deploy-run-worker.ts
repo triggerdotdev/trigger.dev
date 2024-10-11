@@ -14,6 +14,7 @@ import {
   WorkerManifest,
   ExecutorToWorkerMessageCatalog,
   timeout,
+  runMetadata,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
@@ -22,6 +23,7 @@ import {
   DevUsageManager,
   DurableClock,
   getEnvVar,
+  getNumberEnvVar,
   logLevels,
   OtelTaskLogger,
   ProdUsageManager,
@@ -303,6 +305,10 @@ const zodIpc = new ZodIpcConnection({
           _execution = execution;
           _isRunning = true;
 
+          runMetadata.startPeriodicFlush(
+            getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
+          );
+
           const measurement = usage.start();
 
           // This lives outside of the executor because this will eventually be moved to the controller level
@@ -397,7 +403,11 @@ const zodIpc = new ZodIpcConnection({
 async function flushAll(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.all([flushUsage(timeoutInMs), flushTracingSDK(timeoutInMs)]);
+  await Promise.all([
+    flushUsage(timeoutInMs),
+    flushTracingSDK(timeoutInMs),
+    flushMetadata(timeoutInMs),
+  ]);
 
   const duration = performance.now() - now;
 
@@ -422,6 +432,16 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
   const duration = performance.now() - now;
 
   console.log(`Flushed tracingSDK in ${duration}ms`);
+}
+
+async function flushMetadata(timeoutInMs: number = 10_000) {
+  const now = performance.now();
+
+  await Promise.race([runMetadata.flush(), setTimeout(timeoutInMs)]);
+
+  const duration = performance.now() - now;
+
+  console.log(`Flushed runMetadata in ${duration}ms`);
 }
 
 const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
