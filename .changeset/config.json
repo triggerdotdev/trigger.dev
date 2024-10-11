@@ -1,27 +1,18 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2.2.0/schema.json",
-  "changelog": "@changesets/cli/changelog",
-  "commit": false,
-  "fixed": [
-    [
-      "@trigger.dev/*",
-      "trigger.dev"
-    ]
+  "changelog": [
+    "@remix-run/changelog-github",
+    {
+      "repo": "triggerdotdev/trigger.dev"
+    }
   ],
+  "commit": false,
+  "fixed": [["@trigger.dev/*", "trigger.dev"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "webapp",
-    "emails",
-    "proxy",
-    "@trigger.dev/database",
-    "coordinator",
-    "docker-provider",
-    "kubernetes-provider",
-    "@trigger.dev/otlp-importer"
-  ],
+  "ignore": ["webapp", "proxy", "coordinator", "docker-provider", "kubernetes-provider"],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
   }

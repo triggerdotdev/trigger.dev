@@ -48,11 +48,11 @@ const theme = {
       "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
   },
   secondary: {
-    textColor: "text-secondary group-hover:text-secondary transition group-disabled:text-secondary",
+    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
     button:
-      "bg-transparent border border-secondary group-hover:border-secondary group-hover:bg-secondary/10 group-disabled:opacity-30 group-disabled:border-secondary group-disabled:bg-transparent group-disabled:pointer-events-none",
+      "bg-secondary group-hover:bg-charcoal-600 group-hover:border-charcoal-650 border border-charcoal-600 group-disabled:bg-secondary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
-      "border-secondary/30 text-secondary group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
   },
   tertiary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
@@ -114,8 +114,7 @@ const variant = {
   "danger/extra-large": createVariant("extra-large", "danger"),
   "menu-item": {
     textColor: "text-text-bright px-1",
-    button:
-      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-800 transition",
+    button: "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-750",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
@@ -124,7 +123,7 @@ const variant = {
   "small-menu-item": {
     textColor: "text-text-bright",
     button:
-      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750",
     icon: "h-4",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
@@ -133,7 +132,7 @@ const variant = {
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
     button:
-      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-850 transition",
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750 focus-custom",
     icon: undefined,
     iconSpacing: undefined,
     shortcutVariant: undefined,
@@ -142,7 +141,7 @@ const variant = {
 };
 
 const allVariants = {
-  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none",
+  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none focus-custom",
   variant: variant,
 };
 
@@ -268,7 +267,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
     return (
       <button
-        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        className={cn("group outline-none focus-custom", props.fullWidth ? "w-full" : "")}
         type={type}
         disabled={disabled}
         onClick={onClick}
@@ -328,7 +327,7 @@ export const LinkButton = ({
       <ExtLink
         href={to.toString()}
         ref={innerRef}
-        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        className={cn("group focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -343,7 +342,7 @@ export const LinkButton = ({
       <Link
         to={to}
         ref={innerRef}
-        className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+        className={cn("group focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}

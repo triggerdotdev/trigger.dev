@@ -1,5 +1,50 @@
 # @trigger.dev/sdk
 
+## 3.0.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.12`
+
+## 3.0.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.11`
+
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.10`
+
+## 3.0.9
+
+### Patch Changes
+
+- Removed the inline-code accessory from the logs when calling trigger or batchTrigger from a run ([#1364](https://github.com/triggerdotdev/trigger.dev/pull/1364))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.9`
+
+## 3.0.8
+
+### Patch Changes
+
+- Add Run metadata to allow for storing up to 4KB of data on a run and update it during the run ([#1357](https://github.com/triggerdotdev/trigger.dev/pull/1357))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.8`
+
+## 3.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.7`
+
 ## 3.0.6
 
 ### Patch Changes

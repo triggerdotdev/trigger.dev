@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DeserializedJsonSchema } from "../../schemas/json.js";
 
 // Defaults to 0.5
 export const MachineCpu = z.union([
@@ -86,11 +87,17 @@ export const TaskRunErrorCodes = {
   TASK_EXECUTION_ABORTED: "TASK_EXECUTION_ABORTED",
   TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE: "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
   TASK_PROCESS_SIGKILL_TIMEOUT: "TASK_PROCESS_SIGKILL_TIMEOUT",
+  TASK_PROCESS_OOM_KILLED: "TASK_PROCESS_OOM_KILLED",
+  TASK_PROCESS_MAYBE_OOM_KILLED: "TASK_PROCESS_MAYBE_OOM_KILLED",
   TASK_RUN_CANCELLED: "TASK_RUN_CANCELLED",
   TASK_OUTPUT_ERROR: "TASK_OUTPUT_ERROR",
   HANDLE_ERROR_ERROR: "HANDLE_ERROR_ERROR",
   GRACEFUL_EXIT_TIMEOUT: "GRACEFUL_EXIT_TIMEOUT",
   TASK_RUN_CRASHED: "TASK_RUN_CRASHED",
+  MAX_DURATION_EXCEEDED: "MAX_DURATION_EXCEEDED",
+  DISK_SPACE_EXCEEDED: "DISK_SPACE_EXCEEDED",
+  POD_EVICTED: "POD_EVICTED",
+  POD_UNKNOWN_ERROR: "POD_UNKNOWN_ERROR",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -105,12 +112,18 @@ export const TaskRunInternalError = z.object({
     "TASK_EXECUTION_ABORTED",
     "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
     "TASK_PROCESS_SIGKILL_TIMEOUT",
+    "TASK_PROCESS_OOM_KILLED",
+    "TASK_PROCESS_MAYBE_OOM_KILLED",
     "TASK_RUN_CANCELLED",
     "TASK_OUTPUT_ERROR",
     "HANDLE_ERROR_ERROR",
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
     "TASK_RUN_CRASHED",
+    "MAX_DURATION_EXCEEDED",
+    "DISK_SPACE_EXCEEDED",
+    "POD_EVICTED",
+    "POD_UNKNOWN_ERROR",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -142,6 +155,8 @@ export const TaskRun = z.object({
   costInCents: z.number().default(0),
   baseCostInCents: z.number().default(0),
   version: z.string().optional(),
+  metadata: z.record(DeserializedJsonSchema).optional(),
+  maxDuration: z.number().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -221,7 +236,7 @@ export const TaskRunContext = z.object({
     backgroundWorkerId: true,
     backgroundWorkerTaskId: true,
   }),
-  run: TaskRun.omit({ payload: true, payloadType: true }),
+  run: TaskRun.omit({ payload: true, payloadType: true, metadata: true }),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,

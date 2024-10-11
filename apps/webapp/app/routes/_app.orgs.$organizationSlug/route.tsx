@@ -5,7 +5,6 @@ import { z } from "zod";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { MainBody } from "~/components/layout/AppLayout";
 import { SideMenu } from "~/components/navigation/SideMenu";
-import { featuresForRequest } from "~/features.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";

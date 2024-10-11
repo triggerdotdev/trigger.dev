@@ -1,9 +1,15 @@
-import { MachinePresetName, prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  MachinePresetName,
+  parsePacket,
+  prettyPrintPacket,
+  TaskRunError,
+} from "@trigger.dev/core/v3";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
+import { getMaxDuration } from "~/v3/utils/maxDuration";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -64,6 +70,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         friendlyId: true,
         isTest: true,
+        maxDurationInSeconds: true,
         tags: {
           select: {
             name: true,
@@ -113,6 +120,8 @@ export class SpanPresenter extends BasePresenter {
         },
         payload: true,
         payloadType: true,
+        metadata: true,
+        metadataType: true,
         maxAttempts: true,
         project: {
           include: {
@@ -123,6 +132,21 @@ export class SpanPresenter extends BasePresenter {
           select: {
             filePath: true,
             exportName: true,
+          },
+        },
+        //relationships
+        rootTaskRun: {
+          select: {
+            taskIdentifier: true,
+            friendlyId: true,
+            spanId: true,
+          },
+        },
+        parentTaskRun: {
+          select: {
+            taskIdentifier: true,
+            friendlyId: true,
+            spanId: true,
           },
         },
       },
@@ -185,6 +209,10 @@ export class SpanPresenter extends BasePresenter {
 
     const span = await eventRepository.getSpan(spanId, run.traceId);
 
+    const metadata = run.metadata
+      ? await prettyPrintPacket(run.metadata, run.metadataType)
+      : undefined;
+
     const context = {
       task: {
         id: run.taskIdentifier,
@@ -203,6 +231,7 @@ export class SpanPresenter extends BasePresenter {
         baseCostInCents: run.baseCostInCents,
         maxAttempts: run.maxAttempts ?? undefined,
         version: run.lockedToVersion?.version,
+        maxDuration: run.maxDurationInSeconds ?? undefined,
       },
       queue: {
         name: run.queue,
@@ -270,8 +299,18 @@ export class SpanPresenter extends BasePresenter {
       output,
       outputType: finishedAttempt?.outputType ?? "application/json",
       error,
-      links: span?.links,
+      relationships: {
+        root: run.rootTaskRun
+          ? {
+              ...run.rootTaskRun,
+              isParent: run.parentTaskRun?.friendlyId === run.rootTaskRun.friendlyId,
+            }
+          : undefined,
+        parent: run.parentTaskRun ?? undefined,
+      },
       context: JSON.stringify(context, null, 2),
+      metadata,
+      maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
     };
   }
 
@@ -295,10 +334,29 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
+    const triggeredRuns = await this._replica.taskRun.findMany({
+      select: {
+        friendlyId: true,
+        taskIdentifier: true,
+        spanId: true,
+        createdAt: true,
+        number: true,
+        lockedToVersion: {
+          select: {
+            version: true,
+          },
+        },
+      },
+      where: {
+        parentSpanId: spanId,
+      },
+    });
+
     return {
       ...span,
       events: span.events,
       properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      triggeredRuns,
       showActionBar: span.show?.actions === true,
     };
   }

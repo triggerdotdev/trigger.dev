@@ -27,7 +27,7 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
           <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
           <Paragraph className="text-2sm text-text-bright">Free Plan</Paragraph>
         </div>
-        <Link to={to} className="text-2sm text-text-link">
+        <Link to={to} className="text-2sm text-text-link focus-custom">
           Upgrade
         </Link>
       </div>

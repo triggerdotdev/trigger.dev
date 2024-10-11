@@ -1,6 +1,11 @@
 import { CheckIcon, ClockIcon, CloudArrowDownIcon, QueueListIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
-import { formatDuration, formatDurationMilliseconds, TaskRunError } from "@trigger.dev/core/v3";
+import {
+  formatDuration,
+  formatDurationMilliseconds,
+  TaskRunError,
+  taskRunErrorEnhancer,
+} from "@trigger.dev/core/v3";
 import { useEffect } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -70,7 +75,7 @@ export function RunInspector({
   if (!run) {
     return (
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-        <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
+        <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
           <div className="flex items-center gap-1 overflow-x-hidden">
             <RunIcon name={"task"} spanName="" className="h-4 min-h-4 w-4 min-w-4" />
             <Header2 className={cn("overflow-x-hidden text-blue-500")}>
@@ -96,7 +101,7 @@ export function RunInspector({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_3.25rem] overflow-hidden bg-background-bright">
-      <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={"task"}
@@ -325,6 +330,12 @@ export function RunInspector({
                   </Property.Item>
                 )}
                 <Property.Item>
+                  <Property.Label>Max duration</Property.Label>
+                  <Property.Value>
+                    {run.maxDurationInSeconds ? `${run.maxDurationInSeconds}s` : "–"}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Run invocation cost</Property.Label>
                   <Property.Value>
                     {run.baseCostInCents > 0
@@ -547,7 +558,9 @@ function RunTimeline({ run }: { run: RawRun }) {
 }
 
 function RunError({ error }: { error: TaskRunError }) {
-  switch (error.type) {
+  const enhancedError = taskRunErrorEnhancer(error);
+
+  switch (enhancedError.type) {
     case "STRING_ERROR":
     case "CUSTOM_ERROR": {
       return (
@@ -555,7 +568,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <CodeBlock
             showCopyButton={false}
             showLineNumbers={false}
-            code={error.raw}
+            code={enhancedError.raw}
             maxLines={20}
           />
         </div>
@@ -563,16 +576,21 @@ function RunError({ error }: { error: TaskRunError }) {
     }
     case "BUILT_IN_ERROR":
     case "INTERNAL_ERROR": {
-      const name = "name" in error ? error.name : error.code;
+      const name = "name" in enhancedError ? enhancedError.name : enhancedError.code;
       return (
         <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
           <Header3 className="text-rose-500">{name}</Header3>
-          {error.message && <Callout variant="error">{error.message}</Callout>}
-          {error.stackTrace && (
+          {enhancedError.message && <Callout variant="error">{enhancedError.message}</Callout>}
+          {enhancedError.link && (
+            <Callout variant="docs" to={enhancedError.link.href}>
+              {enhancedError.link.name}
+            </Callout>
+          )}
+          {enhancedError.stackTrace && (
             <CodeBlock
               showCopyButton={false}
               showLineNumbers={false}
-              code={error.stackTrace}
+              code={enhancedError.stackTrace}
               maxLines={20}
             />
           )}

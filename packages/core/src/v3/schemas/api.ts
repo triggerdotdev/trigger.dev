@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
 import { SerializedError } from "./common.js";
+import { DeserializedJsonSchema, SerializableJsonSchema } from "../../schemas/json.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -81,6 +82,9 @@ export const TriggerTaskRequestBody = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       tags: RunTags.optional(),
       maxAttempts: z.number().int().optional(),
+      metadata: z.any(),
+      metadataType: z.string().optional(),
+      maxDuration: z.number().optional(),
     })
     .optional(),
 });
@@ -440,6 +444,8 @@ export const RunStatus = z.enum([
   "DELAYED",
   /// Task has expired and won't be executed
   "EXPIRED",
+  /// Task has reached it's maxDuration and has been stopped
+  "TIMED_OUT",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -505,6 +511,7 @@ const CommonRunFields = {
   costInCents: z.number(),
   baseCostInCents: z.number(),
   durationMs: z.number(),
+  metadata: z.record(z.any()).optional(),
 };
 
 const RetrieveRunCommandFields = {
@@ -608,3 +615,16 @@ export const EnvironmentVariable = z.object({
 export const EnvironmentVariables = z.array(EnvironmentVariable);
 
 export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;
+
+export const UpdateMetadataRequestBody = z.object({
+  metadata: z.record(DeserializedJsonSchema),
+  metadataType: z.string().optional(),
+});
+
+export type UpdateMetadataRequestBody = z.infer<typeof UpdateMetadataRequestBody>;
+
+export const UpdateMetadataResponseBody = z.object({
+  metadata: z.record(DeserializedJsonSchema),
+});
+
+export type UpdateMetadataResponseBody = z.infer<typeof UpdateMetadataResponseBody>;

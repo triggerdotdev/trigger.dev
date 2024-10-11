@@ -39,6 +39,7 @@ import {
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
+import { SerializableJson } from "@trigger.dev/core";
 
 export type Context = TaskRunContext;
 
@@ -155,6 +156,13 @@ export type TaskOptions<
       | "large-1x"
       | "large-2x";
   };
+
+  /**
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds
+   */
+  maxDuration?: number;
 
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
@@ -496,6 +504,20 @@ export type TaskRunOptions = {
    * ```
    */
   tags?: RunTags;
+
+  /**
+   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
+   */
+  metadata?: Record<string, SerializableJson>;
+
+  /**
+   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * This will override the task's maxDuration.
+   *
+   * Minimum value is 5 seconds
+   */
+  maxDuration?: number;
 };
 
 type TaskRunConcurrencyOptions = Queue;
@@ -596,6 +618,7 @@ export function createTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
+    maxDuration: params.maxDuration,
     fns: {
       run: params.run,
       init: params.init,
@@ -769,11 +792,7 @@ async function trigger_internal<TPayload, TOutput>(
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<RunHandle<TOutput>> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const payloadPacket = await stringifyIO(payload);
 
@@ -792,6 +811,8 @@ async function trigger_internal<TPayload, TOutput>(
         tags: options?.tags,
         maxAttempts: options?.maxAttempts,
         parentAttempt: taskContext.ctx?.attempt.id,
+        metadata: options?.metadata,
+        maxDuration: options?.maxDuration,
       },
     },
     {
@@ -805,15 +826,6 @@ async function trigger_internal<TPayload, TOutput>(
         [SEMATTRS_MESSAGING_OPERATION]: "publish",
         ["messaging.client_id"]: taskContext.worker?.id,
         [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: id,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
       },
       onResponseBody: (body, span) => {
         body &&
@@ -837,11 +849,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchRunHandle<TOutput>> {
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const response = await apiClient.batchTriggerTask(
     id,
@@ -863,6 +871,8 @@ async function batchTrigger_internal<TPayload, TOutput>(
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
               parentAttempt: taskContext.ctx?.attempt.id,
+              metadata: item.options?.metadata,
+              maxDuration: item.options?.maxDuration,
             },
           };
         })
@@ -877,15 +887,6 @@ async function batchTrigger_internal<TPayload, TOutput>(
         [SEMATTRS_MESSAGING_OPERATION]: "publish",
         ["messaging.client_id"]: taskContext.worker?.id,
         [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-        ...accessoryAttributes({
-          items: [
-            {
-              text: id,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
       },
       ...requestOptions,
     }
@@ -912,11 +913,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
     throw new Error("triggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   const payloadPacket = await stringifyIO(payload);
 
@@ -939,6 +936,8 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             ttl: options?.ttl,
             tags: options?.tags,
             maxAttempts: options?.maxAttempts,
+            metadata: options?.metadata,
+            maxDuration: options?.maxDuration,
           },
         },
         {},
@@ -1006,11 +1005,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
     throw new Error("batchTriggerAndWait can only be used from inside a task.run()");
   }
 
-  const apiClient = apiClientManager.client;
-
-  if (!apiClient) {
-    throw apiClientMissingError();
-  }
+  const apiClient = apiClientManager.clientOrThrow();
 
   return await tracer.startActiveSpan(
     name,
@@ -1035,6 +1030,8 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   ttl: item.options?.ttl,
                   tags: item.options?.tags,
                   maxAttempts: item.options?.maxAttempts,
+                  metadata: item.options?.metadata,
+                  maxDuration: item.options?.maxDuration,
                 },
               };
             })
@@ -1192,20 +1189,6 @@ async function handleTaskRunExecutionResult<TOutput>(
       error: createErrorTaskError(execution.error),
     };
   }
-}
-
-export function apiClientMissingError() {
-  const hasBaseUrl = !!apiClientManager.baseURL;
-  const hasAccessToken = !!apiClientManager.accessToken;
-  if (!hasBaseUrl && !hasAccessToken) {
-    return `You need to set the TRIGGER_API_URL and TRIGGER_SECRET_KEY environment variables.`;
-  } else if (!hasBaseUrl) {
-    return `You need to set the TRIGGER_API_URL environment variable.`;
-  } else if (!hasAccessToken) {
-    return `You need to set the TRIGGER_SECRET_KEY environment variable.`;
-  }
-
-  return `Unknown error`;
 }
 
 async function makeKey(

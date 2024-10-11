@@ -19,15 +19,13 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "trigger/**"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -56,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Use Node.js 20.x
         uses: actions/setup-node@v4
@@ -145,8 +143,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "trigger/**"
 
 jobs:
   deploy:

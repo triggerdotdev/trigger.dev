@@ -139,6 +139,10 @@ export class MarQS {
     return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
   }
 
+  public async lengthOfEnvQueue(env: AuthenticatedEnvironment) {
+    return this.redis.zcard(this.keys.envQueueKey(env));
+  }
+
   public async oldestMessageInQueue(
     env: AuthenticatedEnvironment,
     queue: string,
@@ -1074,6 +1078,7 @@ export class MarQS {
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
+      this.keys.envQueueKeyFromQueue(message.queue),
       message.queue,
       message.messageId,
       JSON.stringify(message),
@@ -1111,6 +1116,7 @@ export class MarQS {
       currentConcurrencyKey,
       envCurrentConcurrencyKey,
       orgCurrentConcurrencyKey,
+      this.keys.envQueueKeyFromQueue(messageQueue),
       messageQueue,
       String(Date.now()),
       String(this.options.defaultEnvConcurrency),
@@ -1187,6 +1193,7 @@ export class MarQS {
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
+      this.keys.envQueueKeyFromQueue(messageQueue),
       messageId,
       messageQueue
     );
@@ -1234,6 +1241,7 @@ export class MarQS {
       envConcurrencyKey,
       orgConcurrencyKey,
       visibilityQueue,
+      this.keys.envQueueKeyFromQueue(messageQueue),
       messageQueue,
       messageId,
       String(Date.now()),
@@ -1347,7 +1355,7 @@ export class MarQS {
 
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 6,
+      numberOfKeys: 7,
       lua: `
 local queue = KEYS[1]
 local parentQueue = KEYS[2]
@@ -1355,6 +1363,7 @@ local messageKey = KEYS[3]
 local concurrencyKey = KEYS[4]
 local envCurrentConcurrencyKey = KEYS[5]
 local orgCurrentConcurrencyKey = KEYS[6]
+local envQueue = KEYS[7]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
@@ -1366,6 +1375,9 @@ redis.call('SET', messageKey, messageData)
 
 -- Add the message to the queue
 redis.call('ZADD', queue, messageScore, messageId)
+
+-- Add the message to the env queue
+redis.call('ZADD', envQueue, messageScore, messageId)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', queue, 0, 0, 'WITHSCORES')
@@ -1383,7 +1395,7 @@ redis.call('SREM', orgCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 9,
       lua: `
 -- Keys: childQueue, parentQueue, concurrencyLimitKey, envConcurrencyLimitKey, orgConcurrencyLimitKey, currentConcurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
 local childQueue = KEYS[1]
@@ -1394,6 +1406,7 @@ local orgConcurrencyLimitKey = KEYS[5]
 local currentConcurrencyKey = KEYS[6]
 local envCurrentConcurrencyKey = KEYS[7]
 local orgCurrentConcurrencyKey = KEYS[8]
+local envQueueKey = KEYS[9]
 
 -- Args: childQueueName, currentTime, defaultEnvConcurrencyLimit, defaultOrgConcurrencyLimit
 local childQueueName = ARGV[1]
@@ -1438,6 +1451,7 @@ local messageScore = tonumber(messages[2])
 
 -- Move message to timeout queue and update concurrency
 redis.call('ZREM', childQueue, messageId)
+redis.call('ZREM', envQueueKey, messageId)
 redis.call('SADD', currentConcurrencyKey, messageId)
 redis.call('SADD', envCurrentConcurrencyKey, messageId)
 redis.call('SADD', orgCurrentConcurrencyKey, messageId)
@@ -1474,7 +1488,7 @@ redis.call('SET', messageKey, messageData, 'GET')
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 8,
       lua: `
 -- Keys: parentQueue, messageKey, messageQueue, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
 local parentQueue = KEYS[1]
@@ -1484,6 +1498,7 @@ local visibilityQueue = KEYS[4]
 local concurrencyKey = KEYS[5]
 local envCurrentConcurrencyKey = KEYS[6]
 local orgCurrentConcurrencyKey = KEYS[7]
+local envQueueKey = KEYS[8]
 
 -- Args: messageId, messageQueueName
 local messageId = ARGV[1]
@@ -1494,6 +1509,9 @@ redis.call('DEL', messageKey)
 
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
+
+-- Remove the message from the env queue
+redis.call('ZREM', envQueueKey, messageId)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
@@ -1514,7 +1532,7 @@ redis.call('SREM', orgCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("nackMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 8,
       lua: `
 -- Keys: childQueueKey, parentQueueKey, visibilityQueue, concurrencyKey, envConcurrencyKey, orgConcurrencyKey, messageId
 local messageKey = KEYS[1]
@@ -1524,6 +1542,7 @@ local concurrencyKey = KEYS[4]
 local envConcurrencyKey = KEYS[5]
 local orgConcurrencyKey = KEYS[6]
 local visibilityQueue = KEYS[7]
+local envQueueKey = KEYS[8]
 
 -- Args: childQueueName, messageId, currentTime, messageScore
 local childQueueName = ARGV[1]
@@ -1546,6 +1565,9 @@ end
 
 -- Enqueue the message into the queue
 redis.call('ZADD', childQueueKey, messageScore, messageId)
+
+-- Enqueue the message into the env queue
+redis.call('ZADD', envQueueKey, messageScore, messageId)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
@@ -1729,6 +1751,7 @@ declare module "ioredis" {
       concurrencyKey: string,
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
+      envQueue: string,
       queueName: string,
       messageId: string,
       messageData: string,
@@ -1745,6 +1768,7 @@ declare module "ioredis" {
       currentConcurrencyKey: string,
       envCurrentConcurrencyKey: string,
       orgCurrentConcurrencyKey: string,
+      envQueueKey: string,
       childQueueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
@@ -1766,6 +1790,7 @@ declare module "ioredis" {
       concurrencyKey: string,
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
+      envQueueKey: string,
       messageId: string,
       messageQueueName: string,
       callback?: Callback<void>
@@ -1779,6 +1804,7 @@ declare module "ioredis" {
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
       visibilityQueue: string,
+      envQueueKey: string,
       childQueueName: string,
       messageId: string,
       currentTime: string,

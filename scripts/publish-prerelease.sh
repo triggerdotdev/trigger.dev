@@ -2,6 +2,27 @@
 
 set -e
 
+# Function to extract GITHUB_TOKEN from .env file
+extract_github_token() {
+    if [ -f .env ]; then
+        token=$(grep -E '^GITHUB_TOKEN=' .env | sed 's/^GITHUB_TOKEN=//' | sed 's/^"//' | sed 's/"$//')
+        if [ ! -z "$token" ]; then
+            export GITHUB_TOKEN="$token"
+        else
+            echo "GITHUB_TOKEN not found in .env file."
+            return 1
+        fi
+    else
+        echo "GITHUB_TOKEN not found in .env file."
+        return 1
+    fi
+}
+
+# Check if GITHUB_TOKEN is already set
+if [[ -z "${GITHUB_TOKEN}" ]]; then
+    extract_github_token || exit 1
+fi
+
 # Use the first argument as version or 'v3-prerelease' if not available
 version=${1:-'v3-prerelease'}
 
@@ -28,6 +49,7 @@ if [[ $prompt =~ [yY](es)* ]]; then
     pnpm exec changeset publish --no-git-tag --snapshot --tag $version
 else
     echo "Publish command aborted by the user."
+    git reset --hard HEAD
     exit 1;
 fi
 

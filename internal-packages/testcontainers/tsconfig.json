@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "moduleDetection": "force",
+    "types": ["vitest/globals"],
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "preserveWatchOutput": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": true,
+    "paths": {
+      "@trigger.dev/core": ["../../packages/core/src/index"],
+      "@trigger.dev/core/*": ["../../packages/core/src/*"],
+      "@trigger.dev/database": ["../../internal-packages/database/src/index"],
+      "@trigger.dev/database/*": ["../../internal-packages/database/src/*"]
+    }
+  },
+  "exclude": ["node_modules"]
+}

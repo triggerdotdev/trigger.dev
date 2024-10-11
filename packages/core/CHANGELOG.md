@@ -1,5 +1,36 @@
 # internal-platform
 
+## 3.0.12
+
+### Patch Changes
+
+- Prettier and more specific errors with links to docs ([#1387](https://github.com/triggerdotdev/trigger.dev/pull/1387))
+- Improvements to structured logger and conditional payload logging ([#1389](https://github.com/triggerdotdev/trigger.dev/pull/1389))
+- Correctly display errors on attempts and during indexing ([#1397](https://github.com/triggerdotdev/trigger.dev/pull/1397))
+
+## 3.0.11
+
+## 3.0.10
+
+### Patch Changes
+
+- Adding maxDuration to tasks to allow timing out runs after they exceed a certain number of seconds ([#1377](https://github.com/triggerdotdev/trigger.dev/pull/1377))
+
+## 3.0.9
+
+### Patch Changes
+
+- fix: run metadata not working when using npx/pnpm dlx ([`4c1ee3d6e`](https://github.com/triggerdotdev/trigger.dev/commit/4c1ee3d6ea5f2e1dfc9f475c99ecd236bf780a19))
+
+## 3.0.8
+
+### Patch Changes
+
+- Add otel propagation headers "below" the API fetch span, to attribute the child runs with the proper parent span ID ([#1352](https://github.com/triggerdotdev/trigger.dev/pull/1352))
+- Add Run metadata to allow for storing up to 4KB of data on a run and update it during the run ([#1357](https://github.com/triggerdotdev/trigger.dev/pull/1357))
+
+## 3.0.7
+
 ## 3.0.6
 
 ### Patch Changes

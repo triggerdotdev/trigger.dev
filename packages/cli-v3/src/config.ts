@@ -228,7 +228,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
   if (config.additionalFiles && config.additionalFiles.length > 0) {
     warn &&
       prettyWarning(
-        `The "additionalFiles" option is deprecated and will be removed. Use the "additionalFiles" build extension instead. See https://trigger.dev/docs/guides/new-build-system-preview#additionalfiles for more information.`
+        `The "additionalFiles" option is deprecated and will be removed. Use the "additionalFiles" build extension instead. See https://trigger.dev/docs/config/config-file#additionalfiles for more information.`
       );
 
     config.build ??= {};
@@ -239,7 +239,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
   if (config.additionalPackages && config.additionalPackages.length > 0) {
     warn &&
       prettyWarning(
-        `The "additionalPackages" option is deprecated and will be removed. Use the "additionalPackages" build extension instead. See https://trigger.dev/docs/guides/new-build-system-preview#additionalpackages for more information.`
+        `The "additionalPackages" option is deprecated and will be removed. Use the "additionalPackages" build extension instead. See https://trigger.dev/docs/config/config-file#additionalpackages for more information.`
       );
 
     config.build ??= {};
@@ -275,7 +275,7 @@ function validateConfig(config: TriggerConfig, warn = true) {
   if ("resolveEnvVars" in config && typeof config.resolveEnvVars === "function") {
     warn &&
       prettyWarning(
-        `The "resolveEnvVars" option is deprecated and will be removed. Use the "syncEnvVars" build extension instead. See https://trigger.dev/docs/guides/new-build-system-preview#resolveenvvars for more information.`
+        `The "resolveEnvVars" option is deprecated and will be removed. Use the "syncEnvVars" build extension instead. See https://trigger.dev/docs/config/config-file#syncenvvars for more information.`
       );
 
     const resolveEnvVarsFn = config.resolveEnvVars as ResolveEnvironmentVariablesFunction;

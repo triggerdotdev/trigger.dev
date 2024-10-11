@@ -368,7 +368,7 @@ function AppliedStatusFilter() {
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Status"
                 value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
@@ -456,7 +456,7 @@ function AppliedEnvironmentFilter({
       {(search, setSearch) => (
         <EnvironmentsDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Environment"
                 value={appliedSummary(
@@ -547,7 +547,7 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
       {(search, setSearch) => (
         <TasksDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Task"
                 value={appliedSummary(
@@ -645,7 +645,7 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
       {(search, setSearch) => (
         <BulkActionsDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Bulk action"
                 value={bulkId}
@@ -764,7 +764,7 @@ function AppliedTagsFilter() {
       {(search, setSearch) => (
         <TagsDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Tags"
                 value={appliedSummary(values("tags"))}
@@ -902,7 +902,7 @@ function AppliedPeriodFilter() {
       {(search, setSearch) => (
         <CreatedDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer" />}>
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Created"
                 value={

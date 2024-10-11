@@ -9,6 +9,7 @@ import {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
+  parsePacket,
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
@@ -43,6 +44,7 @@ import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -402,6 +404,10 @@ export class SharedQueueConsumer {
             startedAt: existingTaskRun.startedAt ?? new Date(),
             baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
+            maxDurationInSeconds: getMaxDuration(
+              existingTaskRun.maxDurationInSeconds,
+              backgroundTask.maxDurationInSeconds
+            ),
           },
           include: {
             runtimeEnvironment: true,
@@ -1033,6 +1039,11 @@ class SharedQueueTasks {
 
     const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
 
+    const metadata = await parsePacket({
+      data: taskRun.metadata ?? undefined,
+      dataType: taskRun.metadataType,
+    });
+
     const execution: ProdTaskRunExecution = {
       task: {
         id: backgroundWorkerTask.slug,
@@ -1060,6 +1071,8 @@ class SharedQueueTasks {
         durationMs: taskRun.usageDurationMs,
         costInCents: taskRun.costInCents,
         baseCostInCents: taskRun.baseCostInCents,
+        metadata,
+        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
       },
       queue: {
         id: queue.friendlyId,
@@ -1147,7 +1160,7 @@ class SharedQueueTasks {
     const environment = await findEnvironmentById(envId);
 
     if (!environment) {
-      logger.error("Environment not found", { id: envId });
+      logger.error("getLazyAttemptPayload: Environment not found", { runId, envId });
       return;
     }
 
@@ -1169,7 +1182,7 @@ class SharedQueueTasks {
     });
 
     if (!run) {
-      logger.error("Run not found", { id: runId, envId });
+      logger.error("getLazyAttemptPayload: Run not found", { runId, envId });
       return;
     }
 

@@ -41,6 +41,7 @@ interface ZodNamespaceOptions<
   handlers?: ZodSocketMessageHandlers<TClientMessages>;
   authToken?: string;
   logger?: StructuredLogger;
+  logHandlerPayloads?: boolean;
   preAuth?: (
     socket: ZodNamespaceSocket<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>,
     next: (err?: ExtendedError) => void,
@@ -91,11 +92,16 @@ export class ZodNamespace<
   constructor(
     opts: ZodNamespaceOptions<TClientMessages, TServerMessages, TServerSideEvents, TSocketData>
   ) {
-    this.#logger = opts.logger ?? new SimpleStructuredLogger(opts.name);
+    this.#logger =
+      opts.logger ??
+      new SimpleStructuredLogger(`ns-${opts.name}`, undefined, {
+        namespace: opts.name,
+      });
 
     this.#handler = new ZodSocketMessageHandler({
       schema: opts.clientMessages,
       handlers: opts.handlers,
+      logPayloads: opts.logHandlerPayloads,
     });
 
     this.io = opts.io;

@@ -64,7 +64,7 @@ import { useDebounce } from "~/hooks/useDebounce";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useReplaceLocation } from "~/hooks/useReplaceLocation";
+import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useSyncRunPage } from "~/hooks/useSyncRunPage";
 import { Trace, TraceEvent } from "~/hooks/useSyncTrace";
@@ -146,11 +146,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 type LoaderData = UseDataFunctionReturn<typeof loader>;
-
-function getSpanId(location: Location<any>): string | undefined {
-  const search = new URLSearchParams(location.search);
-  return search.get("span") ?? undefined;
-}
 
 export default function Page() {
   const { run, resizable } = useTypedLoaderData<typeof loader>();
@@ -265,8 +260,8 @@ type InspectorState =
   | undefined;
 
 function Panels({ resizable, run: originalRun }: LoaderData) {
-  const { location, replaceSearchParam } = useReplaceLocation();
-  const selectedSpanId = getSpanId(location);
+  const { searchParams, replaceSearchParam } = useReplaceSearchParams();
+  const selectedSpanId = searchParams.get("span") ?? undefined;
 
   const appOrigin = useAppOrigin();
   const { isUpToDate, events, runs } = useSyncRunPage({
@@ -533,16 +528,14 @@ function TasksTreeView({
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3">
         <SearchField onChange={setFilterText} />
-        <div className="flex items-center gap-2">
-          <Switch
-            variant="small"
-            label="Errors only"
-            checked={errorsOnly}
-            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-          />
-        </div>
+        <Switch
+          variant="small"
+          label="Errors only"
+          checked={errorsOnly}
+          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+        />
       </div>
       <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
         {/* Tree list */}
@@ -1020,7 +1013,7 @@ function ShowParentLink({ runFriendlyId }: { runFriendlyId: string }) {
       {mouseOver ? (
         <ShowParentIconSelected className="h-4 w-4 text-indigo-500" />
       ) : (
-        <ShowParentIcon className="text-charcoal-650 h-4 w-4" />
+        <ShowParentIcon className="h-4 w-4 text-charcoal-650" />
       )}
       <Paragraph
         variant="small"
@@ -1150,7 +1143,7 @@ function ConnectedDevWarning() {
         isVisible ? "opacity-100" : "h-0 opacity-0"
       )}
     >
-      <Callout variant="info">
+      <Callout variant="info" className="mt-2">
         <div className="flex flex-col gap-1">
           <Paragraph variant="small">
             Runs usually start within 2 seconds in{" "}

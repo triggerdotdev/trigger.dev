@@ -156,3 +156,11 @@ export const returnZeroCharacters = task({
     };
   },
 });
+
+export const testEnvVars = task({
+  id: "test-env-vars",
+  run: async (payload: any) => {
+    console.log(`env.FOO: ${process.env.FOO}`);
+    console.log(`env.BAR: ${process.env.BAR}`);
+  },
+});

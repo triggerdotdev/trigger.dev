@@ -1,3 +1,4 @@
+import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useRef } from "react";
 import { UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
@@ -8,6 +9,7 @@ import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { ButtonSpinner, Spinner } from "~/components/primitives/Spinner";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
@@ -19,7 +21,7 @@ type ReplayRunDialogProps = {
 
 export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   return (
-    <DialogContent key={`replay`} className="md:max-w-3xl">
+    <DialogContent key={`replay`} className="md:max-w-xl">
       <ReplayContent runFriendlyId={runFriendlyId} failedRedirect={failedRedirect} />
     </DialogContent>
   );
@@ -95,8 +97,12 @@ function ReplayForm({
     <Form action={formAction} method="post" onSubmit={(e) => submitForm(e)} className="pt-2">
       {editablePayload ? (
         <>
+          <Paragraph className="mb-3">
+            Replaying will create a new run using the same or modified payload, executing against
+            the latest version in your selected environment.
+          </Paragraph>
           <Header3 spacing>Payload</Header3>
-          <div className="mb-3 max-h-[70vh] overflow-y-auto rounded-sm border border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="mb-3 max-h-[70vh] min-h-40 overflow-y-auto rounded-sm border border-grid-dimmed bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <JSONEditor
               autoFocus
               defaultValue={currentJson.current}
@@ -123,8 +129,8 @@ function ReplayForm({
           defaultValue={environment.id}
           items={environments}
           dropdownIcon
-          variant="tertiary/medium"
-          className="w-fit pl-2"
+          variant="tertiary/small"
+          className="w-fit pl-1"
           text={(value) => {
             const env = environments.find((env) => env.id === value)!;
             return (
@@ -144,16 +150,20 @@ function ReplayForm({
         </Select>
       </InputGroup>
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
-      <Button
-        type="submit"
-        variant="primary/medium"
-        LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
-        disabled={isSubmitting}
-        shortcut={{ modifiers: ["meta"], key: "enter", enabledOnInputElements: true }}
-        className="mt-5"
-      >
-        {isSubmitting ? "Replaying..." : "Replay run"}
-      </Button>
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-grid-dimmed pt-3.5">
+        <DialogClose asChild>
+          <Button variant="tertiary/small">Cancel</Button>
+        </DialogClose>
+        <Button
+          type="submit"
+          variant="primary/small"
+          LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
+          disabled={isSubmitting}
+          shortcut={{ modifiers: ["meta"], key: "enter", enabledOnInputElements: true }}
+        >
+          {isSubmitting ? "Replaying..." : "Replay run"}
+        </Button>
+      </div>
     </Form>
   );
 }

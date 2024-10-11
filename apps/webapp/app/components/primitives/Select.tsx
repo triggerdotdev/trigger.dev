@@ -15,18 +15,18 @@ const sizes = {
     button: "h-6 rounded text-xs px-2 ",
   },
   medium: {
-    button: "h-8 rounded text-xs px-3 text-sm",
+    button: "h-8 rounded px-3 text-sm",
   },
 };
 
 const style = {
   tertiary: {
     button:
-      "bg-tertiary focus-within:ring-charcoal-500 border border-tertiary hover:text-text-bright hover:border-charcoal-600",
+      "bg-tertiary focus-custom border border-tertiary hover:text-text-bright hover:border-charcoal-600",
   },
   minimal: {
     button:
-      "bg-transparent focus-within:ring-charcoal-500 hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
+      "bg-transparent focus-custom hover:bg-tertiary disabled:bg-transparent disabled:pointer-events-none",
   },
 };
 
@@ -322,7 +322,7 @@ export function SelectTrigger({
         render={
           <Ariakit.Select
             className={cn(
-              "group flex items-center gap-1 outline-offset-0 focus-within:outline-none focus-within:ring-1 disabled:cursor-not-allowed disabled:opacity-50",
+              "group flex items-center gap-1 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
               variantClasses.button,
               className
             )}
@@ -426,7 +426,7 @@ export function SelectList(props: SelectListProps) {
     <Component
       {...props}
       className={cn(
-        "overflow-y-auto overscroll-contain outline-none scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom",
         props.className
       )}
     />
@@ -440,11 +440,11 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
 }
 
 const selectItemClasses =
-  "group cursor-pointer px-1 pt-1 text-xs text-text-dimmed outline-none last:pb-1";
+  "group cursor-pointer px-1 pt-1 text-sm text-text-dimmed focus-custom last:pb-1";
 
 export function SelectItem({
   icon,
-  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
   shortcut,
   ...props
 }: SelectItemProps) {
@@ -477,7 +477,7 @@ export function SelectItem({
       )}
       ref={ref}
     >
-      <div className="flex h-7 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+      <div className="flex h-8 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
         {icon}
         <div className="grow truncate">{props.children || props.value}</div>
         {checkIcon}
@@ -613,7 +613,7 @@ export function SelectPopover({
         "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
         "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
         "max-w-[min(480px,var(--popover-available-width))]",
-        "max-h-[min(480px,var(--popover-available-height))]",
+        "max-h-[min(520px,var(--popover-available-height))]",
         "origin-[var(--popover-transform-origin)]",
         className
       )}

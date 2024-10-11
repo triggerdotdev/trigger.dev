@@ -29,6 +29,8 @@ const commonRunSelect = {
   completedAt: true,
   expiredAt: true,
   delayUntil: true,
+  metadata: true,
+  metadataType: true,
   ttl: true,
   tags: true,
   costInCents: true,
@@ -157,10 +159,8 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         }
       }
 
-      const apiStatus = ApiRetrieveRunPresenter.apiStatusFromRunStatus(taskRun.status);
-
       return {
-        ...createCommonRunStructure(taskRun),
+        ...(await createCommonRunStructure(taskRun)),
         payload: $payload,
         payloadPresignedUrl: $payloadPresignedUrl,
         output: $output,
@@ -191,11 +191,15 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
               error: ApiRetrieveRunPresenter.apiErrorFromError(a.error),
             })),
         relatedRuns: {
-          root: taskRun.rootTaskRun ? createCommonRunStructure(taskRun.rootTaskRun) : undefined,
-          parent: taskRun.parentTaskRun
-            ? createCommonRunStructure(taskRun.parentTaskRun)
+          root: taskRun.rootTaskRun
+            ? await createCommonRunStructure(taskRun.rootTaskRun)
             : undefined,
-          children: taskRun.childRuns.map((r) => createCommonRunStructure(r)),
+          parent: taskRun.parentTaskRun
+            ? await createCommonRunStructure(taskRun.parentTaskRun)
+            : undefined,
+          children: await Promise.all(
+            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r))
+          ),
         },
       };
     });
@@ -266,6 +270,9 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       case "EXPIRED": {
         return "EXPIRED";
       }
+      case "TIMED_OUT": {
+        return "TIMED_OUT";
+      }
       default: {
         assertNever(status);
       }
@@ -329,7 +336,12 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
   }
 }
 
-function createCommonRunStructure(run: CommonRelatedRun) {
+async function createCommonRunStructure(run: CommonRelatedRun) {
+  const metadata = await parsePacket({
+    data: run.metadata ?? undefined,
+    dataType: run.metadataType,
+  });
+
   return {
     id: run.friendlyId,
     taskIdentifier: run.taskIdentifier,
@@ -354,6 +366,7 @@ function createCommonRunStructure(run: CommonRelatedRun) {
     ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status),
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
+    metadata,
   };
 }
 

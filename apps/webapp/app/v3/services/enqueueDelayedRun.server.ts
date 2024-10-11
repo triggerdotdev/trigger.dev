@@ -1,9 +1,9 @@
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import { $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
-import { parseNaturalLanguageDuration } from "./triggerTask.server";
-import { workerQueue } from "~/services/worker.server";
-import { $transaction } from "~/db.server";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public async call(runId: string) {
@@ -52,11 +52,7 @@ export class EnqueueDelayedRunService extends BaseService {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
 
         if (expireAt) {
-          await workerQueue.enqueue(
-            "v3.expireRun",
-            { runId: run.id },
-            { tx, runAt: expireAt, jobKey: `v3.expireRun.${run.id}` }
-          );
+          await ExpireEnqueuedRunService.enqueue(run.id, expireAt, tx);
         }
       }
     });

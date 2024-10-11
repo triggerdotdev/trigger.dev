@@ -70,7 +70,7 @@ export function RadioButtonCircle({
   return (
     <div
       className={cn(
-        "ring-offset-background focus-visible:ring-ring aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "ring-offset-background aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
         boxClassName
       )}
     >
@@ -81,7 +81,9 @@ export function RadioButtonCircle({
             outerCircleClassName
           )}
         >
-          <Circle className={cn("h-1.5 w-1.5 fill-white text-white", innerCircleClassName)} />
+          <Circle
+            className={cn("size-1.5 fill-text-bright text-text-bright", innerCircleClassName)}
+          />
         </div>
       )}
     </div>
@@ -121,7 +123,7 @@ export const RadioGroupItem = React.forwardRef<
       <RadioGroupPrimitive.Item
         ref={ref}
         className={cn(
-          "group flex cursor-pointer items-start gap-x-2 transition",
+          "group flex cursor-pointer items-start gap-x-2 transition focus-custom",
           variation.button,
           className
         )}
@@ -129,7 +131,7 @@ export const RadioGroupItem = React.forwardRef<
       >
         <div
           className={cn(
-            "ring-offset-background focus-visible:ring-ring aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+            "ring-offset-background focus-visible:ring-ring aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
             variation.inputPosition
           )}
         >

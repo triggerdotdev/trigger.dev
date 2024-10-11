@@ -26,7 +26,7 @@ const ResizableHandle = ({
 }) => (
   <PanelResizer
     className={cn(
-      "focus-visible:ring-ring group relative flex w-0.75 items-center justify-center after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 hover:w-0.75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-secondary/50 focus-visible:ring-offset-0 [&[data-panel-group-direction=vertical]>div]:rotate-90",
+      "group relative flex w-0.75 items-center justify-center focus-custom after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 hover:w-0.75 [&[data-panel-group-direction=vertical]>div]:rotate-90",
       className
     )}
     size="3px"

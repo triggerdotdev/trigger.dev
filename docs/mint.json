@@ -83,18 +83,29 @@
     {
       "source": "/trigger-folder",
       "destination": "/config/config-file"
+    },
+    {
+      "source": "/trigger-config",
+      "destination": "/config/config-file"
+    },
+    {
+      "source": "/guides/frameworks/introduction",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/guides/examples/intro",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/examples/:slug*",
+      "destination": "/guides/examples/:slug*"
     }
   ],
   "anchors": [
     {
-      "name": "Guides",
+      "name": "Guides & examples",
       "icon": "book",
       "url": "guides"
-    },
-    {
-      "name": "Examples",
-      "icon": "code",
-      "url": "examples"
     }
   ],
   "navigation": [
@@ -112,7 +123,10 @@
         "triggering",
         "runs-and-attempts",
         "apikeys",
-        "config/config-file"
+        {
+          "group": "Configuration",
+          "pages": ["config/config-file", "config/extensions/overview"]
+        }
       ]
     },
     {
@@ -146,8 +160,9 @@
         "machines",
         "idempotency",
         "replaying",
+        "runs/max-duration",
         "tags",
-        "notifications",
+        "runs/metadata",
         "run-usage"
       ]
     },
@@ -166,7 +181,8 @@
             "management/runs/retrieve",
             "management/runs/replay",
             "management/runs/cancel",
-            "management/runs/reschedule"
+            "management/runs/reschedule",
+            "management/runs/update-metadata"
           ]
         },
         {
@@ -244,13 +260,23 @@
       "pages": ["community", "help-slack", "help-email"]
     },
     {
+      "group": "",
+      "pages": ["guides/introduction"]
+    },
+    {
       "group": "Frameworks",
       "pages": [
-        "guides/frameworks/introduction",
         "guides/frameworks/bun",
         "guides/frameworks/nextjs",
         "guides/frameworks/nodejs",
-        "guides/frameworks/remix",
+        "guides/frameworks/remix"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/frameworks/prisma",
+        "guides/frameworks/sequin",
         {
           "group": "Supabase",
           "icon": "bolt",
@@ -260,7 +286,35 @@
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
+        },
+        {
+          "group": "Webhooks",
+          "icon": "webhook",
+          "iconType": "solid",
+          "pages": [
+            "guides/frameworks/webhooks-guides-overview",
+            "guides/frameworks/nextjs-webhooks",
+            "guides/frameworks/remix-webhooks",
+            "guides/examples/stripe-webhook"
+          ]
         }
+      ]
+    },
+    {
+      "group": "Example tasks",
+      "pages": [
+        "guides/examples/dall-e3-generate-image",
+        "guides/examples/deepgram-transcribe-audio",
+        "guides/examples/ffmpeg-video-processing",
+        "guides/examples/open-ai-with-retrying",
+        "guides/examples/pdf-to-image",
+        "guides/examples/puppeteer",
+        "guides/examples/sharp-image-processing",
+        "guides/examples/supabase-database-operations",
+        "guides/examples/supabase-storage-upload",
+        "guides/examples/react-pdf",
+        "guides/examples/resend-email-sequence",
+        "guides/examples/vercel-ai-sdk"
       ]
     },
     {
@@ -270,20 +324,6 @@
     {
       "group": "Migrations",
       "pages": ["guides/use-cases/upgrading-from-v2"]
-    },
-    {
-      "group": "Examples",
-      "pages": [
-        "examples/intro",
-        "examples/dall-e3-generate-image",
-        "examples/ffmpeg-video-processing",
-        "examples/open-ai-with-retrying",
-        "examples/pdf-to-image",
-        "examples/sharp-image-processing",
-        "examples/react-pdf",
-        "examples/resend-email-sequence",
-        "examples/vercel-ai-sdk"
-      ]
     }
   ],
   "footerSocials": {
