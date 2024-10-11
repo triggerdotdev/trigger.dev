@@ -54,8 +54,6 @@ A Run can go through **various** states during its lifecycle. The following diag
 
 <Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The Run's Time-to-Live (TTL) has passed before it could start executing.
 
-[Insert the second and third images here]
-
 ## Attempts
 
 An Attempt represents a single execution of a task within a Run. A Run can have one or more Attempts, depending on the task's retry settings and whether it fails. Each Attempt has:
@@ -65,6 +63,8 @@ An Attempt represents a single execution of a task within a Run. A Run can have 
 - An output (if successful) or an error (if failed)
 
 When a task fails, it will be retried according to its retry settings, creating new Attempts until it either succeeds or reaches the retry limit.
+
+![Run with retries](/images/run-with-retries.png)
 
 ## Run Completion
 
@@ -88,7 +88,7 @@ yourTask.trigger({ foo: "bar" }, { idempotencyKey: "unique-key" });
 - If a Run with the same idempotency key is already in progress, the new trigger will be ignored.
 - If the Run has already finished, the previous output or error will be returned.
 
-## Canceling Runs
+### Canceling Runs
 
 You can cancel an in-progress Run using the API or the dashboard:
 
@@ -97,12 +97,16 @@ runs.cancel(runId);
 ```
 
 When a Run is canceled:
-• The task execution is stopped
-• The Run is marked as canceled
-• The task will not be retried
-• Any in-progress child Runs are also canceled
 
-### Time-to-Live (TTL)
+– The task execution is stopped
+
+– The Run is marked as canceled
+
+– The task will not be retried
+
+– Any in-progress child Runs are also canceled
+
+### Time-to-live (TTL)
 
 You can set a TTL when triggering a Run:
 
@@ -111,6 +115,8 @@ yourTask.trigger({ foo: "bar" }, { ttl: "10m" });
 ```
 
 If the Run hasn't started within the specified TTL, it will automatically expire. This is useful for time-sensitive tasks. Note that dev runs automatically have a 10-minute TTL.
+
+![Run with TTL](/images/run-with-ttl.png)
 
 ### Delayed Runs
 
@@ -121,6 +127,8 @@ yourTask.trigger({ foo: "bar" }, { delay: "1h" });
 ```
 
 This is useful for tasks that need to be executed at a specific time in the future.
+
+![Run with delay](/images/run-with-delay.png)
 
 ### Replaying Runs
 
