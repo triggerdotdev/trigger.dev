@@ -17,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
@@ -97,39 +98,49 @@ export default function NewOrganizationPage() {
             <FormError id={orgName.errorId}>{orgName.error}</FormError>
           </InputGroup>
           {isManagedCloud && (
-            <InputGroup>
-              <Label htmlFor={"companySize"}>Number of employees</Label>
-              <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
-                <RadioGroupItem
-                  id="employees-1-5"
-                  label="1-5"
-                  value={"1-5"}
-                  variant="button/small"
-                  className="grow"
+            <>
+              <InputGroup>
+                <Label htmlFor={"companySize"}>Number of employees</Label>
+                <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
+                  <RadioGroupItem
+                    id="employees-1-5"
+                    label="1-5"
+                    value={"1-5"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-6-49"
+                    label="6-49"
+                    value={"6-49"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-50-99"
+                    label="50-99"
+                    value={"50-99"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-100+"
+                    label="100+"
+                    value={"100+"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                </RadioGroup>
+              </InputGroup>
+              <InputGroup>
+                <Label>What problem are you trying to solve?</Label>
+                <TextArea
+                  rows={4}
+                  // placeholder="E.g. what problem are you trying to solve?"
+                  spellCheck={false}
                 />
-                <RadioGroupItem
-                  id="employees-6-49"
-                  label="6-49"
-                  value={"6-49"}
-                  variant="button/small"
-                  className="grow"
-                />
-                <RadioGroupItem
-                  id="employees-50-99"
-                  label="50-99"
-                  value={"50-99"}
-                  variant="button/small"
-                  className="grow"
-                />
-                <RadioGroupItem
-                  id="employees-100+"
-                  label="100+"
-                  value={"100+"}
-                  variant="button/small"
-                  className="grow"
-                />
-              </RadioGroup>
-            </InputGroup>
+              </InputGroup>
+            </>
           )}
 
           <FormButtons
