@@ -6,7 +6,7 @@ description: "Tasks need to be triggered in order to run."
 Trigger tasks **from your backend**:
 
 | Function                 | This works | What it does                                                                                                                |
-| ------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------- |
+| :----------------------- | :--------- | :-------------------------------------------------------------------------------------------------------------------------- |
 | `tasks.trigger()`        | Anywhere   | Triggers a task and gets a handle you can use to fetch and manage the run. [Read more](#tasks-trigger)                      |
 | `tasks.batchTrigger()`   | Anywhere   | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger) |
 | `tasks.triggerAndPoll()` | Anywhere   | Triggers a task and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll)                              |
@@ -14,11 +14,11 @@ Trigger tasks **from your backend**:
 Trigger tasks **from inside a run**:
 
 | Function                         | This works  | What it does                                                                                                                                                              |
-| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yourTask.trigger()`             | Anywhere    | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#task-trigger)                                  |
-| `yourTask.batchTrigger()`        | Anywhere    | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#task-batchtrigger)            |
-| `yourTask.triggerAndWait()`      | Inside task | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#task-triggerandwait)                                           |
-| `yourTask.batchTriggerAndWait()` | Inside task | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#task-batchtriggerandwait) |
+| :------------------------------- | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `yourTask.trigger()`             | Anywhere    | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#yourtask-trigger)                                  |
+| `yourTask.batchTrigger()`        | Anywhere    | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#yourtask-batchtrigger)            |
+| `yourTask.triggerAndWait()`      | Inside task | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#yourtask-triggerandwait)                                           |
+| `yourTask.batchTriggerAndWait()` | Inside task | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#yourtask-batchtriggerandwait) |
 
 Additionally, [scheduled tasks](/tasks-scheduled) get **automatically** triggered on their schedule and webhooks when receiving a webhook.
 
