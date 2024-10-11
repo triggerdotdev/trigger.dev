@@ -47,7 +47,8 @@ export default defineConfig({
 ## Task code
 
 ```ts trigger/sharp-image-processing.ts
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import fs from "fs/promises";
 import os from "os";
@@ -66,18 +67,11 @@ const r2Client = new S3Client({
 
 export const sharpProcessImage = task({
   id: "sharp-process-image",
-  // Only retry this task once if it fails
-  retry: {
-    maxAttempts: 1,
-  },
+  retry: { maxAttempts: 1 },
   run: async (payload: { imageUrl: string; watermarkUrl: string }) => {
     const { imageUrl, watermarkUrl } = payload;
+    const outputPath = path.join(os.tmpdir(), `output_${Date.now()}.jpg`);
 
-    // Generate temporary and output file names
-    const tempDirectory = os.tmpdir();
-    const outputPath = path.join(tempDirectory, `output_${Date.now()}.jpg`);
-
-    // Fetch the image and watermark
     const [imageResponse, watermarkResponse] = await Promise.all([
       fetch(imageUrl),
       fetch(watermarkUrl),
@@ -85,45 +79,39 @@ export const sharpProcessImage = task({
     const imageBuffer = await imageResponse.arrayBuffer();
     const watermarkBuffer = await watermarkResponse.arrayBuffer();
 
-    // Process the image using Sharp
     await sharp(Buffer.from(imageBuffer))
-      .resize(800, 800) // Resize the image to 800x800
+      .resize(800, 800) // Resize the image to 800x800px
       .composite([
         {
           input: Buffer.from(watermarkBuffer),
           gravity: "southeast", // Position the watermark in the bottom-right corner
         },
       ])
-      .toFormat("jpeg")
-      .toFile(outputPath);
+      .jpeg() // Convert to jpeg
+      .toBuffer() // Convert to buffer
+      .then(async (outputBuffer) => {
+        await fs.writeFile(outputPath, outputBuffer); // Write the buffer to file
 
-    logger.log(`Image processed.`);
+        const r2Key = `processed-images/${path.basename(outputPath)}`;
+        const uploadParams = {
+          Bucket: process.env.R2_BUCKET,
+          Key: r2Key,
+          Body: await fs.readFile(outputPath),
+        };
 
-    // Read the processed image file
-    const processedImageBuffer = await fs.readFile(outputPath);
+        const upload = new Upload({
+          client: r2Client,
+          params: uploadParams,
+        });
 
-    // Upload the image to R2, replacing slashes with underscores
-    const r2Key = `processed-images/${path.basename(outputPath)}`;
+        await upload.done();
+        logger.log("Image uploaded to R2 storage.", {
+          path: `/${process.env.R2_BUCKET}/${r2Key}`,
+        });
 
-    const uploadParams = {
-      Bucket: process.env.R2_BUCKET,
-      Key: r2Key,
-      Body: processedImageBuffer,
-    };
-
-    // Upload the image to R2 and get the URL
-    await r2Client.send(new PutObjectCommand(uploadParams));
-    logger.log("Processed image uploaded to R2", {
-      path: `/${process.env.R2_BUCKET}/${r2Key}`,
-    });
-
-    // Delete the temporary file
-    await fs.unlink(outputPath);
-    logger.log("Temporary file deleted", { outputPath: outputPath });
-
-    return {
-      message: `New image uploaded to /${process.env.R2_BUCKET}/${r2Key}`,
-    };
+        await fs.unlink(outputPath); // Clean up the temporary file
+        return { r2Key };
+      });
   },
 });
 ```
