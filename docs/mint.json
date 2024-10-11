@@ -121,6 +121,7 @@
           "pages": ["tasks/overview", "tasks/scheduled"]
         },
         "triggering",
+        "runs-and-attempts",
         "apikeys",
         {
           "group": "Configuration",
