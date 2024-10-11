@@ -140,6 +140,22 @@ runs.replay(runId);
 
 This is useful for re-running a task with the same input, especially for debugging or recovering from failures. The new Run will use the latest version of the task.
 
+You can also replay runs from the dashboard using the same or different payload. Learn how to do this [here](/replaying).
+
+### Waiting for Runs
+
+#### triggerAndWait()
+
+The `triggerAndWait()` function triggers a task and then lets you wait for the result before continuing. [Learn more about triggerAndWait()](/triggering#yourtask-triggerandwait).
+
+![Run with triggerAndWait](/images/run-with-triggerAndWait().png)
+
+#### batchTriggerAndWait()
+
+Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you batch trigger a task and wait for all the results [Learn more about batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait).
+
+![Run with batchTriggerAndWait](/images/run-with-batchTriggerAndWait().png)
+
 ### Runs API
 
 The Runs API provides methods to interact with and manage Runs:
