@@ -1,7 +1,14 @@
 import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
-import { trace } from "@opentelemetry/api";
+import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
-import { QueueOptions, TaskRunInternalError } from "@trigger.dev/core/v3";
+import {
+  MachinePreset,
+  MachinePresetName,
+  parsePacket,
+  QueueOptions,
+  TaskRunExecution,
+  TaskRunInternalError,
+} from "@trigger.dev/core/v3";
 import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
@@ -9,6 +16,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunAttemptStatus,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -21,12 +29,8 @@ import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-
-class NotImplementedError extends Error {
-  constructor(message: string) {
-    super(message);
-  }
-}
+import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
+import { machinePresetFromConfig } from "./machinePresets";
 
 type Options = {
   redis: RedisOptions;
@@ -34,6 +38,11 @@ type Options = {
   worker: WorkerConcurrencyOptions & {
     pollIntervalMs?: number;
   };
+  machines: {
+    defaultMachine: MachinePresetName;
+    machines: Record<string, MachinePreset>;
+  };
+  tracer: Tracer;
 };
 
 type TriggerParams = {
@@ -103,6 +112,7 @@ export class RunEngine {
   runQueue: RunQueue;
   private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
+  private tracer: Tracer;
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
@@ -142,10 +152,12 @@ export class RunEngine {
           await this.#handleStalledSnapshot(payload);
         },
         expireRun: async ({ payload }) => {
-          await this.expire(payload.runId);
+          await this.expire({ runId: payload.runId });
         },
       },
     });
+
+    this.tracer = options.tracer;
   }
 
   //MARK: - Run functions
@@ -191,169 +203,186 @@ export class RunEngine {
   ) {
     const prisma = tx ?? this.prisma;
 
-    const status = delayUntil ? "DELAYED" : "PENDING";
-
-    //create run
-    const taskRun = await prisma.taskRun.create({
-      data: {
-        status,
-        number,
+    return this.#trace(
+      "createRunAttempt",
+      {
         friendlyId,
-        runtimeEnvironmentId: environment.id,
+        environmentId: environment.id,
         projectId: environment.project.id,
-        idempotencyKey,
         taskIdentifier,
-        payload,
-        payloadType,
-        context,
-        traceContext,
-        traceId,
-        spanId,
-        parentSpanId,
-        lockedToVersionId,
-        concurrencyKey,
-        queue: queueName,
-        masterQueue,
-        isTest,
-        delayUntil,
-        queuedAt,
-        maxAttempts,
-        ttl,
-        tags:
-          tags.length === 0
-            ? undefined
-            : {
-                connect: tags.map((id) => ({ id })),
-              },
-        parentTaskRunId,
-        parentTaskRunAttemptId,
-        rootTaskRunId,
-        batchId,
-        resumeParentOnCompletion,
-        depth,
-        metadata,
-        metadataType,
-        seedMetadata,
-        seedMetadataType,
-        executionSnapshot: {
-          create: {
-            engine: "V2",
-            executionStatus: "RUN_CREATED",
-            description: "Run was created",
-            runStatus: status,
-          },
-        },
       },
-    });
+      async (span) => {
+        const status = delayUntil ? "DELAYED" : "PENDING";
 
-    await this.redlock.using([taskRun.id], 5000, async (signal) => {
-      //create associated waitpoint (this completes when the run completes)
-      const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
-        projectId: environment.project.id,
-        completedByTaskRunId: taskRun.id,
-      });
-
-      //triggerAndWait or batchTriggerAndWait
-      if (resumeParentOnCompletion && parentTaskRunId) {
-        //this will block the parent run from continuing until this waitpoint is completed (and removed)
-        await this.#blockRunWithWaitpoint(prisma, {
-          orgId: environment.organization.id,
-          runId: parentTaskRunId,
-          waitpoint: associatedWaitpoint,
-        });
-      }
-
-      //Make sure lock extension succeeded
-      if (signal.aborted) {
-        throw signal.error;
-      }
-
-      if (queue) {
-        const concurrencyLimit =
-          typeof queue.concurrencyLimit === "number"
-            ? Math.max(0, queue.concurrencyLimit)
-            : undefined;
-
-        let taskQueue = await prisma.taskQueue.findFirst({
-          where: {
-            runtimeEnvironmentId: environment.id,
-            name: queueName,
-          },
-        });
-
-        if (taskQueue) {
-          taskQueue = await prisma.taskQueue.update({
-            where: {
-              id: taskQueue.id,
-            },
-            data: {
-              concurrencyLimit,
-              rateLimit: queue.rateLimit,
-            },
-          });
-        } else {
-          taskQueue = await prisma.taskQueue.create({
-            data: {
-              friendlyId: generateFriendlyId("queue"),
-              name: queueName,
-              concurrencyLimit,
-              runtimeEnvironmentId: environment.id,
-              projectId: environment.project.id,
-              rateLimit: queue.rateLimit,
-              type: "NAMED",
-            },
-          });
-        }
-
-        if (typeof taskQueue.concurrencyLimit === "number") {
-          await this.runQueue.updateQueueConcurrencyLimits(
-            environment,
-            taskQueue.name,
-            taskQueue.concurrencyLimit
-          );
-        } else {
-          await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
-        }
-      }
-
-      if (taskRun.delayUntil) {
-        const delayWaitpoint = await this.#createDateTimeWaitpoint(prisma, {
-          projectId: environment.project.id,
-          completedAfter: taskRun.delayUntil,
-        });
-
-        await prisma.taskRunWaitpoint.create({
+        //create run
+        const taskRun = await prisma.taskRun.create({
           data: {
-            taskRunId: taskRun.id,
-            waitpointId: delayWaitpoint.id,
-            projectId: delayWaitpoint.projectId,
+            status,
+            number,
+            friendlyId,
+            runtimeEnvironmentId: environment.id,
+            projectId: environment.project.id,
+            idempotencyKey,
+            taskIdentifier,
+            payload,
+            payloadType,
+            context,
+            traceContext,
+            traceId,
+            spanId,
+            parentSpanId,
+            lockedToVersionId,
+            concurrencyKey,
+            queue: queueName,
+            masterQueue,
+            isTest,
+            delayUntil,
+            queuedAt,
+            maxAttempts,
+            ttl,
+            tags:
+              tags.length === 0
+                ? undefined
+                : {
+                    connect: tags.map((id) => ({ id })),
+                  },
+            parentTaskRunId,
+            parentTaskRunAttemptId,
+            rootTaskRunId,
+            batchId,
+            resumeParentOnCompletion,
+            depth,
+            metadata,
+            metadataType,
+            seedMetadata,
+            seedMetadataType,
+            executionSnapshot: {
+              create: {
+                engine: "V2",
+                executionStatus: "RUN_CREATED",
+                description: "Run was created",
+                runStatus: status,
+              },
+            },
           },
         });
+
+        span.setAttribute("runId", taskRun.id);
+
+        await this.redlock.using([taskRun.id], 5000, async (signal) => {
+          //create associated waitpoint (this completes when the run completes)
+          const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
+            projectId: environment.project.id,
+            completedByTaskRunId: taskRun.id,
+          });
+
+          //triggerAndWait or batchTriggerAndWait
+          if (resumeParentOnCompletion && parentTaskRunId) {
+            //this will block the parent run from continuing until this waitpoint is completed (and removed)
+            await this.#blockRunWithWaitpoint(prisma, {
+              orgId: environment.organization.id,
+              runId: parentTaskRunId,
+              waitpoint: associatedWaitpoint,
+            });
+          }
+
+          //Make sure lock extension succeeded
+          if (signal.aborted) {
+            throw signal.error;
+          }
+
+          if (queue) {
+            const concurrencyLimit =
+              typeof queue.concurrencyLimit === "number"
+                ? Math.max(0, queue.concurrencyLimit)
+                : undefined;
+
+            let taskQueue = await prisma.taskQueue.findFirst({
+              where: {
+                runtimeEnvironmentId: environment.id,
+                name: queueName,
+              },
+            });
+
+            if (taskQueue) {
+              taskQueue = await prisma.taskQueue.update({
+                where: {
+                  id: taskQueue.id,
+                },
+                data: {
+                  concurrencyLimit,
+                  rateLimit: queue.rateLimit,
+                },
+              });
+            } else {
+              taskQueue = await prisma.taskQueue.create({
+                data: {
+                  friendlyId: generateFriendlyId("queue"),
+                  name: queueName,
+                  concurrencyLimit,
+                  runtimeEnvironmentId: environment.id,
+                  projectId: environment.project.id,
+                  rateLimit: queue.rateLimit,
+                  type: "NAMED",
+                },
+              });
+            }
+
+            if (typeof taskQueue.concurrencyLimit === "number") {
+              await this.runQueue.updateQueueConcurrencyLimits(
+                environment,
+                taskQueue.name,
+                taskQueue.concurrencyLimit
+              );
+            } else {
+              await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
+            }
+          }
+
+          if (taskRun.delayUntil) {
+            const delayWaitpoint = await this.#createDateTimeWaitpoint(prisma, {
+              projectId: environment.project.id,
+              completedAfter: taskRun.delayUntil,
+            });
+
+            await prisma.taskRunWaitpoint.create({
+              data: {
+                taskRunId: taskRun.id,
+                waitpointId: delayWaitpoint.id,
+                projectId: delayWaitpoint.projectId,
+              },
+            });
+          }
+
+          if (!taskRun.delayUntil && taskRun.ttl) {
+            const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+            if (expireAt) {
+              await this.worker.enqueue({
+                id: `expireRun:${taskRun.id}`,
+                job: "expireRun",
+                payload: { runId: taskRun.id },
+              });
+            }
+          }
+
+          //Make sure lock extension succeeded
+          if (signal.aborted) {
+            throw signal.error;
+          }
+
+          //enqueue the run if it's not delayed
+          if (!taskRun.delayUntil) {
+            await this.#enqueueRun(taskRun, environment, prisma);
+          }
+        });
+
+        //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
+        //todo if this has been triggered with triggerAndWait or batchTriggerAndWait
+
+        return taskRun;
       }
-
-      if (!taskRun.delayUntil && taskRun.ttl) {
-        const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
-
-        if (expireAt) {
-          await this.worker.enqueue({ job: "expireRun", payload: { runId: taskRun.id } });
-        }
-      }
-
-      //Make sure lock extension succeeded
-      if (signal.aborted) {
-        throw signal.error;
-      }
-
-      //enqueue the run if it's not delayed
-      if (!taskRun.delayUntil) {
-        await this.#enqueueRun(taskRun, environment, prisma);
-      }
-    });
-
-    //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
-    //todo if this has been triggered with triggerAndWait or batchTriggerAndWait
-
-    return taskRun;
+    );
   }
 
   /** Triggers multiple runs.
@@ -377,41 +406,53 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
-    const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
-    if (!message) {
-      return null;
-    }
-
-    const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, message.messageId);
-      if (!snapshot) {
-        throw new Error(
-          `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
-        );
+    return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
+      const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
+      if (!message) {
+        return null;
       }
 
-      if (!["QUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
-        //todo put run in a system failure state
-        throw new Error(
-          `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
-        );
-      }
+      span.setAttribute("runId", message.messageId);
 
-      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-        run: {
-          id: message.messageId,
-          status: snapshot.runStatus,
-        },
-        snapshot: {
-          executionStatus: "DEQUEUED_FOR_EXECUTION",
-          description: "Run was dequeued for execution",
-        },
+      const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
+        const snapshot = await this.#getLatestExecutionSnapshot(prisma, message.messageId);
+        if (!snapshot) {
+          throw new Error(
+            `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
+          );
+        }
+
+        if (!["QUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
+          await this.#systemFailure({
+            runId: message.messageId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_DEQUEUED_INVALID_STATE",
+              message: `Task was in the ${snapshot.executionStatus} state when it was dequeued for execution.`,
+            },
+            tx: prisma,
+          });
+          throw new Error(
+            `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
+          );
+        }
+
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+          run: {
+            id: message.messageId,
+            status: snapshot.runStatus,
+          },
+          snapshot: {
+            executionStatus: "DEQUEUED_FOR_EXECUTION",
+            description: "Run was dequeued for execution",
+          },
+        });
+
+        return newSnapshot;
       });
 
       return newSnapshot;
     });
-
-    return newSnapshot;
   }
 
   async createRunAttempt({
@@ -425,29 +466,282 @@ export class RunEngine {
   }) {
     const prisma = tx ?? this.prisma;
 
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-    if (!latestSnapshot) {
-      return this.systemFailure({
-        runId,
-        error: {
-          type: "INTERNAL_ERROR",
-          code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
-          message: "Task had no execution snapshot when trying to create a run attempt",
-        },
-        tx: prisma,
-      });
-    }
+    return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
+      return this.redlock.using([runId], 5000, async (signal) => {
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        if (!latestSnapshot) {
+          await this.#systemFailure({
+            runId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
+              message: "Task had no execution snapshot when trying to create a run attempt",
+            },
+            tx: prisma,
+          });
+          throw new ServiceValidationError("No snapshot", 404);
+        }
 
-    //todo check if the snapshot is the latest one
+        if (latestSnapshot.id !== snapshotId) {
+          //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
+          //we just want to log because elsewhere it should have been put back into a state where it can be attempted
+          this.logger.warn(
+            "RunEngine.createRunAttempt(): snapshot has changed since the attempt was created, ignoring."
+          );
+          throw new ServiceValidationError("Snapshot changed", 409);
+        }
+
+        const environment = await this.#getAuthenticatedEnvironmentFromRun(runId, prisma);
+        if (!environment) {
+          throw new ServiceValidationError("Environment not found", 404);
+        }
+
+        const taskRun = await prisma.taskRun.findFirst({
+          where: {
+            id: runId,
+          },
+          include: {
+            tags: true,
+            attempts: {
+              take: 1,
+              orderBy: {
+                number: "desc",
+              },
+            },
+            lockedBy: {
+              include: {
+                worker: {
+                  select: {
+                    id: true,
+                    version: true,
+                    sdkVersion: true,
+                    cliVersion: true,
+                    supportsLazyAttempts: true,
+                  },
+                },
+              },
+            },
+            batchItems: {
+              include: {
+                batchTaskRun: true,
+              },
+            },
+          },
+        });
+
+        this.logger.debug("Creating a task run attempt", { taskRun });
+
+        if (!taskRun) {
+          throw new ServiceValidationError("Task run not found", 404);
+        }
+
+        span.setAttribute("projectId", taskRun.projectId);
+        span.setAttribute("environmentId", taskRun.runtimeEnvironmentId);
+        span.setAttribute("taskRunId", taskRun.id);
+        span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
+
+        if (taskRun.status === "CANCELED") {
+          throw new ServiceValidationError("Task run is cancelled", 400);
+        }
+
+        if (!taskRun.lockedBy) {
+          throw new ServiceValidationError("Task run is not locked", 400);
+        }
+
+        const queue = await prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: environment.id,
+              name: taskRun.queue,
+            },
+          },
+        });
+
+        if (!queue) {
+          throw new ServiceValidationError("Queue not found", 404);
+        }
+
+        const nextAttemptNumber = taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1;
+
+        if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
+          await this.#crash({
+            runId: taskRun.id,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_CRASHED",
+              message: taskRun.lockedBy.worker.supportsLazyAttempts
+                ? "Max attempts reached."
+                : "Max attempts reached. Please upgrade your CLI and SDK.",
+            },
+          });
+
+          throw new ServiceValidationError("Max attempts reached", 400);
+        }
+
+        const result = await $transaction(
+          prisma,
+          async (tx) => {
+            const attempt = await tx.taskRunAttempt.create({
+              data: {
+                number: nextAttemptNumber,
+                friendlyId: generateFriendlyId("attempt"),
+                taskRunId: taskRun.id,
+                startedAt: new Date(),
+                backgroundWorkerId: taskRun.lockedBy!.worker.id,
+                backgroundWorkerTaskId: taskRun.lockedBy!.id,
+                status: "EXECUTING",
+                queueId: queue.id,
+                runtimeEnvironmentId: environment.id,
+              },
+            });
+
+            const run = await tx.taskRun.update({
+              where: {
+                id: taskRun.id,
+              },
+              data: {
+                status: "EXECUTING",
+              },
+              include: {
+                tags: true,
+                lockedBy: {
+                  include: { worker: true },
+                },
+              },
+            });
+
+            const newSnapshot = await this.#createExecutionSnapshot(tx, {
+              run,
+              attempt,
+              snapshot: {
+                executionStatus: "EXECUTING",
+                description: "Attempt created, starting execution",
+              },
+            });
+
+            if (taskRun.ttl) {
+              //don't expire the run, it's going to execute
+              await this.worker.ack(`expireRun:${taskRun.id}`);
+            }
+
+            return { run, attempt, snapshot: newSnapshot };
+          },
+          (error) => {
+            this.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
+              code: error.code,
+              meta: error.meta,
+              stack: error.stack,
+              message: error.message,
+              name: error.name,
+            });
+          }
+        );
+
+        if (!result) {
+          this.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
+            runId: taskRun.id,
+            nextAttemptNumber,
+          });
+          throw new ServiceValidationError("Failed to create task run attempt", 500);
+        }
+
+        const { run, attempt, snapshot } = result;
+
+        const machinePreset = machinePresetFromConfig({
+          machines: this.options.machines.machines,
+          defaultMachine: this.options.machines.defaultMachine,
+          config: taskRun.lockedBy.machineConfig ?? {},
+        });
+
+        const metadata = await parsePacket({
+          data: taskRun.metadata ?? undefined,
+          dataType: taskRun.metadataType,
+        });
+
+        const execution: TaskRunExecution = {
+          task: {
+            id: run.lockedBy!.slug,
+            filePath: run.lockedBy!.filePath,
+            exportName: run.lockedBy!.exportName,
+          },
+          attempt: {
+            id: attempt.friendlyId,
+            number: attempt.number,
+            startedAt: attempt.startedAt ?? attempt.createdAt,
+            backgroundWorkerId: run.lockedBy!.worker.id,
+            backgroundWorkerTaskId: run.lockedBy!.id,
+            status: "EXECUTING" as const,
+          },
+          run: {
+            id: run.friendlyId,
+            payload: run.payload,
+            payloadType: run.payloadType,
+            context: run.context,
+            createdAt: run.createdAt,
+            tags: run.tags.map((tag) => tag.name),
+            isTest: run.isTest,
+            idempotencyKey: run.idempotencyKey ?? undefined,
+            startedAt: run.startedAt ?? run.createdAt,
+            durationMs: run.usageDurationMs,
+            costInCents: run.costInCents,
+            baseCostInCents: run.baseCostInCents,
+            maxAttempts: run.maxAttempts ?? undefined,
+            version: run.lockedBy!.worker.version,
+            metadata,
+            maxDuration: run.maxDurationInSeconds ?? undefined,
+          },
+          queue: {
+            id: queue.friendlyId,
+            name: queue.name,
+          },
+          environment: {
+            id: environment.id,
+            slug: environment.slug,
+            type: environment.type,
+          },
+          organization: {
+            id: environment.organization.id,
+            slug: environment.organization.slug,
+            name: environment.organization.title,
+          },
+          project: {
+            id: environment.project.id,
+            ref: environment.project.externalRef,
+            slug: environment.project.slug,
+            name: environment.project.name,
+          },
+          batch:
+            taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
+              ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+              : undefined,
+        };
+
+        return {
+          run,
+          attempt,
+          snapshot,
+        };
+      });
+    });
   }
 
   async waitForDuration() {}
 
   async complete(runId: string, completion: any) {}
 
-  async expire(runId: string) {}
+  async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 
-  async systemFailure({
+  async #systemFailure({
+    runId,
+    error,
+    tx,
+  }: {
+    runId: string;
+    error: TaskRunInternalError;
+    tx?: PrismaClientOrTransaction;
+  }) {}
+
+  async #crash({
     runId,
     error,
     tx,
@@ -688,9 +982,11 @@ export class RunEngine {
     prisma: PrismaClientOrTransaction,
     {
       run,
+      attempt,
       snapshot,
     }: {
       run: { id: string; status: TaskRunStatus };
+      attempt?: { id: string; status: TaskRunAttemptStatus };
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
         description: string;
@@ -699,11 +995,13 @@ export class RunEngine {
   ) {
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
       data: {
-        runId: run.id,
         engine: "V2",
         executionStatus: snapshot.executionStatus,
         description: snapshot.description,
+        runId: run.id,
         runStatus: run.status,
+        currentAttemptId: attempt?.id,
+        currentAttemptStatus: attempt?.status,
       },
     });
 
@@ -858,6 +1156,75 @@ export class RunEngine {
         assertNever(latestSnapshot.executionStatus);
       }
     }
+  }
+
+  async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
+    const prisma = tx ?? this.prisma;
+    const taskRun = await prisma.taskRun.findUnique({
+      where: {
+        id: runId,
+      },
+      include: {
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!taskRun) {
+      return;
+    }
+
+    return taskRun?.runtimeEnvironment;
+  }
+
+  async #trace<T>(
+    trace: string,
+    attributes: Attributes | undefined,
+    fn: (span: Span) => Promise<T>
+  ): Promise<T> {
+    return this.tracer.startActiveSpan(
+      `${this.constructor.name}.${trace}`,
+      { attributes, kind: SpanKind.SERVER },
+      async (span) => {
+        try {
+          return await fn(span);
+        } catch (e) {
+          if (e instanceof ServiceValidationError) {
+            throw e;
+          }
+
+          if (e instanceof Error) {
+            span.recordException(e);
+          } else {
+            span.recordException(new Error(String(e)));
+          }
+
+          throw e;
+        } finally {
+          span.end();
+        }
+      }
+    );
+  }
+}
+
+export class ServiceValidationError extends Error {
+  constructor(
+    message: string,
+    public status?: number
+  ) {
+    super(message);
+    this.name = "ServiceValidationError";
+  }
+}
+
+class NotImplementedError extends Error {
+  constructor(message: string) {
+    super(message);
   }
 }
 

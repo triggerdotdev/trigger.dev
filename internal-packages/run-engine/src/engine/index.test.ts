@@ -2,6 +2,7 @@ import { expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import { RunEngine } from "./index.js";
 import { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
+import { trace } from "@opentelemetry/api";
 
 describe("RunEngine", () => {
   containerTest(
@@ -23,6 +24,18 @@ describe("RunEngine", () => {
           tasksPerWorker: 10,
           pollIntervalMs: 100,
         },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
       });
 
       const run = await engine.trigger(
@@ -88,7 +101,10 @@ describe("RunEngine", () => {
       expect(envConcurrencyBefore).toBe(0);
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue("test_12345", run.masterQueue);
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+      });
       expect(dequeued?.runId).toBe(run.id);
       expect(dequeued?.executionStatus).toBe("DEQUEUED_FOR_EXECUTION");
 
