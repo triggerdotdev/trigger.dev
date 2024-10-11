@@ -8,9 +8,15 @@ import LocalDevelopment from "/snippets/local-development-extensions.mdx";
 
 ## Overview
 
-This task optimizes and watermarks an image using the Sharp library, and then uploads the processed image to R2 storage.
+This task processes and watermarks an image using the Sharp library, and then uploads it to R2 storage.
 
-## Adding build configurations
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- The [Sharp](https://sharp.pixelplumbing.com/install) library installed on your machine
+- An R2-compatible object storage service, such as [Cloudflare R2](https://developers.cloudflare.com/r2)
+
+## Adding the build configuration
 
 To use this example, you'll first need to add these build settings to your `trigger.config.ts` file:
 
@@ -34,9 +40,9 @@ export default defineConfig({
 
 ## Key features
 
-    - Resizes and rotates an image
-    - Adds a watermark to the image
-    - Uploads the processed image to R2 storage
+- Resizes a JPEG image to 800x800 pixels
+- Adds a watermark to the image, positioned in the bottom-right corner, using a PNG image
+- Uploads the processed image to R2 storage
 
 ## Task code
 
@@ -44,12 +50,11 @@ export default defineConfig({
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import fs from "fs/promises";
-import fetch from "node-fetch";
 import os from "os";
 import path from "path";
 import sharp from "sharp";
 
-// Initialize R2 client
+// Initialize R2 client using your R2 account details
 const r2Client = new S3Client({
   region: "auto",
   endpoint: process.env.R2_ENDPOINT,
@@ -61,6 +66,10 @@ const r2Client = new S3Client({
 
 export const sharpProcessImage = task({
   id: "sharp-process-image",
+  // Only retry this task once if it fails
+  retry: {
+    maxAttempts: 1,
+  },
   run: async (payload: { imageUrl: string; watermarkUrl: string }) => {
     const { imageUrl, watermarkUrl } = payload;
 
@@ -76,10 +85,9 @@ export const sharpProcessImage = task({
     const imageBuffer = await imageResponse.arrayBuffer();
     const watermarkBuffer = await watermarkResponse.arrayBuffer();
 
-    // Optimize the image using Sharp
+    // Process the image using Sharp
     await sharp(Buffer.from(imageBuffer))
-      .rotate(90) // Rotate the image by 90 degrees
-      .resize(800, 600) // Resize the image to 800x600
+      .resize(800, 800) // Resize the image to 800x800
       .composite([
         {
           input: Buffer.from(watermarkBuffer),
@@ -89,34 +97,32 @@ export const sharpProcessImage = task({
       .toFormat("jpeg")
       .toFile(outputPath);
 
-    // Log the output file path
-    logger.log(`Optimized image saved at: ${outputPath}`);
+    logger.log(`Image processed.`);
 
-    // Read the optimized image file
-    const optimizedImageBuffer = await fs.readFile(outputPath);
+    // Read the processed image file
+    const processedImageBuffer = await fs.readFile(outputPath);
 
-    // Upload the optimized image to R2, replacing slashes with underscores
+    // Upload the image to R2, replacing slashes with underscores
     const r2Key = `processed-images/${path.basename(outputPath)}`;
 
     const uploadParams = {
       Bucket: process.env.R2_BUCKET,
       Key: r2Key,
-      Body: optimizedImageBuffer,
+      Body: processedImageBuffer,
     };
 
     // Upload the image to R2 and get the URL
     await r2Client.send(new PutObjectCommand(uploadParams));
-    const r2Url = `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.R2_BUCKET}/${r2Key}`;
-    logger.log("Optimized image uploaded to R2", { url: r2Url });
+    logger.log("Processed image uploaded to R2", {
+      path: `/${process.env.R2_BUCKET}/${r2Key}`,
+    });
 
     // Delete the temporary file
     await fs.unlink(outputPath);
+    logger.log("Temporary file deleted", { outputPath: outputPath });
 
-    // Return the optimized image buffer, file path, and R2 URL
     return {
-      optimizedImageBuffer,
-      optimizedImagePath: outputPath,
-      r2Url,
+      message: `New image uploaded to /${process.env.R2_BUCKET}/${r2Key}`,
     };
   },
 });
