@@ -50,7 +50,7 @@ export class CreateCheckpointService extends BaseService {
     });
 
     if (!attempt) {
-      logger.error("Attempt not found", { attemptFriendlyId: params.attemptFriendlyId });
+      logger.error("Attempt not found", params);
 
       return {
         success: false,
@@ -70,6 +70,7 @@ export class CreateCheckpointService extends BaseService {
           id: attempt.taskRunId,
           status: attempt.taskRun.status,
         },
+        params,
       });
 
       return {
@@ -84,6 +85,7 @@ export class CreateCheckpointService extends BaseService {
       logger.error("Missing deployment or image ref", {
         attemptId: attempt.id,
         workerId: attempt.backgroundWorker.id,
+        params,
       });
 
       return {
@@ -170,6 +172,7 @@ export class CreateCheckpointService extends BaseService {
             taskRunId: attempt.taskRunId,
             type: "WAIT_FOR_TASK",
             reason,
+            params,
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
@@ -182,6 +185,7 @@ export class CreateCheckpointService extends BaseService {
           if (!childRun) {
             logger.error("CreateCheckpointService: WAIT_FOR_TASK child run not found", {
               friendlyId: reason.friendlyId,
+              params,
             });
 
             return {
@@ -201,6 +205,7 @@ export class CreateCheckpointService extends BaseService {
               childRun,
               attempt,
               checkpointEvent,
+              params,
             });
           } else {
             logger.error("CreateCheckpointService: Failed to resume dependent parents", {
@@ -208,6 +213,7 @@ export class CreateCheckpointService extends BaseService {
               childRun,
               attempt,
               checkpointEvent,
+              params,
             });
           }
 
@@ -233,6 +239,7 @@ export class CreateCheckpointService extends BaseService {
             attemptId: attempt.id,
             taskRunId: attempt.taskRunId,
             type: "WAIT_FOR_BATCH",
+            params,
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
@@ -248,6 +255,7 @@ export class CreateCheckpointService extends BaseService {
           if (!batchRun) {
             logger.error("CreateCheckpointService: Batch not found", {
               friendlyId: reason.batchFriendlyId,
+              params,
             });
 
             return {
@@ -297,6 +305,7 @@ export class CreateCheckpointService extends BaseService {
       logger.error("No checkpoint event", {
         attemptId: attempt.id,
         checkpointId: checkpoint.id,
+        params,
       });
       await marqs?.acknowledgeMessage(attempt.taskRunId);
 
