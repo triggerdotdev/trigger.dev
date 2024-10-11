@@ -1,32 +1,34 @@
 ---
-title: "Runs & Attempts"
+title: "Runs & attempts"
 description: "Understanding the lifecycle of task execution in Trigger.dev"
 ---
 
-In Trigger.dev, the concepts of Runs and Attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a Run can go through during its lifecycle.
+In Trigger.dev, the concepts of runs and attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a run can go through during its lifecycle.
 
-## What are Runs?
+## What are runs?
 
-A Run is created when you trigger a task (e.g calling `yourTask.trigger({ foo: "bar" })`). It represents a single instance of a task being executed and contains the following key information:
+A run is created when you trigger a task (e.g calling `yourTask.trigger({ foo: "bar" })`). It represents a single instance of a task being executed and contains the following key information:
 
 - A unique run ID
 - The current status of the run
 - The payload (input data) for the task
 - Lots of other metadata
 
-## The Run Lifecycle
+## The run lifecycle
 
-A Run can go through **various** states during its lifecycle. The following diagrams illustrate the possible state transitions:
+A run can go through **various** states during its lifecycle. The following diagram illustrates a typical state transition where a single run is triggered and completes successfully:
 
 ![Run Lifecycle](/images/run-lifecycle.png)
 
+Runs can also find themselves in lots of other states depending on what's happening at any given time. The following sections describe all the possible states in more detail.
+
 ### Initial States
 
-<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**: If a task is triggered before it has been deployed, the Run enters this state and waits for the task to be deployed.
+<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**: If a task is triggered before it has been deployed, the run enters this state and waits for the task to be deployed.
 
-<Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a Run is triggered with a delay, it enters this state until the specified delay period has passed.
+<Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a run is triggered with a delay, it enters this state until the specified delay period has passed.
 
-<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The Run is ready to be executed and is waiting in the queue.
+<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The run is ready to be executed and is waiting in the queue.
 
 ### Execution States
 
@@ -40,7 +42,7 @@ A Run can go through **various** states during its lifecycle. The following diag
 
 <Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully finished execution.
 
-<Icon icon="ban" iconType="solid" color="#878C99" size={17} /> **Canceled**: The Run was manually canceled by the user.
+<Icon icon="ban" iconType="solid" color="#878C99" size={17} /> **Canceled**: The run was manually canceled by the user.
 
 <Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed to complete successfully.
 
@@ -52,30 +54,30 @@ A Run can go through **various** states during its lifecycle. The following diag
 
 <Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system error has occurred.
 
-<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The Run's Time-to-Live (TTL) has passed before it could start executing.
+<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's Time-to-Live (TTL) has passed before it could start executing.
 
 ## Attempts
 
-An Attempt represents a single execution of a task within a Run. A Run can have one or more Attempts, depending on the task's retry settings and whether it fails. Each Attempt has:
+An attempt represents a single execution of a task within a run. A run can have one or more attempts, depending on the task's retry settings and whether it fails. Each attempt has:
 
 - A unique attempt ID
 - A status
 - An output (if successful) or an error (if failed)
 
-When a task fails, it will be retried according to its retry settings, creating new Attempts until it either succeeds or reaches the retry limit.
+When a task fails, it will be retried according to its retry settings, creating new attempts until it either succeeds or reaches the retry limit.
 
 ![Run with retries](/images/run-with-retries.png)
 
-## Run Completion
+## Run completion
 
-A Run is considered finished when:
+A run is considered finished when:
 
-1. The last Attempt succeeds, or
-2. The task has reached its retry limit and all Attempts have failed
+1. The last attempt succeeds, or
+2. The task has reached its retry limit and all attempts have failed
 
-At this point, the Run will have either an output (if successful) or an error (if failed).
+At this point, the run will have either an output (if successful) or an error (if failed).
 
-## Advanced Run Features
+## Advanced run features
 
 ### Idempotency Keys
 
@@ -85,42 +87,42 @@ When triggering a task, you can provide an idempotency key to ensure the task is
 yourTask.trigger({ foo: "bar" }, { idempotencyKey: "unique-key" });
 ```
 
-- If a Run with the same idempotency key is already in progress, the new trigger will be ignored.
-- If the Run has already finished, the previous output or error will be returned.
+- If a run with the same idempotency key is already in progress, the new trigger will be ignored.
+- If the run has already finished, the previous output or error will be returned.
 
-### Canceling Runs
+### Canceling runs
 
-You can cancel an in-progress Run using the API or the dashboard:
+You can cancel an in-progress run using the API or the dashboard:
 
 ```ts
 runs.cancel(runId);
 ```
 
-When a Run is canceled:
+When a run is canceled:
 
 – The task execution is stopped
 
-– The Run is marked as canceled
+– The run is marked as canceled
 
 – The task will not be retried
 
-– Any in-progress child Runs are also canceled
+– Any in-progress child runs are also canceled
 
 ### Time-to-live (TTL)
 
-You can set a TTL when triggering a Run:
+You can set a TTL when triggering a run:
 
 ```ts
 yourTask.trigger({ foo: "bar" }, { ttl: "10m" });
 ```
 
-If the Run hasn't started within the specified TTL, it will automatically expire. This is useful for time-sensitive tasks. Note that dev runs automatically have a 10-minute TTL.
+If the run hasn't started within the specified TTL, it will automatically expire. This is useful for time-sensitive tasks. Note that dev runs automatically have a 10-minute TTL.
 
 ![Run with TTL](/images/run-with-ttl.png)
 
-### Delayed Runs
+### Delayed runs
 
-You can schedule a Run to start after a specified delay:
+You can schedule a run to start after a specified delay:
 
 ```ts
 yourTask.trigger({ foo: "bar" }, { delay: "1h" });
@@ -130,19 +132,19 @@ This is useful for tasks that need to be executed at a specific time in the futu
 
 ![Run with delay](/images/run-with-delay.png)
 
-### Replaying Runs
+### Replaying runs
 
-You can create a new Run with the same payload as a previous Run:
+You can create a new run with the same payload as a previous run:
 
 ```ts
 runs.replay(runId);
 ```
 
-This is useful for re-running a task with the same input, especially for debugging or recovering from failures. The new Run will use the latest version of the task.
+This is useful for re-running a task with the same input, especially for debugging or recovering from failures. The new run will use the latest version of the task.
 
 You can also replay runs from the dashboard using the same or different payload. Learn how to do this [here](/replaying).
 
-### Waiting for Runs
+### Waiting for runs
 
 #### triggerAndWait()
 
@@ -158,7 +160,7 @@ Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you bat
 
 ### Runs API
 
-The Runs API provides methods to interact with and manage Runs:
+The runs API provides methods to interact with and manage runs:
 
 ```ts
 // List all runs
@@ -177,9 +179,9 @@ runs.reschedule(runId, delay);
 runs.cancel(runId);
 ```
 
-These methods allow you to access detailed information about Runs and their Attempts, including payloads, outputs, parent Runs, and child Runs.
+These methods allow you to access detailed information about runs and their attempts, including payloads, outputs, parent runs, and child runs.
 
-### Triggering Runs for Undeployed Tasks
+### Triggering runs for undeployed tasks
 
-It's possible to trigger a Run for a task that hasn't been deployed yet. The Run will enter the "Waiting for deploy" state until the task is deployed. Once deployed, the Run will be queued and executed normally.
+It's possible to trigger a run for a task that hasn't been deployed yet. The run will enter the "Waiting for deploy" state until the task is deployed. Once deployed, the run will be queued and executed normally.
 This feature is particularly useful in CI/CD pipelines where you want to trigger tasks before the deployment is complete.
