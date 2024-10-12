@@ -104,9 +104,11 @@ export const action: ActionFunction = async ({ request }) => {
             uiComponent.text({
               size: "L",
               color: "NORMAL",
-              text: "What problem are they trying to solve?",
+              text: "What problem are you trying to solve?",
             }),
             uiComponent.text({
+              size: "L",
+              color: "NORMAL",
               text: whyUseUs.toString(),
             }),
           ],
