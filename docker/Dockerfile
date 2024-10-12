@@ -10,6 +10,13 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS base
 RUN apt-get update && apt-get install -y openssl dumb-init
 WORKDIR /triggerdotdev
+
+# Copy .npmrc and use the NPM_TOKEN for private registry
+ARG NPM_TOKEN
+COPY .npmrc .npmrc
+RUN if [ -f .npmrc ]; then \
+      echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc; \
+    fi
 COPY --chown=node:node .gitignore .gitignore
 COPY --from=pruner --chown=node:node /triggerdotdev/out/json/ .
 COPY --from=pruner --chown=node:node /triggerdotdev/out/pnpm-lock.yaml ./pnpm-lock.yaml
@@ -21,6 +28,8 @@ WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
 ENV NODE_ENV development
+# Copy .npmrc again for dev-deps stage
+COPY .npmrc .npmrc
 RUN pnpm install --ignore-scripts --no-frozen-lockfile
 
 ## Production deps
@@ -29,6 +38,8 @@ WORKDIR /triggerdotdev
 # Corepack is used to install pnpm
 RUN corepack enable
 ENV NODE_ENV production
+# Copy .npmrc again for production-deps stage
+COPY .npmrc .npmrc
 RUN pnpm install --prod --no-frozen-lockfile
 COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
 # RUN pnpm add @prisma/client@5.1.1 -w
