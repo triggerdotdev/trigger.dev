@@ -21,12 +21,15 @@ import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import { env } from "~/env.server";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   companySize: z.string().optional(),
+  whyUseUs: z.string().optional(),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -41,7 +44,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
-
+  const user = await requireUser(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
@@ -55,6 +58,65 @@ export const action: ActionFunction = async ({ request }) => {
       userId,
       companySize: submission.value.companySize ?? null,
     });
+
+    if (env.PLAIN_API_KEY) {
+      const client = new PlainClient({
+        apiKey: env.PLAIN_API_KEY,
+      });
+
+      const whyUseUs = formData.get("whyUseUs");
+
+      const upsertCustomerRes = await client.upsertCustomer({
+        identifier: {
+          emailAddress: user.email,
+        },
+        onCreate: {
+          externalId: userId,
+          fullName: submission.value.orgName,
+          email: {
+            email: user.email,
+            isVerified: true,
+          },
+        },
+        onUpdate: {
+          externalId: { value: userId },
+          fullName: { value: submission.value.orgName },
+          email: {
+            email: user.email,
+            isVerified: true,
+          },
+        },
+      });
+
+      if (upsertCustomerRes.error) {
+        console.error("Failed to upsert customer in Plain", upsertCustomerRes.error);
+      } else if (whyUseUs) {
+        const createThreadRes = await client.createThread({
+          customerIdentifier: {
+            customerId: upsertCustomerRes.data.customer.id,
+          },
+          title: "New org feedback",
+          components: [
+            uiComponent.text({
+              text: `${submission.value.orgName} just created a new organization.`,
+            }),
+            uiComponent.divider({ spacingSize: "M" }),
+            uiComponent.text({
+              size: "L",
+              color: "NORMAL",
+              text: "What problem are they trying to solve?",
+            }),
+            uiComponent.text({
+              text: whyUseUs.toString(),
+            }),
+          ],
+        });
+
+        if (createThreadRes.error) {
+          console.error("Failed to create thread in Plain", createThreadRes.error);
+        }
+      }
+    }
 
     return redirect(organizationPath(organization));
   } catch (error: any) {
