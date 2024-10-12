@@ -133,12 +133,11 @@ export default function NewOrganizationPage() {
                 </RadioGroup>
               </InputGroup>
               <InputGroup>
-                <Label>What problem are you trying to solve?</Label>
-                <TextArea
-                  rows={4}
-                  // placeholder="E.g. what problem are you trying to solve?"
-                  spellCheck={false}
-                />
+                <Label htmlFor={"whyUseUs"}>What problem are you trying to solve?</Label>
+                <TextArea name="whyUseUs" rows={4} spellCheck={false} />
+                <Hint>
+                  Your answer will help us understand your use case and provide better support.
+                </Hint>
               </InputGroup>
             </>
           )}
