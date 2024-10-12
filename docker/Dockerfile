@@ -14,9 +14,14 @@ WORKDIR /triggerdotdev
 # Copy .npmrc and use the NPM_TOKEN for private registry
 ARG NPM_TOKEN
 COPY .npmrc .npmrc
-RUN if [ -f .npmrc ]; then \
+RUN if [ -f .npmrc ] && [ -n "${NPM_TOKEN}" ]; then \
       echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> .npmrc; \
     fi
+
+# For better security, use Docker BuildKit secrets
+RUN --mount=type=secret,id=npm_token \
+    echo "//registry.npmjs.org/:_authToken=$(cat /run/secrets/npm_token)" >> .npmrc
+    
 COPY --chown=node:node .gitignore .gitignore
 COPY --from=pruner --chown=node:node /triggerdotdev/out/json/ .
 COPY --from=pruner --chown=node:node /triggerdotdev/out/pnpm-lock.yaml ./pnpm-lock.yaml
