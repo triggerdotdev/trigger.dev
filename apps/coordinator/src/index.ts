@@ -906,6 +906,7 @@ class TaskCoordinator {
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
+            runId: socket.data.runId,
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
@@ -986,6 +987,7 @@ class TaskCoordinator {
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
+            runId: socket.data.runId,
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
@@ -1066,6 +1068,7 @@ class TaskCoordinator {
 
           const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
             version: "v1",
+            runId: socket.data.runId,
             attemptFriendlyId: message.attemptFriendlyId,
             docker: checkpoint.docker,
             location: checkpoint.location,
