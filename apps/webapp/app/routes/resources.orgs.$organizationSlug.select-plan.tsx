@@ -867,7 +867,7 @@ function TierLimit({ children, href }: { children: React.ReactNode; href?: strin
           }
           content={
             <div className="flex items-center gap-1">
-              <Paragraph variant="small">View detailed compute pricing information</Paragraph>
+              <Paragraph variant="small">View compute pricing information</Paragraph>
               <ArrowUpRightIcon className="size-4 text-text-dimmed" />
             </div>
           }
