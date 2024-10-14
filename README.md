@@ -15,13 +15,20 @@
 
 ## About Trigger.dev
 
-Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs with no timeouts. Write normal async code, deploy, and never hit a timeout.
+Trigger.dev is an open source platform and SDK which allows you to create long-running background jobs. Write normal async code, deploy, and never hit a timeout.
 
-#### Features:
+### Key features:
 
 - JavaScript and TypeScript SDK
 - Write reliable code by default
+- No timeouts
+- Retries (with exponential backoff)
+- Queues and concurrency controls
+- Schedules and crons
+- Full Observability; logs, live trace views, advanced filtering
+- Custom alerts, get notified by email, Slack or webhooks
 - No infrastructure to manage
+- Elastic (scaling)
 - Works with your existing tech stack
 
 ## In your codebase
@@ -45,7 +52,7 @@ export const helloWorld = task({
 
 ## Deployment
 
-Use our SDK to write tasks in your codebase. There's no infrastructure to manage, your tasks automatically scale and connect to our cloud. Or you can always [self-host](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+Use our SDK to write tasks in your codebase. There's no infrastructure to manage, your tasks automatically scale and connect to our cloud. Or you can always self-host.
 
 ## Environments
 
@@ -59,11 +66,19 @@ View every task in every run so you can tell exactly what happened. We provide a
 
 # Getting started
 
-Visit our docs [here](https://trigger.dev/docs/v3/introduction) for a full guide on how to get started with Trigger.dev.
+The quickest way to get started is to create an account and project in our [web app](https://cloud.trigger.dev), and follow the instructions in the onboarding. Build and deploy your first task in minutes.
 
-## Self-host
+### Useful links:
 
-If you prefer to self-host, you can follow our [self-hosting guide](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+- [Quick start](https://trigger.dev/docs/quick-start) - get up and running in minutes
+- [How it works](https://trigger.dev/docs/v3/how-it-works) - understand how Trigger.dev works under the hood
+- [Guides and examples](https://trigger.dev/docs/guides/introduction) - walk-through guides and code examples for popular frameworks and use cases
+
+## Self-hosting
+
+If you prefer to self-host Trigger.dev, you can follow our [self-hosting guide](https://trigger.dev/docs/v3/open-source-self-hosting#overview).
+
+We also have a dedicated self-hosting channel in our [Discord server](https://trigger.dev/discord) for support.
 
 ## Development
 
