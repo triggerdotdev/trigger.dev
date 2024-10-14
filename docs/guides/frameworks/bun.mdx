@@ -9,6 +9,8 @@ import Prerequisites from "/snippets/framework-prerequisites.mdx";
 import CliRunTestStep from "/snippets/step-run-test.mdx";
 import CliViewRunStep from "/snippets/step-view-run.mdx";
 
+<Warning>A specific Bun version is currently required for the dev command to work. This is due to a [bug](https://github.com/oven-sh/bun/issues/13799) with IPC. Please use Bun version 1.1.24 or lower: `curl -fsSL https://bun.sh/install | bash -s -- bun-v1.1.24`</Warning>
+
 We now have experimental support for Bun. This guide will show you have to setup Trigger.dev in your existing Bun project, test an example task, and view the run.
 
 <Warn>
