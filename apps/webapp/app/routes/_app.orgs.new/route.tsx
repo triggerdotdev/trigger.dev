@@ -43,7 +43,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
   const user = await requireUser(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema });
@@ -55,7 +54,7 @@ export const action: ActionFunction = async ({ request }) => {
   try {
     const organization = await createOrganization({
       title: submission.value.orgName,
-      userId,
+      userId: user.id,
       companySize: submission.value.companySize ?? null,
     });
 
@@ -71,7 +70,7 @@ export const action: ActionFunction = async ({ request }) => {
           emailAddress: user.email,
         },
         onCreate: {
-          externalId: userId,
+          externalId: user.id,
           fullName: submission.value.orgName,
           email: {
             email: user.email,
@@ -79,7 +78,7 @@ export const action: ActionFunction = async ({ request }) => {
           },
         },
         onUpdate: {
-          externalId: { value: userId },
+          externalId: { value: user.id },
           fullName: { value: submission.value.orgName },
           email: {
             email: user.email,
