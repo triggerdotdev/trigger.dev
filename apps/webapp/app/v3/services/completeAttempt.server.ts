@@ -1,5 +1,6 @@
 import { Attributes } from "@opentelemetry/api";
 import {
+  type ExceptionEventProperties,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
@@ -194,8 +195,6 @@ export class CompleteAttemptService extends BaseService {
         env
       );
 
-      // The cancel service handles ACK
-
       return "COMPLETED";
     }
 
@@ -214,182 +213,107 @@ export class CompleteAttemptService extends BaseService {
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
     if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
-      const retryAt = new Date(completion.retry.timestamp);
-
-      // Retry the task run
-      await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
-        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+      return await this.#retryAttempt({
+        execution,
+        executionRetry: completion.retry,
+        taskRunAttempt,
         environment,
-        attributes: {
-          metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-          properties: {
-            retryAt: retryAt.toISOString(),
-          },
-          runId: taskRunAttempt.taskRun.friendlyId,
-          style: {
-            icon: "schedule-attempt",
-          },
-          queueId: taskRunAttempt.queueId,
-          queueName: taskRunAttempt.taskRun.queue,
-        },
-        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-        spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-        endTime: retryAt,
-      });
-
-      logger.debug("Retrying", {
-        taskRun: taskRunAttempt.taskRun.friendlyId,
-        retry: completion.retry,
-      });
-
-      await this._prisma.taskRun.update({
-        where: {
-          id: taskRunAttempt.taskRunId,
-        },
-        data: {
-          status: "RETRYING_AFTER_FAILURE",
-        },
-      });
-
-      if (environment.type === "DEVELOPMENT") {
-        // This is already an EXECUTE message so we can just NACK
-        await marqs?.nackMessage(taskRunAttempt.taskRunId, completion.retry.timestamp);
-        return "RETRIED";
-      }
-
-      if (!checkpoint) {
-        await this.#retryAttempt({
-          run: taskRunAttempt.taskRun,
-          retry: completion.retry,
-          supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
-          supportsRetryCheckpoints,
-        });
-
-        return "RETRIED";
-      }
-
-      const createCheckpoint = new CreateCheckpointService(this._prisma);
-      const checkpointCreateResult = await createCheckpoint.call({
-        attemptFriendlyId: execution.attempt.id,
-        docker: checkpoint.docker,
-        location: checkpoint.location,
-        reason: {
-          type: "RETRYING_AFTER_FAILURE",
-          attemptNumber: execution.attempt.number,
-        },
-      });
-
-      if (!checkpointCreateResult.success) {
-        logger.error("Failed to create checkpoint", { checkpoint, execution: execution.run.id });
-
-        const finalizeService = new FinalizeTaskRunService();
-        await finalizeService.call({
-          id: taskRunAttempt.taskRunId,
-          status: "SYSTEM_FAILURE",
-          completedAt: new Date(),
-        });
-
-        return "COMPLETED";
-      }
-
-      await this.#retryAttempt({
-        run: taskRunAttempt.taskRun,
-        retry: completion.retry,
-        checkpointEventId: checkpointCreateResult.event.id,
-        supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+        checkpoint,
         supportsRetryCheckpoints,
       });
+    }
 
-      return "RETRIED";
-    } else {
-      // Now we need to "complete" the task run event/span
-      await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-        endTime: new Date(),
-        attributes: {
-          isError: true,
-        },
-        events: [
-          {
-            name: "exception",
-            time: new Date(),
-            properties: {
-              exception: createExceptionPropertiesFromError(sanitizedError),
-            },
+    // The attempt has failed and we won't retry
+
+    // Now we need to "complete" the task run event/span
+    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
+      endTime: new Date(),
+      attributes: {
+        isError: true,
+      },
+      events: [
+        {
+          name: "exception",
+          time: new Date(),
+          properties: {
+            exception: createExceptionPropertiesFromError(sanitizedError),
           },
-        ],
+        },
+      ],
+    });
+
+    // If the error is a graceful exit timeout, we need to fail the task run and all incomplete spans
+    if (
+      sanitizedError.type === "INTERNAL_ERROR" &&
+      sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
+    ) {
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        id: taskRunAttempt.taskRunId,
+        status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
       });
 
-      if (
-        sanitizedError.type === "INTERNAL_ERROR" &&
-        sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
-      ) {
-        const finalizeService = new FinalizeTaskRunService();
-        await finalizeService.call({
-          id: taskRunAttempt.taskRunId,
-          status: "SYSTEM_FAILURE",
-          completedAt: new Date(),
-        });
+      // We need to fail all incomplete spans
+      const inProgressEvents = await eventRepository.queryIncompleteEvents({
+        attemptId: execution.attempt.id,
+      });
 
-        // We need to fail all incomplete spans
-        const inProgressEvents = await eventRepository.queryIncompleteEvents({
-          attemptId: execution.attempt.id,
-        });
+      logger.debug("Failing in-progress events", {
+        inProgressEvents: inProgressEvents.map((event) => event.id),
+      });
 
-        logger.debug("Failing in-progress events", {
-          inProgressEvents: inProgressEvents.map((event) => event.id),
-        });
+      const exception = {
+        type: "Graceful exit timeout",
+        message: sanitizedError.message,
+      } satisfies ExceptionEventProperties;
 
-        const exception = {
-          type: "Graceful exit timeout",
-          message: sanitizedError.message,
-        };
-
-        await Promise.all(
-          inProgressEvents.map((event) => {
-            return eventRepository.crashEvent({
-              event: event,
-              crashedAt: new Date(),
-              exception,
-            });
-          })
-        );
-      } else {
-        await this._prisma.taskRun.update({
-          where: {
-            id: taskRunAttempt.taskRunId,
-          },
-          data: {
-            error: sanitizedError,
-          },
-        });
-
-        const status =
-          sanitizedError.type === "INTERNAL_ERROR" &&
-          sanitizedError.code === "MAX_DURATION_EXCEEDED"
-            ? "TIMED_OUT"
-            : "COMPLETED_WITH_ERRORS";
-
-        const finalizeService = new FinalizeTaskRunService();
-        await finalizeService.call({
-          id: taskRunAttempt.taskRunId,
-          status,
-          completedAt: new Date(),
-        });
-      }
+      await Promise.all(
+        inProgressEvents.map((event) => {
+          return eventRepository.crashEvent({
+            event: event,
+            crashedAt: new Date(),
+            exception,
+          });
+        })
+      );
 
       return "COMPLETED";
     }
+
+    await this._prisma.taskRun.update({
+      where: {
+        id: taskRunAttempt.taskRunId,
+      },
+      data: {
+        error: sanitizedError,
+      },
+    });
+
+    const status =
+      sanitizedError.type === "INTERNAL_ERROR" && sanitizedError.code === "MAX_DURATION_EXCEEDED"
+        ? "TIMED_OUT"
+        : "COMPLETED_WITH_ERRORS";
+
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      id: taskRunAttempt.taskRunId,
+      status,
+      completedAt: new Date(),
+    });
+
+    return "COMPLETED";
   }
 
-  async #retryAttempt({
+  async #enqueueReattempt({
     run,
-    retry,
+    executionRetry,
     checkpointEventId,
     supportsLazyAttempts,
     supportsRetryCheckpoints,
   }: {
     run: TaskRun;
-    retry: TaskRunExecutionRetry;
+    executionRetry: TaskRunExecutionRetry;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
     supportsRetryCheckpoints?: boolean;
@@ -404,12 +328,12 @@ export class CompleteAttemptService extends BaseService {
           checkpointEventId: supportsRetryCheckpoints ? checkpointEventId : undefined,
           retryCheckpointsDisabled: !supportsRetryCheckpoints,
         },
-        retry.timestamp
+        executionRetry.timestamp
       );
     };
 
     const retryDirectly = () => {
-      return RetryAttemptService.enqueue(run.id, this._prisma, new Date(retry.timestamp));
+      return RetryAttemptService.enqueue(run.id, this._prisma, new Date(executionRetry.timestamp));
     };
 
     // There's a checkpoint, so we need to go through the queue
@@ -432,13 +356,148 @@ export class CompleteAttemptService extends BaseService {
     }
 
     // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
-    if (!supportsRetryCheckpoints && retry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS) {
+    if (!supportsRetryCheckpoints && executionRetry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS) {
       await retryViaQueue();
       return;
     }
 
     // The worker is still running and waiting for a retry message
     await retryDirectly();
+  }
+
+  async #retryAttempt({
+    execution,
+    executionRetry,
+    taskRunAttempt,
+    environment,
+    checkpoint,
+    supportsRetryCheckpoints,
+  }: {
+    execution: TaskRunExecution;
+    executionRetry: TaskRunExecutionRetry;
+    taskRunAttempt: NonNullable<FoundAttempt>;
+    environment: AuthenticatedEnvironment;
+    checkpoint?: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
+  }) {
+    const retryAt = new Date(executionRetry.timestamp);
+
+    // Retry the task run
+    await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
+      taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+      environment,
+      attributes: {
+        metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+        properties: {
+          retryAt: retryAt.toISOString(),
+        },
+        runId: taskRunAttempt.taskRun.friendlyId,
+        style: {
+          icon: "schedule-attempt",
+        },
+        queueId: taskRunAttempt.queueId,
+        queueName: taskRunAttempt.taskRun.queue,
+      },
+      context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+      spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+      endTime: retryAt,
+    });
+
+    logger.debug("Retrying", {
+      taskRun: taskRunAttempt.taskRun.friendlyId,
+      retry: executionRetry,
+    });
+
+    await this._prisma.taskRun.update({
+      where: {
+        id: taskRunAttempt.taskRunId,
+      },
+      data: {
+        status: "RETRYING_AFTER_FAILURE",
+      },
+    });
+
+    if (environment.type === "DEVELOPMENT") {
+      // This is already an EXECUTE message so we can just NACK
+      await marqs?.nackMessage(taskRunAttempt.taskRunId, executionRetry.timestamp);
+      return "RETRIED";
+    }
+
+    if (checkpoint) {
+      // This is only here for backwards compat - we don't checkpoint between attempts anymore
+      return await this.#retryAttemptWithCheckpoint({
+        execution,
+        taskRunAttempt,
+        executionRetry,
+        checkpoint,
+        supportsRetryCheckpoints,
+      });
+    }
+
+    await this.#enqueueReattempt({
+      run: taskRunAttempt.taskRun,
+      executionRetry,
+      supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+      supportsRetryCheckpoints,
+    });
+
+    return "RETRIED";
+  }
+
+  async #retryAttemptWithCheckpoint({
+    execution,
+    taskRunAttempt,
+    executionRetry,
+    checkpoint,
+    supportsRetryCheckpoints,
+  }: {
+    execution: TaskRunExecution;
+    taskRunAttempt: NonNullable<FoundAttempt>;
+    executionRetry: TaskRunExecutionRetry;
+    checkpoint: CheckpointData;
+    supportsRetryCheckpoints?: boolean;
+  }) {
+    const createCheckpoint = new CreateCheckpointService(this._prisma);
+    const checkpointCreateResult = await createCheckpoint.call({
+      attemptFriendlyId: execution.attempt.id,
+      docker: checkpoint.docker,
+      location: checkpoint.location,
+      reason: {
+        type: "RETRYING_AFTER_FAILURE",
+        attemptNumber: execution.attempt.number,
+      },
+    });
+
+    if (!checkpointCreateResult.success) {
+      logger.error("Failed to create reattempt checkpoint", {
+        checkpoint,
+        runId: execution.run.id,
+        attemptId: execution.attempt.id,
+      });
+
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        id: taskRunAttempt.taskRunId,
+        status: "SYSTEM_FAILURE",
+        completedAt: new Date(),
+        error: {
+          type: "STRING_ERROR",
+          raw: "Failed to create reattempt checkpoint",
+        },
+      });
+
+      return "COMPLETED" as const;
+    }
+
+    await this.#enqueueReattempt({
+      run: taskRunAttempt.taskRun,
+      executionRetry,
+      checkpointEventId: checkpointCreateResult.event.id,
+      supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+      supportsRetryCheckpoints,
+    });
+
+    return "RETRIED" as const;
   }
 
   #generateMetadataAttributesForNextAttempt(execution: TaskRunExecution) {
