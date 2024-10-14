@@ -55,12 +55,7 @@ export const CANCELLABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
 export const CRASHABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
 export const CRASHABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
 
-export const FAILABLE_RUN_STATUSES = [
-  "EXECUTING",
-  "PENDING",
-  "WAITING_FOR_DEPLOY",
-  "RETRYING_AFTER_FAILURE",
-] satisfies TaskRunStatus[];
+export const FAILABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
 
 export const FREEZABLE_RUN_STATUSES: TaskRunStatus[] = ["EXECUTING", "RETRYING_AFTER_FAILURE"];
 export const FREEZABLE_ATTEMPT_STATUSES: TaskRunAttemptStatus[] = ["EXECUTING", "FAILED"];
@@ -73,6 +68,10 @@ export function isFinalRunStatus(status: TaskRunStatus): boolean {
 }
 export function isFinalAttemptStatus(status: TaskRunAttemptStatus): boolean {
   return FINAL_ATTEMPT_STATUSES.includes(status);
+}
+
+export function isFailedRunStatus(status: TaskRunStatus): boolean {
+  return FAILED_RUN_STATUSES.includes(status);
 }
 
 export function isCancellableRunStatus(status: TaskRunStatus): boolean {
@@ -101,8 +100,4 @@ export function isRestorableRunStatus(status: TaskRunStatus): boolean {
 }
 export function isRestorableAttemptStatus(status: TaskRunAttemptStatus): boolean {
   return RESTORABLE_ATTEMPT_STATUSES.includes(status);
-}
-
-export function isFailedRunStatus(status: TaskRunStatus): boolean {
-  return FAILED_RUN_STATUSES.includes(status);
 }
