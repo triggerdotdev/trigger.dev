@@ -1,12 +1,11 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { env } from "~/env.server";
 import { permittedToReadBatch } from "~/services/accessControl.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { realtimeClient } from "~/services/realtimeClient.server";
 import { makeApiCors } from "~/utils/apiCors";
-import { longPollingFetch } from "~/utils/longPollingFetch";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
@@ -53,17 +52,11 @@ export async function loader({ request, params }: ActionFunctionArgs) {
       return apiCors(json({ error: "Batch Run not found" }, { status: 404 }));
     }
 
-    const url = new URL(request.url);
-    const originUrl = new URL(`${env.ELECTRIC_ORIGIN}/v1/shape/public."TaskRun"`);
-    url.searchParams.forEach((value, key) => {
-      originUrl.searchParams.set(key, value);
-    });
-
-    originUrl.searchParams.set("where", `"batchId"='${batchRun.id}'`);
-
-    const finalUrl = originUrl.toString();
-
-    return longPollingFetch(finalUrl);
+    return realtimeClient.streamRunsWhere(
+      request.url,
+      authenticationResult.environment,
+      `"batchId"='${batchRun.id}'`
+    );
   } catch (error) {
     if (error instanceof Response) {
       // Error responses from longPollingFetch

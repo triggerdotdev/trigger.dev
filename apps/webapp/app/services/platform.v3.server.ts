@@ -1,5 +1,13 @@
-import { BillingClient, Limits, SetPlanBody, UsageSeriesParams } from "@trigger.dev/platform/v3";
 import { Organization, Project } from "@trigger.dev/database";
+import {
+  BillingClient,
+  Limits,
+  SetPlanBody,
+  UsageSeriesParams,
+  UsageResult,
+} from "@trigger.dev/platform/v3";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -7,10 +15,61 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { createEnvironment } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
+import { singleton } from "~/utils/singleton";
+import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+
+function initializeClient() {
+  if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
+    const client = new BillingClient({
+      url: process.env.BILLING_API_URL,
+      apiKey: process.env.BILLING_API_KEY,
+    });
+    console.log(`🤑 Billing client initialized: ${process.env.BILLING_API_URL}`);
+    return client;
+  } else {
+    console.log(`🤑 Billing client not initialized`);
+  }
+}
+
+const client = singleton("billingClient", initializeClient);
+
+function initializePlatformCache() {
+  const ctx = new DefaultStatefulContext();
+  const memory = new MemoryStore({ persistentMap: new Map() });
+  const redisCacheStore = new RedisCacheStore({
+    connection: {
+      keyPrefix: `cache:platform:v3:`,
+      port: env.REDIS_PORT,
+      host: env.REDIS_HOST,
+      username: env.REDIS_USERNAME,
+      password: env.REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    },
+  });
+
+  // This cache holds the limits fetched from the platform service
+  const cache = createCache({
+    limits: new Namespace<number>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000 * 5, // 5 minutes
+      stale: 60_000 * 10, // 10 minutes
+    }),
+    usage: new Namespace<UsageResult>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000 * 5, // 5 minutes
+      stale: 60_000 * 10, // 10 minutes
+    }),
+  });
+
+  return cache;
+}
+
+const platformCache = singleton("platformCache", initializePlatformCache);
 
 export async function getCurrentPlan(orgId: string) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.currentPlan(orgId);
 
@@ -60,8 +119,8 @@ export async function getCurrentPlan(orgId: string) {
 }
 
 export async function getLimits(orgId: string) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.currentPlan(orgId);
     if (!result.success) {
@@ -87,9 +146,15 @@ export async function getLimit(orgId: string, limit: keyof Limits, fallback: num
   return fallback;
 }
 
+export async function getCachedLimit(orgId: string, limit: keyof Limits, fallback: number) {
+  return platformCache.limits.swr(`${orgId}:${limit}`, async () => {
+    return getLimit(orgId, limit, fallback);
+  });
+}
+
 export async function customerPortalUrl(orgId: string, orgSlug: string) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     return client.createPortalSession(orgId, {
       returnUrl: `${env.APP_ORIGIN}${organizationBillingPath({ slug: orgSlug })}`,
@@ -101,8 +166,8 @@ export async function customerPortalUrl(orgId: string, orgSlug: string) {
 }
 
 export async function getPlans() {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.plans();
     if (!result.success) {
@@ -122,7 +187,6 @@ export async function setPlan(
   callerPath: string,
   plan: SetPlanBody
 ) {
-  const client = getClient();
   if (!client) {
     throw redirectWithErrorMessage(callerPath, request, "Error setting plan");
   }
@@ -178,8 +242,8 @@ export async function setPlan(
 }
 
 export async function getUsage(organizationId: string, { from, to }: { from: Date; to: Date }) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.usage(organizationId, { from, to });
     if (!result.success) {
@@ -193,9 +257,27 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
   }
 }
 
-export async function getUsageSeries(organizationId: string, params: UsageSeriesParams) {
-  const client = getClient();
+export async function getCachedUsage(
+  organizationId: string,
+  { from, to }: { from: Date; to: Date }
+) {
   if (!client) return undefined;
+
+  const result = await platformCache.usage.swr(
+    `${organizationId}:${from.toISOString()}:${to.toISOString()}`,
+    async () => {
+      const usageResponse = await getUsage(organizationId, { from, to });
+
+      return usageResponse;
+    }
+  );
+
+  return result.val;
+}
+
+export async function getUsageSeries(organizationId: string, params: UsageSeriesParams) {
+  if (!client) return undefined;
+
   try {
     const result = await client.usageSeries(organizationId, params);
     if (!result.success) {
@@ -214,8 +296,8 @@ export async function reportInvocationUsage(
   costInCents: number,
   additionalData?: Record<string, any>
 ) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.reportInvocationUsage({
       organizationId,
@@ -234,8 +316,8 @@ export async function reportInvocationUsage(
 }
 
 export async function reportComputeUsage(request: Request) {
-  const client = getClient();
   if (!client) return undefined;
+
   return fetch(`${process.env.BILLING_API_URL}/api/v1/usage/ingest/compute`, {
     method: "POST",
     headers: request.headers,
@@ -244,8 +326,8 @@ export async function reportComputeUsage(request: Request) {
 }
 
 export async function getEntitlement(organizationId: string) {
-  const client = getClient();
   if (!client) return undefined;
+
   try {
     const result = await client.getEntitlement(organizationId);
     if (!result.success) {
@@ -272,19 +354,6 @@ export async function projectCreated(organization: Organization, project: Projec
     if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
       await createEnvironment(organization, project, "STAGING");
     }
-  }
-}
-
-function getClient() {
-  if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
-    const client = new BillingClient({
-      url: process.env.BILLING_API_URL,
-      apiKey: process.env.BILLING_API_KEY,
-    });
-    console.log(`Billing client initialized: ${process.env.BILLING_API_URL}`);
-    return client;
-  } else {
-    console.log(`Billing client not initialized`);
   }
 }
 
