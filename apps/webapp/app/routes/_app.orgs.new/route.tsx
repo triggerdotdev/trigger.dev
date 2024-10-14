@@ -25,6 +25,8 @@ import { requireUser, requireUserId } from "~/services/session.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
 import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { env } from "~/env.server";
+import { sendToPlain } from "~/utils/plain.server";
+import { logger } from "~/services/logger.server";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -58,42 +60,14 @@ export const action: ActionFunction = async ({ request }) => {
       companySize: submission.value.companySize ?? null,
     });
 
-    if (env.PLAIN_API_KEY) {
-      const client = new PlainClient({
-        apiKey: env.PLAIN_API_KEY,
-      });
+    const whyUseUs = formData.get("whyUseUs");
 
-      const whyUseUs = formData.get("whyUseUs");
-
-      const upsertCustomerRes = await client.upsertCustomer({
-        identifier: {
-          emailAddress: user.email,
-        },
-        onCreate: {
-          externalId: user.id,
-          fullName: submission.value.orgName,
-          email: {
-            email: user.email,
-            isVerified: true,
-          },
-        },
-        onUpdate: {
-          externalId: { value: user.id },
-          fullName: { value: submission.value.orgName },
-          email: {
-            email: user.email,
-            isVerified: true,
-          },
-        },
-      });
-
-      if (upsertCustomerRes.error) {
-        console.error("Failed to upsert customer in Plain", upsertCustomerRes.error);
-      } else if (whyUseUs) {
-        const createThreadRes = await client.createThread({
-          customerIdentifier: {
-            customerId: upsertCustomerRes.data.customer.id,
-          },
+    if (whyUseUs) {
+      try {
+        await sendToPlain({
+          userId: user.id,
+          email: user.email,
+          orgName: submission.value.orgName,
           title: "New org feedback",
           components: [
             uiComponent.text({
@@ -112,10 +86,8 @@ export const action: ActionFunction = async ({ request }) => {
             }),
           ],
         });
-
-        if (createThreadRes.error) {
-          console.error("Failed to create thread in Plain", createThreadRes.error);
-        }
+      } catch (error) {
+        logger.error("Error sending data to Plain when creating an org:", { error });
       }
     }
 
