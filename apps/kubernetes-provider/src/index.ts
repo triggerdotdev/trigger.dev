@@ -341,7 +341,7 @@ class KubernetesTaskOperations implements TaskOperations {
                     limits: {
                       cpu: "0.25",
                       memory: "100Mi",
-                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
+                      "ephemeral-storage": "1Gi",
                     },
                   },
                 },
