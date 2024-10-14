@@ -34,6 +34,9 @@ const UPTIME_MAX_PENDING_RUNS = Number(process.env.UPTIME_MAX_PENDING_RUNS || "2
 const UPTIME_MAX_PENDING_INDECES = Number(process.env.UPTIME_MAX_PENDING_INDECES || "10");
 const UPTIME_MAX_PENDING_ERRORS = Number(process.env.UPTIME_MAX_PENDING_ERRORS || "10");
 
+const POD_EPHEMERAL_STORAGE_SIZE_LIMIT = process.env.POD_EPHEMERAL_STORAGE_SIZE_LIMIT || "10Gi";
+const POD_EPHEMERAL_STORAGE_SIZE_REQUEST = process.env.POD_EPHEMERAL_STORAGE_SIZE_REQUEST || "2Gi";
+
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
 
@@ -108,7 +111,7 @@ class KubernetesTaskOperations implements TaskOperations {
                     limits: {
                       cpu: "1",
                       memory: "2G",
-                      "ephemeral-storage": "2Gi",
+                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
                     },
                   },
                   lifecycle: {
@@ -338,7 +341,10 @@ class KubernetesTaskOperations implements TaskOperations {
                     limits: {
                       cpu: "0.25",
                       memory: "100Mi",
-                      "ephemeral-storage": "1Gi",
+                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
+                    },
+                    requests: {
+                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_REQUEST,
                     },
                   },
                 },
@@ -396,13 +402,13 @@ class KubernetesTaskOperations implements TaskOperations {
 
   get #defaultResourceRequests(): ResourceQuantities {
     return {
-      "ephemeral-storage": "2Gi",
+      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_REQUEST,
     };
   }
 
   get #defaultResourceLimits(): ResourceQuantities {
     return {
-      "ephemeral-storage": "10Gi",
+      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
     };
   }
 
