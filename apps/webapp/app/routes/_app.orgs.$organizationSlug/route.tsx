@@ -10,7 +10,7 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCurrentPlan, getUsage } from "~/services/platform.v3.server";
+import { getCachedUsage, getCurrentPlan, getUsage } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -28,6 +28,24 @@ export function useCurrentPlan(matches?: UIMatch[]) {
 
   return data?.currentPlan;
 }
+
+export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
+  const { currentParams, nextParams } = params;
+
+  const current = ParamsSchema.safeParse(currentParams);
+  const next = ParamsSchema.safeParse(nextParams);
+
+  if (current.success && next.success) {
+    if (current.data.organizationSlug !== next.data.organizationSlug) {
+      return true;
+    }
+    if (current.data.projectParam !== next.data.projectParam) {
+      return true;
+    }
+  }
+
+  return params.currentUrl.pathname !== params.nextUrl.pathname;
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -50,11 +68,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const firstDayOfMonth = new Date();
   firstDayOfMonth.setUTCDate(1);
   firstDayOfMonth.setUTCHours(0, 0, 0, 0);
-  const tomorrow = new Date();
-  tomorrow.setUTCDate(tomorrow.getDate() + 1);
+  const firstDayOfNextMonth = new Date();
+  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
+  firstDayOfNextMonth.setUTCDate(1);
+  firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
+
   const [plan, usage] = await Promise.all([
     getCurrentPlan(organization.id),
-    getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow }),
+    getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
   ]);
 
   let hasExceededFreeTier = false;
@@ -103,23 +124,3 @@ export function ErrorBoundary() {
     <RouteErrorDisplay button={{ title: "Home", to: "/" }} />
   );
 }
-
-export const shouldRevalidate: ShouldRevalidateFunction = ({
-  defaultShouldRevalidate,
-  currentParams,
-  nextParams,
-}) => {
-  const current = ParamsSchema.safeParse(currentParams);
-  const next = ParamsSchema.safeParse(nextParams);
-
-  if (current.success && next.success) {
-    if (current.data.organizationSlug !== next.data.organizationSlug) {
-      return true;
-    }
-    if (current.data.projectParam !== next.data.projectParam) {
-      return true;
-    }
-  }
-
-  return defaultShouldRevalidate;
-};

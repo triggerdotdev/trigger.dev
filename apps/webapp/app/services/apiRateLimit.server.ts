@@ -1,4 +1,4 @@
-import { DefaultStatefulContext, Namespace, Cache as UnkeyCache, createCache } from "@unkey/cache";
+import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
 import { MemoryStore } from "@unkey/cache/stores";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
@@ -6,7 +6,7 @@ import { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { authenticateApiKey, authenticateAuthorizationHeader } from "./apiAuth.server";
+import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { logger } from "./logger.server";
 import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
@@ -153,6 +153,7 @@ export function authorizationRateLimitMiddleware({
     },
   });
 
+  // This cache holds the rate limit configuration for each org, so we don't have to fetch it every request
   const cache = createCache({
     limiter: new Namespace<RateLimiterConfig>(ctx, {
       stores: [memory, redisCacheStore],
