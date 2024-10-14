@@ -5,6 +5,9 @@ import { BaseService } from "./services/baseService.server";
 import { FinalizeTaskRunService } from "./services/finalizeTaskRun.server";
 import { FAILABLE_RUN_STATUSES } from "./taskStatus";
 
+/**
+ * 
+ */
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
     const isFriendlyId = anyRunId.startsWith("run_");

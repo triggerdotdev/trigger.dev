@@ -199,6 +199,14 @@ export class CompleteAttemptService extends BaseService {
 
     const sanitizedError = sanitizeError(completion.error);
 
+    // TODO: make this handle the case where the current attempt is unknown, with only a run id
+
+    // 1. Get the task run
+
+    // 2. Get the most recent attempt
+
+    // 3. Get the retry config
+
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
