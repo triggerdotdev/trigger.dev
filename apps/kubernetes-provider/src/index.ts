@@ -111,7 +111,7 @@ class KubernetesTaskOperations implements TaskOperations {
                     limits: {
                       cpu: "1",
                       memory: "2G",
-                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
+                      "ephemeral-storage": "2Gi",
                     },
                   },
                   lifecycle: {
@@ -342,9 +342,6 @@ class KubernetesTaskOperations implements TaskOperations {
                       cpu: "0.25",
                       memory: "100Mi",
                       "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_LIMIT,
-                    },
-                    requests: {
-                      "ephemeral-storage": POD_EPHEMERAL_STORAGE_SIZE_REQUEST,
                     },
                   },
                 },
