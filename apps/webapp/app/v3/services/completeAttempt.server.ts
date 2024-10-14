@@ -1,6 +1,5 @@
 import { Attributes } from "@opentelemetry/api";
 import {
-  type ExceptionEventProperties,
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
@@ -241,45 +240,6 @@ export class CompleteAttemptService extends BaseService {
         },
       ],
     });
-
-    // If the error is a graceful exit timeout, we need to fail the task run and all incomplete spans
-    if (
-      sanitizedError.type === "INTERNAL_ERROR" &&
-      sanitizedError.code === "GRACEFUL_EXIT_TIMEOUT"
-    ) {
-      const finalizeService = new FinalizeTaskRunService();
-      await finalizeService.call({
-        id: taskRunAttempt.taskRunId,
-        status: "SYSTEM_FAILURE",
-        completedAt: new Date(),
-      });
-
-      // We need to fail all incomplete spans
-      const inProgressEvents = await eventRepository.queryIncompleteEvents({
-        attemptId: execution.attempt.id,
-      });
-
-      logger.debug("Failing in-progress events", {
-        inProgressEvents: inProgressEvents.map((event) => event.id),
-      });
-
-      const exception = {
-        type: "Graceful exit timeout",
-        message: sanitizedError.message,
-      } satisfies ExceptionEventProperties;
-
-      await Promise.all(
-        inProgressEvents.map((event) => {
-          return eventRepository.crashEvent({
-            event: event,
-            crashedAt: new Date(),
-            exception,
-          });
-        })
-      );
-
-      return "COMPLETED";
-    }
 
     await this._prisma.taskRun.update({
       where: {
