@@ -39,12 +39,14 @@ export class CompleteAttemptService extends BaseService {
     env,
     checkpoint,
     supportsRetryCheckpoints,
+    isSystemFailure,
   }: {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
     supportsRetryCheckpoints?: boolean;
+    isSystemFailure?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -110,6 +112,7 @@ export class CompleteAttemptService extends BaseService {
         env,
         checkpoint,
         supportsRetryCheckpoints,
+        isSystemFailure,
       });
     }
   }
@@ -170,6 +173,7 @@ export class CompleteAttemptService extends BaseService {
     env,
     checkpoint,
     supportsRetryCheckpoints,
+    isSystemFailure,
   }: {
     completion: TaskRunFailedExecutionResult;
     execution: TaskRunExecution;
@@ -177,6 +181,7 @@ export class CompleteAttemptService extends BaseService {
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
     supportsRetryCheckpoints?: boolean;
+    isSystemFailure?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
@@ -198,14 +203,6 @@ export class CompleteAttemptService extends BaseService {
     }
 
     const sanitizedError = sanitizeError(completion.error);
-
-    // TODO: make this handle the case where the current attempt is unknown, with only a run id
-
-    // 1. Get the task run
-
-    // 2. Get the most recent attempt
-
-    // 3. Get the retry config
 
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
@@ -258,10 +255,11 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    const status =
-      sanitizedError.type === "INTERNAL_ERROR" && sanitizedError.code === "MAX_DURATION_EXCEEDED"
-        ? "TIMED_OUT"
-        : "COMPLETED_WITH_ERRORS";
+    const status = isSystemFailure
+      ? "SYSTEM_FAILURE"
+      : sanitizedError.type === "INTERNAL_ERROR" && sanitizedError.code === "MAX_DURATION_EXCEEDED"
+      ? "TIMED_OUT"
+      : "COMPLETED_WITH_ERRORS";
 
     const finalizeService = new FinalizeTaskRunService();
     await finalizeService.call({

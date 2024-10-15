@@ -88,6 +88,10 @@ export function isCrashableAttemptStatus(status: TaskRunAttemptStatus): boolean 
   return CRASHABLE_ATTEMPT_STATUSES.includes(status);
 }
 
+export function isFailableRunStatus(status: TaskRunStatus): boolean {
+  return FAILABLE_RUN_STATUSES.includes(status);
+}
+
 export function isFreezableRunStatus(status: TaskRunStatus): boolean {
   return FREEZABLE_RUN_STATUSES.includes(status);
 }

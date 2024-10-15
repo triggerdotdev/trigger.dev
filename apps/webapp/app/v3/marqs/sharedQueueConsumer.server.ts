@@ -945,7 +945,8 @@ class SharedQueueTasks {
   async getExecutionPayloadFromAttempt(
     id: string,
     setToExecuting?: boolean,
-    isRetrying?: boolean
+    isRetrying?: boolean,
+    skipStatusChecks?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
@@ -979,27 +980,29 @@ class SharedQueueTasks {
       return;
     }
 
-    switch (attempt.status) {
-      case "CANCELED":
-      case "EXECUTING": {
-        logger.error("Invalid attempt status for execution payload retrieval", {
-          attemptId: id,
-          status: attempt.status,
-        });
-        return;
+    if (!skipStatusChecks) {
+      switch (attempt.status) {
+        case "CANCELED":
+        case "EXECUTING": {
+          logger.error("Invalid attempt status for execution payload retrieval", {
+            attemptId: id,
+            status: attempt.status,
+          });
+          return;
+        }
       }
-    }
 
-    switch (attempt.taskRun.status) {
-      case "CANCELED":
-      case "EXECUTING":
-      case "INTERRUPTED": {
-        logger.error("Invalid run status for execution payload retrieval", {
-          attemptId: id,
-          runId: attempt.taskRunId,
-          status: attempt.taskRun.status,
-        });
-        return;
+      switch (attempt.taskRun.status) {
+        case "CANCELED":
+        case "EXECUTING":
+        case "INTERRUPTED": {
+          logger.error("Invalid run status for execution payload retrieval", {
+            attemptId: id,
+            runId: attempt.taskRunId,
+            status: attempt.taskRun.status,
+          });
+          return;
+        }
       }
     }
 
