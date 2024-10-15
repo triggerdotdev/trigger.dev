@@ -3,8 +3,8 @@ import { z } from "zod";
 
 //todo it will need to move into core because the Worker will need to use these
 
-const StartRunMessage = z.object({
-  action: z.literal("START_RUN"),
+const ScheduleRunMessage = z.object({
+  action: z.literal("SCHEDULE_RUN"),
   // The payload allows us to a discriminated union with the version
   payload: z.object({
     version: z.literal("1"),
@@ -46,14 +46,6 @@ const StartRunMessage = z.object({
     }),
   }),
 });
-export type StartRunMessage = z.infer<typeof StartRunMessage>;
+export type ScheduleRunMessage = z.infer<typeof ScheduleRunMessage>;
 
-export const ContinueRunMessage = z.object({
-  action: z.literal("CONTINUE_RUN"),
-  payload: z.object({
-    version: z.literal("1"),
-  }),
-});
-export type ContinueRunMessage = z.infer<typeof ContinueRunMessage>;
-
-export const Messages = z.discriminatedUnion("action", [StartRunMessage]);
+export const Messages = z.discriminatedUnion("action", [ScheduleRunMessage]);

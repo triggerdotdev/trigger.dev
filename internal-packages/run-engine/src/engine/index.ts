@@ -37,7 +37,7 @@ import { MinimalAuthenticatedEnvironment } from "../shared";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { machinePresetFromConfig } from "./machinePresets";
-import { ContinueRunMessage, StartRunMessage } from "./messages";
+import { ScheduleRunMessage } from "./messages";
 import { isDequeueableExecutionStatus } from "./statuses";
 
 type Options = {
@@ -413,7 +413,7 @@ export class RunEngine {
     consumerId: string;
     masterQueue: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<null | StartRunMessage | ContinueRunMessage> {
+  }): Promise<null | ScheduleRunMessage> {
     const prisma = tx ?? this.prisma;
     return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
       //gets a fair run from this shared queue
@@ -607,7 +607,7 @@ export class RunEngine {
           });
 
           return {
-            action: "START_RUN",
+            action: "SCHEDULE_RUN",
             payload: {
               version: "1",
               execution: {
@@ -627,7 +627,7 @@ export class RunEngine {
                 machine: machinePreset,
                 attemptNumber: nextAttemptNumber,
                 masterQueue: lockedTaskRun.masterQueue,
-                traceContext: lockedTaskRun.traceContext,
+                traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
               },
               environment: {
                 id: lockedTaskRun.runtimeEnvironment.id,
@@ -918,6 +918,17 @@ export class RunEngine {
       });
     });
   }
+
+  /** This is called to get the  */
+  async resumeRun({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {}
 
   async waitForDuration() {}
 
