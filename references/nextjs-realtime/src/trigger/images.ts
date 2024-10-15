@@ -19,6 +19,7 @@ export const handleUpload = schemaTask({
         high_threshold: 200,
       }),
       runFalModel("fal-ai/aura-sr", file.url, {}),
+      runFalModel("fal-ai/imageutils/depth", file.url, {}),
     ]);
   },
 });

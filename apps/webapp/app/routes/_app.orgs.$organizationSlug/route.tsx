@@ -44,9 +44,12 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
     }
   }
 
+  // This prevents revalidation when there are search params changes
+  // IMPORTANT: If the loader function depends on search params, this should be updated
   return params.currentUrl.pathname !== params.nextUrl.pathname;
 };
 
+// IMPORTANT: Make sure to update shouldRevalidate if this loader depends on search params
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const impersonationId = await getImpersonationId(request);
@@ -68,6 +71,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const firstDayOfMonth = new Date();
   firstDayOfMonth.setUTCDate(1);
   firstDayOfMonth.setUTCHours(0, 0, 0, 0);
+
+  // Using the 1st day of next month means we get the usage for the current month
+  // and the cache key for getCachedUsage is stable over the month
   const firstDayOfNextMonth = new Date();
   firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
   firstDayOfNextMonth.setUTCDate(1);

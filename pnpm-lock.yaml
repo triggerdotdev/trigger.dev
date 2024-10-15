@@ -643,6 +643,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(zod@3.22.3)
     devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
       '@remix-run/dev':
         specifier: 2.1.0
         version: 2.1.0(@remix-run/serve@2.1.0)(@types/node@18.11.18)(ts-node@10.9.1)(typescript@5.2.2)
@@ -817,6 +820,9 @@ importers:
       typescript:
         specifier: ^5.1.6
         version: 5.2.2
+      vite-tsconfig-paths:
+        specifier: ^4.0.5
+        version: 4.0.5(typescript@5.2.2)
       vitest:
         specifier: ^1.4.0
         version: 1.4.0(@types/node@18.11.18)
@@ -950,6 +956,9 @@ importers:
       testcontainers:
         specifier: ^10.13.1
         version: 10.13.1
+      tinyexec:
+        specifier: ^0.3.0
+        version: 0.3.0
       vitest:
         specifier: ^1.4.0
         version: 1.6.0(@types/node@20.14.14)
@@ -1239,8 +1248,8 @@ importers:
   packages/core:
     dependencies:
       '@electric-sql/client':
-        specifier: 0.6.1
-        version: 0.6.1
+        specifier: 0.6.3
+        version: 0.6.3
       '@google-cloud/precise-date':
         specifier: ^4.0.0
         version: 4.0.0
@@ -4755,8 +4764,8 @@ packages:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
 
-  /@electric-sql/client@0.6.1:
-    resolution: {integrity: sha512-fINCVS66lqxm9AMnIOK+qOXp89GoKjSMCVX3UQ+PxGtYwtk3SJUrsDTuPslQNZt/0hKyUMi7sHAPI2peaBpn9Q==}
+  /@electric-sql/client@0.6.3:
+    resolution: {integrity: sha512-/AYkRrEASKIGcjtNp8IVJ3sAUm+IQ2l0NrGgDvvAG/n1+ifOl7kD1E4dRyg1qdY/b+HdKhGNYlNgsPuwMKO2Mg==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
@@ -27209,7 +27218,7 @@ packages:
   /socket.io-adapter@2.5.4:
     resolution: {integrity: sha512-wDNHGXGewWAjQPt3pyeYBtpWSq9cLE5UW1ZUPL/2eGK9jtse/FpXib7epSTsz0Q0m+6sg6Y4KtcFTlah1bdOVg==}
     dependencies:
-      debug: 4.3.4
+      debug: 4.3.7
       ws: 8.11.0
     transitivePeerDependencies:
       - bufferutil
@@ -27249,7 +27258,7 @@ packages:
     engines: {node: '>=10.0.0'}
     dependencies:
       '@socket.io/component-emitter': 3.1.0
-      debug: 4.3.4
+      debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
 
@@ -28351,7 +28360,6 @@ packages:
 
   /tinyexec@0.3.0:
     resolution: {integrity: sha512-tVGE0mVJPGb0chKhqmsoosjsS+qUnJVGJpZgsHYQcGoPlG3B51R3PouqTgEGH2Dc9jjFyOqOpix6ZHNMXp1FZg==}
-    dev: false
 
   /tinyglobby@0.2.2:
     resolution: {integrity: sha512-mZ2sDMaySvi1PkTp4lTo1In2zjU+cY8OvZsfwrDrx3YGRbXPX1/cbPwCR9zkm3O/Fz9Jo0F1HNgIQ1b8BepqyQ==}
@@ -28596,6 +28604,19 @@ packages:
   /tsafe@1.4.1:
     resolution: {integrity: sha512-3IDBalvf6SyvHFS14UiwCWzqdSdo+Q0k2J7DZyJYaHW/iraW9DJpaBKDJpry3yQs3o/t/A+oGaRW3iVt2lKxzA==}
     dev: false
+
+  /tsconfck@2.1.2(typescript@5.2.2):
+    resolution: {integrity: sha512-ghqN1b0puy3MhhviwO2kGF8SeMDNhEbnKxjK7h6+fvY9JAxqvXi8y5NAHSQv687OVboS2uZIByzGd45/YxrRHg==}
+    engines: {node: ^14.13.1 || ^16 || >=18}
+    hasBin: true
+    peerDependencies:
+      typescript: ^4.3.5 || ^5.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.2.2
+    dev: true
 
   /tsconfck@2.1.2(typescript@5.5.4):
     resolution: {integrity: sha512-ghqN1b0puy3MhhviwO2kGF8SeMDNhEbnKxjK7h6+fvY9JAxqvXi8y5NAHSQv687OVboS2uZIByzGd45/YxrRHg==}
@@ -29644,10 +29665,21 @@ packages:
       - terser
     dev: true
 
+  /vite-tsconfig-paths@4.0.5(typescript@5.2.2):
+    resolution: {integrity: sha512-/L/eHwySFYjwxoYt1WRJniuK/jPv+WGwgRGBYx3leciR5wBeqntQpUE6Js6+TJemChc+ter7fDBKieyEWDx4yQ==}
+    dependencies:
+      debug: 4.3.7
+      globrex: 0.1.2
+      tsconfck: 2.1.2(typescript@5.2.2)
+    transitivePeerDependencies:
+      - supports-color
+      - typescript
+    dev: true
+
   /vite-tsconfig-paths@4.0.5(typescript@5.5.4):
     resolution: {integrity: sha512-/L/eHwySFYjwxoYt1WRJniuK/jPv+WGwgRGBYx3leciR5wBeqntQpUE6Js6+TJemChc+ter7fDBKieyEWDx4yQ==}
     dependencies:
-      debug: 4.3.4
+      debug: 4.3.7
       globrex: 0.1.2
       tsconfck: 2.1.2(typescript@5.5.4)
     transitivePeerDependencies:
