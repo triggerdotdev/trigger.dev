@@ -54,7 +54,7 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { generateJWT } from "../jwt.js";
-import { TriggerJwtOptions } from "../types/tasks.js";
+import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -590,15 +590,22 @@ export class ApiClient {
     );
   }
 
-  subscribeToRunChanges<TPayload = any, TOutput = any>(runId: string) {
-    return runShapeStream<TPayload, TOutput>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
+  subscribeToRunChanges<TRunTypes extends AnyRunTypes>(runId: string) {
+    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
       closeOnComplete: true,
       headers: this.#getRealtimeHeaders(),
     });
   }
 
-  subscribeToBatchChanges<TPayload = any, TOutput = any>(batchId: string) {
-    return runShapeStream<TPayload, TOutput>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
+  subscribeToRunTag<TRunTypes extends AnyRunTypes>(tag: string) {
+    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/tags/${tag}`, {
+      closeOnComplete: false,
+      headers: this.#getRealtimeHeaders(),
+    });
+  }
+
+  subscribeToBatchChanges<TRunTypes extends AnyRunTypes>(batchId: string) {
+    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
       closeOnComplete: false,
       headers: this.#getRealtimeHeaders(),
     });

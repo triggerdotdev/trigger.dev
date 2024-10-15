@@ -37,6 +37,9 @@ export type GridImage = z.infer<typeof GridImage>;
 export const HandleUploadMetadata = z.record(GridImage);
 export type HandleUploadMetadata = z.infer<typeof HandleUploadMetadata>;
 
+export const RunFalMetadata = z.object({ result: GridImage });
+export type RunFalMetadata = z.infer<typeof RunFalMetadata>;
+
 export const UploadedFileData = z.object({
   name: z.string(),
   size: z.number(),

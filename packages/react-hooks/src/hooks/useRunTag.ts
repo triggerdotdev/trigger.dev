@@ -4,18 +4,18 @@ import { AnyTask, InferRunTypes, TaskRunShape } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
 import { useApiClient } from "./useApiClient.js";
 
-export function useBatch<TTask extends AnyTask>(batchId: string) {
+export function useRunTag<TTask extends AnyTask>(tag: string) {
   const [runShapes, setRunShapes] = useState<TaskRunShape<TTask>[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const apiClient = useApiClient();
 
   useEffect(() => {
-    const subscription = apiClient.subscribeToBatchChanges<InferRunTypes<TTask>>(batchId);
+    const subscription = apiClient.subscribeToRunTag<InferRunTypes<TTask>>(tag);
 
     async function iterateUpdates() {
       for await (const run of subscription) {
         setRunShapes((prevRuns) => {
-          return insertRunShapeInOrder(prevRuns, run);
+          return insertRunShape(prevRuns, run);
         });
       }
     }
@@ -27,13 +27,13 @@ export function useBatch<TTask extends AnyTask>(batchId: string) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [batchId]);
+  }, [tag]);
 
   return { runs: runShapes, error };
 }
 
-// Inserts and then orders by the run number, and ensures that the run is not duplicated
-function insertRunShapeInOrder<TTask extends AnyTask>(
+// Replaces or inserts a run shape, ordered by the createdAt timestamp
+function insertRunShape<TTask extends AnyTask>(
   previousRuns: TaskRunShape<TTask>[],
   run: TaskRunShape<TTask>
 ) {
@@ -42,8 +42,10 @@ function insertRunShapeInOrder<TTask extends AnyTask>(
     return previousRuns.map((r) => (r.id === run.id ? run : r));
   }
 
-  const runNumber = run.number;
-  const index = previousRuns.findIndex((r) => r.number > runNumber);
+  const createdAt = run.createdAt;
+
+  const index = previousRuns.findIndex((r) => r.createdAt > createdAt);
+
   if (index === -1) {
     return [...previousRuns, run];
   }

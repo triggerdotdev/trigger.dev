@@ -1,7 +1,7 @@
 import { DeserializedJson } from "../../schemas/json.js";
 import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
-import { AnyTask, TaskOutput, TaskPayload } from "../types/tasks.js";
+import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
 import {
   conditionallyImportAndParsePacket,
   IOPacket,
@@ -9,37 +9,39 @@ import {
 } from "../utils/ioSerialization.js";
 import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
 
-export type RunShape<TPayload = any, TOutput = any> = {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-  taskIdentifier: string;
-  number: number;
-  status: RunStatus;
-  durationMs: number;
-  costInCents: number;
-  baseCostInCents: number;
-  payload: TPayload;
-  tags: string[];
-  idempotencyKey?: string;
-  expiredAt?: Date;
-  ttl?: string;
-  finishedAt?: Date;
-  startedAt?: Date;
-  delayedUntil?: Date;
-  queuedAt?: Date;
-  metadata?: Record<string, DeserializedJson>;
-  error?: SerializedError;
-  output?: TOutput;
-  isTest: boolean;
-};
+export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
+  ? {
+      id: string;
+      taskIdentifier: TRunTypes["taskIdentifier"];
+      payload: TRunTypes["payload"];
+      output?: TRunTypes["output"];
+      createdAt: Date;
+      updatedAt: Date;
+      number: number;
+      status: RunStatus;
+      durationMs: number;
+      costInCents: number;
+      baseCostInCents: number;
+      tags: string[];
+      idempotencyKey?: string;
+      expiredAt?: Date;
+      ttl?: string;
+      finishedAt?: Date;
+      startedAt?: Date;
+      delayedUntil?: Date;
+      queuedAt?: Date;
+      metadata?: Record<string, DeserializedJson>;
+      error?: SerializedError;
+      isTest: boolean;
+    }
+  : never;
 
-export type AnyRunShape = RunShape<any, any>;
+export type AnyRunShape = RunShape<AnyRunTypes>;
 
-export type TaskRunShape<TTask extends AnyTask> = RunShape<TaskPayload<TTask>, TaskOutput<TTask>>;
+export type TaskRunShape<TTask extends AnyTask> = RunShape<InferRunTypes<TTask>>;
 
-export type RunStreamCallback<TPayload = any, TOutput = any> = (
-  run: RunShape<TPayload, TOutput>
+export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
+  run: RunShape<TRunTypes>
 ) => void | Promise<void>;
 
 export type RunShapeStreamOptions = {
@@ -48,19 +50,19 @@ export type RunShapeStreamOptions = {
   closeOnComplete?: boolean;
 };
 
-export function runShapeStream<TPayload = any, TOutput = any>(
+export function runShapeStream<TRunTypes extends AnyRunTypes>(
   url: string,
   options?: RunShapeStreamOptions
-): RunSubscription<TPayload, TOutput> {
-  const subscription = new RunSubscription<TPayload, TOutput>(url, options);
+): RunSubscription<TRunTypes> {
+  const subscription = new RunSubscription<TRunTypes>(url, options);
 
   return subscription.init();
 }
 
-export class RunSubscription<TPayload = any, TOutput = any> {
+export class RunSubscription<TRunTypes extends AnyRunTypes> {
   private abortController: AbortController;
   private unsubscribeShape: () => void;
-  private stream: AsyncIterableStream<RunShape<TPayload, TOutput>>;
+  private stream: AsyncIterableStream<RunShape<TRunTypes>>;
   private packetCache = new Map<string, any>();
 
   constructor(
@@ -117,15 +119,15 @@ export class RunSubscription<TPayload = any, TOutput = any> {
     this.unsubscribeShape?.();
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<RunShape<TPayload, TOutput>> {
+  [Symbol.asyncIterator](): AsyncIterator<RunShape<TRunTypes>> {
     return this.stream[Symbol.asyncIterator]();
   }
 
-  getReader(): ReadableStreamDefaultReader<RunShape<TPayload, TOutput>> {
+  getReader(): ReadableStreamDefaultReader<RunShape<TRunTypes>> {
     return this.stream.getReader();
   }
 
-  private async transformRunShape(row: SubscribeRunRawShape): Promise<RunShape> {
+  private async transformRunShape(row: SubscribeRunRawShape): Promise<RunShape<TRunTypes>> {
     const payloadPacket = row.payloadType
       ? ({ data: row.payload ?? undefined, dataType: row.payloadType } satisfies IOPacket)
       : undefined;
@@ -183,7 +185,7 @@ export class RunSubscription<TPayload = any, TOutput = any> {
       error: row.error ?? undefined,
       isTest: row.isTest,
       metadata,
-    };
+    } as RunShape<TRunTypes>;
   }
 }
 

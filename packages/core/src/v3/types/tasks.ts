@@ -339,36 +339,46 @@ declare const __payload: unique symbol;
 type BrandRun<P, O> = { [__output]: O; [__payload]: P };
 export type BrandedRun<T, P, O> = T & BrandRun<O, P>;
 
-export type RunHandle<TPayload, TOutput> = BrandedRun<
+export type RunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     id: string;
     jwt: string;
+    taskIdentifier: TTaskIdentifier;
   },
   TPayload,
   TOutput
 >;
 
-export type AnyRunHandle = RunHandle<any, any>;
+export type AnyRunHandle = RunHandle<string, any, any>;
 
 /**
  * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
  */
-export type BatchRunHandle<TPayload, TOutput> = BrandedRun<
+export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    runs: Array<RunHandle<TPayload, TOutput>>;
+    runs: Array<RunHandle<TTaskIdentifier, TPayload, TOutput>>;
     jwt: string;
+    taskIdentifier: TTaskIdentifier;
   },
   TOutput,
   TPayload
 >;
 
-export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<any, infer TOutput>
+export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<string, any, infer TOutput>
   ? TOutput
   : never;
 
-export type RunHandlePayload<TRunHandle> = TRunHandle extends RunHandle<infer TPayload, any>
+export type RunHandlePayload<TRunHandle> = TRunHandle extends RunHandle<string, infer TPayload, any>
   ? TPayload
+  : never;
+
+export type RunHandleTaskIdentifier<TRunHandle> = TRunHandle extends RunHandle<
+  infer TTaskIdentifier,
+  any,
+  any
+>
+  ? TTaskIdentifier
   : never;
 
 export type TaskRunResult<TOutput = any> =
@@ -408,7 +418,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
     payload: TInput,
     options?: TaskRunOptions,
     requestOptions?: TriggerApiRequestOptions
-  ) => Promise<RunHandle<TInput, TOutput>>;
+  ) => Promise<RunHandle<TIdentifier, TInput, TOutput>>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
@@ -420,7 +430,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
   batchTrigger: (
     items: Array<BatchItem<TInput>>,
     requestOptions?: TriggerApiRequestOptions
-  ) => Promise<BatchRunHandle<TInput, TOutput>>;
+  ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
 
   /**
    * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
@@ -474,19 +484,19 @@ export type TaskOutput<TTask extends AnyTask> = TTask extends Task<string, any, 
   : never;
 
 export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<
-  string,
+  infer TIdentifier,
   infer TInput,
   infer TOutput
 >
-  ? RunHandle<TOutput, TInput>
+  ? RunHandle<TIdentifier, TOutput, TInput>
   : never;
 
 export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
-  string,
+  infer TIdentifier,
   infer TInput,
   infer TOutput
 >
-  ? BatchRunHandle<TOutput, TInput>
+  ? BatchRunHandle<TIdentifier, TOutput, TInput>
   : never;
 
 export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
@@ -628,3 +638,33 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     parsePayload?: AnySchemaParseFn;
   };
 };
+
+export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {
+  output: TOutput;
+  payload: TPayload;
+  taskIdentifier: TTaskIdentifier;
+};
+
+export type AnyRunTypes = RunTypes<string, any, any>;
+
+export type InferRunTypes<T> = T extends RunHandle<
+  infer TTaskIdentifier,
+  infer TPayload,
+  infer TOutput
+>
+  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+  : T extends Task<infer TTaskIdentifier, infer TPayload, infer TOutput>
+  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+  : AnyRunTypes;
+
+export type RunHandleFromTypes<TRunTypes extends AnyRunTypes> = RunHandle<
+  TRunTypes["taskIdentifier"],
+  TRunTypes["payload"],
+  TRunTypes["output"]
+>;
+
+export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = BatchRunHandle<
+  TRunTypes["taskIdentifier"],
+  TRunTypes["payload"],
+  TRunTypes["output"]
+>;

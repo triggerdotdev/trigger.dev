@@ -16,7 +16,7 @@ export default async function UploadPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 bg-gray-100">
-      <ClientUploadDetails runId={params.id} jwt={jwt} />
+      <ClientUploadDetails fileId={params.id} jwt={jwt} />
     </main>
   );
 }
