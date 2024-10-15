@@ -1,5 +1,6 @@
 import { logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
 import { FalResult, GridImage, UploadedFileData } from "@/utils/schemas";
+import { z } from "zod";
 
 import * as fal from "@fal-ai/serverless-client";
 
@@ -14,17 +15,52 @@ export const handleUpload = schemaTask({
     logger.info("Handling uploaded file", { file });
 
     await Promise.all([
-      runFalModel("fal-ai/image-preprocessors/canny", file.url, {
-        low_threshold: 100,
-        high_threshold: 200,
-      }),
-      runFalModel("fal-ai/aura-sr", file.url, {}),
-      runFalModel("fal-ai/imageutils/depth", file.url, {}),
+      runFalModel.trigger(
+        {
+          model: "fal-ai/image-preprocessors/canny",
+          url: file.url,
+          input: {
+            low_threshold: 100,
+            high_threshold: 200,
+          },
+        },
+        { tags: ctx.run.tags }
+      ),
+      runFalModel.trigger(
+        {
+          model: "fal-ai/aura-sr",
+          url: file.url,
+          input: {},
+        },
+        { tags: ctx.run.tags }
+      ),
+      runFalModel.trigger(
+        {
+          model: "fal-ai/imageutils/depth",
+          url: file.url,
+          input: {},
+        },
+        { tags: ctx.run.tags }
+      ),
     ]);
   },
 });
 
-async function runFalModel(model: string, url: string, input: any) {
+const RunFalModelInput = z.object({
+  model: z.string(),
+  url: z.string(),
+  input: z.record(z.any()),
+});
+
+export const runFalModel = schemaTask({
+  id: "run-fal-model",
+  schema: RunFalModelInput,
+  run: async (payload) => {
+    return await internal_runFalModel(payload.model, payload.url, payload.input);
+  },
+});
+
+async function internal_runFalModel(model: string, url: string, input: any) {
   const result = await fal.subscribe(model, {
     input: {
       image_url: url,
@@ -33,13 +69,13 @@ async function runFalModel(model: string, url: string, input: any) {
     onQueueUpdate: (update) => {
       logger.info(model, { update });
 
-      metadata.set(model, GridImage.parse(update));
+      metadata.set("result", GridImage.parse(update));
     },
   });
 
   const parsedResult = FalResult.parse(result);
 
-  metadata.set(`$.${model}.image`, parsedResult.image);
+  metadata.set("$.result.image", parsedResult.image);
 
   return parsedResult.image;
 }

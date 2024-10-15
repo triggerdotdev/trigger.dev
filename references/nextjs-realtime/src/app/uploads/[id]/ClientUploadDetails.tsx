@@ -6,8 +6,8 @@ import ImageDisplay from "@/components/UploadImageDisplay";
 import { useHandleUploadRun } from "@/hooks/useHandleUploadRun";
 import { TriggerAuthContext } from "@trigger.dev/react-hooks";
 
-function UploadDetailsWrapper({ runId }: { runId: string }) {
-  const { run, error, images } = useHandleUploadRun(runId);
+function UploadDetailsWrapper({ fileId }: { fileId: string }) {
+  const { run, error, images } = useHandleUploadRun(fileId);
 
   if (error) {
     return (
@@ -54,16 +54,16 @@ function UploadDetailsWrapper({ runId }: { runId: string }) {
 
       <HandleUploadFooter
         run={run}
-        viewRunUrl={`http://localhost:3030/projects/v3/proj_bzhdaqhlymtuhlrcgbqy/runs/${runId}`}
+        viewRunUrl={`http://localhost:3030/projects/v3/proj_bzhdaqhlymtuhlrcgbqy/runs/${run.id}`}
       />
     </div>
   );
 }
 
-export default function ClientUploadDetails({ runId, jwt }: { runId: string; jwt: string }) {
+export default function ClientUploadDetails({ fileId, jwt }: { fileId: string; jwt: string }) {
   return (
     <TriggerAuthContext.Provider value={{ accessToken: jwt, baseURL: "http://localhost:3030" }}>
-      <UploadDetailsWrapper runId={runId} />
+      <UploadDetailsWrapper fileId={fileId} />
     </TriggerAuthContext.Provider>
   );
 }

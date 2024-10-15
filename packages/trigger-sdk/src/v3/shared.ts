@@ -35,14 +35,19 @@ import { tracer } from "./tracer.js";
 
 import type {
   AnyRunHandle,
+  AnyRunTypes,
   AnyTask,
   BatchItem,
   BatchResult,
   BatchRunHandle,
+  BatchRunHandleFromTypes,
+  InferRunTypes,
   inferSchemaIn,
   RunHandle,
+  RunHandleFromTypes,
   RunHandleOutput,
   RunHandlePayload,
+  RunTypes,
   SchemaParseFn,
   Task,
   TaskBatchOutputHandle,
@@ -108,7 +113,7 @@ export function createTask<
     trigger: async (payload, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await trigger_internal<TInput, TOutput>(
+      return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.trigger()`
           : `trigger()`,
@@ -124,7 +129,7 @@ export function createTask<
     batchTrigger: async (items) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await batchTrigger_internal<TInput, TOutput>(
+      return await batchTrigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.batchTrigger()`
           : `batchTrigger()`,
@@ -223,7 +228,7 @@ export function createSchemaTask<
     trigger: async (payload, options, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await trigger_internal<inferSchemaIn<TSchema>, TOutput>(
+      return await trigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.trigger()`
           : `trigger()`,
@@ -240,7 +245,7 @@ export function createSchemaTask<
     batchTrigger: async (items, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await batchTrigger_internal<inferSchemaIn<TSchema>, TOutput>(
+      return await batchTrigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.batchTrigger()`
           : `batchTrigger()`,
@@ -337,8 +342,8 @@ export async function trigger<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
   requestOptions?: TriggerApiRequestOptions
-): Promise<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
-  return await trigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+): Promise<RunHandleFromTypes<InferRunTypes<TTask>>> {
+  return await trigger_internal<InferRunTypes<TTask>>(
     "tasks.trigger()",
     id,
     payload,
@@ -448,7 +453,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions & PollOptions,
   requestOptions?: TriggerApiRequestOptions
-): Promise<RetrieveRunResult<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>>> {
+): Promise<RetrieveRunResult<InferRunTypes<TTask>>> {
   const handle = await trigger(id, payload, options, requestOptions);
 
   return runs.poll(handle, options, requestOptions);
@@ -458,8 +463,8 @@ export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
   requestOptions?: TriggerApiRequestOptions
-): Promise<BatchRunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
-  return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
+  return await batchTrigger_internal<InferRunTypes<TTask>>(
     "tasks.batchTrigger()",
     id,
     items,
@@ -468,14 +473,14 @@ export async function batchTrigger<TTask extends AnyTask>(
   );
 }
 
-async function trigger_internal<TPayload, TOutput>(
+async function trigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
-  id: string,
-  payload: TPayload,
-  parsePayload?: SchemaParseFn<TPayload>,
+  id: TRunTypes["taskIdentifier"],
+  payload: TRunTypes["payload"],
+  parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   options?: TaskRunOptions,
   requestOptions?: TriggerApiRequestOptions
-): Promise<RunHandle<TPayload, TOutput>> {
+): Promise<RunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
@@ -525,17 +530,17 @@ async function trigger_internal<TPayload, TOutput>(
     }
   );
 
-  return handle as RunHandle<TPayload, TOutput>;
+  return handle as RunHandleFromTypes<TRunTypes>;
 }
 
-async function batchTrigger_internal<TPayload, TOutput>(
+async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
-  id: string,
-  items: Array<BatchItem<TPayload>>,
-  parsePayload?: SchemaParseFn<TPayload>,
+  id: TRunTypes["taskIdentifier"],
+  items: Array<BatchItem<TRunTypes["payload"]>>,
+  parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   requestOptions?: TriggerApiRequestOptions,
   queue?: QueueOptions
-): Promise<BatchRunHandle<TPayload, TOutput>> {
+): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const response = await apiClient.batchTriggerTask(
@@ -587,7 +592,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
     jwt: response.jwt,
   };
 
-  return handle as BatchRunHandle<TPayload, TOutput>;
+  return handle as BatchRunHandleFromTypes<TRunTypes>;
 }
 
 async function triggerAndWait_internal<TPayload, TOutput>(

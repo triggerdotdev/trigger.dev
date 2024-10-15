@@ -134,4 +134,82 @@ describe("RealtimeClient", () => {
       expect(liveResponse2.status).toBe(429);
     }
   );
+
+  containerWithElectricTest(
+    "Should support subscribing to a run tag",
+    { timeout: 30_000 },
+    async ({ redis, electricOrigin, prisma }) => {
+      const client = new RealtimeClient({
+        electricOrigin,
+        keyPrefix: "test:realtime",
+        redis: redis.options,
+        expiryTimeInSeconds: 5,
+        cachedLimitProvider: {
+          async getCachedLimit() {
+            return 1;
+          },
+        },
+      });
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test-org",
+          slug: "test-org",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test-project",
+          slug: "test-project",
+          organizationId: organization.id,
+          externalRef: "test-project",
+        },
+      });
+
+      const environment = await prisma.runtimeEnvironment.create({
+        data: {
+          projectId: project.id,
+          organizationId: organization.id,
+          slug: "test",
+          type: "DEVELOPMENT",
+          shortcode: "1234",
+          apiKey: "tr_dev_1234",
+          pkApiKey: "pk_test_1234",
+        },
+      });
+
+      const run = await prisma.taskRun.create({
+        data: {
+          taskIdentifier: "test-task",
+          friendlyId: "run_1234",
+          payload: "{}",
+          payloadType: "application/json",
+          traceId: "trace_1234",
+          spanId: "span_1234",
+          queue: "test-queue",
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          runTags: ["test:tag:1234", "test:tag:5678"],
+        },
+      });
+
+      const response = await client.streamRunsWhere(
+        "http://localhost:3000?offset=-1",
+        environment,
+        `"runTags" @> ARRAY['test:tag:1234']`
+      );
+
+      const responseBody = await response.json();
+
+      const headers = Object.fromEntries(response.headers.entries());
+
+      const shapeId = headers["electric-shape-id"];
+      const chunkOffset = headers["electric-chunk-last-offset"];
+
+      expect(response.status).toBe(200);
+      expect(shapeId).toBeDefined();
+      expect(chunkOffset).toBe("0_0");
+    }
+  );
 });

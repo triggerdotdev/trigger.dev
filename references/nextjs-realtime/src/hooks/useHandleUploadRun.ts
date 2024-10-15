@@ -1,15 +1,24 @@
-import type { handleUpload } from "@/trigger/images";
-import { HandleUploadMetadata } from "@/utils/schemas";
-import { useRun } from "@trigger.dev/react-hooks";
+import type { handleUpload, runFalModel } from "@/trigger/images";
+import { RunFalMetadata } from "@/utils/schemas";
+import { useRunTag } from "@trigger.dev/react-hooks";
 
-export function useHandleUploadRun(runId: string) {
-  const { run, error } = useRun<typeof handleUpload>(runId);
+export function useHandleUploadRun(fileId: string) {
+  const { runs, error } = useRunTag<typeof handleUpload | typeof runFalModel>(`file:${fileId}`);
 
-  const metadata = run?.metadata ? HandleUploadMetadata.parse(run.metadata) : undefined;
+  const images = runs
+    .filter((run) => run.taskIdentifier === "run-fal-model")
+    .map((run) => {
+      const metadata = RunFalMetadata.default({ result: { status: "IN_PROGRESS" } }).parse(
+        run.metadata
+      );
 
-  const images = metadata
-    ? Object.keys(metadata).map((key) => ({ model: key, data: metadata[key] }))
-    : [];
+      return {
+        model: run.payload.model,
+        data: metadata?.result,
+      };
+    });
+
+  const run = runs.find((run) => run.taskIdentifier === "handle-upload");
 
   return { run, error, images };
 }
