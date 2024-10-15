@@ -231,20 +231,40 @@ export const TaskRunExecution = z.object({
 export type TaskRunExecution = z.infer<typeof TaskRunExecution>;
 
 export const TaskRunContext = z.object({
+  /** Information about the task being executed. */
   task: TaskRunExecutionTask,
+
+  /** Information about the current execution attempt. */
   attempt: TaskRunExecutionAttempt.omit({
     backgroundWorkerId: true,
     backgroundWorkerTaskId: true,
   }),
+
+  /** Information about the task run. */
   run: TaskRun.omit({ payload: true, payloadType: true, metadata: true }),
+
+  /** Information about the queue the task is running in. */
   queue: TaskRunExecutionQueue,
+
+  /** Information about the execution environment. */
   environment: TaskRunExecutionEnvironment,
+
+  /** Information about the organization. */
   organization: TaskRunExecutionOrganization,
+
+  /** Information about the project. */
   project: TaskRunExecutionProject,
+
+  /** Optional information about the batch, if applicable. */
   batch: TaskRunExecutionBatch.optional(),
+
+  /** Optional information about the machine preset used for execution. */
   machine: MachinePreset.optional(),
 });
 
+/**
+ * Represents the context of a task run execution.
+ */
 export type TaskRunContext = z.infer<typeof TaskRunContext>;
 
 export const TaskRunExecutionRetry = z.object({

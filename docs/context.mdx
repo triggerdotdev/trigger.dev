@@ -1,0 +1,193 @@
+---
+title: "Context"
+description: "Get the context of a task run."
+---
+
+Context (`ctx`) is a way to get information about a task. Here's an example:
+
+```typescript
+import { task } from "@trigger.dev/sdk/v3";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: { message: string }, { ctx }) => {
+    
+    if (ctx.environment.type === "DEVELOPMENT") {
+      return;
+    }
+  },
+});
+```
+
+## Context properties
+
+<ResponseField name="task" type="object">
+  Information about the task being executed.
+  <Expandable title="properties">
+    <ResponseField name="exportName" type="string">
+      The export name of the task.
+    </ResponseField>
+    <ResponseField name="id" type="string">
+      The ID of the task.
+    </ResponseField>
+    <ResponseField name="filePath" type="string">
+      The file path of the task.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="attempt" type="object">
+  Information about the current execution attempt.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the execution attempt.
+    </ResponseField>
+    <ResponseField name="number" type="number">
+      The attempt number.
+    </ResponseField>
+    <ResponseField name="startedAt" type="date">
+      The start time of the attempt.
+    </ResponseField>
+    <ResponseField name="backgroundWorkerId" type="string">
+      The ID of the background worker.
+    </ResponseField>
+    <ResponseField name="backgroundWorkerTaskId" type="string">
+      The ID of the background worker task.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      The current status of the attempt.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="run" type="object">
+  Information about the task run.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the task run.
+    </ResponseField>
+    <ResponseField name="context" type="any" optional>
+      The context of the task run.
+    </ResponseField>
+    <ResponseField name="tags" type="array">
+      An array of tags associated with the task run.
+    </ResponseField>
+    <ResponseField name="isTest" type="boolean">
+      Whether this is a test run.
+    </ResponseField>
+    <ResponseField name="createdAt" type="date">
+      The creation time of the task run.
+    </ResponseField>
+    <ResponseField name="startedAt" type="date">
+      The start time of the task run.
+    </ResponseField>
+    <ResponseField name="idempotencyKey" type="string" optional>
+      An optional idempotency key for the task run.
+    </ResponseField>
+    <ResponseField name="maxAttempts" type="number" optional>
+      The maximum number of attempts allowed for this task run.
+    </ResponseField>
+    <ResponseField name="durationMs" type="number">
+      The duration of the task run in milliseconds.
+    </ResponseField>
+    <ResponseField name="costInCents" type="number">
+      The cost of the task run in cents.
+    </ResponseField>
+    <ResponseField name="baseCostInCents" type="number">
+      The base cost of the task run in cents.
+    </ResponseField>
+    <ResponseField name="version" type="string" optional>
+      The version of the task run.
+    </ResponseField>
+    <ResponseField name="maxDuration" type="number" optional>
+      The maximum allowed duration for the task run.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="queue" type="object">
+  Information about the queue the task is running in.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the queue.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The name of the queue.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="environment" type="object">
+  Information about the execution environment.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the environment.
+    </ResponseField>
+    <ResponseField name="slug" type="string">
+      The slug of the environment.
+    </ResponseField>
+    <ResponseField name="type" type="string">
+      The type of the environment (PRODUCTION, STAGING, DEVELOPMENT, or PREVIEW).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="organization" type="object">
+  Information about the organization.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the organization.
+    </ResponseField>
+    <ResponseField name="slug" type="string">
+      The slug of the organization.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The name of the organization.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="project" type="object">
+  Information about the project.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the project.
+    </ResponseField>
+    <ResponseField name="ref" type="string">
+      The reference of the project.
+    </ResponseField>
+    <ResponseField name="slug" type="string">
+      The slug of the project.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The name of the project.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="batch" type="object" optional>
+  Optional information about the batch, if applicable.
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      The ID of the batch.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="machine" type="object" optional>
+  Optional information about the machine preset used for execution.
+  <Expandable title="properties">
+    <ResponseField name="name" type="string">
+      The name of the machine preset.
+    </ResponseField>
+    <ResponseField name="cpu" type="number">
+      The CPU allocation for the machine.
+    </ResponseField>
+    <ResponseField name="memory" type="number">
+      The memory allocation for the machine.
+    </ResponseField>
+    <ResponseField name="centsPerMs" type="number">
+      The cost in cents per millisecond for this machine preset.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
