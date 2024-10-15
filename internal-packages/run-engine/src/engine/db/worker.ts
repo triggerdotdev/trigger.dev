@@ -3,7 +3,6 @@ import {
   BackgroundWorkerTask,
   Prisma,
   PrismaClientOrTransaction,
-  RuntimeEnvironmentType,
   WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "../consts";

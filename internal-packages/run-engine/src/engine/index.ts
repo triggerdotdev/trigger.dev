@@ -591,8 +591,10 @@ export class RunEngine {
         const currentAttemptNumber = lockedTaskRun.attempts.at(0)?.number ?? 0;
         const nextAttemptNumber = currentAttemptNumber + 1;
 
-        //todo deal with checkpoints
+        //todo figure out if it's a continuation or a new run
+        const isNewRun = true;
 
+        if (isNewRun) {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
             id: runId,
@@ -604,7 +606,44 @@ export class RunEngine {
           },
         });
 
-        return null;
+          return {
+            action: "START_RUN",
+            payload: {
+              version: "1",
+              execution: {
+                id: newSnapshot.id,
+                status: "DEQUEUED_FOR_EXECUTION",
+              },
+              image: result.deployment?.imageReference ?? undefined,
+              checkpoint: undefined,
+              backgroundWorker: {
+                id: result.worker.id,
+                version: result.worker.version,
+              },
+              run: {
+                id: lockedTaskRun.id,
+                friendlyId: lockedTaskRun.friendlyId,
+                isTest: lockedTaskRun.isTest,
+                machine: machinePreset,
+                attemptNumber: nextAttemptNumber,
+                masterQueue: lockedTaskRun.masterQueue,
+              },
+              environment: {
+                id: lockedTaskRun.runtimeEnvironment.id,
+                type: lockedTaskRun.runtimeEnvironment.type,
+              },
+              organization: {
+                id: orgId,
+              },
+              project: {
+                id: lockedTaskRun.projectId,
+              },
+              traceContext: {},
+            },
+          };
+        } else {
+          throw new NotImplementedError("Continuations are not implemented yet");
+        }
       });
     });
   }

@@ -1,8 +1,7 @@
 import { MachinePreset, EnvironmentType } from "@trigger.dev/core/v3";
 import { z } from "zod";
 
-//turn this into a zod schema discriminated union, like the messages we have in core.
-//it will need to move into core
+//todo it will need to move into core because the Worker will need to use these
 
 const StartRunMessage = z.object({
   action: z.literal("START_RUN"),
