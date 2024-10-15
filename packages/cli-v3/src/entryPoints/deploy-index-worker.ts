@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   taskCatalog,
+  type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
 import {
@@ -105,8 +106,8 @@ if (config.retries?.default) {
     if (!task.retry) {
       return {
         ...task,
-        retries: config.retries?.default,
-      };
+        retry: config.retries?.default,
+      } satisfies TaskManifest;
     }
 
     return task;
@@ -122,7 +123,7 @@ if (typeof config.machine === "string") {
         machine: {
           preset: config.machine,
         },
-      };
+      } satisfies TaskManifest;
     }
 
     return task;
@@ -136,7 +137,7 @@ if (typeof config.maxDuration === "number") {
       return {
         ...task,
         maxDuration: config.maxDuration,
-      };
+      } satisfies TaskManifest;
     }
 
     return task;

@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   taskCatalog,
+  type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
 import {
@@ -99,6 +100,20 @@ const { buildManifest, importErrors, config } = await bootstrap();
 
 let tasks = taskCatalog.listTaskManifests();
 
+// If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
+if (config.retries?.default) {
+  tasks = tasks.map((task) => {
+    if (!task.retry) {
+      return {
+        ...task,
+        retry: config.retries?.default,
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 // If the config has a maxDuration, we need to apply it to all tasks that don't have a maxDuration
 if (typeof config.maxDuration === "number") {
   tasks = tasks.map((task) => {
@@ -106,7 +121,7 @@ if (typeof config.maxDuration === "number") {
       return {
         ...task,
         maxDuration: config.maxDuration,
-      };
+      } satisfies TaskManifest;
     }
 
     return task;
