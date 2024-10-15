@@ -4,12 +4,12 @@ import { env } from "~/env.server";
 type Input = {
   userId: string;
   email: string;
-  orgName: string;
+  name: string;
   title: string;
   components: ReturnType<typeof uiComponent.text>[];
 };
 
-export async function sendToPlain({ userId, email, orgName, title, components }: Input) {
+export async function sendToPlain({ userId, email, name, title, components }: Input) {
   if (!env.PLAIN_API_KEY) {
     return;
   }
@@ -24,7 +24,7 @@ export async function sendToPlain({ userId, email, orgName, title, components }:
     },
     onCreate: {
       externalId: userId,
-      fullName: orgName,
+      fullName: name,
       email: {
         email: email,
         isVerified: true,
@@ -32,7 +32,7 @@ export async function sendToPlain({ userId, email, orgName, title, components }:
     },
     onUpdate: {
       externalId: { value: userId },
-      fullName: { value: orgName },
+      fullName: { value: name },
       email: {
         email: email,
         isVerified: true,
