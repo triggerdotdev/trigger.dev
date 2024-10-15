@@ -8,22 +8,23 @@ import {
   QueueOptions,
   TaskRunExecution,
   TaskRunInternalError,
-  EnvironmentType,
 } from "@trigger.dev/core/v3";
-import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
+import {
+  generateFriendlyId,
+  parseNaturalLanguageDuration,
+  getMaxDuration,
+  sanitizeQueueName,
+} from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
-  BackgroundWorkerTask,
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
-  PrismaTransactionClient,
   TaskRun,
   TaskRunAttemptStatus,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
-  WorkerDeployment,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
@@ -33,15 +34,10 @@ import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-import { CURRENT_DEPLOYMENT_LABEL, MAX_TASK_RUN_ATTEMPTS } from "./consts";
+import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
+import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { machinePresetFromConfig } from "./machinePresets";
 import { ContinueRunMessage, StartRunMessage } from "./messages";
-import {
-  getMostRecentWorker,
-  getWorkerDeploymentFromWorker,
-  getWorkerFromCurrentlyPromotedDeployment,
-} from "./queries";
-import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 
 const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED", "BLOCKED_BY_WAITPOINTS"];
 
@@ -54,6 +50,7 @@ type Options = {
   machines: {
     defaultMachine: MachinePresetName;
     machines: Record<string, MachinePreset>;
+    baseCostInCents: number;
   };
   tracer: Tracer;
 };
@@ -426,21 +423,24 @@ export class RunEngine {
         return null;
       }
 
-      span.setAttribute("runId", message.messageId);
+      const orgId = message.message.orgId;
+      const runId = message.messageId;
+
+      span.setAttribute("runId", runId);
 
       //lock the run so nothing else can modify it
-      const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
-        const snapshot = await this.#getLatestExecutionSnapshot(prisma, message.messageId);
+      const newSnapshot = await this.redlock.using([runId], 5000, async (signal) => {
+        const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
         if (!snapshot) {
           throw new Error(
-            `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${message.messageId}`
+            `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${runId}`
           );
         }
 
         if (!dequeuableExecutionStatuses.includes(snapshot.executionStatus)) {
           //todo is there a way to recover this, so the run can be retried?
           await this.#systemFailure({
-            runId: message.messageId,
+            runId,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_DEQUEUED_INVALID_STATE",
@@ -448,22 +448,156 @@ export class RunEngine {
             },
             tx: prisma,
           });
-          throw new Error(
-            `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
+          this.logger.error(
+            `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${runId}\n ${snapshot.id}:${snapshot.executionStatus}`
           );
+          return null;
         }
 
-        const result = await getRunWithBackgroundWorkerTasks(prisma, message.messageId);
+        const result = await getRunWithBackgroundWorkerTasks(prisma, runId);
 
-        //todo create an internal function that is called to prepare a run for execution
-        //  - get the worker and task (including deployment)
-        //  - get the queue
-        //  - deal with waiting for deploy
-        //  - update the run, get attempts
+        if (!result.success) {
+          switch (result.code) {
+            case "NO_RUN": {
+              //this should not happen, the run is unrecoverable so we'll ack it
+              this.logger.error("RunEngine.dequeueFromMasterQueue(): No run found", {
+                runId,
+                latestSnapshot: snapshot.id,
+              });
+              await this.runQueue.acknowledgeMessage(orgId, runId);
+              return null;
+            }
+            case "NO_WORKER":
+            case "TASK_NEVER_REGISTERED":
+            case "TASK_NOT_IN_LATEST": {
+              this.logger.warn(`RunEngine.dequeueFromMasterQueue(): ${result.code}`, {
+                runId,
+                latestSnapshot: snapshot.id,
+                result,
+              });
+
+              if (result.run.runtimeEnvironment.type === "DEVELOPMENT") {
+                //requeue for 10s in the future, so we can try again
+                //todo when do we stop doing this, the run.ttl should deal with this.
+                await this.runQueue.nackMessage(
+                  orgId,
+                  runId,
+                  new Date(Date.now() + 10_000).getTime()
+                );
+              } else {
+                //not deployed yet, so we'll wait for the deploy
+                await this.#waitingForDeploy({
+                  runId,
+                  tx: prisma,
+                });
+                //we ack because when it's deployed it will be requeued
+                await this.runQueue.acknowledgeMessage(orgId, runId);
+              }
+
+              return null;
+            }
+          }
+        }
+
+        //check for a valid deployment if it's not a development environment
+        if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
+          if (!result.deployment || !result.deployment.imageReference) {
+            this.logger.warn("RunEngine.dequeueFromMasterQueue(): No deployment found", {
+              runId,
+              latestSnapshot: snapshot.id,
+              result,
+            });
+            //not deployed yet, so we'll wait for the deploy
+            await this.#waitingForDeploy({
+              runId,
+              tx: prisma,
+            });
+            //we ack because when it's deployed it will be requeued
+            await this.runQueue.acknowledgeMessage(orgId, runId);
+            return null;
+          }
+        }
+
+        const machinePreset = machinePresetFromConfig({
+          machines: this.options.machines.machines,
+          defaultMachine: this.options.machines.defaultMachine,
+          config: result.task.machineConfig ?? {},
+        });
+
+        //update the run
+        const lockedTaskRun = await prisma.taskRun.update({
+          where: {
+            id: runId,
+          },
+          data: {
+            lockedAt: new Date(),
+            lockedById: result.task.id,
+            lockedToVersionId: result.worker.id,
+            startedAt: result.run.startedAt ?? new Date(),
+            baseCostInCents: this.options.machines.baseCostInCents,
+            machinePreset: machinePreset.name,
+            maxDurationInSeconds: getMaxDuration(
+              result.run.maxDurationInSeconds,
+              result.task.maxDurationInSeconds
+            ),
+          },
+          include: {
+            runtimeEnvironment: true,
+            attempts: {
+              take: 1,
+              orderBy: { number: "desc" },
+            },
+            tags: true,
+          },
+        });
+
+        if (!lockedTaskRun) {
+          this.logger.error("RunEngine.dequeueFromMasterQueue(): Failed to lock task run", {
+            taskRun: result.run.id,
+            taskIdentifier: result.run.taskIdentifier,
+            deployment: result.deployment?.id,
+            worker: result.worker.id,
+            task: result.task.id,
+            runId,
+          });
+
+          await this.runQueue.acknowledgeMessage(orgId, runId);
+          return null;
+        }
+
+        const queue = await prisma.taskQueue.findUnique({
+          where: {
+            runtimeEnvironmentId_name: {
+              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+              name: sanitizeQueueName(lockedTaskRun.queue),
+            },
+          },
+        });
+
+        if (!queue) {
+          this.logger.debug(
+            "RunEngine.dequeueFromMasterQueue(): queue not found, so nacking message",
+            {
+              queueMessage: message,
+              taskRunQueue: lockedTaskRun.queue,
+              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+            }
+          );
+
+          //try again in 1 second
+          await this.runQueue.nackMessage(orgId, runId, new Date(Date.now() + 1000).getTime());
+          return null;
+        }
+
+        //checkpoints?
+
+        const nextAttemptNumber = lockedTaskRun.attempts[0]
+          ? lockedTaskRun.attempts[0].number + 1
+          : 1;
 
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
-            id: message.messageId,
+            id: runId,
             status: snapshot.runStatus,
           },
           snapshot: {
@@ -775,6 +909,8 @@ export class RunEngine {
     error: TaskRunInternalError;
     tx?: PrismaClientOrTransaction;
   }) {}
+
+  async #waitingForDeploy({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 
   //MARK: RunQueue
 

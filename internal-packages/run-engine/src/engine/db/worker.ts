@@ -3,6 +3,7 @@ import {
   BackgroundWorkerTask,
   Prisma,
   PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
   WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "../consts";
@@ -21,8 +22,14 @@ type RunWithMininimalEnvironment = Prisma.TaskRunGetPayload<{
 type RunWithBackgroundWorkerTasksResult =
   | {
       success: false;
-      code: "NO_RUN" | "NO_WORKER" | "TASK_NOT_IN_LATEST" | "TASK_NEVER_REGISTERED";
+      code: "NO_RUN";
       message: string;
+    }
+  | {
+      success: false;
+      code: "NO_WORKER" | "TASK_NOT_IN_LATEST" | "TASK_NEVER_REGISTERED";
+      message: string;
+      run: RunWithMininimalEnvironment;
     }
   | {
       success: true;
@@ -76,6 +83,7 @@ export async function getRunWithBackgroundWorkerTasks(
       success: false as const,
       code: "NO_WORKER",
       message: `No worker found for run: ${run.id}`,
+      run,
     };
   }
 
@@ -98,12 +106,14 @@ export async function getRunWithBackgroundWorkerTasks(
         success: false as const,
         code: "TASK_NOT_IN_LATEST",
         message: `Task not found in latest version: ${run.taskIdentifier}. Found in ${nonCurrentTask.worker.version}`,
+        run,
       };
     } else {
       return {
         success: false as const,
         code: "TASK_NEVER_REGISTERED",
         message: `Task has never been registered (in dev or deployed): ${run.taskIdentifier}`,
+        run,
       };
     }
   }
