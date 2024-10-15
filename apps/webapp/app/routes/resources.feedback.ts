@@ -6,6 +6,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
+import { sendToPlain } from "~/utils/plain.server";
 
 let client: PlainClient | undefined;
 
@@ -63,8 +64,6 @@ export async function action({ request }: ActionFunctionArgs) {
       onCreate: {
         externalId: user.id,
         fullName: user.name ?? "",
-        // TODO - Optional: set 'first name' on user
-        // shortName: ''
         email: {
           email: user.email,
           isVerified: true,
@@ -73,8 +72,6 @@ export async function action({ request }: ActionFunctionArgs) {
       onUpdate: {
         externalId: { value: user.id },
         fullName: { value: user.name ?? "" },
-        // TODO - see above
-        // shortName: { value: "" },
         email: {
           email: user.email,
           isVerified: true,
@@ -95,10 +92,10 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
-    const createThreadRes = await client.createThread({
-      customerIdentifier: {
-        customerId: upsertCustomerRes.data.customer.id,
-      },
+    await sendToPlain({
+      userId: user.id,
+      email: user.email,
+      name: user.name ?? user.displayName ?? user.email,
       title,
       components: [
         uiComponent.text({
@@ -123,24 +120,7 @@ export async function action({ request }: ActionFunctionArgs) {
           text: submission.value.message,
         }),
       ],
-      // TODO: Optional: set labels on threads here on creation
-      // labelTypeIds: [],
-
-      // TODO: Optional: set the priority (0 is urgent, 3 is low)
-      // priority: 0,
     });
-
-    if (createThreadRes.error) {
-      console.error(
-        inspect(createThreadRes.error, {
-          showHidden: false,
-          depth: null,
-          colors: true,
-        })
-      );
-      submission.error.message = createThreadRes.error.message;
-      return json(submission);
-    }
 
     return redirectWithSuccessMessage(
       submission.value.path,
