@@ -129,6 +129,10 @@ describe("RunEngine", () => {
           throw new Error("Expected action to be START_RUN");
         }
 
+        expect(dequeued.payload.run.id).toBe(run.id);
+        expect(dequeued.payload.run.attemptNumber).toBe(1);
+        expect(dequeued.payload.execution.status).toBe("DEQUEUED_FOR_EXECUTION");
+
         const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
           authenticatedEnvironment
         );

@@ -32,6 +32,7 @@ const StartRunMessage = z.object({
       machine: MachinePreset,
       attemptNumber: z.number(),
       masterQueue: z.string(),
+      traceContext: z.record(z.unknown()),
     }),
     environment: z.object({
       id: z.string(),
@@ -43,7 +44,6 @@ const StartRunMessage = z.object({
     project: z.object({
       id: z.string(),
     }),
-    traceContext: z.record(z.unknown()),
   }),
 });
 export type StartRunMessage = z.infer<typeof StartRunMessage>;

@@ -627,6 +627,7 @@ export class RunEngine {
                 machine: machinePreset,
                 attemptNumber: nextAttemptNumber,
                 masterQueue: lockedTaskRun.masterQueue,
+                traceContext: lockedTaskRun.traceContext,
               },
               environment: {
                 id: lockedTaskRun.runtimeEnvironment.id,
@@ -638,7 +639,6 @@ export class RunEngine {
               project: {
                 id: lockedTaskRun.projectId,
               },
-              traceContext: {},
             },
           };
         } else {
