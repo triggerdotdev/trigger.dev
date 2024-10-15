@@ -29,7 +29,18 @@ export const ourFileRouter = {
 
       console.log("file url", file.url);
 
-      const handle = await tasks.trigger<typeof handleUpload>("handle-upload", file);
+      const handle = await tasks.trigger<typeof handleUpload>(
+        "handle-upload",
+        file,
+        {},
+        {
+          jwt: {
+            expirationTime: "24h",
+          },
+        }
+      );
+
+      console.log("handle", handle);
 
       // !!! Whatever is returned here is sent to the clientside `onClientUploadComplete` callback
       return { uploadedBy: metadata.userId, jwt: handle.jwt, runId: handle.id };

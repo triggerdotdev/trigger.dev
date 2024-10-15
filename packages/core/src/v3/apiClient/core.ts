@@ -16,6 +16,7 @@ import {
   OffsetLimitPageParams,
   OffsetLimitPageResponse,
 } from "./pagination.js";
+import { TriggerJwtOptions } from "../types/tasks.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -35,6 +36,7 @@ export type ZodFetchOptions = {
 };
 
 export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
+
 type KeysEnum<T> = { [P in keyof Required<T>]: true };
 
 // This is required so that we can determine if a given object matches the ApiRequestOptions
