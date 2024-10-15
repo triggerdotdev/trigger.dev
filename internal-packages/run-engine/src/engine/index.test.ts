@@ -4,7 +4,7 @@ import { RunEngine } from "./index.js";
 import { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { trace } from "@opentelemetry/api";
 import { AuthenticatedEnvironment } from "../shared/index.js";
-import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
+import { generateFriendlyId, sanitizeQueueName } from "@trigger.dev/core/v3/apps";
 import { CURRENT_DEPLOYMENT_LABEL } from "./consts.js";
 
 describe("RunEngine", () => {
@@ -234,6 +234,18 @@ async function setupBackgroundWorker(
       workerId: worker.id,
       runtimeEnvironmentId: environment.id,
       projectId: environment.project.id,
+    },
+  });
+
+  const queueName = sanitizeQueueName(`task/${taskIdentifier}`);
+  const taskQueue = await prisma.taskQueue.create({
+    data: {
+      friendlyId: generateFriendlyId("queue"),
+      name: queueName,
+      concurrencyLimit: 10,
+      runtimeEnvironmentId: worker.runtimeEnvironmentId,
+      projectId: worker.projectId,
+      type: "VIRTUAL",
     },
   });
 
