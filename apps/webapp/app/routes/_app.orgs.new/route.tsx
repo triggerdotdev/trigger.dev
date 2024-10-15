@@ -67,7 +67,7 @@ export const action: ActionFunction = async ({ request }) => {
         await sendToPlain({
           userId: user.id,
           email: user.email,
-          orgName: submission.value.orgName,
+          name: user.name ?? user.displayName ?? user.email,
           title: "New org feedback",
           components: [
             uiComponent.text({
