@@ -718,9 +718,9 @@ export class SharedQueueConsumer {
 
           completions.push(completion);
 
-          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id
-          );
+          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt({
+            id: completedAttempt.id,
+          });
 
           if (!executionPayload) {
             await this.#ackAndDoMoreWork(message.messageId);
@@ -942,12 +942,17 @@ class SharedQueueTasks {
     }
   }
 
-  async getExecutionPayloadFromAttempt(
-    id: string,
-    setToExecuting?: boolean,
-    isRetrying?: boolean,
-    skipStatusChecks?: boolean
-  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+  async getExecutionPayloadFromAttempt({
+    id,
+    setToExecuting,
+    isRetrying,
+    skipStatusChecks,
+  }: {
+    id: string;
+    setToExecuting?: boolean;
+    isRetrying?: boolean;
+    skipStatusChecks?: boolean;
+  }): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
         id,
@@ -1153,7 +1158,11 @@ class SharedQueueTasks {
       return;
     }
 
-    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
+    return this.getExecutionPayloadFromAttempt({
+      id: latestAttempt.id,
+      setToExecuting,
+      isRetrying,
+    });
   }
 
   async getLazyAttemptPayload(

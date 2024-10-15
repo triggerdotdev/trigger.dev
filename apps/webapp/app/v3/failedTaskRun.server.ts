@@ -146,12 +146,11 @@ export class FailedTaskRunService extends BaseService {
 
     // We already have an attempt with non-final status, let's use it
     try {
-      const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt(
-        attempt.id,
-        undefined,
-        undefined,
-        true
-      );
+      const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
+        id: attempt.id,
+        skipStatusChecks: true,
+      });
+
       return executionPayload?.execution;
     } catch (error) {
       logger.error("[FailedTaskRunService] Failed to get execution payload", {
