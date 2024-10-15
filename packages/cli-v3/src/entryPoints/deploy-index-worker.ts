@@ -99,6 +99,20 @@ const { buildManifest, importErrors, config } = await bootstrap();
 
 let tasks = taskCatalog.listTaskManifests();
 
+// If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
+if (config.retries?.default) {
+  tasks = tasks.map((task) => {
+    if (!task.retry) {
+      return {
+        ...task,
+        retries: config.retries?.default,
+      };
+    }
+
+    return task;
+  });
+}
+
 // If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
 if (typeof config.machine === "string") {
   tasks = tasks.map((task) => {
