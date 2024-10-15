@@ -9,7 +9,7 @@ import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
-import { getMaxDuration } from "~/v3/utils/maxDuration";
+import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;

@@ -24,7 +24,7 @@ import {
   tracer,
 } from "../tracer.server";
 import { DevSubscriber, devPubSub } from "./devPubSub.server";
-import { getMaxDuration } from "../utils/maxDuration";
+import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({

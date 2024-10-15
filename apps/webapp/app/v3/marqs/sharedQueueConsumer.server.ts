@@ -44,7 +44,7 @@ import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
-import { getMaxDuration } from "../utils/maxDuration";
+import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
