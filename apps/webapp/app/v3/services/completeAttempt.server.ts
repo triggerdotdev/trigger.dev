@@ -8,6 +8,7 @@ import {
   TaskRunSuccessfulExecutionResult,
   flattenAttributes,
   sanitizeError,
+  shouldRetryError,
 } from "@trigger.dev/core/v3";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -216,7 +217,11 @@ export class CompleteAttemptService extends BaseService {
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
-    if (completion.retry !== undefined && taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS) {
+    if (
+      shouldRetryError(completion.error) &&
+      completion.retry !== undefined &&
+      taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS
+    ) {
       return await this.#retryAttempt({
         execution,
         executionRetry: completion.retry,

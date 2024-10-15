@@ -10,6 +10,7 @@ import {
 import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
 import { links } from "./links.js";
 import { ExceptionEventProperties } from "./schemas/openTelemetry.js";
+import { assertExhaustive } from "../utils.js";
 
 export class AbortTaskRunError extends Error {
   constructor(message: string) {
@@ -133,6 +134,55 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
         message: error.message?.replace(/\0/g, ""),
         stackTrace: error.stackTrace?.replace(/\0/g, ""),
       };
+    }
+  }
+}
+
+export function shouldRetryError(error: TaskRunError): boolean {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      switch (error.code) {
+        case "COULD_NOT_FIND_EXECUTOR":
+        case "COULD_NOT_FIND_TASK":
+        case "COULD_NOT_IMPORT_TASK":
+        case "CONFIGURED_INCORRECTLY":
+        case "TASK_ALREADY_RUNNING":
+        case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
+        case "TASK_PROCESS_SIGKILL_TIMEOUT":
+        case "TASK_PROCESS_OOM_KILLED":
+        case "TASK_PROCESS_MAYBE_OOM_KILLED":
+        case "TASK_RUN_CANCELLED":
+        case "TASK_OUTPUT_ERROR":
+        case "MAX_DURATION_EXCEEDED":
+        case "DISK_SPACE_EXCEEDED":
+          return false;
+
+        case "GRACEFUL_EXIT_TIMEOUT":
+        case "HANDLE_ERROR_ERROR":
+        case "IMPORT_PAYLOAD_ERROR":
+        case "POD_EVICTED":
+        case "POD_UNKNOWN_ERROR":
+        case "TASK_EXECUTION_ABORTED":
+        case "TASK_EXECUTION_FAILED":
+        case "TASK_RUN_CRASHED":
+        case "TASK_RUN_HEARTBEAT_TIMEOUT":
+          return true;
+
+        default:
+          assertExhaustive(error.code);
+      }
+    }
+    case "STRING_ERROR": {
+      return true;
+    }
+    case "BUILT_IN_ERROR": {
+      return true;
+    }
+    case "CUSTOM_ERROR": {
+      return true;
+    }
+    default: {
+      assertExhaustive(error);
     }
   }
 }
