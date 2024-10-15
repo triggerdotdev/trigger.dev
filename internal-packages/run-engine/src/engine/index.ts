@@ -8,18 +8,22 @@ import {
   QueueOptions,
   TaskRunExecution,
   TaskRunInternalError,
+  EnvironmentType,
 } from "@trigger.dev/core/v3";
 import { generateFriendlyId, parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
+  BackgroundWorkerTask,
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
+  PrismaTransactionClient,
   TaskRun,
   TaskRunAttemptStatus,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
+  WorkerDeployment,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
@@ -29,8 +33,17 @@ import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
-import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
+import { CURRENT_DEPLOYMENT_LABEL, MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { machinePresetFromConfig } from "./machinePresets";
+import { ContinueRunMessage, StartRunMessage } from "./messages";
+import {
+  getMostRecentWorker,
+  getWorkerDeploymentFromWorker,
+  getWorkerFromCurrentlyPromotedDeployment,
+} from "./queries";
+import { getRunWithBackgroundWorkerTasks } from "./db/worker";
+
+const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED", "BLOCKED_BY_WAITPOINTS"];
 
 type Options = {
   redis: RedisOptions;
@@ -256,7 +269,7 @@ export class RunEngine {
             metadataType,
             seedMetadata,
             seedMetadataType,
-            executionSnapshot: {
+            executionSnapshots: {
               create: {
                 engine: "V2",
                 executionStatus: "RUN_CREATED",
@@ -404,9 +417,10 @@ export class RunEngine {
     consumerId: string;
     masterQueue: string;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<null | StartRunMessage | ContinueRunMessage> {
     const prisma = tx ?? this.prisma;
     return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
+      //gets a fair run from this shared queue
       const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
       if (!message) {
         return null;
@@ -414,6 +428,7 @@ export class RunEngine {
 
       span.setAttribute("runId", message.messageId);
 
+      //lock the run so nothing else can modify it
       const newSnapshot = await this.redlock.using([message.messageId], 5000, async (signal) => {
         const snapshot = await this.#getLatestExecutionSnapshot(prisma, message.messageId);
         if (!snapshot) {
@@ -422,7 +437,8 @@ export class RunEngine {
           );
         }
 
-        if (!["QUEUED", "BLOCKED_BY_WAITPOINTS"].includes(snapshot.executionStatus)) {
+        if (!dequeuableExecutionStatuses.includes(snapshot.executionStatus)) {
+          //todo is there a way to recover this, so the run can be retried?
           await this.#systemFailure({
             runId: message.messageId,
             error: {
@@ -436,6 +452,14 @@ export class RunEngine {
             `RunEngine.dequeueFromMasterQueue(): Run is not in a valid state to be dequeued: ${message.messageId}\n ${snapshot.id}:${snapshot.executionStatus}`
           );
         }
+
+        const result = await getRunWithBackgroundWorkerTasks(prisma, message.messageId);
+
+        //todo create an internal function that is called to prepare a run for execution
+        //  - get the worker and task (including deployment)
+        //  - get the queue
+        //  - deal with waiting for deploy
+        //  - update the run, get attempts
 
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
@@ -714,6 +738,7 @@ export class RunEngine {
             taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
               ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
               : undefined,
+          machine: machinePreset,
         };
 
         return {
