@@ -1,38 +1,47 @@
-import Redis, { Callback, Result, type RedisOptions } from "ioredis";
-import { longPollingFetch } from "~/utils/longPollingFetch";
-import { getCachedLimit } from "./platform.v3.server";
-import { logger } from "./logger.server";
-import { AuthenticatedEnvironment } from "./apiAuth.server";
 import { json } from "@remix-run/server-runtime";
-import { env } from "~/env.server";
-import { singleton } from "~/utils/singleton";
+import Redis, { Callback, Result, type RedisOptions } from "ioredis";
+import { randomUUID } from "node:crypto";
+import { longPollingFetch } from "~/utils/longPollingFetch";
+import { logger } from "./logger.server";
+
+export interface CachedLimitProvider {
+  getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
+}
 
 export type RealtimeClientOptions = {
   electricOrigin: string;
   redis: RedisOptions;
+  cachedLimitProvider: CachedLimitProvider;
   keyPrefix: string;
-  expiryTime?: number;
+  expiryTimeInSeconds?: number;
+};
+
+export type RealtimeEnvironment = {
+  id: string;
+  organizationId: string;
 };
 
 export class RealtimeClient {
   private redis: Redis;
-  private expiryTime: number;
+  private expiryTimeInSeconds: number;
+  private cachedLimitProvider: CachedLimitProvider;
 
   constructor(private options: RealtimeClientOptions) {
     this.redis = new Redis(options.redis);
-    this.expiryTime = options.expiryTime ?? 3600; // default to 1 hour
+    this.expiryTimeInSeconds = options.expiryTimeInSeconds ?? 60 * 5; // default to 5 minutes
+    this.cachedLimitProvider = options.cachedLimitProvider;
     this.#registerCommands();
   }
 
   async streamRunsWhere(
     url: URL | string,
-    authenticatedEnv: AuthenticatedEnvironment,
+    environment: RealtimeEnvironment,
     whereClause: string,
     responseWrapper?: (response: Response) => Promise<Response>
   ) {
     const electricUrl = this.#constructElectricUrl(url, whereClause);
 
-    return this.#performElectricRequest(electricUrl, authenticatedEnv, responseWrapper);
+    return this.#performElectricRequest(electricUrl, environment, responseWrapper);
   }
 
   #constructElectricUrl(url: URL | string, whereClause: string): URL {
@@ -51,7 +60,7 @@ export class RealtimeClient {
 
   async #performElectricRequest(
     url: URL,
-    authenticatedEnv: AuthenticatedEnvironment,
+    environment: RealtimeEnvironment,
     responseWrapper: (response: Response) => Promise<Response> = (r) => Promise.resolve(r)
   ) {
     const shapeId = extractShapeId(url);
@@ -67,40 +76,40 @@ export class RealtimeClient {
       return longPollingFetch(url.toString());
     }
 
+    const requestId = randomUUID();
+
     // We now need to wrap the longPollingFetch in a concurrency tracker
-    const concurrencyLimitResult = await getCachedLimit(
-      authenticatedEnv.organizationId,
-      "realtimeConcurrentConnections",
+    const concurrencyLimit = await this.cachedLimitProvider.getCachedLimit(
+      environment.organizationId,
       100_000
     );
 
-    if (!concurrencyLimitResult.val) {
+    if (!concurrencyLimit) {
       logger.error("Failed to get concurrency limit", {
-        organizationId: authenticatedEnv.organizationId,
-        concurrencyLimitResult,
+        organizationId: environment.organizationId,
       });
 
       return responseWrapper(json({ error: "Failed to get concurrency limit" }, { status: 500 }));
     }
 
-    const concurrencyLimit = concurrencyLimitResult.val;
-
     logger.debug("[realtimeClient] increment and check", {
       concurrencyLimit,
       shapeId,
-      authenticatedEnv: {
-        id: authenticatedEnv.id,
-        organizationId: authenticatedEnv.organizationId,
+      requestId,
+      environment: {
+        id: environment.id,
+        organizationId: environment.organizationId,
       },
     });
 
-    const canProceed = await this.#incrementAndCheck(
-      authenticatedEnv.id,
-      shapeId,
-      concurrencyLimit
-    );
+    const canProceed = await this.#incrementAndCheck(environment.id, requestId, concurrencyLimit);
 
     if (!canProceed) {
+      logger.debug("[realtimeClient] too many concurrent requests", {
+        requestId,
+        environmentId: environment.id,
+      });
+
       return responseWrapper(json({ error: "Too many concurrent requests" }, { status: 429 }));
     }
 
@@ -109,41 +118,42 @@ export class RealtimeClient {
       const response = await longPollingFetch(url.toString());
 
       // Decrement the counter after the long polling request is complete
-      await this.#decrementConcurrency(authenticatedEnv.id, shapeId);
+      await this.#decrementConcurrency(environment.id, requestId);
 
       return response;
     } catch (error) {
       // Decrement the counter if the request fails
-      await this.#decrementConcurrency(authenticatedEnv.id, shapeId);
+      await this.#decrementConcurrency(environment.id, requestId);
 
       throw error;
     }
   }
 
-  async #incrementAndCheck(environmentId: string, shapeId: string, limit: number) {
+  async #incrementAndCheck(environmentId: string, requestId: string, limit: number) {
     const key = this.#getKey(environmentId);
-    const now = Date.now().toString();
+    const now = Date.now();
 
     const result = await this.redis.incrementAndCheckConcurrency(
       key,
-      now,
-      shapeId,
-      this.expiryTime.toString(),
+      now.toString(),
+      requestId,
+      this.expiryTimeInSeconds.toString(), // expiry time
+      (now - this.expiryTimeInSeconds * 1000).toString(), // cutoff time
       limit.toString()
     );
 
     return result === 1;
   }
 
-  async #decrementConcurrency(environmentId: string, shapeId: string) {
+  async #decrementConcurrency(environmentId: string, requestId: string) {
     logger.debug("[realtimeClient] decrement", {
-      shapeId,
+      requestId,
       environmentId,
     });
 
     const key = this.#getKey(environmentId);
 
-    await this.redis.zrem(key, shapeId);
+    await this.redis.zrem(key, requestId);
   }
 
   #getKey(environmentId: string): string {
@@ -153,13 +163,17 @@ export class RealtimeClient {
   #registerCommands() {
     this.redis.defineCommand("incrementAndCheckConcurrency", {
       numberOfKeys: 1,
-      lua: `
+      lua: /* lua */ `
         local concurrencyKey = KEYS[1]
 
-        local timestamp = ARGV[1]
+        local timestamp = tonumber(ARGV[1])
         local requestId = ARGV[2]
-        local expiryTime = ARGV[3]
-        local limit = tonumber(ARGV[4])
+        local expiryTime = tonumber(ARGV[3])
+        local cutoffTime = tonumber(ARGV[4])
+        local limit = tonumber(ARGV[5])
+
+        -- Remove expired entries
+        redis.call('ZREMRANGEBYSCORE', concurrencyKey, '-inf', cutoffTime)
 
         -- Add the new request to the sorted set
         redis.call('ZADD', concurrencyKey, timestamp, requestId)
@@ -199,25 +213,9 @@ declare module "ioredis" {
       timestamp: string,
       requestId: string,
       expiryTime: string,
+      cutoffTime: string,
       limit: string,
       callback?: Callback<number>
     ): Result<number, Context>;
   }
 }
-
-function initializeRealtimeClient() {
-  return new RealtimeClient({
-    electricOrigin: env.ELECTRIC_ORIGIN,
-    keyPrefix: `tr:realtime:concurrency`,
-    redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    },
-  });
-}
-
-export const realtimeClient = singleton("realtimeClient", initializeRealtimeClient);

@@ -582,23 +582,17 @@ export class ApiClient {
   }
 
   subscribeToRunChanges<TPayload = any, TOutput = any>(runId: string) {
-    return runShapeStream<TPayload, TOutput>(
-      `${this.baseUrl}/realtime/v1/runs/${runId}`,
-      this.fetchClient,
-      {
-        closeOnComplete: true,
-      }
-    );
+    return runShapeStream<TPayload, TOutput>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
+      closeOnComplete: true,
+      headers: this.#getRealtimeHeaders(),
+    });
   }
 
   subscribeToBatchChanges<TPayload = any, TOutput = any>(batchId: string) {
-    return runShapeStream<TPayload, TOutput>(
-      `${this.baseUrl}/realtime/v1/batches/${batchId}`,
-      this.fetchClient,
-      {
-        closeOnComplete: false,
-      }
-    );
+    return runShapeStream<TPayload, TOutput>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
+      closeOnComplete: false,
+      headers: this.#getRealtimeHeaders(),
+    });
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
@@ -628,6 +622,15 @@ export class ApiClient {
         headers["x-trigger-span-parent-as-link"] = "1";
       }
     }
+
+    return headers;
+  }
+
+  #getRealtimeHeaders() {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.accessToken}`,
+      "trigger-version": VERSION,
+    };
 
     return headers;
   }

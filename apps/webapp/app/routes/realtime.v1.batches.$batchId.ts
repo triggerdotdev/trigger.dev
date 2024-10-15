@@ -4,7 +4,7 @@ import { $replica } from "~/db.server";
 import { permittedToReadBatch } from "~/services/accessControl.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { realtimeClient } from "~/services/realtimeClient.server";
+import { realtimeClient } from "~/services/realtimeClientGlobal.server";
 import { makeApiCors } from "~/utils/apiCors";
 
 const ParamsSchema = z.object({

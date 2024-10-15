@@ -38,7 +38,7 @@ function initializePlatformCache() {
   const memory = new MemoryStore({ persistentMap: new Map() });
   const redisCacheStore = new RedisCacheStore({
     connection: {
-      keyPrefix: `cache:platform:v3:`,
+      keyPrefix: "tr:cache:platform:v3",
       port: env.REDIS_PORT,
       host: env.REDIS_HOST,
       username: env.REDIS_USERNAME,

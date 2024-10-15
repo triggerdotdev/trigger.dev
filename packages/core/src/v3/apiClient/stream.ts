@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export type ZodShapeStreamOptions = {
+  headers?: Record<string, string>;
   fetchClient?: typeof fetch;
   signal?: AbortSignal;
 };
@@ -15,6 +16,7 @@ export async function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
 
   const stream = new ShapeStream<z.input<TShapeSchema>>({
     url,
+    headers: options?.headers,
     fetchClient: options?.fetchClient,
     signal: options?.signal,
   });
