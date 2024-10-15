@@ -1,6 +1,5 @@
 import { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { eventRepository } from "../eventRepository.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -139,8 +138,6 @@ export class CrashTaskRunService extends BaseService {
     return await this.traceWithEnv("failAttempt()", environment, async (span) => {
       span.setAttribute("taskRunId", run.id);
       span.setAttribute("attemptId", attempt.id);
-
-      await marqs?.acknowledgeMessage(run.id);
 
       await this._prisma.taskRunAttempt.update({
         where: {
