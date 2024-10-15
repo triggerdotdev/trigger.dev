@@ -54,6 +54,7 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { generateJWT } from "../jwt.js";
+import { TriggerJwtOptions } from "../types/tasks.js";
 
 export type {
   CreateEnvironmentVariableParams,
@@ -63,6 +64,14 @@ export type {
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
+};
+
+export type TriggerRequestOptions = ZodFetchOptions & {
+  jwt?: TriggerJwtOptions;
+};
+
+export type TriggerApiRequestOptions = ApiRequestOptions & {
+  jwt?: TriggerJwtOptions;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -155,7 +164,7 @@ export class ApiClient {
     taskId: string,
     body: TriggerTaskRequestBody,
     options?: TriggerOptions,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: TriggerRequestOptions
   ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
@@ -180,7 +189,7 @@ export class ApiClient {
             ...claims,
             permissions: [data.id],
           },
-          expirationTime: "1h",
+          expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
         });
 
         return {
@@ -194,7 +203,7 @@ export class ApiClient {
     taskId: string,
     body: BatchTriggerTaskRequestBody,
     options?: TriggerOptions,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: TriggerRequestOptions
   ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
@@ -219,7 +228,7 @@ export class ApiClient {
             ...claims,
             permissions: [data.batchId],
           },
-          expirationTime: "1h",
+          expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
         });
 
         return {

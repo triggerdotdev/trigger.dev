@@ -55,6 +55,7 @@ import type {
   TaskRunResult,
   TaskSchema,
   TaskWithSchemaOptions,
+  TriggerApiRequestOptions,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -219,7 +220,7 @@ export function createSchemaTask<
 
   const task: Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> = {
     id: params.id,
-    trigger: async (payload, options) => {
+    trigger: async (payload, options, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await trigger_internal<inferSchemaIn<TSchema>, TOutput>(
@@ -232,10 +233,11 @@ export function createSchemaTask<
         {
           queue: customQueue,
           ...options,
-        }
+        },
+        requestOptions
       );
     },
-    batchTrigger: async (items) => {
+    batchTrigger: async (items, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTrigger_internal<inferSchemaIn<TSchema>, TOutput>(
@@ -245,7 +247,7 @@ export function createSchemaTask<
         params.id,
         items,
         parsePayload,
-        undefined,
+        requestOptions,
         customQueue
       );
     },
@@ -334,7 +336,7 @@ export async function trigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): Promise<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
   return await trigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.trigger()",
@@ -445,7 +447,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions & PollOptions,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): Promise<RetrieveRunResult<RunHandle<TaskPayload<TTask>, TaskOutput<TTask>>>> {
   const handle = await trigger(id, payload, options, requestOptions);
 
@@ -455,7 +457,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchRunHandle<TaskPayload<TTask>, TaskOutput<TTask>>> {
   return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.batchTrigger()",
@@ -472,7 +474,7 @@ async function trigger_internal<TPayload, TOutput>(
   payload: TPayload,
   parsePayload?: SchemaParseFn<TPayload>,
   options?: TaskRunOptions,
-  requestOptions?: ApiRequestOptions
+  requestOptions?: TriggerApiRequestOptions
 ): Promise<RunHandle<TPayload, TOutput>> {
   const apiClient = apiClientManager.clientOrThrow();
 
@@ -531,7 +533,7 @@ async function batchTrigger_internal<TPayload, TOutput>(
   id: string,
   items: Array<BatchItem<TPayload>>,
   parsePayload?: SchemaParseFn<TPayload>,
-  requestOptions?: ApiRequestOptions,
+  requestOptions?: TriggerApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchRunHandle<TPayload, TOutput>> {
   const apiClient = apiClientManager.clientOrThrow();

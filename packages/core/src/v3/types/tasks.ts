@@ -11,6 +11,7 @@ import {
 } from "../schemas/index.js";
 import { Prettify } from "./utils.js";
 import { AnySchemaParseFn, inferSchemaOut, Schema } from "./schemas.js";
+import { TriggerApiRequestOptions } from "../apiClient/index.js";
 
 type RequireOne<T, K extends keyof T> = {
   [X in Exclude<keyof T, K>]?: T[X];
@@ -403,7 +404,11 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * @returns RunHandle
    * - `id` - The id of the triggered task run.
    */
-  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<RunHandle<TInput, TOutput>>;
+  trigger: (
+    payload: TInput,
+    options?: TaskRunOptions,
+    requestOptions?: TriggerApiRequestOptions
+  ) => Promise<RunHandle<TInput, TOutput>>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
@@ -412,7 +417,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * - `batchId` - The id of the triggered batch.
    * - `runs` - The ids of the triggered task runs.
    */
-  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<BatchRunHandle<TInput, TOutput>>;
+  batchTrigger: (
+    items: Array<BatchItem<TInput>>,
+    requestOptions?: TriggerApiRequestOptions
+  ) => Promise<BatchRunHandle<TInput, TOutput>>;
 
   /**
    * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
@@ -484,6 +492,15 @@ export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
 export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
   ? TIdentifier
   : never;
+
+export type TriggerJwtOptions = {
+  /**
+   * The expiration time of the JWT. This can be a string like "1h" or a Date object.
+   *
+   * Defaults to 1 hour.
+   */
+  expirationTime?: number | Date | string;
+};
 
 export type TaskRunOptions = {
   /**
