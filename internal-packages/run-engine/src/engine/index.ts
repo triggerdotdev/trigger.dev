@@ -595,16 +595,16 @@ export class RunEngine {
         const isNewRun = true;
 
         if (isNewRun) {
-        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-          run: {
-            id: runId,
-            status: snapshot.runStatus,
-          },
-          snapshot: {
-            executionStatus: "DEQUEUED_FOR_EXECUTION",
-            description: "Run was dequeued for execution",
-          },
-        });
+          const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+            run: {
+              id: runId,
+              status: snapshot.runStatus,
+            },
+            snapshot: {
+              executionStatus: "DEQUEUED_FOR_EXECUTION",
+              description: "Run was dequeued for execution",
+            },
+          });
 
           return {
             action: "START_RUN",
@@ -924,6 +924,12 @@ export class RunEngine {
   async complete(runId: string, completion: any) {}
 
   async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
+
+  async quit() {
+    //stop the run queue
+    this.runQueue.quit();
+    this.worker.stop();
+  }
 
   async #systemFailure({
     runId,

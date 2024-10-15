@@ -43,102 +43,109 @@ describe("RunEngine", () => {
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
-      const taskIdentifier = "test-task";
+      try {
+        const taskIdentifier = "test-task";
 
-      //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
-        prisma,
-        authenticatedEnvironment,
-        taskIdentifier
-      );
+        //create background worker
+        const backgroundWorker = await setupBackgroundWorker(
+          prisma,
+          authenticatedEnvironment,
+          taskIdentifier
+        );
 
-      //trigger the run
-      const run = await engine.trigger(
-        {
-          number: 1,
-          friendlyId: "run_1234",
-          environment: authenticatedEnvironment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          context: {},
-          traceContext: {},
-          traceId: "t12345",
-          spanId: "s12345",
-          masterQueue: "main",
-          queueName: "task/test-task",
-          isTest: false,
-          tags: [],
-        },
-        prisma
-      );
-      expect(run).toBeDefined();
-      expect(run.friendlyId).toBe("run_1234");
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        expect(run).toBeDefined();
+        expect(run.friendlyId).toBe("run_1234");
 
-      //check it's actually in the db
-      const runFromDb = await prisma.taskRun.findUnique({
-        where: {
-          friendlyId: "run_1234",
-        },
-      });
-      expect(runFromDb).toBeDefined();
-      expect(runFromDb?.id).toBe(run.id);
+        //check it's actually in the db
+        const runFromDb = await prisma.taskRun.findUnique({
+          where: {
+            friendlyId: "run_1234",
+          },
+        });
+        expect(runFromDb).toBeDefined();
+        expect(runFromDb?.id).toBe(run.id);
 
-      const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: {
-          runId: run.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      expect(snapshot).toBeDefined();
-      expect(snapshot?.executionStatus).toBe("QUEUED");
+        const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
+          where: {
+            runId: run.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+        expect(snapshot).toBeDefined();
+        expect(snapshot?.executionStatus).toBe("QUEUED");
 
-      //check the waitpoint is created
-      const runWaitpoint = await prisma.waitpoint.findMany({
-        where: {
-          completedByTaskRunId: run.id,
-        },
-      });
-      expect(runWaitpoint.length).toBe(1);
-      expect(runWaitpoint[0].type).toBe("RUN");
+        //check the waitpoint is created
+        const runWaitpoint = await prisma.waitpoint.findMany({
+          where: {
+            completedByTaskRunId: run.id,
+          },
+        });
+        expect(runWaitpoint.length).toBe(1);
+        expect(runWaitpoint[0].type).toBe("RUN");
 
-      //check the queue length
-      const queueLength = await engine.runQueue.lengthOfQueue(authenticatedEnvironment, run.queue);
-      expect(queueLength).toBe(1);
+        //check the queue length
+        const queueLength = await engine.runQueue.lengthOfQueue(
+          authenticatedEnvironment,
+          run.queue
+        );
+        expect(queueLength).toBe(1);
 
-      //concurrency before
-      const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
-      expect(envConcurrencyBefore).toBe(0);
+        //concurrency before
+        const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrencyBefore).toBe(0);
 
-      //dequeue the run
-      const dequeued = await engine.dequeueFromMasterQueue({
-        consumerId: "test_12345",
-        masterQueue: run.masterQueue,
-      });
-      expect(dequeued?.action).toBe("START_RUN");
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+        });
+        expect(dequeued?.action).toBe("START_RUN");
 
-      if (dequeued?.action !== "START_RUN") {
-        throw new Error("Expected action to be START_RUN");
+        if (dequeued?.action !== "START_RUN") {
+          throw new Error("Expected action to be START_RUN");
+        }
+
+        const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrencyAfter).toBe(1);
+
+        //create an attempt
+        // const attemptResult = await engine.createRunAttempt({
+        //   runId: dequeued!.payload.run.id,
+        //   snapshotId: dequeued!.id,
+        // });
+        // expect(attemptResult.run.id).toBe(run.id);
+        // expect(attemptResult.run.status).toBe("EXECUTING");
+        // expect(attemptResult.attempt.status).toBe("EXECUTING");
+        // expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+      } finally {
+        engine.quit();
       }
-
-      const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
-      expect(envConcurrencyAfter).toBe(1);
-
-      //create an attempt
-      // const attemptResult = await engine.createRunAttempt({
-      //   runId: dequeued!.payload.run.id,
-      //   snapshotId: dequeued!.id,
-      // });
-      // expect(attemptResult.run.id).toBe(run.id);
-      // expect(attemptResult.run.status).toBe("EXECUTING");
-      // expect(attemptResult.attempt.status).toBe("EXECUTING");
-      // expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
     }
   );
 
