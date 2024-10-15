@@ -38,8 +38,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { machinePresetFromConfig } from "./machinePresets";
 import { ContinueRunMessage, StartRunMessage } from "./messages";
-
-const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED", "BLOCKED_BY_WAITPOINTS"];
+import { isDequeueableExecutionStatus } from "./statuses";
 
 type Options = {
   redis: RedisOptions;
@@ -429,7 +428,7 @@ export class RunEngine {
       span.setAttribute("runId", runId);
 
       //lock the run so nothing else can modify it
-      const newSnapshot = await this.redlock.using([runId], 5000, async (signal) => {
+      return this.redlock.using([runId], 5000, async (signal) => {
         const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
         if (!snapshot) {
           throw new Error(
@@ -437,7 +436,7 @@ export class RunEngine {
           );
         }
 
-        if (!dequeuableExecutionStatuses.includes(snapshot.executionStatus)) {
+        if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
           //todo is there a way to recover this, so the run can be retried?
           await this.#systemFailure({
             runId,
@@ -589,11 +588,10 @@ export class RunEngine {
           return null;
         }
 
-        //checkpoints?
+        const currentAttemptNumber = lockedTaskRun.attempts.at(0)?.number ?? 0;
+        const nextAttemptNumber = currentAttemptNumber + 1;
 
-        const nextAttemptNumber = lockedTaskRun.attempts[0]
-          ? lockedTaskRun.attempts[0].number + 1
-          : 1;
+        //todo deal with checkpoints
 
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
@@ -606,10 +604,8 @@ export class RunEngine {
           },
         });
 
-        return newSnapshot;
+        return null;
       });
-
-      return newSnapshot;
     });
   }
 
