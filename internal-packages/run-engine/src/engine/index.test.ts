@@ -139,14 +139,14 @@ describe("RunEngine", () => {
         expect(envConcurrencyAfter).toBe(1);
 
         //create an attempt
-        // const attemptResult = await engine.createRunAttempt({
-        //   runId: dequeued!.payload.run.id,
-        //   snapshotId: dequeued!.id,
-        // });
-        // expect(attemptResult.run.id).toBe(run.id);
-        // expect(attemptResult.run.status).toBe("EXECUTING");
-        // expect(attemptResult.attempt.status).toBe("EXECUTING");
-        // expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+        const attemptResult = await engine.createRunAttempt({
+          runId: dequeued.payload.run.id,
+          snapshotId: dequeued.payload.execution.id,
+        });
+        expect(attemptResult.run.id).toBe(run.id);
+        expect(attemptResult.run.status).toBe("EXECUTING");
+        expect(attemptResult.attempt.status).toBe("EXECUTING");
+        expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
       } finally {
         engine.quit();
       }
