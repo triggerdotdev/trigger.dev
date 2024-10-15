@@ -4,6 +4,7 @@ import { RadioGroup } from "@radix-ui/react-radio-group";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { uiComponent } from "@team-plain/typescript-sdk";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -21,12 +22,10 @@ import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
-import { requireUser, requireUserId } from "~/services/session.server";
-import { organizationPath, rootPath } from "~/utils/pathBuilder";
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
-import { env } from "~/env.server";
-import { sendToPlain } from "~/utils/plain.server";
 import { logger } from "~/services/logger.server";
+import { requireUser } from "~/services/session.server";
+import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { sendToPlain } from "~/utils/plain.server";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -35,9 +34,9 @@ const schema = z.object({
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const presenter = new NewOrganizationPresenter();
-  const { hasOrganizations } = await presenter.call({ userId });
+  const { hasOrganizations } = await presenter.call({ userId: user.id });
 
   return typedjson({
     hasOrganizations,
