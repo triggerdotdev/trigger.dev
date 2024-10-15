@@ -92,9 +92,28 @@ export class TaskExecutor {
 
           try {
             const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
-
             parsedPayload = await parsePacket(payloadPacket);
+          } catch (packetError) {
+            recordSpanException(span, packetError);
 
+            return {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.IMPORT_PAYLOAD_ERROR,
+                message:
+                  packetError instanceof Error
+                    ? `${packetError.name}: ${packetError.message}`
+                    : typeof packetError === "string"
+                    ? packetError
+                    : undefined,
+                stackTrace: packetError instanceof Error ? packetError.stack : undefined,
+              },
+            } satisfies TaskRunExecutionResult;
+          }
+
+          try {
             if (execution.attempt.number === 1) {
               await this.#callOnStartFunctions(parsedPayload, ctx, signal);
             }

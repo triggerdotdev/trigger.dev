@@ -98,6 +98,7 @@ export const TaskRunErrorCodes = {
   DISK_SPACE_EXCEEDED: "DISK_SPACE_EXCEEDED",
   POD_EVICTED: "POD_EVICTED",
   POD_UNKNOWN_ERROR: "POD_UNKNOWN_ERROR",
+  IMPORT_PAYLOAD_ERROR: "IMPORT_PAYLOAD_ERROR",
 } as const;
 
 export const TaskRunInternalError = z.object({
@@ -124,6 +125,7 @@ export const TaskRunInternalError = z.object({
     "DISK_SPACE_EXCEEDED",
     "POD_EVICTED",
     "POD_UNKNOWN_ERROR",
+    "IMPORT_PAYLOAD_ERROR",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
