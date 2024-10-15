@@ -35,14 +35,6 @@ The number of queued tasks by environment.
 | Staging | At most 10 million |
 | Prod    | At most 10 million |
 
-## Log retention
-
-| Pricing tier     | Limit     |
-|:---------------- |:--------- |
-| Free             | 1 day     |
-| Hobby            | 7 days    |
-| Pro              | 30 days   |
-
 ## Schedules
 
 | Pricing tier     | Limit                |
@@ -58,6 +50,48 @@ If you add them [dynamically using code](/management/schedules/create) make sure
 If you're creating schedules for your user you will definitely need to request more schedules from us.
 
 <SoftLimit />
+
+## Log retention
+
+| Pricing tier     | Limit     |
+|:---------------- |:--------- |
+| Free             | 1 day     |
+| Hobby            | 7 days    |
+| Pro              | 30 days   |
+
+## Log size
+
+We limit the size of logs to prevent oversized data potentially causing issues.
+
+<Expandable title="log limits">
+
+#### Attribute Limits
+- Span Attribute Count Limit: 256
+- Log Attribute Count Limit: 256
+- Span Attribute Value Length Limit: 1028 characters
+- Log Attribute Value Length Limit: 1028 characters
+
+#### Event and Link Limits
+- Span Event Count Limit: 10
+- Link Count Limit: 2
+- Attributes per Link Limit: 10
+- Attributes per Event Limit: 10
+
+#### I/O Packet Length Limit
+128 KB (131,072 bytes)
+
+#### Attribute Clipping Behavior
+- Attributes exceeding the value length limit (1028 characters) are discarded.
+- If the total number of attributes exceeds 256, additional attributes are not included.
+
+#### Attribute Value Size Calculation
+- Strings: Actual length of the string
+- Numbers: 8 bytes
+- Booleans: 4 bytes
+- Arrays: Sum of the sizes of all elements
+- Undefined or null: 0 bytes
+
+</Expandable>
 
 ## Task payloads and outputs
 
