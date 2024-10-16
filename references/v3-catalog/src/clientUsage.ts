@@ -2,16 +2,21 @@ import { runs, tasks, auth, AnyTask, Task } from "@trigger.dev/sdk/v3";
 import type { task1, task2 } from "./trigger/taskTypes.js";
 
 async function main() {
-  const anyHandle = await tasks.trigger<typeof task1>("types/task-1", {
-    foo: "baz",
-  });
+  const anyHandle = await tasks.trigger<typeof task1>(
+    "types/task-1",
+    {
+      foo: "baz",
+    },
+    {
+      tags: ["user:1234"],
+    }
+  );
 
-  const jwt = await auth.generateJWT({ permissions: [anyHandle.id] });
+  const jwt = await auth.createPublicToken({ permissions: { read: { tags: "user:1234" } } });
 
   console.log("Generated JWT:", jwt);
 
-  // The JWT will be passed to the client
-  await auth.context({ accessToken: jwt }, async () => {
+  await auth.withAuth({ accessToken: jwt }, async () => {
     const subscription = runs.subscribeToTag<typeof task1 | typeof task2>("user:1234");
 
     for await (const run of subscription) {

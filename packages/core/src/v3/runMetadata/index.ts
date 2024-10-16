@@ -75,7 +75,7 @@ export class RunMetadataAPI {
     this.store = nextStore;
   }
 
-  public deleteKey(key: string, requestOptions?: ApiRequestOptions) {
+  public deleteKey(key: string) {
     const runId = taskContext.ctx?.run.id;
 
     if (!runId) {
@@ -92,21 +92,18 @@ export class RunMetadataAPI {
     this.store = nextStore;
   }
 
-  public async update(
-    metadata: Record<string, DeserializedJson>,
-    requestOptions?: ApiRequestOptions
-  ): Promise<void> {
+  public update(metadata: Record<string, DeserializedJson>): void {
     const runId = taskContext.ctx?.run.id;
 
     if (!runId) {
       return;
     }
 
-    const apiClient = apiClientManager.clientOrThrow();
+    if (!dequal(this.store, metadata)) {
+      this.hasChanges = true;
+    }
 
-    const response = await apiClient.updateRunMetadata(runId, { metadata }, requestOptions);
-
-    this.store = response.metadata;
+    this.store = metadata;
   }
 
   public async flush(requestOptions?: ApiRequestOptions): Promise<void> {

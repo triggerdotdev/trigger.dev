@@ -15,7 +15,9 @@ export function ImageUploadButton() {
 
         const firstFile = res[0];
 
-        router.push(`/uploads/${firstFile.serverData.fileId}?jwt=${firstFile.serverData.jwt}`);
+        router.push(
+          `/uploads/${firstFile.serverData.fileId}?publicAccessToken=${firstFile.serverData.publicAccessToken}`
+        );
       }}
       onUploadError={(error: Error) => {
         // Do something with the error.
@@ -37,7 +39,9 @@ export function ImageUploadDropzone() {
 
         const firstFile = res[0];
 
-        router.push(`/uploads/${firstFile.serverData.fileId}?jwt=${firstFile.serverData.jwt}`);
+        router.push(
+          `/uploads/${firstFile.serverData.fileId}?publicAccessToken=${firstFile.serverData.publicAccessToken}`
+        );
       }}
       onUploadError={(error: Error) => {
         // Do something with the error.

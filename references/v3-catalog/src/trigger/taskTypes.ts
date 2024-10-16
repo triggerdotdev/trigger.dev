@@ -15,7 +15,9 @@ const Task2Payload = z.object({
 export const task2 = schemaTask({
   id: "types/task-2",
   schema: Task2Payload,
-  run: async (payload) => {
+  run: async (payload, { ctx }) => {
+    console.log(ctx.run.idempotencyKey);
+
     return { goodbye: "world" as const };
   },
 });

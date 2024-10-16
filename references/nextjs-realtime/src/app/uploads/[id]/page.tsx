@@ -8,15 +8,15 @@ export default async function UploadPage({
   params: { id: string };
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const jwt = searchParams.jwt;
+  const publicAccessToken = searchParams.publicAccessToken;
 
-  if (typeof jwt !== "string") {
+  if (typeof publicAccessToken !== "string") {
     notFound();
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4 bg-gray-100">
-      <ClientUploadDetails fileId={params.id} jwt={jwt} />
+      <ClientUploadDetails fileId={params.id} publicAccessToken={publicAccessToken} />
     </main>
   );
 }

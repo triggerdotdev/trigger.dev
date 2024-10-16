@@ -21,19 +21,19 @@ export const runMetadataChildTask = task({
   run: async (payload: any, { ctx }) => {
     logger.info("metadata", { metadata: metadata.current() });
 
-    await metadata.set("child", "task");
+    metadata.set("child", "task");
 
     logger.info("metadata", { metadata: metadata.current() });
 
-    await metadata.set("child-2", "task-2");
+    metadata.set("child-2", "task-2");
 
     logger.info("metadata", { current: metadata.current() });
 
-    await metadata.del("hello");
+    metadata.del("hello");
 
     logger.info("metadata", { metadata: metadata.current() });
 
-    await metadata.save({
+    metadata.replace({
       there: {
         is: {
           something: "here",
