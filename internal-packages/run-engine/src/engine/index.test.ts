@@ -123,9 +123,9 @@ describe("RunEngine", () => {
           consumerId: "test_12345",
           masterQueue: run.masterQueue,
         });
-        expect(dequeued?.action).toBe("START_RUN");
+        expect(dequeued?.action).toBe("SCHEDULE_RUN");
 
-        if (dequeued?.action !== "START_RUN") {
+        if (dequeued?.action !== "SCHEDULE_RUN") {
           throw new Error("Expected action to be START_RUN");
         }
 
@@ -139,13 +139,12 @@ describe("RunEngine", () => {
         expect(envConcurrencyAfter).toBe(1);
 
         //create an attempt
-        const attemptResult = await engine.createRunAttempt({
+        const attemptResult = await engine.startRunAttempt({
           runId: dequeued.payload.run.id,
           snapshotId: dequeued.payload.execution.id,
         });
         expect(attemptResult.run.id).toBe(run.id);
         expect(attemptResult.run.status).toBe("EXECUTING");
-        expect(attemptResult.attempt.status).toBe("EXECUTING");
         expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
       } finally {
         engine.quit();

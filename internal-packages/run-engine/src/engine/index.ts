@@ -38,7 +38,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { machinePresetFromConfig } from "./machinePresets";
 import { ScheduleRunMessage } from "./messages";
-import { isDequeueableExecutionStatus } from "./statuses";
+import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
 
 type Options = {
   redis: RedisOptions;
@@ -648,7 +648,7 @@ export class RunEngine {
     });
   }
 
-  async createRunAttempt({
+  async startRunAttempt({
     runId,
     snapshotId,
     tx,
@@ -695,12 +695,6 @@ export class RunEngine {
           },
           include: {
             tags: true,
-            attempts: {
-              take: 1,
-              orderBy: {
-                number: "desc",
-              },
-            },
             lockedBy: {
               include: {
                 worker: {
@@ -754,7 +748,8 @@ export class RunEngine {
           throw new ServiceValidationError("Queue not found", 404);
         }
 
-        const nextAttemptNumber = taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1;
+        //increment the attempt number (start at 1)
+        const nextAttemptNumber = (taskRun.attemptNumber ?? 0) + 1;
 
         if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
           await this.#crash({
@@ -762,38 +757,22 @@ export class RunEngine {
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_CRASHED",
-              message: taskRun.lockedBy.worker.supportsLazyAttempts
-                ? "Max attempts reached."
-                : "Max attempts reached. Please upgrade your CLI and SDK.",
+              message: "Max attempts reached.",
             },
           });
-
           throw new ServiceValidationError("Max attempts reached", 400);
         }
 
         const result = await $transaction(
           prisma,
           async (tx) => {
-            const attempt = await tx.taskRunAttempt.create({
-              data: {
-                number: nextAttemptNumber,
-                friendlyId: generateFriendlyId("attempt"),
-                taskRunId: taskRun.id,
-                startedAt: new Date(),
-                backgroundWorkerId: taskRun.lockedBy!.worker.id,
-                backgroundWorkerTaskId: taskRun.lockedBy!.id,
-                status: "EXECUTING",
-                queueId: queue.id,
-                runtimeEnvironmentId: environment.id,
-              },
-            });
-
             const run = await tx.taskRun.update({
               where: {
                 id: taskRun.id,
               },
               data: {
                 status: "EXECUTING",
+                attemptNumber: nextAttemptNumber,
               },
               include: {
                 tags: true,
@@ -805,7 +784,6 @@ export class RunEngine {
 
             const newSnapshot = await this.#createExecutionSnapshot(tx, {
               run,
-              attempt,
               snapshot: {
                 executionStatus: "EXECUTING",
                 description: "Attempt created, starting execution",
@@ -817,7 +795,7 @@ export class RunEngine {
               await this.worker.ack(`expireRun:${taskRun.id}`);
             }
 
-            return { run, attempt, snapshot: newSnapshot };
+            return { run, snapshot: newSnapshot };
           },
           (error) => {
             this.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
@@ -827,6 +805,10 @@ export class RunEngine {
               message: error.message,
               name: error.name,
             });
+            throw new ServiceValidationError(
+              "Failed to update task run and execution snapshot",
+              500
+            );
           }
         );
 
@@ -838,7 +820,7 @@ export class RunEngine {
           throw new ServiceValidationError("Failed to create task run attempt", 500);
         }
 
-        const { run, attempt, snapshot } = result;
+        const { run, snapshot } = result;
 
         const machinePreset = machinePresetFromConfig({
           machines: this.options.machines.machines,
@@ -857,10 +839,11 @@ export class RunEngine {
             filePath: run.lockedBy!.filePath,
             exportName: run.lockedBy!.exportName,
           },
+          //this is for backwards compatibility with the SDK
           attempt: {
-            id: attempt.friendlyId,
-            number: attempt.number,
-            startedAt: attempt.startedAt ?? attempt.createdAt,
+            id: generateFriendlyId("attempt"),
+            number: nextAttemptNumber,
+            startedAt: latestSnapshot.updatedAt,
             backgroundWorkerId: run.lockedBy!.worker.id,
             backgroundWorkerTaskId: run.lockedBy!.id,
             status: "EXECUTING" as const,
@@ -882,6 +865,8 @@ export class RunEngine {
             version: run.lockedBy!.worker.version,
             metadata,
             maxDuration: run.maxDurationInSeconds ?? undefined,
+            //todo add this, it needs to be added to all the SDK functions
+            // attemptNumber: nextAttemptNumber,
           },
           queue: {
             id: queue.friendlyId,
@@ -912,7 +897,6 @@ export class RunEngine {
 
         return {
           run,
-          attempt,
           snapshot,
         };
       });
@@ -1013,7 +997,7 @@ export class RunEngine {
       }
 
       //run is still executing, send a message to the worker
-      if (snapshot.executionStatus === "EXECUTING" && snapshot.worker) {
+      if (isExecuting(snapshot.executionStatus)) {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: run,
           snapshot: {
@@ -1177,6 +1161,8 @@ export class RunEngine {
           },
         });
 
+        //todo update the execution snapshot
+
         // 5. Continue the runs that have no more waitpoints
         for (const run of taskRunsToResume) {
           await this.#continueRun(run, run.runtimeEnvironment, tx);
@@ -1195,11 +1181,9 @@ export class RunEngine {
     prisma: PrismaClientOrTransaction,
     {
       run,
-      attempt,
       snapshot,
     }: {
-      run: { id: string; status: TaskRunStatus };
-      attempt?: { id: string; status: TaskRunAttemptStatus };
+      run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
         description: string;
@@ -1213,18 +1197,20 @@ export class RunEngine {
         description: snapshot.description,
         runId: run.id,
         runStatus: run.status,
-        currentAttemptId: attempt?.id,
-        currentAttemptStatus: attempt?.status,
+        attemptNumber: run.attemptNumber ?? undefined,
       },
     });
 
     //create heartbeat (if relevant)
     switch (snapshot.executionStatus) {
       case "RUN_CREATED":
-      case "QUEUED":
-      case "BLOCKED_BY_WAITPOINTS":
       case "FINISHED":
-      case "DEQUEUED_FOR_EXECUTION": {
+      case "QUEUED": {
+        //we don't need to heartbeat these statuses
+        break;
+      }
+      case "DEQUEUED_FOR_EXECUTION":
+      case "QUEUED_WITH_WAITPOINTS": {
         await this.#startHeartbeating({
           runId: run.id,
           snapshotId: newSnapshot.id,
@@ -1232,13 +1218,17 @@ export class RunEngine {
         });
         break;
       }
-      case "EXECUTING": {
+      case "EXECUTING":
+      case "EXECUTING_WITH_WAITPOINTS": {
         await this.#startHeartbeating({
           runId: run.id,
           snapshotId: newSnapshot.id,
           intervalSeconds: 60 * 15,
         });
         break;
+      }
+      default: {
+        assertNever(snapshot.executionStatus);
       }
     }
 
@@ -1247,7 +1237,6 @@ export class RunEngine {
 
   async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
     return prisma.taskRunExecutionSnapshot.findFirst({
-      include: { worker: true },
       where: { runId },
       orderBy: { createdAt: "desc" },
     });
@@ -1341,29 +1330,33 @@ export class RunEngine {
     //todo fail attempt if there is one?
 
     switch (latestSnapshot.executionStatus) {
-      case "BLOCKED_BY_WAITPOINTS": {
-        //we need to check if the waitpoints are still blocking the run
-        throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
-      }
-      case "DEQUEUED_FOR_EXECUTION": {
-        //we need to check if the run is still dequeued
-        throw new NotImplementedError("Not implemented DEQUEUED_FOR_EXECUTION");
+      case "RUN_CREATED": {
+        //we need to check if the run is still created
+        throw new NotImplementedError("Not implemented RUN_CREATED");
       }
       case "QUEUED": {
         //we need to check if the run is still QUEUED
         throw new NotImplementedError("Not implemented QUEUED");
       }
+      case "DEQUEUED_FOR_EXECUTION": {
+        //we need to check if the run is still dequeued
+        throw new NotImplementedError("Not implemented DEQUEUED_FOR_EXECUTION");
+      }
       case "EXECUTING": {
         //we need to check if the run is still executing
         throw new NotImplementedError("Not implemented EXECUTING");
       }
+      case "EXECUTING_WITH_WAITPOINTS": {
+        //we need to check if the run is still executing
+        throw new NotImplementedError("Not implemented EXECUTING_WITH_WAITPOINTS");
+      }
+      case "QUEUED_WITH_WAITPOINTS": {
+        //we need to check if the waitpoints are still blocking the run
+        throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
+      }
       case "FINISHED": {
         //we need to check if the run is still finished
         throw new NotImplementedError("Not implemented FINISHED");
-      }
-      case "RUN_CREATED": {
-        //we need to check if the run is still created
-        throw new NotImplementedError("Not implemented RUN_CREATED");
       }
       default: {
         assertNever(latestSnapshot.executionStatus);
