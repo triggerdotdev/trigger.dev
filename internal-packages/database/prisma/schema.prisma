@@ -416,6 +416,7 @@ model RuntimeEnvironment {
   currentSession       RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   currentSessionId     String?
   taskRunNumberCounter TaskRunNumberCounter[]
+  taskRunCheckpoints   TaskRunCheckpoint[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -472,6 +473,7 @@ model Project {
   BackgroundWorkerFile   BackgroundWorkerFile[]
   waitpoints             Waitpoint[]
   taskRunWaitpoints      TaskRunWaitpoint[]
+  taskRunCheckpoints     TaskRunCheckpoint[]
 }
 
 enum ProjectVersion {
@@ -1685,6 +1687,9 @@ model TaskRun {
   /// The main queue that this run is part of
   masterQueue String @default("main")
 
+  /// From engine v2+ this will be defined after a run has been dequeued (starting at 1)
+  attemptNumber Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1882,21 +1887,20 @@ model TaskRunExecutionSnapshot {
   run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
 
-  /// Attempt
-  currentAttemptId     String?
-  currentAttempt       TaskRunAttempt?       @relation(fields: [currentAttemptId], references: [id])
-  currentAttemptStatus TaskRunAttemptStatus?
+  attemptNumber Int?
 
-  /// todo Checkpoint
+  /// Waitpoints that are blocking the run
+  blockedByWaitpoints Waitpoint[] @relation("blockedByWaitpoints")
 
-  /// These are only ever appended, so we don't need updatedAt
+  /// Waitpoints that have been completed for this execution
+  completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
+
+  /// Checkpoint
+  checkpointId String?
+  checkpoint   TaskRunCheckpoint? @relation(fields: [checkpointId], references: [id])
+
   createdAt DateTime @default(now())
-
-  ///todo machine spec?
-
-  ///todo add worker, we'll use it to call back out to the worker
-  workerId String?
-  worker   Worker? @relation(fields: [workerId], references: [id])
+  updatedAt DateTime @updatedAt
 
   /// Used to get the latest state quickly
   @@index([runId, createdAt(sort: Desc)])
@@ -1907,8 +1911,37 @@ enum TaskRunExecutionStatus {
   QUEUED
   DEQUEUED_FOR_EXECUTION
   EXECUTING
-  BLOCKED_BY_WAITPOINTS
+  EXECUTING_WITH_WAITPOINTS
+  QUEUED_WITH_WAITPOINTS
   FINISHED
+}
+
+model TaskRunCheckpoint {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  type     TaskRunCheckpointType
+  location String
+  imageRef String
+  reason   String?
+  metadata String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  executionSnapshot TaskRunExecutionSnapshot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TaskRunCheckpointType {
+  DOCKER
+  KUBERNETES
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed
@@ -1938,6 +1971,10 @@ model Waitpoint {
 
   /// The runs this waitpoint is blocking
   blockingTaskRuns TaskRunWaitpoint[]
+
+  blockingExecutionSnapshots  TaskRunExecutionSnapshot[] @relation("blockedByWaitpoints")
+  /// When a waitpoint is complete
+  completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")
 
   /// When completed, an output can be stored here
   output     String?
@@ -1984,8 +2021,7 @@ model TaskRunWaitpoint {
 }
 
 model Worker {
-  id                 String                     @id @default(cuid())
-  executionSnapshots TaskRunExecutionSnapshot[]
+  id String @id @default(cuid())
 }
 
 model WorkerGroup {
@@ -2054,6 +2090,7 @@ model TaskRunNumberCounter {
   @@unique([taskIdentifier, environmentId])
 }
 
+/// This is not used from engine v2+, attempts use the TaskRunExecutionSnapshot and TaskRun
 model TaskRunAttempt {
   id     String @id @default(cuid())
   number Int    @default(0)
@@ -2096,8 +2133,7 @@ model TaskRunAttempt {
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   alerts                 ProjectAlert[]
-  childRuns              TaskRun[]                  @relation("TaskParentRunAttempt")
-  executionSnapshots     TaskRunExecutionSnapshot[]
+  childRuns              TaskRun[]                @relation("TaskParentRunAttempt")
 
   @@unique([taskRunId, number])
   @@index([taskRunId])
