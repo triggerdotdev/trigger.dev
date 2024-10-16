@@ -536,7 +536,11 @@ class TaskCoordinator {
         socket.on("TEST", (message, callback) => {
           logger.log("Handling TEST", { eventName: "TEST", ...getSocketMetadata(), ...message });
 
-          callback();
+          try {
+            callback();
+          } catch (error) {
+            logger.error("TEST error", { error });
+          }
         });
 
         // Deprecated: Only workers without support for lazy attempts use this
@@ -1275,7 +1279,11 @@ class TaskCoordinator {
 
           log.log("Handling UNRECOVERABLE_ERROR");
 
-          await crashRun(message.error);
+          try {
+            await crashRun(message.error);
+          } catch (error) {
+            log.error("UNRECOVERABLE_ERROR error", { error });
+          }
         });
 
         socket.on("SET_STATE", async (message) => {
@@ -1287,20 +1295,28 @@ class TaskCoordinator {
 
           log.log("Handling SET_STATE");
 
-          if (message.attemptFriendlyId) {
-            updateAttemptFriendlyId(message.attemptFriendlyId);
-          }
+          try {
+            if (message.attemptFriendlyId) {
+              updateAttemptFriendlyId(message.attemptFriendlyId);
+            }
 
-          if (message.attemptNumber) {
-            updateAttemptNumber(message.attemptNumber);
+            if (message.attemptNumber) {
+              updateAttemptNumber(message.attemptNumber);
+            }
+          } catch (error) {
+            log.error("SET_STATE error", { error });
           }
         });
       },
       onDisconnect: async (socket, handler, sender, logger) => {
-        this.#platformSocket?.send("LOG", {
-          metadata: socket.data,
-          text: "disconnect",
-        });
+        try {
+          this.#platformSocket?.send("LOG", {
+            metadata: socket.data,
+            text: "disconnect",
+          });
+        } catch (error) {
+          logger.error("onDisconnect error", { error });
+        }
       },
       handlers: {
         TASK_HEARTBEAT: async (message) => {
