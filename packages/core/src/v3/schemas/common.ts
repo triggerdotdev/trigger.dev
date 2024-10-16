@@ -99,6 +99,7 @@ export const TaskRunErrorCodes = {
   POD_EVICTED: "POD_EVICTED",
   POD_UNKNOWN_ERROR: "POD_UNKNOWN_ERROR",
 } as const;
+//todo add the new errors above 👆, or hopefully not when Nick merges his change that de-duplicates this.
 
 export const TaskRunInternalError = z.object({
   type: z.literal("INTERNAL_ERROR"),
