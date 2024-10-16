@@ -1,7 +1,9 @@
+import { HomeIcon } from "@heroicons/react/20/solid";
 import { isRouteErrorResponse, useRouteError } from "@remix-run/react";
+import { friendlyErrorDisplay } from "~/utils/httpErrors";
+import logoGlow from "../assets/images/logo-glow.png";
 import { LinkButton } from "./primitives/Buttons";
 import { Header1, Header3 } from "./primitives/Headers";
-import { friendlyErrorDisplay } from "~/utils/httpErrors";
 
 type ErrorDisplayOptions = {
   button?: {
@@ -39,11 +41,20 @@ type DisplayOptionsProps = {
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
-    <div className="p-4">
-      <Header1 className="mb-4 border-b border-charcoal-800 pb-4">{title}</Header1>
+    <div className="relative mt-32 flex flex-col items-center gap-6">
+      <div className="pointer-events-none absolute left-1/2 top-[220px] z-20 w-[350px] -translate-x-1/2 animate-[ping-pong-width_10s_ease-in-out_infinite]">
+        <img src={logoGlow} className="h-full w-full object-contain" />
+      </div>
+      <div className="pointer-events-none absolute left-1/2 top-[230px] z-10 h-[70px] w-[350px] -translate-x-1/2 bg-background-dimmed" />
+      <iframe
+        src="https://my.spline.design/rotatinglogo-dd8c81cb0ec1b9d7d09a7b473b2992e2/"
+        width="200px"
+        height="300px"
+      />
+      <Header1>{title}</Header1>
       {message && <Header3>{message}</Header3>}
-      <LinkButton to={button ? button.to : "/"} variant="primary/medium" className="mt-8">
-        {button ? button.title : "Home"}
+      <LinkButton to={button ? button.to : "/"} variant="primary/medium" LeadingIcon={HomeIcon}>
+        {button ? button.title : "Go to homepage"}
       </LinkButton>
     </div>
   );
