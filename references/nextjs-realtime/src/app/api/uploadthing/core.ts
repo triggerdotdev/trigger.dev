@@ -35,12 +35,16 @@ export const ourFileRouter = {
         tags: [`user:${metadata.userId}`, fileTag],
       });
 
-      const jwt = await auth.generateJWT({ permissions: [`read:tags:${fileTag}`] });
+      const publicAccessToken = await auth.createPublicToken({
+        permissions: {
+          read: { tags: fileTag },
+        },
+      });
 
-      console.log("Generated JWT:", jwt);
+      console.log("Generated access token:", publicAccessToken);
 
       // !!! Whatever is returned here is sent to the clientside `onClientUploadComplete` callback
-      return { uploadedBy: metadata.userId, jwt, fileId: file.key };
+      return { uploadedBy: metadata.userId, publicAccessToken, fileId: file.key };
     }),
 } satisfies FileRouter;
 

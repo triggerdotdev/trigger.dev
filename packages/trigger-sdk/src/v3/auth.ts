@@ -24,16 +24,48 @@ export function configure(options: ApiClientConfiguration) {
 
 export const auth = {
   configure,
-  generateJWT,
-  context,
+  createPublicToken,
+  withAuth,
 };
 
-export type GenerateJWTOptions = {
-  permissions?: string[];
+type PublicTokenPermissionAction = "read"; // Add more actions as needed
+
+type PublicTokenPermissionProperties = {
+  tags?: string | string[];
+  runs?: string | string[];
+};
+
+export type PublicTokenPermissions = {
+  [key in PublicTokenPermissionAction]?: PublicTokenPermissionProperties | true;
+};
+
+export type CreatePublicTokenOptions = {
+  permissions?: PublicTokenPermissions;
   expirationTime?: number | Date | string;
 };
 
-async function generateJWT(options?: GenerateJWTOptions): Promise<string> {
+/**
+ * Creates a public token using the provided options.
+ *
+ * @param options - Optional parameters for creating the public token.
+ * @param options.permissions - An array of permissions to be included in the token.
+ * @param options.expirationTime - The expiration time for the token.
+ * @returns A promise that resolves to a string representing the generated public token.
+ *
+ * @example
+ *
+ * ```typescript
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const publicToken = await auth.createPublicToken({
+ *  permissions: {
+ *   read: {
+ *     tags: ["file:1234"]
+ *   }
+ * });
+ * ```
+ */
+async function createPublicToken(options?: CreatePublicTokenOptions): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const claims = await apiClient.generateJWTClaims();
@@ -42,15 +74,47 @@ async function generateJWT(options?: GenerateJWTOptions): Promise<string> {
     secretKey: apiClient.accessToken,
     payload: {
       ...claims,
-      permissions: options?.permissions,
+      permissions: options?.permissions ? flattenPermissions(options.permissions) : undefined,
     },
     expirationTime: options?.expirationTime,
   });
 }
 
-async function context<R extends (...args: any[]) => Promise<any>>(
+/**
+ * Executes a provided asynchronous function with a specified API client configuration.
+ *
+ * @template R - The type of the asynchronous function to be executed.
+ * @param {ApiClientConfiguration} config - The configuration for the API client.
+ * @param {R} fn - The asynchronous function to be executed.
+ * @returns {Promise<ReturnType<R>>} A promise that resolves to the return type of the provided function.
+ */
+async function withAuth<R extends (...args: any[]) => Promise<any>>(
   config: ApiClientConfiguration,
   fn: R
 ): Promise<ReturnType<R>> {
   return apiClientManager.runWithConfig(config, fn);
+}
+
+function flattenPermissions(permissions: PublicTokenPermissions): string[] {
+  const flattenedPermissions: string[] = [];
+
+  for (const [action, properties] of Object.entries(permissions)) {
+    if (properties) {
+      if (typeof properties === "boolean" && properties) {
+        flattenedPermissions.push(action);
+      } else if (typeof properties === "object") {
+        for (const [property, value] of Object.entries(properties)) {
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              flattenedPermissions.push(`${action}:${property}:${item}`);
+            }
+          } else if (typeof value === "string") {
+            flattenedPermissions.push(`${action}:${property}:${value}`);
+          }
+        }
+      }
+    }
+  }
+
+  return flattenedPermissions;
 }

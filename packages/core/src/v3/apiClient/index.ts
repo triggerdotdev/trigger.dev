@@ -187,7 +187,7 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            permissions: [data.id],
+            permissions: [`read:runs:${data.id}`],
           },
           expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
         });

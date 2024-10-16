@@ -60,9 +60,17 @@ function UploadDetailsWrapper({ fileId }: { fileId: string }) {
   );
 }
 
-export default function ClientUploadDetails({ fileId, jwt }: { fileId: string; jwt: string }) {
+export default function ClientUploadDetails({
+  fileId,
+  publicAccessToken,
+}: {
+  fileId: string;
+  publicAccessToken: string;
+}) {
   return (
-    <TriggerAuthContext.Provider value={{ accessToken: jwt, baseURL: "http://localhost:3030" }}>
+    <TriggerAuthContext.Provider
+      value={{ accessToken: publicAccessToken, baseURL: "http://localhost:3030" }}
+    >
       <UploadDetailsWrapper fileId={fileId} />
     </TriggerAuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
+import { idempotencyKeys, logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
 import { FalResult, GridImage, UploadedFileData } from "@/utils/schemas";
 import { z } from "zod";
 
@@ -14,9 +14,9 @@ export const handleUpload = schemaTask({
   run: async (file, { ctx }) => {
     logger.info("Handling uploaded file", { file });
 
-    await Promise.all([
-      runFalModel.trigger(
-        {
+    const results = await runFalModel.batchTriggerAndWait([
+      {
+        payload: {
           model: "fal-ai/image-preprocessors/canny",
           url: file.url,
           input: {
@@ -24,25 +24,29 @@ export const handleUpload = schemaTask({
             high_threshold: 200,
           },
         },
-        { tags: ctx.run.tags }
-      ),
-      runFalModel.trigger(
-        {
+        options: {
+          tags: ctx.run.tags,
+        },
+      },
+      {
+        payload: {
           model: "fal-ai/aura-sr",
           url: file.url,
           input: {},
         },
-        { tags: ctx.run.tags }
-      ),
-      runFalModel.trigger(
-        {
+        options: { tags: ctx.run.tags },
+      },
+      {
+        payload: {
           model: "fal-ai/imageutils/depth",
           url: file.url,
           input: {},
         },
-        { tags: ctx.run.tags }
-      ),
+        options: { tags: ctx.run.tags },
+      },
     ]);
+
+    return results;
   },
 });
 

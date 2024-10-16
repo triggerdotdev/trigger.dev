@@ -23,6 +23,7 @@ export const metadata = {
   set: setMetadataKey,
   del: deleteMetadataKey,
   save: saveMetadata,
+  replace: replaceMetadata,
   flush: flushMetadata,
 };
 
@@ -88,34 +89,24 @@ function deleteMetadataKey(key: string) {
  * This function allows you to replace the entire metadata object with a new one.
  *
  * @param {RunMetadata} metadata - The new metadata object to set for the run.
- * @param {ApiRequestOptions} [requestOptions] - Optional API request options.
- * @returns {Promise<void>} A promise that resolves when the metadata is updated.
+ * @returns {void}
  *
  * @example
- * await metadata.save({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
+ * metadata.replace({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
  */
-async function saveMetadata(
-  metadata: RunMetadata,
-  requestOptions?: ApiRequestOptions
-): Promise<void> {
-  const $requestOptions = mergeRequestOptions(
-    {
-      tracer,
-      name: "metadata.save()",
-      icon: "code-plus",
-      attributes: {
-        ...flattenAttributes(metadata),
-      },
-    },
-    requestOptions
-  );
-
-  await runMetadata.update(metadata, $requestOptions);
+function replaceMetadata(metadata: RunMetadata): void {
+  runMetadata.update(metadata);
 }
 
 /**
- * Flushes metadata by merging the provided request options with default options
- * and then executing the flush operation.
+ * @deprecated Use `metadata.replace()` instead.
+ */
+function saveMetadata(metadata: RunMetadata): void {
+  runMetadata.update(metadata);
+}
+
+/**
+ * Flushes metadata to the Trigger.dev instance
  *
  * @param {ApiRequestOptions} [requestOptions] - Optional request options to customize the API request.
  * @returns {Promise<void>} A promise that resolves when the metadata flush operation is complete.
