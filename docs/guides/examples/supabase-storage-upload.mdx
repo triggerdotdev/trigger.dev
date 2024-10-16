@@ -8,16 +8,88 @@ import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
 ## Overview
 
-This task downloads a video from a provided URL, saves it to a temporary file, and then uploads the video file to Supabase Storage using S3.
+This example demonstrates how to upload a video file to Supabase Storage using two different methods.
 
-## Key features
+- [Upload to Supabase Storage using the Supabase client](/guides/examples/supabase-storage-upload#example-1-upload-to-supabase-storage-using-the-supabase-storage-client)
+- [Upload to Supabase Storage using the AWS S3 client](/guides/examples/supabase-storage-upload#example-2-upload-to-supabase-storage-using-the-aws-s3-client)
 
-- Fetches a video from a provided URL
-- Uploads the video file to Supabase Storage
+## Upload to Supabase Storage using the Supabase client
 
-## Task code
+This task downloads a video from a provided URL, saves it to a temporary file, and then uploads the video file to Supabase Storage using the Supabase client.
+
+### Task code
 
 ```ts trigger/supabase-storage-upload.ts
+import { createClient } from "@supabase/supabase-js";
+import { logger, task } from "@trigger.dev/sdk/v3";
+import fetch from "node-fetch";
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_PROJECT_URL ?? "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+);
+
+export const supabaseStorageUpload = task({
+  id: "supabase-storage-upload",
+  run: async (payload: { videoUrl: string }) => {
+    const { videoUrl } = payload;
+
+    const bucket = "my_bucket"; // Replace "my_bucket" with your bucket name
+    const objectKey = `video_${Date.now()}.mp4`;
+
+    // Download video data as a buffer
+    const response = await fetch(videoUrl);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const videoBuffer = await response.buffer();
+
+    // Upload the video directly to Supabase Storage
+    const { error } = await supabase.storage.from(bucket).upload(objectKey, videoBuffer, {
+      contentType: "video/mp4",
+      upsert: true,
+    });
+
+    if (error) {
+      throw new Error(`Error uploading video: ${error.message}`);
+    }
+
+    logger.log(`Video uploaded to Supabase Storage bucket`, { objectKey });
+
+    // Return the video object key and bucket
+    return {
+      objectKey,
+      bucket: bucket,
+    };
+  },
+});
+```
+
+### Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "videoUrl": "<a-video-url>" // Replace <a-video-url> with the URL of the video you want to upload
+}
+```
+
+## Upload to Supabase Storage using the AWS S3 client
+
+This task downloads a video from a provided URL, saves it to a temporary file, and then uploads the video file to Supabase Storage using the AWS S3 client.
+
+### Key features
+
+- Fetches a video from a provided URL
+- Uploads the video file to Supabase Storage using S3
+
+### Task code
+
+```ts trigger/supabase-storage-upload-s3.ts
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import fetch from "node-fetch";
@@ -33,8 +105,8 @@ const s3Client = new S3Client({
   },
 });
 
-export const supabaseStorageUpload = task({
-  id: "supabase-storage-upload",
+export const supabaseStorageUploadS3 = task({
+  id: "supabase-storage-upload-s3",
   run: async (payload: { videoUrl: string }) => {
     const { videoUrl } = payload;
 
@@ -65,7 +137,7 @@ export const supabaseStorageUpload = task({
 });
 ```
 
-## Testing your task
+### Testing your task
 
 To test this task in the dashboard, you can use the following payload:
 
