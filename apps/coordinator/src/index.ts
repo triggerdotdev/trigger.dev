@@ -669,13 +669,25 @@ class TaskCoordinator {
 
           log.log("Handling READY_FOR_RESUME");
 
-          updateAttemptFriendlyId(message.attemptFriendlyId);
+          try {
+            updateAttemptFriendlyId(message.attemptFriendlyId);
 
-          if (message.version === "v2") {
-            updateAttemptNumber(message.attemptNumber);
+            if (message.version === "v2") {
+              updateAttemptNumber(message.attemptNumber);
+            }
+
+            this.#platformSocket?.send("READY_FOR_RESUME", { ...message, version: "v1" });
+          } catch (error) {
+            log.error("READY_FOR_RESUME error", { error });
+
+            await crashRun({
+              name: "ReadyForResumeError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
+            return;
           }
-
-          this.#platformSocket?.send("READY_FOR_RESUME", { ...message, version: "v1" });
         });
 
         // MARK: RUN COMPLETED
@@ -692,100 +704,112 @@ class TaskCoordinator {
 
           log.log("Handling TASK_RUN_COMPLETED");
 
-          const { completion, execution } = message;
+          try {
+            const { completion, execution } = message;
 
-          // Cancel all in-progress checkpoints (if any)
-          this.#cancelCheckpoint(socket.data.runId);
+            // Cancel all in-progress checkpoints (if any)
+            this.#cancelCheckpoint(socket.data.runId);
 
-          await chaosMonkey.call({ throwErrors: false });
+            await chaosMonkey.call({ throwErrors: false });
 
-          const completeWithoutCheckpoint = (shouldExit: boolean) => {
-            const supportsRetryCheckpoints = message.version === "v1";
+            const completeWithoutCheckpoint = (shouldExit: boolean) => {
+              const supportsRetryCheckpoints = message.version === "v1";
+
+              this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+                version: supportsRetryCheckpoints ? "v1" : "v2",
+                execution,
+                completion,
+              });
+              callback({ willCheckpointAndRestore: false, shouldExit });
+            };
+
+            if (completion.ok) {
+              completeWithoutCheckpoint(true);
+              return;
+            }
+
+            if (
+              completion.error.type === "INTERNAL_ERROR" &&
+              completion.error.code === "TASK_RUN_CANCELLED"
+            ) {
+              completeWithoutCheckpoint(true);
+              return;
+            }
+
+            if (completion.retry === undefined) {
+              completeWithoutCheckpoint(true);
+              return;
+            }
+
+            if (completion.retry.delay < this.#delayThresholdInMs) {
+              completeWithoutCheckpoint(false);
+
+              // Prevents runs that fail fast from never sending a heartbeat
+              this.#sendRunHeartbeat(socket.data.runId);
+
+              return;
+            }
+
+            if (message.version === "v2") {
+              completeWithoutCheckpoint(true);
+              return;
+            }
+
+            const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
+
+            const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+            if (!willCheckpointAndRestore) {
+              completeWithoutCheckpoint(false);
+              return;
+            }
+
+            // The worker will then put itself in a checkpointable state
+            callback({ willCheckpointAndRestore: true, shouldExit: false });
+
+            const ready = await readyToCheckpoint("RETRY");
+
+            if (!ready.success) {
+              log.error("Failed to become checkpointable", { reason: ready.reason });
+
+              return;
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: socket.data.runId,
+              projectRef: socket.data.projectRef,
+              deploymentVersion: socket.data.deploymentVersion,
+              shouldHeartbeat: true,
+            });
+
+            if (!checkpoint) {
+              log.error("Failed to checkpoint");
+              completeWithoutCheckpoint(false);
+              return;
+            }
+
+            log.addFields({ checkpoint });
 
             this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-              version: supportsRetryCheckpoints ? "v1" : "v2",
+              version: "v1",
               execution,
               completion,
+              checkpoint,
             });
-            callback({ willCheckpointAndRestore: false, shouldExit });
-          };
 
-          if (completion.ok) {
-            completeWithoutCheckpoint(true);
-            return;
-          }
+            if (!checkpoint.docker || !willSimulate) {
+              exitRun();
+            }
+          } catch (error) {
+            log.error("TASK_RUN_COMPLETED error", { error });
 
-          if (
-            completion.error.type === "INTERNAL_ERROR" &&
-            completion.error.code === "TASK_RUN_CANCELLED"
-          ) {
-            completeWithoutCheckpoint(true);
-            return;
-          }
-
-          if (completion.retry === undefined) {
-            completeWithoutCheckpoint(true);
-            return;
-          }
-
-          if (completion.retry.delay < this.#delayThresholdInMs) {
-            completeWithoutCheckpoint(false);
-
-            // Prevents runs that fail fast from never sending a heartbeat
-            this.#sendRunHeartbeat(socket.data.runId);
+            await crashRun({
+              name: "TaskRunCompletedError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
 
             return;
-          }
-
-          if (message.version === "v2") {
-            completeWithoutCheckpoint(true);
-            return;
-          }
-
-          const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
-
-          const willCheckpointAndRestore = canCheckpoint || willSimulate;
-
-          if (!willCheckpointAndRestore) {
-            completeWithoutCheckpoint(false);
-            return;
-          }
-
-          // The worker will then put itself in a checkpointable state
-          callback({ willCheckpointAndRestore: true, shouldExit: false });
-
-          const ready = await readyToCheckpoint("RETRY");
-
-          if (!ready.success) {
-            log.error("Failed to become checkpointable", { reason: ready.reason });
-
-            return;
-          }
-
-          const checkpoint = await this.#checkpointer.checkpointAndPush({
-            runId: socket.data.runId,
-            projectRef: socket.data.projectRef,
-            deploymentVersion: socket.data.deploymentVersion,
-            shouldHeartbeat: true,
-          });
-
-          if (!checkpoint) {
-            log.error("Failed to checkpoint");
-            completeWithoutCheckpoint(false);
-            return;
-          }
-
-          log.addFields({ checkpoint });
-
-          this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-            version: "v1",
-            execution,
-            completion,
-            checkpoint,
-          });
-
-          if (!checkpoint.docker || !willSimulate) {
-            exitRun();
           }
         });
 
@@ -802,15 +826,21 @@ class TaskCoordinator {
 
           log.log("Handling TASK_RUN_FAILED_TO_RUN");
 
-          // Cancel all in-progress checkpoints (if any)
-          this.#cancelCheckpoint(socket.data.runId);
+          try {
+            // Cancel all in-progress checkpoints (if any)
+            this.#cancelCheckpoint(socket.data.runId);
 
-          this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
-            version: "v1",
-            completion,
-          });
+            this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
+              version: "v1",
+              completion,
+            });
 
-          exitRun();
+            exitRun();
+          } catch (error) {
+            log.error("TASK_RUN_FAILED_TO_RUN error", { error });
+
+            return;
+          }
         });
 
         // MARK: CHECKPOINT
@@ -823,14 +853,20 @@ class TaskCoordinator {
 
           log.log("Handling READY_FOR_CHECKPOINT");
 
-          const checkpointable = this.#checkpointableTasks.get(socket.data.runId);
+          try {
+            const checkpointable = this.#checkpointableTasks.get(socket.data.runId);
 
-          if (!checkpointable) {
-            log.error("No checkpoint scheduled");
+            if (!checkpointable) {
+              log.error("No checkpoint scheduled");
+              return;
+            }
+
+            checkpointable.resolve();
+          } catch (error) {
+            log.error("READY_FOR_CHECKPOINT error", { error });
+
             return;
           }
-
-          checkpointable.resolve();
         });
 
         // MARK: CXX CHECKPOINT
@@ -843,15 +879,19 @@ class TaskCoordinator {
 
           log.log("Handling CANCEL_CHECKPOINT");
 
-          if (message.version === "v1") {
-            this.#cancelCheckpoint(socket.data.runId);
-            // v1 has no callback
-            return;
+          try {
+            if (message.version === "v1") {
+              this.#cancelCheckpoint(socket.data.runId);
+              // v1 has no callback
+              return;
+            }
+
+            const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId);
+
+            callback({ version: "v2", checkpointCanceled });
+          } catch (error) {
+            log.error("CANCEL_CHECKPOINT error", { error });
           }
-
-          const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId);
-
-          callback({ version: "v2", checkpointCanceled });
         });
 
         // MARK: DURATION WAIT
@@ -864,66 +904,78 @@ class TaskCoordinator {
 
           log.log("Handling WAIT_FOR_DURATION");
 
-          await chaosMonkey.call({ throwErrors: false });
+          try {
+            await chaosMonkey.call({ throwErrors: false });
 
-          if (checkpointInProgress()) {
-            log.error("Checkpoint already in progress");
-            callback({ willCheckpointAndRestore: false });
+            if (checkpointInProgress()) {
+              log.error("Checkpoint already in progress");
+              callback({ willCheckpointAndRestore: false });
+              return;
+            }
+
+            const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
+
+            const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+            callback({ willCheckpointAndRestore });
+
+            if (!willCheckpointAndRestore) {
+              return;
+            }
+
+            const ready = await readyToCheckpoint("WAIT_FOR_DURATION");
+
+            if (!ready.success) {
+              log.error("Failed to become checkpointable", { reason: ready.reason });
+              return;
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: socket.data.runId,
+              projectRef: socket.data.projectRef,
+              deploymentVersion: socket.data.deploymentVersion,
+              attemptNumber: getAttemptNumber(),
+            });
+
+            if (!checkpoint) {
+              // The task container will keep running until the wait duration has elapsed
+              log.error("Failed to checkpoint");
+              return;
+            }
+
+            log.addFields({ checkpoint });
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId: socket.data.runId,
+              attemptFriendlyId: message.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "WAIT_FOR_DURATION",
+                ms: message.ms,
+                now: message.now,
+              },
+            });
+
+            if (ack?.keepRunAlive) {
+              log.log("keeping run alive after duration checkpoint");
+              return;
+            }
+
+            if (!checkpoint.docker || !willSimulate) {
+              exitRun();
+            }
+          } catch (error) {
+            log.error("WAIT_FOR_DURATION error", { error });
+
+            await crashRun({
+              name: "WaitForDurationError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
             return;
-          }
-
-          const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
-
-          const willCheckpointAndRestore = canCheckpoint || willSimulate;
-
-          callback({ willCheckpointAndRestore });
-
-          if (!willCheckpointAndRestore) {
-            return;
-          }
-
-          const ready = await readyToCheckpoint("WAIT_FOR_DURATION");
-
-          if (!ready.success) {
-            log.error("Failed to become checkpointable", { reason: ready.reason });
-            return;
-          }
-
-          const checkpoint = await this.#checkpointer.checkpointAndPush({
-            runId: socket.data.runId,
-            projectRef: socket.data.projectRef,
-            deploymentVersion: socket.data.deploymentVersion,
-            attemptNumber: getAttemptNumber(),
-          });
-
-          if (!checkpoint) {
-            // The task container will keep running until the wait duration has elapsed
-            log.error("Failed to checkpoint");
-            return;
-          }
-
-          log.addFields({ checkpoint });
-
-          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
-            version: "v1",
-            runId: socket.data.runId,
-            attemptFriendlyId: message.attemptFriendlyId,
-            docker: checkpoint.docker,
-            location: checkpoint.location,
-            reason: {
-              type: "WAIT_FOR_DURATION",
-              ms: message.ms,
-              now: message.now,
-            },
-          });
-
-          if (ack?.keepRunAlive) {
-            log.log("keeping run alive after duration checkpoint");
-            return;
-          }
-
-          if (!checkpoint.docker || !willSimulate) {
-            exitRun();
           }
         });
 
@@ -937,74 +989,86 @@ class TaskCoordinator {
 
           log.log("Handling WAIT_FOR_TASK");
 
-          await chaosMonkey.call({ throwErrors: false });
+          try {
+            await chaosMonkey.call({ throwErrors: false });
 
-          if (checkpointInProgress()) {
-            log.error("Checkpoint already in progress");
-            callback({ willCheckpointAndRestore: false });
-            return;
-          }
-
-          const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
-
-          const willCheckpointAndRestore = canCheckpoint || willSimulate;
-
-          callback({ willCheckpointAndRestore });
-
-          if (!willCheckpointAndRestore) {
-            return;
-          }
-
-          // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
-          if (message.version === "v2") {
-            const ready = await readyToCheckpoint("WAIT_FOR_TASK");
-
-            if (!ready.success) {
-              log.error("Failed to become checkpointable", { reason: ready.reason });
+            if (checkpointInProgress()) {
+              log.error("Checkpoint already in progress");
+              callback({ willCheckpointAndRestore: false });
               return;
             }
-          }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush({
-            runId: socket.data.runId,
-            projectRef: socket.data.projectRef,
-            deploymentVersion: socket.data.deploymentVersion,
-            attemptNumber: getAttemptNumber(),
-          });
+            const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
 
-          if (!checkpoint) {
-            log.error("Failed to checkpoint");
+            const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+            callback({ willCheckpointAndRestore });
+
+            if (!willCheckpointAndRestore) {
+              return;
+            }
+
+            // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
+            if (message.version === "v2") {
+              const ready = await readyToCheckpoint("WAIT_FOR_TASK");
+
+              if (!ready.success) {
+                log.error("Failed to become checkpointable", { reason: ready.reason });
+                return;
+              }
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: socket.data.runId,
+              projectRef: socket.data.projectRef,
+              deploymentVersion: socket.data.deploymentVersion,
+              attemptNumber: getAttemptNumber(),
+            });
+
+            if (!checkpoint) {
+              log.error("Failed to checkpoint");
+              return;
+            }
+
+            log.addFields({ checkpoint });
+
+            log.log("WAIT_FOR_TASK checkpoint created");
+
+            //setting this means we can only resume from a checkpoint
+            socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+            log.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage");
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId: socket.data.runId,
+              attemptFriendlyId: message.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "WAIT_FOR_TASK",
+                friendlyId: message.friendlyId,
+              },
+            });
+
+            if (ack?.keepRunAlive) {
+              socket.data.requiresCheckpointResumeWithMessage = undefined;
+              log.log("keeping run alive after task checkpoint");
+              return;
+            }
+
+            if (!checkpoint.docker || !willSimulate) {
+              exitRun();
+            }
+          } catch (error) {
+            log.error("WAIT_FOR_TASK error", { error });
+
+            await crashRun({
+              name: "WaitForTaskError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
             return;
-          }
-
-          log.addFields({ checkpoint });
-
-          log.log("WAIT_FOR_TASK checkpoint created");
-
-          //setting this means we can only resume from a checkpoint
-          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
-          log.log("WAIT_FOR_TASK set requiresCheckpointResumeWithMessage");
-
-          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
-            version: "v1",
-            runId: socket.data.runId,
-            attemptFriendlyId: message.attemptFriendlyId,
-            docker: checkpoint.docker,
-            location: checkpoint.location,
-            reason: {
-              type: "WAIT_FOR_TASK",
-              friendlyId: message.friendlyId,
-            },
-          });
-
-          if (ack?.keepRunAlive) {
-            socket.data.requiresCheckpointResumeWithMessage = undefined;
-            log.log("keeping run alive after task checkpoint");
-            return;
-          }
-
-          if (!checkpoint.docker || !willSimulate) {
-            exitRun();
           }
         });
 
@@ -1018,75 +1082,87 @@ class TaskCoordinator {
 
           log.log("Handling WAIT_FOR_BATCH", message);
 
-          await chaosMonkey.call({ throwErrors: false });
+          try {
+            await chaosMonkey.call({ throwErrors: false });
 
-          if (checkpointInProgress()) {
-            log.error("Checkpoint already in progress");
-            callback({ willCheckpointAndRestore: false });
-            return;
-          }
-
-          const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
-
-          const willCheckpointAndRestore = canCheckpoint || willSimulate;
-
-          callback({ willCheckpointAndRestore });
-
-          if (!willCheckpointAndRestore) {
-            return;
-          }
-
-          // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
-          if (message.version === "v2") {
-            const ready = await readyToCheckpoint("WAIT_FOR_BATCH");
-
-            if (!ready.success) {
-              log.error("Failed to become checkpointable", { reason: ready.reason });
+            if (checkpointInProgress()) {
+              log.error("Checkpoint already in progress");
+              callback({ willCheckpointAndRestore: false });
               return;
             }
-          }
 
-          const checkpoint = await this.#checkpointer.checkpointAndPush({
-            runId: socket.data.runId,
-            projectRef: socket.data.projectRef,
-            deploymentVersion: socket.data.deploymentVersion,
-            attemptNumber: getAttemptNumber(),
-          });
+            const { canCheckpoint, willSimulate } = await this.#checkpointer.init();
 
-          if (!checkpoint) {
-            log.error("Failed to checkpoint");
+            const willCheckpointAndRestore = canCheckpoint || willSimulate;
+
+            callback({ willCheckpointAndRestore });
+
+            if (!willCheckpointAndRestore) {
+              return;
+            }
+
+            // Workers with v1 schemas don't signal when they're ready to checkpoint for dependency waits
+            if (message.version === "v2") {
+              const ready = await readyToCheckpoint("WAIT_FOR_BATCH");
+
+              if (!ready.success) {
+                log.error("Failed to become checkpointable", { reason: ready.reason });
+                return;
+              }
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: socket.data.runId,
+              projectRef: socket.data.projectRef,
+              deploymentVersion: socket.data.deploymentVersion,
+              attemptNumber: getAttemptNumber(),
+            });
+
+            if (!checkpoint) {
+              log.error("Failed to checkpoint");
+              return;
+            }
+
+            log.addFields({ checkpoint });
+
+            log.log("WAIT_FOR_BATCH checkpoint created");
+
+            //setting this means we can only resume from a checkpoint
+            socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
+            log.log("WAIT_FOR_BATCH set checkpoint");
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId: socket.data.runId,
+              attemptFriendlyId: message.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "WAIT_FOR_BATCH",
+                batchFriendlyId: message.batchFriendlyId,
+                runFriendlyIds: message.runFriendlyIds,
+              },
+            });
+
+            if (ack?.keepRunAlive) {
+              socket.data.requiresCheckpointResumeWithMessage = undefined;
+              log.log("keeping run alive after batch checkpoint");
+              return;
+            }
+
+            if (!checkpoint.docker || !willSimulate) {
+              exitRun();
+            }
+          } catch (error) {
+            log.error("WAIT_FOR_BATCH error", { error });
+
+            await crashRun({
+              name: "WaitForBatchError",
+              message:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
+
             return;
-          }
-
-          log.addFields({ checkpoint });
-
-          log.log("WAIT_FOR_BATCH checkpoint created");
-
-          //setting this means we can only resume from a checkpoint
-          socket.data.requiresCheckpointResumeWithMessage = `location:${checkpoint.location}-docker:${checkpoint.docker}`;
-          log.log("WAIT_FOR_BATCH set checkpoint");
-
-          const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
-            version: "v1",
-            runId: socket.data.runId,
-            attemptFriendlyId: message.attemptFriendlyId,
-            docker: checkpoint.docker,
-            location: checkpoint.location,
-            reason: {
-              type: "WAIT_FOR_BATCH",
-              batchFriendlyId: message.batchFriendlyId,
-              runFriendlyIds: message.runFriendlyIds,
-            },
-          });
-
-          if (ack?.keepRunAlive) {
-            socket.data.requiresCheckpointResumeWithMessage = undefined;
-            log.log("keeping run alive after batch checkpoint");
-            return;
-          }
-
-          if (!checkpoint.docker || !willSimulate) {
-            exitRun();
           }
         });
 
@@ -1100,24 +1176,29 @@ class TaskCoordinator {
 
           log.log("Handling INDEX_TASKS");
 
-          const workerAck = await this.#platformSocket?.sendWithAck("CREATE_WORKER", {
-            version: "v2",
-            projectRef: socket.data.projectRef,
-            envId: socket.data.envId,
-            deploymentId: message.deploymentId,
-            metadata: {
-              contentHash: socket.data.contentHash,
-              packageVersion: message.packageVersion,
-              tasks: message.tasks,
-            },
-            supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
-          });
+          try {
+            const workerAck = await this.#platformSocket?.sendWithAck("CREATE_WORKER", {
+              version: "v2",
+              projectRef: socket.data.projectRef,
+              envId: socket.data.envId,
+              deploymentId: message.deploymentId,
+              metadata: {
+                contentHash: socket.data.contentHash,
+                packageVersion: message.packageVersion,
+                tasks: message.tasks,
+              },
+              supportsLazyAttempts: message.version !== "v1" && message.supportsLazyAttempts,
+            });
 
-          if (!workerAck) {
-            log.debug("no worker ack while indexing");
+            if (!workerAck) {
+              log.debug("no worker ack while indexing");
+            }
+
+            callback({ success: !!workerAck?.success });
+          } catch (error) {
+            log.error("INDEX_TASKS error", { error });
+            callback({ success: false });
           }
-
-          callback({ success: !!workerAck?.success });
         });
 
         // MARK: INDEX FAILED
@@ -1130,11 +1211,15 @@ class TaskCoordinator {
 
           log.log("Handling INDEXING_FAILED");
 
-          this.#platformSocket?.send("INDEXING_FAILED", {
-            version: "v1",
-            deploymentId: message.deploymentId,
-            error: message.error,
-          });
+          try {
+            this.#platformSocket?.send("INDEXING_FAILED", {
+              version: "v1",
+              deploymentId: message.deploymentId,
+              error: message.error,
+            });
+          } catch (error) {
+            log.error("INDEXING_FAILED error", { error });
+          }
         });
 
         // MARK: CREATE ATTEMPT
@@ -1147,26 +1232,38 @@ class TaskCoordinator {
 
           log.log("Handling CREATE_TASK_RUN_ATTEMPT");
 
-          await chaosMonkey.call({ throwErrors: false });
+          try {
+            await chaosMonkey.call({ throwErrors: false });
 
-          const createAttempt = await this.#platformSocket?.sendWithAck("CREATE_TASK_RUN_ATTEMPT", {
-            runId: message.runId,
-            envId: socket.data.envId,
-          });
+            const createAttempt = await this.#platformSocket?.sendWithAck(
+              "CREATE_TASK_RUN_ATTEMPT",
+              {
+                runId: message.runId,
+                envId: socket.data.envId,
+              }
+            );
 
-          if (!createAttempt?.success) {
-            log.debug("no ack while creating attempt", { reason: createAttempt?.reason });
-            callback({ success: false, reason: createAttempt?.reason });
-            return;
+            if (!createAttempt?.success) {
+              log.debug("no ack while creating attempt", { reason: createAttempt?.reason });
+              callback({ success: false, reason: createAttempt?.reason });
+              return;
+            }
+
+            updateAttemptFriendlyId(createAttempt.executionPayload.execution.attempt.id);
+            updateAttemptNumber(createAttempt.executionPayload.execution.attempt.number);
+
+            callback({
+              success: true,
+              executionPayload: createAttempt.executionPayload,
+            });
+          } catch (error) {
+            log.error("CREATE_TASK_RUN_ATTEMPT error", { error });
+            callback({
+              success: false,
+              reason:
+                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            });
           }
-
-          updateAttemptFriendlyId(createAttempt.executionPayload.execution.attempt.id);
-          updateAttemptNumber(createAttempt.executionPayload.execution.attempt.number);
-
-          callback({
-            success: true,
-            executionPayload: createAttempt.executionPayload,
-          });
         });
 
         socket.on("UNRECOVERABLE_ERROR", async (message) => {
