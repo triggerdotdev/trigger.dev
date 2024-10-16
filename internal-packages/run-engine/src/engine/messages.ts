@@ -3,6 +3,7 @@ import { z } from "zod";
 
 //todo it will need to move into core because the Worker will need to use these
 
+/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
 const ScheduleRunMessage = z.object({
   action: z.literal("SCHEDULE_RUN"),
   // The payload allows us to a discriminated union with the version
