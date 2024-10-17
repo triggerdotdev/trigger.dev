@@ -312,8 +312,22 @@ export class GracefulExitTimeoutError extends Error {
   }
 }
 
+type ErrorLink = {
+  name: string;
+  href: string;
+  magic?: "CONTACT_FORM";
+};
+
+type EnhanceError<T extends TaskRunError | ExceptionEventProperties> = T & { link?: ErrorLink };
+
 const prettyInternalErrors: Partial<
-  Record<TaskRunInternalError["code"], { message: string; link?: { name: string; href: string } }>
+  Record<
+    TaskRunInternalError["code"],
+    {
+      message: string;
+      link?: ErrorLink;
+    }
+  >
 > = {
   TASK_PROCESS_OOM_KILLED: {
     message:
@@ -337,12 +351,9 @@ const prettyInternalErrors: Partial<
     link: {
       name: "Contact us",
       href: links.site.contact,
+      magic: "CONTACT_FORM",
     },
   },
-};
-
-type EnhanceError<T extends TaskRunError | ExceptionEventProperties> = T & {
-  link?: { name: string; href: string };
 };
 
 export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunError> {
