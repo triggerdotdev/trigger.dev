@@ -207,9 +207,10 @@ export class ResumeAttemptService extends BaseService {
 
       completions.push(completion);
 
-      const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt(
-        completedAttempt.id
-      );
+      const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
+        id: completedAttempt.id,
+        skipStatusChecks: true, // already checked when getting the completion
+      });
 
       if (!executionPayload) {
         logger.error("Failed to get execution payload");

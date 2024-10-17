@@ -43,7 +43,12 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
-import { FINAL_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import {
+  FINAL_ATTEMPT_STATUSES,
+  FINAL_RUN_STATUSES,
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+} from "../taskStatus";
 import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
@@ -729,9 +734,9 @@ export class SharedQueueConsumer {
 
           completions.push(completion);
 
-          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id
-          );
+          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt({
+            id: completedAttempt.id,
+          });
 
           if (!executionPayload) {
             await this.#ackAndDoMoreWork(message.messageId);
@@ -968,7 +973,7 @@ class SharedQueueTasks {
       where: {
         id,
         status: {
-          in: ["COMPLETED", "FAILED"],
+          in: FINAL_ATTEMPT_STATUSES,
         },
       },
       include: {
@@ -1014,11 +1019,17 @@ class SharedQueueTasks {
     }
   }
 
-  async getExecutionPayloadFromAttempt(
-    id: string,
-    setToExecuting?: boolean,
-    isRetrying?: boolean
-  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+  async getExecutionPayloadFromAttempt({
+    id,
+    setToExecuting,
+    isRetrying,
+    skipStatusChecks,
+  }: {
+    id: string;
+    setToExecuting?: boolean;
+    isRetrying?: boolean;
+    skipStatusChecks?: boolean;
+  }): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
         id,
@@ -1051,27 +1062,29 @@ class SharedQueueTasks {
       return;
     }
 
-    switch (attempt.status) {
-      case "CANCELED":
-      case "EXECUTING": {
-        logger.error("Invalid attempt status for execution payload retrieval", {
-          attemptId: id,
-          status: attempt.status,
-        });
-        return;
+    if (!skipStatusChecks) {
+      switch (attempt.status) {
+        case "CANCELED":
+        case "EXECUTING": {
+          logger.error("Invalid attempt status for execution payload retrieval", {
+            attemptId: id,
+            status: attempt.status,
+          });
+          return;
+        }
       }
-    }
 
-    switch (attempt.taskRun.status) {
-      case "CANCELED":
-      case "EXECUTING":
-      case "INTERRUPTED": {
-        logger.error("Invalid run status for execution payload retrieval", {
-          attemptId: id,
-          runId: attempt.taskRunId,
-          status: attempt.taskRun.status,
-        });
-        return;
+      switch (attempt.taskRun.status) {
+        case "CANCELED":
+        case "EXECUTING":
+        case "INTERRUPTED": {
+          logger.error("Invalid run status for execution payload retrieval", {
+            attemptId: id,
+            runId: attempt.taskRunId,
+            status: attempt.taskRun.status,
+          });
+          return;
+        }
       }
     }
 
@@ -1222,7 +1235,11 @@ class SharedQueueTasks {
       return;
     }
 
-    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
+    return this.getExecutionPayloadFromAttempt({
+      id: latestAttempt.id,
+      setToExecuting,
+      isRetrying,
+    });
   }
 
   async getLazyAttemptPayload(
