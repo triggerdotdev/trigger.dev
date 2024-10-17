@@ -1889,9 +1889,6 @@ model TaskRunExecutionSnapshot {
 
   attemptNumber Int?
 
-  /// Waitpoints that are blocking the run
-  blockedByWaitpoints Waitpoint[] @relation("blockedByWaitpoints")
-
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
 
@@ -1972,7 +1969,6 @@ model Waitpoint {
   /// The runs this waitpoint is blocking
   blockingTaskRuns TaskRunWaitpoint[]
 
-  blockingExecutionSnapshots  TaskRunExecutionSnapshot[] @relation("blockedByWaitpoints")
   /// When a waitpoint is complete
   completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")
 
