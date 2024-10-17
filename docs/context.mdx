@@ -3,7 +3,13 @@ title: "Context"
 description: "Get the context of a task run."
 ---
 
-Context (`ctx`) is a way to get information about a task. Here's an example:
+Context (`ctx`) is a way to get information about a run. 
+
+<Note>
+The context object does not change whilst your code is executing. This means values like `ctx.run.durationMs` will be fixed at the moment the `run()` function is called.
+</Note>
+
+Here's an example:
 
 ```typescript
 import { task } from "@trigger.dev/sdk/v3";
@@ -22,10 +28,9 @@ export const parentTask = task({
 ## Context properties
 
 <ResponseField name="task" type="object">
-  Information about the task being executed.
-  <Expandable title="properties">
+  <Expandable title="properties" defaultOpen={true}>
     <ResponseField name="exportName" type="string">
-      The export name of the task.
+      The exported function name of the task e.g. `myTask` if you defined it like this: `export const myTask = task(...)`.
     </ResponseField>
     <ResponseField name="id" type="string">
       The ID of the task.
@@ -37,7 +42,6 @@ export const parentTask = task({
 </ResponseField>
 
 <ResponseField name="attempt" type="object">
-  Information about the current execution attempt.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the execution attempt.
@@ -61,7 +65,6 @@ export const parentTask = task({
 </ResponseField>
 
 <ResponseField name="run" type="object">
-  Information about the task run.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the task run.
@@ -70,10 +73,10 @@ export const parentTask = task({
       The context of the task run.
     </ResponseField>
     <ResponseField name="tags" type="array">
-      An array of tags associated with the task run.
+      An array of [tags](/tags) associated with the task run.
     </ResponseField>
     <ResponseField name="isTest" type="boolean">
-      Whether this is a test run.
+      Whether this is a [test run](/run-tests).
     </ResponseField>
     <ResponseField name="createdAt" type="date">
       The creation time of the task run.
@@ -82,31 +85,30 @@ export const parentTask = task({
       The start time of the task run.
     </ResponseField>
     <ResponseField name="idempotencyKey" type="string" optional>
-      An optional idempotency key for the task run.
+      An optional [idempotency key](/idempotency) for the task run.
     </ResponseField>
     <ResponseField name="maxAttempts" type="number" optional>
-      The maximum number of attempts allowed for this task run.
+      The [maximum number of attempts](/triggering#maxattempts) allowed for this task run.
     </ResponseField>
     <ResponseField name="durationMs" type="number">
-      The duration of the task run in milliseconds.
+      The duration of the task run in milliseconds when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="costInCents" type="number">
-      The cost of the task run in cents.
+      The cost of the task run in cents when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="baseCostInCents" type="number">
-      The base cost of the task run in cents.
+      The base cost of the task run in cents when the `run()` function is called. For live values use the [usage SDK functions](/run-usage).
     </ResponseField>
     <ResponseField name="version" type="string" optional>
-      The version of the task run.
+      The [version](/versioning) of the task run.
     </ResponseField>
     <ResponseField name="maxDuration" type="number" optional>
-      The maximum allowed duration for the task run.
+      The [maximum allowed duration](/runs/max-duration) for the task run.
     </ResponseField>
   </Expandable>
 </ResponseField>
 
 <ResponseField name="queue" type="object">
-  Information about the queue the task is running in.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the queue.
@@ -118,7 +120,6 @@ export const parentTask = task({
 </ResponseField>
 
 <ResponseField name="environment" type="object">
-  Information about the execution environment.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the environment.
@@ -133,7 +134,6 @@ export const parentTask = task({
 </ResponseField>
 
 <ResponseField name="organization" type="object">
-  Information about the organization.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the organization.
@@ -148,7 +148,6 @@ export const parentTask = task({
 </ResponseField>
 
 <ResponseField name="project" type="object">
-  Information about the project.
   <Expandable title="properties">
     <ResponseField name="id" type="string">
       The ID of the project.
