@@ -45,3 +45,57 @@ All the dependencies to the `@trigger.dev/*` packages will be both referenced in
   }
 }
 ```
+
+### Creating a New Reference Project
+
+This guide assumes that you have followed the [Contributing.md](https://github.com/triggerdotdev/trigger.dev/blob/main/CONTRIBUTING.md#setup) instructions to set up a local trigger.dev instance. If not, please complete the setup before continuing.
+
+#### Step-by-Step Instructions
+
+1. **Run the webapp on localhost**:
+
+```
+pnpm run dev --filter webapp --filter coordinator --filter docker-provider
+```
+
+2. **Build the CLI in a new terminal window**:
+
+```
+# Build the CLI
+pnpm run build --filter trigger.dev
+
+# Make it accessible to `pnpm exec`
+pnpm i
+```
+
+3. **Set up a new project in the webapp**:
+- Open the webapp running on `localhost:3030`.
+- Create a new project in the webapp UI.
+- Go to the *Project Settings* page and copy the project reference id from there.
+
+4. **Copy the hello-world project as a template**:
+
+```
+cp -r references/hello-world references/<new-project>
+```
+
+Replace `<new-project>` with your desired project name.
+
+5. **Update project details**:
+- Open `<new-project>/package.json` and change the name field.
+*(Tip: Use the same name as in the webapp to avoid confusion.)*
+
+- Open `<new-project>/trigger.config.ts` and update the project field with the project reference you copied from the webapp.
+
+6. **Authorize the CLI for your project**:
+
+```
+pnpm exec trigger login -a http://localhost:3030 --profile local
+```
+
+7. **Run the new project**:
+You can now run your project using the CLI with the following command:
+
+```
+pnpm exec trigger dev --profile local
+```
