@@ -2,23 +2,24 @@ import {
   CoordinatorToPlatformMessages,
   TaskRunExecution,
   TaskRunExecutionResult,
-  WaitReason,
 } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
-import { SharedQueueMessageBody, sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
+import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
 import { TaskRunAttempt } from "@trigger.dev/database";
 import { isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
+  private _logger = logger;
+
   public async call(
     params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "READY_FOR_RESUME">
   ): Promise<void> {
-    logger.debug(`ResumeAttemptService.call()`, params);
+    this._logger.debug(`ResumeAttemptService.call()`, params);
 
     await $transaction(this._prisma, async (tx) => {
       const attempt = await tx.taskRunAttempt.findUnique({
@@ -77,16 +78,18 @@ export class ResumeAttemptService extends BaseService {
       });
 
       if (!attempt) {
-        logger.error("Could not find attempt", { attemptFriendlyId: params.attemptFriendlyId });
+        this._logger.error("Could not find attempt", params);
         return;
       }
 
+      this._logger = logger.child({
+        attemptId: attempt.id,
+        attemptFriendlyId: attempt.friendlyId,
+        taskRun: attempt.taskRun,
+      });
+
       if (isFinalRunStatus(attempt.taskRun.status)) {
-        logger.error("Run is not resumable", {
-          attemptId: attempt.id,
-          runId: attempt.taskRunId,
-          status: attempt.taskRun.status,
-        });
+        this._logger.error("Run is not resumable");
         return;
       }
 
@@ -94,10 +97,7 @@ export class ResumeAttemptService extends BaseService {
 
       switch (params.type) {
         case "WAIT_FOR_DURATION": {
-          logger.debug("Sending duration wait resume message", {
-            attemptId: attempt.id,
-            attemptFriendlyId: params.attemptFriendlyId,
-          });
+          this._logger.debug("Sending duration wait resume message");
 
           await this.#setPostResumeStatuses(attempt, tx);
 
@@ -114,13 +114,13 @@ export class ResumeAttemptService extends BaseService {
             const dependentAttempt = attempt.dependencies[0].taskRun.attempts[0];
 
             if (!dependentAttempt) {
-              logger.error("No dependent attempt", { attemptId: attempt.id });
+              this._logger.error("No dependent attempt");
               return;
             }
 
             completedAttemptIds = [dependentAttempt.id];
           } else {
-            logger.error("No task dependency", { attemptId: attempt.id });
+            this._logger.error("No task dependency");
             return;
           }
 
@@ -134,13 +134,13 @@ export class ResumeAttemptService extends BaseService {
             const dependentBatchItems = attempt.batchDependencies[0].items;
 
             if (!dependentBatchItems) {
-              logger.error("No dependent batch items", { attemptId: attempt.id });
+              this._logger.error("No dependent batch items");
               return;
             }
 
             completedAttemptIds = dependentBatchItems.map((item) => item.taskRun.attempts[0]?.id);
           } else {
-            logger.error("No batch dependency", { attemptId: attempt.id });
+            this._logger.error("No batch dependency");
             return;
           }
 
@@ -161,7 +161,7 @@ export class ResumeAttemptService extends BaseService {
     tx: PrismaClientOrTransaction
   ) {
     if (completedAttemptIds.length === 0) {
-      logger.error("No completed attempt IDs", { attemptId: attempt.id });
+      this._logger.error("No completed attempt IDs");
       return;
     }
 
@@ -184,23 +184,23 @@ export class ResumeAttemptService extends BaseService {
       });
 
       if (!completedAttempt) {
-        logger.error("Completed attempt not found", {
-          attemptId: attempt.id,
-          completedAttemptId,
-        });
+        this._logger.error("Completed attempt not found", { completedAttemptId });
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
+
+      const logger = this._logger.child({
+        completedAttemptId: completedAttempt.id,
+        completedAttemptFriendlyId: completedAttempt.friendlyId,
+        completedRunId: completedAttempt.taskRunId,
+      });
 
       const completion = await sharedQueueTasks.getCompletionPayloadFromAttempt(
         completedAttempt.id
       );
 
       if (!completion) {
-        logger.error("Failed to get completion payload", {
-          attemptId: attempt.id,
-          completedAttemptId,
-        });
+        logger.error("Failed to get completion payload");
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
@@ -212,10 +212,7 @@ export class ResumeAttemptService extends BaseService {
       );
 
       if (!executionPayload) {
-        logger.error("Failed to get execution payload", {
-          attemptId: attempt.id,
-          completedAttemptId,
-        });
+        logger.error("Failed to get execution payload");
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
