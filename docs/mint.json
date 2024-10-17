@@ -310,6 +310,7 @@
         "guides/examples/open-ai-with-retrying",
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",
+        "guides/examples/scrape-hacker-news",
         "guides/examples/sharp-image-processing",
         "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",
