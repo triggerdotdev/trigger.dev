@@ -14,4 +14,25 @@ export default defineConfig({
       randomize: true,
     },
   },
+  build: {
+    extensions: [
+      {
+        name: "npm-token",
+        onBuildComplete: async (context, manifest) => {
+          if (context.target === "dev") {
+            return;
+          }
+
+          context.addLayer({
+            id: "npm-token",
+            build: {
+              env: {
+                NPM_TOKEN: manifest.deploy.env?.NPM_TOKEN,
+              },
+            },
+          });
+        },
+      },
+    ],
+  },
 });

@@ -1,5 +1,5 @@
 import { logger, task, wait, tasks, tags } from "@trigger.dev/sdk/v3";
-import { taskWithRetries } from "./retries";
+import { taskWithRetries } from "./retries.js";
 
 export const simpleParentTask = task({
   id: "simple-parent-task",

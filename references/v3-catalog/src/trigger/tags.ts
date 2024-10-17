@@ -11,7 +11,7 @@ export const triggerRunsWithTags = task({
     logger.info(`${ctx.run.version}`);
 
     const { id } = await simpleChildTask.trigger(
-      { message: "trigger from triggerRunsWithTags" },
+      { message: "trigger from triggerRunsWithTags foobar" },
       { tags: payload.tags }
     );
 
@@ -86,5 +86,9 @@ export const triggerRunsWithTags = task({
       baseCostInCents: run.baseCostInCents,
       durationMs: run.durationMs,
     });
+
+    return {
+      tags: run.tags,
+    };
   },
 });

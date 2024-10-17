@@ -27,6 +27,9 @@
     },
     "sourceDialects": [
       "@triggerdotdev/source"
+    ],
+    "esmDialects": [
+      "browser"
     ]
   },
   "typesVersions": {
@@ -80,6 +83,10 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "import": {
         "@triggerdotdev/source": "./src/index.ts",
         "types": "./dist/esm/index.d.ts",
@@ -91,6 +98,10 @@
       }
     },
     "./v3": {
+      "browser": {
+        "types": "./dist/browser/v3/index.d.ts",
+        "default": "./dist/browser/v3/index.js"
+      },
       "import": {
         "@triggerdotdev/source": "./src/v3/index.ts",
         "types": "./dist/esm/v3/index.d.ts",

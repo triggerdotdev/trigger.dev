@@ -103,6 +103,22 @@ const EnvironmentSchema = z.object({
   API_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(250), // refix 250 tokens every 10 seconds
   API_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
   API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+  API_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
+
+  //Realtime rate limiting
+  /**
+   * @example "60s"
+   * @example "1m"
+   * @example "1h"
+   * @example "1d"
+   * @example "1000ms"
+   * @example "1000s"
+   */
+  REALTIME_RATE_LIMIT_WINDOW: z.string().default("1m"),
+  REALTIME_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+  REALTIME_RATE_LIMIT_REQUEST_LOGS_ENABLED: z.string().default("0"),
+  REALTIME_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
+  REALTIME_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
   //Ingesting event rate limit
   INGEST_EVENT_RATE_LIMIT_WINDOW: z.string().default("60s"),

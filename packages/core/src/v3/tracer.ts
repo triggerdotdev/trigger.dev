@@ -13,7 +13,7 @@ import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 import { clock } from "./clock-api.js";
 import { usage } from "./usage-api.js";
 import { taskContext } from "./task-context-api.js";
-import { recordSpanException } from "./otel/index.js";
+import { recordSpanException } from "./otel/utils.js";
 
 export type TriggerTracerConfig =
   | {

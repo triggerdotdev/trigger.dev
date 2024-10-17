@@ -14,6 +14,7 @@
     "@testcontainers/postgresql": "^10.13.1",
     "@testcontainers/redis": "^10.13.1",
     "testcontainers": "^10.13.1",
+    "tinyexec": "^0.3.0",
     "vitest": "^1.4.0"
   },
   "scripts": {

@@ -1,42 +1,177 @@
+import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
+import { MemoryStore } from "@unkey/cache/stores";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import { env } from "~/env.server";
+import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { logger } from "./logger.server";
-import { Duration, Limiter, RateLimiter, createRedisRateLimitClient } from "./rateLimiter.server";
+import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
+import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+
+const DurationSchema = z.custom<Duration>((value) => {
+  if (typeof value !== "string") {
+    throw new Error("Duration must be a string");
+  }
+
+  return value as Duration;
+});
+
+export const RateLimitFixedWindowConfig = z.object({
+  type: z.literal("fixedWindow"),
+  window: DurationSchema,
+  tokens: z.number(),
+});
+
+export type RateLimitFixedWindowConfig = z.infer<typeof RateLimitFixedWindowConfig>;
+
+export const RateLimitSlidingWindowConfig = z.object({
+  type: z.literal("slidingWindow"),
+  window: DurationSchema,
+  tokens: z.number(),
+});
+
+export type RateLimitSlidingWindowConfig = z.infer<typeof RateLimitSlidingWindowConfig>;
+
+export const RateLimitTokenBucketConfig = z.object({
+  type: z.literal("tokenBucket"),
+  refillRate: z.number(),
+  interval: DurationSchema,
+  maxTokens: z.number(),
+});
+
+export type RateLimitTokenBucketConfig = z.infer<typeof RateLimitTokenBucketConfig>;
+
+export const RateLimiterConfig = z.discriminatedUnion("type", [
+  RateLimitFixedWindowConfig,
+  RateLimitSlidingWindowConfig,
+  RateLimitTokenBucketConfig,
+]);
+
+export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
+
+type LimitConfigOverrideFunction = (authorizationValue: string) => Promise<unknown>;
 
 type Options = {
   redis?: RedisOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
-  limiter: Limiter;
+  defaultLimiter: RateLimiterConfig;
+  limiterConfigOverride?: LimitConfigOverrideFunction;
+  limiterCache?: {
+    fresh: number;
+    stale: number;
+  };
   log?: {
     requests?: boolean;
     rejections?: boolean;
+    limiter?: boolean;
   };
 };
+
+async function resolveLimitConfig(
+  authorizationValue: string,
+  hashedAuthorizationValue: string,
+  defaultLimiter: RateLimiterConfig,
+  cache: UnkeyCache<{ limiter: RateLimiterConfig }>,
+  logsEnabled: boolean,
+  limiterConfigOverride?: LimitConfigOverrideFunction
+): Promise<RateLimiterConfig> {
+  if (!limiterConfigOverride) {
+    return defaultLimiter;
+  }
+
+  if (logsEnabled) {
+    logger.info("RateLimiter: checking for override", {
+      authorizationValue: hashedAuthorizationValue,
+      defaultLimiter,
+    });
+  }
+
+  const cacheResult = await cache.limiter.swr(hashedAuthorizationValue, async (key) => {
+    const override = await limiterConfigOverride(authorizationValue);
+
+    if (!override) {
+      if (logsEnabled) {
+        logger.info("RateLimiter: no override found", {
+          authorizationValue,
+          defaultLimiter,
+        });
+      }
+
+      return defaultLimiter;
+    }
+
+    const parsedOverride = RateLimiterConfig.safeParse(override);
+
+    if (!parsedOverride.success) {
+      logger.error("Error parsing rate limiter override", {
+        override,
+        errors: parsedOverride.error.errors,
+      });
+
+      return defaultLimiter;
+    }
+
+    if (logsEnabled && parsedOverride.data) {
+      logger.info("RateLimiter: override found", {
+        authorizationValue,
+        defaultLimiter,
+        override: parsedOverride.data,
+      });
+    }
+
+    return parsedOverride.data;
+  });
+
+  return cacheResult.val ?? defaultLimiter;
+}
 
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header
 export function authorizationRateLimitMiddleware({
   redis,
   keyPrefix,
-  limiter,
+  defaultLimiter,
   pathMatchers,
   pathWhiteList = [],
   log = {
     rejections: true,
     requests: true,
   },
+  limiterCache,
+  limiterConfigOverride,
 }: Options) {
-  const rateLimiter = new RateLimiter({
-    redis,
-    keyPrefix,
-    limiter,
-    logSuccess: log.requests,
-    logFailure: log.rejections,
+  const ctx = new DefaultStatefulContext();
+  const memory = new MemoryStore({ persistentMap: new Map() });
+  const redisCacheStore = new RedisCacheStore({
+    connection: {
+      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:`,
+      ...redis,
+    },
   });
+
+  // This cache holds the rate limit configuration for each org, so we don't have to fetch it every request
+  const cache = createCache({
+    limiter: new Namespace<RateLimiterConfig>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: limiterCache?.fresh ?? 30_000,
+      stale: limiterCache?.stale ?? 60_000,
+    }),
+  });
+
+  const redisClient = createRedisRateLimitClient(
+    redis ?? {
+      port: env.REDIS_PORT,
+      host: env.REDIS_HOST,
+      username: env.REDIS_USERNAME,
+      password: env.REDIS_PASSWORD,
+      enableAutoPipelining: true,
+      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    }
+  );
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     if (log.requests) {
@@ -102,9 +237,35 @@ export function authorizationRateLimitMiddleware({
     hash.update(authorizationValue);
     const hashedAuthorizationValue = hash.digest("hex");
 
-    const { success, pending, limit, reset, remaining } = await rateLimiter.limit(
-      hashedAuthorizationValue
+    const limiterConfig = await resolveLimitConfig(
+      authorizationValue,
+      hashedAuthorizationValue,
+      defaultLimiter,
+      cache,
+      typeof log.limiter === "boolean" ? log.limiter : false,
+      limiterConfigOverride
     );
+
+    const limiter =
+      limiterConfig.type === "fixedWindow"
+        ? Ratelimit.fixedWindow(limiterConfig.tokens, limiterConfig.window)
+        : limiterConfig.type === "tokenBucket"
+        ? Ratelimit.tokenBucket(
+            limiterConfig.refillRate,
+            limiterConfig.interval,
+            limiterConfig.maxTokens
+          )
+        : Ratelimit.slidingWindow(limiterConfig.tokens, limiterConfig.window);
+
+    const rateLimiter = new RateLimiter({
+      redisClient,
+      keyPrefix,
+      limiter,
+      logSuccess: log.requests,
+      logFailure: log.rejections,
+    });
+
+    const { success, limit, reset, remaining } = await rateLimiter.limit(hashedAuthorizationValue);
 
     const $remaining = Math.max(0, remaining); // remaining can be negative if the user has exceeded the limit, so clamp it to 0
 
@@ -140,11 +301,28 @@ export function authorizationRateLimitMiddleware({
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   keyPrefix: "api",
-  limiter: Ratelimit.tokenBucket(
-    env.API_RATE_LIMIT_REFILL_RATE,
-    env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
-    env.API_RATE_LIMIT_MAX
-  ),
+  defaultLimiter: {
+    type: "tokenBucket",
+    refillRate: env.API_RATE_LIMIT_REFILL_RATE,
+    interval: env.API_RATE_LIMIT_REFILL_INTERVAL as Duration,
+    maxTokens: env.API_RATE_LIMIT_MAX,
+  },
+  limiterCache: {
+    fresh: 60_000 * 10, // Data is fresh for 10 minutes
+    stale: 60_000 * 20, // Date is stale after 20 minutes
+  },
+  limiterConfigOverride: async (authorizationValue) => {
+    // TODO: we need to add an option to "allowJWT" auth and then handle this differently
+    const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
+      allowPublicKey: true,
+    });
+
+    if (!authenticatedEnv) {
+      return;
+    }
+
+    return authenticatedEnv.environment.organization.apiRateLimiterConfig;
+  },
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
@@ -159,11 +337,13 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
     "/api/v1/usage/ingest",
+    "/api/v1/auth/jwt/claims",
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
     requests: env.API_RATE_LIMIT_REQUEST_LOGS_ENABLED === "1",
+    limiter: env.API_RATE_LIMIT_LIMITER_LOGS_ENABLED === "1",
   },
 });
 

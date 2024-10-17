@@ -6,3 +6,19 @@ export function getEnvVar(name: string): string | undefined {
 
   return;
 }
+
+export function getNumberEnvVar(name: string, defaultValue?: number): number | undefined {
+  const value = getEnvVar(name);
+
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+
+  if (isNaN(parsed)) {
+    return defaultValue;
+  }
+
+  return parsed;
+}

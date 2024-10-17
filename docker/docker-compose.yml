@@ -60,10 +60,10 @@ services:
       - 6379:6379
 
   electric:
-    image: electricsql/electric
+    image: electricsql/electric:0.7.5
     restart: always
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
     networks:
       - app_network
     ports:
