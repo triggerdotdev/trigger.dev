@@ -331,6 +331,14 @@ const prettyInternalErrors: Partial<
       href: links.docs.machines.home,
     },
   },
+  TASK_PROCESS_SIGTERM: {
+    message:
+      "Your task exited after receiving SIGTERM but we don't know why. If this keeps happening, please get in touch so we can investigate.",
+    link: {
+      name: "Contact us",
+      href: links.site.contact,
+    },
+  },
 };
 
 type EnhanceError<T extends TaskRunError | ExceptionEventProperties> = T & {
@@ -342,6 +350,14 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
     case "BUILT_IN_ERROR": {
       if (error.name === "UnexpectedExitError") {
         if (error.message.startsWith("Unexpected exit with code -1")) {
+          if (error.message.includes("SIGTERM")) {
+            return {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
+              ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
+            };
+          }
+
           return {
             type: "INTERNAL_ERROR",
             code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
@@ -359,6 +375,14 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
     }
     case "INTERNAL_ERROR": {
       if (error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE) {
+        if (error.message?.includes("SIGTERM")) {
+          return {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
+            ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
+          };
+        }
+
         return {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
@@ -396,7 +420,8 @@ export function exceptionEventEnhancer(
       break;
     }
     case TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED:
-    case TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED: {
+    case TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED:
+    case TaskRunErrorCodes.TASK_PROCESS_SIGTERM: {
       return {
         ...exception,
         ...prettyInternalErrors[exception.type],
@@ -411,16 +436,23 @@ export function internalErrorFromUnexpectedExit(
   error: UnexpectedExitError,
   dockerMode = true
 ): TaskRunInternalError {
+  const internalError = {
+    type: "INTERNAL_ERROR",
+    code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
+    message: `Process exited with code ${error.code} after signal ${error.signal}.`,
+    stackTrace: error.stderr,
+  } satisfies TaskRunInternalError;
+
   if (error.code === 137) {
     if (dockerMode) {
       return {
-        type: "INTERNAL_ERROR",
+        ...internalError,
         code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
       };
     } else {
       // Note: containerState reason and message could be checked to clarify the error, maybe the task monitor should be allowed to override these
       return {
-        type: "INTERNAL_ERROR",
+        ...internalError,
         code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
       };
     }
@@ -428,15 +460,21 @@ export function internalErrorFromUnexpectedExit(
 
   if (error.stderr?.includes("OOMErrorHandler")) {
     return {
-      type: "INTERNAL_ERROR",
+      ...internalError,
       code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
     };
   }
 
+  if (error.signal === "SIGTERM") {
+    return {
+      ...internalError,
+      code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
+    };
+  }
+
   return {
-    type: "INTERNAL_ERROR",
+    ...internalError,
     code: TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE,
-    message: `Process exited with code ${error.code} after signal ${error.signal}.`,
   };
 }
 
