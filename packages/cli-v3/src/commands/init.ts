@@ -229,7 +229,10 @@ async function createTriggerDir(
         throw new OutroCommandError();
       }
 
-      const triggerDir = resolve(process.cwd(), location);
+      // Ensure that the path is always relative by stripping leading '/' if present
+      const relativeLocation = location.replace(/^\//, "");
+
+      const triggerDir = resolve(process.cwd(), relativeLocation);
 
       logger.debug({ triggerDir });
 
