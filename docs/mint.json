@@ -163,7 +163,8 @@
         "runs/max-duration",
         "tags",
         "runs/metadata",
-        "run-usage"
+        "run-usage",
+        "context"
       ]
     },
     {
