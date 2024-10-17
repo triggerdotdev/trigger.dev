@@ -19,6 +19,8 @@ export class AbortTaskRunError extends Error {
 }
 
 export class TaskPayloadParsedError extends Error {
+  public readonly cause: unknown;
+
   constructor(cause: unknown) {
     const causeMessage = cause instanceof Error ? cause.message : String(cause);
 

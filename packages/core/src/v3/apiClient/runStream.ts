@@ -54,14 +54,12 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
   url: string,
   options?: RunShapeStreamOptions
 ): RunSubscription<TRunTypes> {
-  const subscription = new RunSubscription<TRunTypes>(url, options);
-
-  return subscription.init();
+  return new RunSubscription<TRunTypes>(url, options);
 }
 
 export class RunSubscription<TRunTypes extends AnyRunTypes> {
   private abortController: AbortController;
-  private unsubscribeShape: () => void;
+  private unsubscribeShape?: () => void;
   private stream: AsyncIterableStream<RunShape<TRunTypes>>;
   private packetCache = new Map<string, any>();
 
@@ -70,9 +68,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
     private options?: RunShapeStreamOptions
   ) {
     this.abortController = new AbortController();
-  }
 
-  init(): this {
     const source = new ReadableStream<SubscribeRunRawShape>({
       start: async (controller) => {
         this.unsubscribeShape = await zodShapeStream(
@@ -108,8 +104,6 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
         controller.enqueue(run);
       },
     });
-
-    return this;
   }
 
   unsubscribe(): void {

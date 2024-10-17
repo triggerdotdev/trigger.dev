@@ -32,11 +32,13 @@ export class SubtaskUnwrapError extends Error {
 
   constructor(taskId: string, runId: string, subtaskError: unknown) {
     if (subtaskError instanceof Error) {
-      super(`Error in ${taskId}: ${subtaskError.message}`, { cause: subtaskError });
+      super(`Error in ${taskId}: ${subtaskError.message}`);
+      this.cause = subtaskError;
       this.name = "SubtaskUnwrapError";
     } else {
-      super(`Error in ${taskId}`, { cause: subtaskError });
+      super(`Error in ${taskId}`);
       this.name = "SubtaskUnwrapError";
+      this.cause = subtaskError;
     }
 
     this.taskId = taskId;
