@@ -296,9 +296,7 @@ export class RunEngine {
           }
 
           //Make sure lock extension succeeded
-          if (signal.aborted) {
-            throw signal.error;
-          }
+          signal.throwIfAborted();
 
           if (queue) {
             const concurrencyLimit =
@@ -376,9 +374,7 @@ export class RunEngine {
           }
 
           //Make sure lock extension succeeded
-          if (signal.aborted) {
-            throw signal.error;
-          }
+          signal.throwIfAborted();
 
           //enqueue the run if it's not delayed
           if (!taskRun.delayUntil) {
@@ -839,11 +835,11 @@ export class RunEngine {
             filePath: run.lockedBy!.filePath,
             exportName: run.lockedBy!.exportName,
           },
-          //this is for backwards compatibility with the SDK
           attempt: {
-            id: generateFriendlyId("attempt"),
             number: nextAttemptNumber,
             startedAt: latestSnapshot.updatedAt,
+            //todo deprecate everything below
+            id: generateFriendlyId("attempt"),
             backgroundWorkerId: run.lockedBy!.worker.id,
             backgroundWorkerTaskId: run.lockedBy!.id,
             status: "EXECUTING" as const,
@@ -865,8 +861,6 @@ export class RunEngine {
             version: run.lockedBy!.worker.version,
             metadata,
             maxDuration: run.maxDurationInSeconds ?? undefined,
-            //todo add this, it needs to be added to all the SDK functions
-            // attemptNumber: nextAttemptNumber,
           },
           queue: {
             id: queue.friendlyId,
@@ -1087,7 +1081,6 @@ export class RunEngine {
   ) {
     //todo it would be better if we didn't remove from the queue, because this removes the payload
     //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
-
     //todo release concurrency and make sure the run isn't in the queue
     // await this.runQueue.blockMessage(orgId, runId);
 
@@ -1100,6 +1093,8 @@ export class RunEngine {
         projectId: waitpoint.projectId,
       },
     });
+
+    //todo we need to update the relevant snapshot as well
   }
 
   /** This completes a waitpoint and then continues any runs blocked by the waitpoint,
@@ -1162,6 +1157,7 @@ export class RunEngine {
         });
 
         //todo update the execution snapshot
+        //todo this needs to be done inside the transaction
 
         // 5. Continue the runs that have no more waitpoints
         for (const run of taskRunsToResume) {
