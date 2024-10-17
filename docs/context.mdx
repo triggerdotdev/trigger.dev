@@ -9,9 +9,9 @@ Context (`ctx`) is a way to get information about a run.
 The context object does not change whilst your code is executing. This means values like `ctx.run.durationMs` will be fixed at the moment the `run()` function is called.
 </Note>
 
-Here's an example:
+<RequestExample>
 
-```typescript
+```typescript Context example
 import { task } from "@trigger.dev/sdk/v3";
 
 export const parentTask = task({
@@ -24,6 +24,8 @@ export const parentTask = task({
   },
 });
 ```
+
+</RequestExample>
 
 ## Context properties
 
