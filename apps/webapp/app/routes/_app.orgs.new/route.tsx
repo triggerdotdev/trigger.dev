@@ -23,7 +23,7 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
 import { sendToPlain } from "~/utils/plain.server";
 
@@ -34,9 +34,9 @@ const schema = z.object({
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
+  const userId = await requireUserId(request);
   const presenter = new NewOrganizationPresenter();
-  const { hasOrganizations } = await presenter.call({ userId: user.id });
+  const { hasOrganizations } = await presenter.call({ userId: userId });
 
   return typedjson({
     hasOrganizations,
