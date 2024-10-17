@@ -35,7 +35,16 @@ export class CreateCheckpointService extends BaseService {
         friendlyId: params.attemptFriendlyId,
       },
       include: {
-        taskRun: true,
+        taskRun: {
+          include: {
+            childRuns: {
+              orderBy: {
+                createdAt: "asc",
+              },
+              take: 1,
+            },
+          },
+        },
         backgroundWorker: {
           select: {
             id: true,
@@ -93,6 +102,45 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    const { reason } = params;
+
+    switch (reason.type) {
+      case "WAIT_FOR_TASK": {
+        const lastChildRun = attempt.taskRun.childRuns[0];
+
+        if (!lastChildRun) {
+          logger.warn("CreateCheckpointService: No child runs, creating checkpoint regardless", {
+            attemptId: attempt.id,
+            runId: attempt.taskRunId,
+            params,
+          });
+
+          break;
+        }
+
+        if (lastChildRun.friendlyId !== reason.friendlyId) {
+          logger.error("CreateCheckpointService: Checkpoint not for most recent child run", {
+            attemptId: attempt.id,
+            runId: attempt.taskRunId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+
     //sleep to test slow checkpoints
     // await new Promise((resolve) => setTimeout(resolve, 60_000));
 
@@ -127,8 +175,6 @@ export class CreateCheckpointService extends BaseService {
         },
       },
     });
-
-    const { reason } = params;
 
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 
