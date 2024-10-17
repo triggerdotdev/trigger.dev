@@ -33,7 +33,7 @@ const feedbackType = z.union(
 export const schema = z.object({
   path: z.string(),
   feedbackType,
-  message: z.string().min(1, "Must be at least 1 character"),
+  message: z.string().min(10, "Must be at least 10 characters"),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -46,52 +46,8 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(submission);
   }
 
+  const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
   try {
-    if (!env.PLAIN_API_KEY) {
-      console.error("PLAIN_API_KEY is not set");
-      submission.error.message = "PLAIN_API_KEY is not set";
-      return json(submission);
-    }
-
-    client = new PlainClient({
-      apiKey: env.PLAIN_API_KEY,
-    });
-
-    const upsertCustomerRes = await client.upsertCustomer({
-      identifier: {
-        emailAddress: user.email,
-      },
-      onCreate: {
-        externalId: user.id,
-        fullName: user.name ?? "",
-        email: {
-          email: user.email,
-          isVerified: true,
-        },
-      },
-      onUpdate: {
-        externalId: { value: user.id },
-        fullName: { value: user.name ?? "" },
-        email: {
-          email: user.email,
-          isVerified: true,
-        },
-      },
-    });
-
-    if (upsertCustomerRes.error) {
-      console.error(
-        inspect(upsertCustomerRes.error, {
-          showHidden: false,
-          depth: null,
-          colors: true,
-        })
-      );
-      submission.error.message = upsertCustomerRes.error.message;
-      return json(submission);
-    }
-
-    const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
     await sendToPlain({
       userId: user.id,
       email: user.email,
@@ -128,6 +84,7 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    return json(e, { status: 400 });
+    submission.error.message = e instanceof Error ? e.message : "Unknown error";
+    return json(submission);
   }
 }
