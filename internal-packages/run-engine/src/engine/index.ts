@@ -148,7 +148,7 @@ export class RunEngine {
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         waitpointCompleteDateTime: async ({ payload }) => {
-          await this.completeWaitpoint(payload.waitpointId);
+          await this.completeWaitpoint({ id: payload.waitpointId });
         },
         heartbeatSnapshot: async ({ payload }) => {
           await this.#handleStalledSnapshot(payload);
@@ -907,9 +907,18 @@ export class RunEngine {
 
   async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 
-  /** This completes a waitpoint and then continues any runs blocked by the waitpoint,
+  /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
-  async completeWaitpoint(id: string) {
+  async completeWaitpoint({
+    id,
+    output,
+  }: {
+    id: string;
+    output?: {
+      value: string;
+      type?: string;
+    };
+  }) {
     const waitpoint = await this.prisma.waitpoint.findUnique({
       where: { id },
     });
@@ -943,15 +952,38 @@ export class RunEngine {
         // 3. Update the waitpoint status
         await tx.waitpoint.update({
           where: { id },
-          data: { status: "COMPLETED" },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            output: output?.value,
+            outputType: output?.type,
+          },
         });
 
-        // 4. Check which of the affected TaskRuns now have no waitpoints
+        // 4. Add the completed snapshots to the snapshots
+        for (const run of affectedTaskRuns) {
+          await this.runLock.lock([run.taskRunId], 5_000, async (signal) => {
+            const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, run.taskRunId);
+            if (!latestSnapshot) {
+              throw new Error(`No execution snapshot found for TaskRun ${run.taskRunId}`);
+            }
+
+            await tx.taskRunExecutionSnapshot.update({
+              where: { id: latestSnapshot.id },
+              data: {
+                completedWaitpoints: {
+                  connect: { id },
+                },
+              },
+            });
+          });
+        }
+
+        // 5. Check which of the affected TaskRuns now have no waitpoints
         const taskRunsToResume = await tx.taskRun.findMany({
           where: {
             id: { in: affectedTaskRuns.map((run) => run.taskRunId) },
             blockedByWaitpoints: { none: {} },
-            status: { in: ["PENDING", "WAITING_TO_RESUME"] },
           },
           include: {
             runtimeEnvironment: {
@@ -965,9 +997,6 @@ export class RunEngine {
             },
           },
         });
-
-        //todo update the execution snapshot
-        //todo this needs to be done inside the transaction
 
         // 5. Continue the runs that have no more waitpoints
         for (const run of taskRunsToResume) {
@@ -1058,6 +1087,11 @@ export class RunEngine {
         throw new Error(`RunEngine.#continueRun(): No snapshot found for run: ${run.id}`);
       }
 
+      const completedWaitpoints = await this.#getExecutionSnapshotCompletedWaitpoints(
+        prisma,
+        snapshot.id
+      );
+
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
@@ -1147,25 +1181,56 @@ export class RunEngine {
     tx: PrismaClientOrTransaction,
     { orgId, runId, waitpoint }: { orgId: string; runId: string; waitpoint: Waitpoint }
   ) {
-    //todo it would be better if we didn't remove from the queue, because this removes the payload
-    //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
-    //todo release concurrency and make sure the run isn't in the queue
-    // await this.runQueue.blockMessage(orgId, runId);
+    await this.runLock.lock([runId], 5000, async (signal) => {
+      //todo it would be better if we didn't remove from the queue, because this removes the payload
+      //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
+      //todo release concurrency and make sure the run isn't in the queue
+      // await this.runQueue.blockMessage(orgId, runId);
 
-    const taskWaitpoint = tx.taskRunWaitpoint.create({
-      data: {
-        taskRunId: runId,
-        waitpointId: waitpoint.id,
-        projectId: waitpoint.projectId,
-      },
+      const taskWaitpoint = tx.taskRunWaitpoint.create({
+        data: {
+          taskRunId: runId,
+          waitpointId: waitpoint.id,
+          projectId: waitpoint.projectId,
+        },
+      });
+
+      const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, runId);
+
+      if (latestSnapshot) {
+        //if the run is QUEUE or EXECUTING, we create a new snapshot
+        let newStatus: TaskRunExecutionStatus | undefined = undefined;
+        switch (latestSnapshot.executionStatus) {
+          case "QUEUED": {
+            newStatus = "QUEUED_WITH_WAITPOINTS";
+          }
+          case "EXECUTING": {
+            newStatus = "EXECUTING_WITH_WAITPOINTS";
+          }
+        }
+
+        if (newStatus) {
+          await this.#createExecutionSnapshot(tx, {
+            run: {
+              id: latestSnapshot.runId,
+              status: latestSnapshot.runStatus,
+              attemptNumber: latestSnapshot.attemptNumber,
+            },
+            snapshot: {
+              executionStatus: newStatus,
+              description: "Run was blocked by a waitpoint.",
+            },
+          });
+        }
+      }
+
+      //this run is now blocked, so we change the state
+
+      //todo we need to update the relevant snapshot as well
     });
-
-    //this run is now blocked, so we change the state
-
-    //todo we need to update the relevant snapshot as well
   }
 
-  //MARK: - TaskRunExecutionSnapshots
+  //#region TaskRunExecutionSnapshots
   async #createExecutionSnapshot(
     prisma: PrismaClientOrTransaction,
     {
@@ -1247,7 +1312,34 @@ export class RunEngine {
     });
   }
 
-  //MARK: - Heartbeat
+  async #getExecutionSnapshotCompletedWaitpoints(
+    prisma: PrismaClientOrTransaction,
+    snapshotId: string
+  ) {
+    const waitpoints = await prisma.taskRunExecutionSnapshot.findFirst({
+      where: { id: snapshotId },
+      include: {
+        completedWaitpoints: true,
+      },
+    });
+
+    //deduplicate waitpoints
+    const waitpointIds = new Set<string>();
+    return (
+      waitpoints?.completedWaitpoints.filter((waitpoint) => {
+        if (waitpointIds.has(waitpoint.id)) {
+          return false;
+        } else {
+          waitpointIds.add(waitpoint.id);
+          return true;
+        }
+      }) ?? []
+    );
+  }
+
+  //#endregion
+
+  //#region Heartbeat
   async #startHeartbeating({
     runId,
     snapshotId,
@@ -1369,6 +1461,8 @@ export class RunEngine {
     }
   }
 
+  //#endregion
+
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
     const prisma = tx ?? this.prisma;
     const taskRun = await prisma.taskRun.findUnique({
@@ -1433,27 +1527,10 @@ export class ServiceValidationError extends Error {
   }
 }
 
+//todo temporary during development
 class NotImplementedError extends Error {
   constructor(message: string) {
+    console.error("NOT IMPLEMENTED YET", { message });
     super(message);
   }
 }
-
-/*
-Starting execution flow:
-
-1. Run id is pulled from a queue
-2. Prepare the run for an attempt (returns data to send to the worker)
-  a. The run is marked as "waiting to start"?
-  b. Create a TaskRunState with the run id, and the state "waiting to start".
-  c. Start a heartbeat with the TaskRunState id, in case it never starts.
-3. The run is sent to the worker
-4. When the worker has received the run, it ask the platform for an attempt
-5. The attempt is created
-  a. The attempt is created
-  b. The TaskRunState is updated to "EXECUTING"
-  c. Start a heartbeat with the TaskRunState id.
-  c. The TaskRun is updated to "EXECUTING"
-6. A response is sent back to the worker with the attempt data
-7. The code executes...
-*/
