@@ -112,4 +112,24 @@ export class RestoreCheckpointService extends BaseService {
 
     return checkpoint;
   }
+
+  async getLastCheckpointEventIfUnrestored(runId: string) {
+    const event = await this._prisma.checkpointRestoreEvent.findFirst({
+      where: {
+        runId,
+      },
+      take: 1,
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!event) {
+      return;
+    }
+
+    if (event.type === "CHECKPOINT") {
+      return event;
+    }
+  }
 }

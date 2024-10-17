@@ -43,7 +43,7 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { FINAL_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
@@ -620,6 +620,9 @@ export class SharedQueueConsumer {
         const resumableRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
+            status: {
+              notIn: FINAL_RUN_STATUSES,
+            },
           },
         });
 
@@ -631,6 +634,14 @@ export class SharedQueueConsumer {
 
           await this.#ackAndDoMoreWork(message.messageId);
           return;
+        }
+
+        if (resumableRun.status !== "EXECUTING") {
+          logger.warn("Run is not executing, will try to resume anyway", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            runStatus: resumableRun.status,
+          });
         }
 
         const resumableAttempt = await prisma.taskRunAttempt.findUnique({
@@ -740,7 +751,11 @@ export class SharedQueueConsumer {
             executions,
           };
 
-          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", { resumeMessage, message });
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", {
+            resumeMessage,
+            message,
+            resumableRun,
+          });
 
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
           const responses = await socketIo.coordinatorNamespace
@@ -763,15 +778,72 @@ export class SharedQueueConsumer {
           }
 
           const hasSuccess = responses.some((response) => response.success);
-          if (!hasSuccess) {
-            logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
-              resumeMessage,
-              responses,
-              message,
-            });
-            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+
+          if (hasSuccess) {
+            this.#doMoreWork();
             return;
           }
+
+          // No coordinator was able to resume the run
+          logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+            resumeMessage,
+            responses,
+            message,
+          });
+
+          // Let's check if the run is frozen
+          if (resumableRun.status === "WAITING_TO_RESUME") {
+            logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK run is waiting to be restored", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+            });
+
+            try {
+              const restoreService = new RestoreCheckpointService();
+
+              const checkpointEvent = await restoreService.getLastCheckpointEventIfUnrestored(
+                resumableRun.id
+              );
+
+              if (checkpointEvent) {
+                // The last checkpoint hasn't been restored yet, so restore it
+                const checkpoint = await restoreService.call({
+                  eventId: checkpointEvent.id,
+                });
+
+                if (!checkpoint) {
+                  logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK failed to restore checkpoint", {
+                    queueMessage: message.data,
+                    messageId: message.messageId,
+                  });
+
+                  await this.#ackAndDoMoreWork(message.messageId);
+                  return;
+                }
+
+                this.#doMoreWork();
+                return;
+              }
+            } catch (e) {
+              if (e instanceof Error) {
+                this._currentSpan?.recordException(e);
+              } else {
+                this._currentSpan?.recordException(new Error(String(e)));
+              }
+
+              this._endSpanInNextIteration = true;
+
+              await this.#nackAndDoMoreWork(
+                message.messageId,
+                this._options.nextTickInterval,
+                5_000
+              );
+              return;
+            }
+          }
+
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+          return;
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
