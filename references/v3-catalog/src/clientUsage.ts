@@ -12,12 +12,12 @@ async function main() {
     }
   );
 
-  const jwt = await auth.createPublicToken({ permissions: { read: { tags: "user:1234" } } });
+  const jwt = await auth.createPublicToken({ scopes: { read: { tags: "user:1234" } } });
 
   console.log("Generated JWT:", jwt);
 
   await auth.withAuth({ accessToken: jwt }, async () => {
-    const subscription = runs.subscribeToTag<typeof task1 | typeof task2>("user:1234");
+    const subscription = runs.subscribeToRunsWithTag<typeof task1 | typeof task2>("user:1234");
 
     for await (const run of subscription) {
       switch (run.taskIdentifier) {

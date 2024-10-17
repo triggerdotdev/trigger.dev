@@ -10,23 +10,16 @@ export async function longPollingFetch(url: string, options?: RequestInit) {
   try {
     let response = await fetch(url, options);
 
-    // Check if the response is ok (status in the range 200-299)
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`HTTP error! status: ${response.status}. ${body}`);
-    }
-
-    if (response.headers.get(`content-encoding`)) {
+    if (response.headers.get("content-encoding")) {
       const headers = new Headers(response.headers);
-      headers.delete(`content-encoding`);
-      headers.delete(`content-length`);
+      headers.delete("content-encoding");
+      headers.delete("content-length");
       response = new Response(response.body, {
+        headers,
         status: response.status,
         statusText: response.statusText,
-        headers,
       });
     }
-
     return response;
   } catch (error) {
     if (error instanceof TypeError) {

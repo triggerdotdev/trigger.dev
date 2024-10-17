@@ -11,8 +11,10 @@ export async function triggerExampleTask() {
     id: randomUUID(),
   });
 
+  console.log("Setting the run JWT in a cookie", handle.publicAccessToken);
+
   // Set JWT in a secure, HTTP-only cookie
-  cookies().set("run_jwt", handle.jwt);
+  cookies().set("run_jwt", handle.publicAccessToken);
 
   // Redirect to the details page
   redirect(`/runs/${handle.id}`);

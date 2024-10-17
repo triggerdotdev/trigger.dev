@@ -342,7 +342,10 @@ export type BrandedRun<T, P, O> = T & BrandRun<O, P>;
 export type RunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     id: string;
-    jwt: string;
+    /**
+     * An auto-generated JWT that can be used to access the run
+     */
+    publicAccessToken: string;
     taskIdentifier: TTaskIdentifier;
   },
   TPayload,
@@ -358,7 +361,7 @@ export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = 
   {
     batchId: string;
     runs: Array<RunHandle<TTaskIdentifier, TPayload, TOutput>>;
-    jwt: string;
+    publicAccessToken: string;
     taskIdentifier: TTaskIdentifier;
   },
   TOutput,

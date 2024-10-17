@@ -30,7 +30,7 @@ import {
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
-import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
+import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
 import type {
@@ -43,6 +43,7 @@ import type {
   BatchRunHandleFromTypes,
   InferRunTypes,
   inferSchemaIn,
+  RetrieveRunResult,
   RunHandle,
   RunHandleFromTypes,
   RunHandleOutput,
@@ -453,7 +454,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions & PollOptions,
   requestOptions?: TriggerApiRequestOptions
-): Promise<RetrieveRunResult<InferRunTypes<TTask>>> {
+): Promise<RetrieveRunResult<TTask>> {
   const handle = await trigger(id, payload, options, requestOptions);
 
   return runs.poll(handle, options, requestOptions);
@@ -589,7 +590,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   const handle = {
     batchId: response.batchId,
     runs: response.runs.map((id) => ({ id })),
-    jwt: response.jwt,
+    publicAccessToken: response.publicAccessToken,
   };
 
   return handle as BatchRunHandleFromTypes<TRunTypes>;

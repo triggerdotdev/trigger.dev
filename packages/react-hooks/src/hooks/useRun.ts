@@ -1,44 +1,49 @@
 "use client";
 
-import { AnyTask, InferRunTypes, TaskRunShape } from "@trigger.dev/core/v3";
-import { useEffect, useState } from "react";
+import { AnyTask, RetrieveRunResult } from "@trigger.dev/core/v3";
+import { CommonTriggerHookOptions, useSWR } from "../utils/trigger-swr.js";
 import { useApiClient } from "./useApiClient.js";
 
 /**
- * hook to subscribe to and manage the state of a task run.
+ * Custom hook to retrieve and manage the state of a run by its ID.
  *
- * @template TTask - The type of the task.
- * @param {string} runId - The unique identifier of the run to subscribe to.
- * @returns {{ run: TaskRunShape<TTask> | undefined, error: Error | null }} An object containing the current state of the run and any error encountered.
- *
- * @example
- * ```ts
- * import type { myTask } from './path/to/task';
- * const { run, error } = useRun<typeof myTask>('run-id-123');
- * ```
+ * @template TTask - The type of the task associated with the run.
+ * @param {string} runId - The unique identifier of the run to retrieve.
+ * @param {CommonTriggerHookOptions} [options] - Optional configuration for the hook's behavior.
+ * @returns {Object} An object containing the run data, error, loading state, validation state, and error state.
+ * @returns {RetrieveRunResult<TTask> | undefined} run - The retrieved run data.
+ * @returns {Error | undefined} error - The error object if an error occurred.
+ * @returns {boolean} isLoading - Indicates if the run data is currently being loaded.
+ * @returns {boolean} isValidating - Indicates if the run data is currently being validated.
+ * @returns {boolean} isError - Indicates if an error occurred during the retrieval of the run data.
  */
-export function useRun<TTask extends AnyTask>(runId: string) {
-  const [runShape, setRunShape] = useState<TaskRunShape<TTask> | undefined>(undefined);
-  const [error, setError] = useState<Error | null>(null);
+export function useRun<TTask extends AnyTask>(
+  runId: string,
+  options?: CommonTriggerHookOptions
+): {
+  run: RetrieveRunResult<TTask> | undefined;
+  error: Error | undefined;
+  isLoading: boolean;
+  isValidating: boolean;
+  isError: boolean;
+} {
   const apiClient = useApiClient();
+  const {
+    data: run,
+    error,
+    isLoading,
+    isValidating,
+  } = useSWR<RetrieveRunResult<TTask>>(runId, () => apiClient.retrieveRun(runId), {
+    revalidateOnReconnect: options?.revalidateOnReconnect,
+    refreshInterval: (run) => {
+      if (!run) return options?.refreshInterval ?? 0;
 
-  useEffect(() => {
-    const subscription = apiClient.subscribeToRunChanges<InferRunTypes<TTask>>(runId);
+      if (run.isCompleted) return 0;
 
-    async function iterateUpdates() {
-      for await (const run of subscription) {
-        setRunShape(run);
-      }
-    }
+      return options?.refreshInterval ?? 0;
+    },
+    revalidateOnFocus: options?.revalidateOnFocus,
+  });
 
-    iterateUpdates().catch((err) => {
-      setError(err);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [runId]);
-
-  return { run: runShape, error };
+  return { run, error, isLoading, isValidating, isError: !!error };
 }

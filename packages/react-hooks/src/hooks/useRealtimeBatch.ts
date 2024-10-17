@@ -10,7 +10,7 @@ export function useBatch<TTask extends AnyTask>(batchId: string) {
   const apiClient = useApiClient();
 
   useEffect(() => {
-    const subscription = apiClient.subscribeToBatchChanges<InferRunTypes<TTask>>(batchId);
+    const subscription = apiClient.subscribeToBatch<InferRunTypes<TTask>>(batchId);
 
     async function iterateUpdates() {
       for await (const run of subscription) {

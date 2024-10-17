@@ -37,7 +37,8 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:3.0.11"
+    "@trigger.dev/core": "workspace:3.0.11",
+    "swr": "^2.2.5"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
