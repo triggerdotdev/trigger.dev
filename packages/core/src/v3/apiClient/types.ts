@@ -36,3 +36,10 @@ export interface ListRunsQueryParams extends CursorPageParams {
 export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {
   env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
 }
+
+export interface SubscribeToRunsQueryParams {
+  tasks?: Array<string> | string;
+  tags?: Array<string> | string;
+  from?: Date | number;
+  to?: Date | number;
+}

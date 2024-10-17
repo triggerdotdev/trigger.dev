@@ -61,18 +61,18 @@ describe("RealtimeClient", () => {
         },
       });
 
-      const initialResponsePromise = client.streamRunsWhere(
+      const initialResponsePromise = client.streamRun(
         "http://localhost:3000?offset=-1",
         environment,
-        `"id"='${run.id}'`
+        run.id
       );
 
       const initializeResponsePromise2 = new Promise<Response>((resolve) => {
         setTimeout(async () => {
-          const response = await client.streamRunsWhere(
+          const response = await client.streamRun(
             "http://localhost:3000?offset=-1",
             environment,
-            `"id"='${run.id}'`
+            run.id
           );
 
           resolve(response);
@@ -95,18 +95,18 @@ describe("RealtimeClient", () => {
       expect(chunkOffset).toBe("0_0");
 
       // Okay, now we will do two live requests, and the second one should fail because of the concurrency limit
-      const liveResponsePromise = client.streamRunsWhere(
+      const liveResponsePromise = client.streamRun(
         `http://localhost:3000?offset=0_0&live=true&shape_id=${shapeId}`,
         environment,
-        `"id"='${run.id}'`
+        run.id
       );
 
       const liveResponsePromise2 = new Promise<Response>((resolve) => {
         setTimeout(async () => {
-          const response = await client.streamRunsWhere(
+          const response = await client.streamRun(
             `http://localhost:3000?offset=0_0&live=true&shape_id=${shapeId}`,
             environment,
-            `"id"='${run.id}'`
+            run.id
           );
 
           resolve(response);
@@ -194,13 +194,9 @@ describe("RealtimeClient", () => {
         },
       });
 
-      const response = await client.streamRunsWhere(
-        "http://localhost:3000?offset=-1",
-        environment,
-        `"runTags" @> ARRAY['test:tag:1234']`
-      );
-
-      const responseBody = await response.json();
+      const response = await client.streamRuns("http://localhost:3000?offset=-1", environment, {
+        tags: ["test:tag:1234"],
+      });
 
       const headers = Object.fromEntries(response.headers.entries());
 

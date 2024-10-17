@@ -232,7 +232,7 @@ function apiStatusFromRunStatus(status: string): RunStatus {
       return "EXPIRED";
     }
     default: {
-      return "UNKNOWN";
+      throw new Error(`Unknown status: ${status}`);
     }
   }
 }

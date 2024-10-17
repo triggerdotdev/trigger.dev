@@ -1,3 +1,7 @@
+import { RetrieveRunResponse } from "../schemas/api.js";
+import { AnyRunTypes, InferRunTypes } from "./tasks.js";
+import { Prettify } from "./utils.js";
+
 export * from "./utils.js";
 export * from "./tasks.js";
 export * from "./idempotencyKeys.js";
@@ -22,3 +26,12 @@ export type ResolveEnvironmentVariablesParams = {
 export type ResolveEnvironmentVariablesFunction = (
   params: ResolveEnvironmentVariablesParams
 ) => ResolveEnvironmentVariablesResult;
+
+export type RetrieveRunResult<T> = Prettify<
+  Omit<RetrieveRunResponse, "output" | "payload"> & {
+    output?: InferRunTypes<T>["output"];
+    payload?: InferRunTypes<T>["payload"];
+  }
+>;
+
+export type AnyRetrieveRunResult = RetrieveRunResult<any>;

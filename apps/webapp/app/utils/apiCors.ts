@@ -10,11 +10,15 @@ type CorsOptions = {
   credentials?: boolean;
 };
 
-export function apiCors(
+export async function apiCors(
   request: Request,
   response: Response,
   options: CorsOptions = { maxAge: 5 * 60 }
 ): Promise<Response> {
+  if (hasCorsHeaders(response)) {
+    return response;
+  }
+
   return cors(request, response, options);
 }
 
@@ -23,4 +27,8 @@ export function makeApiCors(
   options: CorsOptions = { maxAge: 5 * 60 }
 ): (response: Response) => Promise<Response> {
   return (response: Response) => apiCors(request, response, options);
+}
+
+function hasCorsHeaders(response: Response) {
+  return response.headers.has("access-control-allow-origin");
 }

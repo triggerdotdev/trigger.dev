@@ -4,13 +4,13 @@ import { AnyTask, InferRunTypes, TaskRunShape } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
 import { useApiClient } from "./useApiClient.js";
 
-export function useRunTag<TTask extends AnyTask>(tag: string) {
+export function useRealtimeRunsWithTag<TTask extends AnyTask>(tag: string | string[]) {
   const [runShapes, setRunShapes] = useState<TaskRunShape<TTask>[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const apiClient = useApiClient();
 
   useEffect(() => {
-    const subscription = apiClient.subscribeToRunTag<InferRunTypes<TTask>>(tag);
+    const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag);
 
     async function iterateUpdates() {
       for await (const run of subscription) {
@@ -30,6 +30,10 @@ export function useRunTag<TTask extends AnyTask>(tag: string) {
   }, [tag]);
 
   return { runs: runShapes, error };
+}
+
+function stableSortTags(tag: string | string[]) {
+  return Array.isArray(tag) ? tag.slice().sort() : [tag];
 }
 
 // Replaces or inserts a run shape, ordered by the createdAt timestamp

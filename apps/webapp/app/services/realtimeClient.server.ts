@@ -21,6 +21,10 @@ export type RealtimeEnvironment = {
   organizationId: string;
 };
 
+export type RealtimeRunsParams = {
+  tags?: string[];
+};
+
 export class RealtimeClient {
   private redis: Redis;
   private expiryTimeInSeconds: number;
@@ -33,15 +37,34 @@ export class RealtimeClient {
     this.#registerCommands();
   }
 
-  async streamRunsWhere(
+  async streamRun(url: URL | string, environment: RealtimeEnvironment, runId: string) {
+    return this.#streamRunsWhere(url, environment, `id='${runId}'`);
+  }
+
+  async streamBatch(url: URL | string, environment: RealtimeEnvironment, batchId: string) {
+    return this.#streamRunsWhere(url, environment, `"batchId"='${batchId}'`);
+  }
+
+  async streamRuns(
     url: URL | string,
     environment: RealtimeEnvironment,
-    whereClause: string,
-    responseWrapper?: (response: Response) => Promise<Response>
+    params: RealtimeRunsParams
   ) {
+    const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
+
+    if (params.tags) {
+      whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
+    }
+
+    const whereClause = whereClauses.join(" AND ");
+
+    return this.#streamRunsWhere(url, environment, whereClause);
+  }
+
+  async #streamRunsWhere(url: URL | string, environment: RealtimeEnvironment, whereClause: string) {
     const electricUrl = this.#constructElectricUrl(url, whereClause);
 
-    return this.#performElectricRequest(electricUrl, environment, responseWrapper);
+    return this.#performElectricRequest(electricUrl, environment);
   }
 
   #constructElectricUrl(url: URL | string, whereClause: string): URL {
@@ -49,21 +72,30 @@ export class RealtimeClient {
 
     const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape/public."TaskRun"`);
 
+    // Copy over all the url search params to the electric url
     $url.searchParams.forEach((value, key) => {
       electricUrl.searchParams.set(key, value);
     });
+
+    // const electricParams = ["shape_id", "live", "offset", "columns", "cursor"];
+
+    // electricParams.forEach((param) => {
+    //   if ($url.searchParams.has(param) && $url.searchParams.get(param)) {
+    //     electricUrl.searchParams.set(param, $url.searchParams.get(param)!);
+    //   }
+    // });
 
     electricUrl.searchParams.set("where", whereClause);
 
     return electricUrl;
   }
 
-  async #performElectricRequest(
-    url: URL,
-    environment: RealtimeEnvironment,
-    responseWrapper: (response: Response) => Promise<Response> = (r) => Promise.resolve(r)
-  ) {
+  async #performElectricRequest(url: URL, environment: RealtimeEnvironment) {
     const shapeId = extractShapeId(url);
+
+    logger.debug("[realtimeClient] request", {
+      url: url.toString(),
+    });
 
     if (!shapeId) {
       // If the shapeId is not present, we're just getting the initial value
@@ -89,7 +121,7 @@ export class RealtimeClient {
         organizationId: environment.organizationId,
       });
 
-      return responseWrapper(json({ error: "Failed to get concurrency limit" }, { status: 500 }));
+      return json({ error: "Failed to get concurrency limit" }, { status: 500 });
     }
 
     logger.debug("[realtimeClient] increment and check", {
@@ -110,7 +142,7 @@ export class RealtimeClient {
         environmentId: environment.id,
       });
 
-      return responseWrapper(json({ error: "Too many concurrent requests" }, { status: 429 }));
+      return json({ error: "Too many concurrent requests" }, { status: 429 });
     }
 
     try {

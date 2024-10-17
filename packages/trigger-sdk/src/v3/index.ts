@@ -32,7 +32,14 @@ export {
   type LogLevel,
 } from "@trigger.dev/core/v3";
 
-export { runs, type RunShape, type AnyRunShape, type TaskRunShape } from "./runs.js";
+export {
+  runs,
+  type RunShape,
+  type AnyRunShape,
+  type TaskRunShape,
+  type RetrieveRunResult,
+  type AnyRetrieveRunResult,
+} from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export * as envvars from "./envvars.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";

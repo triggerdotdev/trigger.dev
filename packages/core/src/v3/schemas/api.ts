@@ -1,8 +1,8 @@
 import { z } from "zod";
+import { DeserializedJsonSchema } from "../../schemas/json.js";
+import { SerializedError } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
-import { SerializedError } from "./common.js";
-import { DeserializedJsonSchema, SerializableJsonSchema } from "../../schemas/json.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -446,8 +446,6 @@ export const RunStatus = z.enum([
   "EXPIRED",
   /// Task has reached it's maxDuration and has been stopped
   "TIMED_OUT",
-  /// Fallback status in case there is no matching status coming from the server
-  "UNKNOWN",
 ]);
 
 export type RunStatus = z.infer<typeof RunStatus>;
@@ -531,6 +529,7 @@ export const RetrieveRunResponse = z.object({
   payloadPresignedUrl: z.string().optional(),
   output: z.any().optional(),
   outputPresignedUrl: z.string().optional(),
+  error: SerializedError.optional(),
   schedule: RunScheduleDetails.optional(),
   relatedRuns: z.object({
     root: RelatedRunDetails.optional(),
@@ -550,6 +549,7 @@ export const RetrieveRunResponse = z.object({
       })
       .optional()
   ),
+  attemptCount: z.number().default(0),
 });
 
 export type RetrieveRunResponse = z.infer<typeof RetrieveRunResponse>;

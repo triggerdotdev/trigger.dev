@@ -1,14 +1,15 @@
 import type {
+  AnyRetrieveRunResult,
   AnyRunShape,
-  AnyRunTypes,
   ApiRequestOptions,
   InferRunTypes,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
-  Prettify,
   RescheduleRunRequestBody,
+  RetrieveRunResult,
   RunShape,
   RunSubscription,
+  SubscribeToRunsQueryParams,
   TaskRunShape,
 } from "@trigger.dev/core/v3";
 import {
@@ -28,14 +29,7 @@ import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerializ
 import { AnyRunHandle, AnyTask } from "./shared.js";
 import { tracer } from "./tracer.js";
 
-export type RetrieveRunResult<TRunTypes extends AnyRunTypes> = Prettify<
-  Omit<RetrieveRunResponse, "output" | "payload"> & {
-    output?: TRunTypes["output"];
-    payload?: TRunTypes["payload"];
-  }
->;
-
-export type { AnyRunShape, RunShape, TaskRunShape };
+export type { AnyRetrieveRunResult, AnyRunShape, RetrieveRunResult, RunShape, TaskRunShape };
 
 export const runs = {
   replay: replayRun,
@@ -44,8 +38,8 @@ export const runs = {
   list: listRuns,
   reschedule: rescheduleRun,
   poll,
-  subscribe: subscribeToRun,
-  subscribeToTag,
+  subscribeToRun,
+  subscribeToRunsWithTag,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -160,7 +154,7 @@ type RunId<TRunId> = TRunId extends AnyRunHandle
 function retrieveRun<TRunId extends AnyRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
   requestOptions?: ApiRequestOptions
-): ApiPromise<RetrieveRunResult<InferRunTypes<TRunId>>> {
+): ApiPromise<RetrieveRunResult<TRunId>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
@@ -188,10 +182,10 @@ function retrieveRun<TRunId extends AnyRunHandle | AnyTask | string>(
 
   return apiClient.retrieveRun($runId, $requestOptions).then((retrievedRun) => {
     return resolvePayloadAndOutputUrls(retrievedRun);
-  }) as ApiPromise<RetrieveRunResult<InferRunTypes<TRunId>>>;
+  }) as ApiPromise<RetrieveRunResult<TRunId>>;
 }
 
-async function resolvePayloadAndOutputUrls(run: RetrieveRunResult<AnyRunTypes>) {
+async function resolvePayloadAndOutputUrls(run: AnyRetrieveRunResult) {
   const resolvedRun = { ...run };
 
   if (run.payloadPresignedUrl && run.outputPresignedUrl) {
@@ -337,13 +331,13 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
 
   const apiClient = apiClientManager.clientOrThrow();
 
-  return apiClient.subscribeToRunChanges($runId);
+  return apiClient.subscribeToRun($runId);
 }
 
-function subscribeToTag<TTasks extends AnyTask>(
-  tag: string
+function subscribeToRunsWithTag<TTasks extends AnyTask>(
+  tag: string | string[]
 ): RunSubscription<InferRunTypes<TTasks>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  return apiClient.subscribeToRunTag<InferRunTypes<TTasks>>(tag);
+  return apiClient.subscribeToRunsWithTag<InferRunTypes<TTasks>>(tag);
 }

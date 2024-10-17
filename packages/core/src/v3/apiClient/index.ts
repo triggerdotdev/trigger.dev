@@ -51,6 +51,7 @@ import {
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
+  SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { generateJWT } from "../jwt.js";
@@ -60,6 +61,7 @@ export type {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
+  SubscribeToRunsQueryParams,
 };
 
 export type TriggerOptions = {
@@ -187,14 +189,14 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            permissions: [`read:runs:${data.id}`],
+            scopes: [`read:runs:${data.id}`],
           },
           expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
         });
 
         return {
           ...data,
-          jwt,
+          publicAccessToken: jwt,
         };
       });
   }
@@ -226,14 +228,14 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            permissions: [data.batchId],
+            scopes: [`read:batch:${data.batchId}`],
           },
           expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
         });
 
         return {
           ...data,
-          jwt,
+          publicAccessToken: jwt,
         };
       });
   }
@@ -590,21 +592,28 @@ export class ApiClient {
     );
   }
 
-  subscribeToRunChanges<TRunTypes extends AnyRunTypes>(runId: string) {
+  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
       closeOnComplete: true,
       headers: this.#getRealtimeHeaders(),
     });
   }
 
-  subscribeToRunTag<TRunTypes extends AnyRunTypes>(tag: string) {
-    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/tags/${tag}`, {
-      closeOnComplete: false,
-      headers: this.#getRealtimeHeaders(),
+  subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(tag: string | string[]) {
+    const searchParams = createSearchQueryForSubscribeToRuns({
+      tags: tag,
     });
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/runs${searchParams ? `?${searchParams}` : ""}`,
+      {
+        closeOnComplete: false,
+        headers: this.#getRealtimeHeaders(),
+      }
+    );
   }
 
-  subscribeToBatchChanges<TRunTypes extends AnyRunTypes>(batchId: string) {
+  subscribeToBatch<TRunTypes extends AnyRunTypes>(batchId: string) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
       closeOnComplete: false,
       headers: this.#getRealtimeHeaders(),
@@ -650,6 +659,39 @@ export class ApiClient {
 
     return headers;
   }
+}
+
+function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query) {
+    if (query.tasks) {
+      searchParams.append(
+        "tasks",
+        Array.isArray(query.tasks) ? query.tasks.join(",") : query.tasks
+      );
+    }
+
+    if (query.tags) {
+      searchParams.append("tags", Array.isArray(query.tags) ? query.tags.join(",") : query.tags);
+    }
+
+    if (query.from) {
+      searchParams.append(
+        "from",
+        query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
+      );
+    }
+
+    if (query.to) {
+      searchParams.append(
+        "to",
+        query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
+      );
+    }
+  }
+
+  return searchParams;
 }
 
 function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchParams {

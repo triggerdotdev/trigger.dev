@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { TaskRunShape } from "@trigger.dev/sdk/v3";
+import type { RetrieveRunResult } from "@trigger.dev/sdk/v3";
 import { exampleTask } from "@/trigger/example";
 
 function formatDate(date: Date | undefined) {
@@ -16,7 +16,7 @@ function JsonDisplay({ data }: { data: any }) {
   );
 }
 
-export default function RunDetails({ record }: { record: TaskRunShape<typeof exampleTask> }) {
+export default function RunDetails({ record }: { record: RetrieveRunResult<typeof exampleTask> }) {
   return (
     <Card className="w-full max-w-screen-xl mx-auto">
       <CardHeader>
@@ -37,10 +37,6 @@ export default function RunDetails({ record }: { record: TaskRunShape<typeof exa
             <Badge variant={record.status === "COMPLETED" ? "default" : "secondary"}>
               {record.status}
             </Badge>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-1">Number</h3>
-            <p className="text-sm">{record.number}</p>
           </div>
           <div>
             <h3 className="font-semibold mb-1">Is Test</h3>
@@ -93,10 +89,6 @@ export default function RunDetails({ record }: { record: TaskRunShape<typeof exa
           <div>
             <h3 className="font-semibold mb-1">Finished At</h3>
             <p className="text-sm">{formatDate(record.finishedAt)}</p>
-          </div>
-          <div>
-            <h3 className="font-semibold mb-1">Queued At</h3>
-            <p className="text-sm">{formatDate(record.queuedAt)}</p>
           </div>
           <div>
             <h3 className="font-semibold mb-1">Delayed Until</h3>

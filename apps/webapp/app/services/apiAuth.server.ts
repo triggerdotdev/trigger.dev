@@ -18,6 +18,10 @@ import {
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 
+const ClaimsSchema = z.object({
+  scopes: z.array(z.string()).optional(),
+});
+
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
 
 export type AuthenticatedEnvironment = Optional<
@@ -29,7 +33,7 @@ export type ApiAuthenticationResult = {
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
-  claims?: Record<string, any>;
+  scopes?: string[];
 };
 
 export async function authenticateApiRequest(
@@ -86,10 +90,12 @@ export async function authenticateApiKey(
         return;
       }
 
+      const parsedClaims = ClaimsSchema.safeParse(validationResults.claims);
+
       return {
         ...result,
         environment: validationResults.environment,
-        claims: validationResults.claims,
+        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
       };
     }
   }

@@ -5,7 +5,7 @@ import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
  * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.
  * @param options The API client configuration.
  * @param options.baseURL The base URL of the Trigger API. (default: `https://api.trigger.dev`)
- * @param options.secretKey The secret key to authenticate with the Trigger API. (default: `process.env.TRIGGER_SECRET_KEY`) This can be found in your Trigger.dev project "API Keys" settings.
+ * @param options.accessToken The accessToken to authenticate with the Trigger API. (default: `process.env.TRIGGER_SECRET_KEY`) This can be found in your Trigger.dev project "API Keys" settings.
  *
  * @example
  *
@@ -14,7 +14,7 @@ import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
  *
  * configure({
  *  baseURL: "https://api.trigger.dev",
- *  secretKey: "tr_dev_1234567890"
+ *  accessToken: "tr_dev_1234567890"
  * });
  * ```
  */
@@ -31,16 +31,56 @@ export const auth = {
 type PublicTokenPermissionAction = "read"; // Add more actions as needed
 
 type PublicTokenPermissionProperties = {
+  /**
+   * Grant access to specific tasks
+   */
+  tasks?: string | string[];
+
+  /**
+   * Grant access to specific run tags
+   */
   tags?: string | string[];
-  runs?: string | string[];
+
+  /**
+   * Grant access to specific runs
+   */
+  runs?: string | string[] | true;
+
+  /**
+   * Grant access to specific batch runs
+   */
+  batch?: string | string[];
 };
 
 export type PublicTokenPermissions = {
-  [key in PublicTokenPermissionAction]?: PublicTokenPermissionProperties | true;
+  [key in PublicTokenPermissionAction]?: PublicTokenPermissionProperties;
 };
 
 export type CreatePublicTokenOptions = {
-  permissions?: PublicTokenPermissions;
+  /**
+   * A collection of permission scopes to be granted to the token.
+   *
+   * @example
+   *
+   * ```typescript
+   * scopes: {
+   *   read: {
+   *     tags: ["file:1234"]
+   *   }
+   * }
+   * ```
+   */
+  scopes?: PublicTokenPermissions;
+
+  /**
+   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   *
+   * @example
+   *
+   * ```typescript
+   * expirationTime: "1h"
+   * ```
+   */
   expirationTime?: number | Date | string;
 };
 
@@ -48,7 +88,7 @@ export type CreatePublicTokenOptions = {
  * Creates a public token using the provided options.
  *
  * @param options - Optional parameters for creating the public token.
- * @param options.permissions - An array of permissions to be included in the token.
+ * @param options.scopes - An array of permission scopes to be included in the token.
  * @param options.expirationTime - The expiration time for the token.
  * @returns A promise that resolves to a string representing the generated public token.
  *
@@ -58,7 +98,7 @@ export type CreatePublicTokenOptions = {
  * import { auth } from "@trigger.dev/sdk/v3";
  *
  * const publicToken = await auth.createPublicToken({
- *  permissions: {
+ *  scopes: {
  *   read: {
  *     tags: ["file:1234"]
  *   }
@@ -74,7 +114,7 @@ async function createPublicToken(options?: CreatePublicTokenOptions): Promise<st
     secretKey: apiClient.accessToken,
     payload: {
       ...claims,
-      permissions: options?.permissions ? flattenPermissions(options.permissions) : undefined,
+      scopes: options?.scopes ? flattenScopes(options.scopes) : undefined,
     },
     expirationTime: options?.expirationTime,
   });
@@ -95,7 +135,7 @@ async function withAuth<R extends (...args: any[]) => Promise<any>>(
   return apiClientManager.runWithConfig(config, fn);
 }
 
-function flattenPermissions(permissions: PublicTokenPermissions): string[] {
+function flattenScopes(permissions: PublicTokenPermissions): string[] {
   const flattenedPermissions: string[] = [];
 
   for (const [action, properties] of Object.entries(permissions)) {

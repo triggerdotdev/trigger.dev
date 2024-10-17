@@ -36,7 +36,7 @@ export const ourFileRouter = {
       });
 
       const publicAccessToken = await auth.createPublicToken({
-        permissions: {
+        scopes: {
           read: { tags: fileTag },
         },
       });
