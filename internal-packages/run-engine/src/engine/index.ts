@@ -11,8 +11,8 @@ import {
 } from "@trigger.dev/core/v3";
 import {
   generateFriendlyId,
-  parseNaturalLanguageDuration,
   getMaxDuration,
+  parseNaturalLanguageDuration,
   sanitizeQueueName,
 } from "@trigger.dev/core/v3/apps";
 import {
@@ -21,7 +21,6 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
-  TaskRunAttemptStatus,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -29,13 +28,13 @@ import {
 import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
 import { nanoid } from "nanoid";
-import Redlock from "redlock";
 import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
+import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { ScheduleRunMessage } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
@@ -117,7 +116,7 @@ type EngineWorker = Worker<typeof workerCatalog>;
 export class RunEngine {
   private redis: Redis;
   private prisma: PrismaClient;
-  private redlock: Redlock;
+  private runLock: RunLocker;
   runQueue: RunQueue;
   private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
@@ -126,13 +125,7 @@ export class RunEngine {
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;
     this.redis = new Redis(options.redis);
-    this.redlock = new Redlock([this.redis], {
-      driftFactor: 0.01,
-      retryCount: 10,
-      retryDelay: 200, // time in ms
-      retryJitter: 200, // time in ms
-      automaticExtensionThreshold: 500, // time in ms
-    });
+    this.runLock = new RunLocker({ redis: this.redis });
 
     this.runQueue = new RunQueue({
       name: "rq",
@@ -155,7 +148,7 @@ export class RunEngine {
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         waitpointCompleteDateTime: async ({ payload }) => {
-          await this.#completeWaitpoint(payload.waitpointId);
+          await this.completeWaitpoint(payload.waitpointId);
         },
         heartbeatSnapshot: async ({ payload }) => {
           await this.#handleStalledSnapshot(payload);
@@ -278,7 +271,7 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        await this.redlock.using([taskRun.id], 5000, async (signal) => {
+        await this.runLock.lock([taskRun.id], 5000, async (signal) => {
           //create associated waitpoint (this completes when the run completes)
           const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
             projectId: environment.project.id,
@@ -424,7 +417,7 @@ export class RunEngine {
       span.setAttribute("runId", runId);
 
       //lock the run so nothing else can modify it
-      return this.redlock.using([runId], 5000, async (signal) => {
+      return this.runLock.lock([runId], 5000, async (signal) => {
         const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
         if (!snapshot) {
           throw new Error(
@@ -656,7 +649,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
-      return this.redlock.using([runId], 5000, async (signal) => {
+      return this.runLock.lock([runId], 5000, async (signal) => {
         const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
         if (!latestSnapshot) {
           await this.#systemFailure({
@@ -914,6 +907,81 @@ export class RunEngine {
 
   async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 
+  /** This completes a waitpoint and then continues any runs blocked by the waitpoint,
+   * if they're no longer blocked. This doesn't suffer from race conditions. */
+  async completeWaitpoint(id: string) {
+    const waitpoint = await this.prisma.waitpoint.findUnique({
+      where: { id },
+    });
+
+    if (!waitpoint) {
+      throw new Error(`Waitpoint ${id} not found`);
+    }
+
+    if (waitpoint.status === "COMPLETED") {
+      return;
+    }
+
+    await $transaction(
+      this.prisma,
+      async (tx) => {
+        // 1. Find the TaskRuns associated with this waitpoint
+        const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
+          where: { waitpointId: id },
+          select: { taskRunId: true },
+        });
+
+        if (affectedTaskRuns.length === 0) {
+          throw new Error(`No TaskRunWaitpoints found for waitpoint ${id}`);
+        }
+
+        // 2. Delete the TaskRunWaitpoint entries for this specific waitpoint
+        await tx.taskRunWaitpoint.deleteMany({
+          where: { waitpointId: id },
+        });
+
+        // 3. Update the waitpoint status
+        await tx.waitpoint.update({
+          where: { id },
+          data: { status: "COMPLETED" },
+        });
+
+        // 4. Check which of the affected TaskRuns now have no waitpoints
+        const taskRunsToResume = await tx.taskRun.findMany({
+          where: {
+            id: { in: affectedTaskRuns.map((run) => run.taskRunId) },
+            blockedByWaitpoints: { none: {} },
+            status: { in: ["PENDING", "WAITING_TO_RESUME"] },
+          },
+          include: {
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                maximumConcurrencyLimit: true,
+                project: { select: { id: true } },
+                organization: { select: { id: true } },
+              },
+            },
+          },
+        });
+
+        //todo update the execution snapshot
+        //todo this needs to be done inside the transaction
+
+        // 5. Continue the runs that have no more waitpoints
+        for (const run of taskRunsToResume) {
+          await this.#continueRun(run, run.runtimeEnvironment, tx);
+        }
+      },
+      (error) => {
+        this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
+        throw error;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
+  }
+
   async quit() {
     //stop the run queue
     this.runQueue.quit();
@@ -984,7 +1052,7 @@ export class RunEngine {
   ) {
     const prisma = tx ?? this.prisma;
 
-    await this.redlock.using([run.id], 5000, async (signal) => {
+    await this.runLock.lock([run.id], 5000, async (signal) => {
       const snapshot = await this.#getLatestExecutionSnapshot(prisma, run.id);
       if (!snapshot) {
         throw new Error(`RunEngine.#continueRun(): No snapshot found for run: ${run.id}`);
@@ -1084,9 +1152,7 @@ export class RunEngine {
     //todo release concurrency and make sure the run isn't in the queue
     // await this.runQueue.blockMessage(orgId, runId);
 
-    throw new NotImplementedError("Not implemented #blockRunWithWaitpoint");
-
-    return tx.taskRunWaitpoint.create({
+    const taskWaitpoint = tx.taskRunWaitpoint.create({
       data: {
         taskRunId: runId,
         waitpointId: waitpoint.id,
@@ -1094,82 +1160,9 @@ export class RunEngine {
       },
     });
 
+    //this run is now blocked, so we change the state
+
     //todo we need to update the relevant snapshot as well
-  }
-
-  /** This completes a waitpoint and then continues any runs blocked by the waitpoint,
-   * if they're no longer blocked. This doesn't suffer from race conditions. */
-  async #completeWaitpoint(id: string) {
-    const waitpoint = await this.prisma.waitpoint.findUnique({
-      where: { id },
-    });
-
-    if (!waitpoint) {
-      throw new Error(`Waitpoint ${id} not found`);
-    }
-
-    if (waitpoint.status === "COMPLETED") {
-      return;
-    }
-
-    await $transaction(
-      this.prisma,
-      async (tx) => {
-        // 1. Find the TaskRuns associated with this waitpoint
-        const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
-          where: { waitpointId: id },
-          select: { taskRunId: true },
-        });
-
-        if (affectedTaskRuns.length === 0) {
-          throw new Error(`No TaskRunWaitpoints found for waitpoint ${id}`);
-        }
-
-        // 2. Delete the TaskRunWaitpoint entries for this specific waitpoint
-        await tx.taskRunWaitpoint.deleteMany({
-          where: { waitpointId: id },
-        });
-
-        // 3. Update the waitpoint status
-        await tx.waitpoint.update({
-          where: { id },
-          data: { status: "COMPLETED" },
-        });
-
-        // 4. Check which of the affected TaskRuns now have no waitpoints
-        const taskRunsToResume = await tx.taskRun.findMany({
-          where: {
-            id: { in: affectedTaskRuns.map((run) => run.taskRunId) },
-            blockedByWaitpoints: { none: {} },
-            status: { in: ["PENDING", "WAITING_TO_RESUME"] },
-          },
-          include: {
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                maximumConcurrencyLimit: true,
-                project: { select: { id: true } },
-                organization: { select: { id: true } },
-              },
-            },
-          },
-        });
-
-        //todo update the execution snapshot
-        //todo this needs to be done inside the transaction
-
-        // 5. Continue the runs that have no more waitpoints
-        for (const run of taskRunsToResume) {
-          await this.#continueRun(run, run.runtimeEnvironment, tx);
-        }
-      },
-      (error) => {
-        this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
-        throw error;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
-    );
   }
 
   //MARK: - TaskRunExecutionSnapshots
@@ -1197,8 +1190,26 @@ export class RunEngine {
       },
     });
 
-    //create heartbeat (if relevant)
-    switch (snapshot.executionStatus) {
+    //set heartbeat (if relevant)
+    await this.#setExecutionSnapshotHeartbeat({
+      status: newSnapshot.executionStatus,
+      runId: run.id,
+      snapshotId: newSnapshot.id,
+    });
+
+    return newSnapshot;
+  }
+
+  async #setExecutionSnapshotHeartbeat({
+    status,
+    runId,
+    snapshotId,
+  }: {
+    status: TaskRunExecutionStatus;
+    runId: string;
+    snapshotId: string;
+  }) {
+    switch (status) {
       case "RUN_CREATED":
       case "FINISHED":
       case "QUEUED": {
@@ -1208,8 +1219,8 @@ export class RunEngine {
       case "DEQUEUED_FOR_EXECUTION":
       case "QUEUED_WITH_WAITPOINTS": {
         await this.#startHeartbeating({
-          runId: run.id,
-          snapshotId: newSnapshot.id,
+          runId,
+          snapshotId,
           intervalSeconds: 60,
         });
         break;
@@ -1217,18 +1228,16 @@ export class RunEngine {
       case "EXECUTING":
       case "EXECUTING_WITH_WAITPOINTS": {
         await this.#startHeartbeating({
-          runId: run.id,
-          snapshotId: newSnapshot.id,
+          runId,
+          snapshotId,
           intervalSeconds: 60 * 15,
         });
         break;
       }
       default: {
-        assertNever(snapshot.executionStatus);
+        assertNever(status);
       }
     }
-
-    return newSnapshot;
   }
 
   async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
