@@ -21,7 +21,7 @@ import {
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
@@ -1297,13 +1297,13 @@ class SharedQueueTasks {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
+    await this.#heartbeat(taskRunAttempt.taskRunId);
   }
 
   async taskRunHeartbeat(runId: string) {
     logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId });
 
-    await marqs?.heartbeatMessage(runId);
+    await this.#heartbeat(runId);
   }
 
   public async taskRunFailed(completion: TaskRunFailedExecutionResult) {
@@ -1312,6 +1312,66 @@ class SharedQueueTasks {
     const service = new FailedTaskRunService();
 
     await service.call(completion.id, completion);
+  }
+
+  async #heartbeat(runId: string) {
+    await marqs?.heartbeatMessage(runId);
+
+    try {
+      // There can be a lot of calls per minute and the data doesn't have to be accurate, so use the read replica
+      const taskRun = await $replica.taskRun.findFirst({
+        where: {
+          id: runId,
+        },
+        select: {
+          id: true,
+          status: true,
+          runtimeEnvironment: {
+            select: {
+              type: true,
+            },
+          },
+          lockedToVersion: {
+            select: {
+              supportsLazyAttempts: true,
+            },
+          },
+        },
+      });
+
+      if (!taskRun) {
+        logger.error("SharedQueueTasks.#heartbeat: Task run not found", {
+          runId,
+        });
+
+        return;
+      }
+
+      if (taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+        return;
+      }
+
+      if (isFinalRunStatus(taskRun.status)) {
+        logger.debug("SharedQueueTasks.#heartbeat: Task run is in final status", {
+          runId,
+          status: taskRun.status,
+        });
+
+        // Signal to exit any leftover containers
+        socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+          version: "v1",
+          runId: taskRun.id,
+          // Give the run a few seconds to exit to complete any flushing etc
+          delayInMs: taskRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error("SharedQueueTasks.#heartbeat: Error signaling run cancellation", {
+        runId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
   }
 
   async #buildEnvironmentVariables(
