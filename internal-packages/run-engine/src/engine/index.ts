@@ -78,7 +78,6 @@ type TriggerParams = {
   ttl?: string;
   tags: string[];
   parentTaskRunId?: string;
-  parentTaskRunAttemptId?: string;
   rootTaskRunId?: string;
   batchId?: string;
   resumeParentOnCompletion?: boolean;
@@ -191,7 +190,6 @@ export class RunEngine {
       ttl,
       tags,
       parentTaskRunId,
-      parentTaskRunAttemptId,
       rootTaskRunId,
       batchId,
       resumeParentOnCompletion,
@@ -249,7 +247,6 @@ export class RunEngine {
                     connect: tags.map((id) => ({ id })),
                   },
             parentTaskRunId,
-            parentTaskRunAttemptId,
             rootTaskRunId,
             batchId,
             resumeParentOnCompletion,
@@ -1117,21 +1114,23 @@ export class RunEngine {
         },
       });
 
-      await this.runQueue.enqueueMessage({
-        env,
-        masterQueue: run.masterQueue,
-        message: {
-          runId: run.id,
-          taskIdentifier: run.taskIdentifier,
-          orgId: env.organization.id,
-          projectId: env.project.id,
-          environmentId: env.id,
-          environmentType: env.type,
-          queue: run.queue,
-          concurrencyKey: run.concurrencyKey ?? undefined,
-          timestamp: Date.now(),
-        },
-      });
+      //todo instead this should be a call to unblock the run
+      //we don't want to free up all the concurrency, so this isn't good
+      // await this.runQueue.enqueueMessage({
+      //   env,
+      //   masterQueue: run.masterQueue,
+      //   message: {
+      //     runId: run.id,
+      //     taskIdentifier: run.taskIdentifier,
+      //     orgId: env.organization.id,
+      //     projectId: env.project.id,
+      //     environmentId: env.id,
+      //     environmentType: env.type,
+      //     queue: run.queue,
+      //     concurrencyKey: run.concurrencyKey ?? undefined,
+      //     timestamp: Date.now(),
+      //   },
+      // });
     });
   }
 
@@ -1187,7 +1186,7 @@ export class RunEngine {
       //todo release concurrency and make sure the run isn't in the queue
       // await this.runQueue.blockMessage(orgId, runId);
 
-      const taskWaitpoint = tx.taskRunWaitpoint.create({
+      const taskWaitpoint = await tx.taskRunWaitpoint.create({
         data: {
           taskRunId: runId,
           waitpointId: waitpoint.id,
@@ -1203,9 +1202,11 @@ export class RunEngine {
         switch (latestSnapshot.executionStatus) {
           case "QUEUED": {
             newStatus = "QUEUED_WITH_WAITPOINTS";
+            break;
           }
           case "EXECUTING": {
             newStatus = "EXECUTING_WITH_WAITPOINTS";
+            break;
           }
         }
 
@@ -1223,10 +1224,6 @@ export class RunEngine {
           });
         }
       }
-
-      //this run is now blocked, so we change the state
-
-      //todo we need to update the relevant snapshot as well
     });
   }
 
