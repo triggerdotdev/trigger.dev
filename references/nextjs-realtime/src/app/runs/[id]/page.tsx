@@ -4,7 +4,7 @@ import ClientRunDetails from "./ClientRunDetails";
 
 export default async function DetailsPage({ params }: { params: { id: string } }) {
   const cookieStore = cookies();
-  const jwt = cookieStore.get("run_jwt");
+  const jwt = cookieStore.get("run_token");
 
   if (!jwt) {
     notFound();
