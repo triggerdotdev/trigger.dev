@@ -314,7 +314,7 @@ function SpanBody({
               <Property.Table>
                 <Property.Item>
                   <Property.Label>Message</Property.Label>
-                  <Property.Value>{span.message}</Property.Value>
+                  <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
                 </Property.Item>
                 {span.triggeredRuns.length > 0 && (
                   <Property.Item>
