@@ -1,8 +1,9 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, LightBulbIcon } from "@heroicons/react/24/solid";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { type ReactNode, useState, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { type FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
@@ -16,7 +17,6 @@ import { Label } from "./primitives/Label";
 import { Paragraph } from "./primitives/Paragraph";
 import { Select, SelectItem } from "./primitives/Select";
 import { TextArea } from "./primitives/TextArea";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
 import { TextLink } from "./primitives/TextLink";
 
 type FeedbackProps = {
