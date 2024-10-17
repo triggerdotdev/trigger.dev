@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.0.13
+
+### Patch Changes
+
+- README updates ([#1408](https://github.com/triggerdotdev/trigger.dev/pull/1408))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.13`
+
 ## 3.0.12
 
 ### Patch Changes
