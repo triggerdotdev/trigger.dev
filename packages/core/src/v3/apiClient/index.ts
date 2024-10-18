@@ -675,20 +675,6 @@ function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams)
     if (query.tags) {
       searchParams.append("tags", Array.isArray(query.tags) ? query.tags.join(",") : query.tags);
     }
-
-    if (query.from) {
-      searchParams.append(
-        "from",
-        query.from instanceof Date ? query.from.getTime().toString() : query.from.toString()
-      );
-    }
-
-    if (query.to) {
-      searchParams.append(
-        "to",
-        query.to instanceof Date ? query.to.getTime().toString() : query.to.toString()
-      );
-    }
   }
 
   return searchParams;
