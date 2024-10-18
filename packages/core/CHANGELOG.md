@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.0.13
+
+### Patch Changes
+
+- SIGTERM detection and prettier errors ([#1418](https://github.com/triggerdotdev/trigger.dev/pull/1418))
+
 ## 3.0.12
 
 ### Patch Changes
