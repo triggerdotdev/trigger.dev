@@ -97,7 +97,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
-    "@trigger.dev/platform": "1.0.12",
+    "@trigger.dev/platform": "1.0.13",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/yalt": "npm:@trigger.dev/yalt",
     "@types/pg": "8.6.6",

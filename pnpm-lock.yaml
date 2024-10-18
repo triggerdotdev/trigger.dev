@@ -385,8 +385,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.12
-        version: 1.0.12
+        specifier: 1.0.13
+        version: 1.0.13
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
@@ -1363,7 +1363,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:3.0.11
+        specifier: workspace:^3.0.12
         version: link:../core
       react:
         specifier: '>=18 || >=19.0.0-beta'
@@ -14759,8 +14759,8 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
-  /@trigger.dev/platform@1.0.12:
-    resolution: {integrity: sha512-pOB9S2XG+TmTdlYtF9xuQoFz1aRlRGWSVCXuv3Vj2ArzU6Zz3ukvK24qlTd0PJB1otX71Ho/NfViGKEzCyRb5Q==}
+  /@trigger.dev/platform@1.0.13:
+    resolution: {integrity: sha512-T2NoZrHpt3T8gLVDLjdx14A3RQfZTLGsDazvxnvwFYmFHtj13Dl5i6J2WVrd58CN3FLO8a154kdrNEv71jIIxg==}
     dependencies:
       zod: 3.22.3
     dev: false
