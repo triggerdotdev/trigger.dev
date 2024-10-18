@@ -2,7 +2,7 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import { parseError, sanitizeError } from "../errors.js";
+import { parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
 import { runMetadata, TriggerConfig } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
@@ -94,6 +94,8 @@ export class TaskExecutor {
             const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
 
             parsedPayload = await parsePacket(payloadPacket);
+
+            parsedPayload = await this.#parsePayload(parsedPayload);
 
             if (execution.attempt.number === 1) {
               await this.#callOnStartFunctions(parsedPayload, ctx, signal);
@@ -394,6 +396,18 @@ export class TaskExecutor {
     }
   }
 
+  async #parsePayload(payload: unknown) {
+    if (!this.task.fns.parsePayload) {
+      return payload;
+    }
+
+    try {
+      return await this.task.fns.parsePayload(payload);
+    } catch (e) {
+      throw new TaskPayloadParsedError(e);
+    }
+  }
+
   async #callOnStartFunctions(payload: unknown, ctx: TaskRunContext, signal?: AbortSignal) {
     await this.#callOnStartFunction(
       this._importedConfig?.onStart,
@@ -479,7 +493,10 @@ export class TaskExecutor {
       return { status: "noop" };
     }
 
-    if (error instanceof Error && error.name === "AbortTaskRunError") {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortTaskRunError" || error.name === "TaskPayloadParsedError")
+    ) {
       return { status: "skipped" };
     }
 

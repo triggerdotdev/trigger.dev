@@ -5,6 +5,7 @@ import { logger } from "./logger.server";
 
 type Options = {
   redis?: RedisOptions;
+  redisClient?: RateLimiterRedisClient;
   keyPrefix: string;
   limiter: Limiter;
   logSuccess?: boolean;
@@ -14,33 +15,31 @@ type Options = {
 export type Limiter = ConstructorParameters<typeof Ratelimit>[0]["limiter"];
 export type Duration = Parameters<typeof Ratelimit.slidingWindow>[1];
 export type RateLimitResponse = Awaited<ReturnType<Ratelimit["limit"]>>;
+export type RateLimiterRedisClient = ConstructorParameters<typeof Ratelimit>[0]["redis"];
 
 export class RateLimiter {
   #ratelimit: Ratelimit;
 
   constructor(private readonly options: Options) {
-    const { redis, keyPrefix, limiter } = options;
+    const { redis, redisClient, keyPrefix, limiter } = options;
     const prefix = `ratelimit:${keyPrefix}`;
     this.#ratelimit = new Ratelimit({
-      redis: createRedisRateLimitClient(
-        redis ?? {
-          port: env.REDIS_PORT,
-          host: env.REDIS_HOST,
-          username: env.REDIS_USERNAME,
-          password: env.REDIS_PASSWORD,
-          enableAutoPipelining: true,
-          ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-        }
-      ),
+      redis:
+        redisClient ??
+        createRedisRateLimitClient(
+          redis ?? {
+            port: env.REDIS_PORT,
+            host: env.REDIS_HOST,
+            username: env.REDIS_USERNAME,
+            password: env.REDIS_PASSWORD,
+            enableAutoPipelining: true,
+            ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+          }
+        ),
       limiter,
       ephemeralCache: new Map(),
       analytics: false,
       prefix,
-    });
-
-    logger.info(`RateLimiter (${keyPrefix}): initialized`, {
-      keyPrefix,
-      redisKeyspace: prefix,
     });
   }
 
@@ -71,9 +70,7 @@ export class RateLimiter {
   }
 }
 
-export function createRedisRateLimitClient(
-  redisOptions: RedisOptions
-): ConstructorParameters<typeof Ratelimit>[0]["redis"] {
+export function createRedisRateLimitClient(redisOptions: RedisOptions): RateLimiterRedisClient {
   const redis = new Redis(redisOptions);
 
   return {

@@ -29,18 +29,19 @@ export class APIClientManagerAPI {
     unregisterGlobal(API_NAME);
   }
 
-  public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
-    return registerGlobal(API_NAME, config);
-  }
-
   get baseURL(): string | undefined {
-    const store = this.#getConfig();
-    return store?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
+    const config = this.#getConfig();
+    return config?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
   }
 
   get accessToken(): string | undefined {
-    const store = this.#getConfig();
-    return store?.secretKey ?? getEnvVar("TRIGGER_SECRET_KEY") ?? getEnvVar("TRIGGER_ACCESS_TOKEN");
+    const config = this.#getConfig();
+    return (
+      config?.secretKey ??
+      config?.accessToken ??
+      getEnvVar("TRIGGER_SECRET_KEY") ??
+      getEnvVar("TRIGGER_ACCESS_TOKEN")
+    );
   }
 
   get client(): ApiClient | undefined {
@@ -57,6 +58,23 @@ export class APIClientManagerAPI {
     }
 
     return new ApiClient(this.baseURL, this.accessToken);
+  }
+
+  runWithConfig<R extends (...args: any[]) => Promise<any>>(
+    config: ApiClientConfiguration,
+    fn: R
+  ): Promise<ReturnType<R>> {
+    const originalConfig = this.#getConfig();
+    const $config = { ...originalConfig, ...config };
+    registerGlobal(API_NAME, $config, true);
+
+    return fn().finally(() => {
+      registerGlobal(API_NAME, originalConfig, true);
+    });
+  }
+
+  public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
+    return registerGlobal(API_NAME, config);
   }
 
   #getConfig(): ApiClientConfiguration | undefined {

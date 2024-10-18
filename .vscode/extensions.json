@@ -1,8 +1,4 @@
 {
-	"recommendations": [
-        "denoland.vscode-deno"
-    ],
-	"unwantedRecommendations": [
-		
-	]
+  "recommendations": ["bierner.comment-tagged-templates"],
+  "unwantedRecommendations": []
 }

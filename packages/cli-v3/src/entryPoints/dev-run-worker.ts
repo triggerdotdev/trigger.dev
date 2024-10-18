@@ -11,11 +11,12 @@ import {
   TaskRunExecution,
   WorkerToExecutorMessageCatalog,
   TriggerConfig,
-  TriggerTracer,
   WorkerManifest,
   ExecutorToWorkerMessageCatalog,
   timeout,
+  runMetadata,
 } from "@trigger.dev/core/v3";
+import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
 import {
   ConsoleInterceptor,
@@ -30,6 +31,7 @@ import {
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
+  getNumberEnvVar,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -273,6 +275,9 @@ const zodIpc = new ZodIpcConnection({
         _execution = execution;
         _isRunning = true;
 
+        runMetadata.startPeriodicFlush(
+          getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
+        );
         const measurement = usage.start();
 
         // This lives outside of the executor because this will eventually be moved to the controller level
@@ -345,7 +350,7 @@ const zodIpc = new ZodIpcConnection({
       }
     },
     FLUSH: async ({ timeoutInMs }, sender) => {
-      await _tracingSDK?.flush();
+      await Promise.allSettled([_tracingSDK?.flush(), runMetadata.flush()]);
     },
   },
 });

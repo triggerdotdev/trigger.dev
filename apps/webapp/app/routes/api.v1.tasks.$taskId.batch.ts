@@ -104,10 +104,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Task not found" }, { status: 404 });
     }
 
-    return json({
-      batchId: result.batch.friendlyId,
-      runs: result.runs,
-    });
+    return json(
+      {
+        batchId: result.batch.friendlyId,
+        runs: result.runs,
+      },
+      {
+        headers: {
+          "x-trigger-jwt-claims": JSON.stringify({
+            sub: authenticationResult.environment.id,
+            pub: true,
+          }),
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof Error) {
       return json({ error: error.message }, { status: 400 });

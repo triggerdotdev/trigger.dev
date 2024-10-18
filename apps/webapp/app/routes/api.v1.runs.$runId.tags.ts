@@ -89,6 +89,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         tags: {
           connect: tagIds.map((id) => ({ id })),
         },
+        runTags: {
+          push: newTags,
+        },
       },
     });
 
