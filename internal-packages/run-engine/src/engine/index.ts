@@ -894,15 +894,11 @@ export class RunEngine {
     runId,
     snapshotId,
     completion,
-    tx,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-    tx?: PrismaClientOrTransaction;
   }) {
-    const prisma = tx ?? this.prisma;
-
     //todo
     //1. lock the run
     //2. get the latest snapshot
@@ -910,9 +906,9 @@ export class RunEngine {
     //4. update the run status, create final snapshot
     //5. complete waitpoints
 
-    return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
+    return this.#trace("completeRunAttempt", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
         if (!latestSnapshot) {
           throw new Error(`No execution snapshot found for TaskRun ${runId}`);
         }
@@ -924,8 +920,43 @@ export class RunEngine {
         span.setAttribute("completionStatus", completion.ok);
 
         if (completion.ok) {
+          const run = await this.prisma.taskRun.update({
+            where: { id: runId },
+            data: {
+              status: "COMPLETED_SUCCESSFULLY",
+              completedAt: new Date(),
+              output: completion.output,
+              outputType: completion.outputType,
+            },
+            select: {
+              associatedWaitpoint: {
+                select: {
+                  id: true,
+                },
+              },
+              project: {
+                select: {
+                  organizationId: true,
+                },
+              },
+            },
+          });
+          await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
+
+          if (!run.associatedWaitpoint) {
+            throw new ServiceValidationError("No associated waitpoint found", 400);
+          }
+
+          await this.completeWaitpoint({
+            id: run.associatedWaitpoint.id,
+            output: completion.output
+              ? { value: completion.output, type: completion.outputType }
+              : undefined,
+          });
         } else {
           const error = sanitizeError(completion.error);
+          //todo look at CompleteAttemptService
+          throw new NotImplementedError("TaskRun completion error handling not implemented yet");
         }
       });
     });

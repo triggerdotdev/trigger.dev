@@ -266,11 +266,15 @@ describe("RunEngine", () => {
       expect(runWaitpoint.waitpoint.type).toBe("RUN");
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
-      //todo update this test so the child run is completed instead, of completing the waitpoint explicitly
-
-      await engine.completeWaitpoint({
-        id: runWaitpoint.waitpointId,
-        output: { value: "{}", type: "application/json" },
+      await engine.completeRunAttempt({
+        runId: childRun.id,
+        snapshotId: childSnapshot.id,
+        completion: {
+          id: childRun.id,
+          ok: true,
+          output: '{"foo":"bar"}',
+          outputType: "application/json",
+        },
       });
 
       const waitpointAfter = await prisma.waitpoint.findFirst({
