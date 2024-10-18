@@ -103,7 +103,10 @@ export async function authenticateApiKey(
 
 export async function authenticateAuthorizationHeader(
   authorization: string,
-  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+  {
+    allowPublicKey = false,
+    allowJWT = false,
+  }: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
   const apiKey = getApiKeyFromHeader(authorization);
 
@@ -111,7 +114,7 @@ export async function authenticateAuthorizationHeader(
     return;
   }
 
-  return authenticateApiKey(apiKey, { allowPublicKey });
+  return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
 }
 
 export function isPublicApiKey(key: string) {
