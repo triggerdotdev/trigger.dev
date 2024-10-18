@@ -64,7 +64,18 @@ export class Exec {
       command,
       argsRaw: args,
       argsTrimmed,
-      ...output,
+      globalOpts: {
+        trimArgs: this.trimArgs,
+        neverThrow: this.neverThrow,
+        hasAbortSignal: !!this.abortSignal,
+      },
+      localOpts: opts,
+      stdout: output.stdout,
+      stderr: output.stderr,
+      pid: result.pid,
+      exitCode: result.exitCode,
+      aborted: result.aborted,
+      killed: result.killed,
     };
 
     if (this.logOutput) {
