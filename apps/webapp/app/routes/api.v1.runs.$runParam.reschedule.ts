@@ -62,11 +62,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const presenter = new ApiRetrieveRunPresenter();
-    const result = await presenter.call(
-      updatedRun.friendlyId,
-      authenticationResult.environment,
-      true
-    );
+    const result = await presenter.call(updatedRun.friendlyId, authenticationResult.environment);
 
     if (!result) {
       return json({ error: "Run not found" }, { status: 404 });
