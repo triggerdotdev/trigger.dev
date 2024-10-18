@@ -4,6 +4,7 @@ import { RadioGroup } from "@radix-ui/react-radio-group";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { uiComponent } from "@team-plain/typescript-sdk";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -17,21 +18,25 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { RadioGroupItem } from "~/components/primitives/RadioButton";
+import { TextArea } from "~/components/primitives/TextArea";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { logger } from "~/services/logger.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { sendToPlain } from "~/utils/plain.server";
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
   companySize: z.string().optional(),
+  whyUseUs: z.string().optional(),
 });
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const presenter = new NewOrganizationPresenter();
-  const { hasOrganizations } = await presenter.call({ userId });
+  const { hasOrganizations } = await presenter.call({ userId: userId });
 
   return typedjson({
     hasOrganizations,
@@ -39,8 +44,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
-
+  const user = await requireUser(request);
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
@@ -51,9 +55,40 @@ export const action: ActionFunction = async ({ request }) => {
   try {
     const organization = await createOrganization({
       title: submission.value.orgName,
-      userId,
+      userId: user.id,
       companySize: submission.value.companySize ?? null,
     });
+
+    const whyUseUs = formData.get("whyUseUs");
+
+    if (whyUseUs) {
+      try {
+        await sendToPlain({
+          userId: user.id,
+          email: user.email,
+          name: user.name ?? user.displayName ?? user.email,
+          title: "New org feedback",
+          components: [
+            uiComponent.text({
+              text: `${submission.value.orgName} just created a new organization.`,
+            }),
+            uiComponent.divider({ spacingSize: "M" }),
+            uiComponent.text({
+              size: "L",
+              color: "NORMAL",
+              text: "What problem are you trying to solve?",
+            }),
+            uiComponent.text({
+              size: "L",
+              color: "NORMAL",
+              text: whyUseUs.toString(),
+            }),
+          ],
+        });
+      } catch (error) {
+        logger.error("Error sending data to Plain when creating an org:", { error });
+      }
+    }
 
     return redirect(organizationPath(organization));
   } catch (error: any) {
@@ -97,39 +132,48 @@ export default function NewOrganizationPage() {
             <FormError id={orgName.errorId}>{orgName.error}</FormError>
           </InputGroup>
           {isManagedCloud && (
-            <InputGroup>
-              <Label htmlFor={"companySize"}>Number of employees</Label>
-              <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
-                <RadioGroupItem
-                  id="employees-1-5"
-                  label="1-5"
-                  value={"1-5"}
-                  variant="button/small"
-                  className="grow"
-                />
-                <RadioGroupItem
-                  id="employees-6-49"
-                  label="6-49"
-                  value={"6-49"}
-                  variant="button/small"
-                  className="grow"
-                />
-                <RadioGroupItem
-                  id="employees-50-99"
-                  label="50-99"
-                  value={"50-99"}
-                  variant="button/small"
-                  className="grow"
-                />
-                <RadioGroupItem
-                  id="employees-100+"
-                  label="100+"
-                  value={"100+"}
-                  variant="button/small"
-                  className="grow"
-                />
-              </RadioGroup>
-            </InputGroup>
+            <>
+              <InputGroup>
+                <Label htmlFor={"companySize"}>Number of employees</Label>
+                <RadioGroup name="companySize" className="flex items-center justify-between gap-2">
+                  <RadioGroupItem
+                    id="employees-1-5"
+                    label="1-5"
+                    value={"1-5"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-6-49"
+                    label="6-49"
+                    value={"6-49"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-50-99"
+                    label="50-99"
+                    value={"50-99"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                  <RadioGroupItem
+                    id="employees-100+"
+                    label="100+"
+                    value={"100+"}
+                    variant="button/small"
+                    className="grow"
+                  />
+                </RadioGroup>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={"whyUseUs"}>What problem are you trying to solve?</Label>
+                <TextArea name="whyUseUs" rows={4} spellCheck={false} />
+                <Hint>
+                  Your answer will help us understand your use case and provide better support.
+                </Hint>
+              </InputGroup>
+            </>
           )}
 
           <FormButtons

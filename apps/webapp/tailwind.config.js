@@ -62,6 +62,7 @@ const charcoal = {
   400: "#878C99",
   500: "#5F6570",
   600: "#3B3E45",
+  650: "#2C3034",
   700: "#272A2E",
   750: "#212327",
   800: "#1A1B1F",
@@ -132,7 +133,7 @@ const lavender = {
 
 /** Text colors */
 const primary = apple[500];
-const secondary = lavender[400];
+const secondary = charcoal[650];
 const tertiary = charcoal[700];
 const textLink = lavender[400];
 const textDimmed = charcoal[400];
@@ -210,6 +211,12 @@ module.exports = {
         staging: stagingEnv,
         prod: prodEnv,
       },
+      focusStyles: {
+        outline: "2px solid",
+        outlineOffset: "0px",
+        outlineColor: textLink,
+        borderRadius: "2px",
+      },
       borderRadius: {
         lg: radius,
         md: `calc(${radius} - 2px)`,
@@ -280,5 +287,13 @@ module.exports = {
     require("tailwind-scrollbar"),
     require("tailwind-scrollbar-hide"),
     require("tailwindcss-textshadow"),
+    function ({ addUtilities, theme }) {
+      const focusStyles = theme("focusStyles", {});
+      addUtilities({
+        ".focus-custom": {
+          "&:focus-visible": focusStyles,
+        },
+      });
+    },
   ],
 };

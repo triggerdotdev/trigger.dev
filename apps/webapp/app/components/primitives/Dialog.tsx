@@ -50,7 +50,7 @@ const DialogContent = React.forwardRef<
     >
       <hr className="absolute left-0 top-11 w-full" />
       {children}
-      <DialogPrimitive.Close className="ring-offset-background data-[state=open]:bg-accent data-[state=open]:text-muted-foreground focus-visible:ring-ring absolute right-3 top-3 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none">
+      <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute right-3 top-2 rounded-sm py-1 pr-1 opacity-70 transition-opacity focus-custom hover:opacity-100 disabled:pointer-events-none">
         <div className="flex gap-x-2">
           <ShortcutKey
             shortcut={{
@@ -82,7 +82,7 @@ DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    className={cn("flex flex-col-reverse sm:flex-row sm:justify-between sm:space-x-2", className)}
     {...props}
   />
 );

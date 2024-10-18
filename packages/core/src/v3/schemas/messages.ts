@@ -453,6 +453,7 @@ export const CoordinatorToPlatformMessages = {
   CHECKPOINT_CREATED: {
     message: z.object({
       version: z.literal("v1").default("v1"),
+      runId: z.string().optional(),
       attemptFriendlyId: z.string(),
       docker: z.boolean(),
       location: z.string(),

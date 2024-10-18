@@ -38,7 +38,7 @@ export function AccountSideMenu({ user }: { user: User }) {
             <SideMenuItem
               name="Your profile"
               icon="account"
-              iconColor="text-indigo-500"
+              activeIconColor="text-indigo-500"
               to={accountPath()}
               data-action="account"
             />
@@ -49,7 +49,7 @@ export function AccountSideMenu({ user }: { user: User }) {
               <SideMenuItem
                 name="Personal Access Tokens"
                 icon={ShieldCheckIcon}
-                iconColor="text-emerald-500"
+                activeIconColor="text-emerald-500"
                 to={personalAccessTokensPath()}
                 data-action="tokens"
               />

@@ -7,6 +7,11 @@ description: "These examples demonstrate how to use Puppeteer with Trigger.dev."
 import LocalDevelopment from "/snippets/local-development-extensions.mdx";
 import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- [Puppeteer](https://pptr.dev/guides/installation) installed on your machine
+
 ## Overview
 
 There are 3 example tasks to follow on this page:
@@ -15,7 +20,7 @@ There are 3 example tasks to follow on this page:
 2. [Generate a PDF from a web page](/guides/examples/puppeteer#generate-a-pdf-from-a-web-page)
 3. [Scrape content from a web page](/guides/examples/puppeteer#scrape-content-from-a-web-page)
 
-<ScrapingWarning/>
+<ScrapingWarning />
 
 ## Build configurations
 
@@ -133,7 +138,6 @@ export const puppeteerWebpageToPDF = task({
     return { pdfUrl: s3Url };
   },
 });
-
 ```
 
 ### Testing your task
@@ -146,9 +150,10 @@ There's no payload required for this task so you can just click "Run test" from 
 
 In this example we use [Puppeteer](https://pptr.dev/) with a [BrowserBase](https://www.browserbase.com/) proxy to scrape the GitHub stars count from the [Trigger.dev](https://trigger.dev) landing page and log it out. See [this list](/guides/examples/puppeteer#proxying) for more proxying services we recommend.
 
-<Note>
-  When web scraping, you MUST use the technique below which uses a proxy with Puppeteer. Direct scraping without using `browserWSEndpoint` is prohibited and will result in account suspension.
-</Note>
+<Warning>
+  When web scraping, you MUST use the technique below which uses a proxy with Puppeteer. Direct
+  scraping without using `browserWSEndpoint` is prohibited and will result in account suspension.
+</Warning>
 
 ### Task code
 

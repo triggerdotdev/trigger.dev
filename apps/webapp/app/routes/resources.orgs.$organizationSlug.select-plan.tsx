@@ -1,11 +1,15 @@
 import {
+  ArrowUpRightIcon,
   CheckIcon,
   ExclamationTriangleIcon,
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { ArrowDownCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { uiComponent } from "@team-plain/typescript-sdk";
+import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
   FreePlanDefinition,
   Limits,
@@ -14,11 +18,13 @@ import {
   SetPlanBody,
   SubscriptionResult,
 } from "@trigger.dev/platform/v3";
-import { GitHubLightIcon } from "@trigger.dev/companyicons";
+import React, { useEffect, useState } from "react";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
 import { Feedback } from "~/components/Feedback";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
@@ -26,14 +32,18 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TextArea } from "~/components/primitives/TextArea";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { sendToPlain } from "~/utils/plain.server";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -43,6 +53,8 @@ const schema = z.object({
   type: z.enum(["free", "paid"]),
   planCode: z.string().optional(),
   callerPath: z.string(),
+  reasons: z.union([z.string(), z.array(z.string())]).optional(),
+  message: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -51,11 +63,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const { organizationSlug } = Params.parse(params);
+  const user = await requireUser(request);
+  const formData = await request.formData();
+  const reasons = formData.getAll("reasons");
+  const message = formData.get("message");
 
-  const userId = await requireUserId(request);
-
-  const formData = Object.fromEntries(await request.formData());
-  const form = schema.parse(formData);
+  const form = schema.parse({
+    ...Object.fromEntries(formData),
+    reasons,
+    message: message || undefined,
+  });
 
   const organization = await prisma.organization.findUnique({
     where: { slug: organizationSlug },
@@ -69,9 +86,53 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (form.type) {
     case "free": {
+      try {
+        if (reasons.length > 0 || (message && message.toString().trim() !== "")) {
+          await sendToPlain({
+            userId: user.id,
+            email: user.email,
+            name: user.name ?? "",
+            title: "Plan cancelation feedback",
+            components: [
+              uiComponent.text({
+                text: `${user.name} (${user.email}) just canceled their plan.`,
+              }),
+              uiComponent.divider({ spacingSize: "M" }),
+              ...(reasons.length > 0
+                ? [
+                    uiComponent.spacer({ size: "L" }),
+                    uiComponent.text({
+                      size: "L",
+                      color: "NORMAL",
+                      text: "Reasons:",
+                    }),
+                    uiComponent.text({
+                      text: reasons.join(", "),
+                    }),
+                  ]
+                : []),
+              ...(message
+                ? [
+                    uiComponent.spacer({ size: "L" }),
+                    uiComponent.text({
+                      size: "L",
+                      color: "NORMAL",
+                      text: "Comment:",
+                    }),
+                    uiComponent.text({
+                      text: message.toString(),
+                    }),
+                  ]
+                : []),
+            ],
+          });
+        }
+      } catch (e) {
+        logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
+      }
       payload = {
         type: "free" as const,
-        userId,
+        userId: user.id,
       };
       break;
     }
@@ -82,9 +143,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       payload = {
         type: "paid" as const,
         planCode: form.planCode,
-        userId,
+        userId: user.id,
       };
       break;
+    }
+    default: {
+      throw new Error("Invalid form type");
     }
   }
 
@@ -134,6 +198,7 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   showGithubVerificationBadge?: boolean;
+  periodEnd: Date;
 };
 
 export function PricingPlans({
@@ -142,6 +207,7 @@ export function PricingPlans({
   organizationSlug,
   hasPromotedPlan,
   showGithubVerificationBadge,
+  periodEnd,
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -151,6 +217,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           showGithubVerificationBadge={showGithubVerificationBadge}
+          periodEnd={periodEnd}
         />
         <TierHobby
           plan={plans.hobby}
@@ -172,23 +239,33 @@ export function TierFree({
   subscription,
   organizationSlug,
   showGithubVerificationBadge,
+  periodEnd,
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
   showGithubVerificationBadge?: boolean;
+  periodEnd: Date;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
-
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
   const status = subscription?.freeTierStatus ?? "requires_connect";
+
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [subscription]);
 
   return (
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
+        <TierLimit href="https://trigger.dev/pricing#computePricing">
+          ${plan.limits.includedUsage / 100} free monthly usage
+        </TierLimit>
         {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
@@ -242,16 +319,11 @@ export function TierFree({
           </div>
         </div>
       ) : (
-        <Form action={formAction} method="post" id="subscribe">
-          <input type="hidden" name="type" value="free" />
-          <input type="hidden" name="callerPath" value={location.pathname} />
-          <TierLimit href="https://trigger.dev/pricing#computePricing">
-            ${plan.limits.includedUsage / 100} free usage
-          </TierLimit>
-          <div className="py-6">
-            {status === "requires_connect" ? (
-              <Dialog>
-                <DialogTrigger asChild>
+        <>
+          {status === "requires_connect" ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <div className="my-6">
                   <Button
                     type="button"
                     variant="tertiary/large"
@@ -260,12 +332,16 @@ export function TierFree({
                     disabled={isLoading}
                     LeadingIcon={isLoading ? Spinner : undefined}
                   >
-                    Unlock free plan
+                    Unlock Free plan
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <Form action={formAction} method="post" id="subscribe-free">
+                  <input type="hidden" name="type" value="free" />
+                  <input type="hidden" name="callerPath" value={location.pathname} />
                   <DialogHeader>Unlock the Free plan</DialogHeader>
-                  <div className="mb-3 mt-4 flex flex-col items-center gap-4 px-6">
+                  <div className="mb-5 mt-7 flex flex-col items-center gap-4 px-6">
                     <GitHubLightIcon className="size-16" />
                     <Paragraph variant="base/bright" className="text-center">
                       To unlock the Free plan, we need to verify that you have an active GitHub
@@ -282,16 +358,104 @@ export function TierFree({
                       fullWidth
                       disabled={isLoading}
                       LeadingIcon={isLoading ? Spinner : undefined}
-                      form="subscribe"
+                      form="subscribe-free"
                     >
                       Connect to GitHub
                     </Button>
                   </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            ) : (
+                </Form>
+              </DialogContent>
+            </Dialog>
+          ) : subscription?.plan !== undefined &&
+            subscription.plan.type !== "free" &&
+            subscription.canceledAt === undefined ? (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="cancel">
+              <DialogTrigger asChild>
+                <div className="my-6">
+                  <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                    {`Downgrade to ${plan.title}`}
+                  </Button>
+                </div>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <Form action={formAction} method="post" id="subscribe">
+                  <input type="hidden" name="type" value="free" />
+                  <input type="hidden" name="callerPath" value={location.pathname} />
+                  <DialogHeader>Downgrade plan?</DialogHeader>
+                  <div className="flex items-start gap-3 pb-6 pr-2 pt-8">
+                    <ArrowDownCircleIcon className="size-12 min-w-12 text-error" />
+                    <Paragraph variant="base/bright" className="text-text-bright">
+                      Are you sure you want to downgrade? You will lose access to your current
+                      plan's features on{" "}
+                      <DateTime
+                        includeTime={false}
+                        date={new Date(periodEnd.getTime() + 86400000)}
+                      />
+                      .
+                    </Paragraph>
+                  </div>
+                  <div>
+                    <div className="mb-4">
+                      <Header2 className="mb-1">Why are you thinking of downgrading?</Header2>
+                      <ul className="space-y-1">
+                        {[
+                          "Subscription or usage costs too expensive",
+                          "Bugs or technical issues",
+                          "No longer need the service",
+                          "Found a better alternative",
+                          "Lacking features I need",
+                        ].map((label, index) => (
+                          <li key={index}>
+                            <CheckboxWithLabel
+                              id={`reason-${index + 1}`}
+                              name="reasons"
+                              value={label}
+                              variant="simple"
+                              label={label}
+                              labelClassName="text-text-dimmed"
+                              onChange={(isChecked: boolean) => {
+                                if (label === "Lacking features I need") {
+                                  setIsLackingFeaturesChecked(isChecked);
+                                }
+                              }}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <Header2 className="mb-1">
+                        {isLackingFeaturesChecked
+                          ? "What features do you need? Or how can we improve?"
+                          : "What can we do to improve?"}
+                      </Header2>
+                      <TextArea id="improvement-suggestions" name="message" />
+                    </div>
+                  </div>
+                  <DialogFooter className="mt-2">
+                    <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                      Dismiss
+                    </Button>
+                    <Button
+                      variant="danger/medium"
+                      disabled={isLoading}
+                      LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                      type="submit"
+                    >
+                      Downgrade plan
+                    </Button>
+                  </DialogFooter>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Form action={formAction} method="post" id="subscribe-verified" className="my-6">
+              <input type="hidden" name="type" value="free" />
+              <input type="hidden" name="callerPath" value={location.pathname} />
               <Button
                 variant="tertiary/large"
+                type="submit"
+                form="subscribe-verified"
                 fullWidth
                 className="text-md font-medium"
                 disabled={
@@ -305,12 +469,14 @@ export function TierFree({
               >
                 {subscription?.plan === undefined
                   ? "Select plan"
-                  : subscription.plan.type === "free" || subscription.canceledAt !== undefined
+                  : subscription.plan.type === "free"
                   ? "Current plan"
-                  : `Downgrade to ${plan.title}`}
+                  : subscription.canceledAt !== undefined
+                  ? "Current plan"
+                  : "Select plan"}
               </Button>
-            )}
-          </div>
+            </Form>
+          )}
           <ul className="flex flex-col gap-2.5">
             <ConcurrentRuns limits={plan.limits} />
             <FeatureItem checked>
@@ -329,7 +495,7 @@ export function TierFree({
             <SupportLevel limits={plan.limits} />
             <Alerts limits={plan.limits} />
           </ul>
-        </Form>
+        </>
       )}
     </TierContainer>
   );
@@ -350,6 +516,11 @@ export function TierHobby({
   const navigation = useNavigation();
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [subscription]);
 
   return (
     <TierContainer isHighlighted={isHighlighted}>
@@ -357,15 +528,52 @@ export function TierHobby({
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
-      <Form action={formAction} method="post" id="subscribe">
-        <div className="py-6">
-          <input type="hidden" name="type" value="paid" />
-          <input type="hidden" name="planCode" value={plan.code} />
-          <input type="hidden" name="callerPath" value={location.pathname} />
+      <Form action={formAction} method="post" id="subscribe-hobby" className="py-6">
+        <input type="hidden" name="type" value="paid" />
+        <input type="hidden" name="planCode" value={plan.code} />
+        <input type="hidden" name="callerPath" value={location.pathname} />
+        {subscription?.plan !== undefined &&
+        subscription.plan.type !== "free" &&
+        subscription.canceledAt === undefined &&
+        subscription.plan.code !== plan.code ? (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="downgrade">
+            <DialogTrigger asChild>
+              <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                {`Downgrade to ${plan.title}`}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>Downgrade plan?</DialogHeader>
+              <div className="mb-2 mt-4 flex items-start gap-3">
+                <span>
+                  <ArrowDownCircleIcon className="size-12 text-blue-500" />
+                </span>
+                <Paragraph variant="base/bright" className="text-text-bright">
+                  By downgrading you will lose access to your current plan's features and your
+                  included credits will be reduced.
+                </Paragraph>
+              </div>
+              <DialogFooter>
+                <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                  Dismiss
+                </Button>
+                <Button
+                  variant="tertiary/medium"
+                  disabled={isLoading}
+                  LeadingIcon={isLoading ? () => <Spinner color="white" /> : undefined}
+                  form="subscribe-hobby"
+                >
+                  {`Downgrade to ${plan.title}`}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : (
           <Button
             variant={isHighlighted ? "primary/large" : "tertiary/large"}
             fullWidth
             className="text-md font-medium"
+            form="subscribe-hobby"
             disabled={
               isLoading ||
               (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
@@ -380,9 +588,9 @@ export function TierHobby({
               ? `Upgrade to ${plan.title}`
               : subscription.plan.code === plan.code
               ? "Current plan"
-              : `Downgrade to ${plan.title}`}
+              : `Upgrade to ${plan.title}`}
           </Button>
-        </div>
+        )}
       </Form>
       <ul className="flex flex-col gap-2.5">
         <ConcurrentRuns limits={plan.limits} />
@@ -425,7 +633,7 @@ export function TierPro({
       <TierLimit href="https://trigger.dev/pricing#computePricing">
         ${plan.limits.includedUsage / 100} usage included
       </TierLimit>
-      <Form action={formAction} method="post" id="subscribe">
+      <Form action={formAction} method="post" id="subscribe-pro">
         <div className="py-6">
           <input type="hidden" name="type" value="paid" />
           <input type="hidden" name="planCode" value={plan.code} />
@@ -433,6 +641,7 @@ export function TierPro({
           <Button
             variant="tertiary/large"
             fullWidth
+            form="subscribe-pro"
             className="text-md font-medium"
             disabled={
               isLoading ||
@@ -589,21 +798,28 @@ function PricingHeader({
 function TierLimit({ children, href }: { children: React.ReactNode; href?: string }) {
   return (
     <>
+      <hr className="my-6 border-grid-bright" />
       {href ? (
-        <div>
-          <hr className="my-6 border-grid-bright" />
-          <a
-            href={href}
-            className="hover:decoration-bright font-sans text-lg font-normal text-text-bright underline decoration-charcoal-500 underline-offset-4 transition"
-          >
-            {children}
-          </a>
-        </div>
+        <SimpleTooltip
+          buttonClassName="text-left w-fit"
+          disableHoverableContent
+          button={
+            <a
+              href={href}
+              className="text-left font-sans text-lg font-normal text-text-bright underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright"
+            >
+              {children}
+            </a>
+          }
+          content={
+            <div className="flex items-center gap-1">
+              <Paragraph variant="small">View compute pricing information</Paragraph>
+              <ArrowUpRightIcon className="size-4 text-text-dimmed" />
+            </div>
+          }
+        />
       ) : (
-        <div>
-          <hr className="my-6 border-grid-bright" />
-          <div className="font-sans text-lg font-normal text-text-bright">{children}</div>
-        </div>
+        <div className="font-sans text-lg font-normal text-text-bright">{children}</div>
       )}
     </>
   );

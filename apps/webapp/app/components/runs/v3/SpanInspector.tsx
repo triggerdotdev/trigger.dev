@@ -47,7 +47,7 @@ export function SpanInspector({
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
-      <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
             name={span.style?.icon}

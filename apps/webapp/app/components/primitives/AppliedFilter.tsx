@@ -45,7 +45,10 @@ export function AppliedFilter({
       </div>
       {removable && (
         <button
-          className={cn("group flex size-6 items-center justify-center", variantClassName.clear)}
+          className={cn(
+            "group flex size-6 items-center justify-center focus-custom",
+            variantClassName.clear
+          )}
           onClick={onRemove}
         >
           <XMarkIcon className="size-3.5" />

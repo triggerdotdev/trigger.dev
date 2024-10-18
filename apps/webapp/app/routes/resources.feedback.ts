@@ -6,6 +6,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
+import { sendToPlain } from "~/utils/plain.server";
 
 let client: PlainClient | undefined;
 
@@ -14,7 +15,7 @@ export const feedbackTypeLabel = {
   feature: "Feature request",
   help: "Help me out",
   enterprise: "Enterprise enquiry",
-  "developer preview": "Developer preview feedback",
+  feedback: "General feedback",
 };
 
 export type FeedbackType = keyof typeof feedbackTypeLabel;
@@ -32,7 +33,7 @@ const feedbackType = z.union(
 export const schema = z.object({
   path: z.string(),
   feedbackType,
-  message: z.string().min(1, "Must be at least 1 character"),
+  message: z.string().min(10, "Must be at least 10 characters"),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -45,60 +46,12 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(submission);
   }
 
+  const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
   try {
-    if (!env.PLAIN_API_KEY) {
-      console.error("PLAIN_API_KEY is not set");
-      submission.error.message = "PLAIN_API_KEY is not set";
-      return json(submission);
-    }
-
-    client = new PlainClient({
-      apiKey: env.PLAIN_API_KEY,
-    });
-
-    const upsertCustomerRes = await client.upsertCustomer({
-      identifier: {
-        emailAddress: user.email,
-      },
-      onCreate: {
-        externalId: user.id,
-        fullName: user.name ?? "",
-        // TODO - Optional: set 'first name' on user
-        // shortName: ''
-        email: {
-          email: user.email,
-          isVerified: true,
-        },
-      },
-      onUpdate: {
-        externalId: { value: user.id },
-        fullName: { value: user.name ?? "" },
-        // TODO - see above
-        // shortName: { value: "" },
-        email: {
-          email: user.email,
-          isVerified: true,
-        },
-      },
-    });
-
-    if (upsertCustomerRes.error) {
-      console.error(
-        inspect(upsertCustomerRes.error, {
-          showHidden: false,
-          depth: null,
-          colors: true,
-        })
-      );
-      submission.error.message = upsertCustomerRes.error.message;
-      return json(submission);
-    }
-
-    const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
-    const createThreadRes = await client.createThread({
-      customerIdentifier: {
-        customerId: upsertCustomerRes.data.customer.id,
-      },
+    await sendToPlain({
+      userId: user.id,
+      email: user.email,
+      name: user.name ?? user.displayName ?? user.email,
       title,
       components: [
         uiComponent.text({
@@ -123,24 +76,7 @@ export async function action({ request }: ActionFunctionArgs) {
           text: submission.value.message,
         }),
       ],
-      // TODO: Optional: set labels on threads here on creation
-      // labelTypeIds: [],
-
-      // TODO: Optional: set the priority (0 is urgent, 3 is low)
-      // priority: 0,
     });
-
-    if (createThreadRes.error) {
-      console.error(
-        inspect(createThreadRes.error, {
-          showHidden: false,
-          depth: null,
-          colors: true,
-        })
-      );
-      submission.error.message = createThreadRes.error.message;
-      return json(submission);
-    }
 
     return redirectWithSuccessMessage(
       submission.value.path,
@@ -148,6 +84,7 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    return json(e, { status: 400 });
+    submission.error.message = e instanceof Error ? e.message : "Unknown error";
+    return json(submission);
   }
 }

@@ -13,6 +13,11 @@ import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.md
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
+<Info>
+  The project created in this guide can be found in this [GitHub
+  repo](https://github.com/triggerdotdev/example-projects/tree/main/supabase).
+</Info>
+
 ## Overview
 
 Supabase and Trigger.dev can be used together to create powerful workflows triggered by real-time changes in your database tables:
@@ -158,10 +163,9 @@ export const videoProcessAndUpdate = task({
     const tempDirectory = os.tmpdir();
     const outputPath = path.join(tempDirectory, `audio_${Date.now()}.wav`);
 
-    // Fetch the video
     const response = await fetch(videoUrl);
 
-    // Extract the audio
+    // Extract the audio using FFmpeg
     await new Promise((resolve, reject) => {
       if (!response.body) {
         return reject(new Error("Failed to fetch video"));
@@ -196,7 +200,6 @@ export const videoProcessAndUpdate = task({
       throw error;
     }
 
-    // Convert the result object to a string
     const transcription = result.results.channels[0].alternatives[0].paragraphs?.transcript;
 
     logger.log(`Transcription: ${transcription}`);
@@ -207,8 +210,8 @@ export const videoProcessAndUpdate = task({
 
     const { error: updateError } = await supabase
       .from("video_transcriptions")
-      // Set the plan to the new plan and update the timestamp
-      .update({ transcription: transcription, video_url: videoUrl })
+      // Update the transcription column
+      .update({ transcription: transcription })
       // Find the row by its ID
       .eq("id", id);
 

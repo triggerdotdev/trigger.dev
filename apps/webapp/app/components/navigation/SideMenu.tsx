@@ -1,14 +1,19 @@
 import {
   AcademicCapIcon,
   ArrowRightOnRectangleIcon,
+  ArrowUpRightIcon,
   BeakerIcon,
   BellAlertIcon,
+  CalendarDaysIcon,
   ChartBarIcon,
+  ChatBubbleLeftEllipsisIcon,
   ClockIcon,
   CreditCardIcon,
   CursorArrowRaysIcon,
+  EnvelopeIcon,
   IdentificationIcon,
   KeyIcon,
+  LightBulbIcon,
   RectangleStackIcon,
   ServerStackIcon,
   ShieldCheckIcon,
@@ -17,13 +22,14 @@ import {
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { type User } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { FeedbackType } from "~/routes/resources.feedback";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -77,11 +83,12 @@ import {
   PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
+  PopoverSideMenuTrigger,
 } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
 import { TextLink } from "../primitives/TextLink";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { SideMenuItem } from "./SideMenuItem";
+import { MenuCount, SideMenuItem } from "./SideMenuItem";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
@@ -91,6 +98,8 @@ type SideMenuProps = {
   project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
+  button?: ReactNode;
+  defaultValue?: FeedbackType;
 };
 
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
@@ -171,7 +180,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
               name="Team"
               icon={UserGroupIcon}
               to={organizationTeamPath(organization)}
-              iconColor="text-amber-500"
+              activeIconColor="text-amber-500"
               data-action="team"
             />
             {organization.projects.some((proj) => proj.version === "V3") && isManagedCloud && (
@@ -180,14 +189,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                   name="Usage"
                   icon={ChartBarIcon}
                   to={v3UsagePath(organization)}
-                  iconColor="text-green-600"
+                  activeIconColor="text-green-600"
                   data-action="usage"
                 />
                 <SideMenuItem
                   name="Billing"
                   icon={CreditCardIcon}
                   to={v3BillingPath(organization)}
-                  iconColor="text-blue-600"
+                  activeIconColor="text-blue-600"
                   data-action="billing"
                   badge={
                     currentPlan?.v3Subscription?.isPaying
@@ -202,14 +211,14 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
                 name="Usage (v2)"
                 icon={ChartBarIcon}
                 to={organizationBillingPath(organization)}
-                iconColor="text-green-600"
+                activeIconColor="text-green-600"
                 data-action="usage & billing"
               />
             )}
             <SideMenuItem
               name="Organization settings"
               icon="settings"
-              iconColor="text-teal-500"
+              activeIconColor="text-teal-500"
               to={organizationSettingsPath(organization)}
               data-action="organization-settings"
             />
@@ -239,96 +248,7 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
           )}
         </div>
         <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-          {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={SlackIcon}
-                  data-action="join our slack"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Join our Slack
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>Join our Slack</DialogHeader>
-                <div className="mt-2 flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
-                    <Paragraph variant="base/bright">
-                      As a subscriber, you have access to a dedicated Slack channel for 1-to-1
-                      support with the Trigger.dev team.
-                    </Paragraph>
-                  </div>
-                  <hr className="border-charcoal-800" />
-                  <div>
-                    <StepNumber stepNumber="1" title="Email us" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        Send us an email to this address from your Trigger.dev account email
-                        address:
-                        <ClipboardField
-                          variant="primary/medium"
-                          value="priority-support@trigger.dev"
-                          className="my-2"
-                        />
-                      </Paragraph>
-                    </StepContentContainer>
-                    <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
-                    <StepContentContainer>
-                      <Paragraph>
-                        As soon as we can, we'll setup a Slack Connect channel and say hello!
-                      </Paragraph>
-                    </StepContentContainer>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-          <SideMenuItem
-            name="Join our Discord"
-            icon={DiscordIcon}
-            to="https://trigger.dev/discord"
-            data-action="join our discord"
-            target="_blank"
-          />
-          <SideMenuItem
-            name="Documentation"
-            icon="docs"
-            to="https://trigger.dev/docs"
-            data-action="documentation"
-            target="_blank"
-          />
-          <SideMenuItem
-            name="Changelog"
-            icon="star"
-            to="https://trigger.dev/changelog"
-            data-action="changelog"
-            target="_blank"
-          />
-          <SideMenuItem
-            name="Status"
-            icon={SignalIcon}
-            to="https://status.trigger.dev/"
-            data-action="status"
-            target="_blank"
-          />
-          <Feedback
-            button={
-              <Button
-                variant="small-menu-item"
-                LeadingIcon="log"
-                leadingIconClassName="text-primary"
-                data-action="help & feedback"
-                fullWidth
-                textAlignLeft
-              >
-                <span className="text-primary">Help & Feedback</span>
-              </Button>
-            }
-          />
+          <HelpAndFeedback />
           {isV3Project && isFreeV3User && (
             <FreePlanUsage
               to={v3BillingPath(organization)}
@@ -338,6 +258,167 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
       </div>
     </div>
+  );
+}
+
+function HelpAndFeedback() {
+  const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
+  const currentPlan = useCurrentPlan();
+
+  return (
+    <Popover onOpenChange={(open) => setHelpMenuOpen(open)}>
+      <PopoverSideMenuTrigger isOpen={isHelpMenuOpen} shortcut={{ key: "h" }}>
+        <div className="flex items-center gap-1.5">
+          <ChatBubbleLeftEllipsisIcon className="size-4 text-success" />
+          Help & Feedback
+        </div>
+      </PopoverSideMenuTrigger>
+      <PopoverContent
+        className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        align="start"
+      >
+        <Fragment>
+          <div className="flex flex-col gap-1 p-1">
+            <SideMenuItem
+              name="Documentation"
+              icon="docs"
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-green-500"
+              activeIconColor="text-green-500"
+              to="https://trigger.dev/docs"
+              data-action="documentation"
+              target="_blank"
+            />
+          </div>
+          <div className="flex flex-col gap-1 p-1">
+            <SideMenuItem
+              name="Status"
+              icon={SignalIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-green-500"
+              activeIconColor="text-green-500"
+              to="https://status.trigger.dev/"
+              data-action="status"
+              target="_blank"
+            />
+            <SideMenuItem
+              name="Suggest a feature"
+              icon={LightBulbIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-sun-500"
+              activeIconColor="text-sun-500"
+              to="https://feedback.trigger.dev/"
+              data-action="suggest-a-feature"
+              target="_blank"
+            />
+            <SideMenuItem
+              name="Changelog"
+              icon="star"
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-sun-500"
+              activeIconColor="text-sun-500"
+              to="https://trigger.dev/changelog"
+              data-action="changelog"
+              target="_blank"
+            />
+          </div>
+          <div className="flex flex-col gap-1 p-1">
+            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Need help?</Paragraph>
+            {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
+              <div>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="small-menu-item"
+                      LeadingIcon={SlackIcon}
+                      data-action="join-our-slack"
+                      fullWidth
+                      textAlignLeft
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="text-text-bright">Join our Slack…</span>
+                        <MenuCount count="PRO" />
+                      </div>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>Join our Slack</DialogHeader>
+                    <div className="mt-2 flex flex-col gap-4">
+                      <div className="flex items-center gap-4">
+                        <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
+                        <Paragraph variant="base/bright">
+                          As a subscriber, you have access to a dedicated Slack channel for 1-to-1
+                          support with the Trigger.dev team.
+                        </Paragraph>
+                      </div>
+                      <hr className="border-charcoal-800" />
+                      <div>
+                        <StepNumber stepNumber="1" title="Email us" />
+                        <StepContentContainer>
+                          <Paragraph>
+                            Send us an email to this address from your Trigger.dev account email
+                            address:
+                            <ClipboardField
+                              variant="secondary/medium"
+                              value="priority-support@trigger.dev"
+                              className="my-2"
+                            />
+                          </Paragraph>
+                        </StepContentContainer>
+                        <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
+                        <StepContentContainer>
+                          <Paragraph>
+                            As soon as we can, we'll setup a Slack Connect channel and say hello!
+                          </Paragraph>
+                        </StepContentContainer>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            <SideMenuItem
+              name="Ask in our Discord"
+              icon={DiscordIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              to="https://trigger.dev/discord"
+              data-action="join our discord"
+              target="_blank"
+            />
+            <SideMenuItem
+              name="Book a 15 min call"
+              icon={CalendarDaysIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-rose-500"
+              activeIconColor="text-rose-500"
+              to="https://cal.com/team/triggerdotdev/founders-call"
+              data-action="book-a-call"
+              target="_blank"
+            />
+            <Feedback
+              button={
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={EnvelopeIcon}
+                  leadingIconClassName="text-blue-500"
+                  data-action="contact-us"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Contact us…
+                </Button>
+              }
+            />
+          </div>
+        </Fragment>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -495,47 +576,47 @@ function V2ProjectSideMenu({
       <SideMenuItem
         name="Jobs"
         icon="job"
-        iconColor="text-indigo-500"
+        activeIconColor="text-indigo-500"
         to={projectPath(organization, project)}
         data-action="jobs"
       />
       <SideMenuItem
         name="Runs"
         icon="runs"
-        iconColor="text-teal-500"
+        activeIconColor="text-teal-500"
         to={projectRunsPath(organization, project)}
       />
       <SideMenuItem
         name="Triggers"
         icon="trigger"
-        iconColor="text-amber-500"
+        activeIconColor="text-amber-500"
         to={projectTriggersPath(organization, project)}
         data-action="triggers"
       />
       <SideMenuItem
         name="Events"
         icon={CursorArrowRaysIcon}
-        iconColor="text-sky-500"
+        activeIconColor="text-sky-500"
         to={projectEventsPath(organization, project)}
       />
       <SideMenuItem
         name="HTTP endpoints"
         icon="http-endpoint"
-        iconColor="text-pink-500"
+        activeIconColor="text-pink-500"
         to={projectHttpEndpointsPath(organization, project)}
         data-action="httpendpoints"
       />
       <SideMenuItem
         name="Environments & API Keys"
         icon="environment"
-        iconColor="text-rose-500"
+        activeIconColor="text-rose-500"
         to={projectEnvironmentsPath(organization, project)}
         data-action="environments & api keys"
       />
       <SideMenuItem
         name="Project settings"
         icon="settings"
-        iconColor="text-teal-500"
+        activeIconColor="text-teal-500"
         to={projectSettingsPath(organization, project)}
         data-action="project-settings"
       />
@@ -558,41 +639,41 @@ function V3ProjectSideMenu({
       <SideMenuItem
         name="Tasks"
         icon={TaskIcon}
-        iconColor="text-blue-500"
+        activeIconColor="text-blue-500"
         to={v3ProjectPath(organization, project)}
         data-action="tasks"
       />
       <SideMenuItem
         name="Runs"
         icon="runs"
-        iconColor="text-teal-500"
+        activeIconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
       />
       <SideMenuItem
         name="Test"
         icon={BeakerIcon}
-        iconColor="text-lime-500"
+        activeIconColor="text-lime-500"
         to={v3TestPath(organization, project)}
         data-action="test"
       />
       <SideMenuItem
         name="Schedules"
         icon={ClockIcon}
-        iconColor="text-sun-500"
+        activeIconColor="text-sun-500"
         to={v3SchedulesPath(organization, project)}
         data-action="schedules"
       />
       <SideMenuItem
         name="API keys"
         icon={KeyIcon}
-        iconColor="text-amber-500"
+        activeIconColor="text-amber-500"
         to={v3ApiKeysPath(organization, project)}
         data-action="api keys"
       />
       <SideMenuItem
         name="Environment variables"
         icon={IdentificationIcon}
-        iconColor="text-pink-500"
+        activeIconColor="text-pink-500"
         to={v3EnvironmentVariablesPath(organization, project)}
         data-action="environment variables"
       />
@@ -600,7 +681,7 @@ function V3ProjectSideMenu({
       <SideMenuItem
         name="Deployments"
         icon={ServerStackIcon}
-        iconColor="text-blue-500"
+        activeIconColor="text-blue-500"
         to={v3DeploymentsPath(organization, project)}
         data-action="deployments"
       />
@@ -608,7 +689,7 @@ function V3ProjectSideMenu({
         <SideMenuItem
           name="Alerts"
           icon={BellAlertIcon}
-          iconColor="text-red-500"
+          activeIconColor="text-red-500"
           to={v3ProjectAlertsPath(organization, project)}
           data-action="alerts"
         />
@@ -616,14 +697,14 @@ function V3ProjectSideMenu({
       <SideMenuItem
         name="Concurrency limits"
         icon={RectangleStackIcon}
-        iconColor="text-indigo-500"
+        activeIconColor="text-indigo-500"
         to={v3ConcurrencyPath(organization, project)}
         data-action="concurrency"
       />
       <SideMenuItem
         name="Project settings"
         icon="settings"
-        iconColor="text-teal-500"
+        activeIconColor="text-teal-500"
         to={v3ProjectSettingsPath(organization, project)}
         data-action="project-settings"
       />

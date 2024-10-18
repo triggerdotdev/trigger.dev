@@ -1,0 +1,41 @@
+---
+title: "Using webhooks with Trigger.dev"
+sidebarTitle: "Overview"
+description: "Guides for using webhooks with Trigger.dev."
+---
+
+## Overview
+
+Webhooks are a way to send and receive events from external services. Triggering tasks using webhooks allow you to add real-time, event driven functionality to your app.
+
+A webhook handler is code that executes in response to an event. They can be endpoints in your framework's routing which can be triggered by an external service.
+
+## Webhook guides
+
+<CardGroup cols={2}>
+  <Card
+    title="Next.js - triggering tasks using webhooks"
+    icon="N"
+    href="/guides/frameworks/nextjs-webhooks"
+  >
+    How to create a webhook handler in a Next.js app, and trigger a task from it.
+  </Card>
+  <Card
+    title="Remix - triggering tasks using webhooks"
+    icon="R"
+    href="/guides/frameworks/remix-webhooks"
+  >
+    How to create a webhook handler in a Remix app, and trigger a task from it.
+  </Card>
+  <Card title="Stripe webhooks" icon="webhook" href="/guides/examples/stripe-webhook">
+    How to create a Stripe webhook handler and trigger a task when a 'checkout session completed'
+    event is received.
+  </Card>
+  <Card
+    title="Supabase database webhooks guide"
+    icon="webhook"
+    href="/guides/frameworks/supabase-edge-functions-database-webhooks"
+  >
+    Learn how to trigger a task from a Supabase edge function when an event occurs in your database.
+  </Card>
+</CardGroup>

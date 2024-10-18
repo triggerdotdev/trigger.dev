@@ -785,12 +785,6 @@ class ProdWorker {
             });
 
             try {
-              await this._taskRunProcess.cancel();
-            } catch (error) {
-              logger.error("Failed to cancel task run process", { error });
-            }
-
-            try {
               await this.#submitAttemptCompletion(execution, {
                 id: execution.run.id,
                 ok: false,

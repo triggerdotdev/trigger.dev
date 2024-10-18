@@ -61,6 +61,7 @@ export type CheckboxProps = Omit<
   description?: string;
   badges?: string[];
   className?: string;
+  labelClassName?: string;
   onChange?: (isChecked: boolean) => void;
 };
 
@@ -78,6 +79,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
       badges,
       disabled,
       className,
+      labelClassName: externalLabelClassName,
       ...props
     },
     ref
@@ -148,7 +150,8 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
               htmlFor={id}
               className={cn(
                 props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-                labelClassName
+                labelClassName,
+                externalLabelClassName
               )}
               onClick={(e) => e.preventDefault()}
             >

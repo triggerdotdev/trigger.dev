@@ -1,0 +1,260 @@
+---
+title: "Scrape the top 3 articles from Hacker News and email yourself a summary every weekday"
+sidebarTitle: "Scrape Hacker News"
+description: "This example demonstrates how to scrape the top 3 articles from Hacker News using BrowserBase and Puppeteer, summarize them with ChatGPT and send a nicely formatted email summary to yourself every weekday using Resend."
+---
+
+import LocalDevelopment from "/snippets/local-development-extensions.mdx";
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+
+## Overview
+
+In this example we'll be using a number of different tools and features to:
+
+1. Scrape the content of the top 3 articles from Hacker News
+2. Summarize each article
+3. Email the summaries to yourself
+
+And we'll be using the following tools and features:
+
+- [Schedules](/tasks/scheduled) to run the task every weekday at 9 AM
+- [Batch Triggering](/triggering#yourtask-batchtriggerandwait) to run separate child tasks for each article while the parent task waits for them all to complete
+- [idempotencyKey](/triggering#idempotencykey) to prevent tasks being triggered multiple times
+- [BrowserBase](https://browserbase.com/) to proxy the scraping of the Hacker News articles
+- [Puppeteer](https://pptr.dev/) to scrape the articles linked from Hacker News
+- [OpenAI](https://platform.openai.com/docs/overview) to summarize the articles
+- [Resend](https://resend.com/) to send a nicely formatted email summary
+
+<ScrapingWarning />
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- [Puppeteer](https://pptr.dev/guides/installation) installed on your machine
+- A [BrowserBase](https://browserbase.com/) account
+- An [OpenAI](https://platform.openai.com/docs/overview) account
+- A [Resend](https://resend.com/) account
+
+## Build configuration
+
+First up, add these build settings to your `trigger.config.ts` file:
+
+```tsx trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // This is required to use the Puppeteer library
+    extensions: [puppeteer()],
+  },
+});
+```
+
+Learn more about [build configurations](/config/config-file#build-configuration) including setting default retry settings, customizing the build environment, and more.
+
+### Environment variables
+
+Set the following environment variable in your local `.env` file to run this task locally. And before deploying your task, set them in the [Trigger.dev dashboard](/deploy-environment-variables) or [using the SDK](/deploy-environment-variables#in-your-code):
+
+```bash
+BROWSERBASE_API_KEY: "<your BrowserBase API key>"
+OPENAI_API_KEY: "<your OpenAI API key>"
+RESEND_API_KEY: "<your Resend API key>"
+```
+
+### Task code
+
+```ts trigger/scrape-hacker-news.ts
+import { render } from "@react-email/render";
+import { logger, schedules, task, wait } from "@trigger.dev/sdk/v3";
+import { OpenAI } from "openai";
+import puppeteer from "puppeteer-core";
+import { Resend } from "resend";
+import { HNSummaryEmail } from "./summarize-hn-email";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Parent task (scheduled to run 9AM every weekday)
+export const summarizeHackerNews = schedules.task({
+  id: "summarize-hacker-news",
+  cron: {
+    pattern: "0 9 * * 1-5",
+    timezone: "Europe/London",
+  }, // Run at 9 AM, Monday to Friday
+  run: async () => {
+    // Connect to BrowserBase to proxy the scraping of the Hacker News articles
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${process.env.BROWSERBASE_API_KEY}`,
+    });
+    logger.info("Connected to Browserbase");
+
+    const page = await browser.newPage();
+
+    // Navigate to Hacker News and scrape top 3 articles
+    await page.goto("https://news.ycombinator.com/news", {
+      waitUntil: "networkidle0",
+    });
+    logger.info("Navigated to Hacker News");
+
+    const articles = await page.evaluate(() => {
+      const items = document.querySelectorAll(".athing");
+      return Array.from(items)
+        .slice(0, 3)
+        .map((item) => {
+          const titleElement = item.querySelector(".titleline > a");
+          const link = titleElement?.getAttribute("href");
+          const title = titleElement?.textContent;
+          return { title, link };
+        });
+    });
+    logger.info("Scraped top 3 articles", { articles });
+
+    await browser.close();
+    await wait.for({ seconds: 5 });
+
+    // Use batchTriggerAndWait to process articles
+    const summaries = await scrapeAndSummarizeArticle
+      .batchTriggerAndWait(
+        articles.map((article) => ({
+          payload: { title: article.title!, link: article.link! },
+          idempotencyKey: article.link,
+        }))
+      )
+      .then((batch) =>
+        batch.runs.filter((run) => run.ok).map((run) => run.output)
+      );
+
+    // Send email using Resend
+    await resend.emails.send({
+      from: "Hacker News Summary <hi@demo.tgr.dev>",
+      to: ["james@trigger.dev"],
+      subject: "Your morning HN summary",
+      html: render(<HNSummaryEmail articles={summaries} />),
+    });
+
+    logger.info("Email sent successfully");
+  },
+});
+
+// Child task for scraping and summarizing individual articles
+export const scrapeAndSummarizeArticle = task({
+  id: "scrape-and-summarize-articles",
+  retry: {
+    maxAttempts: 3,
+    minTimeoutInMs: 5000,
+    maxTimeoutInMs: 10000,
+    factor: 2,
+    randomize: true,
+  },
+  run: async ({ title, link }: { title: string; link: string }) => {
+    logger.info(`Summarizing ${title}`);
+
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://connect.browserbase.com?apiKey=${process.env.BROWSERBASE_API_KEY}`,
+    });
+    const page = await browser.newPage();
+
+    // Prevent all assets from loading, images, stylesheets etc
+    await page.setRequestInterception(true);
+    page.on("request", (request) => {
+      if (
+        ["script", "stylesheet", "image", "media", "font"].includes(
+          request.resourceType()
+        )
+      ) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
+    await page.goto(link, { waitUntil: "networkidle0" });
+    logger.info(`Navigated to article: ${title}`);
+
+    // Extract the main content of the article
+    const content = await page.evaluate(() => {
+      const articleElement = document.querySelector("article") || document.body;
+      return articleElement.innerText.trim().slice(0, 1500); // Limit to 1500 characters
+    });
+
+    await browser.close();
+
+    logger.info(`Extracted content for article: ${title}`, { content });
+
+    // Summarize the content using ChatGPT
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: `Summarize this article in 2-3 concise sentences:\n\n${content}`,
+        },
+      ],
+    });
+
+    logger.info(`Generated summary for article: ${title}`);
+
+    return {
+      title,
+      link,
+      summary: response.choices[0].message.content,
+    };
+  },
+});
+```
+
+## Create your email template using React Email
+
+To prevent the main example from becoming too cluttered, we'll create a separate file for our email template. It's formatted using [React Email](https://react.email/docs/introduction) components so you'll need to install the package to use it.
+
+Notice how this file is imported into the main task code and passed to Resend to send the email.
+
+```tsx summarize-hn-email.tsx
+import {
+  Html,
+  Head,
+  Body,
+  Container,
+  Section,
+  Heading,
+  Text,
+  Link,
+} from "@react-email/components";
+
+interface Article {
+  title: string;
+  link: string;
+  summary: string | null;
+}
+
+export const HNSummaryEmail: React.FC<{ articles: Article[] }> = ({
+  articles,
+}) => (
+  <Html>
+    <Head />
+    <Body style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
+      <Container>
+        <Heading as="h1">Your Morning HN Summary</Heading>
+        {articles.map((article, index) => (
+          <Section key={index} style={{ marginBottom: "20px" }}>
+            <Heading as="h3">
+              <Link href={article.link}>{article.title}</Link>
+            </Heading>
+            <Text>{article.summary || "No summary available"}</Text>
+          </Section>
+        ))}
+      </Container>
+    </Body>
+  </Html>
+);
+```
+
+<LocalDevelopment packages={"the Puppeteer library"} />
+
+## Testing your task
+
+To test this task in the dashboard, use the Test page and set the schedule date to "Now" to ensure the task triggers immediately. Then click "Run test" and wait for the task to complete.

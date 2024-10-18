@@ -126,16 +126,20 @@ const stories: Story[] = [
     slug: "date-fields",
   },
   {
-    name: "Simple form",
-    slug: "simple-form",
+    name: "Input fields",
+    slug: "input-fields",
   },
   {
     name: "Search fields",
     slug: "search-fields",
   },
   {
-    name: "Input fields",
-    slug: "input-fields",
+    name: "Simple form",
+    slug: "simple-form",
+  },
+  {
+    name: "Textarea",
+    slug: "textarea",
   },
   {
     sectionTitle: "Menus",

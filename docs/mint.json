@@ -121,6 +121,7 @@
           "pages": ["tasks/overview", "tasks/scheduled"]
         },
         "triggering",
+        "runs-and-attempts",
         "apikeys",
         {
           "group": "Configuration",
@@ -162,7 +163,8 @@
         "runs/max-duration",
         "tags",
         "runs/metadata",
-        "run-usage"
+        "run-usage",
+        "context"
       ]
     },
     {
@@ -285,6 +287,17 @@
             "guides/frameworks/supabase-edge-functions-basic",
             "guides/frameworks/supabase-edge-functions-database-webhooks"
           ]
+        },
+        {
+          "group": "Webhooks",
+          "icon": "webhook",
+          "iconType": "solid",
+          "pages": [
+            "guides/frameworks/webhooks-guides-overview",
+            "guides/frameworks/nextjs-webhooks",
+            "guides/frameworks/remix-webhooks",
+            "guides/examples/stripe-webhook"
+          ]
         }
       ]
     },
@@ -297,8 +310,8 @@
         "guides/examples/open-ai-with-retrying",
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",
+        "guides/examples/scrape-hacker-news",
         "guides/examples/sharp-image-processing",
-        "guides/examples/stripe-webhook",
         "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",
         "guides/examples/react-pdf",

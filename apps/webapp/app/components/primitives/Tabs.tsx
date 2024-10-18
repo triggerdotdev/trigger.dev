@@ -46,7 +46,7 @@ export function TabLink({
   layoutId: string;
 }) {
   return (
-    <NavLink to={to} className="group flex flex-col items-center pt-1" end>
+    <NavLink to={to} className="group flex flex-col items-center pt-1 focus-custom" end>
       {({ isActive, isPending }) => {
         return (
           <>
@@ -96,7 +96,7 @@ export function TabButton({
 
   return (
     <button
-      className={cn("group flex flex-col items-center pt-1", props.className)}
+      className={cn("group flex flex-col items-center pt-1 focus-custom", props.className)}
       type="button"
       ref={ref}
       {...props}

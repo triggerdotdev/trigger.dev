@@ -135,8 +135,8 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
+      for (const variable of values) {
       const result = await $transaction(this.prismaClient, async (tx) => {
-        for (const variable of values) {
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -195,8 +195,8 @@ export class EnvironmentVariablesRepository implements Repository {
               secret: variable.value,
             });
           }
-        }
-      });
+        });
+      }
 
       return {
         success: true as const,
