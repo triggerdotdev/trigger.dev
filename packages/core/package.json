@@ -165,6 +165,9 @@
       ],
       "v3/schemas": [
         "dist/commonjs/v3/schemas/index.d.ts"
+      ],
+      "v3/jwt": [
+        "dist/commonjs/v3/jwt.d.ts"
       ]
     }
   },
