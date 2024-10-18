@@ -33,7 +33,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: parsedParams.data.connectionId,
       integration: {
         slug: parsedParams.data.integrationSlug,
-        organization: authenticatedEnv.organization,
+        organizationId: authenticatedEnv.organization.id,
       },
     },
     include: {
