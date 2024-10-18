@@ -39,7 +39,7 @@ export class CreateCheckpointService extends BaseService {
           include: {
             childRuns: {
               orderBy: {
-                createdAt: "asc",
+                createdAt: "desc",
               },
               take: 1,
             },
