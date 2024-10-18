@@ -89,6 +89,7 @@ export const TaskRunInternalError = z.object({
     "TASK_EXECUTION_ABORTED",
     "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE",
     "TASK_PROCESS_SIGKILL_TIMEOUT",
+    "TASK_PROCESS_SIGTERM",
     "TASK_PROCESS_OOM_KILLED",
     "TASK_PROCESS_MAYBE_OOM_KILLED",
     "TASK_RUN_CANCELLED",
@@ -110,6 +111,8 @@ export const TaskRunInternalError = z.object({
 export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
 
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
+
+export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
 
 export const TaskRunError = z.discriminatedUnion("type", [
   TaskRunBuiltInError,
