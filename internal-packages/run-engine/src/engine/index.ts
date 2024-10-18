@@ -6,7 +6,9 @@ import {
   MachinePresetName,
   parsePacket,
   QueueOptions,
+  sanitizeError,
   TaskRunExecution,
+  TaskRunExecutionResult,
   TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import {
@@ -887,6 +889,48 @@ export class RunEngine {
     });
   }
 
+  /** How a run is completed */
+  async completeRunAttempt({
+    runId,
+    snapshotId,
+    completion,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    completion: TaskRunExecutionResult;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    //todo
+    //1. lock the run
+    //2. get the latest snapshot
+    //3. deal with completion errors
+    //4. update the run status, create final snapshot
+    //5. complete waitpoints
+
+    return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
+      return this.runLock.lock([runId], 5_000, async (signal) => {
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        if (!latestSnapshot) {
+          throw new Error(`No execution snapshot found for TaskRun ${runId}`);
+        }
+
+        if (latestSnapshot.id !== snapshotId) {
+          throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+        }
+
+        span.setAttribute("completionStatus", completion.ok);
+
+        if (completion.ok) {
+        } else {
+          const error = sanitizeError(completion.error);
+        }
+      });
+    });
+  }
+
   /** This is called to get the  */
   async resumeRun({
     runId,
@@ -899,8 +943,6 @@ export class RunEngine {
   }) {}
 
   async waitForDuration() {}
-
-  async complete(runId: string, completion: any) {}
 
   async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 

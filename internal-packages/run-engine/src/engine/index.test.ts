@@ -266,6 +266,8 @@ describe("RunEngine", () => {
       expect(runWaitpoint.waitpoint.type).toBe("RUN");
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
+      //todo update this test so the child run is completed instead, of completing the waitpoint explicitly
+
       await engine.completeWaitpoint({
         id: runWaitpoint.waitpointId,
         output: { value: "{}", type: "application/json" },
