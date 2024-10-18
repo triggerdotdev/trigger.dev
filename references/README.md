@@ -52,13 +52,31 @@ This guide assumes that you have followed the [Contributing.md](https://github.c
 
 #### Step-by-Step Instructions
 
-1. **Run the webapp on localhost**:
+1. **Run a http tunnel**:
+You will need to run a http tunnel to expose your local webapp, it is required for some API calls during building the image to deploy on your local instance. This is *optional* if you do not plan to test deployment on your local instance.
+- Download the ngrok CLI. This can be done by following the instructions on ngrok's [website](https://ngrok.com/docs/getting-started/).
+- Create an account on ngrok to obtain the authtoken and add it to the CLI.
+```
+ngrok config add-authtoken <your-auth-token>
+```
+Replace the <your-auth-token> with the token you obtain from ngrok.
+- Run the tunnel.
+```
+ngrok http <your-app-port>
+```
+Replace the <your-app-port> with the webapp port, default is `3030`.
+
+2. **Add your tunnel URL to the env**:
+After running the ngrok tunnel, you will see URL in your terminal, it will look something like `https://<your-tunnel-address>.ngrok-free.app`. 
+Replace the `APP_ORIGIN` variable with this URL in your `.env` file in the root of the trigger.dev project.
+
+3. **Run the webapp on localhost**:
 
 ```
 pnpm run dev --filter webapp --filter coordinator --filter docker-provider
 ```
 
-2. **Build the CLI in a new terminal window**:
+4. **Build the CLI in a new terminal window**:
 
 ```
 # Build the CLI
@@ -68,12 +86,12 @@ pnpm run build --filter trigger.dev
 pnpm i
 ```
 
-3. **Set up a new project in the webapp**:
+5. **Set up a new project in the webapp**:
 - Open the webapp running on `localhost:3030`.
 - Create a new project in the webapp UI.
 - Go to the *Project Settings* page and copy the project reference id from there.
 
-4. **Copy the hello-world project as a template**:
+6. **Copy the hello-world project as a template**:
 
 ```
 cp -r references/hello-world references/<new-project>
@@ -81,21 +99,29 @@ cp -r references/hello-world references/<new-project>
 
 Replace `<new-project>` with your desired project name.
 
-5. **Update project details**:
+7. **Update project details**:
 - Open `<new-project>/package.json` and change the name field.
 *(Tip: Use the same name as in the webapp to avoid confusion.)*
 
 - Open `<new-project>/trigger.config.ts` and update the project field with the project reference you copied from the webapp.
 
-6. **Authorize the CLI for your project**:
+- Run `pnpm i` in your `<new-project>` directory to sync the dependencies.
+
+8. **Authorize the CLI for your project**:
 
 ```
 pnpm exec trigger login -a http://localhost:3030 --profile local
 ```
 
-7. **Run the new project**:
+9. **Run the new project**:
 You can now run your project using the CLI with the following command:
 
 ```
 pnpm exec trigger dev --profile local
+```
+
+You can also deploy them against your local instance with the following command:
+
+```
+pnpm exec trigger deploy --self-hosted --load-image --profile local
 ```
