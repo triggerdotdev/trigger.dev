@@ -315,6 +315,7 @@ export class GracefulExitTimeoutError extends Error {
 type ErrorLink = {
   name: string;
   href: string;
+  // This allows us to easily add more complex logic on the frontend, e.g. display a button to open a contact form modal
   magic?: "CONTACT_FORM";
 };
 
