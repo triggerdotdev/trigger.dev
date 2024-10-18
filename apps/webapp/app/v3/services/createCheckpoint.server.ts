@@ -122,8 +122,6 @@ export class CreateCheckpointService extends BaseService {
           logger.error("CreateCheckpointService: Checkpoint not for most recent child run", {
             attemptId: attempt.id,
             runId: attempt.taskRunId,
-            lastChild: lastChildRun.friendlyId,
-            checkpointFor: reason.friendlyId,
             params,
           });
 
@@ -136,33 +134,6 @@ export class CreateCheckpointService extends BaseService {
         break;
       }
       case "WAIT_FOR_BATCH": {
-        const lastChildRun = attempt.taskRun.childRuns[0];
-
-        if (!lastChildRun) {
-          logger.warn("CreateCheckpointService: No child runs, creating checkpoint regardless", {
-            attemptId: attempt.id,
-            runId: attempt.taskRunId,
-            params,
-          });
-
-          break;
-        }
-
-        if (!reason.runFriendlyIds.includes(lastChildRun.friendlyId)) {
-          logger.error("CreateCheckpointService: Checkpoint not for most recent batch", {
-            attemptId: attempt.id,
-            runId: attempt.taskRunId,
-            lastChild: lastChildRun.friendlyId,
-            checkpointFor: reason.runFriendlyIds,
-            params,
-          });
-
-          return {
-            success: false,
-            keepRunAlive: true,
-          };
-        }
-
         break;
       }
       default: {
