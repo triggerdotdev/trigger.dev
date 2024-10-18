@@ -40,6 +40,4 @@ export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQu
 export interface SubscribeToRunsQueryParams {
   tasks?: Array<string> | string;
   tags?: Array<string> | string;
-  from?: Date | number;
-  to?: Date | number;
 }
