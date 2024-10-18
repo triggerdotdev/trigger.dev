@@ -52,16 +52,18 @@ This guide assumes that you have followed the [Contributing.md](https://github.c
 
 #### Step-by-Step Instructions
 
-1. **Run a http tunnel**:
-You will need to run a http tunnel to expose your local webapp, it is required for some API calls during building the image to deploy on your local instance. This is *optional* if you do not plan to test deployment on your local instance.
+1. **Run an HTTP tunnel**:
+You will need to run an HTTP tunnel to expose your local webapp, it is required for some API calls during building the image to deploy on your local instance. This is *optional* if you do not plan to test deployment on your local instance.
 - Download the ngrok CLI. This can be done by following the instructions on ngrok's [website](https://ngrok.com/docs/getting-started/).
 - Create an account on ngrok to obtain the authtoken and add it to the CLI.
-```
+
+```bash
 ngrok config add-authtoken <your-auth-token>
 ```
 Replace the <your-auth-token> with the token you obtain from ngrok.
 - Run the tunnel.
-```
+
+```bash
 ngrok http <your-app-port>
 ```
 Replace the <your-app-port> with the webapp port, default is `3030`.
@@ -72,13 +74,13 @@ Replace the `APP_ORIGIN` variable with this URL in your `.env` file in the root 
 
 3. **Run the webapp on localhost**:
 
-```
+```bash
 pnpm run dev --filter webapp --filter coordinator --filter docker-provider
 ```
 
 4. **Build the CLI in a new terminal window**:
 
-```
+```bash
 # Build the CLI
 pnpm run build --filter trigger.dev
 
@@ -93,7 +95,7 @@ pnpm i
 
 6. **Copy the hello-world project as a template**:
 
-```
+```bash
 cp -r references/hello-world references/<new-project>
 ```
 
@@ -109,19 +111,19 @@ Replace `<new-project>` with your desired project name.
 
 8. **Authorize the CLI for your project**:
 
-```
+```bash
 pnpm exec trigger login -a http://localhost:3030 --profile local
 ```
 
 9. **Run the new project**:
 You can now run your project using the CLI with the following command:
 
-```
+```bash
 pnpm exec trigger dev --profile local
 ```
 
 You can also deploy them against your local instance with the following command:
 
-```
+```bash
 pnpm exec trigger deploy --self-hosted --load-image --profile local
 ```
