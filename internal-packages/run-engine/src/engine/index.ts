@@ -927,6 +927,14 @@ export class RunEngine {
               completedAt: new Date(),
               output: completion.output,
               outputType: completion.outputType,
+              executionSnapshots: {
+                create: {
+                  executionStatus: "FINISHED",
+                  description: "Task completed successfully",
+                  runStatus: "COMPLETED_SUCCESSFULLY",
+                  attemptNumber: latestSnapshot.attemptNumber,
+                },
+              },
             },
             select: {
               associatedWaitpoint: {
