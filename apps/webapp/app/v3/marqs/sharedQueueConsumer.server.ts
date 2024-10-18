@@ -826,8 +826,22 @@ export class SharedQueueConsumer {
                   return;
                 }
 
+                logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK restored checkpoint", {
+                  queueMessage: message.data,
+                  messageId: message.messageId,
+                  checkpoint,
+                });
+
                 this.#doMoreWork();
                 return;
+              } else {
+                logger.debug(
+                  "RESUME_AFTER_DEPENDENCY_WITH_ACK run is frozen without last checkpoint event",
+                  {
+                    queueMessage: message.data,
+                    messageId: message.messageId,
+                  }
+                );
               }
             } catch (e) {
               if (e instanceof Error) {
@@ -846,6 +860,11 @@ export class SharedQueueConsumer {
               return;
             }
           }
+
+          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK retrying", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
 
           await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
           return;
