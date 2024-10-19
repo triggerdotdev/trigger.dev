@@ -427,6 +427,16 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
           };
         }
       }
+
+      if (error.name === "Error") {
+        if (error.message === "ffmpeg was killed with signal SIGKILL") {
+          return {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
+            ...prettyInternalErrors.TASK_PROCESS_OOM_KILLED,
+          };
+        }
+      }
       break;
     }
     case "STRING_ERROR": {
@@ -477,6 +487,15 @@ export function exceptionEventEnhancer(
         return {
           ...exception,
           ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
+        };
+      }
+      break;
+    }
+    case "Error": {
+      if (exception.message === "ffmpeg was killed with signal SIGKILL") {
+        return {
+          ...exception,
+          ...prettyInternalErrors.TASK_PROCESS_OOM_KILLED,
         };
       }
       break;
