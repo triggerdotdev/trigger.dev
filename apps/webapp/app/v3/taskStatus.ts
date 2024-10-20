@@ -51,6 +51,10 @@ export const FAILED_RUN_STATUSES = [
 
 export type FAILED_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
 
+export const FATAL_RUN_STATUSES = ["SYSTEM_FAILURE", "CRASHED"] satisfies TaskRunStatus[];
+
+export type FATAL_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
+
 export const CANCELLABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
 export const CANCELLABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
 
@@ -74,6 +78,10 @@ export function isFinalAttemptStatus(status: TaskRunAttemptStatus): boolean {
 
 export function isFailedRunStatus(status: TaskRunStatus): boolean {
   return FAILED_RUN_STATUSES.includes(status);
+}
+
+export function isFatalRunStatus(status: TaskRunStatus): boolean {
+  return FATAL_RUN_STATUSES.includes(status);
 }
 
 export function isCancellableRunStatus(status: TaskRunStatus): boolean {

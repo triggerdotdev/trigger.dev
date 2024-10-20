@@ -3,11 +3,17 @@ import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, type FINAL_RUN_STATUSES } from "../taskStatus";
+import {
+  FINAL_ATTEMPT_STATUSES,
+  isFailedRunStatus,
+  isFatalRunStatus,
+  type FINAL_RUN_STATUSES,
+} from "../taskStatus";
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { socketIo } from "../handleSocketIo.server";
 
 type BaseInput = {
   id: string;
@@ -88,6 +94,42 @@ export class FinalizeTaskRunService extends BaseService {
     //enqueue alert
     if (isFailedRunStatus(run.status)) {
       await PerformTaskRunAlertsService.enqueue(run.id, this._prisma);
+    }
+
+    if (isFatalRunStatus(run.status)) {
+      logger.error("FinalizeTaskRunService: Fatal status", { runId: run.id, status: run.status });
+
+      const extendedRun = await this._prisma.taskRun.findFirst({
+        where: { id: run.id },
+        select: {
+          id: true,
+          lockedToVersion: {
+            select: {
+              supportsLazyAttempts: true,
+            },
+          },
+          runtimeEnvironment: {
+            select: {
+              type: true,
+            },
+          },
+        },
+      });
+
+      if (extendedRun && extendedRun.runtimeEnvironment.type !== "DEVELOPMENT") {
+        logger.error("FinalizeTaskRunService: Fatal status, requesting worker exit", {
+          runId: run.id,
+          status: run.status,
+        });
+
+        // Signal to exit any leftover containers
+        socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+          version: "v1",
+          runId: run.id,
+          // Give the run a few seconds to exit to complete any flushing etc
+          delayInMs: extendedRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+        });
+      }
     }
 
     return run as Output<T>;
