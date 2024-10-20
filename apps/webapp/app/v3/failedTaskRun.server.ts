@@ -171,7 +171,11 @@ export class FailedTaskRunRetryHelper extends BaseService {
       const createAttempt = new CreateTaskRunAttemptService(this._prisma);
 
       try {
-        const { execution } = await createAttempt.call(run.id);
+        const { execution } = await createAttempt.call({
+          runId: run.id,
+          // This ensures we correctly respect `maxAttempts = 1` when failing before the first attempt was created
+          startAtZero: true,
+        });
         return execution;
       } catch (error) {
         logger.error("[FailedTaskRunRetryHelper] Failed to create attempt", {
