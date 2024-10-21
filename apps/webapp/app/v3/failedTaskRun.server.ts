@@ -36,12 +36,11 @@ export class FailedTaskRunService extends BaseService {
 
     const isFriendlyId = anyRunId.startsWith("run_");
 
-    const taskRun = await this._prisma.taskRun.findUnique({
+    const taskRun = await this._prisma.taskRun.findFirst({
       where: {
         friendlyId: isFriendlyId ? anyRunId : undefined,
         id: !isFriendlyId ? anyRunId : undefined,
       },
-      include: includeAttempts,
     });
 
     if (!taskRun) {
@@ -62,24 +61,13 @@ export class FailedTaskRunService extends BaseService {
       return;
     }
 
-    const retriableExecution = await this.#getRetriableAttemptExecution(taskRun, completion);
+    const retryHelper = new FailedTaskRunRetryHelper(this._prisma);
+    const retryResult = await retryHelper.call({
+      runId: taskRun.id,
+      completion,
+    });
 
-    if (retriableExecution) {
-      logger.debug("[FailedTaskRunService] Completing attempt", { taskRun, completion });
-
-      const executionRetry =
-        completion.retry ?? (await this.#getExecutionRetry(taskRun, retriableExecution));
-
-      const completeAttempt = new CompleteAttemptService(this._prisma);
-      await completeAttempt.call({
-        completion: {
-          ...completion,
-          retry: executionRetry,
-        },
-        execution: retriableExecution,
-        isSystemFailure: true,
-      });
-
+    if (retryResult !== undefined) {
       return;
     }
 
@@ -112,6 +100,58 @@ export class FailedTaskRunService extends BaseService {
       ],
     });
   }
+}
+
+export class FailedTaskRunRetryHelper extends BaseService {
+  async call({
+    runId,
+    completion,
+    isCrash,
+  }: {
+    runId: string;
+    completion: TaskRunFailedExecutionResult;
+    isCrash?: boolean;
+  }) {
+    const taskRun = await this._prisma.taskRun.findFirst({
+      where: {
+        id: runId,
+      },
+      include: includeAttempts,
+    });
+
+    if (!taskRun) {
+      logger.error("[FailedTaskRunRetryHelper] Task run not found", {
+        runId,
+        completion,
+      });
+
+      return;
+    }
+
+    const retriableExecution = await this.#getRetriableAttemptExecution(taskRun, completion);
+
+    if (!retriableExecution) {
+      return;
+    }
+
+    logger.debug("[FailedTaskRunRetryHelper] Completing attempt", { taskRun, completion });
+
+    const executionRetry =
+      completion.retry ?? (await this.#getExecutionRetry(taskRun, retriableExecution));
+
+    const completeAttempt = new CompleteAttemptService(this._prisma);
+    const completeResult = await completeAttempt.call({
+      completion: {
+        ...completion,
+        retry: executionRetry,
+      },
+      execution: retriableExecution,
+      isSystemFailure: !isCrash,
+      isCrash,
+    });
+
+    return completeResult;
+  }
 
   async #getRetriableAttemptExecution(
     run: TaskRunWithAttempts,
@@ -123,7 +163,7 @@ export class FailedTaskRunService extends BaseService {
     // - None exists yet
     // - The last attempt has a final status, e.g. we failed between attempts
     if (!attempt || isFinalAttemptStatus(attempt.status)) {
-      logger.error("[FailedTaskRunService] No attempts found", {
+      logger.error("[FailedTaskRunRetryHelper] No attempts found", {
         run,
         completion,
       });
@@ -134,7 +174,7 @@ export class FailedTaskRunService extends BaseService {
         const { execution } = await createAttempt.call(run.id);
         return execution;
       } catch (error) {
-        logger.error("[FailedTaskRunService] Failed to create attempt", {
+        logger.error("[FailedTaskRunRetryHelper] Failed to create attempt", {
           run,
           completion,
           error,
@@ -153,7 +193,7 @@ export class FailedTaskRunService extends BaseService {
 
       return executionPayload?.execution;
     } catch (error) {
-      logger.error("[FailedTaskRunService] Failed to get execution payload", {
+      logger.error("[FailedTaskRunRetryHelper] Failed to get execution payload", {
         run,
         completion,
         error,
@@ -170,7 +210,7 @@ export class FailedTaskRunService extends BaseService {
     const parsedRetryConfig = RetryOptions.safeParse(run.lockedBy?.retryConfig);
 
     if (!parsedRetryConfig.success) {
-      logger.error("[FailedTaskRunService] Invalid retry config", {
+      logger.error("[FailedTaskRunRetryHelper] Invalid retry config", {
         run,
         execution,
       });
@@ -181,7 +221,7 @@ export class FailedTaskRunService extends BaseService {
     const delay = calculateNextRetryDelay(parsedRetryConfig.data, execution.attempt.number);
 
     if (!delay) {
-      logger.debug("[FailedTaskRunService] No more retries", {
+      logger.debug("[FailedTaskRunRetryHelper] No more retries", {
         run,
         execution,
       });

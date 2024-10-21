@@ -22,7 +22,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { TaskRun } from "@trigger.dev/database";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { env } from "~/env.server";
 
@@ -41,6 +41,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
     supportsRetryCheckpoints,
     isSystemFailure,
+    isCrash,
   }: {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
@@ -48,6 +49,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint?: CheckpointData;
     supportsRetryCheckpoints?: boolean;
     isSystemFailure?: boolean;
+    isCrash?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -114,6 +116,7 @@ export class CompleteAttemptService extends BaseService {
         checkpoint,
         supportsRetryCheckpoints,
         isSystemFailure,
+        isCrash,
       });
     }
   }
@@ -175,6 +178,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint,
     supportsRetryCheckpoints,
     isSystemFailure,
+    isCrash,
   }: {
     completion: TaskRunFailedExecutionResult;
     execution: TaskRunExecution;
@@ -183,6 +187,7 @@ export class CompleteAttemptService extends BaseService {
     checkpoint?: CheckpointData;
     supportsRetryCheckpoints?: boolean;
     isSystemFailure?: boolean;
+    isCrash?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
@@ -260,11 +265,20 @@ export class CompleteAttemptService extends BaseService {
       },
     });
 
-    const status = isSystemFailure
-      ? "SYSTEM_FAILURE"
-      : sanitizedError.type === "INTERNAL_ERROR" && sanitizedError.code === "MAX_DURATION_EXCEEDED"
-      ? "TIMED_OUT"
-      : "COMPLETED_WITH_ERRORS";
+    let status: FAILED_RUN_STATUSES;
+
+    if (isSystemFailure) {
+      status = "SYSTEM_FAILURE";
+    } else if (isCrash) {
+      status = "CRASHED";
+    } else if (
+      sanitizedError.type === "INTERNAL_ERROR" &&
+      sanitizedError.code === "MAX_DURATION_EXCEEDED"
+    ) {
+      status = "TIMED_OUT";
+    } else {
+      status = "COMPLETED_WITH_ERRORS";
+    }
 
     const finalizeService = new FinalizeTaskRunService();
     await finalizeService.call({

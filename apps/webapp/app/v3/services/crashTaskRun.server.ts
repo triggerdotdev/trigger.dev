@@ -6,6 +6,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 import { sanitizeError, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
+import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -35,15 +36,42 @@ export class CrashTaskRunService extends BaseService {
     });
 
     if (!taskRun) {
-      logger.error("Task run not found", { runId });
+      logger.error("[CrashTaskRunService] Task run not found", { runId });
       return;
     }
 
     // Make sure the task run is in a crashable state
     if (!opts.overrideCompletion && !isCrashableRunStatus(taskRun.status)) {
-      logger.error("Task run is not in a crashable state", { runId, status: taskRun.status });
+      logger.error("[CrashTaskRunService] Task run is not in a crashable state", {
+        runId,
+        status: taskRun.status,
+      });
       return;
     }
+
+    logger.debug("[CrashTaskRunService] Completing attempt", { runId, options });
+
+    const retryHelper = new FailedTaskRunRetryHelper(this._prisma);
+    const retryResult = await retryHelper.call({
+      runId,
+      completion: {
+        ok: false,
+        id: runId,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: opts.errorCode ?? "TASK_RUN_CRASHED",
+          message: opts.reason,
+          stackTrace: opts.logs,
+        },
+      },
+    });
+
+    if (retryResult === "RETRIED") {
+      logger.debug("[CrashTaskRunService] Retried task run", { runId });
+      return;
+    }
+
+    logger.debug("[CrashTaskRunService] Overriding completion", { runId, options });
 
     const finalizeService = new FinalizeTaskRunService();
     const crashedTaskRun = await finalizeService.call({
@@ -86,7 +114,7 @@ export class CrashTaskRunService extends BaseService {
       options?.overrideCompletion
     );
 
-    logger.debug("Crashing in-progress events", {
+    logger.debug("[CrashTaskRunService] Crashing in-progress events", {
       inProgressEvents: inProgressEvents.map((event) => event.id),
     });
 
@@ -135,25 +163,29 @@ export class CrashTaskRunService extends BaseService {
       code?: TaskRunInternalError["code"];
     }
   ) {
-    return await this.traceWithEnv("failAttempt()", environment, async (span) => {
-      span.setAttribute("taskRunId", run.id);
-      span.setAttribute("attemptId", attempt.id);
+    return await this.traceWithEnv(
+      "[CrashTaskRunService] failAttempt()",
+      environment,
+      async (span) => {
+        span.setAttribute("taskRunId", run.id);
+        span.setAttribute("attemptId", attempt.id);
 
-      await this._prisma.taskRunAttempt.update({
-        where: {
-          id: attempt.id,
-        },
-        data: {
-          status: "FAILED",
-          completedAt: failedAt,
-          error: sanitizeError({
-            type: "INTERNAL_ERROR",
-            code: error.code ?? "TASK_RUN_CRASHED",
-            message: error.reason,
-            stackTrace: error.logs,
-          }),
-        },
-      });
-    });
+        await this._prisma.taskRunAttempt.update({
+          where: {
+            id: attempt.id,
+          },
+          data: {
+            status: "FAILED",
+            completedAt: failedAt,
+            error: sanitizeError({
+              type: "INTERNAL_ERROR",
+              code: error.code ?? "TASK_RUN_CRASHED",
+              message: error.reason,
+              stackTrace: error.logs,
+            }),
+          },
+        });
+      }
+    );
   }
 }

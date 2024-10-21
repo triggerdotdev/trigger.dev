@@ -49,6 +49,8 @@ export const FAILED_RUN_STATUSES = [
   "TIMED_OUT",
 ] satisfies TaskRunStatus[];
 
+export type FAILED_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
+
 export const CANCELLABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
 export const CANCELLABLE_ATTEMPT_STATUSES = NON_FINAL_ATTEMPT_STATUSES;
 
