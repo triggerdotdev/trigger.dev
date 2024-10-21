@@ -1,0 +1,261 @@
+---
+title: "schemaTask"
+sidebarTitle: "Schema task"
+description: "Define tasks with a runtime payload schema and validate the payload before running the task."
+---
+
+The `schemaTask` function allows you to define a task with a runtime payload schema. This schema is used to validate the payload before running the task or when triggering a task directly. If the payload does not match the schema, the task will not execute.
+
+## Usage
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { z } from "zod";
+
+const myTask = schemaTask({
+  id: "my-task",
+  schema: z.object({
+    name: z.string(),
+    age: z.number(),
+  }),
+  run: async (payload) => {
+    console.log(payload.name, payload.age);
+  },
+});
+```
+
+`schemaTask` takes all the same options as [task](/tasks/overview), with the addition of a `schema` field. The `schema` field is a schema parser function from a schema library or or a custom parser function.
+
+<Note>
+  We will probably eventually combine `task` and `schemaTask` into a single function, but because
+  that would be a breaking change, we are keeping them separate for now.
+</Note>
+
+When you trigger the task directly, the payload will be validated against the schema before the [run](/runs-and-attempts) is created:
+
+```ts
+import { tasks } from "@trigger.dev/sdk/v3";
+import { myTask } from "./trigger/myTasks";
+
+// This will call the schema parser function and validate the payload
+await myTask.trigger({ name: "Alice", age: "oops" }); // this will throw an error
+
+// This will NOT call the schema parser function
+await tasks.trigger<typeof myTask>("my-task", { name: "Alice", age: "oops" }); // this will not throw an error
+```
+
+The error thrown when the payload does not match the schema will be the same as the error thrown by the schema parser function. For example, if you are using Zod, the error will be a `ZodError`.
+
+We will also validate the payload every time before the task is run, so you can be sure that the payload is always valid. In the example above, the task would fail with a `TaskPayloadParsedError` error and skip retrying if the payload does not match the schema.
+
+## Input/output schemas
+
+Certain schema libraries, like Zod, split their type inference into "schema in" and "schema out". This means that you can define a single schema that will produce different types when triggering the task and when running the task. For example, you can define a schema that has a default value for a field, or a string coerced into a date:
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { z } from "zod";
+
+const myTask = schemaTask({
+  id: "my-task",
+  schema: z.object({
+    name: z.string().default("John"),
+    age: z.number(),
+    dob: z.coerce.date(),
+  }),
+  run: async (payload) => {
+    console.log(payload.name, payload.age);
+  },
+});
+```
+
+In this case, the trigger payload type is `{ name?: string, age: number; dob: string }`, but the run payload type is `{ name: string, age: number; dob: Date }`. So you can trigger the task with a payload like this:
+
+```ts
+await myTask.trigger({ age: 30, dob: "2020-01-01" }); // this is valid
+await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is also valid
+```
+
+## Supported schema types
+
+### Zod
+
+You can use the [Zod](https://zod.dev) schema library to define your schema. The schema will be validated using Zod's `parse` function.
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { z } from "zod";
+
+export const zodTask = schemaTask({
+  id: "types/zod",
+  schema: z.object({
+    bar: z.string(),
+    baz: z.string().default("foo"),
+  }),
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### Yup
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import * as yup from "yup";
+
+export const yupTask = schemaTask({
+  id: "types/yup",
+  schema: yup.object({
+    bar: yup.string().required(),
+    baz: yup.string().default("foo"),
+  }),
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### Superstruct
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { object, string } from "superstruct";
+
+export const superstructTask = schemaTask({
+  id: "types/superstruct",
+  schema: object({
+    bar: string(),
+    baz: string(),
+  }),
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### ArkType
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { type } from "arktype";
+
+export const arktypeTask = schemaTask({
+  id: "types/arktype",
+  schema: type({
+    bar: "string",
+    baz: "string",
+  }).assert,
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### @effect/schema
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import * as Schema from "@effect/schema/Schema";
+
+// For some funny typescript reason, you cannot pass the Schema.decodeUnknownSync directly to schemaTask
+const effectSchemaParser = Schema.decodeUnknownSync(
+  Schema.Struct({ bar: Schema.String, baz: Schema.String })
+);
+
+export const effectTask = schemaTask({
+  id: "types/effect",
+  schema: effectSchemaParser,
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### runtypes
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import * as T from "runtypes";
+
+export const runtypesTask = schemaTask({
+  id: "types/runtypes",
+  schema: T.Record({
+    bar: T.String,
+    baz: T.String,
+  }),
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### valibot
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+
+import * as v from "valibot";
+
+// For some funny typescript reason, you cannot pass the v.parser directly to schemaTask
+const valibotParser = v.parser(
+  v.object({
+    bar: v.string(),
+    baz: v.string(),
+  })
+);
+
+export const valibotTask = schemaTask({
+  id: "types/valibot",
+  schema: valibotParser,
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### typebox
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+import { Type } from "@sinclair/typebox";
+import { wrap } from "@typeschema/typebox";
+
+export const typeboxTask = schemaTask({
+  id: "types/typebox",
+  schema: wrap(
+    Type.Object({
+      bar: Type.String(),
+      baz: Type.String(),
+    })
+  ),
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
+
+### Custom parser function
+
+You can also define a custom parser function that will be called with the payload before the task is run. The parser function should return the parsed payload or throw an error if the payload is invalid.
+
+```ts
+import { schemaTask } from "@trigger.dev/sdk/v3";
+
+export const customParserTask = schemaTask({
+  id: "types/custom-parser",
+  schema: (data: unknown) => {
+    // This is a custom parser, and should do actual parsing (not just casting)
+    if (typeof data !== "object") {
+      throw new Error("Invalid data");
+    }
+
+    const { bar, baz } = data as { bar: string; baz: string };
+
+    return { bar, baz };
+  },
+  run: async (payload) => {
+    console.log(payload.bar, payload.baz);
+  },
+});
+```
