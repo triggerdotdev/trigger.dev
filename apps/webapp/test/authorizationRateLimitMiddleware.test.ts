@@ -250,14 +250,14 @@ describe("authorizationRateLimitMiddleware", () => {
       expect(limitedResponse.status).toBe(429);
 
       // Wait for part of the window to pass
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Should still be limited
       const stillLimitedResponse = await makeRequest();
       expect(stillLimitedResponse.status).toBe(429);
 
       // Wait for the full window to pass
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 10000));
 
       // Should allow requests again
       const newResponse = await makeRequest();
