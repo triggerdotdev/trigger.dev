@@ -108,8 +108,6 @@ export const TaskRunInternalError = z.object({
   stackTrace: z.string().optional(),
 });
 
-export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
-
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
 
 export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
