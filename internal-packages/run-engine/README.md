@@ -6,6 +6,13 @@ It is responsible for:
 
 - Creating and updating runs as they progress.
 - Operating the run queue, including handling concurrency.
+- Mutating the state of runs.
+
+## Run execution
+
+The execution of a run is stored in the `TaskRunExecutionSnapshot` table in Postgres.
+
+![The execution states](./execution-states.png)
 
 ## Components
 
