@@ -149,6 +149,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_ALREADY_RUNNING":
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGKILL_TIMEOUT":
+        case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_OOM_KILLED":
         case "TASK_PROCESS_MAYBE_OOM_KILLED":
         case "TASK_RUN_CANCELLED":
