@@ -1,0 +1,99 @@
+---
+title: React hooks
+sidebarTitle: React hooks
+description: Using the Trigger.dev v3 API from your React application.
+---
+
+## Installation
+
+Install the preview package: `0.0.0-realtime-20241021152316`.
+
+```bash
+npm install @trigger.dev/react-hooks@0.0.0-realtime-20241021152316
+```
+
+## Authentication
+
+You need to use the `TriggerAuthContext` provider to authenticate your requests.
+
+```tsx
+import { TriggerAuthContext } from "@trigger.dev/react-hooks";
+
+const App = () => {
+  return (
+    <TriggerAuthContext.Provider value={{ accessToken: "your-access-token" }}>
+      <MyComponent />
+    </TriggerAuthContext.Provider>
+  );
+};
+```
+
+## Usage
+
+### useRun
+
+The `useRun` hook allows you to fetch a run by its ID.
+
+```tsx
+import { useRun } from "@trigger.dev/react-hooks";
+
+const MyComponent = ({ runId }) => {
+  const { data, error, isLoading } = useRun(runId);
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Run: {data.id}</div>;
+};
+```
+
+### useRealtimeRun
+
+The `useRealtimeRun` hook allows you to subscribe to a run by its ID.
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+const MyComponent = ({ runId }) => {
+  const { data, error, isLoading } = useRealtimeRun(runId);
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Run: {data.id}</div>;
+};
+```
+
+### useRealtimeRunsWithTag
+
+The `useRealtimeRunsWithTag` hook allows you to subscribe to runs with a specific tag.
+
+```tsx
+import { useRealtimeRunsWithTag } from "@trigger.dev/react-hooks";
+
+const MyComponent = ({ tag }) => {
+  const { data, error, isLoading } = useRealtimeRunsWithTag(tag);
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Runs: {data.map((run) => run.id).join(", ")}</div>;
+};
+```
+
+### useRealtimeBatch
+
+The `useRealtimeBatch` hook allows you to subscribe to a batch by its ID.
+
+```tsx
+import { useRealtimeBatch } from "@trigger.dev/react-hooks";
+
+const MyComponent = ({ batchId }) => {
+  const { data, error, isLoading } = useRealtimeBatch(batchId);
+
+  if (isLoading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Batch: {data.id}</div>;
+};
+```
