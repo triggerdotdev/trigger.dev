@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
     globals: true,
+    pool: "forks",
   },
   // @ts-ignore
   plugins: [tsconfigPaths({ projects: ["./tsconfig.json"] })],

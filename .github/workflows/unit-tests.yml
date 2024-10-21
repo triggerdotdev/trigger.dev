@@ -30,5 +30,8 @@ jobs:
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 
-      - name: 🧪 Run Unit Tests
-        run: pnpm run test
+      - name: 🧪 Run Webapp Unit Tests
+        run: pnpm run test --filter webapp
+      
+      - name: 🧪 Run Internal Unit Tests
+        run: pnpm run test --filter "@internal/*"
