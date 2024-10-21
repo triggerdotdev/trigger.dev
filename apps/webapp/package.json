@@ -23,7 +23,7 @@
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
     "clean:sourcemaps:build": "rimraf ./public/build/**/*.map",
-    "test": "vitest"
+    "test": "vitest --no-file-parallelism"
   },
   "eslintIgnore": [
     "/node_modules",
