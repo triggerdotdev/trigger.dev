@@ -150,166 +150,170 @@ describe("RunEngine", () => {
     }
   });
 
-  containerTest("Complete a waitpoint", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
-    //create environment
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest(
+    "triggerAndWait (not executing)",
+    { timeout: 15_000 },
+    async ({ prisma, redisContainer }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
-      prisma,
-      redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
-      },
-      worker: {
-        workers: 1,
-        tasksPerWorker: 10,
-        pollIntervalMs: 100,
-      },
-      machines: {
-        defaultMachine: "small-1x",
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
         machines: {
-          "small-1x": {
-            name: "small-1x" as const,
-            cpu: 0.5,
-            memory: 0.5,
-            centsPerMs: 0.0001,
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
           },
+          baseCostInCents: 0.0001,
         },
-        baseCostInCents: 0.0001,
-      },
-      tracer: trace.getTracer("test", "0.0.0"),
-    });
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
 
-    try {
-      const taskIdentifier = "test-task";
+      try {
+        const taskIdentifier = "test-task";
 
-      //create background worker
-      await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
 
-      //trigger the run
-      const parentRun = await engine.trigger(
-        {
-          number: 1,
-          friendlyId: "run_p1234",
-          environment: authenticatedEnvironment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          context: {},
-          traceContext: {},
-          traceId: "t12345",
-          spanId: "s12345",
-          masterQueue: "main",
-          queueName: "task/test-task",
-          isTest: false,
-          tags: [],
-        },
-        prisma
-      );
+        //trigger the run
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
 
-      const childRun = await engine.trigger(
-        {
-          number: 1,
-          friendlyId: "run_c1234",
-          environment: authenticatedEnvironment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          context: {},
-          traceContext: {},
-          traceId: "t12345",
-          spanId: "s12345",
-          masterQueue: "main",
-          queueName: "task/test-task",
-          isTest: false,
-          tags: [],
-          resumeParentOnCompletion: true,
-          parentTaskRunId: parentRun.id,
-        },
-        prisma
-      );
+        const childRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_c1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+            resumeParentOnCompletion: true,
+            parentTaskRunId: parentRun.id,
+          },
+          prisma
+        );
 
-      const childSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: {
+        const childSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
+          where: {
+            runId: childRun.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+        assertNonNullable(childSnapshot);
+        expect(childSnapshot.executionStatus).toBe("QUEUED");
+
+        const parentSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
+          where: {
+            runId: parentRun.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+        assertNonNullable(parentSnapshot);
+        expect(parentSnapshot.executionStatus).toBe("BLOCKED_BY_WAITPOINTS");
+
+        //check the waitpoint blocking the parent run
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: parentRun.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        assertNonNullable(runWaitpoint);
+        expect(runWaitpoint.waitpoint.type).toBe("RUN");
+        expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
+
+        await engine.completeRunAttempt({
           runId: childRun.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      assertNonNullable(childSnapshot);
-      expect(childSnapshot.executionStatus).toBe("QUEUED");
+          snapshotId: childSnapshot.id,
+          completion: {
+            id: childRun.id,
+            ok: true,
+            output: '{"foo":"bar"}',
+            outputType: "application/json",
+          },
+        });
 
-      const parentSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: {
-          runId: parentRun.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      assertNonNullable(parentSnapshot);
-      expect(parentSnapshot.executionStatus).toBe("BLOCKED_BY_WAITPOINTS");
+        const waitpointAfter = await prisma.waitpoint.findFirst({
+          where: {
+            id: runWaitpoint.waitpointId,
+          },
+        });
+        expect(waitpointAfter?.completedAt).not.toBeNull();
+        expect(waitpointAfter?.status).toBe("COMPLETED");
 
-      //check the waitpoint blocking the parent run
-      const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
-      });
-      assertNonNullable(runWaitpoint);
-      expect(runWaitpoint.waitpoint.type).toBe("RUN");
-      expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
+        const runWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: parentRun.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpointAfter).toBeNull();
 
-      await engine.completeRunAttempt({
-        runId: childRun.id,
-        snapshotId: childSnapshot.id,
-        completion: {
-          id: childRun.id,
-          ok: true,
-          output: '{"foo":"bar"}',
-          outputType: "application/json",
-        },
-      });
-
-      const waitpointAfter = await prisma.waitpoint.findFirst({
-        where: {
-          id: runWaitpoint.waitpointId,
-        },
-      });
-      expect(waitpointAfter?.completedAt).not.toBeNull();
-      expect(waitpointAfter?.status).toBe("COMPLETED");
-
-      const runWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
-      });
-      expect(runWaitpointAfter).toBeNull();
-
-      //parent snapshot
-      const parentSnapshotAfter = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: {
-          runId: parentRun.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      assertNonNullable(parentSnapshotAfter);
-      expect(parentSnapshotAfter.executionStatus).toBe("QUEUED");
-    } finally {
-      engine.quit();
+        //parent snapshot
+        const parentSnapshotAfter = await prisma.taskRunExecutionSnapshot.findFirst({
+          where: {
+            runId: parentRun.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+        assertNonNullable(parentSnapshotAfter);
+        expect(parentSnapshotAfter.executionStatus).toBe("QUEUED");
+      } finally {
+        engine.quit();
+      }
     }
-  });
+  );
 
   //todo triggerAndWait
 

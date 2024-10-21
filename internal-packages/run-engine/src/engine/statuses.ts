@@ -1,10 +1,7 @@
 import { TaskRunExecutionStatus } from "@trigger.dev/database";
 
 export function isDequeueableExecutionStatus(status: TaskRunExecutionStatus): boolean {
-  const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = [
-    "QUEUED",
-    "QUEUED_WITH_WAITPOINTS",
-  ];
+  const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED"];
   return dequeuableExecutionStatuses.includes(status);
 }
 

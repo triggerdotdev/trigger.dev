@@ -1965,6 +1965,7 @@ model Waitpoint {
   userProvidedIdempotencyKey Boolean
 
   /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field.
+  /// Clearing an idempotencyKey is useful for debounce or cancelling child runs.
   /// This is a workaround because Prisma doesn't support partial indexes.
   inactiveIdempotencyKey String?
 

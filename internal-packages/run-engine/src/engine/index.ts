@@ -23,6 +23,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -38,7 +39,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
-import { ScheduleRunMessage } from "./messages";
+import { CreatedAttemptMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
 
 type Options = {
@@ -401,7 +402,7 @@ export class RunEngine {
     consumerId: string;
     masterQueue: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<null | ScheduleRunMessage> {
+  }): Promise<null | CreatedAttemptMessage> {
     const prisma = tx ?? this.prisma;
     return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
       //gets a fair run from this shared queue
@@ -1035,7 +1036,7 @@ export class RunEngine {
           },
         });
 
-        // 4. Add the completed snapshots to the snapshots
+        // 4. Add the completed waitpoints to the snapshots
         for (const run of affectedTaskRuns) {
           await this.runLock.lock([run.taskRunId], 5_000, async (signal) => {
             const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, run.taskRunId);
@@ -1084,6 +1085,44 @@ export class RunEngine {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
     );
+  }
+
+  /** Get required data to execute the run */
+  async getRunExecutionData({
+    runId,
+    tx,
+  }: {
+    runId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<RunExecutionData | null> {
+    const prisma = tx ?? this.prisma;
+    const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+    if (!snapshot) {
+      return null;
+    }
+
+    const executionData: RunExecutionData = {
+      snapshot: {
+        id: snapshot.id,
+        executionStatus: snapshot.executionStatus,
+        description: snapshot.description,
+      },
+      run: {
+        id: snapshot.runId,
+        status: snapshot.runStatus,
+        attemptNumber: snapshot.attemptNumber ?? undefined,
+      },
+      checkpoint: snapshot.checkpoint
+        ? {
+            id: snapshot.checkpoint.id,
+            type: snapshot.checkpoint.type,
+            location: snapshot.checkpoint.location,
+            imageRef: snapshot.checkpoint.imageRef,
+            reason: snapshot.checkpoint.reason ?? undefined,
+          }
+        : undefined,
+      completedWaitpoints: {},
+    };
   }
 
   async quit() {
@@ -1172,43 +1211,42 @@ export class RunEngine {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: run,
           snapshot: {
-            executionStatus: "EXECUTING",
+            executionStatus: "PENDING_EXECUTING",
             description: "Run was continued, whilst still executing.",
           },
+          completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
         });
 
-        //todo send a message to the worker somehow
-        // await this.#sendMessageToWorker();
-        throw new NotImplementedError(
-          "RunEngine.#continueRun(): continue executing run, not implemented yet"
-        );
+        //todo publish a notification in Redis that the Workers listen to
+        //this will cause the Worker to check for new execution snapshots for its runs
+      } else {
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+          run: run,
+          snapshot: {
+            executionStatus: "QUEUED",
+            description: "Run was QUEUED, because it needs to be continued.",
+          },
+          completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
+        });
+
+        //todo instead this should be a call to unblock the run
+        //we don't want to free up all the concurrency, so this isn't good
+        // await this.runQueue.enqueueMessage({
+        //   env,
+        //   masterQueue: run.masterQueue,
+        //   message: {
+        //     runId: run.id,
+        //     taskIdentifier: run.taskIdentifier,
+        //     orgId: env.organization.id,
+        //     projectId: env.project.id,
+        //     environmentId: env.id,
+        //     environmentType: env.type,
+        //     queue: run.queue,
+        //     concurrencyKey: run.concurrencyKey ?? undefined,
+        //     timestamp: Date.now(),
+        //   },
+        // });
       }
-
-      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-        run: run,
-        snapshot: {
-          executionStatus: "QUEUED",
-          description: "Run was QUEUED, because it needs to be continued.",
-        },
-      });
-
-      //todo instead this should be a call to unblock the run
-      //we don't want to free up all the concurrency, so this isn't good
-      // await this.runQueue.enqueueMessage({
-      //   env,
-      //   masterQueue: run.masterQueue,
-      //   message: {
-      //     runId: run.id,
-      //     taskIdentifier: run.taskIdentifier,
-      //     orgId: env.organization.id,
-      //     projectId: env.project.id,
-      //     environmentId: env.id,
-      //     environmentType: env.type,
-      //     queue: run.queue,
-      //     concurrencyKey: run.concurrencyKey ?? undefined,
-      //     timestamp: Date.now(),
-      //   },
-      // });
     });
   }
 
@@ -1308,6 +1346,7 @@ export class RunEngine {
       run,
       snapshot,
       checkpointId,
+      completedWaitpointIds,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
@@ -1315,6 +1354,7 @@ export class RunEngine {
         description: string;
       };
       checkpointId?: string;
+      completedWaitpointIds?: string[];
     }
   ) {
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
@@ -1386,6 +1426,10 @@ export class RunEngine {
   async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
     return prisma.taskRunExecutionSnapshot.findFirst({
       where: { runId },
+      include: {
+        completedWaitpoints: true,
+        checkpoint: true,
+      },
       orderBy: { createdAt: "desc" },
     });
   }
