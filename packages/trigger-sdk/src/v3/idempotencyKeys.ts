@@ -1,14 +1,10 @@
-import { taskContext } from "@trigger.dev/core/v3";
+import { type IdempotencyKey, taskContext } from "@trigger.dev/core/v3";
 
 export const idempotencyKeys = {
   create: createIdempotencyKey,
 };
 
-declare const __brand: unique symbol;
-type Brand<B> = { [__brand]: B };
-type Branded<T, B> = T & Brand<B>;
-
-export type IdempotencyKey = Branded<string, "IdempotencyKey">;
+export type { IdempotencyKey };
 
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey

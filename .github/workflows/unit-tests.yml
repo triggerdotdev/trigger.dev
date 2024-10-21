@@ -6,7 +6,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests"
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: buildjet-16vcpu-ubuntu-2204
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
@@ -30,5 +30,15 @@ jobs:
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 
-      - name: 🧪 Run Unit Tests
-        run: pnpm run test
+      - name: 🧪 Run Webapp Unit Tests
+        run: pnpm run test --filter webapp
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          SESSION_SECRET: "secret"
+          MAGIC_LINK_SECRET: "secret"
+          ENCRYPTION_KEY: "secret"
+
+      
+      - name: 🧪 Run Internal Unit Tests
+        run: pnpm run test --filter "@internal/*"

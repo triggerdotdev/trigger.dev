@@ -7,6 +7,10 @@ export class SafeAsyncLocalStorage<T> {
     this.storage = new AsyncLocalStorage<T>();
   }
 
+  enterWith(context: T): void {
+    this.storage.enterWith(context);
+  }
+
   runWith<R extends (...args: any[]) => Promise<any>>(context: T, fn: R): Promise<ReturnType<R>> {
     return this.storage.run(context, fn);
   }

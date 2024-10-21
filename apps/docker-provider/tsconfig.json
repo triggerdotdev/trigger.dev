@@ -6,10 +6,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "strict": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@trigger.dev/core/v3": ["../../packages/core/src/v3"],
-      "@trigger.dev/core/v3/*": ["../../packages/core/src/v3/*"]
-    }
+    "skipLibCheck": true
   }
 }

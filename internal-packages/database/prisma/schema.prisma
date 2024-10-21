@@ -138,6 +138,9 @@ model Organization {
   events       EventRecord[]
   jobRuns      JobRun[]
 
+  apiRateLimiterConfig      Json?
+  realtimeRateLimiterConfig Json?
+
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
@@ -1682,6 +1685,9 @@ model TaskRun {
 
   attempts TaskRunAttempt[] @relation("attempts")
   tags     TaskRunTag[]
+
+  /// Denormized column that holds the raw tags
+  runTags String[]
 
   checkpoints Checkpoint[]
 
