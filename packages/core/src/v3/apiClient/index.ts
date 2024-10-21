@@ -69,11 +69,11 @@ export type TriggerOptions = {
 };
 
 export type TriggerRequestOptions = ZodFetchOptions & {
-  jwt?: TriggerJwtOptions;
+  publicAccessToken?: TriggerJwtOptions;
 };
 
 export type TriggerApiRequestOptions = ApiRequestOptions & {
-  jwt?: TriggerJwtOptions;
+  publicAccessToken?: TriggerJwtOptions;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -189,9 +189,11 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            scopes: [`read:runs:${data.id}`],
+            scopes: [`read:runs:${data.id}`].concat(
+              body.options?.tags ? Array.from(body.options?.tags).map((t) => `read:tags:${t}`) : []
+            ),
           },
-          expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
         });
 
         return {
@@ -230,7 +232,7 @@ export class ApiClient {
             ...claims,
             scopes: [`read:batch:${data.batchId}`],
           },
-          expirationTime: requestOptions?.jwt?.expirationTime ?? "1h",
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
         });
 
         return {

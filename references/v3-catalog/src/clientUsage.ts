@@ -1,23 +1,29 @@
-import { runs, tasks, auth, AnyTask, Task } from "@trigger.dev/sdk/v3";
+import { auth, runs, tasks } from "@trigger.dev/sdk/v3";
 import type { task1, task2 } from "./trigger/taskTypes.js";
+import { randomUUID } from "crypto";
 
 async function main() {
+  const userId = randomUUID();
+
   const anyHandle = await tasks.trigger<typeof task1>(
     "types/task-1",
     {
       foo: "baz",
     },
     {
-      tags: ["user:1234"],
+      tags: [`user:${userId}`],
+    },
+    {
+      publicAccessToken: {
+        expirationTime: "24hr",
+      },
     }
   );
 
-  const jwt = await auth.createPublicToken({ scopes: { read: { tags: "user:1234" } } });
+  console.log("Auto JWT", anyHandle.publicAccessToken);
 
-  console.log("Generated JWT:", jwt);
-
-  await auth.withAuth({ accessToken: jwt }, async () => {
-    const subscription = runs.subscribeToRunsWithTag<typeof task1 | typeof task2>("user:1234");
+  await auth.withAuth({ accessToken: anyHandle.publicAccessToken }, async () => {
+    const subscription = runs.subscribeToRunsWithTag<typeof task1 | typeof task2>(`user:${userId}`);
 
     for await (const run of subscription) {
       switch (run.taskIdentifier) {
