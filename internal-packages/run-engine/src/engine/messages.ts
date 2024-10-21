@@ -11,7 +11,7 @@ const ScheduleRunMessage = z.object({
     version: z.literal("1"),
     execution: z.object({
       id: z.string(),
-      status: z.literal("DEQUEUED_FOR_EXECUTION"),
+      status: z.literal("PENDING_EXECUTING"),
     }),
     image: z.string().optional(),
     checkpoint: z
@@ -19,7 +19,7 @@ const ScheduleRunMessage = z.object({
         id: z.string(),
         type: z.string(),
         location: z.string(),
-        reason: z.string().optional(),
+        reason: z.string().nullish(),
       })
       .optional(),
     backgroundWorker: z.object({

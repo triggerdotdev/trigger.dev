@@ -582,56 +582,53 @@ export class RunEngine {
         //todo figure out if it's a continuation or a new run
         const isNewRun = true;
 
-        if (isNewRun) {
-          const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-            run: {
-              id: runId,
-              status: snapshot.runStatus,
-            },
-            snapshot: {
-              executionStatus: "DEQUEUED_FOR_EXECUTION",
-              description: "Run was dequeued for execution",
-            },
-          });
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+          run: {
+            id: runId,
+            status: snapshot.runStatus,
+          },
+          snapshot: {
+            executionStatus: "PENDING_EXECUTING",
+            description: "Run was dequeued for execution",
+          },
+          checkpointId: snapshot.checkpointId ?? undefined,
+        });
 
-          return {
-            action: "SCHEDULE_RUN",
-            payload: {
-              version: "1",
-              execution: {
-                id: newSnapshot.id,
-                status: "DEQUEUED_FOR_EXECUTION",
-              },
-              image: result.deployment?.imageReference ?? undefined,
-              checkpoint: undefined,
-              backgroundWorker: {
-                id: result.worker.id,
-                version: result.worker.version,
-              },
-              run: {
-                id: lockedTaskRun.id,
-                friendlyId: lockedTaskRun.friendlyId,
-                isTest: lockedTaskRun.isTest,
-                machine: machinePreset,
-                attemptNumber: nextAttemptNumber,
-                masterQueue: lockedTaskRun.masterQueue,
-                traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
-              },
-              environment: {
-                id: lockedTaskRun.runtimeEnvironment.id,
-                type: lockedTaskRun.runtimeEnvironment.type,
-              },
-              organization: {
-                id: orgId,
-              },
-              project: {
-                id: lockedTaskRun.projectId,
-              },
+        return {
+          action: "SCHEDULE_RUN",
+          payload: {
+            version: "1",
+            execution: {
+              id: newSnapshot.id,
+              status: "PENDING_EXECUTING",
             },
-          };
-        } else {
-          throw new NotImplementedError("Continuations are not implemented yet");
-        }
+            image: result.deployment?.imageReference ?? undefined,
+            checkpoint: newSnapshot.checkpoint ?? undefined,
+            backgroundWorker: {
+              id: result.worker.id,
+              version: result.worker.version,
+            },
+            run: {
+              id: lockedTaskRun.id,
+              friendlyId: lockedTaskRun.friendlyId,
+              isTest: lockedTaskRun.isTest,
+              machine: machinePreset,
+              attemptNumber: nextAttemptNumber,
+              masterQueue: lockedTaskRun.masterQueue,
+              traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+            },
+            environment: {
+              id: lockedTaskRun.runtimeEnvironment.id,
+              type: lockedTaskRun.runtimeEnvironment.type,
+            },
+            organization: {
+              id: orgId,
+            },
+            project: {
+              id: lockedTaskRun.projectId,
+            },
+          },
+        };
       });
     });
   }
@@ -1278,20 +1275,16 @@ export class RunEngine {
       const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, runId);
 
       if (latestSnapshot) {
-        //if the run is QUEUE or EXECUTING, we create a new snapshot
-        let newStatus: TaskRunExecutionStatus | undefined = undefined;
-        switch (latestSnapshot.executionStatus) {
-          case "QUEUED": {
-            newStatus = "QUEUED_WITH_WAITPOINTS";
-            break;
-          }
-          case "EXECUTING": {
-            newStatus = "EXECUTING_WITH_WAITPOINTS";
-            break;
-          }
+        let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
+        if (
+          latestSnapshot.executionStatus === "EXECUTING" ||
+          latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
+        ) {
+          newStatus = "EXECUTING_WITH_WAITPOINTS";
         }
 
-        if (newStatus) {
+        //if the state has changed, create a new snapshot
+        if (newStatus !== latestSnapshot.executionStatus) {
           await this.#createExecutionSnapshot(tx, {
             run: {
               id: latestSnapshot.runId,
@@ -1314,12 +1307,14 @@ export class RunEngine {
     {
       run,
       snapshot,
+      checkpointId,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
         description: string;
       };
+      checkpointId?: string;
     }
   ) {
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
@@ -1330,6 +1325,10 @@ export class RunEngine {
         runId: run.id,
         runStatus: run.status,
         attemptNumber: run.attemptNumber ?? undefined,
+        checkpointId: checkpointId ?? undefined,
+      },
+      include: {
+        checkpoint: true,
       },
     });
 
@@ -1355,12 +1354,13 @@ export class RunEngine {
     switch (status) {
       case "RUN_CREATED":
       case "FINISHED":
+      case "BLOCKED_BY_WAITPOINTS":
       case "QUEUED": {
         //we don't need to heartbeat these statuses
         break;
       }
-      case "DEQUEUED_FOR_EXECUTION":
-      case "QUEUED_WITH_WAITPOINTS": {
+      case "PENDING_EXECUTING":
+      case "PENDING_CANCEL": {
         await this.#startHeartbeating({
           runId,
           snapshotId,
@@ -1513,7 +1513,7 @@ export class RunEngine {
         //we need to check if the run is still QUEUED
         throw new NotImplementedError("Not implemented QUEUED");
       }
-      case "DEQUEUED_FOR_EXECUTION": {
+      case "PENDING_EXECUTING": {
         //we need to check if the run is still dequeued
         throw new NotImplementedError("Not implemented DEQUEUED_FOR_EXECUTION");
       }
@@ -1525,9 +1525,13 @@ export class RunEngine {
         //we need to check if the run is still executing
         throw new NotImplementedError("Not implemented EXECUTING_WITH_WAITPOINTS");
       }
-      case "QUEUED_WITH_WAITPOINTS": {
+      case "BLOCKED_BY_WAITPOINTS": {
         //we need to check if the waitpoints are still blocking the run
         throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
+      }
+      case "PENDING_CANCEL": {
+        //we need to check if the run is still pending cancel
+        throw new NotImplementedError("Not implemented PENDING_CANCEL");
       }
       case "FINISHED": {
         //we need to check if the run is still finished

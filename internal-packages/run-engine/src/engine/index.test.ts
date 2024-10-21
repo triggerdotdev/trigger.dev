@@ -130,7 +130,7 @@ describe("RunEngine", () => {
 
       expect(dequeued.payload.run.id).toBe(run.id);
       expect(dequeued.payload.run.attemptNumber).toBe(1);
-      expect(dequeued.payload.execution.status).toBe("DEQUEUED_FOR_EXECUTION");
+      expect(dequeued.payload.execution.status).toBe("PENDING_EXECUTING");
 
       const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
         authenticatedEnvironment
@@ -251,7 +251,7 @@ describe("RunEngine", () => {
         },
       });
       assertNonNullable(parentSnapshot);
-      expect(parentSnapshot.executionStatus).toBe("QUEUED_WITH_WAITPOINTS");
+      expect(parentSnapshot.executionStatus).toBe("BLOCKED_BY_WAITPOINTS");
 
       //check the waitpoint blocking the parent run
       const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
