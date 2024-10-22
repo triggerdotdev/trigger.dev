@@ -165,14 +165,14 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_PROCESS_OOM_KILLED":
         case "TASK_PROCESS_MAYBE_OOM_KILLED":
         case "TASK_RUN_CANCELLED":
-        case "TASK_OUTPUT_ERROR":
         case "MAX_DURATION_EXCEEDED":
         case "DISK_SPACE_EXCEEDED":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
         case "HANDLE_ERROR_ERROR":
-        case "IMPORT_PAYLOAD_ERROR":
+        case "TASK_INPUT_ERROR":
+        case "TASK_OUTPUT_ERROR":
         case "POD_EVICTED":
         case "POD_UNKNOWN_ERROR":
         case "TASK_EXECUTION_ABORTED":
