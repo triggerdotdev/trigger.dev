@@ -30,6 +30,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return { status: 405, body: "Method Not Allowed" };
   }
 
+  logger.debug("TriggerTask action", { headers: Object.fromEntries(request.headers) });
+
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -105,9 +107,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Task not found" }, { status: 404 });
     }
 
-    return json({
-      id: run.friendlyId,
-    });
+    return json(
+      {
+        id: run.friendlyId,
+      },
+      {
+        headers: {
+          "x-trigger-jwt-claims": JSON.stringify({
+            sub: authenticationResult.environment.id,
+            pub: true,
+          }),
+        },
+      }
+    );
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 422 });

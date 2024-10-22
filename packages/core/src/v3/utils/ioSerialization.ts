@@ -36,6 +36,12 @@ export async function parsePacket(value: IOPacket): Promise<any> {
   }
 }
 
+export async function conditionallyImportAndParsePacket(value: IOPacket): Promise<any> {
+  const importedPacket = await conditionallyImportPacket(value);
+
+  return await parsePacket(importedPacket);
+}
+
 export async function stringifyIO(value: any): Promise<IOPacket> {
   if (value === undefined) {
     return { dataType: "application/json" };

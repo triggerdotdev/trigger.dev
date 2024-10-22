@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { VERSION } from "../../version.js";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
@@ -38,22 +39,41 @@ import {
 } from "./core.js";
 import { ApiError } from "./errors.js";
 import {
+  RunShape,
+  AnyRunShape,
+  runShapeStream,
+  RunStreamCallback,
+  RunSubscription,
+  TaskRunShape,
+} from "./runStream.js";
+import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
+  SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { VERSION } from "../../version.js";
+import { generateJWT } from "../jwt.js";
+import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 
 export type {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
+  SubscribeToRunsQueryParams,
 };
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
+};
+
+export type TriggerRequestOptions = ZodFetchOptions & {
+  publicAccessToken?: TriggerJwtOptions;
+};
+
+export type TriggerApiRequestOptions = ApiRequestOptions & {
+  publicAccessToken?: TriggerJwtOptions;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -68,21 +88,38 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type { ApiRequestOptions };
+export type { RunShape, AnyRunShape, TaskRunShape, RunStreamCallback, RunSubscription };
 
 /**
  * Trigger.dev v3 API client
  */
 export class ApiClient {
-  private readonly baseUrl: string;
+  public readonly baseUrl: string;
+  public readonly accessToken: string;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
-  constructor(
-    baseUrl: string,
-    private readonly accessToken: string,
-    requestOptions: ApiRequestOptions = {}
-  ) {
+  constructor(baseUrl: string, accessToken: string, requestOptions: ApiRequestOptions = {}) {
+    this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+  }
+
+  get fetchClient(): typeof fetch {
+    const headers = this.#getHeaders(false);
+
+    const fetchClient: typeof fetch = (input, requestInit) => {
+      const $requestInit: RequestInit = {
+        ...requestInit,
+        headers: {
+          ...requestInit?.headers,
+          ...headers,
+        },
+      };
+
+      return fetch(input, $requestInit);
+    };
+
+    return fetchClient;
   }
 
   async getRunResult(
@@ -129,7 +166,7 @@ export class ApiClient {
     taskId: string,
     body: TriggerTaskRequestBody,
     options?: TriggerOptions,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: TriggerRequestOptions
   ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
@@ -142,14 +179,35 @@ export class ApiClient {
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
-    );
+    )
+      .withResponse()
+      .then(async ({ response, data }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:runs:${data.id}`].concat(
+              body.options?.tags ? Array.from(body.options?.tags).map((t) => `read:tags:${t}`) : []
+            ),
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
   }
 
   batchTriggerTask(
     taskId: string,
     body: BatchTriggerTaskRequestBody,
     options?: TriggerOptions,
-    requestOptions?: ZodFetchOptions
+    requestOptions?: TriggerRequestOptions
   ) {
     const encodedTaskId = encodeURIComponent(taskId);
 
@@ -162,7 +220,26 @@ export class ApiClient {
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
-    );
+    )
+      .withResponse()
+      .then(async ({ response, data }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:batch:${data.batchId}`],
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
@@ -517,6 +594,46 @@ export class ApiClient {
     );
   }
 
+  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string) {
+    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
+      closeOnComplete: true,
+      headers: this.#getRealtimeHeaders(),
+    });
+  }
+
+  subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(tag: string | string[]) {
+    const searchParams = createSearchQueryForSubscribeToRuns({
+      tags: tag,
+    });
+
+    return runShapeStream<TRunTypes>(
+      `${this.baseUrl}/realtime/v1/runs${searchParams ? `?${searchParams}` : ""}`,
+      {
+        closeOnComplete: false,
+        headers: this.#getRealtimeHeaders(),
+      }
+    );
+  }
+
+  subscribeToBatch<TRunTypes extends AnyRunTypes>(batchId: string) {
+    return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
+      closeOnComplete: false,
+      headers: this.#getRealtimeHeaders(),
+    });
+  }
+
+  async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
+    return zodfetch(
+      z.record(z.any()),
+      `${this.baseUrl}/api/v1/auth/jwt/claims`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -535,6 +652,34 @@ export class ApiClient {
 
     return headers;
   }
+
+  #getRealtimeHeaders() {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.accessToken}`,
+      "trigger-version": VERSION,
+    };
+
+    return headers;
+  }
+}
+
+function createSearchQueryForSubscribeToRuns(query?: SubscribeToRunsQueryParams): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (query) {
+    if (query.tasks) {
+      searchParams.append(
+        "tasks",
+        Array.isArray(query.tasks) ? query.tasks.join(",") : query.tasks
+      );
+    }
+
+    if (query.tags) {
+      searchParams.append("tags", Array.isArray(query.tags) ? query.tags.join(",") : query.tags);
+    }
+  }
+
+  return searchParams;
 }
 
 function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchParams {

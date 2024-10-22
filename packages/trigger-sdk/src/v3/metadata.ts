@@ -1,6 +1,5 @@
 import { DeserializedJson } from "@trigger.dev/core";
 import {
-  accessoryAttributes,
   ApiRequestOptions,
   flattenAttributes,
   mergeRequestOptions,
@@ -24,6 +23,8 @@ export const metadata = {
   set: setMetadataKey,
   del: deleteMetadataKey,
   save: saveMetadata,
+  replace: replaceMetadata,
+  flush: flushMetadata,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;
@@ -63,74 +64,24 @@ function getMetadataKey(key: string): DeserializedJson | undefined {
  *
  * @param {string} key - The key to set in the metadata.
  * @param {DeserializedJson} value - The value to associate with the key.
- * @param {ApiRequestOptions} [requestOptions] - Optional API request options.
- * @returns {Promise<void>} A promise that resolves when the metadata is updated.
  *
  * @example
- * await metadata.set("progress", 0.5);
+ * metadata.set("progress", 0.5);
  */
-async function setMetadataKey(
-  key: string,
-  value: DeserializedJson,
-  requestOptions?: ApiRequestOptions
-): Promise<void> {
-  const $requestOptions = mergeRequestOptions(
-    {
-      tracer,
-      name: "metadata.set()",
-      icon: "code-plus",
-      attributes: {
-        ...accessoryAttributes({
-          items: [
-            {
-              text: key,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
-        ...flattenAttributes(value, key),
-      },
-    },
-    requestOptions
-  );
-
-  await runMetadata.setKey(key, value, $requestOptions);
+function setMetadataKey(key: string, value: DeserializedJson) {
+  runMetadata.setKey(key, value);
 }
 
 /**
  * Delete a key from the metadata of the current run if inside a task run.
  *
  * @param {string} key - The key to delete from the metadata.
- * @param {ApiRequestOptions} [requestOptions] - Optional API request options.
- * @returns {Promise<void>} A promise that resolves when the key is deleted from the metadata.
  *
  * @example
- * await metadata.del("progress");
+ * metadata.del("progress");
  */
-async function deleteMetadataKey(key: string, requestOptions?: ApiRequestOptions): Promise<void> {
-  const $requestOptions = mergeRequestOptions(
-    {
-      tracer,
-      name: "metadata.del()",
-      icon: "code-minus",
-      attributes: {
-        ...accessoryAttributes({
-          items: [
-            {
-              text: key,
-              variant: "normal",
-            },
-          ],
-          style: "codepath",
-        }),
-        key,
-      },
-    },
-    requestOptions
-  );
-
-  await runMetadata.deleteKey(key, $requestOptions);
+function deleteMetadataKey(key: string) {
+  runMetadata.deleteKey(key);
 }
 
 /**
@@ -138,27 +89,37 @@ async function deleteMetadataKey(key: string, requestOptions?: ApiRequestOptions
  * This function allows you to replace the entire metadata object with a new one.
  *
  * @param {RunMetadata} metadata - The new metadata object to set for the run.
- * @param {ApiRequestOptions} [requestOptions] - Optional API request options.
- * @returns {Promise<void>} A promise that resolves when the metadata is updated.
+ * @returns {void}
  *
  * @example
- * await metadata.save({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
+ * metadata.replace({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
  */
-async function saveMetadata(
-  metadata: RunMetadata,
-  requestOptions?: ApiRequestOptions
-): Promise<void> {
+function replaceMetadata(metadata: RunMetadata): void {
+  runMetadata.update(metadata);
+}
+
+/**
+ * @deprecated Use `metadata.replace()` instead.
+ */
+function saveMetadata(metadata: RunMetadata): void {
+  runMetadata.update(metadata);
+}
+
+/**
+ * Flushes metadata to the Trigger.dev instance
+ *
+ * @param {ApiRequestOptions} [requestOptions] - Optional request options to customize the API request.
+ * @returns {Promise<void>} A promise that resolves when the metadata flush operation is complete.
+ */
+async function flushMetadata(requestOptions?: ApiRequestOptions): Promise<void> {
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "metadata.save()",
+      name: "metadata.flush()",
       icon: "code-plus",
-      attributes: {
-        ...flattenAttributes(metadata),
-      },
     },
     requestOptions
   );
 
-  await runMetadata.update(metadata, $requestOptions);
+  await runMetadata.flush($requestOptions);
 }
