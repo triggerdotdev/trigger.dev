@@ -408,7 +408,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
     return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
       //gets a fair run from this shared queue
-      const message = await this.runQueue.dequeueMessageInSharedQueue(consumerId, masterQueue);
+      const message = await this.runQueue.dequeueMessageFromMasterQueue(consumerId, masterQueue);
       if (!message) {
         return null;
       }
@@ -467,13 +467,20 @@ export class RunEngine {
               });
 
               if (result.run.runtimeEnvironment.type === "DEVELOPMENT") {
-                //requeue for 10s in the future, so we can try again
-                //todo when do we stop doing this, the run.ttl should deal with this.
-                await this.runQueue.nackMessage(
-                  orgId,
-                  runId,
-                  new Date(Date.now() + 10_000).getTime()
-                );
+                //it will automatically be requeued X times depending on the queue retry settings
+                const gotRequeued = await this.runQueue.nackMessage(orgId, runId);
+
+                if (!gotRequeued) {
+                  await this.#systemFailure({
+                    runId: result.run.id,
+                    error: {
+                      type: "INTERNAL_ERROR",
+                      code: "COULD_NOT_FIND_TASK",
+                      message: `We tried to dequeue this DEV run multiple times but could not find the task to run: ${result.run.taskIdentifier}`,
+                    },
+                    tx: prisma,
+                  });
+                }
               } else {
                 //not deployed yet, so we'll wait for the deploy
                 await this.#waitingForDeploy({
@@ -574,8 +581,20 @@ export class RunEngine {
             }
           );
 
-          //try again in 1 second
-          await this.runQueue.nackMessage(orgId, runId, new Date(Date.now() + 1000).getTime());
+          //will auto-retry
+          const gotRequeued = await this.runQueue.nackMessage(orgId, runId);
+          if (!gotRequeued) {
+            await this.#systemFailure({
+              runId,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: "TASK_DEQUEUED_QUEUE_NOT_FOUND",
+                message: `Tried to dequeue the run but the queue doesn't exist: ${lockedTaskRun.queue}`,
+              },
+              tx: prisma,
+            });
+          }
+
           return null;
         }
 
@@ -1257,6 +1276,8 @@ export class RunEngine {
 
     await this.runQueue.enqueueMessage({
       env,
+      //todo if the run is locked, use the BackgroundWorker ID
+      //if not locked then the environmentId master queue
       masterQueue: run.masterQueue,
       message: {
         runId: run.id,
@@ -1268,6 +1289,7 @@ export class RunEngine {
         queue: run.queue,
         concurrencyKey: run.concurrencyKey ?? undefined,
         timestamp: Date.now(),
+        attempt: 0,
       },
     });
   }

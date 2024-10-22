@@ -7,6 +7,7 @@ import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { InputPayload } from "./types.js";
 import { abort } from "node:process";
+import { setTimeout } from "node:timers/promises";
 
 const testOptions = {
   name: "rq",
@@ -17,6 +18,13 @@ const testOptions = {
   defaultEnvConcurrency: 10,
   enableRebalancing: false,
   logger: new Logger("RunQueue", "warn"),
+  retryOptions: {
+    maxAttempts: 5,
+    factor: 1.1,
+    minTimeoutInMs: 100,
+    maxTimeoutInMs: 1_000,
+    randomize: true,
+  },
 };
 
 const authenticatedEnvProd = {
@@ -44,6 +52,7 @@ const messageProd: InputPayload = {
   environmentType: "PRODUCTION",
   queue: "task/my-task",
   timestamp: Date.now(),
+  attempt: 0,
 };
 
 const messageDev: InputPayload = {
@@ -55,6 +64,7 @@ const messageDev: InputPayload = {
   environmentType: "DEVELOPMENT",
   queue: "task/my-task",
   timestamp: Date.now(),
+  attempt: 0,
 };
 
 describe("RunQueue", () => {
@@ -183,7 +193,7 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency).toBe(0);
 
-        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345", envMasterQueue);
+        const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue);
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued?.message.version).toEqual("1");
@@ -205,7 +215,7 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
-        const dequeued2 = await queue.dequeueMessageInSharedQueue("test_12345", envMasterQueue);
+        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue);
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
@@ -269,7 +279,7 @@ describe("RunQueue", () => {
         expect(taskConcurrency).toBe(0);
 
         //dequeue
-        const dequeued = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+        const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
         expect(dequeued?.messageId).toEqual(messageProd.runId);
         expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
         expect(dequeued?.message.version).toEqual("1");
@@ -295,7 +305,7 @@ describe("RunQueue", () => {
         const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(length2).toBe(0);
 
-        const dequeued2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
         expect(dequeued2).toBe(undefined);
       } finally {
         await queue.quit();
@@ -346,7 +356,7 @@ describe("RunQueue", () => {
         masterQueue: "main",
       });
 
-      const message = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
       expect(message).toBeDefined();
 
       //check the message is gone
@@ -377,14 +387,14 @@ describe("RunQueue", () => {
       expect(exists2).toBe(0);
 
       //dequeue
-      const message2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
       expect(message2).toBeUndefined();
     } finally {
       await queue.quit();
     }
   });
 
-  redisTest("Nacking", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+  redisTest("Nacking", { timeout: 15_000 }, async ({ redisContainer, redis }) => {
     const queue = new RunQueue({
       ...testOptions,
       redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
@@ -394,10 +404,10 @@ describe("RunQueue", () => {
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
         message: messageProd,
-        masterQueue: "main",
+        masterQueue: "main2",
       });
 
-      const message = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main2");
       expect(message).toBeDefined();
 
       //check the message is there
@@ -423,6 +433,9 @@ describe("RunQueue", () => {
 
       await queue.nackMessage(message!.message.orgId, message!.messageId);
 
+      //we need to wait because the default wait is 1 second
+      await setTimeout(300);
+
       //concurrencies
       const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
         authenticatedEnvProd,
@@ -444,8 +457,71 @@ describe("RunQueue", () => {
       expect(exists2).toBe(1);
 
       //dequeue
-      const message2 = await queue.dequeueMessageInSharedQueue("test_12345", "main");
+      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main2");
       expect(message2?.messageId).toBe(messageProd.runId);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("Dead Letter Queue", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      retryOptions: {
+        maxAttempts: 1,
+      },
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueue: "main",
+      });
+
+      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
+      expect(message).toBeDefined();
+
+      //check the message is there
+      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const exists = await redis.exists(key);
+      expect(exists).toBe(1);
+
+      //nack (we only have attempts set to 1)
+      await queue.nackMessage(message!.message.orgId, message!.messageId);
+
+      //dequeue
+      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
+      expect(message2?.messageId).toBeUndefined();
+
+      //concurrencies
+      const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvProd,
+        messageProd.queue
+      );
+      expect(queueConcurrency2).toBe(0);
+      const envConcurrency2 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+      expect(envConcurrency2).toBe(0);
+      const projectConcurrency2 = await queue.currentConcurrencyOfProject(authenticatedEnvProd);
+      expect(projectConcurrency2).toBe(0);
+      const taskConcurrency2 = await queue.currentConcurrencyOfTask(
+        authenticatedEnvProd,
+        messageProd.taskIdentifier
+      );
+      expect(taskConcurrency2).toBe(0);
+
+      //check the message is still there
+      const exists2 = await redis.exists(key);
+      expect(exists2).toBe(1);
+
+      //check it's in the dlq
+      const dlqKey = "dlq";
+      const dlqExists = await redis.exists(dlqKey);
+      expect(dlqExists).toBe(1);
+
+      const dlqMembers = await redis.zrange(dlqKey, 0, -1);
+      expect(dlqMembers).toContain(messageProd.runId);
     } finally {
       await queue.quit();
     }

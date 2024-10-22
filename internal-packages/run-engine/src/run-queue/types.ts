@@ -12,6 +12,7 @@ export const InputPayload = z.object({
   queue: z.string(),
   concurrencyKey: z.string().optional(),
   timestamp: z.number(),
+  attempt: z.number(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 

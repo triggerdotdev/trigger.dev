@@ -42,12 +42,34 @@ export type RunQueueOptions = {
   enableRebalancing?: boolean;
   verbose?: boolean;
   logger: Logger;
+  retryOptions?: RetryOptions;
 };
+
+//todo
+//1. Track the number of attempts in the payload
+//2. When nacking, pass in `maxAttempts`, bump the `attempt` number each time.
+//3. Check if > maxAttempts, if so, send to a dead letter queue
+//4. Add redrive using Redis pubsub to send back to the queue
+//5. For everything else, like enqueue reset the `attempt` to zero
 
 /**
  * RunQueue – the queue that's used to process runs
  */
+
+import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
+import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
+
+const defaultRetrySettings = {
+  maxAttempts: 12,
+  factor: 2,
+  minTimeoutInMs: 1_000,
+  maxTimeoutInMs: 3_600_000,
+  randomize: true,
+};
+
 export class RunQueue {
+  private retryOptions: RetryOptions;
+  private subscriber: Redis;
   private logger: Logger;
   private redis: Redis;
   public keys: RunQueueKeyProducer;
@@ -55,11 +77,15 @@ export class RunQueue {
   #rebalanceWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: RunQueueOptions) {
+    this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = new Redis(options.redis);
     this.logger = options.logger;
 
     this.keys = new RunQueueShortKeyProducer("rq:");
     this.queuePriorityStrategy = options.queuePriorityStrategy;
+
+    this.subscriber = new Redis(options.redis);
+    this.#setupSubscriber();
 
     this.#registerCommands();
   }
@@ -184,6 +210,7 @@ export class RunQueue {
           version: "1",
           queue,
           masterQueue,
+          attempt: 0,
         };
 
         await this.#callEnqueueMessage(messagePayload, masterQueue);
@@ -232,7 +259,7 @@ export class RunQueue {
   /**
    * Dequeue a message from the shared queue (this should be used in production environments)
    */
-  public async dequeueMessageInSharedQueue(consumerId: string, masterQueue: string) {
+  public async dequeueMessageFromMasterQueue(consumerId: string, masterQueue: string) {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
@@ -343,15 +370,18 @@ export class RunQueue {
   /**
    * Negative acknowledge a message, which will requeue the message (with an optional future date)
    */
-  public async nackMessage(orgId: string, messageId: string, retryAt: number = Date.now()) {
+  public async nackMessage(orgId: string, messageId: string, retryAt?: number) {
     return this.#trace(
       "nackMessage",
       async (span) => {
+        const maxAttempts = this.retryOptions.maxAttempts ?? defaultRetrySettings.maxAttempts;
+
         const message = await this.#readMessage(orgId, messageId);
         if (!message) {
           this.logger.log(`[${this.name}].nackMessage() message not found`, {
             orgId,
             messageId,
+            maxAttempts,
             retryAt,
             service: this.name,
           });
@@ -378,7 +408,24 @@ export class RunQueue {
           message.queue
         );
 
-        const messageScore = retryAt;
+        message.attempt = message.attempt + 1;
+        if (message.attempt >= maxAttempts) {
+          await this.redis.moveToDeadLetterQueue(
+            parentQueue,
+            messageKey,
+            messageQueue,
+            concurrencyKey,
+            envConcurrencyKey,
+            projectConcurrencyKey,
+            taskConcurrencyKey,
+            "dlq",
+            messageId
+          );
+          return false;
+        }
+
+        const nextRetryDelay = calculateNextRetryDelay(this.retryOptions, message.attempt);
+        const messageScore = retryAt ?? (nextRetryDelay ? Date.now() + nextRetryDelay : Date.now());
 
         this.logger.debug("Calling nackMessage", {
           messageKey,
@@ -390,6 +437,7 @@ export class RunQueue {
           taskConcurrencyKey,
           messageId,
           messageScore,
+          attempt: message.attempt,
           service: this.name,
         });
 
@@ -404,8 +452,10 @@ export class RunQueue {
           taskConcurrencyKey,
           //args
           messageId,
+          JSON.stringify(message),
           String(messageScore)
         );
+        return true;
       },
       {
         kind: SpanKind.CONSUMER,
@@ -509,8 +559,27 @@ export class RunQueue {
 
   async quit() {
     await Promise.all(this.#rebalanceWorkers.map((worker) => worker.stop()));
+    await this.subscriber.unsubscribe();
+    await this.subscriber.quit();
     await this.redis.quit();
   }
+
+  // private async handleRedriveMessage(channel: string, message: string) {
+  //   try {
+  //     const { id } = JSON.parse(message);
+  //     if (typeof id !== "string") {
+  //       throw new Error("Invalid message format: id must be a string");
+  //     }
+  //     await this.enqueueMessage({
+  //       env: { orgId: "", id: "" }, // You might need to adjust this based on your actual implementation
+  //       message: (await this.#readMessage("", id)) as InputPayload,
+  //       masterQueue: this.keys.deadLetterQueueKey(""),
+  //     });
+  //     this.logger.log(`Redrived item ${id} from Dead Letter Queue`);
+  //   } catch (error) {
+  //     this.logger.error("Error processing redrive message", { error, message });
+  //   }
+  // }
 
   async #trace<T>(
     name: string,
@@ -541,6 +610,20 @@ export class RunQueue {
         }
       }
     );
+  }
+
+  async #setupSubscriber() {
+    const channel = `${this.options.name}:redrive`;
+    this.subscriber.subscribe(channel, (err) => {
+      if (err) {
+        this.logger.error(`Failed to subscribe to ${channel}`, { error: err });
+      } else {
+        this.logger.log(`Subscribed to ${channel}`);
+      }
+    });
+
+    //todo
+    // this.subscriber.on("message", this.handleRedriveMessage.bind(this));
   }
 
   async #readMessage(orgId: string, messageId: string) {
@@ -1103,7 +1186,11 @@ local taskConcurrencyKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
-local messageScore = tonumber(ARGV[2])
+local messageData = ARGV[2]
+local messageScore = tonumber(ARGV[3])
+
+-- Update the message data
+redis.call('SET', messageKey, messageData)
 
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
@@ -1121,6 +1208,44 @@ if #earliestMessage == 0 then
 else
     redis.call('ZADD', parentQueueKey, earliestMessage[2], messageQueueKey)
 end
+`,
+    });
+
+    this.redis.defineCommand("moveToDeadLetterQueue", {
+      numberOfKeys: 8,
+      lua: `
+-- Keys:
+local parentQueue = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local projectCurrentConcurrencyKey = KEYS[6]
+local taskCurrentConcurrencyKey = KEYS[7]
+local deadLetterQueueKey = KEYS[8]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Remove the message from the queue
+redis.call('ZREM', messageQueue, messageId)
+
+-- Rebalance the parent queue
+local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+    redis.call('ZREM', parentQueue, messageQueue)
+else
+    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+end
+
+-- Add the message to the dead letter queue
+redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
+
+-- Update the concurrency keys
+redis.call('SREM', concurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', projectCurrentConcurrencyKey, messageId)
+redis.call('SREM', taskCurrentConcurrencyKey, messageId)
 `,
     });
 
@@ -1197,13 +1322,48 @@ return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurr
       `,
     });
 
+    this.redis.defineCommand("redriveFromDeadLetterQueue", {
+      numberOfKeys: 3,
+      lua: `
+    -- Keys:
+    local deadLetterQueueKey = KEYS[1]
+    local messageQueueKey = KEYS[2]
+    local parentQueueKey = KEYS[3]
+
+    -- Args:
+    local messageId = ARGV[1]
+
+    -- Get the message data from the dead letter queue
+    local messageData = redis.call('GET', messageId)
+
+    if not messageData then
+      return redis.error_reply("Message not found in dead letter queue")
+    end
+
+    -- Remove the message from the dead letter queue
+    redis.call('ZREM', deadLetterQueueKey, messageId)
+
+    -- Add the message back to the original queue
+    local currentTime = redis.call('TIME')[1]
+    redis.call('ZADD', messageQueueKey, currentTime, messageId)
+
+    -- Rebalance the parent queue
+    local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+    if #earliestMessage > 0 then
+      redis.call('ZADD', parentQueueKey, earliestMessage[2], messageQueueKey)
+    end
+
+    return redis.status_reply("OK")
+      `,
+    });
+
     this.redis.defineCommand("updateGlobalConcurrencyLimits", {
       numberOfKeys: 1,
       lua: `
--- Keys: envConcurrencyLimitKey, orgConcurrencyLimitKey
+-- Keys: envConcurrencyLimitKey
 local envConcurrencyLimitKey = KEYS[1]
 
--- Args: envConcurrencyLimit, orgConcurrencyLimit
+-- Args: envConcurrencyLimit
 local envConcurrencyLimit = ARGV[1]
 
 redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
@@ -1301,7 +1461,21 @@ declare module "ioredis" {
       projectConcurrencyKey: string,
       taskConcurrencyKey: string,
       messageId: string,
+      messageData: string,
       messageScore: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    moveToDeadLetterQueue(
+      parentQueue: string,
+      messageKey: string,
+      messageQueue: string,
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      projectConcurrencyKey: string,
+      taskConcurrencyKey: string,
+      deadLetterQueueKey: string,
+      messageId: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

@@ -127,6 +127,7 @@ export const TaskRunInternalError = z.object({
     "POD_UNKNOWN_ERROR",
     "TASK_HAS_N0_EXECUTION_SNAPSHOT",
     "TASK_DEQUEUED_INVALID_STATE",
+    "TASK_DEQUEUED_QUEUE_NOT_FOUND",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
