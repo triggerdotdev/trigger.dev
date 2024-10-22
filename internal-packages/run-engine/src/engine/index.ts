@@ -41,6 +41,7 @@ import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { CreatedAttemptMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
+import { eventBus } from "./eventBus";
 
 type Options = {
   redis: RedisOptions;
@@ -981,7 +982,60 @@ export class RunEngine {
 
   async waitForDuration() {}
 
-  async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
+  async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
+    const prisma = tx ?? this.prisma;
+    await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      if (!snapshot) {
+        throw new Error(`No execution snapshot found for TaskRun ${runId}`);
+      }
+
+      //if we're executing then we won't expire the run
+      if (isExecuting(snapshot.executionStatus)) {
+        return;
+      }
+
+      //only expire "PENDING" runs
+      const run = await prisma.taskRun.findUnique({ where: { id: runId } });
+
+      if (!run) {
+        this.logger.debug("Could not find enqueued run to expire", {
+          runId,
+        });
+        return;
+      }
+
+      if (run.status !== "PENDING") {
+        this.logger.debug("Run cannot be expired because it's not in PENDING status", {
+          run,
+        });
+        return;
+      }
+
+      const updatedRun = await prisma.taskRun.update({
+        where: { id: runId },
+        data: {
+          status: "EXPIRED",
+          completedAt: new Date(),
+          expiredAt: new Date(),
+          error: {
+            type: "STRING_ERROR",
+            raw: `Run expired because the TTL (${run.ttl}) was reached`,
+          },
+          executionSnapshots: {
+            create: {
+              engine: "V2",
+              executionStatus: "FINISHED",
+              description: "Run was expired because the TTL was reached",
+              runStatus: "EXPIRED",
+            },
+          },
+        },
+      });
+
+      eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
+    });
+  }
 
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
