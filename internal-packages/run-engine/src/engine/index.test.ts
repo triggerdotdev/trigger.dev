@@ -7,7 +7,7 @@ import { AuthenticatedEnvironment } from "../shared/index.js";
 import { CURRENT_DEPLOYMENT_LABEL } from "./consts.js";
 import { RunEngine } from "./index.js";
 import { setTimeout } from "timers/promises";
-import { eventBus, EventBusEventArgs } from "./eventBus.js";
+import { EventBusEventArgs } from "./eventBus.js";
 
 function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
   expect(value).toBeDefined();
@@ -388,7 +388,7 @@ describe("RunEngine", () => {
       expect(executionData.snapshot.executionStatus).toBe("QUEUED");
 
       let expiredEventData: EventBusEventArgs<"runExpired">[0] | undefined = undefined;
-      eventBus.on("runExpired", (result) => {
+      engine.eventBus.on("runExpired", (result) => {
         expiredEventData = result;
       });
 

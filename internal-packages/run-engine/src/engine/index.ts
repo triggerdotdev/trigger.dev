@@ -23,7 +23,6 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
-  TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -31,17 +30,18 @@ import {
 import assertNever from "assert-never";
 import { Redis, type RedisOptions } from "ioredis";
 import { nanoid } from "nanoid";
+import { EventEmitter } from "node:events";
 import { z } from "zod";
 import { RunQueue } from "../run-queue";
 import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorityStrategy";
 import { MinimalAuthenticatedEnvironment } from "../shared";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
+import { eventBus, EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { CreatedAttemptMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
-import { eventBus } from "./eventBus";
 
 type Options = {
   redis: RedisOptions;
@@ -124,6 +124,7 @@ export class RunEngine {
   private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
+  eventBus = new EventEmitter<EventBusEvents>();
 
   constructor(private readonly options: Options) {
     this.prisma = options.prisma;

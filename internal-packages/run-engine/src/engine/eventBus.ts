@@ -14,5 +14,3 @@ export type EventBusEvents = {
 };
 
 export type EventBusEventArgs<T extends keyof EventBusEvents> = EventBusEvents[T];
-
-export const eventBus = new EventEmitter<EventBusEvents>();
