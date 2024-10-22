@@ -290,6 +290,9 @@ export class CompleteAttemptService extends BaseService {
       sanitizedError.code === "MAX_DURATION_EXCEEDED"
     ) {
       status = "TIMED_OUT";
+      // TODO: check we want these all to be crashes by default
+    } else if (sanitizedError.type === "INTERNAL_ERROR") {
+      status = "CRASHED";
     } else {
       status = "COMPLETED_WITH_ERRORS";
     }
