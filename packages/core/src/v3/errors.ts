@@ -149,6 +149,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_ALREADY_RUNNING":
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGKILL_TIMEOUT":
+        case "TASK_PROCESS_SIGSEGV":
         case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_OOM_KILLED":
         case "TASK_PROCESS_MAYBE_OOM_KILLED":
@@ -397,6 +398,15 @@ const prettyInternalErrors: Partial<
       href: links.docs.machines.home,
     },
   },
+  TASK_PROCESS_SIGSEGV: {
+    message:
+      "Your task crashed with a segmentation fault (SIGSEGV). Most likely there's a bug in a package or binary you're using. If this keeps happening and you're unsure why, please get in touch.",
+    link: {
+      name: "Contact us",
+      href: links.site.contact,
+      magic: "CONTACT_FORM",
+    },
+  },
   TASK_PROCESS_SIGTERM: {
     message:
       "Your task exited after receiving SIGTERM but we don't know why. If this keeps happening, please get in touch so we can investigate.",
@@ -418,6 +428,12 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
               type: "INTERNAL_ERROR",
               code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
               ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
+            };
+          } else if (error.message.includes("SIGSEGV")) {
+            return {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.TASK_PROCESS_SIGSEGV,
+              ...prettyInternalErrors.TASK_PROCESS_SIGSEGV,
             };
           }
 
@@ -453,6 +469,12 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
             type: "INTERNAL_ERROR",
             code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
             ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
+          };
+        } else if (error.message?.includes("SIGSEGV")) {
+          return {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_PROCESS_SIGSEGV,
+            ...prettyInternalErrors.TASK_PROCESS_SIGSEGV,
           };
         }
 
