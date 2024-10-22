@@ -4,6 +4,9 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
 import { flattenAttributes } from "./flattenAttributes.js";
 import { apiClientManager } from "../apiClientManager-api.js";
+import { zodfetch } from "../zodfetch.js";
+import { z } from "zod";
+import type { RetryOptions } from "../schemas/index.js";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -107,19 +110,34 @@ export function packetRequiresOffloading(
   };
 }
 
+const ioRetryOptions = {
+  minTimeoutInMs: 500,
+  maxTimeoutInMs: 5000,
+  maxAttempts: 5,
+  factor: 2,
+  randomize: true,
+} satisfies RetryOptions;
+
 async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPacket> {
   // Offload the output
   const filename = `${pathPrefix}.${getPacketExtension(packet.dataType)}`;
 
   const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
 
-  const uploadResponse = await fetch(presignedResponse.presignedUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": packet.dataType,
+  const uploadResponse = await zodfetch(
+    z.any(),
+    presignedResponse.presignedUrl,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": packet.dataType,
+      },
+      body: packet.data,
     },
-    body: packet.data,
-  });
+    {
+      retry: ioRetryOptions,
+    }
+  ).asResponse();
 
   if (!uploadResponse.ok) {
     throw new Error(
@@ -196,7 +214,9 @@ async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
 
   const presignedResponse = await apiClientManager.client.getPayloadUrl(packet.data);
 
-  const response = await fetch(presignedResponse.presignedUrl);
+  const response = await zodfetch(z.any(), presignedResponse.presignedUrl, undefined, {
+    retry: ioRetryOptions,
+  }).asResponse();
 
   if (!response.ok) {
     throw new Error(
