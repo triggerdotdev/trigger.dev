@@ -32,6 +32,11 @@ export function syncVercelEnvVars(
     const vercelEnvironment =
       environmentMap[ctx.environment as keyof typeof environmentMap];
 
+    if (!vercelEnvironment) {
+      throw new Error(
+        `Invalid environment '${ctx.environment}'. Expected 'prod', 'staging', or 'dev'.`
+      );
+    }
     const vercelApiUrl =
       `https://api.vercel.com/v8/projects/${projectId}/env?decrypt=true`;
 
