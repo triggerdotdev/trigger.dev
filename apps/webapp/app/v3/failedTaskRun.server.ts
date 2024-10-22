@@ -143,7 +143,7 @@ export class FailedTaskRunRetryHelper extends BaseService {
     // - None exists yet
     // - The last attempt has a final status, e.g. we failed between attempts
     if (!attempt || isFinalAttemptStatus(attempt.status)) {
-      logger.error("[FailedTaskRunRetryHelper] No attempts found", {
+      logger.debug("[FailedTaskRunRetryHelper] No attempts found", {
         run,
         completion,
       });
