@@ -147,7 +147,6 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "COULD_NOT_IMPORT_TASK":
         case "CONFIGURED_INCORRECTLY":
         case "TASK_ALREADY_RUNNING":
-        case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGKILL_TIMEOUT":
         case "TASK_PROCESS_SIGSEGV":
         case "TASK_PROCESS_SIGTERM":
@@ -168,6 +167,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
+        case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
           return true;
 
         default:
@@ -418,39 +418,73 @@ const prettyInternalErrors: Partial<
   },
 };
 
+const getPrettyTaskRunError = (code: TaskRunInternalError["code"]): TaskRunInternalError => {
+  return {
+    type: "INTERNAL_ERROR" as const,
+    code,
+    ...prettyInternalErrors[code],
+  };
+};
+
+const getPrettyExceptionEvent = (code: TaskRunInternalError["code"]): ExceptionEventProperties => {
+  return {
+    type: code,
+    ...prettyInternalErrors[code],
+  };
+};
+
+const findSignalInMessage = (message?: string, truncateLength = 100) => {
+  if (!message) {
+    return;
+  }
+
+  const trunc = truncateLength ? message.slice(0, truncateLength) : message;
+
+  if (trunc.includes("SIGTERM")) {
+    return "SIGTERM";
+  } else if (trunc.includes("SIGSEGV")) {
+    return "SIGSEGV";
+  } else if (trunc.includes("SIGKILL")) {
+    return "SIGKILL";
+  } else {
+    return;
+  }
+};
+
 export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunError> {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
       if (error.name === "UnexpectedExitError") {
         if (error.message.startsWith("Unexpected exit with code -1")) {
-          if (error.message.includes("SIGTERM")) {
-            return {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
-              ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
-            };
-          } else if (error.message.includes("SIGSEGV")) {
-            return {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.TASK_PROCESS_SIGSEGV,
-              ...prettyInternalErrors.TASK_PROCESS_SIGSEGV,
-            };
-          }
+          const signal = findSignalInMessage(error.stackTrace);
 
-          return {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
-            ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
-          };
+          switch (signal) {
+            case "SIGTERM":
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_SIGTERM"),
+              };
+            case "SIGSEGV":
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_SIGSEGV"),
+              };
+            case "SIGKILL":
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+              };
+            default:
+              return {
+                ...getPrettyTaskRunError("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE"),
+                message: error.message,
+                stackTrace: error.stackTrace,
+              };
+          }
         }
       }
 
       if (error.name === "Error") {
         if (error.message === "ffmpeg was killed with signal SIGKILL") {
           return {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED,
-            ...prettyInternalErrors.TASK_PROCESS_OOM_KILLED,
+            ...getPrettyTaskRunError("TASK_PROCESS_OOM_KILLED"),
           };
         }
       }
@@ -464,25 +498,29 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
     }
     case "INTERNAL_ERROR": {
       if (error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE) {
-        if (error.message?.includes("SIGTERM")) {
-          return {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_PROCESS_SIGTERM,
-            ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
-          };
-        } else if (error.message?.includes("SIGSEGV")) {
-          return {
-            type: "INTERNAL_ERROR",
-            code: TaskRunErrorCodes.TASK_PROCESS_SIGSEGV,
-            ...prettyInternalErrors.TASK_PROCESS_SIGSEGV,
-          };
-        }
+        const signal = findSignalInMessage(error.message);
 
-        return {
-          type: "INTERNAL_ERROR",
-          code: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
-          ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
-        };
+        switch (signal) {
+          case "SIGTERM":
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_SIGTERM"),
+            };
+          case "SIGSEGV":
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_SIGSEGV"),
+            };
+          case "SIGKILL":
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
+          default: {
+            return {
+              ...getPrettyTaskRunError("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE"),
+              message: error.message,
+              stackTrace: error.stackTrace,
+            };
+          }
+        }
       }
 
       const prettyError = prettyInternalErrors[error.code];
@@ -516,18 +554,30 @@ export function exceptionEventEnhancer(
     }
     case "Internal error": {
       if (exception.message?.startsWith(TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE)) {
-        if (exception.message?.includes("SIGTERM")) {
-          return {
-            ...exception,
-            ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
-          };
-        }
+        const signal = findSignalInMessage(exception.message);
 
-        return {
-          ...exception,
-          ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
-          type: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
-        };
+        switch (signal) {
+          case "SIGTERM":
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_SIGTERM"),
+            };
+          case "SIGSEGV":
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_SIGSEGV"),
+            };
+          case "SIGKILL":
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),
+            };
+          default:
+            return {
+              ...exception,
+              ...getPrettyExceptionEvent("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE"),
+            };
+        }
       }
       break;
     }
