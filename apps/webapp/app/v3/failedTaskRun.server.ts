@@ -234,10 +234,19 @@ export class FailedTaskRunRetryHelper extends BaseService {
         }
       }
 
-      const parsedRetryConfig = RetryOptions.safeParse(retryConfig);
+      const parsedRetryConfig = RetryOptions.nullable().safeParse(retryConfig);
 
       if (!parsedRetryConfig.success) {
         logger.error("[FailedTaskRunRetryHelper] Invalid retry config", {
+          run,
+          execution,
+        });
+
+        return;
+      }
+
+      if (!parsedRetryConfig.data) {
+        logger.debug("[FailedTaskRunRetryHelper] No retry config", {
           run,
           execution,
         });
