@@ -580,10 +580,7 @@ export function exceptionEventEnhancer(
               ...getPrettyExceptionEvent("TASK_PROCESS_MAYBE_OOM_KILLED"),
             };
           default:
-            return {
-              ...exception,
-              ...getPrettyExceptionEvent("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE"),
-            };
+            return exception;
         }
       }
       break;
