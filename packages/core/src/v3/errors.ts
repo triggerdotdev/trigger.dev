@@ -179,6 +179,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
+        // TODO: check we really want to retry here, these could be oom errors
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
           return true;
 
@@ -535,16 +536,10 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
         }
       }
 
-      const prettyError = prettyInternalErrors[error.code];
-
-      if (prettyError) {
-        return {
-          ...error,
-          ...prettyError,
-        };
-      }
-
-      break;
+      return {
+        ...error,
+        ...getPrettyTaskRunError(error.code),
+      };
     }
   }
 
@@ -607,7 +602,7 @@ export function exceptionEventEnhancer(
     case TaskRunErrorCodes.TASK_PROCESS_SIGTERM: {
       return {
         ...exception,
-        ...prettyInternalErrors[exception.type],
+        ...getPrettyExceptionEvent(exception.type),
       };
     }
   }
