@@ -25,6 +25,7 @@ import { RetryAttemptService } from "./retryAttempt.server";
 import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { env } from "~/env.server";
+import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -208,13 +209,14 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
+    const failedAt = new Date();
     const sanitizedError = sanitizeError(completion.error);
 
     await this._prisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
         status: "FAILED",
-        completedAt: new Date(),
+        completedAt: failedAt,
         error: sanitizedError,
         usageDurationMs: completion.usage?.durationMs,
       },
@@ -222,14 +224,25 @@ export class CompleteAttemptService extends BaseService {
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
+    const executionRetry =
+      completion.retry ??
+      (await FailedTaskRunRetryHelper.getExecutionRetry({
+        run: {
+          ...taskRunAttempt.taskRun,
+          lockedBy: taskRunAttempt.backgroundWorkerTask,
+          lockedToVersion: taskRunAttempt.backgroundWorker,
+        },
+        execution,
+      }));
+
     if (
       shouldRetryError(completion.error) &&
-      completion.retry !== undefined &&
+      executionRetry !== undefined &&
       taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS
     ) {
       return await this.#retryAttempt({
         execution,
-        executionRetry: completion.retry,
+        executionRetry,
         taskRunAttempt,
         environment,
         checkpoint,
@@ -241,14 +254,14 @@ export class CompleteAttemptService extends BaseService {
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-      endTime: new Date(),
+      endTime: failedAt,
       attributes: {
         isError: true,
       },
       events: [
         {
           name: "exception",
-          time: new Date(),
+          time: failedAt,
           properties: {
             exception: createExceptionPropertiesFromError(sanitizedError),
           },
@@ -267,6 +280,7 @@ export class CompleteAttemptService extends BaseService {
 
     let status: FAILED_RUN_STATUSES;
 
+    // Set the correct task run status
     if (isSystemFailure) {
       status = "SYSTEM_FAILURE";
     } else if (isCrash) {
@@ -284,8 +298,62 @@ export class CompleteAttemptService extends BaseService {
     await finalizeService.call({
       id: taskRunAttempt.taskRunId,
       status,
-      completedAt: new Date(),
+      completedAt: failedAt,
     });
+
+    if (status !== "CRASHED" && status !== "SYSTEM_FAILURE") {
+      return "COMPLETED";
+    }
+
+    const inProgressEvents = await eventRepository.queryIncompleteEvents({
+      runId: taskRunAttempt.taskRun.friendlyId,
+    });
+
+    // Handle in-progress events
+    switch (status) {
+      case "CRASHED": {
+        logger.debug("[CompleteAttemptService] Crashing in-progress events", {
+          inProgressEvents: inProgressEvents.map((event) => event.id),
+        });
+
+        await Promise.all(
+          inProgressEvents.map((event) => {
+            return eventRepository.crashEvent({
+              event,
+              crashedAt: failedAt,
+              exception: createExceptionPropertiesFromError(sanitizedError),
+            });
+          })
+        );
+
+        break;
+      }
+      case "SYSTEM_FAILURE": {
+        logger.debug("[CompleteAttemptService] Failing in-progress events", {
+          inProgressEvents: inProgressEvents.map((event) => event.id),
+        });
+
+        await Promise.all(
+          inProgressEvents.map((event) => {
+            return eventRepository.completeEvent(event.spanId, {
+              endTime: failedAt,
+              attributes: {
+                isError: true,
+              },
+              events: [
+                {
+                  name: "exception",
+                  time: failedAt,
+                  properties: {
+                    exception: createExceptionPropertiesFromError(sanitizedError),
+                  },
+                },
+              ],
+            });
+          })
+        );
+      }
+    }
 
     return "COMPLETED";
   }
@@ -519,6 +587,7 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
         select: {
           id: true,
           supportsLazyAttempts: true,
+          sdkVersion: true,
         },
       },
     },

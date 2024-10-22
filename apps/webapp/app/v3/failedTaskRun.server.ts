@@ -1,20 +1,18 @@
 import {
   calculateNextRetryDelay,
   RetryOptions,
-  sanitizeError,
   TaskRunExecution,
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
-import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
 import { BaseService } from "./services/baseService.server";
-import { FinalizeTaskRunService } from "./services/finalizeTaskRun.server";
 import { isFailableRunStatus, isFinalAttemptStatus } from "./taskStatus";
-import { Prisma } from "@trigger.dev/database";
+import type { Prisma, TaskRun } from "@trigger.dev/database";
 import { CompleteAttemptService } from "./services/completeAttempt.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
+import * as semver from "semver";
 
 const includeAttempts = {
   attempts: {
@@ -23,7 +21,8 @@ const includeAttempts = {
     },
     take: 1,
   },
-  lockedBy: true,
+  lockedBy: true, // task
+  lockedToVersion: true, // worker
 } satisfies Prisma.TaskRunInclude;
 
 type TaskRunWithAttempts = Prisma.TaskRunGetPayload<{
@@ -67,39 +66,16 @@ export class FailedTaskRunService extends BaseService {
       completion,
     });
 
-    if (retryResult !== undefined) {
-      return;
-    }
-
-    // No retriable execution, so we need to fail the task run
-    logger.debug("[FailedTaskRunService] Failing task run", { taskRun, completion });
-
-    const finalizeService = new FinalizeTaskRunService();
-    await finalizeService.call({
-      id: taskRun.id,
-      status: "SYSTEM_FAILURE",
-      completedAt: new Date(),
-      attemptStatus: "FAILED",
-      error: sanitizeError(completion.error),
-    });
-
-    // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(taskRun.spanId, {
-      endTime: new Date(),
-      attributes: {
-        isError: true,
-      },
-      events: [
-        {
-          name: "exception",
-          time: new Date(),
-          properties: {
-            exception: createExceptionPropertiesFromError(completion.error),
-          },
-        },
-      ],
+    logger.debug("[FailedTaskRunService] Completion result", {
+      runId: taskRun.id,
+      result: retryResult,
     });
   }
+}
+
+interface TaskRunWithWorker extends TaskRun {
+  lockedBy: { retryConfig: Prisma.JsonValue } | null;
+  lockedToVersion: { sdkVersion: string } | null;
 }
 
 export class FailedTaskRunRetryHelper extends BaseService {
@@ -125,19 +101,23 @@ export class FailedTaskRunRetryHelper extends BaseService {
         completion,
       });
 
-      return;
+      return "NO_TASK_RUN";
     }
 
     const retriableExecution = await this.#getRetriableAttemptExecution(taskRun, completion);
 
     if (!retriableExecution) {
-      return;
+      return "NO_EXECUTION";
     }
 
     logger.debug("[FailedTaskRunRetryHelper] Completing attempt", { taskRun, completion });
 
     const executionRetry =
-      completion.retry ?? (await this.#getExecutionRetry(taskRun, retriableExecution));
+      completion.retry ??
+      (await FailedTaskRunRetryHelper.getExecutionRetry({
+        run: taskRun,
+        execution: retriableExecution,
+      }));
 
     const completeAttempt = new CompleteAttemptService(this._prisma);
     const completeResult = await completeAttempt.call({
@@ -207,35 +187,90 @@ export class FailedTaskRunRetryHelper extends BaseService {
     }
   }
 
-  async #getExecutionRetry(
-    run: TaskRunWithAttempts,
-    execution: TaskRunExecution
-  ): Promise<TaskRunExecutionRetry | undefined> {
-    const parsedRetryConfig = RetryOptions.safeParse(run.lockedBy?.retryConfig);
+  static async getExecutionRetry({
+    run,
+    execution,
+  }: {
+    run: TaskRunWithWorker;
+    execution: TaskRunExecution;
+  }): Promise<TaskRunExecutionRetry | undefined> {
+    try {
+      const retryConfig = run.lockedBy?.retryConfig;
 
-    if (!parsedRetryConfig.success) {
-      logger.error("[FailedTaskRunRetryHelper] Invalid retry config", {
+      if (!retryConfig) {
+        if (!run.lockedToVersion) {
+          logger.error("[FailedTaskRunRetryHelper] Run not locked to version", {
+            run,
+            execution,
+          });
+
+          return;
+        }
+
+        const sdkVersion = run.lockedToVersion.sdkVersion ?? "0.0.0";
+        const isValid = semver.valid(sdkVersion);
+
+        if (!isValid) {
+          logger.error("[FailedTaskRunRetryHelper] Invalid SDK version", {
+            run,
+            execution,
+          });
+
+          return;
+        }
+
+        // With older SDK versions, tasks only have a retry config stored in the DB if it's explicitly defined on the task itself
+        // It won't get populated with retry.default in trigger.config.ts
+        if (semver.lt(sdkVersion, FailedTaskRunRetryHelper.DEFAULT_RETRY_CONFIG_SINCE_VERSION)) {
+          logger.warn(
+            "[FailedTaskRunRetryHelper] SDK version not recent enough to determine retry config",
+            {
+              run,
+              execution,
+            }
+          );
+
+          return;
+        }
+      }
+
+      const parsedRetryConfig = RetryOptions.safeParse(retryConfig);
+
+      if (!parsedRetryConfig.success) {
+        logger.error("[FailedTaskRunRetryHelper] Invalid retry config", {
+          run,
+          execution,
+        });
+
+        return;
+      }
+
+      const delay = calculateNextRetryDelay(parsedRetryConfig.data, execution.attempt.number);
+
+      if (!delay) {
+        logger.debug("[FailedTaskRunRetryHelper] No more retries", {
+          run,
+          execution,
+        });
+
+        return;
+      }
+
+      return {
+        timestamp: Date.now() + delay,
+        delay,
+      };
+    } catch (error) {
+      logger.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
         run,
         execution,
+        error,
       });
 
       return;
     }
-
-    const delay = calculateNextRetryDelay(parsedRetryConfig.data, execution.attempt.number);
-
-    if (!delay) {
-      logger.debug("[FailedTaskRunRetryHelper] No more retries", {
-        run,
-        execution,
-      });
-
-      return;
-    }
-
-    return {
-      timestamp: Date.now() + delay,
-      delay,
-    };
   }
+
+  // TODO: update this to the correct version
+  static DEFAULT_RETRY_CONFIG_SINCE_VERSION = "3.0.12";
 }

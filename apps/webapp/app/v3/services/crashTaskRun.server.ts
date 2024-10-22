@@ -66,8 +66,14 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
+    logger.debug("[CrashTaskRunService] Completion result", { runId, retryResult });
+
     if (retryResult === "RETRIED") {
       logger.debug("[CrashTaskRunService] Retried task run", { runId });
+      return;
+    }
+
+    if (!opts.overrideCompletion) {
       return;
     }
 
