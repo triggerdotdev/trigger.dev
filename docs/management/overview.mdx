@@ -50,10 +50,11 @@ main().catch(console.error);
 
 There are two methods of authenticating with the management API: using a secret key associated with a specific environment in a project (`secretKey`), or using a personal access token (`personalAccessToken`). Both methods should only be used in a backend server, as they provide full access to the project.
 
-<Info>
-  Support for client-side authentication is coming soon to v3 but is not available at the time of
-  writing.
-</Info>
+<Note>
+  There is a separate authentication strategy when making requests from your frontend application.
+  See the [Frontend guide](/frontend/overview) for more information. This guide is for backend usage
+  only.
+</Note>
 
 Certain API functions work with both authentication methods, but require different arguments depending on the method used. For example, the `runs.list` function can be called using either a `secretKey` or a `personalAccessToken`, but the `projectRef` argument is required when using a `personalAccessToken`:
 
