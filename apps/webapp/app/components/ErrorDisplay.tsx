@@ -1,9 +1,10 @@
 import { HomeIcon } from "@heroicons/react/20/solid";
 import { isRouteErrorResponse, useRouteError } from "@remix-run/react";
+import { motion } from "framer-motion";
 import { friendlyErrorDisplay } from "~/utils/httpErrors";
-import logoGlow from "../assets/images/logo-glow.png";
 import { LinkButton } from "./primitives/Buttons";
-import { Header1, Header3 } from "./primitives/Headers";
+import { Header1 } from "./primitives/Headers";
+import { Paragraph } from "./primitives/Paragraph";
 
 type ErrorDisplayOptions = {
   button?: {
@@ -41,21 +42,32 @@ type DisplayOptionsProps = {
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
-    <div className="relative mt-32 flex flex-col items-center gap-6">
-      <div className="pointer-events-none absolute left-1/2 top-[220px] z-20 w-[350px] -translate-x-1/2 animate-[ping-pong-width_10s_ease-in-out_infinite]">
-        <img src={logoGlow} className="h-full w-full object-contain" />
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#16181C]">
+      <div className="z-10 mt-[30vh] flex flex-col items-center gap-8">
+        <Header1>{title}</Header1>
+        {message && <Paragraph>{message}</Paragraph>}
+        <LinkButton
+          to={button ? button.to : "/"}
+          // shortcut={{ key: "h" }}
+          variant="primary/medium"
+          LeadingIcon={HomeIcon}
+        >
+          {button ? button.title : "Go to homepage"}
+        </LinkButton>
       </div>
-      <div className="pointer-events-none absolute left-1/2 top-[230px] z-10 h-[70px] w-[350px] -translate-x-1/2 bg-background-dimmed" />
-      <iframe
-        src="https://my.spline.design/rotatinglogo-dd8c81cb0ec1b9d7d09a7b473b2992e2/"
-        width="200px"
-        height="300px"
-      />
-      <Header1>{title}</Header1>
-      {message && <Header3>{message}</Header3>}
-      <LinkButton to={button ? button.to : "/"} variant="primary/medium" LeadingIcon={HomeIcon}>
-        {button ? button.title : "Go to homepage"}
-      </LinkButton>
+      <div className="pointer-events-none absolute bottom-4 right-4 z-10 h-[70px] w-[200px] bg-[rgb(24,26,30)]" />
+      <motion.div
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5, duration: 2, ease: "easeOut" }}
+      >
+        <iframe
+          src="https://my.spline.design/untitled-a6f70b5ebc46bdb2dcc0f21d5397e8ac/"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          style={{ border: "none" }}
+        />
+      </motion.div>
     </div>
   );
 }
