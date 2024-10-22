@@ -920,11 +920,12 @@ export class RunEngine {
         span.setAttribute("completionStatus", completion.ok);
 
         if (completion.ok) {
+          const completedAt = new Date();
           const run = await this.prisma.taskRun.update({
             where: { id: runId },
             data: {
               status: "COMPLETED_SUCCESSFULLY",
-              completedAt: new Date(),
+              completedAt,
               output: completion.output,
               outputType: completion.outputType,
               executionSnapshots: {
@@ -937,6 +938,7 @@ export class RunEngine {
               },
             },
             select: {
+              spanId: true,
               associatedWaitpoint: {
                 select: {
                   id: true,
@@ -960,6 +962,16 @@ export class RunEngine {
             output: completion.output
               ? { value: completion.output, type: completion.outputType }
               : undefined,
+          });
+
+          this.eventBus.emit("runCompletedSuccessfully", {
+            time: completedAt,
+            run: {
+              id: runId,
+              spanId: run.spanId,
+              output: completion.output,
+              outputType: completion.outputType,
+            },
           });
         } else {
           const error = sanitizeError(completion.error);

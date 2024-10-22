@@ -256,6 +256,11 @@ describe("RunEngine", () => {
         expect(runWaitpoint.waitpoint.type).toBe("RUN");
         expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
+        let event: EventBusEventArgs<"runCompletedSuccessfully">[0] | undefined = undefined;
+        engine.eventBus.on("runCompletedSuccessfully", (result) => {
+          event = result;
+        });
+
         await engine.completeRunAttempt({
           runId: childRun.id,
           snapshotId: childExecutionData.snapshot.id,
@@ -266,6 +271,11 @@ describe("RunEngine", () => {
             outputType: "application/json",
           },
         });
+
+        //event
+        assertNonNullable(event);
+        const completedEvent = event as EventBusEventArgs<"runCompletedSuccessfully">[0];
+        expect(completedEvent.run.spanId).toBe(childRun.spanId);
 
         //child snapshot
         const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
