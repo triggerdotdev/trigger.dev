@@ -514,6 +514,23 @@ export function exceptionEventEnhancer(
       }
       break;
     }
+    case "Internal error": {
+      if (exception.message?.startsWith(TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE)) {
+        if (exception.message?.includes("SIGTERM")) {
+          return {
+            ...exception,
+            ...prettyInternalErrors.TASK_PROCESS_SIGTERM,
+          };
+        }
+
+        return {
+          ...exception,
+          ...prettyInternalErrors.TASK_PROCESS_MAYBE_OOM_KILLED,
+          type: TaskRunErrorCodes.TASK_PROCESS_MAYBE_OOM_KILLED,
+        };
+      }
+      break;
+    }
     case "Error": {
       if (exception.message === "ffmpeg was killed with signal SIGKILL") {
         return {
