@@ -87,16 +87,9 @@ describe("RunEngine", () => {
       expect(runFromDb).toBeDefined();
       expect(runFromDb?.id).toBe(run.id);
 
-      const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: {
-          runId: run.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-      assertNonNullable(snapshot);
-      expect(snapshot?.executionStatus).toBe("QUEUED");
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.snapshot.executionStatus).toBe("QUEUED");
 
       //check the waitpoint is created
       const runWaitpoint = await prisma.waitpoint.findMany({
@@ -145,6 +138,12 @@ describe("RunEngine", () => {
       expect(attemptResult.run.id).toBe(run.id);
       expect(attemptResult.run.status).toBe("EXECUTING");
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData2);
+      expect(executionData2.snapshot.executionStatus).toBe("EXECUTING");
+      expect(executionData2.run.attemptNumber).toBe(1);
+      expect(executionData2.run.status).toBe("EXECUTING");
     } finally {
       engine.quit();
     }
@@ -234,27 +233,13 @@ describe("RunEngine", () => {
           prisma
         );
 
-        const childSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-          where: {
-            runId: childRun.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-        assertNonNullable(childSnapshot);
-        expect(childSnapshot.executionStatus).toBe("QUEUED");
+        const childExecutionData = await engine.getRunExecutionData({ runId: childRun.id });
+        assertNonNullable(childExecutionData);
+        expect(childExecutionData.snapshot.executionStatus).toBe("QUEUED");
 
-        const parentSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-          where: {
-            runId: parentRun.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-        assertNonNullable(parentSnapshot);
-        expect(parentSnapshot.executionStatus).toBe("BLOCKED_BY_WAITPOINTS");
+        const parentExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionData);
+        expect(parentExecutionData.snapshot.executionStatus).toBe("BLOCKED_BY_WAITPOINTS");
 
         //check the waitpoint blocking the parent run
         const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
@@ -271,7 +256,7 @@ describe("RunEngine", () => {
 
         await engine.completeRunAttempt({
           runId: childRun.id,
-          snapshotId: childSnapshot.id,
+          snapshotId: childExecutionData.snapshot.id,
           completion: {
             id: childRun.id,
             ok: true,
@@ -279,6 +264,11 @@ describe("RunEngine", () => {
             outputType: "application/json",
           },
         });
+
+        //child snapshot
+        const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
+        assertNonNullable(childExecutionDataAfter);
+        expect(childExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
         const waitpointAfter = await prisma.waitpoint.findFirst({
           where: {
@@ -299,23 +289,20 @@ describe("RunEngine", () => {
         expect(runWaitpointAfter).toBeNull();
 
         //parent snapshot
-        const parentSnapshotAfter = await prisma.taskRunExecutionSnapshot.findFirst({
-          where: {
-            runId: parentRun.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-        assertNonNullable(parentSnapshotAfter);
-        expect(parentSnapshotAfter.executionStatus).toBe("QUEUED");
+        const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecutionDataAfter);
+        expect(parentExecutionDataAfter.snapshot.executionStatus).toBe("QUEUED");
+        expect(parentExecutionDataAfter.completedWaitpoints?.length).toBe(1);
+        expect(parentExecutionDataAfter.completedWaitpoints![0].id).toBe(runWaitpoint.waitpointId);
+        expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRunId).toBe(
+          childRun.id
+        );
+        expect(parentExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
       } finally {
         engine.quit();
       }
     }
   );
-
-  //todo triggerAndWait
 
   //todo batchTriggerAndWait
 

@@ -1121,8 +1121,25 @@ export class RunEngine {
             reason: snapshot.checkpoint.reason ?? undefined,
           }
         : undefined,
-      completedWaitpoints: {},
+      completedWaitpoints:
+        snapshot.completedWaitpoints.length === 0
+          ? undefined
+          : snapshot.completedWaitpoints.map((w) => ({
+              id: w.id,
+              type: w.type,
+              completedAt: w.completedAt ?? new Date(),
+              idempotencyKey:
+                w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey
+                  ? w.idempotencyKey
+                  : undefined,
+              completedByTaskRunId: w.completedByTaskRunId ?? undefined,
+              completedAfter: w.completedAfter ?? undefined,
+              output: w.output ?? undefined,
+              outputType: w.outputType,
+            })),
     };
+
+    return executionData;
   }
 
   async quit() {
@@ -1366,6 +1383,9 @@ export class RunEngine {
         runStatus: run.status,
         attemptNumber: run.attemptNumber ?? undefined,
         checkpointId: checkpointId ?? undefined,
+        completedWaitpoints: {
+          connect: completedWaitpointIds?.map((id) => ({ id })),
+        },
       },
       include: {
         checkpoint: true,

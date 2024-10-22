@@ -1,5 +1,5 @@
 import { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
-import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
+import { TaskRunExecutionStatus, TaskRunStatus, WaitpointType } from "@trigger.dev/database";
 import { z } from "zod";
 
 //todo it will need to move into core because the Worker will need to use these
@@ -50,34 +50,18 @@ const CreatedAttemptMessage = z.object({
 });
 export type CreatedAttemptMessage = z.infer<typeof CreatedAttemptMessage>;
 
-const CompletedWaitpoint = z.discriminatedUnion("type", [
-  z.object({
-    id: z.string(),
-    type: z.literal("RUN"),
-    completedAt: z.coerce.date(),
-    idempotencyKey: z.string().optional(),
-    completedByTaskRunId: z.string(),
-    output: z.string().optional(),
-    outputType: z.string().optional(),
-  }),
-  z.object({
-    id: z.string(),
-    type: z.literal("DATETIME"),
-    completedAt: z.coerce.date(),
-    idempotencyKey: z.string().optional(),
-    completedAfter: z.coerce.date(),
-    output: z.string().optional(),
-    outputType: z.string().optional(),
-  }),
-  z.object({
-    id: z.string(),
-    type: z.literal("EVENT"),
-    completedAt: z.coerce.date(),
-    idempotencyKey: z.string().optional(),
-    output: z.string().optional(),
-    outputType: z.string().optional(),
-  }),
-]);
+const CompletedWaitpoint = z.object({
+  id: z.string(),
+  type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
+  completedAt: z.coerce.date(),
+  idempotencyKey: z.string().optional(),
+  /** For type === "RUN" */
+  completedByTaskRunId: z.string().optional(),
+  /** For type === "DATETIME" */
+  completedAfter: z.coerce.date().optional(),
+  output: z.string().optional(),
+  outputType: z.string().optional(),
+});
 
 export const RunExecutionData = z.object({
   snapshot: z.object({
