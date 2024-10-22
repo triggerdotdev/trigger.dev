@@ -276,6 +276,8 @@ describe("RunEngine", () => {
         assertNonNullable(event);
         const completedEvent = event as EventBusEventArgs<"runCompletedSuccessfully">[0];
         expect(completedEvent.run.spanId).toBe(childRun.spanId);
+        expect(completedEvent.run.output).toBe('{"foo":"bar"}');
+        expect(completedEvent.run.outputType).toBe("application/json");
 
         //child snapshot
         const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
