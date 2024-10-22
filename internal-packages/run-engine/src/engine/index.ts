@@ -37,7 +37,7 @@ import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorit
 import { MinimalAuthenticatedEnvironment } from "../shared";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
-import { eventBus, EventBusEvents } from "./eventBus";
+import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { CreatedAttemptMessage, RunExecutionData } from "./messages";
@@ -1034,7 +1034,7 @@ export class RunEngine {
         },
       });
 
-      eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
+      this.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
     });
   }
 
