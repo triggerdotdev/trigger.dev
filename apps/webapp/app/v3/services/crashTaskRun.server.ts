@@ -64,6 +64,7 @@ export class CrashTaskRunService extends BaseService {
           stackTrace: opts.logs,
         },
       },
+      isCrash: true,
     });
 
     logger.debug("[CrashTaskRunService] Completion result", { runId, retryResult });
