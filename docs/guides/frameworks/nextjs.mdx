@@ -245,6 +245,32 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 </Tabs>
 
+## Automatically sync environment variables from your Vercel project (optional)
+
+If you want to automatically sync environment variables from your Vercel project to Trigger.dev, you can add our `vercelSyncEnvVars` build extension to your `trigger.config.ts` file.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `vercelSyncEnvVars` build extension.
+</Note>
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/vercelSyncEnvVars";
+
+export default defineConfig({
+  project: "<project ref>",
+  build: {
+    extensions: [vercelSyncEnvVars()],
+  },
+});
+```
+
+<Note>
+  For more information, see our [Vercel sync environment
+  variables](/guides/examples/vercel-sync-env-vars) guide.
+</Note>
+
 <AddEnvironmentVariables />
 
 <DeployingYourTask />
