@@ -95,16 +95,26 @@ export function unflattenAttributes(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    const parts = key.split(".").reduce((acc, part) => {
-      if (part.includes("[")) {
-        // Handling nested array indices
-        const subparts = part.split(/\[|\]/).filter((p) => p !== "");
-        acc.push(...subparts);
-      } else {
-        acc.push(part);
-      }
-      return acc;
-    }, [] as string[]);
+    const parts = key.split(".").reduce(
+      (acc, part) => {
+        if (part.includes("[")) {
+          // Handling nested array indices
+          const match = part.match(/^\[(\d+)\]$/);
+          const number = match?.[1];
+
+          if (number) {
+            acc.push(parseInt(number));
+            return acc;
+          }
+
+          acc.push(part.replace("[", "").replace("]", ""));
+        } else {
+          acc.push(part);
+        }
+        return acc;
+      },
+      [] as (string | number)[]
+    );
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
@@ -115,7 +125,7 @@ export function unflattenAttributes(
       }
 
       const nextPart = parts[i + 1];
-      const isArray = nextPart && /^\d+$/.test(nextPart);
+      const isArray = typeof nextPart === "number";
       if (isArray && !Array.isArray(current[part])) {
         current[part] = [];
       } else if (!isArray && current[part] === undefined) {
