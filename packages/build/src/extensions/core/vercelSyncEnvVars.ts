@@ -1,5 +1,5 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
-import { syncEnvVars } from "./core.js";
+import { syncEnvVars } from "../core.js";
 
 export function syncVercelEnvVars(
   options?: { projectId?: string; vercelAccessToken?: string },
@@ -34,7 +34,7 @@ export function syncVercelEnvVars(
 
     if (!vercelEnvironment) {
       throw new Error(
-        `Invalid environment '${ctx.environment}'. Expected 'prod', 'staging', or 'dev'.`
+        `Invalid environment '${ctx.environment}'. Expected 'prod', 'staging', or 'dev'.`,
       );
     }
     const vercelApiUrl =
