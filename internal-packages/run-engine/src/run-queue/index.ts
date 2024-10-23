@@ -250,7 +250,7 @@ export class RunQueue {
   }
 
   /**
-   * Dequeue a message from the shared queue (this should be used in production environments)
+   * Dequeue a message
    */
   public async dequeueMessageFromMasterQueue(consumerId: string, masterQueue: string) {
     return this.#trace(
