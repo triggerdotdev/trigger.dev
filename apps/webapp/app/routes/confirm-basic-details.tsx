@@ -222,7 +222,7 @@ export default function Page() {
                 <Label htmlFor={confirmEmail.id}>How did you hear about us?</Label>
                 <Input
                   {...conform.input(referralSource, { type: "text" })}
-                  placeholder="Google, Twitter…?"
+                  placeholder="Google, X (Twitter)…?"
                   icon="heart"
                   spellCheck={false}
                 />

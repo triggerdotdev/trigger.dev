@@ -10,7 +10,7 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { useUser } from "~/hooks/useUser";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCurrentPlan, getUsage } from "~/services/platform.v3.server";
+import { getCachedUsage, getCurrentPlan, getUsage } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -29,6 +29,27 @@ export function useCurrentPlan(matches?: UIMatch[]) {
   return data?.currentPlan;
 }
 
+export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
+  const { currentParams, nextParams } = params;
+
+  const current = ParamsSchema.safeParse(currentParams);
+  const next = ParamsSchema.safeParse(nextParams);
+
+  if (current.success && next.success) {
+    if (current.data.organizationSlug !== next.data.organizationSlug) {
+      return true;
+    }
+    if (current.data.projectParam !== next.data.projectParam) {
+      return true;
+    }
+  }
+
+  // This prevents revalidation when there are search params changes
+  // IMPORTANT: If the loader function depends on search params, this should be updated
+  return params.currentUrl.pathname !== params.nextUrl.pathname;
+};
+
+// IMPORTANT: Make sure to update shouldRevalidate if this loader depends on search params
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const impersonationId = await getImpersonationId(request);
@@ -50,11 +71,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const firstDayOfMonth = new Date();
   firstDayOfMonth.setUTCDate(1);
   firstDayOfMonth.setUTCHours(0, 0, 0, 0);
-  const tomorrow = new Date();
-  tomorrow.setUTCDate(tomorrow.getDate() + 1);
+
+  // Using the 1st day of next month means we get the usage for the current month
+  // and the cache key for getCachedUsage is stable over the month
+  const firstDayOfNextMonth = new Date();
+  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
+  firstDayOfNextMonth.setUTCDate(1);
+  firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
+
   const [plan, usage] = await Promise.all([
     getCurrentPlan(organization.id),
-    getUsage(organization.id, { from: firstDayOfMonth, to: tomorrow }),
+    getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
   ]);
 
   let hasExceededFreeTier = false;
@@ -103,23 +130,3 @@ export function ErrorBoundary() {
     <RouteErrorDisplay button={{ title: "Go to homepage", to: "/" }} />
   );
 }
-
-export const shouldRevalidate: ShouldRevalidateFunction = ({
-  defaultShouldRevalidate,
-  currentParams,
-  nextParams,
-}) => {
-  const current = ParamsSchema.safeParse(currentParams);
-  const next = ParamsSchema.safeParse(nextParams);
-
-  if (current.success && next.success) {
-    if (current.data.organizationSlug !== next.data.organizationSlug) {
-      return true;
-    }
-    if (current.data.projectParam !== next.data.projectParam) {
-      return true;
-    }
-  }
-
-  return defaultShouldRevalidate;
-};

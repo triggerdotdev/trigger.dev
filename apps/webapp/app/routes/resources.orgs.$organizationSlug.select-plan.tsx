@@ -8,7 +8,7 @@ import {
 import { ArrowDownCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
   FreePlanDefinition,
@@ -19,7 +19,6 @@ import {
   SubscriptionResult,
 } from "@trigger.dev/platform/v3";
 import React, { useEffect, useState } from "react";
-import { inspect } from "util";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
 import { Feedback } from "~/components/Feedback";
@@ -39,12 +38,12 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TextArea } from "~/components/primitives/TextArea";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { sendToPlain } from "~/utils/plain.server";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -88,53 +87,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   switch (form.type) {
     case "free": {
       try {
-        if (!env.PLAIN_API_KEY) {
-          throw new Error("PLAIN_API_KEY is not set");
-        }
-
-        const client = new PlainClient({
-          apiKey: env.PLAIN_API_KEY,
-        });
-
-        const upsertCustomerRes = await client.upsertCustomer({
-          identifier: {
-            emailAddress: user.email,
-          },
-          onCreate: {
-            externalId: user.id,
-            fullName: user.name ?? "",
-            email: {
-              email: user.email,
-              isVerified: true,
-            },
-          },
-          onUpdate: {
-            externalId: { value: user.id },
-            fullName: { value: user.name ?? "" },
-            email: {
-              email: user.email,
-              isVerified: true,
-            },
-          },
-        });
-
-        if (upsertCustomerRes.error) {
-          console.error(
-            inspect(upsertCustomerRes.error, {
-              showHidden: false,
-              depth: null,
-              colors: true,
-            })
-          );
-          throw redirectWithErrorMessage(form.callerPath, request, upsertCustomerRes.error.message);
-        }
-
-        // Only create a thread if there are reasons or a message
         if (reasons.length > 0 || (message && message.toString().trim() !== "")) {
-          const createThreadRes = await client.createThread({
-            customerIdentifier: {
-              customerId: upsertCustomerRes.data.customer.id,
-            },
+          await sendToPlain({
+            userId: user.id,
+            email: user.email,
+            name: user.name ?? "",
             title: "Plan cancelation feedback",
             components: [
               uiComponent.text({
@@ -169,17 +126,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 : []),
             ],
           });
-
-          if (createThreadRes.error) {
-            console.error(
-              inspect(createThreadRes.error, {
-                showHidden: false,
-                depth: null,
-                colors: true,
-              })
-            );
-            throw redirectWithErrorMessage(form.callerPath, request, createThreadRes.error.message);
-          }
         }
       } catch (e) {
         logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
@@ -867,7 +813,7 @@ function TierLimit({ children, href }: { children: React.ReactNode; href?: strin
           }
           content={
             <div className="flex items-center gap-1">
-              <Paragraph variant="small">View detailed compute pricing information</Paragraph>
+              <Paragraph variant="small">View compute pricing information</Paragraph>
               <ArrowUpRightIcon className="size-4 text-text-dimmed" />
             </div>
           }

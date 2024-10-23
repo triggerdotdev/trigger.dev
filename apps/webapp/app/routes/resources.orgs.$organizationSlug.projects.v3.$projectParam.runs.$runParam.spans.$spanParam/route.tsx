@@ -1,4 +1,10 @@
-import { CheckIcon, ClockIcon, CloudArrowDownIcon, QueueListIcon } from "@heroicons/react/20/solid";
+import {
+  CheckIcon,
+  ClockIcon,
+  CloudArrowDownIcon,
+  EnvelopeIcon,
+  QueueListIcon,
+} from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
@@ -13,6 +19,7 @@ import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
@@ -314,7 +321,7 @@ function SpanBody({
               <Property.Table>
                 <Property.Item>
                   <Property.Label>Message</Property.Label>
-                  <Property.Value>{span.message}</Property.Value>
+                  <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
                 </Property.Item>
                 {span.triggeredRuns.length > 0 && (
                   <Property.Item>
@@ -963,11 +970,26 @@ function RunError({ error }: { error: TaskRunError }) {
         <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && <Callout variant="error">{enhancedError.message}</Callout>}
-          {enhancedError.link && (
-            <Callout variant="docs" to={enhancedError.link.href}>
-              {enhancedError.link.name}
-            </Callout>
-          )}
+          {enhancedError.link &&
+            (enhancedError.link.magic === "CONTACT_FORM" ? (
+              <Feedback
+                button={
+                  <Button
+                    variant="tertiary/medium"
+                    LeadingIcon={EnvelopeIcon}
+                    leadingIconClassName="text-blue-400"
+                    fullWidth
+                    textAlignLeft
+                  >
+                    {enhancedError.link.name}
+                  </Button>
+                }
+              />
+            ) : (
+              <Callout variant="docs" to={enhancedError.link.href}>
+                {enhancedError.link.name}
+              </Callout>
+            ))}
           {enhancedError.stackTrace && (
             <CodeBlock
               showCopyButton={false}

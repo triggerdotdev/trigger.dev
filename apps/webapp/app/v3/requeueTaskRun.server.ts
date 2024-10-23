@@ -6,11 +6,29 @@ import { FailedTaskRunService } from "./failedTaskRun.server";
 import { BaseService } from "./services/baseService.server";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
+import { socketIo } from "./handleSocketIo.server";
 
 export class RequeueTaskRunService extends BaseService {
   public async call(runId: string) {
     const taskRun = await this._prisma.taskRun.findUnique({
-      where: { id: runId },
+      where: {
+        id: runId,
+      },
+      select: {
+        id: true,
+        friendlyId: true,
+        status: true,
+        runtimeEnvironment: {
+          select: {
+            type: true,
+          },
+        },
+        lockedToVersion: {
+          select: {
+            supportsLazyAttempts: true,
+          },
+        },
+      },
     });
 
     if (!taskRun) {
@@ -75,6 +93,25 @@ export class RequeueTaskRunService extends BaseService {
         logger.debug("[RequeueTaskRunService] Task run is completed", { taskRun });
 
         await marqs?.acknowledgeMessage(taskRun.id);
+
+        try {
+          if (taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+            return;
+          }
+
+          // Signal to exit any leftover containers
+          socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+            version: "v1",
+            runId: taskRun.id,
+            // Give the run a few seconds to exit to complete any flushing etc
+            delayInMs: taskRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+          });
+        } catch (error) {
+          logger.error("[RequeueTaskRunService] Error signaling run cancellation", {
+            runId: taskRun.id,
+            error: error instanceof Error ? error.message : error,
+          });
+        }
 
         break;
       }

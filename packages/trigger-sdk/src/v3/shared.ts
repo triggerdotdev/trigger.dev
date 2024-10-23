@@ -4,531 +4,95 @@ import {
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
+import { SerializableJson } from "@trigger.dev/core";
 import {
-  ApiRequestOptions,
-  BatchTaskRunExecutionResult,
-  FailureFnParams,
-  HandleErrorFnParams,
-  HandleErrorResult,
-  InitFnParams,
-  InitOutput,
-  MachineCpu,
-  MachineMemory,
-  MiddlewareFnParams,
-  QueueOptions,
-  RetryOptions,
-  RunFnParams,
-  RunTags,
-  SemanticInternalAttributes,
-  StartFnParams,
-  SuccessFnParams,
-  TaskRunContext,
-  TaskRunExecutionResult,
   accessoryAttributes,
   apiClientManager,
+  ApiRequestOptions,
+  BatchTaskRunExecutionResult,
   conditionallyImportPacket,
   createErrorTaskError,
   defaultRetryOptions,
+  getSchemaParseFn,
+  InitOutput,
   logger,
   parsePacket,
+  Queue,
+  QueueOptions,
   runtime,
+  SemanticInternalAttributes,
   stringifyIO,
+  SubtaskUnwrapError,
   taskCatalog,
   taskContext,
+  TaskRunContext,
+  TaskRunExecutionResult,
+  TaskRunPromise,
 } from "@trigger.dev/core/v3";
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
-import { PollOptions, RetrieveRunResult, runs } from "./runs.js";
+import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
-import { SerializableJson } from "@trigger.dev/core";
 
-export type Context = TaskRunContext;
+import type {
+  AnyRunHandle,
+  AnyRunTypes,
+  AnyTask,
+  BatchItem,
+  BatchResult,
+  BatchRunHandle,
+  BatchRunHandleFromTypes,
+  InferRunTypes,
+  inferSchemaIn,
+  RetrieveRunResult,
+  RunHandle,
+  RunHandleFromTypes,
+  RunHandleOutput,
+  RunHandlePayload,
+  RunTypes,
+  SchemaParseFn,
+  Task,
+  TaskBatchOutputHandle,
+  TaskIdentifier,
+  TaskOptions,
+  TaskOutput,
+  TaskOutputHandle,
+  TaskPayload,
+  TaskRunOptions,
+  TaskRunResult,
+  TaskSchema,
+  TaskWithSchemaOptions,
+  TriggerApiRequestOptions,
+} from "@trigger.dev/core/v3";
 
-type RequireOne<T, K extends keyof T> = {
-  [X in Exclude<keyof T, K>]?: T[X];
-} & {
-  [P in K]-?: T[P];
+export type {
+  AnyRunHandle,
+  AnyTask,
+  BatchItem,
+  BatchResult,
+  BatchRunHandle,
+  Queue,
+  RunHandle,
+  RunHandleOutput,
+  RunHandlePayload,
+  SerializableJson,
+  Task,
+  TaskBatchOutputHandle,
+  TaskIdentifier,
+  TaskOptions,
+  TaskOutput,
+  TaskOutputHandle,
+  TaskPayload,
+  TaskRunOptions,
+  TaskRunResult,
 };
 
-export type Queue = RequireOne<QueueOptions, "name">;
+export { SubtaskUnwrapError, TaskRunPromise };
+
+export type Context = TaskRunContext;
 
 export function queue(options: { name: string } & QueueOptions): Queue {
   return options;
 }
-
-export type TaskOptions<
-  TIdentifier extends string,
-  TPayload = void,
-  TOutput = unknown,
-  TInitOutput extends InitOutput = any,
-> = {
-  /** An id for your task. This must be unique inside your project and not change between versions.  */
-  id: TIdentifier;
-  /** The retry settings when an uncaught error is thrown.
-   *
-   * If omitted it will use the values in your `trigger.config.ts` file.
-   * 
-   * @example
-   * 
-   * ```
-   * export const taskWithRetries = task({
-      id: "task-with-retries",
-      retry: {
-        maxAttempts: 10,
-        factor: 1.8,
-        minTimeoutInMs: 500,
-        maxTimeoutInMs: 30_000,
-        randomize: false,
-      },
-      run: async ({ payload, ctx }) => {
-        //...
-      },
-    });
-   * ```
-   * */
-  retry?: RetryOptions;
-  /** Used to configure what should happen when more than one run is triggered at the same time.
-   * 
-   * @example 
-   * one at a time execution
-   * 
-   * ```ts
-   * export const oneAtATime = task({
-      id: "one-at-a-time",
-      queue: {
-        concurrencyLimit: 1,
-      },
-      run: async ({ payload, ctx }) => {
-        //...
-      },
-    });
-   * ```
-   */
-  queue?: QueueOptions;
-  /** Configure the spec of the machine you want your task to run on.
-   * 
-   * @example
-   * 
-   * ```ts
-   * export const heavyTask = task({
-      id: "heavy-task",
-      machine: {
-        cpu: 2,
-        memory: 4,
-      },
-      run: async ({ payload, ctx }) => {
-        //...
-      },
-    });
-   * ```
-  */
-  machine?: {
-    /** vCPUs. The default is 0.5.
-     *
-     * Possible values:
-     * - 0.25
-     * - 0.5
-     * - 1
-     * - 2
-     * - 4
-     * @deprecated use preset instead
-     */
-    cpu?: MachineCpu;
-    /** In GBs of RAM. The default is 1.
-     *
-     * Possible values:
-     * - 0.25
-     * - 0.5
-     * - 1
-     * - 2
-     * - 4
-     * - 8
-     * * @deprecated use preset instead
-     */
-    memory?: MachineMemory;
-
-    /** Preset to use for the machine. Defaults to small-1x */
-    preset?:
-      | "micro"
-      | "small-1x"
-      | "small-2x"
-      | "medium-1x"
-      | "medium-2x"
-      | "large-1x"
-      | "large-2x";
-  };
-
-  /**
-   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
-   *
-   * Minimum value is 5 seconds
-   */
-  maxDuration?: number;
-
-  /** This gets called when a task is triggered. It's where you put the code you want to execute.
-   *
-   * @param payload - The payload that is passed to your task when it's triggered. This must be JSON serializable.
-   * @param params - Metadata about the run.
-   */
-  run: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<TOutput>;
-
-  /**
-   * init is called before the run function is called. It's useful for setting up any global state.
-   */
-  init?: (payload: TPayload, params: InitFnParams) => Promise<TInitOutput>;
-
-  /**
-   * cleanup is called after the run function has completed.
-   */
-  cleanup?: (payload: TPayload, params: RunFnParams<TInitOutput>) => Promise<void>;
-
-  /**
-   * handleError is called when the run function throws an error. It can be used to modify the error or return new retry options.
-   */
-  handleError?: (
-    payload: TPayload,
-    error: unknown,
-    params: HandleErrorFnParams<TInitOutput>
-  ) => HandleErrorResult;
-
-  /**
-   * middleware allows you to run code "around" the run function. This can be useful for logging, metrics, or other cross-cutting concerns.
-   *
-   * When writing middleware, you should always call `next()` to continue the execution of the task:
-   *
-   * ```ts
-   * export const middlewareTask = task({
-   *  id: "middleware-task",
-   *  middleware: async (payload, { ctx, next }) => {
-   *   console.log("Before run");
-   *   await next();
-   *   console.log("After run");
-   *  },
-   *  run: async (payload, { ctx }) => {}
-   * });
-   * ```
-   */
-  middleware?: (payload: TPayload, params: MiddlewareFnParams) => Promise<void>;
-
-  /**
-   * onStart is called the first time a task is executed in a run (not before every retry)
-   */
-  onStart?: (payload: TPayload, params: StartFnParams) => Promise<void>;
-
-  /**
-   * onSuccess is called after the run function has successfully completed.
-   */
-  onSuccess?: (
-    payload: TPayload,
-    output: TOutput,
-    params: SuccessFnParams<TInitOutput>
-  ) => Promise<void>;
-
-  /**
-   * onFailure is called after a task run has failed (meaning the run function threw an error and won't be retried anymore)
-   */
-  onFailure?: (
-    payload: TPayload,
-    error: unknown,
-    params: FailureFnParams<TInitOutput>
-  ) => Promise<void>;
-};
-
-declare const __output: unique symbol;
-type BrandOutput<B> = { [__output]: B };
-export type BrandedOutput<T, B> = T & BrandOutput<B>;
-
-export type RunHandle<TOutput> = BrandedOutput<
-  {
-    id: string;
-  },
-  TOutput
->;
-
-/**
- * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
- */
-export type BatchRunHandle<TOutput> = BrandedOutput<
-  {
-    batchId: string;
-    runs: Array<RunHandle<TOutput>>;
-  },
-  TOutput
->;
-
-export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<infer TOutput>
-  ? TOutput
-  : never;
-
-export type TaskRunResult<TOutput = any> =
-  | {
-      ok: true;
-      id: string;
-      output: TOutput;
-    }
-  | {
-      ok: false;
-      id: string;
-      error: unknown;
-    };
-
-export class SubtaskUnwrapError extends Error {
-  public readonly taskId: string;
-  public readonly runId: string;
-  public readonly cause?: unknown;
-
-  constructor(taskId: string, runId: string, subtaskError: unknown) {
-    if (subtaskError instanceof Error) {
-      super(`Error in ${taskId}: ${subtaskError.message}`, { cause: subtaskError });
-      this.name = "SubtaskUnwrapError";
-    } else {
-      super(`Error in ${taskId}`, { cause: subtaskError });
-      this.name = "SubtaskUnwrapError";
-    }
-
-    this.taskId = taskId;
-    this.runId = runId;
-  }
-}
-
-export class TaskRunPromise<T> extends Promise<TaskRunResult<T>> {
-  constructor(
-    executor: (
-      resolve: (value: TaskRunResult<T> | PromiseLike<TaskRunResult<T>>) => void,
-      reject: (reason?: any) => void
-    ) => void,
-    private readonly taskId: string
-  ) {
-    super(executor);
-  }
-
-  unwrap(): Promise<T> {
-    return this.then((result) => {
-      if (result.ok) {
-        return result.output;
-      } else {
-        throw new SubtaskUnwrapError(this.taskId, result.id, result.error);
-      }
-    });
-  }
-}
-
-export type BatchResult<TOutput = any> = {
-  id: string;
-  runs: TaskRunResult<TOutput>[];
-};
-
-export type BatchItem<TInput> = TInput extends void
-  ? { payload?: TInput; options?: TaskRunOptions }
-  : { payload: TInput; options?: TaskRunOptions };
-
-export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
-  /**
-   * The id of the task.
-   */
-  id: TIdentifier;
-  /**
-   * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
-   * @param payload
-   * @param options
-   * @returns RunHandle
-   * - `id` - The id of the triggered task run.
-   */
-  trigger: (payload: TInput, options?: TaskRunOptions) => Promise<RunHandle<TOutput>>;
-
-  /**
-   * Batch trigger multiple task runs with the given payloads, and continue without waiting for the results. If you want to wait for the results, use `batchTriggerAndWait`. Returns the id of the triggered batch.
-   * @param items
-   * @returns InvokeBatchHandle
-   * - `batchId` - The id of the triggered batch.
-   * - `runs` - The ids of the triggered task runs.
-   */
-  batchTrigger: (items: Array<BatchItem<TInput>>) => Promise<BatchRunHandle<TOutput>>;
-
-  /**
-   * Trigger a task with the given payload, and wait for the result. Returns the result of the task run
-   * @param payload
-   * @param options - Options for the task run
-   * @returns TaskRunResult
-   * @example
-   * ```
-   * const result = await task.triggerAndWait({ foo: "bar" });
-   *
-   * if (result.ok) {
-   *  console.log(result.output);
-   * } else {
-   *  console.error(result.error);
-   * }
-   * ```
-   */
-  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => TaskRunPromise<TOutput>;
-
-  /**
-   * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
-   * @param items
-   * @returns BatchResult
-   * @example
-   * ```
-   * const result = await task.batchTriggerAndWait([
-   *  { payload: { foo: "bar" } },
-   *  { payload: { foo: "baz" } },
-   * ]);
-   *
-   * for (const run of result.runs) {
-   *  if (run.ok) {
-   *    console.log(run.output);
-   *  } else {
-   *    console.error(run.error);
-   *  }
-   * }
-   * ```
-   */
-  batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
-}
-
-export type AnyTask = Task<string, any, any>;
-
-export type TaskPayload<TTask extends AnyTask> = TTask extends Task<string, infer TInput, any>
-  ? TInput
-  : never;
-
-export type TaskOutput<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
-  ? TOutput
-  : never;
-
-export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
-  ? RunHandle<TOutput>
-  : never;
-
-export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
-  string,
-  any,
-  infer TOutput
->
-  ? BatchRunHandle<TOutput>
-  : never;
-
-export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
-  ? TIdentifier
-  : never;
-
-export type TaskRunOptions = {
-  /**
-   * A unique key that can be used to ensure that a task is only triggered once per key.
-   *
-   * You can use `idempotencyKeys.create` to create an idempotency key first, and then pass it to the task options.
-   *
-   * @example
-   *
-   * ```typescript
-   * import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
-   *
-   * export const myTask = task({
-   *  id: "my-task",
-   *  run: async (payload: any) => {
-   *   // scoped to the task run by default
-   *   const idempotencyKey = await idempotencyKeys.create("my-task-key");
-   *
-   *   // Use the idempotency key when triggering child tasks
-   *   await childTask.triggerAndWait(payload, { idempotencyKey });
-   *
-   *   // scoped globally, does not include the task run ID
-   *   const globalIdempotencyKey = await idempotencyKeys.create("my-task-key", { scope: "global" });
-   *
-   *   await childTask.triggerAndWait(payload, { idempotencyKey: globalIdempotencyKey });
-   *
-   *   // You can also pass a string directly, which is the same as a global idempotency key
-   *   await childTask.triggerAndWait(payload, { idempotencyKey: "my-very-unique-key" });
-   *  }
-   * });
-   * ```
-   *
-   * When triggering a task inside another task, we automatically inject the run ID into the key material.
-   *
-   * If you are triggering a task from your backend, ensure you include some sufficiently unique key material to prevent collisions.
-   *
-   * @example
-   *
-   * ```typescript
-   * import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
-   *
-   * // Somewhere in your backend
-   * const idempotencyKey = await idempotenceKeys.create(["my-task-trigger", "user-123"]);
-   * await tasks.trigger("my-task", { foo: "bar" }, { idempotencyKey });
-   * ```
-   *
-   */
-  idempotencyKey?: IdempotencyKey | string | string[];
-  maxAttempts?: number;
-  queue?: TaskRunConcurrencyOptions;
-  concurrencyKey?: string;
-  /**
-   * The delay before the task is executed. This can be a string like "1h" or a Date object.
-   *
-   * @example
-   * "1h" - 1 hour
-   * "30d" - 30 days
-   * "15m" - 15 minutes
-   * "2w" - 2 weeks
-   * "60s" - 60 seconds
-   * new Date("2025-01-01T00:00:00Z")
-   */
-  delay?: string | Date;
-
-  /**
-   * Set a time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute.
-   *
-   * @example
-   *
-   * ```ts
-   * await myTask.trigger({ foo: "bar" }, { ttl: "1h" });
-   * await myTask.trigger({ foo: "bar" }, { ttl: 60 * 60 }); // 1 hour
-   * ```
-   *
-   * The minimum value is 1 second. Setting the `ttl` to `0` will disable the TTL and the run will never expire.
-   *
-   * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
-   */
-  ttl?: string | number;
-
-  /**
-   * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
-   *
-   * You can set up to 5 tags per run, they must be less than 64 characters each.
-   *
-   * We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`.
-   *
-   * @example
-   *
-   * ```ts
-   * await myTask.trigger({ foo: "bar" }, { tags: ["user:1234567", "org:9876543"] });
-   * ```
-   */
-  tags?: RunTags;
-
-  /**
-   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
-   */
-  metadata?: Record<string, SerializableJson>;
-
-  /**
-   * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
-   *
-   * This will override the task's maxDuration.
-   *
-   * Minimum value is 5 seconds
-   */
-  maxDuration?: number;
-};
-
-type TaskRunConcurrencyOptions = Queue;
-
-export type Prettify<T> = {
-  [K in keyof T]: T[K];
-} & {};
-
-export type DynamicBaseOptions = {
-  id: string;
-};
 
 export function createTask<
   TIdentifier extends string,
@@ -550,12 +114,13 @@ export function createTask<
     trigger: async (payload, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await trigger_internal<TInput, TOutput>(
+      return await trigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.trigger()`
           : `trigger()`,
         params.id,
         payload,
+        undefined,
         {
           queue: customQueue,
           ...options,
@@ -565,12 +130,13 @@ export function createTask<
     batchTrigger: async (items) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
-      return await batchTrigger_internal<TInput, TOutput>(
+      return await batchTrigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
         taskMetadata && taskMetadata.exportName
           ? `${taskMetadata.exportName}.batchTrigger()`
           : `batchTrigger()`,
         params.id,
         items,
+        undefined,
         undefined,
         customQueue
       );
@@ -585,6 +151,7 @@ export function createTask<
             : `triggerAndWait()`,
           params.id,
           payload,
+          undefined,
           {
             queue: customQueue,
             ...options,
@@ -607,6 +174,7 @@ export function createTask<
           : `batchTriggerAndWait()`,
         params.id,
         items,
+        undefined,
         undefined,
         customQueue
       );
@@ -637,6 +205,123 @@ export function createTask<
   return task;
 }
 
+export function createSchemaTask<
+  TIdentifier extends string,
+  TSchema extends TaskSchema | undefined = undefined,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
+): Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> {
+  const customQueue = params.queue
+    ? queue({
+        name: params.queue?.name ?? `task/${params.id}`,
+        ...params.queue,
+      })
+    : undefined;
+
+  const parsePayload = params.schema
+    ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
+    : undefined;
+
+  const task: Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> = {
+    id: params.id,
+    trigger: async (payload, options, requestOptions) => {
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
+
+      return await trigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.trigger()`
+          : `trigger()`,
+        params.id,
+        payload,
+        parsePayload,
+        {
+          queue: customQueue,
+          ...options,
+        },
+        requestOptions
+      );
+    },
+    batchTrigger: async (items, requestOptions) => {
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
+
+      return await batchTrigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.batchTrigger()`
+          : `batchTrigger()`,
+        params.id,
+        items,
+        parsePayload,
+        requestOptions,
+        customQueue
+      );
+    },
+    triggerAndWait: (payload, options) => {
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
+
+      return new TaskRunPromise<TOutput>((resolve, reject) => {
+        triggerAndWait_internal<inferSchemaIn<TSchema>, TOutput>(
+          taskMetadata && taskMetadata.exportName
+            ? `${taskMetadata.exportName}.triggerAndWait()`
+            : `triggerAndWait()`,
+          params.id,
+          payload,
+          parsePayload,
+          {
+            queue: customQueue,
+            ...options,
+          }
+        )
+          .then((result) => {
+            resolve(result);
+          })
+          .catch((error) => {
+            reject(error);
+          });
+      }, params.id);
+    },
+    batchTriggerAndWait: async (items) => {
+      const taskMetadata = taskCatalog.getTaskManifest(params.id);
+
+      return await batchTriggerAndWait_internal<inferSchemaIn<TSchema>, TOutput>(
+        taskMetadata && taskMetadata.exportName
+          ? `${taskMetadata.exportName}.batchTriggerAndWait()`
+          : `batchTriggerAndWait()`,
+        params.id,
+        items,
+        parsePayload,
+        undefined,
+        customQueue
+      );
+    },
+  };
+
+  taskCatalog.registerTaskMetadata({
+    id: params.id,
+    queue: params.queue,
+    retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
+    machine: params.machine,
+    maxDuration: params.maxDuration,
+    fns: {
+      run: params.run,
+      init: params.init,
+      cleanup: params.cleanup,
+      middleware: params.middleware,
+      handleError: params.handleError,
+      onSuccess: params.onSuccess,
+      onFailure: params.onFailure,
+      onStart: params.onStart,
+      parsePayload,
+    },
+  });
+
+  // @ts-expect-error
+  task[Symbol.for("trigger.dev/task")] = true;
+
+  return task;
+}
+
 /**
  * Trigger a task by its identifier with the given payload. Returns a typesafe `RunHandle`.
  *
@@ -657,12 +342,13 @@ export async function trigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions,
-  requestOptions?: ApiRequestOptions
-): Promise<RunHandle<TaskOutput<TTask>>> {
-  return await trigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+  requestOptions?: TriggerApiRequestOptions
+): Promise<RunHandleFromTypes<InferRunTypes<TTask>>> {
+  return await trigger_internal<InferRunTypes<TTask>>(
     "tasks.trigger()",
     id,
     payload,
+    undefined,
     options,
     requestOptions
   );
@@ -697,6 +383,7 @@ export function triggerAndWait<TTask extends AnyTask>(
       "tasks.triggerAndWait()",
       id,
       payload,
+      undefined,
       options,
       requestOptions
     )
@@ -742,6 +429,7 @@ export async function batchTriggerAndWait<TTask extends AnyTask>(
     "tasks.batchTriggerAndWait()",
     id,
     items,
+    undefined,
     requestOptions
   );
 }
@@ -765,8 +453,8 @@ export async function triggerAndPoll<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
   options?: TaskRunOptions & PollOptions,
-  requestOptions?: ApiRequestOptions
-): Promise<RetrieveRunResult<RunHandle<TaskOutput<TTask>>>> {
+  requestOptions?: TriggerApiRequestOptions
+): Promise<RetrieveRunResult<TTask>> {
   const handle = await trigger(id, payload, options, requestOptions);
 
   return runs.poll(handle, options, requestOptions);
@@ -775,26 +463,30 @@ export async function triggerAndPoll<TTask extends AnyTask>(
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
-  requestOptions?: ApiRequestOptions
-): Promise<BatchRunHandle<TaskOutput<TTask>>> {
-  return await batchTrigger_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
+  requestOptions?: TriggerApiRequestOptions
+): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
+  return await batchTrigger_internal<InferRunTypes<TTask>>(
     "tasks.batchTrigger()",
     id,
     items,
+    undefined,
     requestOptions
   );
 }
 
-async function trigger_internal<TPayload, TOutput>(
+async function trigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
-  id: string,
-  payload: TPayload,
+  id: TRunTypes["taskIdentifier"],
+  payload: TRunTypes["payload"],
+  parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   options?: TaskRunOptions,
-  requestOptions?: ApiRequestOptions
-): Promise<RunHandle<TOutput>> {
+  requestOptions?: TriggerApiRequestOptions
+): Promise<RunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  const payloadPacket = await stringifyIO(payload);
+  const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
+
+  const payloadPacket = await stringifyIO(parsedPayload);
 
   const handle = await apiClient.triggerTask(
     id,
@@ -839,16 +531,17 @@ async function trigger_internal<TPayload, TOutput>(
     }
   );
 
-  return handle as RunHandle<TOutput>;
+  return handle as RunHandleFromTypes<TRunTypes>;
 }
 
-async function batchTrigger_internal<TPayload, TOutput>(
+async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
-  id: string,
-  items: Array<BatchItem<TPayload>>,
-  requestOptions?: ApiRequestOptions,
+  id: TRunTypes["taskIdentifier"],
+  items: Array<BatchItem<TRunTypes["payload"]>>,
+  parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
+  requestOptions?: TriggerApiRequestOptions,
   queue?: QueueOptions
-): Promise<BatchRunHandle<TOutput>> {
+): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const response = await apiClient.batchTriggerTask(
@@ -856,7 +549,9 @@ async function batchTrigger_internal<TPayload, TOutput>(
     {
       items: await Promise.all(
         items.map(async (item) => {
-          const payloadPacket = await stringifyIO(item.payload);
+          const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
+
+          const payloadPacket = await stringifyIO(parsedPayload);
 
           return {
             payload: payloadPacket.data,
@@ -895,15 +590,17 @@ async function batchTrigger_internal<TPayload, TOutput>(
   const handle = {
     batchId: response.batchId,
     runs: response.runs.map((id) => ({ id })),
+    publicAccessToken: response.publicAccessToken,
   };
 
-  return handle as BatchRunHandle<TOutput>;
+  return handle as BatchRunHandleFromTypes<TRunTypes>;
 }
 
 async function triggerAndWait_internal<TPayload, TOutput>(
   name: string,
   id: string,
   payload: TPayload,
+  parsePayload?: SchemaParseFn<TPayload>,
   options?: TaskRunOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<TaskRunResult<TOutput>> {
@@ -915,7 +612,9 @@ async function triggerAndWait_internal<TPayload, TOutput>(
 
   const apiClient = apiClientManager.clientOrThrow();
 
-  const payloadPacket = await stringifyIO(payload);
+  const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
+
+  const payloadPacket = await stringifyIO(parsedPayload);
 
   return await tracer.startActiveSpan(
     name,
@@ -996,6 +695,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
   name: string,
   id: string,
   items: Array<BatchItem<TPayload>>,
+  parsePayload?: SchemaParseFn<TPayload>,
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchResult<TOutput>> {
@@ -1015,7 +715,9 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
         {
           items: await Promise.all(
             items.map(async (item) => {
-              const payloadPacket = await stringifyIO(item.payload);
+              const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
+
+              const payloadPacket = await stringifyIO(parsedPayload);
 
               return {
                 payload: payloadPacket.data,

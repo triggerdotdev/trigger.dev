@@ -29,7 +29,7 @@ const CoercedDate = z.preprocess((arg) => {
   return arg;
 }, z.date().optional());
 
-const SearchParamsSchema = z.object({
+export const ApiRunListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
   "page[after]": z.string().optional(),
   "page[before]": z.string().optional(),
@@ -121,45 +121,31 @@ const SearchParamsSchema = z.object({
   "filter[createdAt][period]": z.string().optional(),
 });
 
-type SearchParamsSchema = z.infer<typeof SearchParamsSchema>;
+type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
 
 export class ApiRunListPresenter extends BasePresenter {
   public async call(
     project: Project,
-    searchParams: URLSearchParams,
+    searchParams: ApiRunListSearchParams,
     environment?: RuntimeEnvironment
   ): Promise<ListRunResponse> {
     return this.trace("call", async (span) => {
-      const rawSearchParams = Object.fromEntries(searchParams.entries());
-      const $searchParams = SearchParamsSchema.safeParse(rawSearchParams);
-
-      if (!$searchParams.success) {
-        logger.error("Invalid search params", {
-          searchParams: rawSearchParams,
-          errors: $searchParams.error.errors,
-        });
-
-        throw fromZodError($searchParams.error);
-      }
-
-      logger.debug("Valid search params", { searchParams: $searchParams.data });
-
       const options: RunListOptions = {
         projectId: project.id,
       };
 
       // pagination
-      if ($searchParams.data["page[size]"]) {
-        options.pageSize = $searchParams.data["page[size]"];
+      if (searchParams["page[size]"]) {
+        options.pageSize = searchParams["page[size]"];
       }
 
-      if ($searchParams.data["page[after]"]) {
-        options.cursor = $searchParams.data["page[after]"];
+      if (searchParams["page[after]"]) {
+        options.cursor = searchParams["page[after]"];
         options.direction = "forward";
       }
 
-      if ($searchParams.data["page[before]"]) {
-        options.cursor = $searchParams.data["page[before]"];
+      if (searchParams["page[before]"]) {
+        options.cursor = searchParams["page[before]"];
         options.direction = "backward";
       }
 
@@ -167,12 +153,12 @@ export class ApiRunListPresenter extends BasePresenter {
       if (environment) {
         options.environments = [environment.id];
       } else {
-        if ($searchParams.data["filter[env]"]) {
+        if (searchParams["filter[env]"]) {
           const environments = await this._prisma.runtimeEnvironment.findMany({
             where: {
               projectId: project.id,
               slug: {
-                in: $searchParams.data["filter[env]"],
+                in: searchParams["filter[env]"],
               },
             },
           });
@@ -181,46 +167,46 @@ export class ApiRunListPresenter extends BasePresenter {
         }
       }
 
-      if ($searchParams.data["filter[status]"]) {
-        options.statuses = $searchParams.data["filter[status]"].flatMap((status) =>
+      if (searchParams["filter[status]"]) {
+        options.statuses = searchParams["filter[status]"].flatMap((status) =>
           ApiRunListPresenter.apiStatusToRunStatuses(status)
         );
       }
 
-      if ($searchParams.data["filter[taskIdentifier]"]) {
-        options.tasks = $searchParams.data["filter[taskIdentifier]"];
+      if (searchParams["filter[taskIdentifier]"]) {
+        options.tasks = searchParams["filter[taskIdentifier]"];
       }
 
-      if ($searchParams.data["filter[version]"]) {
-        options.versions = $searchParams.data["filter[version]"];
+      if (searchParams["filter[version]"]) {
+        options.versions = searchParams["filter[version]"];
       }
 
-      if ($searchParams.data["filter[tag]"]) {
-        options.tags = $searchParams.data["filter[tag]"];
+      if (searchParams["filter[tag]"]) {
+        options.tags = searchParams["filter[tag]"];
       }
 
-      if ($searchParams.data["filter[bulkAction]"]) {
-        options.bulkId = $searchParams.data["filter[bulkAction]"];
+      if (searchParams["filter[bulkAction]"]) {
+        options.bulkId = searchParams["filter[bulkAction]"];
       }
 
-      if ($searchParams.data["filter[schedule]"]) {
-        options.scheduleId = $searchParams.data["filter[schedule]"];
+      if (searchParams["filter[schedule]"]) {
+        options.scheduleId = searchParams["filter[schedule]"];
       }
 
-      if ($searchParams.data["filter[createdAt][from]"]) {
-        options.from = $searchParams.data["filter[createdAt][from]"].getTime();
+      if (searchParams["filter[createdAt][from]"]) {
+        options.from = searchParams["filter[createdAt][from]"].getTime();
       }
 
-      if ($searchParams.data["filter[createdAt][to]"]) {
-        options.to = $searchParams.data["filter[createdAt][to]"].getTime();
+      if (searchParams["filter[createdAt][to]"]) {
+        options.to = searchParams["filter[createdAt][to]"].getTime();
       }
 
-      if ($searchParams.data["filter[createdAt][period]"]) {
-        options.period = $searchParams.data["filter[createdAt][period]"];
+      if (searchParams["filter[createdAt][period]"]) {
+        options.period = searchParams["filter[createdAt][period]"];
       }
 
-      if (typeof $searchParams.data["filter[isTest]"] === "boolean") {
-        options.isTest = $searchParams.data["filter[isTest]"];
+      if (typeof searchParams["filter[isTest]"] === "boolean") {
+        options.isTest = searchParams["filter[isTest]"];
       }
 
       const presenter = new RunListPresenter();
