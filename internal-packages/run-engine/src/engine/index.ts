@@ -283,6 +283,7 @@ export class RunEngine {
           //create associated waitpoint (this completes when the run completes)
           const associatedWaitpoint = await this.#createRunAssociatedWaitpoint(prisma, {
             projectId: environment.project.id,
+            environmentId: environment.id,
             completedByTaskRunId: taskRun.id,
           });
 
@@ -367,6 +368,7 @@ export class RunEngine {
           if (taskRun.delayUntil) {
             const delayWaitpoint = await this.#createDateTimeWaitpoint(prisma, {
               projectId: environment.project.id,
+              environmentId: environment.id,
               completedAfter: taskRun.delayUntil,
             });
 
@@ -1064,7 +1066,96 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {}
 
-  async waitForDuration() {}
+  async waitForDuration({
+    runId,
+    snapshotId,
+    date,
+    releaseConcurrency = true,
+    idempotencyKey,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    date: Date;
+    releaseConcurrency?: boolean;
+    idempotencyKey?: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<{
+    willWaitUntil: Date;
+  }> {
+    const prisma = tx ?? this.prisma;
+
+    return await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      if (!snapshot) {
+        throw new ServiceValidationError("Snapshot not found", 404);
+      }
+
+      if (snapshot.id !== snapshotId) {
+        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+      }
+
+      const run = await prisma.taskRun.findFirst({
+        select: {
+          runtimeEnvironment: {
+            select: {
+              id: true,
+              organizationId: true,
+            },
+          },
+          projectId: true,
+        },
+        where: { id: runId },
+      });
+
+      if (!run) {
+        throw new ServiceValidationError("TaskRun not found", 404);
+      }
+
+      let waitpoint = idempotencyKey
+        ? await prisma.waitpoint.findUnique({
+            where: {
+              environmentId_idempotencyKey: {
+                environmentId: run.runtimeEnvironment.id,
+                idempotencyKey,
+              },
+            },
+          })
+        : undefined;
+
+      if (!waitpoint) {
+        waitpoint = await this.#createDateTimeWaitpoint(prisma, {
+          projectId: run.projectId,
+          environmentId: run.runtimeEnvironment.id,
+          completedAfter: date,
+          idempotencyKey,
+        });
+      }
+
+      //waitpoint already completed, so we don't need to wait
+      if (waitpoint.status === "COMPLETED") {
+        return { willWaitUntil: waitpoint.completedAt ?? new Date() };
+      }
+
+      //block the run
+      await this.#blockRunWithWaitpoint(prisma, {
+        orgId: run.runtimeEnvironment.organizationId,
+        runId,
+        waitpoint,
+      });
+
+      //release concurrency
+      await this.runQueue.releaseConcurrency(
+        run.runtimeEnvironment.organizationId,
+        runId,
+        releaseConcurrency
+      );
+
+      return {
+        willWaitUntil: date,
+      };
+    });
+  }
 
   async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.prisma;
@@ -1409,7 +1500,11 @@ export class RunEngine {
   //MARK: - Waitpoints
   async #createRunAssociatedWaitpoint(
     tx: PrismaClientOrTransaction,
-    { projectId, completedByTaskRunId }: { projectId: string; completedByTaskRunId: string }
+    {
+      projectId,
+      environmentId,
+      completedByTaskRunId,
+    }: { projectId: string; environmentId: string; completedByTaskRunId: string }
   ) {
     return tx.waitpoint.create({
       data: {
@@ -1418,6 +1513,7 @@ export class RunEngine {
         idempotencyKey: nanoid(24),
         userProvidedIdempotencyKey: false,
         projectId,
+        environmentId,
         completedByTaskRunId,
       },
     });
@@ -1425,15 +1521,21 @@ export class RunEngine {
 
   async #createDateTimeWaitpoint(
     tx: PrismaClientOrTransaction,
-    { projectId, completedAfter }: { projectId: string; completedAfter: Date }
+    {
+      projectId,
+      environmentId,
+      completedAfter,
+      idempotencyKey,
+    }: { projectId: string; environmentId: string; completedAfter: Date; idempotencyKey?: string }
   ) {
     const waitpoint = await tx.waitpoint.create({
       data: {
         type: "DATETIME",
         status: "PENDING",
-        idempotencyKey: nanoid(24),
-        userProvidedIdempotencyKey: false,
+        idempotencyKey: idempotencyKey ?? nanoid(24),
+        userProvidedIdempotencyKey: !!idempotencyKey,
         projectId,
+        environmentId,
         completedAfter,
       },
     });
