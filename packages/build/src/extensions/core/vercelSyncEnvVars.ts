@@ -56,7 +56,7 @@ export function syncVercelEnvVars(
       const filteredEnvs = data.envs
         .filter(
           (env: { type: string; value: string; target: string[] }) =>
-            env.type === "encrypted" && env.value &&
+            env.value &&
             env.target.includes(vercelEnvironment),
         )
         .map((env: { key: string; value: string }) => ({
