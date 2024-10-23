@@ -4,6 +4,8 @@ sidebarTitle: "Syncing Vercel env vars"
 description: "This example demonstrates how to sync environment variables from your Vercel project to Trigger.dev."
 ---
 
+import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
+
 ## Overview
 
 This example shows how to automatically sync environment variables from your Vercel project to Trigger.dev.
@@ -26,7 +28,7 @@ export default defineConfig({
       syncEnvVars(async (ctx) => {
         const environmentMap = {
           // Account for the different environment names used by Vercel
-          prod: "production",
+        prod: "production",
           staging: "preview",
           dev: "development",
         } as const;
@@ -81,3 +83,5 @@ To run the sync operation, simply run the `deploy` command. You should see some 
 ```bash
 npx trigger.dev@latest deploy
 ```
+
+<VercelDocsCards />
