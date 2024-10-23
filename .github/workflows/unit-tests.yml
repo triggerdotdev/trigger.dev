@@ -38,7 +38,9 @@ jobs:
           SESSION_SECRET: "secret"
           MAGIC_LINK_SECRET: "secret"
           ENCRYPTION_KEY: "secret"
-
+      
+      - name: 🧪 Run Package Unit Tests
+        run: pnpm run test --filter "@trigger.dev/*"
       
       - name: 🧪 Run Internal Unit Tests
         run: pnpm run test --filter "@internal/*"
