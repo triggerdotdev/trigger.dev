@@ -1,6 +1,6 @@
 ---
 title: "Syncing environment variables from your Vercel projects"
-sidebarTitle: "Syncing Vercel env vars"
+sidebarTitle: "Vercel sync environment variables"
 description: "This example demonstrates how to sync environment variables from your Vercel project to Trigger.dev."
 ---
 
@@ -12,60 +12,25 @@ This example shows how to automatically sync environment variables from your Ver
 
 ## Build configuration
 
-To sync environment variables from your Vercel project to Trigger.dev, you'll first need to add this build configuration to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your project.
+To sync environment variables from your Vercel project to Trigger.dev, you just need to add this build configuration to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your project.
 
 This code syncs encrypted environment variables, filtering them based on the current environment (production, preview, or development).
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `vercelSyncEnvVars` build extension.
+</Note>
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/vercelSyncEnvVars";
 
 export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
   build: {
-    extensions:
-     extensions: [
-      syncVercelEnvVars(),
-      syncEnvVars(async (ctx) => {
-        const environmentMap = {
-          // Account for the different environment names used by Vercel
-        prod: "production",
-          staging: "preview",
-          dev: "development",
-        } as const;
-
-        const vercelEnvironment =
-          environmentMap[ctx.environment as keyof typeof environmentMap];
-
-        const vercelApiUrl =
-          `https://api.vercel.com/v8/projects/${process.env.VERCEL_PROJECT_ID}/env?decrypt=true`;
-
-        const response = await fetch(vercelApiUrl, {
-          headers: {
-            Authorization: `Bearer ${process.env.VERCEL_ACCESS_TOKEN}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        const filteredEnvs = data.envs
-          .filter(
-            (env: { type: string; value: string; target: string[] }) =>
-              env.type === "encrypted" &&
-              env.value &&
-              env.target.includes(vercelEnvironment),
-          )
-          .map((env: { key: string; value: string }) => ({
-            name: env.key,
-            value: env.value,
-          }));
-
-        return filteredEnvs;
-      }),
-    ],,
+    // Add the vercelSyncEnvVars build extension
+    extensions: [vercelSyncEnvVars()],
   },
 });
 ```
