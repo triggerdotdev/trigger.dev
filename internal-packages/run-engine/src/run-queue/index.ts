@@ -45,13 +45,6 @@ export type RunQueueOptions = {
   retryOptions?: RetryOptions;
 };
 
-//todo
-//1. Track the number of attempts in the payload
-//2. When nacking, pass in `maxAttempts`, bump the `attempt` number each time.
-//3. Check if > maxAttempts, if so, send to a dead letter queue
-//4. Add redrive using Redis pubsub to send back to the queue
-//5. For everything else, like enqueue reset the `attempt` to zero
-
 /**
  * RunQueue – the queue that's used to process runs
  */
@@ -661,7 +654,6 @@ export class RunQueue {
       }
     });
 
-    //todo
     this.subscriber.on("message", this.handleRedriveMessage.bind(this));
   }
 
