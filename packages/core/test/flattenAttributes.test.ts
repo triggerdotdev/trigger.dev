@@ -1,6 +1,20 @@
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
+  it("handles number keys correctl", () => {
+    expect(flattenAttributes({ bar: { "25": "foo" } })).toEqual({ "bar.25": "foo" });
+    expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { "25": "foo" } });
+    expect(flattenAttributes({ bar: ["foo", "baz"] })).toEqual({
+      "bar.[0]": "foo",
+      "bar.[1]": "baz",
+    });
+    expect(unflattenAttributes({ "bar.[0]": "foo", "bar.[1]": "baz" })).toEqual({
+      bar: ["foo", "baz"],
+    });
+    expect(flattenAttributes({ bar: { 25: "foo" } })).toEqual({ "bar.25": "foo" });
+    expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { 25: "foo" } });
+  });
+
   it("handles null correctly", () => {
     expect(flattenAttributes(null)).toEqual({ "": "$@null((" });
     expect(unflattenAttributes({ "": "$@null((" })).toEqual(null);
