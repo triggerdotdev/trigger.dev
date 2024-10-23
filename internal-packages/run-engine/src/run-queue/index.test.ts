@@ -162,7 +162,7 @@ describe("RunQueue", () => {
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueues: `env:${authenticatedEnvDev.id}`,
+          masterQueues: ["main", envMasterQueue],
         });
 
         //queue length
@@ -196,7 +196,7 @@ describe("RunQueue", () => {
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueues).toEqual([envMasterQueue]);
+        expect(dequeued?.message.masterQueues).toEqual(["main", envMasterQueue]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -216,6 +216,9 @@ describe("RunQueue", () => {
 
         const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue);
         expect(dequeued2).toBe(undefined);
+
+        const dequeued3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
+        expect(dequeued3).toBe(undefined);
       } finally {
         await queue.quit();
       }
@@ -223,7 +226,7 @@ describe("RunQueue", () => {
   );
 
   redisTest(
-    "Enqueue/Dequeue a message from the shared queue (PROD run, no concurrency key)",
+    "Enqueue/Dequeue a message from the main queue (PROD run, no concurrency key)",
     { timeout: 5_000 },
     async ({ redisContainer, redis }) => {
       const queue = new RunQueue({
@@ -243,11 +246,13 @@ describe("RunQueue", () => {
         );
         expect(oldestScore).toBe(undefined);
 
+        const envMasterQueue = `env:${authenticatedEnvDev.id}`;
+
         //enqueue message
         await queue.enqueueMessage({
           env: authenticatedEnvProd,
           message: messageProd,
-          masterQueues: "main",
+          masterQueues: ["main", envMasterQueue],
         });
 
         //queue length
@@ -282,7 +287,7 @@ describe("RunQueue", () => {
         expect(dequeued?.messageId).toEqual(messageProd.runId);
         expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueues).toEqual(["main"]);
+        expect(dequeued?.message.masterQueues).toEqual(["main", envMasterQueue]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
