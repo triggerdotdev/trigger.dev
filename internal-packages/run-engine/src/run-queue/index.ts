@@ -564,22 +564,61 @@ export class RunQueue {
     await this.redis.quit();
   }
 
-  // private async handleRedriveMessage(channel: string, message: string) {
-  //   try {
-  //     const { id } = JSON.parse(message);
-  //     if (typeof id !== "string") {
-  //       throw new Error("Invalid message format: id must be a string");
-  //     }
-  //     await this.enqueueMessage({
-  //       env: { orgId: "", id: "" }, // You might need to adjust this based on your actual implementation
-  //       message: (await this.#readMessage("", id)) as InputPayload,
-  //       masterQueue: this.keys.deadLetterQueueKey(""),
-  //     });
-  //     this.logger.log(`Redrived item ${id} from Dead Letter Queue`);
-  //   } catch (error) {
-  //     this.logger.error("Error processing redrive message", { error, message });
-  //   }
-  // }
+  private async handleRedriveMessage(channel: string, message: string) {
+    try {
+      const { runId, orgId } = JSON.parse(message);
+      if (typeof orgId !== "string" || typeof runId !== "string") {
+        this.logger.error(
+          "handleRedriveMessage: invalid message format: runId and orgId must be strings",
+          { message, channel }
+        );
+        return;
+      }
+
+      const data = await this.#readMessage(orgId, runId);
+
+      if (!data) {
+        this.logger.error(`handleRedriveMessage: couldn't read message`, { orgId, runId, channel });
+        return;
+      }
+
+      await this.enqueueMessage({
+        env: {
+          id: data.environmentId,
+          type: data.environmentType,
+          //this isn't used in enqueueMessage
+          maximumConcurrencyLimit: -1,
+          project: {
+            id: data.projectId,
+          },
+          organization: {
+            id: data.orgId,
+          },
+        },
+        message: {
+          ...data,
+          attempt: 0,
+        },
+        masterQueue: data.masterQueue,
+      });
+
+      //remove from the dlq
+      const result = await this.redis.zrem("dlq", runId);
+
+      if (result === 0) {
+        this.logger.error(`handleRedriveMessage: couldn't remove message from dlq`, {
+          orgId,
+          runId,
+          channel,
+        });
+        return;
+      }
+
+      this.logger.log(`handleRedriveMessage: redrived item ${runId} from Dead Letter Queue`);
+    } catch (error) {
+      this.logger.error("Error processing redrive message", { error, message });
+    }
+  }
 
   async #trace<T>(
     name: string,
@@ -623,7 +662,7 @@ export class RunQueue {
     });
 
     //todo
-    // this.subscriber.on("message", this.handleRedriveMessage.bind(this));
+    this.subscriber.on("message", this.handleRedriveMessage.bind(this));
   }
 
   async #readMessage(orgId: string, messageId: string) {
@@ -1319,41 +1358,6 @@ local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
 return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, true }
-      `,
-    });
-
-    this.redis.defineCommand("redriveFromDeadLetterQueue", {
-      numberOfKeys: 3,
-      lua: `
-    -- Keys:
-    local deadLetterQueueKey = KEYS[1]
-    local messageQueueKey = KEYS[2]
-    local parentQueueKey = KEYS[3]
-
-    -- Args:
-    local messageId = ARGV[1]
-
-    -- Get the message data from the dead letter queue
-    local messageData = redis.call('GET', messageId)
-
-    if not messageData then
-      return redis.error_reply("Message not found in dead letter queue")
-    end
-
-    -- Remove the message from the dead letter queue
-    redis.call('ZREM', deadLetterQueueKey, messageId)
-
-    -- Add the message back to the original queue
-    local currentTime = redis.call('TIME')[1]
-    redis.call('ZADD', messageQueueKey, currentTime, messageId)
-
-    -- Rebalance the parent queue
-    local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-    if #earliestMessage > 0 then
-      redis.call('ZADD', parentQueueKey, earliestMessage[2], messageQueueKey)
-    end
-
-    return redis.status_reply("OK")
       `,
     });
 

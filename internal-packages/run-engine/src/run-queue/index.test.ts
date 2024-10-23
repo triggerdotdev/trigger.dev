@@ -1,13 +1,12 @@
+import { redisTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
+import Redis from "ioredis";
 import { describe } from "node:test";
-import { redisTest } from "@internal/testcontainers";
+import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
-import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.js";
 import { InputPayload } from "./types.js";
-import { abort } from "node:process";
-import { setTimeout } from "node:timers/promises";
 
 const testOptions = {
   name: "rq",
@@ -464,7 +463,7 @@ describe("RunQueue", () => {
     }
   });
 
-  redisTest("Dead Letter Queue", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+  redisTest("Dead Letter Queue", { timeout: 8_000 }, async ({ redisContainer, redis }) => {
     const queue = new RunQueue({
       ...testOptions,
       retryOptions: {
@@ -519,9 +518,32 @@ describe("RunQueue", () => {
       const dlqKey = "dlq";
       const dlqExists = await redis.exists(dlqKey);
       expect(dlqExists).toBe(1);
-
       const dlqMembers = await redis.zrange(dlqKey, 0, -1);
       expect(dlqMembers).toContain(messageProd.runId);
+
+      //redrive
+      const redisClient = new Redis({
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      });
+
+      // Publish redrive message
+      await redisClient.publish(
+        "rq:redrive",
+        JSON.stringify({ runId: messageProd.runId, orgId: messageProd.orgId })
+      );
+
+      // Wait for the item to be redrived and processed
+      await setTimeout(5_000);
+
+      //shouldn't be in the dlq now
+      const dlqMembersAfter = await redis.zrange(dlqKey, 0, -1);
+      expect(dlqMembersAfter).not.toContain(messageProd.runId);
+
+      //dequeue
+      const message3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
+      expect(message3?.messageId).toBe(messageProd.runId);
     } finally {
       await queue.quit();
     }
