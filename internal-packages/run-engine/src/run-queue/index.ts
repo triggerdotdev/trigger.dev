@@ -461,47 +461,90 @@ export class RunQueue {
     );
   }
 
-  public async releaseConcurrency(messageId: string, releaseForRun: boolean = false) {
+  public async releaseConcurrency(
+    orgId: string,
+    messageId: string,
+    releaseForRun: boolean = false
+  ) {
     return this.#trace(
       "releaseConcurrency",
       async (span) => {
-        // span.setAttributes({
-        //   [SemanticAttributes.MESSAGE_ID]: messageId,
-        // });
-        // const message = await this.readMessage(messageId);
-        // if (!message) {
-        //   logger.log(`[${this.name}].releaseConcurrency() message not found`, {
-        //     messageId,
-        //     releaseForRun,
-        //     service: this.name,
-        //   });
-        //   return;
-        // }
-        // span.setAttributes({
-        //   [SemanticAttributes.QUEUE]: message.queue,
-        //   [SemanticAttributes.MESSAGE_ID]: message.messageId,
-        //   [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-        //   [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-        // });
-        // const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
-        // const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
-        // const orgConcurrencyKey = this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue);
-        // logger.debug("Calling releaseConcurrency", {
-        //   messageId,
-        //   queue: message.queue,
-        //   concurrencyKey,
-        //   envConcurrencyKey,
-        //   orgConcurrencyKey,
-        //   service: this.name,
-        //   releaseForRun,
-        // });
-        // return this.redis.releaseConcurrency(
-        //   //don't release the for the run, it breaks concurrencyLimits
-        //   releaseForRun ? concurrencyKey : "",
-        //   envConcurrencyKey,
-        //   orgConcurrencyKey,
-        //   message.messageId
-        // );
+        const message = await this.#readMessage(orgId, messageId);
+
+        if (!message) {
+          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+            messageId,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.ORG_ID]: message.orgId,
+          [SemanticAttributes.RUN_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        });
+
+        return this.redis.releaseConcurrency(
+          this.keys.messageKey(orgId, messageId),
+          message.queue,
+          releaseForRun ? this.keys.currentConcurrencyKeyFromQueue(message.queue) : "",
+          this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+          this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
+          this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+            message.queue,
+            message.taskIdentifier
+          ),
+          messageId,
+          JSON.stringify(message.masterQueues)
+        );
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "releaseConcurrency",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
+        },
+      }
+    );
+  }
+
+  public async reacquireConcurrency(orgId: string, messageId: string) {
+    return this.#trace(
+      "reacquireConcurrency",
+      async (span) => {
+        const message = await this.#readMessage(orgId, messageId);
+
+        if (!message) {
+          this.logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
+            messageId,
+            service: this.name,
+          });
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: message.queue,
+          [SemanticAttributes.ORG_ID]: message.orgId,
+          [SemanticAttributes.RUN_ID]: messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+        });
+
+        return this.redis.reacquireConcurrency(
+          this.keys.messageKey(orgId, messageId),
+          message.queue,
+          this.keys.currentConcurrencyKeyFromQueue(message.queue),
+          this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+          this.keys.projectCurrentConcurrencyKeyFromQueue(message.queue),
+          this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
+            message.queue,
+            message.taskIdentifier
+          ),
+          messageId,
+          JSON.stringify(message.masterQueues)
+        );
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1289,12 +1332,17 @@ redis.call('SREM', taskCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("releaseConcurrency", {
-      numberOfKeys: 3,
+      numberOfKeys: 6,
       lua: `
-local concurrencyKey = KEYS[1]
-local envCurrentConcurrencyKey = KEYS[2]
-local orgCurrentConcurrencyKey = KEYS[3]
+-- Keys:
+local messageKey = KEYS[1]
+local messageQueue = KEYS[2]
+local concurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local projectCurrentConcurrencyKey = KEYS[5]
+local taskCurrentConcurrencyKey = KEYS[6]
 
+-- Args:
 local messageId = ARGV[1]
 
 -- Update the concurrency keys
@@ -1302,7 +1350,30 @@ if concurrencyKey ~= "" then
   redis.call('SREM', concurrencyKey, messageId)
 end
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
-redis.call('SREM', orgCurrentConcurrencyKey, messageId)
+redis.call('SREM', projectCurrentConcurrencyKey, messageId)
+redis.call('SREM', taskCurrentConcurrencyKey, messageId)
+`,
+    });
+
+    this.redis.defineCommand("reacquireConcurrency", {
+      numberOfKeys: 6,
+      lua: `
+-- Keys:
+local messageKey = KEYS[1]
+local messageQueue = KEYS[2]
+local concurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local projectCurrentConcurrencyKey = KEYS[5]
+local taskCurrentConcurrencyKey = KEYS[6]
+
+-- Args:
+local messageId = ARGV[1]
+
+-- Update the concurrency keys
+redis.call('SADD', concurrencyKey, messageId)
+redis.call('SADD', envCurrentConcurrencyKey, messageId)
+redis.call('SADD', projectCurrentConcurrencyKey, messageId)
+redis.call('SADD', taskCurrentConcurrencyKey, messageId)
 `,
     });
 
@@ -1452,10 +1523,26 @@ declare module "ioredis" {
     ): Result<void, Context>;
 
     releaseConcurrency(
+      messageKey: string,
+      messageQueue: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
-      orgConcurrencyKey: string,
+      projectConcurrencyKey: string,
+      taskConcurrencyKey: string,
       messageId: string,
+      masterQueues: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    reacquireConcurrency(
+      messageKey: string,
+      messageQueue: string,
+      concurrencyKey: string,
+      envConcurrencyKey: string,
+      projectConcurrencyKey: string,
+      taskConcurrencyKey: string,
+      messageId: string,
+      masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 

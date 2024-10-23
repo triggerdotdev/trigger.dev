@@ -468,6 +468,101 @@ describe("RunQueue", () => {
     }
   });
 
+  redisTest("Releasing concurrency", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueues: "main",
+      });
+
+      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
+      expect(message).toBeDefined();
+
+      //check the message is gone
+      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const exists = await redis.exists(key);
+      expect(exists).toBe(1);
+
+      //concurrencies
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
+        1
+      );
+      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
+      expect(await queue.currentConcurrencyOfProject(authenticatedEnvProd)).toBe(1);
+      expect(
+        await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
+      ).toBe(1);
+
+      //release the concurrency (not the queue)
+      await queue.releaseConcurrency(
+        authenticatedEnvProd.organization.id,
+        message!.messageId,
+        false
+      );
+
+      //concurrencies
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
+        1
+      );
+      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(0);
+      expect(await queue.currentConcurrencyOfProject(authenticatedEnvProd)).toBe(0);
+      expect(
+        await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
+      ).toBe(0);
+
+      //reacquire the concurrency
+      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message!.messageId);
+
+      //check concurrencies are back to what they were before
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
+        1
+      );
+      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
+      expect(await queue.currentConcurrencyOfProject(authenticatedEnvProd)).toBe(1);
+      expect(
+        await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
+      ).toBe(1);
+
+      //release the concurrency (with the queue this time)
+      await queue.releaseConcurrency(
+        authenticatedEnvProd.organization.id,
+        message!.messageId,
+        true
+      );
+
+      //concurrencies
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
+        0
+      );
+      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(0);
+      expect(await queue.currentConcurrencyOfProject(authenticatedEnvProd)).toBe(0);
+      expect(
+        await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
+      ).toBe(0);
+
+      //reacquire the concurrency
+      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message!.messageId);
+
+      //check concurrencies are back to what they were before
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
+        1
+      );
+      expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd)).toBe(1);
+      expect(await queue.currentConcurrencyOfProject(authenticatedEnvProd)).toBe(1);
+      expect(
+        await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
+      ).toBe(1);
+    } finally {
+      await queue.quit();
+    }
+  });
+
   redisTest("Dead Letter Queue", { timeout: 8_000 }, async ({ redisContainer, redis }) => {
     const queue = new RunQueue({
       ...testOptions,
