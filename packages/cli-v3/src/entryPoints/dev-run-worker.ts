@@ -32,6 +32,7 @@ import {
   TracingSDK,
   usage,
   getNumberEnvVar,
+  StandardMetadataManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -81,6 +82,8 @@ usage.setGlobalUsageManager(devUsageManager);
 const devRuntimeManager = new DevRuntimeManager();
 runtime.setGlobalRuntimeManager(devRuntimeManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
+const runMetadataManager = new StandardMetadataManager();
+runMetadata.setGlobalManager(runMetadataManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -275,7 +278,7 @@ const zodIpc = new ZodIpcConnection({
         _execution = execution;
         _isRunning = true;
 
-        runMetadata.startPeriodicFlush(
+        runMetadataManager.startPeriodicFlush(
           getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
         );
         const measurement = usage.start();
@@ -350,7 +353,7 @@ const zodIpc = new ZodIpcConnection({
       }
     },
     FLUSH: async ({ timeoutInMs }, sender) => {
-      await Promise.allSettled([_tracingSDK?.flush(), runMetadata.flush()]);
+      await Promise.allSettled([_tracingSDK?.flush(), runMetadataManager.flush()]);
     },
   },
 });
