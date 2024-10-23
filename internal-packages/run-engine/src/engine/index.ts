@@ -396,7 +396,7 @@ export class RunEngine {
 
           //enqueue the run if it's not delayed
           if (!taskRun.delayUntil) {
-            await this.#enqueueRun(taskRun, environment, prisma);
+            await this.#enqueueRun({ run: taskRun, env: environment, tx: prisma });
           }
         });
 
@@ -1311,11 +1311,17 @@ export class RunEngine {
   //MARK: RunQueue
 
   /** The run can be added to the queue. When it's pulled from the queue it will be executed. */
-  async #enqueueRun(
-    run: TaskRun,
-    env: MinimalAuthenticatedEnvironment,
-    tx?: PrismaClientOrTransaction
-  ) {
+  async #enqueueRun({
+    run,
+    env,
+    timestamp,
+    tx,
+  }: {
+    run: TaskRun;
+    env: MinimalAuthenticatedEnvironment;
+    timestamp?: number;
+    tx?: PrismaClientOrTransaction;
+  }) {
     const prisma = tx ?? this.prisma;
 
     const newSnapshot = await this.#createExecutionSnapshot(prisma, {
@@ -1343,7 +1349,7 @@ export class RunEngine {
         environmentType: env.type,
         queue: run.queue,
         concurrencyKey: run.concurrencyKey ?? undefined,
-        timestamp: Date.now(),
+        timestamp: timestamp ?? Date.now(),
         attempt: 0,
       },
     });
@@ -1393,8 +1399,9 @@ export class RunEngine {
           completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
         });
 
-        //put it back in the queue
-        await this.#enqueueRun(run, env, prisma);
+        //put it back in the queue, with the original timestamp
+        //this will prioritise it over new runs
+        await this.#enqueueRun({ run, env, timestamp: run.createdAt.getTime(), tx: prisma });
       }
     });
   }
