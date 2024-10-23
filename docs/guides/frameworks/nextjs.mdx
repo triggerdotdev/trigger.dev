@@ -256,7 +256,7 @@ If you want to automatically sync environment variables from your Vercel project
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
-import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/vercelSyncEnvVars";
+import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
   project: "<project ref>",
