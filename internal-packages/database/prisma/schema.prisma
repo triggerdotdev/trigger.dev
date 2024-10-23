@@ -1793,6 +1793,7 @@ model TaskRun {
   @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
+  @@index([scheduleInstanceId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
