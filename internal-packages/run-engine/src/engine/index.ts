@@ -294,6 +294,23 @@ export class RunEngine {
               runId: parentTaskRunId,
               waitpoint: associatedWaitpoint,
             });
+
+            //release the concurrency
+            //if the queue is the same then it's recursive and we need to release that too otherwise we could have a deadlock
+            const parentRun = await prisma.taskRun.findUnique({
+              select: {
+                queue: true,
+              },
+              where: {
+                id: parentTaskRunId,
+              },
+            });
+            const releaseRunConcurrency = parentRun?.queue === taskRun.queue;
+            await this.runQueue.releaseConcurrency(
+              environment.organization.id,
+              parentTaskRunId,
+              releaseRunConcurrency
+            );
           }
 
           //Make sure lock extension succeeded
@@ -1361,6 +1378,9 @@ export class RunEngine {
           completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
         });
 
+        //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
+        await this.runQueue.reacquireConcurrency(env.organization.id, run.id);
+
         //todo publish a notification in Redis that the Workers listen to
         //this will cause the Worker to check for new execution snapshots for its runs
       } else {
@@ -1368,28 +1388,13 @@ export class RunEngine {
           run: run,
           snapshot: {
             executionStatus: "QUEUED",
-            description: "Run was QUEUED, because it needs to be continued.",
+            description: "Run is QUEUED, because all waitpoints are completed.",
           },
           completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
         });
 
-        //todo instead this should be a call to unblock the run
-        //we don't want to free up all the concurrency, so this isn't good
-        // await this.runQueue.enqueueMessage({
-        //   env,
-        //   masterQueue: run.masterQueue,
-        //   message: {
-        //     runId: run.id,
-        //     taskIdentifier: run.taskIdentifier,
-        //     orgId: env.organization.id,
-        //     projectId: env.project.id,
-        //     environmentId: env.id,
-        //     environmentType: env.type,
-        //     queue: run.queue,
-        //     concurrencyKey: run.concurrencyKey ?? undefined,
-        //     timestamp: Date.now(),
-        //   },
-        // });
+        //put it back in the queue
+        await this.#enqueueRun(run, env, prisma);
       }
     });
   }
