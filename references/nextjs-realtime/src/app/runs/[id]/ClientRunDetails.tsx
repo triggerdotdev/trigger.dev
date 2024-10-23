@@ -41,7 +41,9 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
 
 export default function ClientRunDetails({ runId, jwt }: { runId: string; jwt: string }) {
   return (
-    <TriggerAuthContext.Provider value={{ accessToken: jwt, baseURL: "http://localhost:3030" }}>
+    <TriggerAuthContext.Provider
+      value={{ accessToken: jwt, baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}
+    >
       <RunDetailsWrapper runId={runId} />
     </TriggerAuthContext.Provider>
   );
