@@ -54,7 +54,7 @@ function UploadDetailsWrapper({ fileId }: { fileId: string }) {
 
       <HandleUploadFooter
         run={run}
-        viewRunUrl={`http://localhost:3030/projects/v3/proj_bzhdaqhlymtuhlrcgbqy/runs/${run.id}`}
+        viewRunUrl={`${process.env.NEXT_PUBLIC_TRIGGER_API_URL}/projects/v3/proj_bzhdaqhlymtuhlrcgbqy/runs/${run.id}`}
       />
     </div>
   );
@@ -69,7 +69,7 @@ export default function ClientUploadDetails({
 }) {
   return (
     <TriggerAuthContext.Provider
-      value={{ accessToken: publicAccessToken, baseURL: "http://localhost:3030" }}
+      value={{ accessToken: publicAccessToken, baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}
     >
       <UploadDetailsWrapper fileId={fileId} />
     </TriggerAuthContext.Provider>

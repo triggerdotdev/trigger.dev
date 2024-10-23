@@ -1,17 +1,15 @@
-import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
-import { apiClientManager } from "../apiClientManager-api.js";
-import { taskContext } from "../task-context-api.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
-import { JSONHeroPath } from "@jsonhero/path";
+import { NoopRunMetadataManager } from "./noopManager.js";
+import { RunMetadataManager } from "./types.js";
 
 const API_NAME = "run-metadata";
 
-export class RunMetadataAPI {
+const NOOP_MANAGER = new NoopRunMetadataManager();
+
+export class RunMetadataAPI implements RunMetadataManager {
   private static _instance?: RunMetadataAPI;
-  private flushTimeoutId: NodeJS.Timeout | null = null;
-  private hasChanges: boolean = false;
 
   private constructor() {}
 
@@ -23,138 +21,39 @@ export class RunMetadataAPI {
     return this._instance;
   }
 
-  get store(): Record<string, DeserializedJson> | undefined {
-    return getGlobal(API_NAME);
+  setGlobalManager(manager: RunMetadataManager): boolean {
+    return registerGlobal(API_NAME, manager);
   }
 
-  set store(value: Record<string, DeserializedJson> | undefined) {
-    registerGlobal(API_NAME, value, true);
+  #getManager(): RunMetadataManager {
+    return getGlobal(API_NAME) ?? NOOP_MANAGER;
   }
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
-    registerGlobal(API_NAME, metadata);
+    this.#getManager().enterWithMetadata(metadata);
   }
 
   public current(): Record<string, DeserializedJson> | undefined {
-    return this.store;
+    return this.#getManager().current();
   }
 
   public getKey(key: string): DeserializedJson | undefined {
-    return this.store?.[key];
+    return this.#getManager().getKey(key);
   }
 
   public setKey(key: string, value: DeserializedJson) {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    let nextStore: Record<string, DeserializedJson> | undefined = this.store
-      ? structuredClone(this.store)
-      : undefined;
-
-    if (key.startsWith("$.")) {
-      const path = new JSONHeroPath(key);
-      path.set(nextStore, value);
-    } else {
-      nextStore = {
-        ...(nextStore ?? {}),
-        [key]: value,
-      };
-    }
-
-    if (!nextStore) {
-      return;
-    }
-
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    return this.#getManager().setKey(key, value);
   }
 
   public deleteKey(key: string) {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    const nextStore = { ...(this.store ?? {}) };
-    delete nextStore[key];
-
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    return this.#getManager().deleteKey(key);
   }
 
   public update(metadata: Record<string, DeserializedJson>): void {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    if (!dequal(this.store, metadata)) {
-      this.hasChanges = true;
-    }
-
-    this.store = metadata;
+    return this.#getManager().update(metadata);
   }
 
-  public async flush(requestOptions?: ApiRequestOptions): Promise<void> {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    if (!this.store) {
-      return;
-    }
-
-    if (!this.hasChanges) {
-      return;
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    try {
-      this.hasChanges = false;
-      await apiClient.updateRunMetadata(runId, { metadata: this.store }, requestOptions);
-    } catch (error) {
-      this.hasChanges = true;
-      throw error;
-    }
-  }
-
-  public startPeriodicFlush(intervalMs: number = 1000) {
-    const periodicFlush = async (intervalMs: number) => {
-      try {
-        await this.flush();
-      } catch (error) {
-        console.error("Failed to flush metadata", error);
-        throw error;
-      } finally {
-        scheduleNext();
-      }
-    };
-
-    const scheduleNext = () => {
-      this.flushTimeoutId = setTimeout(() => periodicFlush(intervalMs), intervalMs);
-    };
-
-    scheduleNext();
-  }
-
-  stopPeriodicFlush(): void {
-    if (this.flushTimeoutId) {
-      clearTimeout(this.flushTimeoutId);
-      this.flushTimeoutId = null;
-    }
+  flush(requestOptions?: ApiRequestOptions): Promise<void> {
+    return this.#getManager().flush(requestOptions);
   }
 }

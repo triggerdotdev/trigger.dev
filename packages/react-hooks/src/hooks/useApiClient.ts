@@ -6,9 +6,11 @@ import { useTriggerAuthContext } from "../contexts.js";
 export function useApiClient() {
   const auth = useTriggerAuthContext();
 
-  if (!auth.baseURL || !auth.accessToken) {
-    throw new Error("Missing baseURL or accessToken in TriggerAuthContext");
+  const baseUrl = auth.baseURL ?? "https://api.trigger.dev";
+
+  if (!auth.accessToken) {
+    throw new Error("Missing accessToken in TriggerAuthContext");
   }
 
-  return new ApiClient(auth.baseURL, auth.accessToken, auth.requestOptions);
+  return new ApiClient(baseUrl, auth.accessToken, auth.requestOptions);
 }
