@@ -219,6 +219,11 @@ export class RunEngine {
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
+        let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
+        if (lockedToVersionId) {
+          secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
+        }
+
         //create run
         const taskRun = await prisma.taskRun.create({
           data: {
@@ -240,6 +245,7 @@ export class RunEngine {
             concurrencyKey,
             queue: queueName,
             masterQueue,
+            secondaryMasterQueue,
             isTest,
             delayUntil,
             queuedAt,
@@ -601,9 +607,6 @@ export class RunEngine {
         const currentAttemptNumber = lockedTaskRun.attempts.at(0)?.number ?? 0;
         const nextAttemptNumber = currentAttemptNumber + 1;
 
-        //todo figure out if it's a continuation or a new run
-        const isNewRun = true;
-
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
             id: runId,
@@ -652,6 +655,38 @@ export class RunEngine {
           },
         };
       });
+    });
+  }
+
+  async dequeueFromEnvironmentMasterQueue({
+    consumerId,
+    environmentId,
+    tx,
+  }: {
+    consumerId: string;
+    environmentId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    return this.dequeueFromMasterQueue({
+      consumerId,
+      masterQueue: this.#environmentMasterQueueKey(environmentId),
+      tx,
+    });
+  }
+
+  async dequeueFromBackgroundWorkerMasterQueue({
+    consumerId,
+    backgroundWorkerId,
+    tx,
+  }: {
+    consumerId: string;
+    backgroundWorkerId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    return this.dequeueFromMasterQueue({
+      consumerId,
+      masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
+      tx,
     });
   }
 
@@ -1274,11 +1309,14 @@ export class RunEngine {
       },
     });
 
+    const masterQueues = [run.masterQueue];
+    if (run.secondaryMasterQueue) {
+      masterQueues.push(run.secondaryMasterQueue);
+    }
+
     await this.runQueue.enqueueMessage({
       env,
-      //todo if the run is locked, use the BackgroundWorker ID
-      //if not locked then the environmentId master queue
-      masterQueue: run.masterQueue,
+      masterQueues,
       message: {
         runId: run.id,
         taskIdentifier: run.taskIdentifier,
@@ -1719,6 +1757,14 @@ export class RunEngine {
     }
 
     return taskRun?.runtimeEnvironment;
+  }
+
+  #environmentMasterQueueKey(environmentId: string) {
+    return `master-env:${environmentId}`;
+  }
+
+  #backgroundWorkerQueueKey(backgroundWorkerId: string) {
+    return `master-background-worker:${backgroundWorkerId}`;
   }
 
   async #trace<T>(
