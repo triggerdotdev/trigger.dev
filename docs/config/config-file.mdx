@@ -491,7 +491,7 @@ These environment variables are only used during the build process and are not e
 
 #### syncEnvVars
 
-The `syncEnvVars` build extension replaces the deprecated `resolveEnvVars` export.
+The `syncEnvVars` build extension replaces the deprecated `resolveEnvVars` export. Check out our [syncEnvVars documentation](/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
 
 ```ts
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
@@ -508,6 +508,11 @@ export default defineConfig({
 #### vercelSyncEnvVars
 
 The `vercelSyncEnvVars` build extension syncs environment variables from your Vercel project to Trigger.dev.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `vercelSyncEnvVars` build extension.
+</Note>
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
