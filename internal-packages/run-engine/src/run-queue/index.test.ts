@@ -162,7 +162,7 @@ describe("RunQueue", () => {
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: messageDev,
-          masterQueue: `env:${authenticatedEnvDev.id}`,
+          masterQueues: `env:${authenticatedEnvDev.id}`,
         });
 
         //queue length
@@ -196,7 +196,7 @@ describe("RunQueue", () => {
         expect(dequeued?.messageId).toEqual(messageDev.runId);
         expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueue).toEqual(envMasterQueue);
+        expect(dequeued?.message.masterQueues).toEqual([envMasterQueue]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -247,7 +247,7 @@ describe("RunQueue", () => {
         await queue.enqueueMessage({
           env: authenticatedEnvProd,
           message: messageProd,
-          masterQueue: "main",
+          masterQueues: "main",
         });
 
         //queue length
@@ -282,7 +282,7 @@ describe("RunQueue", () => {
         expect(dequeued?.messageId).toEqual(messageProd.runId);
         expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
         expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueue).toEqual("main");
+        expect(dequeued?.message.masterQueues).toEqual(["main"]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -327,7 +327,7 @@ describe("RunQueue", () => {
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
         message: messageProd,
-        masterQueue: "main",
+        masterQueues: "main",
       });
 
       const result2 = await queue.getSharedQueueDetails("main");
@@ -352,7 +352,7 @@ describe("RunQueue", () => {
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
         message: messageProd,
-        masterQueue: "main",
+        masterQueues: "main",
       });
 
       const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
@@ -403,7 +403,7 @@ describe("RunQueue", () => {
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
         message: messageProd,
-        masterQueue: "main2",
+        masterQueues: "main2",
       });
 
       const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main2");
@@ -476,7 +476,7 @@ describe("RunQueue", () => {
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
         message: messageProd,
-        masterQueue: "main",
+        masterQueues: "main",
       });
 
       const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");

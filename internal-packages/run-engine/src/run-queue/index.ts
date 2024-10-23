@@ -24,7 +24,7 @@ import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
-  MASTER_QUEUE: "runqueue.masterQueue",
+  MASTER_QUEUES: "runqueue.masterQueues",
   RUN_ID: "runqueue.runId",
   CONCURRENCY_KEY: "runqueue.concurrencyKey",
   ORG_ID: "runqueue.orgId",
@@ -176,11 +176,11 @@ export class RunQueue {
   public async enqueueMessage({
     env,
     message,
-    masterQueue,
+    masterQueues,
   }: {
     env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
-    masterQueue: string;
+    masterQueues: string | string[];
   }) {
     return await this.#trace(
       "enqueueMessage",
@@ -191,22 +191,24 @@ export class RunQueue {
 
         propagation.inject(context.active(), message);
 
+        const parentQueues = typeof masterQueues === "string" ? [masterQueues] : masterQueues;
+
         span.setAttributes({
           [SemanticAttributes.QUEUE]: queue,
           [SemanticAttributes.RUN_ID]: runId,
           [SemanticAttributes.CONCURRENCY_KEY]: concurrencyKey,
-          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
+          [SemanticAttributes.MASTER_QUEUES]: parentQueues.join(","),
         });
 
         const messagePayload: OutputPayload = {
           ...message,
           version: "1",
           queue,
-          masterQueue,
+          masterQueues: parentQueues,
           attempt: 0,
         };
 
-        await this.#callEnqueueMessage(messagePayload, masterQueue);
+        await this.#callEnqueueMessage(messagePayload, parentQueues);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -271,7 +273,6 @@ export class RunQueue {
         // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
         const message = await this.#callDequeueMessage({
           messageQueue,
-          masterQueue,
           concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
           currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
           envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -292,7 +293,7 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.message.queue,
           [SemanticAttributes.RUN_ID]: message.message.runId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
-          [SemanticAttributes.MASTER_QUEUE]: masterQueue,
+          [SemanticAttributes.MASTER_QUEUES]: masterQueue,
         });
 
         return message;
@@ -338,7 +339,7 @@ export class RunQueue {
         await this.#callAcknowledgeMessage({
           messageId,
           messageQueue: message.queue,
-          masterQueue: message.masterQueue,
+          masterQueues: message.masterQueues,
           messageKey: this.keys.messageKey(orgId, messageId),
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
@@ -385,12 +386,11 @@ export class RunQueue {
           [SemanticAttributes.QUEUE]: message.queue,
           [SemanticAttributes.RUN_ID]: messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-          [SemanticAttributes.MASTER_QUEUE]: message.masterQueue,
+          [SemanticAttributes.MASTER_QUEUES]: message.masterQueues.join(","),
         });
 
         const messageKey = this.keys.messageKey(orgId, messageId);
         const messageQueue = message.queue;
-        const parentQueue = message.masterQueue;
         const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
         const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
         const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
@@ -404,7 +404,6 @@ export class RunQueue {
         message.attempt = message.attempt + 1;
         if (message.attempt >= maxAttempts) {
           await this.redis.moveToDeadLetterQueue(
-            parentQueue,
             messageKey,
             messageQueue,
             concurrencyKey,
@@ -412,7 +411,8 @@ export class RunQueue {
             projectConcurrencyKey,
             taskConcurrencyKey,
             "dlq",
-            messageId
+            messageId,
+            JSON.stringify(message.masterQueues)
           );
           return false;
         }
@@ -423,7 +423,7 @@ export class RunQueue {
         this.logger.debug("Calling nackMessage", {
           messageKey,
           messageQueue,
-          parentQueue,
+          masterQueues: message.masterQueues,
           concurrencyKey,
           envConcurrencyKey,
           projectConcurrencyKey,
@@ -438,7 +438,6 @@ export class RunQueue {
           //keys
           messageKey,
           messageQueue,
-          parentQueue,
           concurrencyKey,
           envConcurrencyKey,
           projectConcurrencyKey,
@@ -446,7 +445,8 @@ export class RunQueue {
           //args
           messageId,
           JSON.stringify(message),
-          String(messageScore)
+          String(messageScore),
+          JSON.stringify(message.masterQueues)
         );
         return true;
       },
@@ -592,7 +592,7 @@ export class RunQueue {
           ...data,
           attempt: 0,
         },
-        masterQueue: data.masterQueue,
+        masterQueues: data.masterQueues,
       });
 
       //remove from the dlq
@@ -774,7 +774,7 @@ export class RunQueue {
         attributes: {
           [SEMATTRS_MESSAGING_OPERATION]: "receive",
           [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          [SemanticAttributes.MASTER_QUEUE]: parentQueue,
+          [SemanticAttributes.MASTER_QUEUES]: parentQueue,
         },
       }
     );
@@ -845,7 +845,7 @@ export class RunQueue {
     return result;
   }
 
-  async #callEnqueueMessage(message: OutputPayload, parentQueue: string) {
+  async #callEnqueueMessage(message: OutputPayload, masterQueues: string[]) {
     const concurrencyKey = this.keys.currentConcurrencyKeyFromQueue(message.queue);
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
     const taskConcurrencyKey = this.keys.taskIdentifierCurrentConcurrencyKeyFromQueue(
@@ -858,12 +858,12 @@ export class RunQueue {
       messagePayload: message,
       concurrencyKey,
       envConcurrencyKey,
+      masterQueues,
       service: this.name,
     });
 
     return this.redis.enqueueMessage(
       message.queue,
-      parentQueue,
       this.keys.messageKey(message.orgId, message.runId),
       concurrencyKey,
       envConcurrencyKey,
@@ -872,13 +872,13 @@ export class RunQueue {
       message.queue,
       message.runId,
       JSON.stringify(message),
-      String(message.timestamp)
+      String(message.timestamp),
+      JSON.stringify(masterQueues)
     );
   }
 
   async #callDequeueMessage({
     messageQueue,
-    masterQueue,
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     currentConcurrencyKey,
@@ -888,7 +888,6 @@ export class RunQueue {
     taskCurrentConcurrentKeyPrefix,
   }: {
     messageQueue: string;
-    masterQueue: string;
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     currentConcurrencyKey: string;
@@ -900,7 +899,6 @@ export class RunQueue {
     const result = await this.redis.dequeueMessage(
       //keys
       messageQueue,
-      masterQueue,
       concurrencyLimitKey,
       envConcurrencyLimitKey,
       currentConcurrencyKey,
@@ -956,7 +954,7 @@ export class RunQueue {
 
   async #callAcknowledgeMessage({
     messageId,
-    masterQueue,
+    masterQueues,
     messageKey,
     messageQueue,
     concurrencyKey,
@@ -964,7 +962,7 @@ export class RunQueue {
     taskConcurrencyKey,
     projectConcurrencyKey,
   }: {
-    masterQueue: string;
+    masterQueues: string[];
     messageKey: string;
     messageQueue: string;
     concurrencyKey: string;
@@ -981,19 +979,19 @@ export class RunQueue {
       projectConcurrencyKey,
       taskConcurrencyKey,
       messageId,
-      masterQueue,
+      masterQueues,
       service: this.name,
     });
 
     return this.redis.acknowledgeMessage(
-      masterQueue,
       messageKey,
       messageQueue,
       concurrencyKey,
       envConcurrencyKey,
       projectConcurrencyKey,
       taskConcurrencyKey,
-      messageId
+      messageId,
+      JSON.stringify(masterQueues)
     );
   }
 
@@ -1056,20 +1054,20 @@ export class RunQueue {
 
   #registerCommands() {
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 6,
       lua: `
 local queue = KEYS[1]
-local parentQueue = KEYS[2]
-local messageKey = KEYS[3]
-local concurrencyKey = KEYS[4]
-local envConcurrencyKey = KEYS[5]
-local taskConcurrencyKey = KEYS[6]
-local projectConcurrencyKey = KEYS[7]
+local messageKey = KEYS[2]
+local concurrencyKey = KEYS[3]
+local envConcurrencyKey = KEYS[4]
+local taskConcurrencyKey = KEYS[5]
+local projectConcurrencyKey = KEYS[6]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = ARGV[4]
+local parentQueues = cjson.decode(ARGV[5])
 
 -- Write the message to the message key
 redis.call('SET', messageKey, messageData)
@@ -1077,12 +1075,14 @@ redis.call('SET', messageKey, messageData)
 -- Add the message to the queue
 redis.call('ZADD', queue, messageScore, messageId)
 
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', queue, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, queueName)
-else
-    redis.call('ZADD', parentQueue, earliestMessage[2], queueName)
+-- Rebalance the parent queues
+for _, parentQueue in ipairs(parentQueues) do
+    local earliestMessage = redis.call('ZRANGE', queue, 0, 0, 'WITHSCORES')
+    if #earliestMessage == 0 then
+        redis.call('ZREM', parentQueue, queueName)
+    else
+        redis.call('ZADD', parentQueue, earliestMessage[2], queueName)
+    end
 end
 
 -- Update the concurrency keys
@@ -1094,17 +1094,16 @@ redis.call('SREM', projectConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("dequeueMessage", {
-      numberOfKeys: 9,
+      numberOfKeys: 8,
       lua: `
 local childQueue = KEYS[1]
-local parentQueue = KEYS[2]
-local concurrencyLimitKey = KEYS[3]
-local envConcurrencyLimitKey = KEYS[4]
-local currentConcurrencyKey = KEYS[5]
-local envCurrentConcurrencyKey = KEYS[6]
-local projectConcurrencyKey = KEYS[7]
-local messageKeyPrefix = KEYS[8]
-local taskCurrentConcurrentKeyPrefix = KEYS[9]
+local concurrencyLimitKey = KEYS[2]
+local envConcurrencyLimitKey = KEYS[3]
+local currentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local projectConcurrencyKey = KEYS[6]
+local messageKeyPrefix = KEYS[7]
+local taskCurrentConcurrentKeyPrefix = KEYS[8]
 
 local childQueueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -1140,9 +1139,10 @@ local messageScore = tonumber(messages[2])
 -- Get the message payload
 local messageKey = messageKeyPrefix .. messageId
 local messagePayload = redis.call('GET', messageKey)
+local decodedPayload = cjson.decode(messagePayload);
 
--- Parse JSON payload and extract taskIdentifier
-local taskIdentifier = cjson.decode(messagePayload).taskIdentifier
+-- Extract taskIdentifier
+local taskIdentifier = decodedPayload.taskIdentifier
 
 -- Perform SADD with taskIdentifier and messageId
 local taskConcurrencyKey = taskCurrentConcurrentKeyPrefix .. taskIdentifier
@@ -1154,12 +1154,14 @@ redis.call('SADD', envCurrentConcurrencyKey, messageId)
 redis.call('SADD', projectConcurrencyKey, messageId)
 redis.call('SADD', taskConcurrencyKey, messageId)
 
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, childQueueName)
-else
-    redis.call('ZADD', parentQueue, earliestMessage[2], childQueueName)
+-- Rebalance the parent queues
+for _, parentQueue in ipairs(decodedPayload.masterQueues) do
+    local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
+    if #earliestMessage == 0 then
+        redis.call('ZREM', parentQueue, childQueue)
+    else
+        redis.call('ZADD', parentQueue, earliestMessage[2], childQueue)
+    end
 end
 
 return {messageId, messageScore, messagePayload} -- Return message details
@@ -1167,19 +1169,19 @@ return {messageId, messageScore, messagePayload} -- Return message details
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 6,
       lua: `
 -- Keys:
-local parentQueue = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueue = KEYS[3]
-local concurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local projectCurrentConcurrencyKey = KEYS[6]
-local taskCurrentConcurrencyKey = KEYS[7]
+local messageKey = KEYS[1]
+local messageQueue = KEYS[2]
+local concurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local projectCurrentConcurrencyKey = KEYS[5]
+local taskCurrentConcurrencyKey = KEYS[6]
 
 -- Args:
 local messageId = ARGV[1]
+local parentQueues = cjson.decode(ARGV[2])
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -1187,12 +1189,14 @@ redis.call('DEL', messageKey)
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
 
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, messageQueue)
-else
-    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+-- Rebalance the parent queues
+for _, parentQueue in ipairs(parentQueues) do
+    local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+    if #earliestMessage == 0 then
+        redis.call('ZREM', parentQueue, messageQueue)
+    else
+        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+    end
 end
 
 -- Update the concurrency keys
@@ -1204,21 +1208,21 @@ redis.call('SREM', taskCurrentConcurrencyKey, messageId)
     });
 
     this.redis.defineCommand("nackMessage", {
-      numberOfKeys: 7,
+      numberOfKeys: 6,
       lua: `
 -- Keys:
 local messageKey = KEYS[1]
 local messageQueueKey = KEYS[2]
-local parentQueueKey = KEYS[3]
-local concurrencyKey = KEYS[4]
-local envConcurrencyKey = KEYS[5]
-local projectConcurrencyKey = KEYS[6]
-local taskConcurrencyKey = KEYS[7]
+local concurrencyKey = KEYS[3]
+local envConcurrencyKey = KEYS[4]
+local projectConcurrencyKey = KEYS[5]
+local taskConcurrencyKey = KEYS[6]
 
 -- Args:
 local messageId = ARGV[1]
 local messageData = ARGV[2]
 local messageScore = tonumber(ARGV[3])
+local parentQueues = cjson.decode(ARGV[4])
 
 -- Update the message data
 redis.call('SET', messageKey, messageData)
@@ -1232,41 +1236,45 @@ redis.call('SREM', taskConcurrencyKey, messageId)
 -- Enqueue the message into the queue
 redis.call('ZADD', messageQueueKey, messageScore, messageId)
 
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueueKey, messageQueueKey)
-else
-    redis.call('ZADD', parentQueueKey, earliestMessage[2], messageQueueKey)
+-- Rebalance the parent queues
+for _, parentQueue in ipairs(parentQueues) do
+    local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+    if #earliestMessage == 0 then
+        redis.call('ZREM', parentQueue, messageQueueKey)
+    else
+        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueKey)
+    end
 end
 `,
     });
 
     this.redis.defineCommand("moveToDeadLetterQueue", {
-      numberOfKeys: 8,
+      numberOfKeys: 7,
       lua: `
 -- Keys:
-local parentQueue = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueue = KEYS[3]
-local concurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local projectCurrentConcurrencyKey = KEYS[6]
-local taskCurrentConcurrencyKey = KEYS[7]
-local deadLetterQueueKey = KEYS[8]
+local messageKey = KEYS[1]
+local messageQueue = KEYS[2]
+local concurrencyKey = KEYS[3]
+local envCurrentConcurrencyKey = KEYS[4]
+local projectCurrentConcurrencyKey = KEYS[5]
+local taskCurrentConcurrencyKey = KEYS[6]
+local deadLetterQueueKey = KEYS[7]
 
 -- Args:
 local messageId = ARGV[1]
+local parentQueues = cjson.decode(ARGV[2])
 
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
 
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueue, messageQueue)
-else
-    redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+-- Rebalance the parent queues
+for _, parentQueue in ipairs(parentQueues) do
+    local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+    if #earliestMessage == 0 then
+        redis.call('ZREM', parentQueue, messageQueue)
+    else
+        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+    end
 end
 
 -- Add the message to the dead letter queue
@@ -1365,37 +1373,6 @@ local envConcurrencyLimit = ARGV[1]
 redis.call('SET', envConcurrencyLimitKey, envConcurrencyLimit)
       `,
     });
-
-    this.redis.defineCommand("rebalanceParentQueueChild", {
-      numberOfKeys: 2,
-      lua: `
--- Keys: childQueueKey, parentQueueKey
-local childQueueKey = KEYS[1]
-local parentQueueKey = KEYS[2]
-
--- Args: childQueueName, currentScore
-local childQueueName = ARGV[1]
-local currentScore = ARGV[2]
-
--- Rebalance the parent queue
-local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
-if #earliestMessage == 0 then
-    redis.call('ZREM', parentQueueKey, childQueueName)
-
-    -- Return true because the parent queue was rebalanced
-    return true
-else
-    -- If the earliest message is different, update the parent queue and return true, else return false
-    if earliestMessage[2] == currentScore then
-        return false
-    end
-
-    redis.call('ZADD', parentQueueKey, earliestMessage[2], childQueueName)
-
-    return earliestMessage[2]
-end
-`,
-    });
   }
 }
 
@@ -1404,7 +1381,6 @@ declare module "ioredis" {
     enqueueMessage(
       //keys
       queue: string,
-      parentQueue: string,
       messageKey: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
@@ -1415,13 +1391,13 @@ declare module "ioredis" {
       messageId: string,
       messageData: string,
       messageScore: string,
+      parentQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
     dequeueMessage(
       //keys
       childQueue: string,
-      parentQueue: string,
       concurrencyLimitKey: string,
       envConcurrencyLimitKey: string,
       currentConcurrencyKey: string,
@@ -1437,7 +1413,6 @@ declare module "ioredis" {
     ): Result<[string, string, string] | null, Context>;
 
     acknowledgeMessage(
-      parentQueue: string,
       messageKey: string,
       messageQueue: string,
       concurrencyKey: string,
@@ -1445,13 +1420,13 @@ declare module "ioredis" {
       projectConcurrencyKey: string,
       taskConcurrencyKey: string,
       messageId: string,
+      masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
     nackMessage(
       messageKey: string,
       messageQueue: string,
-      parentQueueKey: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
       projectConcurrencyKey: string,
@@ -1459,11 +1434,11 @@ declare module "ioredis" {
       messageId: string,
       messageData: string,
       messageScore: string,
+      masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
     moveToDeadLetterQueue(
-      parentQueue: string,
       messageKey: string,
       messageQueue: string,
       concurrencyKey: string,
@@ -1472,6 +1447,7 @@ declare module "ioredis" {
       taskConcurrencyKey: string,
       deadLetterQueueKey: string,
       messageId: string,
+      masterQueues: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1507,13 +1483,5 @@ declare module "ioredis" {
       envConcurrencyLimit: string,
       callback?: Callback<void>
     ): Result<void, Context>;
-
-    rebalanceParentQueueChild(
-      childQueueKey: string,
-      parentQueueKey: string,
-      childQueueName: string,
-      currentScore: string,
-      callback?: Callback<number | string | null>
-    ): Result<number | string | null, Context>;
   }
 }

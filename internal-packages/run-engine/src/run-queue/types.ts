@@ -18,7 +18,7 @@ export type InputPayload = z.infer<typeof InputPayload>;
 
 export const OutputPayload = InputPayload.extend({
   version: z.literal("1"),
-  masterQueue: z.string(),
+  masterQueues: z.string().array(),
 });
 export type OutputPayload = z.infer<typeof OutputPayload>;
 
