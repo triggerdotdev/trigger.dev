@@ -251,16 +251,11 @@ module.exports = {
           "0%": { "background-position": "0px" },
           "100%": { "background-position": "8px" },
         },
-        "ping-pong-width": {
-          "0%, 100%": { width: "500px", blur: "1000px", opacity: "0" },
-          "50%": { width: "320px", blur: "0px", opacity: "1" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "tile-scroll": "tile-move 0.5s infinite linear",
-        "ping-pong-width": "ping-pong-width 10s ease-in-out infinite",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
