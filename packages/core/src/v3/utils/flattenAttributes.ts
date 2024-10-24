@@ -1,10 +1,12 @@
 import { Attributes } from "@opentelemetry/api";
 
 export const NULL_SENTINEL = "$@null((";
+export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 export function flattenAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
-  prefix?: string
+  prefix?: string ,
+  seen: WeakSet<object> = new WeakSet()
 ): Attributes {
   const result: Attributes = {};
 
@@ -38,13 +40,25 @@ export function flattenAttributes(
     return result;
   }
 
+  // Check for circular reference
+  if (typeof obj === "object" && seen.has(obj)) {
+    result[prefix || ""] = CIRCULAR_REFERENCE_SENTINEL;
+    return result;
+  }
+
+  // Add object to seen set
+  if (typeof obj === "object") {
+    seen.add(obj);
+  }
+
+
   for (const [key, value] of Object.entries(obj)) {
     const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
           // update null check here as well
-          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`));
+          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`,seen));
         } else {
           if (value[i] === null) {
             result[`${newPrefix}.[${i}]`] = NULL_SENTINEL;
@@ -55,7 +69,7 @@ export function flattenAttributes(
       }
     } else if (isRecord(value)) {
       // update null check here
-      Object.assign(result, flattenAttributes(value, newPrefix));
+      Object.assign(result, flattenAttributes(value, newPrefix, seen));
     } else {
       if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
         result[newPrefix] = value;
@@ -125,7 +139,7 @@ export function unflattenAttributes(
     }
     const lastPart = parts[parts.length - 1];
     if (lastPart) {
-      current[lastPart] = rehydrateNull(value);
+      current[lastPart] = rehydrateNull(rehydrateCircular(value));
     }
   }
 
@@ -140,6 +154,13 @@ export function unflattenAttributes(
   }
 
   return result;
+}
+
+function rehydrateCircular(value: any): any {
+  if (value === CIRCULAR_REFERENCE_SENTINEL) {
+    return "[Circular Reference]";
+  }
+  return value;
 }
 
 export function primitiveValueOrflattenedAttributes(
