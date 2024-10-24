@@ -17,12 +17,9 @@ export const handleUpload = schemaTask({
     const results = await runFalModel.batchTriggerAndWait([
       {
         payload: {
-          model: "fal-ai/image-preprocessors/canny",
+          model: "fal-ai/image-preprocessors/lineart",
           url: file.url,
-          input: {
-            low_threshold: 100,
-            high_threshold: 200,
-          },
+          input: {},
         },
         options: {
           tags: ctx.run.tags,
@@ -30,9 +27,16 @@ export const handleUpload = schemaTask({
       },
       {
         payload: {
-          model: "fal-ai/aura-sr",
+          model: "fal-ai/omni-zero",
           url: file.url,
-          input: {},
+          input: {
+            prompt: "Turn the image into a cartoon",
+            image_url: file.url,
+            composition_image_url: file.url,
+            style_image_url:
+              "https://storage.googleapis.com/falserverless/model_tests/omni_zero/style.jpg",
+            identity_image_url: file.url,
+          },
         },
         options: { tags: ctx.run.tags },
       },
