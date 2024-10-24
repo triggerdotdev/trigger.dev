@@ -47,7 +47,7 @@ export function flattenAttributes(
   }
 
   // Add object to seen set
-  if (typeof obj === "object") {
+  if (obj !== null && typeof obj === "object") {
     seen.add(obj);
   }
 
