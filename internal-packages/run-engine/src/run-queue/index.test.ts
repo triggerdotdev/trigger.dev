@@ -192,11 +192,16 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency).toBe(0);
 
-        const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue);
-        expect(dequeued?.messageId).toEqual(messageDev.runId);
-        expect(dequeued?.message.orgId).toEqual(messageDev.orgId);
-        expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueues).toEqual(["main", envMasterQueue]);
+        const dequeued = await queue.dequeueMessageFromMasterQueue(
+          "test_12345",
+          envMasterQueue,
+          10
+        );
+        expect(dequeued.length).toBe(1);
+        expect(dequeued[0].messageId).toEqual(messageDev.runId);
+        expect(dequeued[0].message.orgId).toEqual(messageDev.orgId);
+        expect(dequeued[0].message.version).toEqual("1");
+        expect(dequeued[0].message.masterQueues).toEqual(["main", envMasterQueue]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -214,11 +219,15 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
-        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", envMasterQueue);
-        expect(dequeued2).toBe(undefined);
+        const dequeued2 = await queue.dequeueMessageFromMasterQueue(
+          "test_12345",
+          envMasterQueue,
+          10
+        );
+        expect(dequeued2.length).toBe(0);
 
-        const dequeued3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-        expect(dequeued3).toBe(undefined);
+        const dequeued3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued3.length).toBe(0);
       } finally {
         await queue.quit();
       }
@@ -283,11 +292,12 @@ describe("RunQueue", () => {
         expect(taskConcurrency).toBe(0);
 
         //dequeue
-        const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-        expect(dequeued?.messageId).toEqual(messageProd.runId);
-        expect(dequeued?.message.orgId).toEqual(messageProd.orgId);
-        expect(dequeued?.message.version).toEqual("1");
-        expect(dequeued?.message.masterQueues).toEqual(["main", envMasterQueue]);
+        const dequeued = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued.length).toBe(1);
+        expect(dequeued[0].messageId).toEqual(messageProd.runId);
+        expect(dequeued[0].message.orgId).toEqual(messageProd.orgId);
+        expect(dequeued[0].message.version).toEqual("1");
+        expect(dequeued[0].message.masterQueues).toEqual(["main", envMasterQueue]);
 
         //concurrencies
         const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -309,8 +319,8 @@ describe("RunQueue", () => {
         const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(length2).toBe(0);
 
-        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-        expect(dequeued2).toBe(undefined);
+        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued2.length).toBe(0);
       } finally {
         await queue.quit();
       }
@@ -324,10 +334,10 @@ describe("RunQueue", () => {
     });
 
     try {
-      const result = await queue.getSharedQueueDetails("main");
+      const result = await queue.getSharedQueueDetails("main", 10);
       expect(result.selectionId).toBe("getSharedQueueDetails");
       expect(result.queueCount).toBe(0);
-      expect(result.queueChoice.choice).toStrictEqual({ abort: true });
+      expect(result.queueChoice.choices).toStrictEqual({ abort: true });
 
       await queue.enqueueMessage({
         env: authenticatedEnvProd,
@@ -335,11 +345,14 @@ describe("RunQueue", () => {
         masterQueues: "main",
       });
 
-      const result2 = await queue.getSharedQueueDetails("main");
+      const result2 = await queue.getSharedQueueDetails("main", 10);
       expect(result2.selectionId).toBe("getSharedQueueDetails");
       expect(result2.queueCount).toBe(1);
       expect(result2.queues[0].score).toBe(messageProd.timestamp);
-      expect(result2.queueChoice.choice).toBe(
+      if (!Array.isArray(result2.queueChoice.choices)) {
+        throw new Error("Expected queueChoice.choices to be an array");
+      }
+      expect(result2.queueChoice.choices[0]).toBe(
         "{org:o1234}:proj:p1234:env:e1234:queue:task/my-task"
       );
     } finally {
@@ -360,15 +373,15 @@ describe("RunQueue", () => {
         masterQueues: "main",
       });
 
-      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message).toBeDefined();
+      const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages.length).toBe(1);
 
       //check the message is gone
-      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const key = queue.keys.messageKey(messages[0].message.orgId, messages[0].messageId);
       const exists = await redis.exists(key);
       expect(exists).toBe(1);
 
-      await queue.acknowledgeMessage(message!.message.orgId, message!.messageId);
+      await queue.acknowledgeMessage(messages[0].message.orgId, messages[0].messageId);
 
       //concurrencies
       const queueConcurrency = await queue.currentConcurrencyOfQueue(
@@ -391,8 +404,8 @@ describe("RunQueue", () => {
       expect(exists2).toBe(0);
 
       //dequeue
-      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message2).toBeUndefined();
+      const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages2.length).toBe(0);
     } finally {
       await queue.quit();
     }
@@ -411,11 +424,11 @@ describe("RunQueue", () => {
         masterQueues: "main2",
       });
 
-      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main2");
-      expect(message).toBeDefined();
+      const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main2", 10);
+      expect(messages.length).toBe(1);
 
       //check the message is there
-      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const key = queue.keys.messageKey(messages[0].message.orgId, messages[0].messageId);
       const exists = await redis.exists(key);
       expect(exists).toBe(1);
 
@@ -435,7 +448,7 @@ describe("RunQueue", () => {
       );
       expect(taskConcurrency).toBe(1);
 
-      await queue.nackMessage(message!.message.orgId, message!.messageId);
+      await queue.nackMessage(messages[0].message.orgId, messages[0].messageId);
 
       //we need to wait because the default wait is 1 second
       await setTimeout(300);
@@ -461,8 +474,8 @@ describe("RunQueue", () => {
       expect(exists2).toBe(1);
 
       //dequeue
-      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main2");
-      expect(message2?.messageId).toBe(messageProd.runId);
+      const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main2", 10);
+      expect(messages2[0].messageId).toBe(messageProd.runId);
     } finally {
       await queue.quit();
     }
@@ -481,11 +494,11 @@ describe("RunQueue", () => {
         masterQueues: "main",
       });
 
-      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message).toBeDefined();
+      const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages.length).toBe(1);
 
       //check the message is gone
-      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const key = queue.keys.messageKey(messages[0].message.orgId, messages[0].messageId);
       const exists = await redis.exists(key);
       expect(exists).toBe(1);
 
@@ -502,7 +515,7 @@ describe("RunQueue", () => {
       //release the concurrency (not the queue)
       await queue.releaseConcurrency(
         authenticatedEnvProd.organization.id,
-        message!.messageId,
+        messages[0].messageId,
         false
       );
 
@@ -517,7 +530,7 @@ describe("RunQueue", () => {
       ).toBe(0);
 
       //reacquire the concurrency
-      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message!.messageId);
+      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, messages[0].messageId);
 
       //check concurrencies are back to what they were before
       expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
@@ -532,7 +545,7 @@ describe("RunQueue", () => {
       //release the concurrency (with the queue this time)
       await queue.releaseConcurrency(
         authenticatedEnvProd.organization.id,
-        message!.messageId,
+        messages[0].messageId,
         true
       );
 
@@ -547,7 +560,7 @@ describe("RunQueue", () => {
       ).toBe(0);
 
       //reacquire the concurrency
-      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, message!.messageId);
+      await queue.reacquireConcurrency(authenticatedEnvProd.organization.id, messages[0].messageId);
 
       //check concurrencies are back to what they were before
       expect(await queue.currentConcurrencyOfQueue(authenticatedEnvProd, messageProd.queue)).toBe(
@@ -579,20 +592,20 @@ describe("RunQueue", () => {
         masterQueues: "main",
       });
 
-      const message = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message).toBeDefined();
+      const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages.length).toBe(1);
 
       //check the message is there
-      const key = queue.keys.messageKey(message!.message.orgId, message!.messageId);
+      const key = queue.keys.messageKey(messages[0].message.orgId, messages[0].messageId);
       const exists = await redis.exists(key);
       expect(exists).toBe(1);
 
       //nack (we only have attempts set to 1)
-      await queue.nackMessage(message!.message.orgId, message!.messageId);
+      await queue.nackMessage(messages[0].message.orgId, messages[0].messageId);
 
       //dequeue
-      const message2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message2?.messageId).toBeUndefined();
+      const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages2.length).toBe(0);
 
       //concurrencies
       const queueConcurrency2 = await queue.currentConcurrencyOfQueue(
@@ -642,8 +655,8 @@ describe("RunQueue", () => {
       expect(dlqMembersAfter).not.toContain(messageProd.runId);
 
       //dequeue
-      const message3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main");
-      expect(message3?.messageId).toBe(messageProd.runId);
+      const messages3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages3[0].messageId).toBe(messageProd.runId);
     } finally {
       await queue.quit();
     }

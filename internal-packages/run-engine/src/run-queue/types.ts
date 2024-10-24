@@ -84,7 +84,7 @@ export interface RunQueueKeyProducer {
   };
 }
 
-export type PriorityStrategyChoice = string | { abort: true };
+export type PriorityStrategyChoice = string[] | { abort: true };
 
 export interface RunQueuePriorityStrategy {
   /**
@@ -96,12 +96,13 @@ export interface RunQueuePriorityStrategy {
    *
    * @returns The queue to process the message from, or an object with `abort: true` if no queue is available
    */
-  chooseQueue(
+  chooseQueues(
     queues: Array<QueueWithScores>,
     parentQueue: string,
     consumerId: string,
-    previousRange: QueueRange
-  ): { choice: PriorityStrategyChoice; nextRange: QueueRange };
+    previousRange: QueueRange,
+    maxCount: number
+  ): { choices: PriorityStrategyChoice; nextRange: QueueRange };
 
   /**
    * This function is called to get the next candidate selection for the queue

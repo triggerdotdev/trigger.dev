@@ -26,6 +26,7 @@ const SemanticAttributes = {
   QUEUE: "runqueue.queue",
   MASTER_QUEUES: "runqueue.masterQueues",
   RUN_ID: "runqueue.runId",
+  RESULT_COUNT: "runqueue.resultCount",
   CONCURRENCY_KEY: "runqueue.concurrencyKey",
   ORG_ID: "runqueue.orgId",
 };
@@ -43,6 +44,12 @@ export type RunQueueOptions = {
   verbose?: boolean;
   logger: Logger;
   retryOptions?: RetryOptions;
+};
+
+type DequeuedMessage = {
+  messageId: string;
+  messageScore: string;
+  message: OutputPayload;
 };
 
 /**
@@ -222,7 +229,7 @@ export class RunQueue {
     );
   }
 
-  public async getSharedQueueDetails(masterQueue: string) {
+  public async getSharedQueueDetails(masterQueue: string, maxCount: number) {
     const { range } = await this.queuePriorityStrategy.nextCandidateSelection(
       masterQueue,
       "getSharedQueueDetails"
@@ -234,11 +241,12 @@ export class RunQueue {
     );
 
     // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-    const choice = this.queuePriorityStrategy.chooseQueue(
+    const result = this.queuePriorityStrategy.chooseQueues(
       queuesWithScores,
       masterQueue,
       "getSharedQueueDetails",
-      range
+      range,
+      maxCount
     );
 
     return {
@@ -247,56 +255,60 @@ export class RunQueue {
       queuesWithScores,
       nextRange: range,
       queueCount: queues.length,
-      queueChoice: choice,
+      queueChoice: result,
     };
   }
 
   /**
    * Dequeue a message
    */
-  public async dequeueMessageFromMasterQueue(consumerId: string, masterQueue: string) {
+  public async dequeueMessageFromMasterQueue(
+    consumerId: string,
+    masterQueue: string,
+    maxCount: number
+  ): Promise<DequeuedMessage[]> {
     return this.#trace(
       "dequeueMessageInSharedQueue",
       async (span) => {
         // Read the parent queue for matching queues
-        const messageQueue = await this.#getRandomQueueFromParentQueue(
+        const selectedQueues = await this.#getRandomQueueFromParentQueue(
           masterQueue,
           this.options.queuePriorityStrategy,
           (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: true }),
-          consumerId
+          consumerId,
+          maxCount
         );
 
-        if (!messageQueue) {
-          return;
+        if (!selectedQueues || selectedQueues.length === 0) {
+          return [];
         }
 
-        // If the queue includes a concurrency key, we need to remove the ck:concurrencyKey from the queue name
-        const message = await this.#callDequeueMessage({
-          messageQueue,
-          concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
-          currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
-          envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
-          envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
-          projectCurrentConcurrencyKey:
-            this.keys.projectCurrentConcurrencyKeyFromQueue(messageQueue),
-          messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(messageQueue),
-          taskCurrentConcurrentKeyPrefix:
-            this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(messageQueue),
-        });
+        const messages: DequeuedMessage[] = [];
 
-        if (!message) {
-          return;
+        for (const queue of selectedQueues) {
+          const message = await this.#callDequeueMessage({
+            messageQueue: queue,
+            concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
+            currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
+            envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
+            envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
+            projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
+            messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
+            taskCurrentConcurrentKeyPrefix:
+              this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
+          });
+
+          if (message) {
+            messages.push(message);
+          }
         }
 
         span.setAttributes({
-          [SEMATTRS_MESSAGE_ID]: message.messageId,
-          [SemanticAttributes.QUEUE]: message.message.queue,
-          [SemanticAttributes.RUN_ID]: message.message.runId,
-          [SemanticAttributes.CONCURRENCY_KEY]: message.message.concurrencyKey,
+          [SemanticAttributes.RESULT_COUNT]: messages.length,
           [SemanticAttributes.MASTER_QUEUES]: masterQueue,
         });
 
-        return message;
+        return messages;
       },
       {
         kind: SpanKind.CONSUMER,
@@ -739,8 +751,9 @@ export class RunQueue {
     parentQueue: string,
     queuePriorityStrategy: RunQueuePriorityStrategy,
     calculateCapacities: (queue: string) => Promise<QueueCapacities>,
-    consumerId: string
-  ) {
+    consumerId: string,
+    maxCount: number
+  ): Promise<string[] | undefined> {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span) => {
@@ -758,11 +771,12 @@ export class RunQueue {
         span.setAttribute("queuesWithScoresCount", queuesWithScores.length);
 
         // We need to priority shuffle here to ensure all workers aren't just working on the highest priority queue
-        const { choice, nextRange } = this.queuePriorityStrategy.chooseQueue(
+        const { choices, nextRange } = queuePriorityStrategy.chooseQueues(
           queuesWithScores,
           parentQueue,
           consumerId,
-          range
+          range,
+          maxCount
         );
 
         span.setAttributes({
@@ -777,7 +791,7 @@ export class RunQueue {
         span.setAttribute("nextRange.count", nextRange.count);
 
         if (this.options.verbose || nextRange.offset > 0) {
-          if (typeof choice === "string") {
+          if (Array.isArray(choices)) {
             this.logger.debug(`[${this.name}] getRandomQueueFromParentQueue`, {
               queues,
               queuesWithScores,
@@ -785,7 +799,7 @@ export class RunQueue {
               nextRange,
               queueCount: queues.length,
               queuesWithScoresCount: queuesWithScores.length,
-              queueChoice: choice,
+              queueChoices: choices,
               consumerId,
             });
           } else {
@@ -802,14 +816,12 @@ export class RunQueue {
           }
         }
 
-        if (typeof choice !== "string") {
-          span.setAttribute("noQueueChoice", true);
-
-          return;
+        if (Array.isArray(choices)) {
+          span.setAttribute("queueChoices", choices);
+          return choices;
         } else {
-          span.setAttribute("queueChoice", choice);
-
-          return choice;
+          span.setAttribute("noQueueChoice", true);
+          return;
         }
       },
       {
@@ -938,7 +950,7 @@ export class RunQueue {
     projectCurrentConcurrencyKey: string;
     messageKeyPrefix: string;
     taskCurrentConcurrentKeyPrefix: string;
-  }) {
+  }): Promise<DequeuedMessage | undefined> {
     const result = await this.redis.dequeueMessage(
       //keys
       messageQueue,

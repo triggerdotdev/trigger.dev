@@ -25,12 +25,13 @@ export class SimpleWeightedChoiceStrategy implements RunQueuePriorityStrategy {
     );
   }
 
-  chooseQueue(
+  chooseQueues(
     queues: QueueWithScores[],
     parentQueue: string,
     consumerId: string,
-    previousRange: QueueRange
-  ): { choice: PriorityStrategyChoice; nextRange: QueueRange } {
+    previousRange: QueueRange,
+    maxCount: number
+  ): { choices: PriorityStrategyChoice; nextRange: QueueRange } {
     const filteredQueues = filterQueuesAtCapacity(queues);
 
     if (queues.length === this.options.queueSelectionCount) {
@@ -47,17 +48,26 @@ export class SimpleWeightedChoiceStrategy implements RunQueuePriorityStrategy {
 
     if (filteredQueues.length === 0) {
       return {
-        choice: { abort: true },
+        choices: { abort: true },
         nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
       };
     }
 
     const queueWeights = this.#calculateQueueWeights(filteredQueues);
 
-    const choice = weightedRandomChoice(queueWeights);
+    const choices = [];
+    for (let i = 0; i < maxCount; i++) {
+      const chosenIndex = weightedRandomIndex(queueWeights);
+
+      const choice = queueWeights.at(chosenIndex)?.queue;
+      if (choice) {
+        queueWeights.splice(chosenIndex, 1);
+        choices.push(choice);
+      }
+    }
 
     return {
-      choice,
+      choices,
       nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
     };
   }
@@ -102,18 +112,19 @@ function filterQueuesAtCapacity(queues: QueueWithScores[]) {
   );
 }
 
-function weightedRandomChoice(queues: Array<{ queue: string; totalWeight: number }>) {
+function weightedRandomIndex(queues: Array<{ queue: string; totalWeight: number }>): number {
   const totalWeight = queues.reduce((acc, queue) => acc + queue.totalWeight, 0);
   let randomNum = Math.random() * totalWeight;
 
-  for (const queue of queues) {
+  for (let i = 0; i < queues.length; i++) {
+    const queue = queues[i];
     if (randomNum < queue.totalWeight) {
-      return queue.queue;
+      return i;
     }
 
     randomNum -= queue.totalWeight;
   }
 
   // If we get here, we should just return a random queue
-  return queues[Math.floor(Math.random() * queues.length)].queue;
+  return Math.floor(Math.random() * queues.length);
 }
