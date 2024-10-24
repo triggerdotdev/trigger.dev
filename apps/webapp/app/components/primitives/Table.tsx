@@ -17,7 +17,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+          "overflow-x-auto whitespace-nowrap border-y border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
           containerClassName,
           fullWidth && "w-full"
         )}
@@ -41,7 +41,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 divide-y divide-grid-dimmed rounded-t-md bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-dimmed",
+          "sticky top-0 z-10 divide-y divide-grid-dimmed bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-dimmed",
           className
         )}
       >
@@ -114,7 +114,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-3 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
+          "px-3 py-2 align-middle text-sm font-medium text-text-bright",
           alignmentClassName,
           className
         )}
