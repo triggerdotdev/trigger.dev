@@ -857,7 +857,7 @@ function RunTimeline({ run }: { run: SpanRun }) {
               <RunTimelineEvent
                 title="Finished"
                 subtitle={<DateTimeAccurate date={run.updatedAt} />}
-                state="complete"
+                state={run.isError ? "error" : "complete"}
               />
             </>
           ) : (

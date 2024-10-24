@@ -585,6 +585,9 @@ importers:
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
+      semver:
+        specifier: ^7.5.0
+        version: 7.6.3
       simple-oauth2:
         specifier: ^5.0.0
         version: 5.0.0
@@ -727,6 +730,9 @@ importers:
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
+      '@types/semver':
+        specifier: ^7.5.0
+        version: 7.5.1
       '@types/simple-oauth2':
         specifier: ^5.0.4
         version: 5.0.4

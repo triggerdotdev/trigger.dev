@@ -229,7 +229,7 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
       }
     }
 
-    const jsonBody = await response.json();
+    const jsonBody = await safeJsonFromResponse(response);
     const parsedResult = schema.safeParse(jsonBody);
 
     if (parsedResult.success) {
@@ -266,6 +266,14 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
     }
 
     throw new ApiConnectionError({ cause: castToError(error) });
+  }
+}
+
+async function safeJsonFromResponse(response: Response): Promise<any> {
+  try {
+    return await response.clone().json();
+  } catch (error) {
+    return;
   }
 }
 
