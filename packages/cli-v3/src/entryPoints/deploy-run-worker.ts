@@ -33,6 +33,7 @@ import {
   TracingSDK,
   usage,
   UsageTimeoutManager,
+  StandardMetadataManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -99,6 +100,8 @@ timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
 taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
+const runMetadataManager = new StandardMetadataManager();
+runMetadata.setGlobalManager(runMetadataManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 
@@ -305,7 +308,7 @@ const zodIpc = new ZodIpcConnection({
           _execution = execution;
           _isRunning = true;
 
-          runMetadata.startPeriodicFlush(
+          runMetadataManager.startPeriodicFlush(
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)
           );
 
@@ -437,7 +440,7 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
 async function flushMetadata(timeoutInMs: number = 10_000) {
   const now = performance.now();
 
-  await Promise.race([runMetadata.flush(), setTimeout(timeoutInMs)]);
+  await Promise.race([runMetadataManager.flush(), setTimeout(timeoutInMs)]);
 
   const duration = performance.now() - now;
 

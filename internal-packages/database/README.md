@@ -5,7 +5,7 @@ This is the internal database package for the Trigger.dev project. It exports a 
 ### How to add a new index on a large table
 
 1. Modify the Prisma.schema with a single index change (no other changes, just one index at a time)
-2. Create a Prisma migration using `cd packages/database && pnpm run db:migrate:dev --create-only`
+2. Create a Prisma migration using `cd internal-packages/database && pnpm run db:migrate:dev --create-only`
 3. Modify the SQL file: add IF NOT EXISTS to it and CONCURRENTLY:
 
 ```sql

@@ -4,6 +4,14 @@ import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddle
 import { Duration } from "./rateLimiter.server";
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
+  redis: {
+    port: env.REDIS_PORT,
+    host: env.REDIS_HOST,
+    username: env.REDIS_USERNAME,
+    password: env.REDIS_PASSWORD,
+    enableAutoPipelining: true,
+    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+  },
   keyPrefix: "api",
   defaultLimiter: {
     type: "tokenBucket",
