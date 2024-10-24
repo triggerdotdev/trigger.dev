@@ -179,7 +179,6 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
-        // TODO: check we really want to retry here, these could be oom errors
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
           return true;
 
