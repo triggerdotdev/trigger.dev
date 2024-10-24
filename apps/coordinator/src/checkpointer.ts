@@ -436,7 +436,10 @@ export class Checkpointer {
         this.#logger.error("Error during cleanup", { ...metadata, error });
       }
 
-      this.#abortControllers.delete(runId);
+      // Ensure only the current controller is removed
+      if (this.#abortControllers.get(runId) === controller) {
+        this.#abortControllers.delete(runId);
+      }
       controller.signal.removeEventListener("abort", onAbort);
     };
 

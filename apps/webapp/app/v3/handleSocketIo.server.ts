@@ -195,7 +195,10 @@ function createCoordinatorNamespace(io: Server) {
           const service = new CreateTaskRunAttemptService();
           const { attempt } = await service.call(message.runId, environment, false);
 
-          const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt(attempt.id, true);
+          const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
+            id: attempt.id,
+            setToExecuting: true,
+          });
 
           if (!payload) {
             logger.error("Failed to retrieve payload after attempt creation", message);

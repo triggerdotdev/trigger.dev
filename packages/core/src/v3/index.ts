@@ -18,6 +18,7 @@ export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 export * from "./task-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
+export * from "./jwt.js";
 export {
   formatDuration,
   formatDurationInDays,
@@ -26,8 +27,6 @@ export {
   millisecondsToNanoseconds,
   nanosecondsToMilliseconds,
 } from "./utils/durations.js";
-
-export { TriggerTracer } from "./tracer.js";
 
 export type { LogLevel } from "./logger/taskLogger.js";
 
@@ -60,6 +59,7 @@ export {
 } from "./utils/ioSerialization.js";
 
 export * from "./config.js";
+export { getSchemaParseFn, type AnySchemaParseFn, type SchemaParseFn } from "./types/schemas.js";
 
 import { VERSION } from "../version.js";
 

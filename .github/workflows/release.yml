@@ -17,7 +17,7 @@ concurrency:
 jobs:
   release:
     name: 🦋 Changesets Release
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     if: github.repository == 'triggerdotdev/trigger.dev'
     outputs:
       published: ${{ steps.changesets.outputs.published }}

@@ -1,52 +1,56 @@
+import { json } from "@remix-run/server-runtime";
 import { Prettify } from "@trigger.dev/core";
+import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
+import { prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { findProjectByRef } from "~/models/project.server";
 import {
   RuntimeEnvironment,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
 } from "~/models/runtimeEnvironment.server";
+import { logger } from "./logger.server";
 import {
   PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
-import { prisma } from "~/db.server";
-import { json } from "@remix-run/server-runtime";
-import { findProjectByRef } from "~/models/project.server";
-import { SignJWT, jwtVerify, errors } from "jose";
-import { env } from "~/env.server";
-import { logger } from "./logger.server";
+import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+
+const ClaimsSchema = z.object({
+  scopes: z.array(z.string()).optional(),
+});
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
-
-const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
 export type AuthenticatedEnvironment = Optional<
   NonNullable<Awaited<ReturnType<typeof findEnvironmentByApiKey>>>,
   "orgMember"
 >;
 
-type ApiAuthenticationResult = {
+export type ApiAuthenticationResult = {
   apiKey: string;
-  type: "PUBLIC" | "PRIVATE";
+  type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
+  scopes?: string[];
 };
 
 export async function authenticateApiRequest(
   request: Request,
-  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
   const apiKey = getApiKeyFromRequest(request);
   if (!apiKey) {
     return;
   }
 
-  return authenticateApiKey(apiKey, { allowPublicKey });
+  return authenticateApiKey(apiKey, options);
 }
 
 export async function authenticateApiKey(
   apiKey: string,
-  { allowPublicKey = false }: { allowPublicKey?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -54,14 +58,12 @@ export async function authenticateApiKey(
     return;
   }
 
-  //if it's a public API key and we don't allow public keys, return
-  if (!allowPublicKey) {
-    const environment = await findEnvironmentByApiKey(result.apiKey);
-    if (!environment) return;
-    return {
-      ...result,
-      environment,
-    };
+  if (!options.allowPublicKey && result.type === "PUBLIC") {
+    return;
+  }
+
+  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+    return;
   }
 
   switch (result.type) {
@@ -81,27 +83,72 @@ export async function authenticateApiKey(
         environment,
       };
     }
+    case "PUBLIC_JWT": {
+      const validationResults = await validatePublicJwtKey(result.apiKey);
+
+      if (!validationResults) {
+        return;
+      }
+
+      const parsedClaims = ClaimsSchema.safeParse(validationResults.claims);
+
+      return {
+        ...result,
+        environment: validationResults.environment,
+        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
+      };
+    }
   }
+}
+
+export async function authenticateAuthorizationHeader(
+  authorization: string,
+  {
+    allowPublicKey = false,
+    allowJWT = false,
+  }: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+): Promise<ApiAuthenticationResult | undefined> {
+  const apiKey = getApiKeyFromHeader(authorization);
+
+  if (!apiKey) {
+    return;
+  }
+
+  return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
 }
 
 export function isPublicApiKey(key: string) {
   return key.startsWith("pk_");
 }
 
-export function getApiKeyFromRequest(request: Request) {
-  const rawAuthorization = request.headers.get("Authorization");
+export function isSecretApiKey(key: string) {
+  return key.startsWith("tr_");
+}
 
-  const authorization = AuthorizationHeaderSchema.safeParse(rawAuthorization);
-  if (!authorization.success) {
+export function getApiKeyFromRequest(request: Request) {
+  return getApiKeyFromHeader(request.headers.get("Authorization"));
+}
+
+export function getApiKeyFromHeader(authorization?: string | null) {
+  if (typeof authorization !== "string" || !authorization) {
     return;
   }
 
-  const apiKey = authorization.data.replace(/^Bearer /, "");
+  const apiKey = authorization.replace(/^Bearer /, "");
   return apiKey;
 }
 
-export function getApiKeyResult(apiKey: string) {
-  const type = isPublicApiKey(apiKey) ? ("PUBLIC" as const) : ("PRIVATE" as const);
+export function getApiKeyResult(apiKey: string): {
+  apiKey: string;
+  type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
+} {
+  const type = isPublicApiKey(apiKey)
+    ? "PUBLIC"
+    : isSecretApiKey(apiKey)
+    ? "PRIVATE"
+    : isPublicJWT(apiKey)
+    ? "PUBLIC_JWT"
+    : "PRIVATE"; // Fallback to private key
   return { apiKey, type };
 }
 
