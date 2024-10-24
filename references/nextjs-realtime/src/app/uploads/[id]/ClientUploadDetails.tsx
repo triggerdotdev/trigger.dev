@@ -23,8 +23,8 @@ function UploadDetailsWrapper({ fileId }: { fileId: string }) {
 
   if (!run) {
     return (
-      <div className="w-full min-h-screen bg-gray-900 py-4 px-6 grid place-items-center">
-        <Card className="w-fit bg-gray-800 shadow-md">
+      <div className="w-full min-h-screen bg-gray-900 py-4 px-8 grid place-items-center">
+        <Card className="w-fit bg-gray-800 border border-gray-700 shadow-md">
           <CardContent className="pt-6">
             <p className="text-gray-200">Loading run details…</p>
           </CardContent>
