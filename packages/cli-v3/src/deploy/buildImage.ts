@@ -464,7 +464,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
   );
 
   return `# syntax=docker/dockerfile:1
-FROM imbios/bun-node:22-debian AS base
+FROM imbios/bun-node:1.1.24-22-slim@sha256:9cfb7cd87529261c482fe17d8894c0986263f3a5ccf84ad65c00ec0e1ed539c6 AS base
 
 ${baseInstructions}
 

@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.0.13
+
+### Patch Changes
+
+- README updates ([#1408](https://github.com/triggerdotdev/trigger.dev/pull/1408))
+- Fix an IPC bug when using bun by pinning to an older version. ([#1409](https://github.com/triggerdotdev/trigger.dev/pull/1409))
+- Updated dependencies:
+  - `@trigger.dev/core@3.0.13`
+  - `@trigger.dev/build@3.0.13`
+
 ## 3.0.12
 
 ### Patch Changes

@@ -23,7 +23,7 @@
     "clean:sourcemaps": "run-s clean:sourcemaps:*",
     "clean:sourcemaps:public": "rimraf ./build/**/*.map",
     "clean:sourcemaps:build": "rimraf ./public/build/**/*.map",
-    "test": "vitest"
+    "test": "vitest --no-file-parallelism"
   },
   "eslintIgnore": [
     "/node_modules",
@@ -97,11 +97,13 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
-    "@trigger.dev/platform": "1.0.12",
+    "@trigger.dev/platform": "1.0.13",
     "@trigger.dev/sdk": "workspace:*",
     "@trigger.dev/yalt": "npm:@trigger.dev/yalt",
     "@types/pg": "8.6.6",
     "@uiw/react-codemirror": "^4.19.5",
+    "@unkey/cache": "^1.5.0",
+    "@unkey/error": "^0.2.0",
     "@upstash/ratelimit": "^1.1.3",
     "@whatwg-node/fetch": "^0.9.14",
     "assert-never": "^1.2.1",
@@ -183,6 +185,7 @@
     "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
     "@remix-run/dev": "2.1.0",
     "@remix-run/eslint-config": "2.1.0",
     "@remix-run/testing": "^2.1.0",
@@ -212,6 +215,7 @@
     "@types/seedrandom": "^3.0.8",
     "@types/simple-oauth2": "^5.0.4",
     "@types/slug": "^5.0.3",
+    "@types/supertest": "^6.0.2",
     "@types/tar": "^6.1.4",
     "@types/ws": "^8.5.3",
     "@typescript-eslint/eslint-plugin": "^5.59.6",
@@ -236,11 +240,13 @@
     "prop-types": "^15.8.1",
     "rimraf": "^3.0.2",
     "style-loader": "^3.3.4",
+    "supertest": "^7.0.0",
     "tailwind-scrollbar": "^3.0.1",
     "tailwindcss": "3.4.1",
     "ts-node": "^10.7.0",
     "tsconfig-paths": "^3.14.1",
     "typescript": "^5.1.6",
+    "vite-tsconfig-paths": "^4.0.5",
     "vitest": "^1.4.0"
   },
   "engines": {

@@ -1,12 +1,14 @@
 import { DeserializedJson } from "../../schemas/json.js";
-import { apiClientManager } from "../apiClientManager-api.js";
-import { taskContext } from "../task-context-api.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
+import { NoopRunMetadataManager } from "./noopManager.js";
+import { RunMetadataManager } from "./types.js";
 
 const API_NAME = "run-metadata";
 
-export class RunMetadataAPI {
+const NOOP_MANAGER = new NoopRunMetadataManager();
+
+export class RunMetadataAPI implements RunMetadataManager {
   private static _instance?: RunMetadataAPI;
 
   private constructor() {}
@@ -19,88 +21,39 @@ export class RunMetadataAPI {
     return this._instance;
   }
 
-  get store(): Record<string, DeserializedJson> | undefined {
-    return getGlobal(API_NAME);
+  setGlobalManager(manager: RunMetadataManager): boolean {
+    return registerGlobal(API_NAME, manager);
   }
 
-  set store(value: Record<string, DeserializedJson> | undefined) {
-    registerGlobal(API_NAME, value, true);
+  #getManager(): RunMetadataManager {
+    return getGlobal(API_NAME) ?? NOOP_MANAGER;
   }
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
-    registerGlobal(API_NAME, metadata);
+    this.#getManager().enterWithMetadata(metadata);
   }
 
   public current(): Record<string, DeserializedJson> | undefined {
-    return this.store;
+    return this.#getManager().current();
   }
 
   public getKey(key: string): DeserializedJson | undefined {
-    return this.store?.[key];
+    return this.#getManager().getKey(key);
   }
 
-  public async setKey(
-    key: string,
-    value: DeserializedJson,
-    requestOptions?: ApiRequestOptions
-  ): Promise<void> {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const nextStore = {
-      ...(this.store ?? {}),
-      [key]: value,
-    };
-
-    const response = await apiClient.updateRunMetadata(
-      runId,
-      { metadata: nextStore },
-      requestOptions
-    );
-
-    this.store = response.metadata;
+  public setKey(key: string, value: DeserializedJson) {
+    return this.#getManager().setKey(key, value);
   }
 
-  public async deleteKey(key: string, requestOptions?: ApiRequestOptions): Promise<void> {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
-      return;
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const nextStore = { ...(this.store ?? {}) };
-    delete nextStore[key];
-
-    const response = await apiClient.updateRunMetadata(
-      runId,
-      { metadata: nextStore },
-      requestOptions
-    );
-
-    this.store = response.metadata;
+  public deleteKey(key: string) {
+    return this.#getManager().deleteKey(key);
   }
 
-  public async update(
-    metadata: Record<string, DeserializedJson>,
-    requestOptions?: ApiRequestOptions
-  ): Promise<void> {
-    const runId = taskContext.ctx?.run.id;
+  public update(metadata: Record<string, DeserializedJson>): void {
+    return this.#getManager().update(metadata);
+  }
 
-    if (!runId) {
-      return;
-    }
-
-    const apiClient = apiClientManager.clientOrThrow();
-
-    const response = await apiClient.updateRunMetadata(runId, { metadata }, requestOptions);
-
-    this.store = response.metadata;
+  flush(requestOptions?: ApiRequestOptions): Promise<void> {
+    return this.#getManager().flush(requestOptions);
   }
 }

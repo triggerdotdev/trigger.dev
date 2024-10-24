@@ -109,37 +109,50 @@ export function unflattenAttributes(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    const parts = key.split(".").reduce((acc, part) => {
-      if (part.includes("[")) {
-        // Handling nested array indices
-        const subparts = part.split(/\[|\]/).filter((p) => p !== "");
-        acc.push(...subparts);
-      } else {
-        acc.push(part);
-      }
-      return acc;
-    }, [] as string[]);
+    const parts = key.split(".").reduce(
+      (acc, part) => {
+        if (part.startsWith("[") && part.endsWith("]")) {
+          // Handle array indices more precisely
+          const match = part.match(/^\[(\d+)\]$/);
+          if (match && match[1]) {
+            acc.push(parseInt(match[1]));
+          } else {
+            // Remove brackets for non-numeric array keys
+            acc.push(part.slice(1, -1));
+          }
+        } else {
+          acc.push(part);
+        }
+        return acc;
+      },
+      [] as (string | number)[]
+    );
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+      const nextPart = parts[i + 1];
 
-      if (!part) {
+      if (!part && part !== 0) {
         continue;
       }
 
-      const nextPart = parts[i + 1];
-      const isArray = nextPart && /^\d+$/.test(nextPart);
-      if (isArray && !Array.isArray(current[part])) {
-        current[part] = [];
-      } else if (!isArray && current[part] === undefined) {
+      if (typeof nextPart === "number") {
+        // Ensure we create an array for numeric indices
+        current[part] = Array.isArray(current[part]) ? current[part] : [];
+      } else if (current[part] === undefined) {
+        // Create an object for non-numeric paths
         current[part] = {};
       }
+
       current = current[part];
     }
+
     const lastPart = parts[parts.length - 1];
-    if (lastPart) {
+
+    if (lastPart !== undefined) {
       current[lastPart] = rehydrateNull(rehydrateCircular(value));
+
     }
   }
 

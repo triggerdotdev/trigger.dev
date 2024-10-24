@@ -102,7 +102,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
 ### tasks.batchTrigger()
 
-Triggers multiples runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
+Triggers multiple runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
 
 <Note>
   By using `tasks.batchTrigger()`, you can pass in the task type as a generic argument, giving you
@@ -255,7 +255,7 @@ export const myTask = task({
 
 ### yourTask.batchTrigger()
 
-Triggers multiples runs of a task with the payloads you pass in, and any options you specify. It does NOT wait for the result.
+Triggers multiple runs of a task with the payloads you pass in, and any options you specify. It does NOT wait for the result.
 
 ```ts /trigger/my-task.ts
 import { myOtherTask } from "~/trigger/my-other-task";

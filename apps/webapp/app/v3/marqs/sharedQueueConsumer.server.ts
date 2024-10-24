@@ -21,7 +21,7 @@ import {
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
@@ -43,7 +43,12 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import {
+  FINAL_ATTEMPT_STATUSES,
+  FINAL_RUN_STATUSES,
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+} from "../taskStatus";
 import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
@@ -620,6 +625,9 @@ export class SharedQueueConsumer {
         const resumableRun = await prisma.taskRun.findUnique({
           where: {
             id: message.messageId,
+            status: {
+              notIn: FINAL_RUN_STATUSES,
+            },
           },
         });
 
@@ -631,6 +639,14 @@ export class SharedQueueConsumer {
 
           await this.#ackAndDoMoreWork(message.messageId);
           return;
+        }
+
+        if (resumableRun.status !== "EXECUTING") {
+          logger.warn("Run is not executing, will try to resume anyway", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            runStatus: resumableRun.status,
+          });
         }
 
         const resumableAttempt = await prisma.taskRunAttempt.findUnique({
@@ -718,9 +734,9 @@ export class SharedQueueConsumer {
 
           completions.push(completion);
 
-          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt(
-            completedAttempt.id
-          );
+          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt({
+            id: completedAttempt.id,
+          });
 
           if (!executionPayload) {
             await this.#ackAndDoMoreWork(message.messageId);
@@ -740,7 +756,11 @@ export class SharedQueueConsumer {
             executions,
           };
 
-          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", { resumeMessage, message });
+          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", {
+            resumeMessage,
+            message,
+            resumableRun,
+          });
 
           // The attempt should still be running so we can broadcast to all coordinators to resume immediately
           const responses = await socketIo.coordinatorNamespace
@@ -763,15 +783,91 @@ export class SharedQueueConsumer {
           }
 
           const hasSuccess = responses.some((response) => response.success);
-          if (!hasSuccess) {
-            logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
-              resumeMessage,
-              responses,
-              message,
-            });
-            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+
+          if (hasSuccess) {
+            this.#doMoreWork();
             return;
           }
+
+          // No coordinator was able to resume the run
+          logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+            resumeMessage,
+            responses,
+            message,
+          });
+
+          // Let's check if the run is frozen
+          if (resumableRun.status === "WAITING_TO_RESUME") {
+            logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK run is waiting to be restored", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+            });
+
+            try {
+              const restoreService = new RestoreCheckpointService();
+
+              const checkpointEvent = await restoreService.getLastCheckpointEventIfUnrestored(
+                resumableRun.id
+              );
+
+              if (checkpointEvent) {
+                // The last checkpoint hasn't been restored yet, so restore it
+                const checkpoint = await restoreService.call({
+                  eventId: checkpointEvent.id,
+                });
+
+                if (!checkpoint) {
+                  logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK failed to restore checkpoint", {
+                    queueMessage: message.data,
+                    messageId: message.messageId,
+                  });
+
+                  await this.#ackAndDoMoreWork(message.messageId);
+                  return;
+                }
+
+                logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK restored checkpoint", {
+                  queueMessage: message.data,
+                  messageId: message.messageId,
+                  checkpoint,
+                });
+
+                this.#doMoreWork();
+                return;
+              } else {
+                logger.debug(
+                  "RESUME_AFTER_DEPENDENCY_WITH_ACK run is frozen without last checkpoint event",
+                  {
+                    queueMessage: message.data,
+                    messageId: message.messageId,
+                  }
+                );
+              }
+            } catch (e) {
+              if (e instanceof Error) {
+                this._currentSpan?.recordException(e);
+              } else {
+                this._currentSpan?.recordException(new Error(String(e)));
+              }
+
+              this._endSpanInNextIteration = true;
+
+              await this.#nackAndDoMoreWork(
+                message.messageId,
+                this._options.nextTickInterval,
+                5_000
+              );
+              return;
+            }
+          }
+
+          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK retrying", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+          });
+
+          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
+          return;
         } catch (e) {
           if (e instanceof Error) {
             this._currentSpan?.recordException(e);
@@ -896,7 +992,7 @@ class SharedQueueTasks {
       where: {
         id,
         status: {
-          in: ["COMPLETED", "FAILED"],
+          in: FINAL_ATTEMPT_STATUSES,
         },
       },
       include: {
@@ -942,11 +1038,17 @@ class SharedQueueTasks {
     }
   }
 
-  async getExecutionPayloadFromAttempt(
-    id: string,
-    setToExecuting?: boolean,
-    isRetrying?: boolean
-  ): Promise<ProdTaskRunExecutionPayload | undefined> {
+  async getExecutionPayloadFromAttempt({
+    id,
+    setToExecuting,
+    isRetrying,
+    skipStatusChecks,
+  }: {
+    id: string;
+    setToExecuting?: boolean;
+    isRetrying?: boolean;
+    skipStatusChecks?: boolean;
+  }): Promise<ProdTaskRunExecutionPayload | undefined> {
     const attempt = await prisma.taskRunAttempt.findUnique({
       where: {
         id,
@@ -979,27 +1081,29 @@ class SharedQueueTasks {
       return;
     }
 
-    switch (attempt.status) {
-      case "CANCELED":
-      case "EXECUTING": {
-        logger.error("Invalid attempt status for execution payload retrieval", {
-          attemptId: id,
-          status: attempt.status,
-        });
-        return;
+    if (!skipStatusChecks) {
+      switch (attempt.status) {
+        case "CANCELED":
+        case "EXECUTING": {
+          logger.error("Invalid attempt status for execution payload retrieval", {
+            attemptId: id,
+            status: attempt.status,
+          });
+          return;
+        }
       }
-    }
 
-    switch (attempt.taskRun.status) {
-      case "CANCELED":
-      case "EXECUTING":
-      case "INTERRUPTED": {
-        logger.error("Invalid run status for execution payload retrieval", {
-          attemptId: id,
-          runId: attempt.taskRunId,
-          status: attempt.taskRun.status,
-        });
-        return;
+      switch (attempt.taskRun.status) {
+        case "CANCELED":
+        case "EXECUTING":
+        case "INTERRUPTED": {
+          logger.error("Invalid run status for execution payload retrieval", {
+            attemptId: id,
+            runId: attempt.taskRunId,
+            status: attempt.taskRun.status,
+          });
+          return;
+        }
       }
     }
 
@@ -1150,7 +1254,11 @@ class SharedQueueTasks {
       return;
     }
 
-    return this.getExecutionPayloadFromAttempt(latestAttempt.id, setToExecuting, isRetrying);
+    return this.getExecutionPayloadFromAttempt({
+      id: latestAttempt.id,
+      setToExecuting,
+      isRetrying,
+    });
   }
 
   async getLazyAttemptPayload(
@@ -1225,13 +1333,13 @@ class SharedQueueTasks {
       return;
     }
 
-    await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
+    await this.#heartbeat(taskRunAttempt.taskRunId);
   }
 
   async taskRunHeartbeat(runId: string) {
     logger.debug("[SharedQueueConsumer] taskRunHeartbeat()", { runId });
 
-    await marqs?.heartbeatMessage(runId);
+    await this.#heartbeat(runId);
   }
 
   public async taskRunFailed(completion: TaskRunFailedExecutionResult) {
@@ -1240,6 +1348,66 @@ class SharedQueueTasks {
     const service = new FailedTaskRunService();
 
     await service.call(completion.id, completion);
+  }
+
+  async #heartbeat(runId: string) {
+    await marqs?.heartbeatMessage(runId);
+
+    try {
+      // There can be a lot of calls per minute and the data doesn't have to be accurate, so use the read replica
+      const taskRun = await $replica.taskRun.findFirst({
+        where: {
+          id: runId,
+        },
+        select: {
+          id: true,
+          status: true,
+          runtimeEnvironment: {
+            select: {
+              type: true,
+            },
+          },
+          lockedToVersion: {
+            select: {
+              supportsLazyAttempts: true,
+            },
+          },
+        },
+      });
+
+      if (!taskRun) {
+        logger.error("SharedQueueTasks.#heartbeat: Task run not found", {
+          runId,
+        });
+
+        return;
+      }
+
+      if (taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+        return;
+      }
+
+      if (isFinalRunStatus(taskRun.status)) {
+        logger.debug("SharedQueueTasks.#heartbeat: Task run is in final status", {
+          runId,
+          status: taskRun.status,
+        });
+
+        // Signal to exit any leftover containers
+        socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+          version: "v1",
+          runId: taskRun.id,
+          // Give the run a few seconds to exit to complete any flushing etc
+          delayInMs: taskRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error("SharedQueueTasks.#heartbeat: Error signaling run cancellation", {
+        runId,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
   }
 
   async #buildEnvironmentVariables(
