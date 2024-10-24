@@ -885,34 +885,6 @@ importers:
         specifier: ^4.9.4
         version: 4.9.5
 
-  internal-packages/message-queue:
-    dependencies:
-      '@opentelemetry/api':
-        specifier: ^1.9.0
-        version: 1.9.0
-      '@trigger.dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
-      nanoid:
-        specifier: ^5.0.7
-        version: 5.0.7
-      typescript:
-        specifier: ^5.5.4
-        version: 5.5.4
-      zod:
-        specifier: 3.22.3
-        version: 3.22.3
-    devDependencies:
-      '@internal/testcontainers':
-        specifier: workspace:*
-        version: link:../testcontainers
-      vitest:
-        specifier: ^1.4.0
-        version: 1.6.0(@types/node@20.14.14)
-
   internal-packages/otlp-importer:
     dependencies:
       long:
