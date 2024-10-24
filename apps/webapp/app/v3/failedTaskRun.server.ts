@@ -281,5 +281,5 @@ export class FailedTaskRunRetryHelper extends BaseService {
   }
 
   // TODO: update this to the correct version
-  static DEFAULT_RETRY_CONFIG_SINCE_VERSION = "3.0.12";
+  static DEFAULT_RETRY_CONFIG_SINCE_VERSION = "3.0.14";
 }
