@@ -44,6 +44,7 @@ import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 import { TimezoneList } from "~/components/scheduled/timezones";
+import { logger } from "~/services/logger.server";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -94,9 +95,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
   } catch (error: any) {
-    const errorMessage = `Failed: ${
-      error instanceof Error ? error.message : JSON.stringify(error)
-    }`;
+    logger.error("Failed to create schedule", error);
+
+    const errorMessage = `Something went wrong. Please try again.`;
     return redirectWithErrorMessage(
       v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }),
       request,
