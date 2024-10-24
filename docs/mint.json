@@ -316,7 +316,8 @@
         "guides/examples/supabase-storage-upload",
         "guides/examples/react-pdf",
         "guides/examples/resend-email-sequence",
-        "guides/examples/vercel-ai-sdk"
+        "guides/examples/vercel-ai-sdk",
+        "guides/examples/vercel-sync-env-vars"
       ]
     },
     {
