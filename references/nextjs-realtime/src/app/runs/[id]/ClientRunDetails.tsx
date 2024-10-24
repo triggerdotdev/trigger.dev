@@ -10,8 +10,8 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
 
   if (error) {
     return (
-      <div className="w-full min-h-screen bg-gray-100 p-4">
-        <Card className="w-full bg-white shadow-md">
+      <div className="w-full min-h-screen bg-gray-900 p-4">
+        <Card className="w-full bg-gray-800 shadow-md">
           <CardContent className="pt-6">
             <p className="text-red-600">Error: {error.message}</p>
           </CardContent>
@@ -22,10 +22,10 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
 
   if (!run) {
     return (
-      <div className="w-full min-h-screen bg-gray-100 p-4">
-        <Card className="w-full bg-white shadow-md">
+      <div className="w-full min-h-screen bg-gray-900 py-4 px-6 grid place-items-center">
+        <Card className="w-fit bg-gray-800 shadow-md">
           <CardContent className="pt-6">
-            <p>Loading run details...</p>
+            <p className="text-gray-200">Loading run details…</p>
           </CardContent>
         </Card>
       </div>
@@ -33,7 +33,7 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
   }
 
   return (
-    <div className="w-full min-h-screen bg-gray-100 p-4 space-y-6">
+    <div className="w-full min-h-screen bg-gray-900 text-gray-200 p-4 space-y-6">
       <RunDetails record={run} />
     </div>
   );

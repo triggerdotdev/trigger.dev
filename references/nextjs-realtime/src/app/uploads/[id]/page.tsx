@@ -15,7 +15,7 @@ export default async function UploadPage({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4 bg-gray-100">
+    <main className="flex min-h-screen items-center justify-center p-4 bg-gray-900">
       <ClientUploadDetails fileId={params.id} publicAccessToken={publicAccessToken} />
     </main>
   );
