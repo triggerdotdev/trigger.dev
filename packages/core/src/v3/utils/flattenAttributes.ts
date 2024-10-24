@@ -41,7 +41,7 @@ export function flattenAttributes(
   }
 
   // Check for circular reference
-  if (typeof obj === "object" && seen.has(obj)) {
+  if (obj !== null && typeof obj === "object" && seen.has(obj)) {
     result[prefix || ""] = CIRCULAR_REFERENCE_SENTINEL;
     return result;
   }
