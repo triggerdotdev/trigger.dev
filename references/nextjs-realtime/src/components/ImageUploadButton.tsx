@@ -47,6 +47,7 @@ export function ImageUploadDropzone() {
         // Do something with the error.
         console.error(`ERROR! ${error.message}`);
       }}
+      className="border-gray-600"
     />
   );
 }

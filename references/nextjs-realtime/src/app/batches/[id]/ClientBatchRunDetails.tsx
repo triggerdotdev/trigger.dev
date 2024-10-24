@@ -46,71 +46,73 @@ const ProgressBar = ({ run }: { run: AnyRunShape }) => {
 const StatusBadge = ({ run }: { run: AnyRunShape }) => {
   switch (run.status) {
     case "WAITING_FOR_DEPLOY": {
-      return <Badge className={`bg-purple-100 text-purple-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-purple-800 text-purple-100 font-semibold`}>{run.status}</Badge>;
     }
     case "DELAYED": {
-      return <Badge className={`bg-yellow-100 text-yellow-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-yellow-800 text-yellow-100 font-semibold`}>{run.status}</Badge>;
     }
     case "EXPIRED": {
-      return <Badge className={`bg-red-100 text-red-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-red-800 text-red-100 font-semibold`}>{run.status}</Badge>;
     }
     case "QUEUED": {
-      return <Badge className={`bg-yellow-100 text-yellow-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-yellow-800 text-yellow-100 font-semibold`}>{run.status}</Badge>;
     }
     case "FROZEN":
     case "REATTEMPTING":
     case "EXECUTING": {
-      return <Badge className={`bg-blue-100 text-blue-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-blue-800 text-blue-100 font-semibold`}>{run.status}</Badge>;
     }
     case "COMPLETED": {
-      return <Badge className={`bg-green-100 text-green-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-green-800 text-green-100 font-semibold`}>{run.status}</Badge>;
     }
     case "TIMED_OUT":
     case "SYSTEM_FAILURE":
     case "INTERRUPTED":
     case "CRASHED":
     case "FAILED": {
-      return <Badge className={`bg-red-100 text-red-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-red-800 text-red-100 font-semibold`}>{run.status}</Badge>;
     }
     case "CANCELED": {
-      return <Badge className={`bg-gray-100 text-gray-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-gray-800 text-gray-100 font-semibold`}>{run.status}</Badge>;
     }
     default: {
-      return <Badge className={`bg-gray-100 text-gray-800 font-semibold`}>{run.status}</Badge>;
+      return <Badge className={`bg-gray-800 text-gray-100 font-semibold`}>{run.status}</Badge>;
     }
   }
 };
 
 export function BackgroundRunsTable({ runs }: { runs: TaskRunShape<typeof exampleTask>[] }) {
   return (
-    <Table>
-      <TableCaption>A list of your recent background runs.</TableCaption>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[150px]">Run ID / Task</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Payload ID</TableHead>
-          <TableHead className="w-[200px]">Progress</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {runs.map((run) => (
-          <TableRow key={run.id}>
-            <TableCell>
-              <div className="font-medium">{run.id}</div>
-              <div className="text-sm text-gray-500">{run.taskIdentifier}</div>
-            </TableCell>
-            <TableCell>
-              <StatusBadge run={run} />
-            </TableCell>
-            <TableCell>{run.payload.id}</TableCell>
-            <TableCell>
-              <ProgressBar run={run} />
-            </TableCell>
+    <div className="max-w-6xl mx-auto mt-8">
+      <h1 className="text-gray-200 text-2xl font-semibold mb-8">Recent Background Runs</h1>
+      <Table>
+        <TableHeader>
+          <TableRow className="border-b border-gray-700">
+            <TableHead className="w-[150px] text-gray-200 text-base">Run ID / Task</TableHead>
+            <TableHead className="text-gray-200 text-base">Status</TableHead>
+            <TableHead className="text-gray-200 text-base">Payload ID</TableHead>
+            <TableHead className="w-[200px] text-gray-200 text-base">Progress</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {runs.map((run) => (
+            <TableRow key={run.id} className="border-b border-gray-700 hover:bg-gray-800">
+              <TableCell>
+                <div className="font-medium">{run.id}</div>
+                <div className="text-sm text-gray-500">{run.taskIdentifier}</div>
+              </TableCell>
+              <TableCell>
+                <StatusBadge run={run} />
+              </TableCell>
+              <TableCell>{run.payload.id}</TableCell>
+              <TableCell>
+                <ProgressBar run={run} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -132,7 +134,7 @@ function BatchRunTableWrapper({ batchId }: { batchId: string }) {
   }
 
   return (
-    <div className="w-full min-h-screen bg-gray-100 p-4 space-y-6">
+    <div className="w-full min-h-screen bg-gray-900 text-gray-200 p-4 space-y-6">
       <BackgroundRunsTable runs={runs} />
     </div>
   );
