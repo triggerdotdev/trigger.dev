@@ -17,12 +17,9 @@ export interface Env {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (!env.REWRITE_HOSTNAME) throw new Error("Missing REWRITE_HOSTNAME");
-    console.log("url", request.url);
-
     if (!queueingIsEnabled(env)) {
       console.log("Missing AWS credentials. Passing through to the origin.");
-      return redirectToOrigin(request, env);
+      return fetch(request);
     }
 
     const url = new URL(request.url);
@@ -42,24 +39,9 @@ export default {
     }
 
     //the same request but with the hostname (and port) changed
-    return redirectToOrigin(request, env);
+    return fetch(request);
   },
 };
-
-function redirectToOrigin(request: Request, env: Env) {
-  const newUrl = new URL(request.url);
-  newUrl.hostname = env.REWRITE_HOSTNAME;
-  newUrl.port = env.REWRITE_PORT || newUrl.port;
-
-  const requestInit: RequestInit = {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-  };
-
-  console.log("rewritten url", newUrl.toString());
-  return fetch(newUrl.toString(), requestInit);
-}
 
 function queueingIsEnabled(env: Env) {
   return (
