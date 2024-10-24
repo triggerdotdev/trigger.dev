@@ -5,14 +5,13 @@ import { z } from "zod";
 //todo it will need to move into core because the Worker will need to use these
 
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
-const CreatedAttemptMessage = z.object({
+const DequeuedMessage = z.object({
   action: z.literal("SCHEDULE_RUN"),
   // The payload allows us to a discriminated union with the version
   payload: z.object({
     version: z.literal("1"),
     execution: z.object({
       id: z.string(),
-      status: z.literal("PENDING_EXECUTING"),
     }),
     image: z.string().optional(),
     checkpoint: z
@@ -48,7 +47,7 @@ const CreatedAttemptMessage = z.object({
     }),
   }),
 });
-export type CreatedAttemptMessage = z.infer<typeof CreatedAttemptMessage>;
+export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
 
 const CompletedWaitpoint = z.object({
   id: z.string(),

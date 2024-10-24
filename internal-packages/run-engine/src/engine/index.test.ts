@@ -116,16 +116,12 @@ describe("RunEngine", () => {
       const dequeued = await engine.dequeueFromMasterQueue({
         consumerId: "test_12345",
         masterQueue: run.masterQueue,
+        maxRunCount: 10,
       });
-      expect(dequeued?.action).toBe("SCHEDULE_RUN");
-
-      if (dequeued?.action !== "SCHEDULE_RUN") {
-        throw new Error("Expected action to be START_RUN");
-      }
-
-      expect(dequeued.payload.run.id).toBe(run.id);
-      expect(dequeued.payload.run.attemptNumber).toBe(1);
-      expect(dequeued.payload.execution.status).toBe("PENDING_EXECUTING");
+      expect(dequeued.length).toBe(1);
+      expect(dequeued[0].action).toBe("SCHEDULE_RUN");
+      expect(dequeued[0].payload.run.id).toBe(run.id);
+      expect(dequeued[0].payload.run.attemptNumber).toBe(1);
 
       const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
         authenticatedEnvironment
@@ -134,8 +130,8 @@ describe("RunEngine", () => {
 
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
-        runId: dequeued.payload.run.id,
-        snapshotId: dequeued.payload.execution.id,
+        runId: dequeued[0].payload.run.id,
+        snapshotId: dequeued[0].payload.execution.id,
       });
       expect(attemptResult.run.id).toBe(run.id);
       expect(attemptResult.run.status).toBe("EXECUTING");
@@ -381,13 +377,14 @@ describe("RunEngine", () => {
       const dequeued = await engine.dequeueFromMasterQueue({
         consumerId: "test_12345",
         masterQueue: run.masterQueue,
+        maxRunCount: 10,
       });
-      assertNonNullable(dequeued);
+      expect(dequeued.length).toBe(1);
 
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
-        runId: dequeued.payload.run.id,
-        snapshotId: dequeued.payload.execution.id,
+        runId: dequeued[0].payload.run.id,
+        snapshotId: dequeued[0].payload.execution.id,
       });
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
@@ -405,7 +402,7 @@ describe("RunEngine", () => {
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-      await setTimeout(1_100);
+      await setTimeout(1_500);
 
       const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
       expect(executionDataAfter?.snapshot.executionStatus).toBe("PENDING_EXECUTING");

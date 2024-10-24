@@ -374,7 +374,8 @@ export class RunQueue {
   }
 
   /**
-   * Negative acknowledge a message, which will requeue the message (with an optional future date)
+   * Negative acknowledge a message, which will requeue the message (with an optional future date).
+    If you pass no date it will get reattempted with exponential backoff.
    */
   public async nackMessage(orgId: string, messageId: string, retryAt?: number) {
     return this.#trace(
