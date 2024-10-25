@@ -470,7 +470,25 @@ export class RunEngine {
             }
 
             if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
+              //create a failed snapshot
+              await this.#createExecutionSnapshot(prisma, {
+                run: {
+                  id: snapshot.runId,
+                  status: snapshot.runStatus,
+                },
+                snapshot: {
+                  executionStatus: snapshot.executionStatus,
+                  description:
+                    "Tried to dequeue a run that is not in a valid state to be dequeued.",
+                },
+                checkpointId: snapshot.checkpointId ?? undefined,
+                completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
+                error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
+              });
+
               //todo is there a way to recover this, so the run can be retried?
+              //for example should we update the status to a dequeuable status and nack it?
+              //then at least it has a chance of succeeding and we have the error log above
               await this.#systemFailure({
                 runId,
                 error: {
