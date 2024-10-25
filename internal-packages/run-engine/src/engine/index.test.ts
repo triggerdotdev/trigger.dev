@@ -119,9 +119,8 @@ describe("RunEngine", () => {
         maxRunCount: 10,
       });
       expect(dequeued.length).toBe(1);
-      expect(dequeued[0].action).toBe("SCHEDULE_RUN");
-      expect(dequeued[0].payload.run.id).toBe(run.id);
-      expect(dequeued[0].payload.run.attemptNumber).toBe(1);
+      expect(dequeued[0].run.id).toBe(run.id);
+      expect(dequeued[0].run.attemptNumber).toBe(1);
 
       const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
         authenticatedEnvironment
@@ -130,8 +129,8 @@ describe("RunEngine", () => {
 
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
-        runId: dequeued[0].payload.run.id,
-        snapshotId: dequeued[0].payload.execution.id,
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].execution.id,
       });
       expect(attemptResult.run.id).toBe(run.id);
       expect(attemptResult.run.status).toBe("EXECUTING");
@@ -383,8 +382,8 @@ describe("RunEngine", () => {
 
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
-        runId: dequeued[0].payload.run.id,
-        snapshotId: dequeued[0].payload.execution.id,
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].execution.id,
       });
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 

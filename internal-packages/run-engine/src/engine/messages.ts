@@ -3,52 +3,6 @@ import { TaskRunExecutionStatus, TaskRunStatus, WaitpointType } from "@trigger.d
 import { z } from "zod";
 
 //todo it will need to move into core because the Worker will need to use these
-
-/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
-const DequeuedMessage = z.object({
-  action: z.literal("SCHEDULE_RUN"),
-  // The payload allows us to a discriminated union with the version
-  payload: z.object({
-    version: z.literal("1"),
-    execution: z.object({
-      id: z.string(),
-    }),
-    image: z.string().optional(),
-    checkpoint: z
-      .object({
-        id: z.string(),
-        type: z.string(),
-        location: z.string(),
-        reason: z.string().nullish(),
-      })
-      .optional(),
-    backgroundWorker: z.object({
-      id: z.string(),
-      version: z.string(),
-    }),
-    run: z.object({
-      id: z.string(),
-      friendlyId: z.string(),
-      isTest: z.boolean(),
-      machine: MachinePreset,
-      attemptNumber: z.number(),
-      masterQueue: z.string(),
-      traceContext: z.record(z.unknown()),
-    }),
-    environment: z.object({
-      id: z.string(),
-      type: EnvironmentType,
-    }),
-    organization: z.object({
-      id: z.string(),
-    }),
-    project: z.object({
-      id: z.string(),
-    }),
-  }),
-});
-export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
-
 const CompletedWaitpoint = z.object({
   id: z.string(),
   type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
@@ -62,7 +16,50 @@ const CompletedWaitpoint = z.object({
   outputType: z.string().optional(),
 });
 
+/** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
+const DequeuedMessage = z.object({
+  version: z.literal("1"),
+  execution: z.object({
+    id: z.string(),
+  }),
+  image: z.string().optional(),
+  checkpoint: z
+    .object({
+      id: z.string(),
+      type: z.string(),
+      location: z.string(),
+      reason: z.string().nullish(),
+    })
+    .optional(),
+  completedWaitpoints: z.array(CompletedWaitpoint),
+  backgroundWorker: z.object({
+    id: z.string(),
+    version: z.string(),
+  }),
+  run: z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+    isTest: z.boolean(),
+    machine: MachinePreset,
+    attemptNumber: z.number(),
+    masterQueue: z.string(),
+    traceContext: z.record(z.unknown()),
+  }),
+  environment: z.object({
+    id: z.string(),
+    type: EnvironmentType,
+  }),
+  organization: z.object({
+    id: z.string(),
+  }),
+  project: z.object({
+    id: z.string(),
+  }),
+});
+export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
+
 export const RunExecutionData = z.object({
+  version: z.literal("1"),
   snapshot: z.object({
     id: z.string(),
     executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
@@ -82,7 +79,7 @@ export const RunExecutionData = z.object({
       reason: z.string().optional(),
     })
     .optional(),
-  completedWaitpoints: z.array(CompletedWaitpoint).optional(),
+  completedWaitpoints: z.array(CompletedWaitpoint),
 });
 
 export type RunExecutionData = z.infer<typeof RunExecutionData>;

@@ -653,40 +653,39 @@ export class RunEngine {
                 description: "Run was dequeued for execution",
               },
               checkpointId: snapshot.checkpointId ?? undefined,
+              completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
             });
 
             return {
-              action: "SCHEDULE_RUN" as const,
-              payload: {
-                version: "1" as const,
-                execution: {
-                  id: newSnapshot.id,
-                },
-                image: result.deployment?.imageReference ?? undefined,
-                checkpoint: newSnapshot.checkpoint ?? undefined,
-                backgroundWorker: {
-                  id: result.worker.id,
-                  version: result.worker.version,
-                },
-                run: {
-                  id: lockedTaskRun.id,
-                  friendlyId: lockedTaskRun.friendlyId,
-                  isTest: lockedTaskRun.isTest,
-                  machine: machinePreset,
-                  attemptNumber: nextAttemptNumber,
-                  masterQueue: lockedTaskRun.masterQueue,
-                  traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
-                },
-                environment: {
-                  id: lockedTaskRun.runtimeEnvironment.id,
-                  type: lockedTaskRun.runtimeEnvironment.type,
-                },
-                organization: {
-                  id: orgId,
-                },
-                project: {
-                  id: lockedTaskRun.projectId,
-                },
+              version: "1" as const,
+              execution: {
+                id: newSnapshot.id,
+              },
+              image: result.deployment?.imageReference ?? undefined,
+              checkpoint: newSnapshot.checkpoint ?? undefined,
+              completedWaitpoints: snapshot.completedWaitpoints,
+              backgroundWorker: {
+                id: result.worker.id,
+                version: result.worker.version,
+              },
+              run: {
+                id: lockedTaskRun.id,
+                friendlyId: lockedTaskRun.friendlyId,
+                isTest: lockedTaskRun.isTest,
+                machine: machinePreset,
+                attemptNumber: nextAttemptNumber,
+                masterQueue: lockedTaskRun.masterQueue,
+                traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+              },
+              environment: {
+                id: lockedTaskRun.runtimeEnvironment.id,
+                type: lockedTaskRun.runtimeEnvironment.type,
+              },
+              organization: {
+                id: orgId,
+              },
+              project: {
+                id: lockedTaskRun.projectId,
               },
             };
           });
@@ -1102,17 +1101,6 @@ export class RunEngine {
     });
   }
 
-  /** This is called to get the  */
-  async resumeRun({
-    runId,
-    snapshotId,
-    tx,
-  }: {
-    runId: string;
-    snapshotId: string;
-    tx?: PrismaClientOrTransaction;
-  }) {}
-
   async waitForDuration({
     runId,
     snapshotId,
@@ -1378,6 +1366,7 @@ export class RunEngine {
     }
 
     const executionData: RunExecutionData = {
+      version: "1" as const,
       snapshot: {
         id: snapshot.id,
         executionStatus: snapshot.executionStatus,
@@ -1397,22 +1386,7 @@ export class RunEngine {
             reason: snapshot.checkpoint.reason ?? undefined,
           }
         : undefined,
-      completedWaitpoints:
-        snapshot.completedWaitpoints.length === 0
-          ? undefined
-          : snapshot.completedWaitpoints.map((w) => ({
-              id: w.id,
-              type: w.type,
-              completedAt: w.completedAt ?? new Date(),
-              idempotencyKey:
-                w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey
-                  ? w.idempotencyKey
-                  : undefined,
-              completedByTaskRunId: w.completedByTaskRunId ?? undefined,
-              completedAfter: w.completedAfter ?? undefined,
-              output: w.output ?? undefined,
-              outputType: w.outputType,
-            })),
+      completedWaitpoints: snapshot.completedWaitpoints,
     };
 
     return executionData;
@@ -1732,7 +1706,7 @@ export class RunEngine {
   }
 
   async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
-    return prisma.taskRunExecutionSnapshot.findFirst({
+    const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
       where: { runId },
       include: {
         completedWaitpoints: true,
@@ -1740,6 +1714,25 @@ export class RunEngine {
       },
       orderBy: { createdAt: "desc" },
     });
+
+    if (!snapshot) {
+      return null;
+    }
+
+    return {
+      ...snapshot,
+      completedWaitpoints: snapshot.completedWaitpoints.map((w) => ({
+        id: w.id,
+        type: w.type,
+        completedAt: w.completedAt ?? new Date(),
+        idempotencyKey:
+          w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
+        completedByTaskRunId: w.completedByTaskRunId ?? undefined,
+        completedAfter: w.completedAfter ?? undefined,
+        output: w.output ?? undefined,
+        outputType: w.outputType,
+      })),
+    };
   }
 
   async #getExecutionSnapshotCompletedWaitpoints(
