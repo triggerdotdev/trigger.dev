@@ -193,7 +193,11 @@ function createCoordinatorNamespace(io: Server) {
           }
 
           const service = new CreateTaskRunAttemptService();
-          const { attempt } = await service.call(message.runId, environment, false);
+          const { attempt } = await service.call({
+            runId: message.runId,
+            authenticatedEnv: environment,
+            setToExecuting: false,
+          });
 
           const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
             id: attempt.id,

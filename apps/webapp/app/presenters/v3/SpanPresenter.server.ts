@@ -7,7 +7,7 @@ import {
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { eventRepository } from "~/v3/eventRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
+import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 
@@ -294,6 +294,7 @@ export class SpanPresenter extends BasePresenter {
       usageDurationMs: run.usageDurationMs,
       isFinished,
       isRunning: RUNNING_STATUSES.includes(run.status),
+      isError: isFailedRunStatus(run.status),
       payload,
       payloadType: run.payloadType,
       output,

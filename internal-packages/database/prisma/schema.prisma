@@ -1815,6 +1815,7 @@ model TaskRun {
   @@index([projectId, taskIdentifier, status])
   //Schedules
   @@index([scheduleId])
+  @@index([scheduleInstanceId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
@@ -1823,6 +1824,10 @@ model TaskRun {
 }
 
 enum TaskRunStatus {
+  ///
+  /// NON-FINAL STATUSES
+  ///
+
   /// Task has been scheduled to run in the future
   DELAYED
   /// Task is waiting to be executed by a worker
@@ -1842,6 +1847,10 @@ enum TaskRunStatus {
 
   /// Task has been paused by the user, and can be resumed by the user
   PAUSED
+
+  ///
+  /// FINAL STATUSES
+  ///
 
   /// Task has been canceled by the user
   CANCELED
@@ -2161,9 +2170,11 @@ model TaskRunAttempt {
 }
 
 enum TaskRunAttemptStatus {
+  /// NON-FINAL
   PENDING
   EXECUTING
   PAUSED
+  /// FINAL
   FAILED
   CANCELED
   COMPLETED

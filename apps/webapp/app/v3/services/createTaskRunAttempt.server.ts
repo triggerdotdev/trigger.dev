@@ -12,11 +12,17 @@ import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
-  public async call(
-    runId: string,
-    authenticatedEnv?: AuthenticatedEnvironment,
-    setToExecuting = true
-  ): Promise<{
+  public async call({
+    runId,
+    authenticatedEnv,
+    setToExecuting = true,
+    startAtZero = false,
+  }: {
+    runId: string;
+    authenticatedEnv?: AuthenticatedEnvironment;
+    setToExecuting?: boolean;
+    startAtZero?: boolean;
+  }): Promise<{
     execution: TaskRunExecution;
     run: TaskRun;
     attempt: TaskRunAttempt;
@@ -102,7 +108,11 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Queue not found", 404);
       }
 
-      const nextAttemptNumber = taskRun.attempts[0] ? taskRun.attempts[0].number + 1 : 1;
+      const nextAttemptNumber = taskRun.attempts[0]
+        ? taskRun.attempts[0].number + 1
+        : startAtZero
+        ? 0
+        : 1;
 
       if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
         const service = new CrashTaskRunService(this._prisma);

@@ -156,6 +156,29 @@ describe("flattenAttributes", () => {
 
     expect(flattenAttributes(obj, "retry.byStatus")).toEqual(expected);
   });
+
+   it("handles circular references correctly", () => {
+    const user = { name: "Alice" };
+    user["blogPosts"] = [{ title: "Post 1", author: user }]; // Circular reference
+
+    const result = flattenAttributes(user);
+    expect(result).toEqual({
+      "name": "Alice",
+      "blogPosts.[0].title": "Post 1",
+      "blogPosts.[0].author": "$@circular((",
+    });
+  });
+
+  it("handles nested circular references correctly", () => {
+    const user = { name: "Bob" };
+    user["friends"] = [user]; // Circular reference
+
+    const result = flattenAttributes(user);
+    expect(result).toEqual({
+      "name": "Bob",
+      "friends.[0]": "$@circular((",
+    });
+  });
 });
 
 describe("unflattenAttributes", () => {
@@ -222,5 +245,19 @@ describe("unflattenAttributes", () => {
       },
     };
     expect(unflattenAttributes(flattened)).toEqual(expected);
+  });
+  
+  it("rehydrates circular references correctly", () => {
+    const flattened = {
+      "name": "Alice",
+      "blogPosts.[0].title": "Post 1",
+      "blogPosts.[0].author": "$@circular((",
+    };
+
+    const result = unflattenAttributes(flattened);
+    expect(result).toEqual({
+      name: "Alice",
+      blogPosts: [{ title: "Post 1", author: "[Circular Reference]" }],
+    });
   });
 });
