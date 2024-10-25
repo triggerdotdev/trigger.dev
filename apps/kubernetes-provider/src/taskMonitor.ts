@@ -140,7 +140,7 @@ export class TaskMonitor {
     const containerState = this.#getContainerStateSummary(containerStatus.state);
     const exitCode = containerState.exitCode ?? -1;
 
-    if (exitCode === EXIT_CODE_ALREADY_HANDLED) {
+    if (exitCode === EXIT_CODE_ALREADY_HANDLED || exitCode === EXIT_CODE_CHILD_NONZERO) {
       this.#logger.debug("Ignoring pod failure, already handled by worker", {
         podName,
       });
@@ -186,9 +186,8 @@ export class TaskMonitor {
         break;
       case "OOMKilled":
         overrideCompletion = true;
-        reason = `${
-          exitCode === EXIT_CODE_CHILD_NONZERO ? "Child process" : "Parent process"
-        } ran out of memory! Try choosing a machine preset with more memory for this task.`;
+        reason =
+          "[TaskMonitor] Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.";
         errorCode = TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED;
         break;
       default:

@@ -519,12 +519,12 @@ class ProdWorker {
 
     logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-    const exitCode =
+    const isNonZeroExitError =
       !completion.ok &&
       completion.error.type === "INTERNAL_ERROR" &&
-      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE
-        ? EXIT_CODE_CHILD_NONZERO
-        : 0;
+      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE;
+
+    const exitCode = isNonZeroExitError ? EXIT_CODE_CHILD_NONZERO : 0;
 
     if (shouldExit) {
       // Exit after completion, without any retrying
