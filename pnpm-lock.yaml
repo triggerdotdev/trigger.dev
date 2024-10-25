@@ -1614,28 +1614,6 @@ importers:
         specifier: ^5
         version: 5.5.4
 
-  references/prisma-catalog:
-    dependencies:
-      '@prisma/client':
-        specifier: 5.19.0
-        version: 5.19.0(prisma@5.19.0)
-      '@trigger.dev/sdk':
-        specifier: workspace:*
-        version: link:../../packages/trigger-sdk
-    devDependencies:
-      '@trigger.dev/build':
-        specifier: workspace:*
-        version: link:../../packages/build
-      prisma:
-        specifier: 5.19.0
-        version: 5.19.0
-      trigger.dev:
-        specifier: workspace:*
-        version: link:../../packages/cli-v3
-      typescript:
-        specifier: ^5.5.4
-        version: 5.5.4
-
   references/v3-catalog:
     dependencies:
       '@effect/schema':
