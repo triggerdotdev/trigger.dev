@@ -1,5 +1,3 @@
-import { EventEmitter } from "node:events";
-
 export type EventBusEvents = {
   runExpired: [
     {
