@@ -1890,6 +1890,10 @@ model TaskRunExecutionSnapshot {
   /// For debugging
   description     String
 
+  /// We store invalid snapshots as a record of the run state when we tried to move
+  isValid Boolean @default(true)
+  error   String?
+
   /// Run
   runId     String
   run       TaskRun       @relation(fields: [runId], references: [id])
@@ -1907,8 +1911,8 @@ model TaskRunExecutionSnapshot {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Used to get the latest state quickly
-  @@index([runId, createdAt(sort: Desc)])
+  /// Used to get the latest valid snapshot quickly
+  @@index([runId, isValid, createdAt(sort: Desc)])
 }
 
 enum TaskRunExecutionStatus {

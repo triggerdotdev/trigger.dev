@@ -1626,6 +1626,7 @@ export class RunEngine {
       snapshot,
       checkpointId,
       completedWaitpointIds,
+      error,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
@@ -1634,6 +1635,7 @@ export class RunEngine {
       };
       checkpointId?: string;
       completedWaitpointIds?: string[];
+      error?: string;
     }
   ) {
     const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
@@ -1648,18 +1650,22 @@ export class RunEngine {
         completedWaitpoints: {
           connect: completedWaitpointIds?.map((id) => ({ id })),
         },
+        isValid: error ? false : true,
+        error: error ?? undefined,
       },
       include: {
         checkpoint: true,
       },
     });
 
-    //set heartbeat (if relevant)
-    await this.#setExecutionSnapshotHeartbeat({
-      status: newSnapshot.executionStatus,
-      runId: run.id,
-      snapshotId: newSnapshot.id,
-    });
+    if (!error) {
+      //set heartbeat (if relevant)
+      await this.#setExecutionSnapshotHeartbeat({
+        status: newSnapshot.executionStatus,
+        runId: run.id,
+        snapshotId: newSnapshot.id,
+      });
+    }
 
     return newSnapshot;
   }
@@ -1705,9 +1711,10 @@ export class RunEngine {
     }
   }
 
+  /* Gets the most recent valid snapshot for a run */
   async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
     const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId },
+      where: { runId, isValid: true },
       include: {
         completedWaitpoints: true,
         checkpoint: true,
