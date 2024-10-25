@@ -1,6 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 import {
   TaskRunContext,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
@@ -84,7 +85,7 @@ export class CompleteAttemptService extends BaseService {
         attemptStatus: "FAILED",
         error: {
           type: "INTERNAL_ERROR",
-          code: "TASK_EXECUTION_FAILED",
+          code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
           message: "Tried to complete attempt but it doesn't exist",
         },
       });

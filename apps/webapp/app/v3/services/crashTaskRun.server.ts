@@ -4,7 +4,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
-import { sanitizeError, TaskRunInternalError } from "@trigger.dev/core/v3";
+import { sanitizeError, TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 
@@ -59,7 +59,7 @@ export class CrashTaskRunService extends BaseService {
         id: runId,
         error: {
           type: "INTERNAL_ERROR",
-          code: opts.errorCode ?? "TASK_RUN_CRASHED",
+          code: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
           message: opts.reason,
           stackTrace: opts.logs,
         },
@@ -108,7 +108,7 @@ export class CrashTaskRunService extends BaseService {
       attemptStatus: "FAILED",
       error: {
         type: "INTERNAL_ERROR",
-        code: opts.errorCode ?? "TASK_RUN_CRASHED",
+        code: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
         message: opts.reason,
         stackTrace: opts.logs,
       },
@@ -131,7 +131,7 @@ export class CrashTaskRunService extends BaseService {
           event: event,
           crashedAt: opts.crashedAt,
           exception: {
-            type: opts.errorCode ?? "TASK_RUN_CRASHED",
+            type: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
             message: opts.reason,
             stacktrace: opts.logs,
           },
@@ -186,7 +186,7 @@ export class CrashTaskRunService extends BaseService {
             completedAt: failedAt,
             error: sanitizeError({
               type: "INTERNAL_ERROR",
-              code: error.code ?? "TASK_RUN_CRASHED",
+              code: error.code ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
               message: error.reason,
               stackTrace: error.logs,
             }),
