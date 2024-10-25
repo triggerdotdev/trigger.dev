@@ -1,3 +1,5 @@
+import { TaskRunExecutionStatus } from "@trigger.dev/database";
+
 export type EventBusEvents = {
   runExpired: [
     {
@@ -17,6 +19,25 @@ export type EventBusEvents = {
         spanId: string;
         output: string | undefined;
         outputType: string;
+      };
+    },
+  ];
+  executionSnapshotCreated: [
+    {
+      time: Date;
+      run: {
+        id: string;
+      };
+      snapshot: {
+        id: string;
+        executionStatus: TaskRunExecutionStatus;
+        description: string;
+        runStatus: string;
+        attemptNumber: number | null;
+        checkpointId: string | null;
+        completedWaitpointIds: string[];
+        isValid: boolean;
+        error: string | null;
       };
     },
   ];

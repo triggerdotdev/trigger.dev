@@ -1685,6 +1685,17 @@ export class RunEngine {
       });
     }
 
+    this.eventBus.emit("executionSnapshotCreated", {
+      time: newSnapshot.createdAt,
+      run: {
+        id: newSnapshot.runId,
+      },
+      snapshot: {
+        ...newSnapshot,
+        completedWaitpointIds: completedWaitpointIds ?? [],
+      },
+    });
+
     return newSnapshot;
   }
 
