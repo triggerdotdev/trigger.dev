@@ -35,10 +35,10 @@ export class SimpleWeightedChoiceStrategy implements RunQueuePriorityStrategy {
     const filteredQueues = filterQueuesAtCapacity(queues);
 
     if (queues.length === this.options.queueSelectionCount) {
-      const nextRange: QueueRange = {
-        offset: previousRange.offset + this.options.queueSelectionCount,
-        count: this.options.queueSelectionCount,
-      };
+    const nextRange: QueueRange = {
+      offset: previousRange.offset + this.options.queueSelectionCount,
+      count: this.options.queueSelectionCount,
+    };
 
       // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
       this._nextRangesByParentQueue.set(`${consumerId}:${parentQueue}`, nextRange);
@@ -98,7 +98,7 @@ export class SimpleWeightedChoiceStrategy implements RunQueuePriorityStrategy {
 
       return {
         queue,
-        totalWeight: age,
+        totalWeight,
       };
     });
   }

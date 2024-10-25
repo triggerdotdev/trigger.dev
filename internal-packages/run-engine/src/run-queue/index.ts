@@ -260,7 +260,7 @@ export class RunQueue {
   }
 
   /**
-   * Dequeue a message
+   * Dequeue messages from the master queue
    */
   public async dequeueMessageFromMasterQueue(
     consumerId: string,
@@ -284,23 +284,47 @@ export class RunQueue {
         }
 
         const messages: DequeuedMessage[] = [];
+        const remainingMessages = selectedQueues.map((q) => q.size);
+        let currentQueueIndex = 0;
 
-        for (const queue of selectedQueues) {
-          const message = await this.#callDequeueMessage({
-            messageQueue: queue,
-            concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
-            currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-            envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
-            envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-            projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
-            messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
-            taskCurrentConcurrentKeyPrefix:
-              this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
-          });
+        while (messages.length < maxCount) {
+          let foundMessage = false;
 
-          if (message) {
-            messages.push(message);
+          // Try each queue once in this round
+          for (let i = 0; i < selectedQueues.length; i++) {
+            currentQueueIndex = (currentQueueIndex + i) % selectedQueues.length;
+
+            // Skip if this queue is empty
+            if (remainingMessages[currentQueueIndex] <= 0) continue;
+
+            const selectedQueue = selectedQueues[currentQueueIndex];
+            const queue = selectedQueue.queue;
+
+            const message = await this.#callDequeueMessage({
+              messageQueue: queue,
+              concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(queue),
+              currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
+              envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(queue),
+              envCurrentConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
+              projectCurrentConcurrencyKey: this.keys.projectCurrentConcurrencyKeyFromQueue(queue),
+              messageKeyPrefix: this.keys.messageKeyPrefixFromQueue(queue),
+              taskCurrentConcurrentKeyPrefix:
+                this.keys.taskIdentifierCurrentConcurrencyKeyPrefixFromQueue(queue),
+            });
+
+            if (message) {
+              messages.push(message);
+              remainingMessages[currentQueueIndex]--;
+              foundMessage = true;
+              break;
+            } else {
+              // If we failed to get a message, mark this queue as empty
+              remainingMessages[currentQueueIndex] = 0;
+            }
           }
+
+          // If we couldn't get a message from any queue, break
+          if (!foundMessage) break;
         }
 
         span.setAttributes({
@@ -754,7 +778,15 @@ export class RunQueue {
     calculateCapacities: (queue: string) => Promise<QueueCapacities>,
     consumerId: string,
     maxCount: number
-  ): Promise<string[] | undefined> {
+  ): Promise<
+    | {
+        queue: string;
+        capacities: QueueCapacities;
+        age: number;
+        size: number;
+      }[]
+    | undefined
+  > {
     return this.#trace(
       "getRandomQueueFromParentQueue",
       async (span) => {
@@ -819,7 +851,7 @@ export class RunQueue {
 
         if (Array.isArray(choices)) {
           span.setAttribute("queueChoices", choices);
-          return choices;
+          return queuesWithScores.filter((queue) => choices.includes(queue.queue));
         } else {
           span.setAttribute("noQueueChoice", true);
           return;

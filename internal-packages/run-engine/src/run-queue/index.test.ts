@@ -14,7 +14,7 @@ const testOptions = {
   queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
   envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
   workers: 1,
-  defaultEnvConcurrency: 10,
+  defaultEnvConcurrency: 25,
   enableRebalancing: false,
   logger: new Logger("RunQueue", "warn"),
   retryOptions: {
@@ -121,7 +121,7 @@ describe("RunQueue", () => {
       try {
         //initial value
         const initial = await queue.getEnvConcurrencyLimit(authenticatedEnvProd);
-        expect(initial).toBe(10);
+        expect(initial).toBe(25);
 
         //set 20
         await queue.updateEnvConcurrencyLimits({
@@ -321,6 +321,68 @@ describe("RunQueue", () => {
 
         const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
         expect(dequeued2.length).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "Dequeue multiple messages from the queue",
+    { timeout: 5_000 },
+    async ({ redisContainer, redis }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+      });
+
+      try {
+        // Create 20 messages with different runIds and some with different queues
+        const messages = Array.from({ length: 20 }, (_, i) => ({
+          ...messageProd,
+          runId: `r${i + 1}`,
+          queue: i < 15 ? "task/my-task" : "task/other-task", // Mix up the queues
+        }));
+
+        // Enqueue all messages
+        for (const message of messages) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvProd,
+            message,
+            masterQueues: "main",
+          });
+        }
+
+        // Check initial queue lengths
+        const initialLength1 = await queue.lengthOfQueue(authenticatedEnvProd, "task/my-task");
+        const initialLength2 = await queue.lengthOfQueue(authenticatedEnvProd, "task/other-task");
+        expect(initialLength1).toBe(15);
+        expect(initialLength2).toBe(5);
+
+        // Dequeue first batch of 10 messages
+        const dequeued1 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued1.length).toBe(10);
+
+        // Dequeue second batch of 10 messages
+        const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued2.length).toBe(10);
+
+        // Combine all dequeued message IDs
+        const dequeuedIds = [...dequeued1, ...dequeued2].map((m) => m.messageId);
+
+        // Check that all original messages were dequeued
+        const allOriginalIds = messages.map((m) => m.runId);
+        expect(dequeuedIds.sort()).toEqual(allOriginalIds.sort());
+
+        // Try to dequeue more - should get none
+        const dequeued3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+        expect(dequeued3.length).toBe(0);
+
+        // Check final queue lengths
+        const finalLength1 = await queue.lengthOfQueue(authenticatedEnvProd, "task/my-task");
+        const finalLength2 = await queue.lengthOfQueue(authenticatedEnvProd, "task/other-task");
+        expect(finalLength1).toBe(0);
+        expect(finalLength2).toBe(0);
       } finally {
         await queue.quit();
       }
