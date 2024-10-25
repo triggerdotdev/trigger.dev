@@ -1036,13 +1036,6 @@ export class RunEngine {
     snapshotId: string;
     completion: TaskRunExecutionResult;
   }) {
-    //todo
-    //1. lock the run
-    //2. get the latest snapshot
-    //3. deal with completion errors
-    //4. update the run status, create final snapshot
-    //5. complete waitpoints
-
     return this.#trace("completeRunAttempt", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
         const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
