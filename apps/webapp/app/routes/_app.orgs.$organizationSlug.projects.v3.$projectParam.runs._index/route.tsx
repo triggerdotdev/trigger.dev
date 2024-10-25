@@ -121,7 +121,7 @@ export default function Page() {
             <div
               className={cn(
                 "grid h-full max-h-full overflow-hidden",
-                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_3.5rem]"
+                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
               )}
             >
               <Suspense
@@ -144,7 +144,11 @@ export default function Page() {
                           <RunTaskInstructions />
                         )
                       ) : (
-                        <div className={cn("grid h-fit max-h-full grid-rows-[auto_1fr]")}>
+                        <div
+                          className={cn(
+                            "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
+                          )}
+                        >
                           <div className="flex items-start justify-between gap-x-2 p-2">
                             <RunsFilters
                               possibleEnvironments={project.environments}
@@ -193,7 +197,7 @@ function BulkActionBar() {
           initial={{ translateY: "100%" }}
           animate={{ translateY: 0 }}
           exit={{ translateY: "100%" }}
-          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright pl-4 pr-3"
+          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright py-3 pl-4 pr-3"
         >
           <div className="flex items-center gap-1.5 text-sm text-text-bright">
             <ListChecks className="mr-1 size-7 text-indigo-400" />
