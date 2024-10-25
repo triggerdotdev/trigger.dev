@@ -14,6 +14,30 @@ The execution of a run is stored in the `TaskRunExecutionSnapshot` table in Post
 
 ![The execution states](./execution-states.png)
 
+## Workers
+
+A worker is a server that runs tasks. There are two types of workers:
+- Hosted workers (serverless, managed and cloud-only)
+- Self-hosted workers
+
+In the dashboard under the "Workers" page, you can see all worker groups including the "main" group which is the default and not self-hosted. You can also see alternative worker groups that are available to you, such as "EU", "v3.2 (beta)", and any self-hosted worker groups you have created.
+
+You add a new self-hosted worker group by clicking "Add" and choosing an `id` that is unique to your project.
+
+Then when triggering runs, you can specify the `workerGroup` to use. It defaults to "main". The workerGroup is used internally to set the `masterQueue` that a run is placed in, this allows pulling runs only for that worker group.
+
+On the "Workers" page, you can see the status of each worker group, including the number of workers in the group, the number of runs that are queued.
+
+## Pulling from the queue
+
+A worker will call the Trigger.dev API with it's `workerGroup`.
+
+For warm starts, self-hosted workers we will also pass the `BackgroundWorker` id and `environment` id. This allow pulling relevant runs.
+
+For dev environments, we will pass the `environment` id.
+
+If there's only a `workerGroup`, we can just `dequeueFromMasterQueue()` to get runs. If there's a `BackgroundWorker` id, we need to determine if that `BackgroundWorker` is the latest. If it's the latest we call `dequeueFromEnvironmentMasterQueue()` to get any runs that aren't locked to a version. If it's not the latest, we call `dequeueFromBackgroundWorkerMasterQueue()` to get runs that are locked to that version.
+
 ## Components
 
 ### Run Engine
