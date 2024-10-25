@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "dry-run:staging": "wrangler deploy --dry-run --outdir=dist --env staging"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240512.0",
