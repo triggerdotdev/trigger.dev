@@ -21,7 +21,7 @@ import {
 } from "~/components/primitives/Dialog";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   SelectedItemsProvider,
@@ -40,7 +40,13 @@ import { findProjectBySlug } from "~/models/project.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  ProjectParamSchema,
+  v3ProjectPath,
+  v3RunsPath,
+  v3TestPath,
+} from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -111,6 +117,15 @@ export default function Page() {
     <>
       <NavBar>
         <PageTitle title="Runs" />
+        <PageAccessories>
+          <LinkButton
+            variant={"minimal/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/runs-and-attempts")}
+          >
+            Runs docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <SelectedItemsProvider
