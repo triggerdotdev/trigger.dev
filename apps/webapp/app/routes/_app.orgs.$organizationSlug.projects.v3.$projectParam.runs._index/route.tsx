@@ -124,7 +124,7 @@ export default function Page() {
                 selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_3.5rem]"
               )}
             >
-              <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                 <Suspense
                   fallback={
                     <div className="flex items-center justify-center py-2">
@@ -147,7 +147,7 @@ export default function Page() {
                         ) : (
                           <div className={cn("grid h-fit grid-cols-1 gap-4")}>
                             <div>
-                              <div className="mb-2 flex items-start justify-between gap-x-2">
+                              <div className="mb-2 flex items-start justify-between gap-x-2 px-3">
                                 <RunsFilters
                                   possibleEnvironments={project.environments}
                                   possibleTasks={list.possibleTasks}
@@ -167,7 +167,6 @@ export default function Page() {
                                 isLoading={isLoading}
                                 allowSelection
                               />
-                              <ListPagination list={list} className="mt-2 justify-end" />
                             </div>
                           </div>
                         )}
