@@ -102,7 +102,7 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table>
+    <Table className="max-h-full overflow-y-auto">
       <TableHeader>
         <TableRow>
           {allowSelection && (

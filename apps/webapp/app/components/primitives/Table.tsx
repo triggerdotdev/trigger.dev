@@ -41,7 +41,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 divide-y divide-grid-dimmed bg-background-dimmed after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "sticky top-0 z-10 divide-y divide-grid-dimmed bg-background-dimmed",
           className
         )}
       >
@@ -59,10 +59,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody
-        ref={ref}
-        className={cn("relative divide-y divide-grid-dimmed overflow-y-auto", className)}
-      >
+      <tbody ref={ref} className={cn("relative overflow-y-auto", className)}>
         {children}
       </tbody>
     );
@@ -78,7 +75,14 @@ type TableRowProps = {
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, children }, ref) => {
     return (
-      <tr ref={ref} className={cn(disabled && "opacity-50", "group/table-row w-full", className)}>
+      <tr
+        ref={ref}
+        className={cn(
+          disabled && "opacity-50",
+          "group/table-row relative w-full after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          className
+        )}
+      >
         {children}
       </tr>
     );
@@ -145,9 +149,12 @@ type TableCellProps = TableCellBasicProps & {
 };
 
 const rowHoverStyles = {
-  default: "group-hover/table-row:bg-charcoal-800",
-  dimmed: "group-hover/table-row:bg-charcoal-850",
-  bright: "group-hover/table-row:bg-charcoal-750",
+  default:
+    "group-hover/table-row:bg-charcoal-800 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:z-10 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+  dimmed:
+    "group-hover/table-row:bg-charcoal-850 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-800 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-800 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+  bright:
+    "group-hover/table-row:bg-charcoal-750 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-700 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-700 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
 };
 
 const stickyStyles =

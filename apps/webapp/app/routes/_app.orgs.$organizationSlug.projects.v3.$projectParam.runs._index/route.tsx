@@ -124,57 +124,53 @@ export default function Page() {
                 selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_3.5rem]"
               )}
             >
-              <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center py-2">
-                      <div className="mx-auto flex items-center gap-2">
-                        <Spinner />
-                        <Paragraph variant="small">Loading runs</Paragraph>
-                      </div>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-2">
+                    <div className="mx-auto flex items-center gap-2">
+                      <Spinner />
+                      <Paragraph variant="small">Loading runs</Paragraph>
                     </div>
-                  }
-                >
-                  <TypedAwait resolve={data}>
-                    {(list) => (
-                      <>
-                        {list.runs.length === 0 && !list.hasFilters ? (
-                          list.possibleTasks.length === 0 ? (
-                            <CreateFirstTaskInstructions />
-                          ) : (
-                            <RunTaskInstructions />
-                          )
+                  </div>
+                }
+              >
+                <TypedAwait resolve={data}>
+                  {(list) => (
+                    <>
+                      {list.runs.length === 0 && !list.hasFilters ? (
+                        list.possibleTasks.length === 0 ? (
+                          <CreateFirstTaskInstructions />
                         ) : (
-                          <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-                            <div>
-                              <div className="mb-2 flex items-start justify-between gap-x-2 px-3">
-                                <RunsFilters
-                                  possibleEnvironments={project.environments}
-                                  possibleTasks={list.possibleTasks}
-                                  bulkActions={list.bulkActions}
-                                  hasFilters={list.hasFilters}
-                                />
-                                <div className="flex items-center justify-end gap-x-2">
-                                  <ListPagination list={list} />
-                                </div>
-                              </div>
-
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                isLoading={isLoading}
-                                allowSelection
-                              />
+                          <RunTaskInstructions />
+                        )
+                      ) : (
+                        <div className={cn("grid h-fit max-h-full grid-rows-[auto_1fr]")}>
+                          <div className="flex items-start justify-between gap-x-2 p-2">
+                            <RunsFilters
+                              possibleEnvironments={project.environments}
+                              possibleTasks={list.possibleTasks}
+                              bulkActions={list.bulkActions}
+                              hasFilters={list.hasFilters}
+                            />
+                            <div className="flex items-center justify-end gap-x-2">
+                              <ListPagination list={list} />
                             </div>
                           </div>
-                        )}
-                      </>
-                    )}
-                  </TypedAwait>
-                </Suspense>
-              </div>
+
+                          <TaskRunsTable
+                            total={list.runs.length}
+                            hasFilters={list.hasFilters}
+                            filters={list.filters}
+                            runs={list.runs}
+                            isLoading={isLoading}
+                            allowSelection
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </TypedAwait>
+              </Suspense>
               <BulkActionBar />
             </div>
           )}
