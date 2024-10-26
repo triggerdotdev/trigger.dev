@@ -1,6 +1,6 @@
 ---
-title: "Runs & attempts"
-description: "Understanding the lifecycle of task execution in Trigger.dev"
+title: "Runs"
+description: "Understanding the lifecycle of task run execution in Trigger.dev"
 ---
 
 In Trigger.dev, the concepts of runs and attempts are fundamental to understanding how tasks are executed and managed. This article explains these concepts in detail and provides insights into the various states a run can go through during its lifecycle.
@@ -24,37 +24,52 @@ Runs can also find themselves in lots of other states depending on what's happen
 
 ### Initial States
 
-<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**: If a task is triggered before it has been deployed, the run enters this state and waits for the task to be deployed.
+<Icon icon="rectangle-history" iconType="solid" color="#FBBF24" size={17} /> **Waiting for deploy**:
+If a task is triggered before it has been deployed, the run enters this state and waits for the task
+to be deployed.
 
-<Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a run is triggered with a delay, it enters this state until the specified delay period has passed.
+<Icon icon="clock" iconType="solid" color="#878C99" size={17} /> **Delayed**: When a run is triggered
+with a delay, it enters this state until the specified delay period has passed.
 
-<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The run is ready to be executed and is waiting in the queue.
+<Icon icon="rectangle-history" iconType="solid" color="#878C99" size={17} /> **Queued**: The run is ready
+to be executed and is waiting in the queue.
 
 ### Execution States
 
-<Icon icon="spinner-third" iconType="duotone" color="#3B82F6" size={17} /> **Executing**: The task is currently running.
+<Icon icon="spinner-third" iconType="duotone" color="#3B82F6" size={17} /> **Executing**: The task is
+currently running.
 
-<Icon icon="arrows-rotate" iconType="solid" color="#3B82F6" size={17} /> **Reattempting**: The task has failed and is being retried.
+<Icon icon="arrows-rotate" iconType="solid" color="#3B82F6" size={17} /> **Reattempting**: The task has
+failed and is being retried.
 
-<Icon icon="snowflake" iconType="solid" color="#68BAF2" size={17} /> **Frozen**: Task has been frozen and is waiting to be resumed.
+<Icon icon="snowflake" iconType="solid" color="#68BAF2" size={17} /> **Frozen**: Task has been frozen
+and is waiting to be resumed.
 
 ### Final States
 
-<Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully finished execution.
+<Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully
+finished execution.
 
-<Icon icon="ban" iconType="solid" color="#878C99" size={17} /> **Canceled**: The run was manually canceled by the user.
+<Icon icon="ban" iconType="solid" color="#878C99" size={17} /> **Canceled**: The run was manually canceled
+by the user.
 
-<Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed to complete successfully.
+<Icon icon="circle-xmark" iconType="solid" color="#E11D48" size={17} /> **Failed**: The task has failed
+to complete successfully.
 
-<Icon icon="alarm-exclamation" iconType="solid" color="#E11D48" size={17} /> **Timed out**: Task has failed because it exceeded its `maxDuration`.
+<Icon icon="alarm-exclamation" iconType="solid" color="#E11D48" size={17} /> **Timed out**: Task has
+failed because it exceeded its `maxDuration`.
 
-<Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed during execution (likely due to an Out of Memory error).
+<Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed
+during execution (likely due to an Out of Memory error).
 
-<Icon icon="bolt-slash" iconType="solid" color="#E11D48" size={17} /> **Interrupted**: In development mode, when the CLI is disconnected.
+<Icon icon="bolt-slash" iconType="solid" color="#E11D48" size={17} /> **Interrupted**: In development
+mode, when the CLI is disconnected.
 
-<Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system error has occurred.
+<Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system
+error has occurred.
 
-<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's Time-to-Live (TTL) has passed before it could start executing.
+<Icon icon="trash-can" iconType="solid" color="#878C99" size={17} /> **Expired**: The run's Time-to-Live
+(TTL) has passed before it could start executing.
 
 ## Attempts
 
@@ -150,13 +165,13 @@ You can also replay runs from the dashboard using the same or different payload.
 
 The `triggerAndWait()` function triggers a task and then lets you wait for the result before continuing. [Learn more about triggerAndWait()](/triggering#yourtask-triggerandwait).
 
-![Run with triggerAndWait](/images/run-with-triggerAndWait().png)
+![Run with triggerAndWait](</images/run-with-triggerAndWait().png>)
 
 #### batchTriggerAndWait()
 
 Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you batch trigger a task and wait for all the results [Learn more about batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait).
 
-![Run with batchTriggerAndWait](/images/run-with-batchTriggerAndWait().png)
+![Run with batchTriggerAndWait](</images/run-with-batchTriggerAndWait().png>)
 
 ### Runs API
 
@@ -180,6 +195,18 @@ runs.cancel(runId);
 ```
 
 These methods allow you to access detailed information about runs and their attempts, including payloads, outputs, parent runs, and child runs.
+
+### Real-time updates
+
+You can subscribe to run updates in real-time using the `subscribeToRun()` function:
+
+```ts
+for await (const run of runs.subscribeToRun(runId)) {
+  console.log(run);
+}
+```
+
+For more on real-time updates, see the [Realtime](/realtime) documentation.
 
 ### Triggering runs for undeployed tasks
 

@@ -106,6 +106,10 @@
     {
       "source": "/realtime",
       "destination": "/realtime/overview"
+    },
+    {
+      "source": "/runs-and-attempts",
+      "destination": "/runs"
     }
   ],
   "anchors": [
@@ -138,7 +142,7 @@
           ]
         },
         "triggering",
-        "runs-and-attempts",
+        "runs",
         "apikeys",
         {
           "group": "Configuration",
