@@ -112,23 +112,13 @@ export class FailedTaskRunRetryHelper extends BaseService {
 
     logger.debug("[FailedTaskRunRetryHelper] Completing attempt", { taskRun, completion });
 
-    const executionRetry =
-      completion.retry ??
-      (await FailedTaskRunRetryHelper.getExecutionRetry({
-        run: taskRun,
-        execution: retriableExecution,
-      }));
-
     const completeAttempt = new CompleteAttemptService({
       prisma: this._prisma,
       isSystemFailure: !isCrash,
       isCrash,
     });
     const completeResult = await completeAttempt.call({
-      completion: {
-        ...completion,
-        retry: executionRetry,
-      },
+      completion,
       execution: retriableExecution,
     });
 

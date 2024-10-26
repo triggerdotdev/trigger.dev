@@ -221,6 +221,9 @@ export class CompleteAttemptService extends BaseService {
 
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
+    // This means that tasks won't know they are being retried
+    const executionRetryInferred = !completion.retry;
+
     const executionRetry =
       completion.retry ??
       (await FailedTaskRunRetryHelper.getExecutionRetry({
@@ -240,6 +243,7 @@ export class CompleteAttemptService extends BaseService {
       return await this.#retryAttempt({
         execution,
         executionRetry,
+        executionRetryInferred,
         taskRunAttempt,
         environment,
         checkpoint,
@@ -359,11 +363,13 @@ export class CompleteAttemptService extends BaseService {
   async #enqueueReattempt({
     run,
     executionRetry,
+    executionRetryInferred,
     checkpointEventId,
     supportsLazyAttempts,
   }: {
     run: TaskRun;
     executionRetry: TaskRunExecutionRetry;
+    executionRetryInferred: boolean;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
   }) {
@@ -429,6 +435,14 @@ export class CompleteAttemptService extends BaseService {
       return;
     }
 
+    if (executionRetryInferred) {
+      logger.debug("[CompleteAttemptService] Execution retry inferred, forcing retry via queue", {
+        runId: run.id,
+      });
+      await retryViaQueue();
+      return;
+    }
+
     // The worker is still running and waiting for a retry message
     await retryDirectly();
   }
@@ -436,12 +450,14 @@ export class CompleteAttemptService extends BaseService {
   async #retryAttempt({
     execution,
     executionRetry,
+    executionRetryInferred,
     taskRunAttempt,
     environment,
     checkpoint,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
+    executionRetryInferred: boolean;
     taskRunAttempt: NonNullable<FoundAttempt>;
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
@@ -495,6 +511,7 @@ export class CompleteAttemptService extends BaseService {
         execution,
         taskRunAttempt,
         executionRetry,
+        executionRetryInferred,
         checkpoint,
       });
     }
@@ -503,6 +520,7 @@ export class CompleteAttemptService extends BaseService {
       run: taskRunAttempt.taskRun,
       executionRetry,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+      executionRetryInferred,
     });
 
     return "RETRIED";
@@ -512,11 +530,13 @@ export class CompleteAttemptService extends BaseService {
     execution,
     taskRunAttempt,
     executionRetry,
+    executionRetryInferred,
     checkpoint,
   }: {
     execution: TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
     executionRetry: TaskRunExecutionRetry;
+    executionRetryInferred: boolean;
     checkpoint: CheckpointData;
   }) {
     const createCheckpoint = new CreateCheckpointService(this._prisma);
@@ -556,6 +576,7 @@ export class CompleteAttemptService extends BaseService {
       executionRetry,
       checkpointEventId: checkpointCreateResult.event.id,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
+      executionRetryInferred,
     });
 
     return "RETRIED" as const;
