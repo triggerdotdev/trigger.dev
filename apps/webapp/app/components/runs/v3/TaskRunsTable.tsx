@@ -23,7 +23,7 @@ import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -401,11 +401,25 @@ export function TaskRunsTable({
 
 function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
   const location = useLocation();
+  const organization = useOrganization();
+  const project = useProject();
+  const testPath = v3TestPath(organization, project);
 
   if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;
 
+  const actionButton = testPath ? (
+    <SimpleTooltip
+      button={
+        <LinkButton variant="small-menu-item" to={testPath}>
+          <BeakerIcon className="size-4 transition group-hover:text-text-bright" />
+        </LinkButton>
+      }
+      content="Run a test"
+    />
+  ) : null;
+
   return (
-    <TableCellMenu isSticky>
+    <TableCellMenu isSticky actionButton={actionButton}>
       {run.isCancellable && (
         <Dialog>
           <DialogTrigger asChild>

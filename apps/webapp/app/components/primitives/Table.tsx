@@ -1,9 +1,10 @@
-import { ChevronRightIcon } from "@heroicons/react/24/solid";
+import { BeakerIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
-import { InfoIconTooltip } from "./Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
+import { Button, LinkButton } from "./Buttons";
 
 type TableProps = {
   containerClassName?: string;
@@ -158,7 +159,7 @@ const rowHoverStyles = {
 };
 
 const stickyStyles =
-  "sticky right-0 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem]";
+  "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 w-[--sticky-width] [&:has(.group-hover\\/table-row\\:block)]:w-auto";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -244,7 +245,7 @@ export const TableCellChevron = forwardRef<
       alignment="right"
     >
       {children}
-      <ChevronRightIcon className="h-4 w-4 text-text-dimmed transition group-hover:text-text-bright" />
+      <ChevronRightIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
     </TableCell>
   );
 });
@@ -256,8 +257,9 @@ export const TableCellMenu = forwardRef<
     children?: ReactNode;
     isSticky?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+    actionButton?: ReactNode;
   }
->(({ className, children, isSticky, onClick }, ref) => {
+>(({ className, children, isSticky, onClick, actionButton }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <TableCell
@@ -268,15 +270,20 @@ export const TableCellMenu = forwardRef<
       alignment="right"
       hasAction={true}
     >
-      <Popover onOpenChange={(open) => setIsOpen(open)}>
-        <PopoverVerticalEllipseTrigger isOpen={isOpen} />
-        <PopoverContent
-          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-          align="end"
-        >
-          <div className="flex flex-col gap-1 p-1">{children}</div>
-        </PopoverContent>
-      </Popover>
+      <div className="relative p-1">
+        <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end bg-background-dimmed p-0.5 group-hover/table-row:rounded-md group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
+          {actionButton && <div className="hidden group-hover/table-row:block">{actionButton}</div>}
+          <Popover onOpenChange={(open) => setIsOpen(open)}>
+            <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+            <PopoverContent
+              className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              align="end"
+            >
+              <div className="flex flex-col gap-1 p-1">{children}</div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
     </TableCell>
   );
 });
