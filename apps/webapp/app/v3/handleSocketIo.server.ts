@@ -123,12 +123,13 @@ function createCoordinatorNamespace(io: Server) {
         await resumeAttempt.call(message);
       },
       TASK_RUN_COMPLETED: async (message) => {
-        const completeAttempt = new CompleteAttemptService();
+        const completeAttempt = new CompleteAttemptService({
+          supportsRetryCheckpoints: message.version === "v1",
+        });
         await completeAttempt.call({
           completion: message.completion,
           execution: message.execution,
           checkpoint: message.checkpoint,
-          supportsRetryCheckpoints: message.version === "v1",
         });
       },
       TASK_RUN_FAILED_TO_RUN: async (message) => {

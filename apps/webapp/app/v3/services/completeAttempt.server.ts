@@ -35,23 +35,28 @@ type CheckpointData = {
   location: string;
 };
 
+type CompleteAttemptServiceOptions = {
+  prisma?: PrismaClientOrTransaction;
+  supportsRetryCheckpoints?: boolean;
+  isSystemFailure?: boolean;
+  isCrash?: boolean;
+};
+
 export class CompleteAttemptService extends BaseService {
+  constructor(private opts: CompleteAttemptServiceOptions = {}) {
+    super(opts.prisma);
+  }
+
   public async call({
     completion,
     execution,
     env,
     checkpoint,
-    supportsRetryCheckpoints,
-    isSystemFailure,
-    isCrash,
   }: {
     completion: TaskRunExecutionResult;
     execution: TaskRunExecution;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
-    supportsRetryCheckpoints?: boolean;
-    isSystemFailure?: boolean;
-    isCrash?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
 
@@ -116,9 +121,6 @@ export class CompleteAttemptService extends BaseService {
         taskRunAttempt,
         env,
         checkpoint,
-        supportsRetryCheckpoints,
-        isSystemFailure,
-        isCrash,
       });
     }
   }
@@ -178,18 +180,12 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt,
     env,
     checkpoint,
-    supportsRetryCheckpoints,
-    isSystemFailure,
-    isCrash,
   }: {
     completion: TaskRunFailedExecutionResult;
     execution: TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
-    supportsRetryCheckpoints?: boolean;
-    isSystemFailure?: boolean;
-    isCrash?: boolean;
   }): Promise<"COMPLETED" | "RETRIED"> {
     if (
       completion.error.type === "INTERNAL_ERROR" &&
@@ -247,7 +243,6 @@ export class CompleteAttemptService extends BaseService {
         taskRunAttempt,
         environment,
         checkpoint,
-        supportsRetryCheckpoints,
       });
     }
 
@@ -282,16 +277,15 @@ export class CompleteAttemptService extends BaseService {
     let status: FAILED_RUN_STATUSES;
 
     // Set the correct task run status
-    if (isSystemFailure) {
+    if (this.opts.isSystemFailure) {
       status = "SYSTEM_FAILURE";
-    } else if (isCrash) {
+    } else if (this.opts.isCrash) {
       status = "CRASHED";
     } else if (
       sanitizedError.type === "INTERNAL_ERROR" &&
       sanitizedError.code === "MAX_DURATION_EXCEEDED"
     ) {
       status = "TIMED_OUT";
-      // TODO: check we want these all to be crashes by default
     } else if (sanitizedError.type === "INTERNAL_ERROR") {
       status = "CRASHED";
     } else {
@@ -367,53 +361,70 @@ export class CompleteAttemptService extends BaseService {
     executionRetry,
     checkpointEventId,
     supportsLazyAttempts,
-    supportsRetryCheckpoints,
   }: {
     run: TaskRun;
     executionRetry: TaskRunExecutionRetry;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
-    supportsRetryCheckpoints?: boolean;
   }) {
     const retryViaQueue = () => {
+      logger.debug("[CompleteAttemptService] Enqueuing retry attempt", { runId: run.id });
+
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
       return marqs?.replaceMessage(
         run.id,
         {
           type: "EXECUTE",
           taskIdentifier: run.taskIdentifier,
-          checkpointEventId: supportsRetryCheckpoints ? checkpointEventId : undefined,
-          retryCheckpointsDisabled: !supportsRetryCheckpoints,
+          checkpointEventId: this.opts.supportsRetryCheckpoints ? checkpointEventId : undefined,
+          retryCheckpointsDisabled: !this.opts.supportsRetryCheckpoints,
         },
         executionRetry.timestamp
       );
     };
 
     const retryDirectly = () => {
+      logger.debug("[CompleteAttemptService] Retrying attempt directly", { runId: run.id });
       return RetryAttemptService.enqueue(run.id, this._prisma, new Date(executionRetry.timestamp));
     };
 
     // There's a checkpoint, so we need to go through the queue
     if (checkpointEventId) {
-      if (!supportsRetryCheckpoints) {
-        logger.error("Worker does not support retry checkpoints, but a checkpoint was created", {
-          runId: run.id,
-          checkpointEventId,
-        });
+      if (!this.opts.supportsRetryCheckpoints) {
+        logger.error(
+          "[CompleteAttemptService] Worker does not support retry checkpoints, but a checkpoint was created",
+          {
+            runId: run.id,
+            checkpointEventId,
+          }
+        );
       }
 
+      logger.debug("[CompleteAttemptService] Enqueuing retry attempt with checkpoint", {
+        runId: run.id,
+      });
       await retryViaQueue();
       return;
     }
 
     // Workers without lazy attempt support always need to go through the queue, which is where the attempt is created
     if (!supportsLazyAttempts) {
+      logger.debug("[CompleteAttemptService] Worker does not support lazy attempts", {
+        runId: run.id,
+      });
       await retryViaQueue();
       return;
     }
 
     // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
-    if (!supportsRetryCheckpoints && executionRetry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS) {
+    if (
+      !this.opts.supportsRetryCheckpoints &&
+      executionRetry.delay >= env.CHECKPOINT_THRESHOLD_IN_MS
+    ) {
+      logger.debug(
+        "[CompleteAttemptService] Worker does not support retry checkpoints and the delay exceeds the threshold",
+        { runId: run.id }
+      );
       await retryViaQueue();
       return;
     }
@@ -428,14 +439,12 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt,
     environment,
     checkpoint,
-    supportsRetryCheckpoints,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
     taskRunAttempt: NonNullable<FoundAttempt>;
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
-    supportsRetryCheckpoints?: boolean;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
@@ -460,7 +469,7 @@ export class CompleteAttemptService extends BaseService {
       endTime: retryAt,
     });
 
-    logger.debug("Retrying", {
+    logger.debug("[CompleteAttemptService] Retrying", {
       taskRun: taskRunAttempt.taskRun.friendlyId,
       retry: executionRetry,
     });
@@ -487,7 +496,6 @@ export class CompleteAttemptService extends BaseService {
         taskRunAttempt,
         executionRetry,
         checkpoint,
-        supportsRetryCheckpoints,
       });
     }
 
@@ -495,7 +503,6 @@ export class CompleteAttemptService extends BaseService {
       run: taskRunAttempt.taskRun,
       executionRetry,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
-      supportsRetryCheckpoints,
     });
 
     return "RETRIED";
@@ -506,13 +513,11 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt,
     executionRetry,
     checkpoint,
-    supportsRetryCheckpoints,
   }: {
     execution: TaskRunExecution;
     taskRunAttempt: NonNullable<FoundAttempt>;
     executionRetry: TaskRunExecutionRetry;
     checkpoint: CheckpointData;
-    supportsRetryCheckpoints?: boolean;
   }) {
     const createCheckpoint = new CreateCheckpointService(this._prisma);
     const checkpointCreateResult = await createCheckpoint.call({
@@ -526,7 +531,7 @@ export class CompleteAttemptService extends BaseService {
     });
 
     if (!checkpointCreateResult.success) {
-      logger.error("Failed to create reattempt checkpoint", {
+      logger.error("[CompleteAttemptService] Failed to create reattempt checkpoint", {
         checkpoint,
         runId: execution.run.id,
         attemptId: execution.attempt.id,
@@ -551,7 +556,6 @@ export class CompleteAttemptService extends BaseService {
       executionRetry,
       checkpointEventId: checkpointCreateResult.event.id,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
-      supportsRetryCheckpoints,
     });
 
     return "RETRIED" as const;
