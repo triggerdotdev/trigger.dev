@@ -222,18 +222,22 @@ export class CompleteAttemptService extends BaseService {
     const environment = env ?? (await this.#getEnvironment(execution.environment.id));
 
     // This means that tasks won't know they are being retried
-    const executionRetryInferred = !completion.retry;
+    let executionRetryInferred = false;
+    let executionRetry = completion.retry;
 
-    const executionRetry =
-      completion.retry ??
-      (await FailedTaskRunRetryHelper.getExecutionRetry({
+    const shouldInfer = this.opts.isCrash || this.opts.isSystemFailure;
+
+    if (!executionRetry && shouldInfer) {
+      executionRetryInferred = true;
+      executionRetry = await FailedTaskRunRetryHelper.getExecutionRetry({
         run: {
           ...taskRunAttempt.taskRun,
           lockedBy: taskRunAttempt.backgroundWorkerTask,
           lockedToVersion: taskRunAttempt.backgroundWorker,
         },
         execution,
-      }));
+      });
+    }
 
     if (
       shouldRetryError(completion.error) &&
