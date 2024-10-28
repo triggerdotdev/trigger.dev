@@ -1,0 +1,120 @@
+---
+title: "Track errors with Sentry"
+sidebarTitle: "Sentry error tracking"
+description: "This example demonstrates how to track errors with Sentry using Trigger.dev."
+---
+
+## Overview
+
+Automatically send errors and source maps to your Sentry project from your Trigger.dev tasks. Sending source maps to Sentry allows for more detailed stack traces when errors occur, as Sentry can map the minified code back to the original source code.
+
+## Prerequisites
+
+- A [Sentry](https://sentry.io) account and project
+- A [Trigger.dev](https://trigger.dev) account and project
+
+## Build configuration
+
+To send errors to Sentry when there are errors in your tasks, you'll need to add this build configuration to your `trigger.config.ts` file. This will then run every time you deploy your project.
+
+<Note>
+  You will need to set the `SENTRY_AUTH_TOKEN` and `SENTRY_DSN` environment variables. You can find
+  the `SENTRY_AUTH_TOKEN` in your Sentry dashboard, in settings -> developer settings -> auth tokens
+  and the `SENTRY_DSN` in your Sentry dashboard, in settings -> projects -> your project -> client
+  keys (DSN). Add these to your `.env` file, and in your [Trigger.dev
+  dashboard](https://cloud.trigger.dev), under environment variables in your project's sidebar.
+</Note>
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+import * as Sentry from "@sentry/node";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: "<your-sentry-org>",
+          project: "<your-sentry-project>",
+          // Find this auth token in settings -> developer settings -> auth tokens
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
+  init: async () => {
+    Sentry.init({
+      // The Data Source Name (DSN) is a unique identifier for your Sentry project.
+      dsn: process.env.SENTRY_DSN,
+      // Update this to match the environment you want to track errors for
+      environment: process.env.NODE_ENV === "production" ? "production" : "development",
+    });
+  },
+  onFailure: async (payload, error, { ctx }) => {
+    Sentry.captureException(error, {
+      extra: {
+        payload,
+        ctx,
+      },
+    });
+  },
+});
+```
+
+<Note>
+  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  customize the build process or the resulting bundle and container image (in the case of
+  deploying). You can use pre-built extensions or create your own.
+</Note>
+
+## Testing that errors are being sent to Sentry
+
+To test that errors are being sent to Sentry, you need to create a task that will fail.
+
+This task takes no payload, and will throw an error.
+
+```ts trigger/sentry-error-test.ts
+import { task } from "@trigger.dev/sdk/v3";
+
+export const sentryErrorTest = task({
+  id: "sentry-error-test",
+  retry: {
+    // Only retry once
+    maxAttempts: 1,
+  },
+  run: async () => {
+    const error = new Error("This is a custom error that Sentry will capture");
+    error.cause = { additionalContext: "This is additional context" };
+    throw error;
+  },
+});
+```
+
+After creating the task, deploy your project.
+
+ <CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest deploy
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest deploy
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@latest deploy
+    ```
+
+    </CodeGroup>
+
+Once deployed, navigate to the `test` page in the sidebar of your [Trigger.dev dashboard](https://cloud.trigger.dev), click on your `prod` environment, and select the `sentryErrorTest` task.
+
+Run a test task with an empty payload by clicking the `Run test` button.
+
+Your run should then fail, and if everything is set up correctly, you will see an error in the Sentry project dashboard shortly after.
