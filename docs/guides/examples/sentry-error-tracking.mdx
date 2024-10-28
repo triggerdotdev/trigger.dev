@@ -18,12 +18,6 @@ Automatically send errors and source maps to your Sentry project from your Trigg
 To send errors to Sentry when there are errors in your tasks, you'll need to add this build configuration to your `trigger.config.ts` file. This will then run every time you deploy your project.
 
 <Note>
-  Make sure you use the correct sentry package for your runtime. For example, if you are using
-  Node.js, you should use the `@sentry/node` package. For a full list of supported packages, see the
-  [Sentry docs](https://docs.sentry.io/platforms/).
-</Note>
-
-<Note>
   You will need to set the `SENTRY_AUTH_TOKEN` and `SENTRY_DSN` environment variables. You can find
   the `SENTRY_AUTH_TOKEN` in your Sentry dashboard, in settings -> developer settings -> auth tokens
   and the `SENTRY_DSN` in your Sentry dashboard, in settings -> projects -> your project -> client
@@ -35,7 +29,6 @@ To send errors to Sentry when there are errors in your tasks, you'll need to add
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
-// Import the correct Sentry package for your runtime, e.g. @sentry/node for Node.js or @Sentry/nextjs for Next.js
 import * as Sentry from "@sentry/node";
 
 export default defineConfig({
@@ -50,7 +43,6 @@ export default defineConfig({
           // Find this auth token in settings -> developer settings -> auth tokens
           authToken: process.env.SENTRY_AUTH_TOKEN,
         }),
-        // Optional - only runs during the deploy command, and adds the plugin to the end of the list of plugins
         { placement: "last", target: "deploy" }
       ),
     ],
@@ -58,7 +50,6 @@ export default defineConfig({
   init: async () => {
     Sentry.init({
       // The Data Source Name (DSN) is a unique identifier for your Sentry project.
-
       dsn: process.env.SENTRY_DSN,
       // Update this to match the environment you want to track errors for
       environment: process.env.NODE_ENV === "production" ? "production" : "development",
