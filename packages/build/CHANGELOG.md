@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 3.1.0
+
+### Patch Changes
+
+- Added a Vercel sync env vars extension. Given a Vercel projectId and access token it will sync Vercel env vars when deploying Trigger.dev tasks. ([#1425](https://github.com/triggerdotdev/trigger.dev/pull/1425))
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.0`
+
 ## 3.0.13
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 3.1.0
+
+### Patch Changes
+
+- Fix issue with prisma extension breaking deploy builds ([#1429](https://github.com/triggerdotdev/trigger.dev/pull/1429))
+- - Include retries.default in task retry config when indexing ([#1424](https://github.com/triggerdotdev/trigger.dev/pull/1424))
+  - New helpers for internal error retry mechanics
+  - Detection for segfaults and ffmpeg OOM errors
+  - Retries for packet import and export
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.0`
+  - `@trigger.dev/build@3.1.0`
+
 ## 3.0.13
 
 ### Patch Changes
