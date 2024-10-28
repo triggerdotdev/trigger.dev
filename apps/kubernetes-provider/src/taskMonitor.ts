@@ -140,7 +140,7 @@ export class TaskMonitor {
     const containerState = this.#getContainerStateSummary(containerStatus.state);
     const exitCode = containerState.exitCode ?? -1;
 
-    if (exitCode === EXIT_CODE_ALREADY_HANDLED || exitCode === EXIT_CODE_CHILD_NONZERO) {
+    if (exitCode === EXIT_CODE_ALREADY_HANDLED) {
       this.#logger.debug("Ignoring pod failure, already handled by worker", {
         podName,
       });
@@ -160,7 +160,10 @@ export class TaskMonitor {
 
     let reason = rawReason || "Unknown error";
     let logs = rawLogs || "";
-    let overrideCompletion = false;
+
+    /** This will only override existing task errors. It will not crash the run.  */
+    let onlyOverrideExistingError = exitCode === EXIT_CODE_CHILD_NONZERO;
+
     let errorCode: TaskRunInternalError["code"] = TaskRunErrorCodes.POD_UNKNOWN_ERROR;
 
     switch (rawReason) {
@@ -185,7 +188,6 @@ export class TaskMonitor {
         }
         break;
       case "OOMKilled":
-        overrideCompletion = true;
         reason =
           "[TaskMonitor] Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.";
         errorCode = TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED;
@@ -198,7 +200,7 @@ export class TaskMonitor {
       exitCode,
       reason,
       logs,
-      overrideCompletion,
+      overrideCompletion: onlyOverrideExistingError,
       errorCode,
     } satisfies FailureDetails;
 

@@ -29,6 +29,11 @@ export class CrashTaskRunService extends BaseService {
 
     logger.debug("CrashTaskRunService.call", { runId, opts });
 
+    if (options?.overrideCompletion) {
+      logger.error("CrashTaskRunService.call: overrideCompletion is deprecated", { runId });
+      return;
+    }
+
     const taskRun = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,

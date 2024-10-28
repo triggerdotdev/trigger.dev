@@ -252,6 +252,7 @@ export const ProviderToPlatformMessages = {
       exitCode: z.number().optional(),
       message: z.string().optional(),
       logs: z.string().optional(),
+      /** This means we should only update the error if one exists */
       overrideCompletion: z.boolean().optional(),
       errorCode: TaskRunInternalError.shape.code.optional(),
     }),

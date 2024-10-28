@@ -24,6 +24,7 @@ import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
+import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -302,11 +303,13 @@ function createProviderNamespace(io: Server) {
     handlers: {
       WORKER_CRASHED: async (message) => {
         try {
-          const service = new CrashTaskRunService();
-
-          await service.call(message.runId, {
-            ...message,
-          });
+          if (message.overrideCompletion) {
+            const updateErrorService = new UpdateFatalRunErrorService();
+            await updateErrorService.call(message.runId, { ...message });
+          } else {
+            const crashRunService = new CrashTaskRunService();
+            await crashRunService.call(message.runId, { ...message });
+          }
         } catch (error) {
           logger.error("Error while handling crashed worker", { error });
         }
