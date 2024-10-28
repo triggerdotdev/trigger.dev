@@ -33,6 +33,7 @@ To send errors to Sentry when there are errors in your tasks, you'll need to add
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 // Import the correct Sentry package for your runtime, e.g. @sentry/node for Node.js or @Sentry/nextjs for Next.js
 import * as Sentry from "@sentry/node";
@@ -42,10 +43,6 @@ export default defineConfig({
   // Your other config settings...
   build: {
     extensions: [
-      additionalPackages({
-        // Add the correct Sentry package for your runtime, e.g. @sentry/node for Node.js or @Sentry/nextjs for Next.js
-        packages: ["@sentry/node"],
-      }),
       esbuildPlugin(
         sentryEsbuildPlugin({
           org: "<your-sentry-org>",
