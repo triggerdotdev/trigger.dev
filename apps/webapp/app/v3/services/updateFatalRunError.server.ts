@@ -8,9 +8,6 @@ export type UpdateFatalRunErrorServiceOptions = {
   reason?: string;
   exitCode?: number;
   logs?: string;
-  crashAttempts?: boolean;
-  crashedAt?: Date;
-  overrideCompletion?: boolean;
   errorCode?: TaskRunInternalError["code"];
 };
 
@@ -18,8 +15,6 @@ export class UpdateFatalRunErrorService extends BaseService {
   public async call(runId: string, options?: UpdateFatalRunErrorServiceOptions) {
     const opts = {
       reason: "Worker crashed",
-      crashAttempts: true,
-      crashedAt: new Date(),
       ...options,
     };
 
@@ -51,7 +46,6 @@ export class UpdateFatalRunErrorService extends BaseService {
     await finalizeService.call({
       id: taskRun.id,
       status: "CRASHED",
-      completedAt: new Date(),
       error: {
         type: "INTERNAL_ERROR",
         code: opts.errorCode ?? TaskRunErrorCodes.TASK_RUN_CRASHED,
