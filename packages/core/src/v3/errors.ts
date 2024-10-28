@@ -161,12 +161,12 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_ALREADY_RUNNING":
         case "TASK_PROCESS_SIGKILL_TIMEOUT":
         case "TASK_PROCESS_SIGSEGV":
-        case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_OOM_KILLED":
         case "TASK_PROCESS_MAYBE_OOM_KILLED":
         case "TASK_RUN_CANCELLED":
         case "MAX_DURATION_EXCEEDED":
         case "DISK_SPACE_EXCEEDED":
+        case "TASK_RUN_HEARTBEAT_TIMEOUT":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
@@ -178,8 +178,8 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_ABORTED":
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
-        case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
+        case "TASK_PROCESS_SIGTERM":
           return true;
 
         default:

@@ -3,7 +3,7 @@ import type {
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3";
-import { TaskRunError } from "@trigger.dev/core/v3";
+import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 import type {
   TaskRun,
@@ -62,7 +62,7 @@ export function executionResultForTaskRun(
         id: taskRun.friendlyId,
         error: {
           type: "INTERNAL_ERROR",
-          code: "TASK_RUN_CANCELLED",
+          code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
         },
       } satisfies TaskRunFailedExecutionResult;
     }
@@ -94,7 +94,7 @@ export function executionResultForTaskRun(
         id: taskRun.friendlyId,
         error: {
           type: "INTERNAL_ERROR",
-          code: "CONFIGURED_INCORRECTLY",
+          code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
         },
       } satisfies TaskRunFailedExecutionResult;
     }
