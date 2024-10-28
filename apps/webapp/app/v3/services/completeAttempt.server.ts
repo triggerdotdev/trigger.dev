@@ -10,6 +10,7 @@ import {
   flattenAttributes,
   sanitizeError,
   shouldRetryError,
+  taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -239,8 +240,10 @@ export class CompleteAttemptService extends BaseService {
       });
     }
 
+    const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
+
     if (
-      shouldRetryError(completion.error) &&
+      retriableError &&
       executionRetry !== undefined &&
       taskRunAttempt.number < MAX_TASK_RUN_ATTEMPTS
     ) {
