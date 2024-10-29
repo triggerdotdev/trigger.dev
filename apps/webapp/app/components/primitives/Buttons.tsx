@@ -46,6 +46,7 @@ const theme = {
       "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:bg-primary group-disabled:pointer-events-none",
     shortcut:
       "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
+    icon: "",
   },
   secondary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
@@ -53,6 +54,7 @@ const theme = {
       "bg-secondary group-hover:bg-charcoal-600 group-hover:border-charcoal-650 border border-charcoal-600 group-disabled:bg-secondary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+    icon: "",
   },
   tertiary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
@@ -60,6 +62,7 @@ const theme = {
       "bg-tertiary group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+    icon: "",
   },
   minimal: {
     textColor:
@@ -68,6 +71,7 @@ const theme = {
       "bg-transparent group-hover:bg-tertiary disabled:opacity-50 group-disabled:bg-transparent group-disabled:pointer-events-none",
     shortcut:
       "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+    icon: "",
   },
   danger: {
     textColor:
@@ -75,6 +79,15 @@ const theme = {
     button:
       "bg-error group-hover:bg-rose-500 disabled:opacity-50 group-disabled:bg-error group-disabled:pointer-events-none",
     shortcut: "border-text-bright text-text-bright group-hover:border-bright/60",
+    icon: "",
+  },
+  docs: {
+    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    icon: "text-blue-500",
+    button:
+      "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
   },
 };
 
@@ -84,7 +97,7 @@ function createVariant(sizeName: Size, themeName: Theme) {
   return {
     textColor: theme[themeName].textColor,
     button: cn(sizes[sizeName].button, theme[themeName].button),
-    icon: sizes[sizeName].icon,
+    icon: cn(sizes[sizeName].icon, theme[themeName].icon),
     iconSpacing: sizes[sizeName].iconSpacing,
     shortcutVariant: sizes[sizeName].shortcutVariant,
     shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
@@ -111,7 +124,10 @@ const variant = {
   "danger/small": createVariant("small", "danger"),
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
-  "danger/extra-large": createVariant("extra-large", "danger"),
+  "docs/small": createVariant("small", "docs"),
+  "docs/medium": createVariant("medium", "docs"),
+  "docs/large": createVariant("large", "docs"),
+  "docs/extra-large": createVariant("extra-large", "docs"),
   "menu-item": {
     textColor: "text-text-bright px-1",
     button: "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-750",
@@ -192,13 +208,18 @@ export function ButtonContent(props: ButtonContentPropsType) {
           (typeof LeadingIcon === "string" ? (
             <NamedIcon
               name={LeadingIcon}
-              className={cn(iconClassName, leadingIconClassName, "shrink-0 justify-start")}
+              className={cn(
+                iconClassName,
+                leadingIconClassName,
+                "shrink-0 justify-start",
+                variation.icon
+              )}
             />
           ) : (
             <LeadingIcon
               className={cn(
                 iconClassName,
-                textColorClassName,
+                variation.icon,
                 leadingIconClassName,
                 "shrink-0 justify-start"
               )}
@@ -218,13 +239,18 @@ export function ButtonContent(props: ButtonContentPropsType) {
           (typeof TrailingIcon === "string" ? (
             <NamedIcon
               name={TrailingIcon}
-              className={cn(iconClassName, trailingIconClassName, "shrink-0 justify-end")}
+              className={cn(
+                iconClassName,
+                trailingIconClassName,
+                "shrink-0 justify-end",
+                variation.icon
+              )}
             />
           ) : (
             <TrailingIcon
               className={cn(
                 iconClassName,
-                textColorClassName,
+                variation.icon,
                 trailingIconClassName,
                 "shrink-0 justify-end"
               )}

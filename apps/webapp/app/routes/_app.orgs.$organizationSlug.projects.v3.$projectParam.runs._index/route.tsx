@@ -119,7 +119,7 @@ export default function Page() {
         <PageTitle title="Runs" />
         <PageAccessories>
           <LinkButton
-            variant={"minimal/small"}
+            variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
             to={docsPath("/runs-and-attempts")}
           >
