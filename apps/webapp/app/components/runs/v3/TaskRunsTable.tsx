@@ -3,7 +3,7 @@ import {
   ClockIcon,
   CpuChipIcon,
   RectangleStackIcon,
-  StopCircleIcon,
+  StopIcon,
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
@@ -23,7 +23,7 @@ import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { RunListAppliedFilters, RunListItem } from "~/presenters/v3/RunListPresenter.server";
 import { formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath } from "~/utils/pathBuilder";
 import { EnvironmentLabel } from "../../environments/EnvironmentLabel";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
@@ -367,7 +367,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="h-4 w-4 text-charcoal-400" /> : "–"}
+                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
@@ -401,52 +401,53 @@ export function TaskRunsTable({
 
 function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
   const location = useLocation();
-  const organization = useOrganization();
-  const project = useProject();
-  const testPath = v3TestPath(organization, project);
 
   if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;
 
-  const actionButton = testPath ? (
-    <SimpleTooltip
-      button={
-        <LinkButton variant="small-menu-item" to={testPath}>
-          <BeakerIcon className="size-4 transition group-hover:text-text-bright" />
-        </LinkButton>
-      }
-      content="Run a test"
-    />
-  ) : null;
-
   return (
-    <TableCellMenu isSticky actionButton={actionButton}>
-      {run.isCancellable && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={StopCircleIcon}>
-              Cancel run
-            </Button>
-          </DialogTrigger>
-          <CancelRunDialog
-            runFriendlyId={run.friendlyId}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-      {run.isReplayable && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-              Replay run
-            </Button>
-          </DialogTrigger>
-          <ReplayRunDialog
-            runFriendlyId={run.friendlyId}
-            failedRedirect={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-    </TableCellMenu>
+    <TableCellMenu
+      isSticky
+      hiddenButtons={
+        <div className="flex items-center gap-1">
+          {run.isCancellable && (
+            <SimpleTooltip
+              button={
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <StopIcon className="size-4" />
+                  </DialogTrigger>
+                  <CancelRunDialog
+                    runFriendlyId={run.friendlyId}
+                    redirectPath={`${location.pathname}${location.search}`}
+                  />
+                </Dialog>
+              }
+              content="Cancel run"
+              side="left"
+              disableHoverableContent
+            />
+          )}
+          {run.isReplayable && (
+            <SimpleTooltip
+              button={
+                <Dialog>
+                  <DialogTrigger asChild className="group size-7 rounded-sm p-1.5">
+                    <ArrowPathIcon className="size-3 transition group-hover:text-text-bright" />
+                  </DialogTrigger>
+                  <ReplayRunDialog
+                    runFriendlyId={run.friendlyId}
+                    failedRedirect={`${location.pathname}${location.search}`}
+                  />
+                </Dialog>
+              }
+              content="Replay run"
+              side="left"
+              disableHoverableContent
+            />
+          )}
+        </div>
+      }
+    />
   );
 }
 
