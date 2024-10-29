@@ -10,6 +10,21 @@ Trigger.dev Realtime is a set of APIs that allow you to subscribe to runs and ge
 
 The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), an open-source PostgreSQL syncing engine. The Trigger.dev API wraps Electric SQL and provides a simple API to subscribe to [runs](/runs) and get real-time updates.
 
+## Walkthrough
+
+<div className="w-full h-full aspect-video">
+  <iframe
+    width="100%"
+    height="100%"
+    src="https://www.youtube.com/embed/RhJAbSGkS88?si=4Z72SfygeklNI3As"
+    title="YouTube video player"
+    frameborder="0"
+    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen
+  ></iframe>
+</div>
+
 ## Usage
 
 After you trigger a task, you can subscribe to the run using the `runs.subscribeToRun` function. This function returns an async iterator that you can use to get updates on the run status.
