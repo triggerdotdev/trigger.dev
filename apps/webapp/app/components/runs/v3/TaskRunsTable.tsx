@@ -210,8 +210,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/triggering")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
@@ -233,8 +234,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/triggering")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
@@ -254,8 +256,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/tags")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
