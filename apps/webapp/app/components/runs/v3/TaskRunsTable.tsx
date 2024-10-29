@@ -413,8 +413,11 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
             <SimpleTooltip
               button={
                 <Dialog>
-                  <DialogTrigger asChild>
-                    <StopIcon className="size-4" />
+                  <DialogTrigger
+                    asChild
+                    className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  >
+                    <StopIcon className="size-3" />
                   </DialogTrigger>
                   <CancelRunDialog
                     runFriendlyId={run.friendlyId}
@@ -431,8 +434,11 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
             <SimpleTooltip
               button={
                 <Dialog>
-                  <DialogTrigger asChild className="group size-7 rounded-sm p-1.5">
-                    <ArrowPathIcon className="size-3 transition group-hover:text-text-bright" />
+                  <DialogTrigger
+                    asChild
+                    className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  >
+                    <ArrowPathIcon className="size-3" />
                   </DialogTrigger>
                   <ReplayRunDialog
                     runFriendlyId={run.friendlyId}
