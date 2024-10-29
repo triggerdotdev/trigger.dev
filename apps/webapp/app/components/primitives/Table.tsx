@@ -259,46 +259,66 @@ export const TableCellMenu = forwardRef<
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
     popoverContent?: ReactNode;
+    children?: ReactNode;
   }
->(({ className, isSticky, onClick, visibleButtons, hiddenButtons, popoverContent }, ref) => {
-  const [isOpen, setIsOpen] = useState(false);
+>(
+  (
+    { className, isSticky, onClick, visibleButtons, hiddenButtons, popoverContent, children },
+    ref
+  ) => {
+    const [isOpen, setIsOpen] = useState(false);
 
-  return (
-    <TableCell
-      className={className}
-      isSticky={isSticky}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-      hasAction={true}
-    >
-      <div className="relative p-1">
-        <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end bg-background-dimmed p-0.5 group-hover/table-row:rounded-md group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
-          {/* Always visible buttons  */}
-          {visibleButtons}
+    return (
+      <TableCell
+        className={className}
+        isSticky={isSticky}
+        onClick={onClick}
+        ref={ref}
+        alignment="right"
+        hasAction={true}
+      >
+        <div className="relative p-1">
+          <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end bg-background-dimmed p-0.5 group-hover/table-row:rounded-md group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
+            {/* Hidden buttons that show on hover */}
+            {hiddenButtons && (
+              <div className="hidden group-hover/table-row:block">{hiddenButtons}</div>
+            )}
+            {/* Always visible buttons  */}
+            {visibleButtons}
+            {/* Always visible opover with ellipsis trigger */}
+            {popoverContent && (
+              <Popover onOpenChange={(open) => setIsOpen(open)}>
+                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+                <PopoverContent
+                  className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  align="end"
+                >
+                  <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
+                </PopoverContent>
+              </Popover>
+            )}
 
-          {/* Hidden buttons that show on hover */}
-          {hiddenButtons && (
-            <div className="hidden group-hover/table-row:block">{hiddenButtons}</div>
-          )}
-
-          {/* Always visible opover with ellipsis trigger */}
-          {popoverContent && (
-            <Popover onOpenChange={(open) => setIsOpen(open)}>
-              <PopoverVerticalEllipseTrigger isOpen={isOpen} />
-              <PopoverContent
-                className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-                align="end"
-              >
-                <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
-              </PopoverContent>
-            </Popover>
-          )}
+            {/*
+              Todo: This is support for the legacy TableCell where all buttons were in Popovers.
+              Replace all instances of this with the new options above and remove when done.
+            */}
+            {!visibleButtons && !hiddenButtons && !popoverContent && (
+              <Popover onOpenChange={(open) => setIsOpen(open)}>
+                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+                <PopoverContent
+                  className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  align="end"
+                >
+                  <div className="flex flex-col gap-1 p-1">{children}</div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </div>
-      </div>
-    </TableCell>
-  );
-});
+      </TableCell>
+    );
+  }
+);
 
 type TableBlankRowProps = {
   className?: string;
