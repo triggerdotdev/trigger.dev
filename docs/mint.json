@@ -212,7 +212,9 @@
     {
       "group": "Realtime API",
       "pages": [
-        "realtime/overview"
+        "realtime/overview",
+        "realtime/subscribe-to-run",
+        "realtime/subscribe-to-runs-with-tag"
       ]
     },
     {
