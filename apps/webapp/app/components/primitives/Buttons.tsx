@@ -82,10 +82,10 @@ const theme = {
     icon: "",
   },
   docs: {
-    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    textColor: "text-blue-200/70 transition group-disabled:text-text-dimmed/80",
     icon: "text-blue-500",
     button:
-      "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
+      "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover:bg-charcoal-650 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
   },
