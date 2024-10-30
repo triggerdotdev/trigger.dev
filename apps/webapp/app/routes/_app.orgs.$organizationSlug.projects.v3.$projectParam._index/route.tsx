@@ -182,7 +182,7 @@ export default function Page() {
                     autoFocus
                   />
                 </div>
-                <Table className="max-h-full">
+                <Table containerClassName="max-h-full mb-[2.5rem]">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
