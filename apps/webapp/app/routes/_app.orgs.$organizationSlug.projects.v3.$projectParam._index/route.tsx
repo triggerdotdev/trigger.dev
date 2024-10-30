@@ -165,13 +165,13 @@ export default function Page() {
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
+      <PageBody scrollable={false}>
         <div className={cn("grid h-full grid-rows-1")}>
           {hasTasks ? (
-            <div className="flex flex-col gap-4 pb-4">
+            <div className="flex flex-col">
               {!userHasTasks && <UserHasNoTasks />}
-              <div className="pb-4">
-                <div className="h-8">
+              <div className="max-h-full overflow-hidden">
+                <div className="p-2">
                   <Input
                     placeholder="Search tasks"
                     variant="tertiary"
@@ -182,7 +182,7 @@ export default function Page() {
                     autoFocus
                   />
                 </div>
-                <Table>
+                <Table className="max-h-full">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
