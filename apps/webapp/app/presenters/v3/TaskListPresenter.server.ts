@@ -31,6 +31,7 @@ export type Task = {
   environments: {
     id: string;
     type: RuntimeEnvironmentType;
+    slug: string;
     userName?: string;
   }[];
 };

@@ -59,6 +59,7 @@ import {
   ProjectParamSchema,
   v3RunsPath,
   v3TasksStreamingPath,
+  v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
@@ -201,7 +202,6 @@ export default function Page() {
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
                         });
-                        const taskFriendlyId = task.filePath;
                         return (
                           <TableRow key={task.slug} className="group">
                             <TableCell to={path}>
@@ -288,12 +288,14 @@ export default function Page() {
                                 <LinkButton
                                   variant="minimal/small"
                                   LeadingIcon={BeakerIcon}
-                                  to={v3TestTaskPath(
-                                    organization,
-                                    project,
-                                    { friendlyId: taskFriendlyId },
-                                    task.environments[0].type
-                                  )}
+                                  //TODO Get this path working so we can link to the exact task on the test page
+                                  // to={v3TestTaskPath(
+                                  //   organization,
+                                  //   project,
+                                  //   task.slug,
+                                  //   task.environments[0].slug
+                                  // )}
+                                  to={v3TestPath(organization, project)}
                                 >
                                   Test
                                 </LinkButton>
