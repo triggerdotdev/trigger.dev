@@ -201,13 +201,6 @@ export default function Page() {
                       possibleEnvironments={possibleEnvironments}
                       possibleTasks={possibleTasks}
                     />
-                    <div className="flex items-center justify-end gap-x-2">
-                      <PaginationControls
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        showPageNumbers={false}
-                      />
-                    </div>
                   </div>
 
                   <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
@@ -268,7 +261,6 @@ export default function Page() {
                           />
                         )}
                       </div>
-                      <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                     </div>
                   </div>
                 </>
