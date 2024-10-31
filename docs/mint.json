@@ -144,8 +144,8 @@
     {
       "group": "Deployment",
       "pages": [
-        "deploy-environment-variables",
         "cli-deploy",
+        "deploy-environment-variables",
         "github-actions",
         {
           "group": "Deployment integrations",
