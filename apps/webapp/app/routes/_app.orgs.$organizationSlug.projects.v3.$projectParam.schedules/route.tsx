@@ -94,7 +94,6 @@ export default function Page() {
     possibleTasks,
     possibleEnvironments,
     hasFilters,
-    filters,
     limits,
     currentPage,
     totalPages,
@@ -132,11 +131,20 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
 
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/tasks/scheduled")}
+          >
+            Schedules docs
+          </LinkButton>
+
           {limits.used >= limits.limit ? (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
                   LeadingIcon={PlusIcon}
+                  leadingIconClassName="text-background-dimmed"
                   variant="primary/small"
                   shortcut={{ key: "n" }}
                   disabled={possibleTasks.length === 0 || isShowingNewPane}
@@ -185,8 +193,8 @@ export default function Page() {
               ) : schedules.length === 0 && !hasFilters ? (
                 <AttachYourFirstScheduleInstructions />
               ) : (
-                <div className="p-3">
-                  <div className="mb-2 flex items-center justify-between gap-x-2">
+                <>
+                  <div className="flex items-center justify-between gap-x-2 p-2">
                     <ScheduleFilters
                       possibleEnvironments={possibleEnvironments}
                       possibleTasks={possibleTasks}
@@ -217,7 +225,7 @@ export default function Page() {
                         </Paragraph>
                       </InfoPanel>
                     ) : (
-                      <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
+                      <div className="ml-2 flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
                         <div className="flex items-center justify-between gap-6">
                           <Header3>
                             You've used {limits.used}/{limits.limit} of your schedules.
@@ -244,7 +252,7 @@ export default function Page() {
                     )}
                     <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                   </div>
-                </div>
+                </>
               )}
             </div>
           </ResizablePanel>
@@ -271,7 +279,7 @@ function CreateScheduledTaskInstructions() {
         iconClassName="text-sun-500"
         panelClassName="max-w-full"
         to={docsPath("v3/tasks-scheduled")}
-        buttonLabel="Scheduled task docs"
+        buttonLabel="Schedules docs"
       >
         <Paragraph variant="small">
           You have no scheduled tasks in your project. Before you can schedule a task you need to
@@ -372,14 +380,14 @@ function SchedulesTable({
                     deleted from the dashboard or using the SDK.
                   </Paragraph>
                 </div>
-                <div>
-                  <LinkButton
-                    variant="tertiary/medium"
-                    to="https://trigger.dev/docs/v3/tasks-scheduled"
-                  >
-                    View the docs
-                  </LinkButton>
-                </div>
+                <LinkButton
+                  variant="docs/small"
+                  to={docsPath("v3/tasks-scheduled")}
+                  LeadingIcon={BookOpenIcon}
+                  className="mb-1"
+                >
+                  View the docs
+                </LinkButton>
               </div>
             }
           >
