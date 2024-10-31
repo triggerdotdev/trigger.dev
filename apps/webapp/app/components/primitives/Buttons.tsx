@@ -79,7 +79,7 @@ const theme = {
     button:
       "bg-error group-hover:bg-rose-500 disabled:opacity-50 group-disabled:bg-error group-disabled:pointer-events-none",
     shortcut: "border-text-bright text-text-bright group-hover:border-bright/60",
-    icon: "",
+    icon: "text-text-bright",
   },
   docs: {
     textColor: "text-blue-200/70 transition group-disabled:text-text-dimmed/80",
