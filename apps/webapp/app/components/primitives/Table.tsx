@@ -1,10 +1,9 @@
-import { BeakerIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
+import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
-import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
-import { Button, LinkButton } from "./Buttons";
+import { InfoIconTooltip } from "./Tooltip";
 
 type TableProps = {
   containerClassName?: string;
