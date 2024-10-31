@@ -176,6 +176,7 @@ export class TaskExecutor {
                 runError,
                 parsedPayload,
                 ctx,
+                initOutput,
                 signal
               );
 
@@ -498,6 +499,7 @@ export class TaskExecutor {
     error: unknown,
     payload: any,
     ctx: TaskRunContext,
+    init: unknown,
     signal?: AbortSignal
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
@@ -550,6 +552,7 @@ export class TaskExecutor {
         const handleErrorResult = this.task.fns.handleError
           ? await this.task.fns.handleError(payload, error, {
               ctx,
+              init,
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
@@ -558,6 +561,7 @@ export class TaskExecutor {
           : this._importedConfig
           ? await this._handleErrorFn?.(payload, error, {
               ctx,
+              init,
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
