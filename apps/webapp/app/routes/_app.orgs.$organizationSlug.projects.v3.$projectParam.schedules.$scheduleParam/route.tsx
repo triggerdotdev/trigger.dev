@@ -252,7 +252,7 @@ export default function Page() {
                 <Property.Label>Timezone</Property.Label>
                 <Property.Value>{schedule.timezone}</Property.Value>
               </Property.Item>
-              <Property.Item>
+              <Property.Item className="gap-1">
                 <Property.Label>Environments</Property.Label>
                 <Property.Value>
                   <EnvironmentLabels size="small" environments={schedule.environments} />
@@ -272,7 +272,7 @@ export default function Page() {
                       {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
                     </Property.Value>
                   </Property.Item>
-                  <Property.Item>
+                  <Property.Item className="gap-1.5">
                     <Property.Label>Status</Property.Label>
                     <Property.Value>
                       <EnabledStatus enabled={schedule.active} />
@@ -354,11 +354,11 @@ export default function Page() {
       </div>
       {isImperative && (
         <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Form method="post">
               <Button
                 type="submit"
-                variant="minimal/medium"
+                variant="tertiary/medium"
                 LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
                 leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
                 name="action"
@@ -371,26 +371,24 @@ export default function Page() {
               <DialogTrigger asChild>
                 <Button
                   type="submit"
-                  variant="minimal/medium"
+                  variant="danger/medium"
                   LeadingIcon={TrashIcon}
-                  leadingIconClassName="text-error"
-                  className="text-error"
                   name="action"
                   value="delete"
                 >
                   Delete
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="sm:max-w-sm">
                 <DialogHeader>Delete schedule</DialogHeader>
-                <DialogDescription>
+                <DialogDescription className="mt-3">
                   Are you sure you want to delete this schedule? This can't be reversed.
                 </DialogDescription>
                 <DialogFooter>
                   <Form method="post">
                     <Button
                       type="submit"
-                      variant="danger/small"
+                      variant="danger/medium"
                       LeadingIcon={TrashIcon}
                       name="action"
                       value="delete"
