@@ -262,7 +262,7 @@ This handler will run the `revalidatePath` function from Next.js, which purges t
 
 The handlers are slightly different for the App and Pages router:
 
-#### Revalidation helper: App Router
+#### Revalidation handler: App Router
 
 If you are using the App router, create a new revalidation route at `app/api/revalidate/path/route.ts`:
 
@@ -292,7 +292,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-#### Revalidation helper: Pages Router
+#### Revalidation handler: Pages Router
 
 If you are using the Pages router, create a new revalidation route at `pages/api/revalidate/path.ts`:
 
