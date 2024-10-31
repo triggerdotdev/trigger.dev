@@ -14,9 +14,9 @@ import { RegistryProxy } from "~/v3/registryProxy.server";
 
 const app = express();
 
-if (process.env.DISABLE_COMPRESSION !== "1") {
-  app.use(compression());
-}
+// if (process.env.DISABLE_COMPRESSION !== "1") {
+//   app.use(compression());
+// }
 
 // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
 app.disable("x-powered-by");
@@ -73,15 +73,63 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     next();
   });
 
-  app.use((req, res, next) => {
-    // Generate a unique request ID for each request
-    const requestId = nanoid();
+  app.post("/realtime/v1/streams/express/test", async (req, res) => {
+    // Ensure the request is a readable stream
+    const { method, headers } = req;
+    console.log("Inside /realtime/v1/streams/express/test");
 
-    runWithHttpContext({ requestId, path: req.url, host: req.hostname }, next);
+    if (method !== "POST") {
+      return res.status(405).send("Method Not Allowed");
+    }
+
+    // Set encoding to UTF-8 to read string data
+    req.setEncoding("utf8");
+
+    let buffer = "";
+
+    try {
+      req.on("data", (chunk) => {
+        buffer += chunk;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.trim()) {
+            const data = JSON.parse(line);
+            console.log(`${new Date().toISOString()} Received data:`, data);
+            // You can process each data chunk as needed
+          }
+        }
+      });
+
+      req.on("end", () => {
+        if (buffer) {
+          const data = JSON.parse(buffer);
+          console.log(`${new Date().toISOString()} Received data at end:`, data);
+          // You can process the remaining data as needed
+        }
+        res.status(200).send(); // Send a success response
+      });
+
+      req.on("error", (error) => {
+        console.error("Error processing stream:", error);
+        res.status(500).send("Internal Server Error");
+      });
+    } catch (error) {
+      console.error("Error processing stream:", error);
+      res.status(500).send("Internal Server Error");
+    }
   });
 
+  // app.use((req, res, next) => {
+  //   // Generate a unique request ID for each request
+  //   const requestId = nanoid();
+
+  //   runWithHttpContext({ requestId, path: req.url, host: req.hostname, method: req.method }, next);
+  // });
+
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
-    app.use(apiRateLimiter);
+    // app.use(apiRateLimiter);
 
     app.all(
       "*",

@@ -5,11 +5,16 @@ import { apiClientManager } from "../apiClientManager-api.js";
 import { taskContext } from "../task-context-api.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { RunMetadataManager } from "./types.js";
+import { MetadataStream } from "./metadataStream.js";
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
   private hasChanges: boolean = false;
   private store: Record<string, DeserializedJson> | undefined;
+  // Add a Map to track active streams
+  private activeStreams = new Map<string, MetadataStream<any>>();
+
+  constructor(private streamsBaseUrl: string) {}
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
     this.store = metadata ?? {};
@@ -84,6 +89,67 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
 
     this.store = metadata;
+  }
+
+  public async stream<T>(
+    key: string,
+    value: AsyncIterable<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>> {
+    const runId = taskContext.ctx?.run.id;
+
+    if (!runId) {
+      return value;
+    }
+
+    // Add the key to the special stream metadata object
+    this.setKey(`$$stream.${key}`, key);
+
+    await this.flush();
+
+    const streamInstance = new MetadataStream({
+      key,
+      runId,
+      iterator: value[Symbol.asyncIterator](),
+      baseUrl: this.streamsBaseUrl,
+      signal,
+    });
+
+    this.activeStreams.set(key, streamInstance);
+
+    // Clean up when stream completes
+    streamInstance.wait().finally(() => this.activeStreams.delete(key));
+
+    return streamInstance;
+  }
+
+  public hasActiveStreams(): boolean {
+    return this.activeStreams.size > 0;
+  }
+
+  // Waits for all the streams to finish
+  public async waitForAllStreams(timeout: number = 30_000): Promise<void> {
+    if (this.activeStreams.size === 0) {
+      return;
+    }
+
+    const promises = Array.from(this.activeStreams.values());
+
+    try {
+      await Promise.race([
+        Promise.allSettled(promises),
+        new Promise<void>((resolve, _) => setTimeout(() => resolve(), timeout)),
+      ]);
+    } catch (error) {
+      console.error("Error waiting for streams to finish:", error);
+
+      // If we time out, abort all remaining streams
+      for (const [key, promise] of this.activeStreams.entries()) {
+        // We can add abort logic here if needed
+        this.activeStreams.delete(key);
+      }
+      throw error;
+    }
   }
 
   public async flush(requestOptions?: ApiRequestOptions): Promise<void> {

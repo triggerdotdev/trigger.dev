@@ -25,6 +25,7 @@ export const metadata = {
   save: saveMetadata,
   replace: replaceMetadata,
   flush: flushMetadata,
+  stream: stream,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;
@@ -122,4 +123,12 @@ async function flushMetadata(requestOptions?: ApiRequestOptions): Promise<void> 
   );
 
   await runMetadata.flush($requestOptions);
+}
+
+async function stream<T>(
+  key: string,
+  value: AsyncIterable<T>,
+  signal?: AbortSignal
+): Promise<AsyncIterable<T>> {
+  return runMetadata.stream(key, value, signal);
 }

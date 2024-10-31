@@ -53,6 +53,14 @@ export class RunMetadataAPI implements RunMetadataManager {
     return this.#getManager().update(metadata);
   }
 
+  public stream<T>(
+    key: string,
+    value: AsyncIterable<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>> {
+    return this.#getManager().stream(key, value, signal);
+  }
+
   flush(requestOptions?: ApiRequestOptions): Promise<void> {
     return this.#getManager().flush(requestOptions);
   }

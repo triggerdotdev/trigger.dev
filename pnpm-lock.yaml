@@ -1576,6 +1576,9 @@ importers:
       next:
         specifier: 14.2.15
         version: 14.2.15(@playwright/test@1.37.0)(react-dom@18.2.0)(react@18.3.1)
+      openai:
+        specifier: ^4.68.4
+        version: 4.68.4(zod@3.22.3)
       react:
         specifier: ^18
         version: 18.3.1
@@ -24283,6 +24286,27 @@ packages:
 
   /openai@4.56.0(zod@3.22.3):
     resolution: {integrity: sha512-zcag97+3bG890MNNa0DQD9dGmmTWL8unJdNkulZzWRXrl+QeD+YkBI4H58rJcwErxqGK6a0jVPZ4ReJjhDGcmw==}
+    hasBin: true
+    peerDependencies:
+      zod: ^3.23.8
+    peerDependenciesMeta:
+      zod:
+        optional: true
+    dependencies:
+      '@types/node': 18.19.20
+      '@types/node-fetch': 2.6.4
+      abort-controller: 3.0.0
+      agentkeepalive: 4.5.0
+      form-data-encoder: 1.7.2
+      formdata-node: 4.4.1
+      node-fetch: 2.6.12
+      zod: 3.22.3
+    transitivePeerDependencies:
+      - encoding
+    dev: false
+
+  /openai@4.68.4(zod@3.22.3):
+    resolution: {integrity: sha512-LRinV8iU9VQplkr25oZlyrsYGPGasIwYN8KFMAAFTHHLHjHhejtJ5BALuLFrkGzY4wfbKhOhuT+7lcHZ+F3iEA==}
     hasBin: true
     peerDependencies:
       zod: ^3.23.8

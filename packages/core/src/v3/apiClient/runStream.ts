@@ -2,6 +2,7 @@ import { DeserializedJson } from "../../schemas/json.js";
 import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
 import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
+import { getEnvVar } from "../utils/getEnv.js";
 import {
   conditionallyImportAndParsePacket,
   IOPacket,
@@ -48,49 +49,167 @@ export type RunShapeStreamOptions = {
   headers?: Record<string, string>;
   fetchClient?: typeof fetch;
   closeOnComplete?: boolean;
+  signal?: AbortSignal;
 };
+
+export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
+  [K in keyof TStreams]: {
+    type: K;
+    chunk: TStreams[K];
+    run: TRun;
+  };
+}[keyof TStreams];
+
+export type RunWithStreamsResult<TRun, TStreams extends Record<string, any>> =
+  | {
+      type: "run";
+      run: TRun;
+    }
+  | StreamPartResult<TRun, TStreams>;
 
 export function runShapeStream<TRunTypes extends AnyRunTypes>(
   url: string,
   options?: RunShapeStreamOptions
 ): RunSubscription<TRunTypes> {
-  return new RunSubscription<TRunTypes>(url, options);
+  const $options: RunSubscriptionOptions = {
+    provider: {
+      async onShape(callback) {
+        return zodShapeStream(SubscribeRunRawShape, url, callback, options);
+      },
+    },
+    streamFactory: new SSEStreamSubscriptionFactory(
+      getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+      {
+        headers: options?.headers,
+        signal: options?.signal,
+      }
+    ),
+  };
+
+  return new RunSubscription<TRunTypes>($options);
 }
+
+// First, define interfaces for the stream handling
+export interface StreamSubscription {
+  subscribe(onChunk: (chunk: unknown) => Promise<void>): Promise<() => void>;
+}
+
+export interface StreamSubscriptionFactory {
+  createSubscription(runId: string, streamKey: string): StreamSubscription;
+}
+
+// Real implementation for production
+export class SSEStreamSubscription implements StreamSubscription {
+  constructor(
+    private url: string,
+    private options: { headers?: Record<string, string>; signal?: AbortSignal }
+  ) {}
+
+  async subscribe(onChunk: (chunk: unknown) => Promise<void>): Promise<() => void> {
+    const response = await fetch(this.url, {
+      headers: {
+        Accept: "text/event-stream",
+        ...this.options.headers,
+      },
+      signal: this.options.signal,
+    });
+
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.trim() && !line.startsWith(":")) {
+              try {
+                // Strip the "data: " prefix before parsing
+                const data = line.replace(/^data: /, "");
+                const chunk = JSON.parse(data);
+                await onChunk(chunk);
+              } catch (e) {
+                console.error("Error parsing stream chunk:", e);
+                console.error("Raw line:", line);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        console.error("Error in stream subscription:", error);
+      }
+    })();
+
+    return () => reader.cancel();
+  }
+}
+
+export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
+  constructor(
+    private baseUrl: string,
+    private options: { headers?: Record<string, string>; signal?: AbortSignal }
+  ) {}
+
+  createSubscription(runId: string, streamKey: string): StreamSubscription {
+    const url = `${this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
+    return new SSEStreamSubscription(url, this.options);
+  }
+}
+
+export interface RunShapeProvider {
+  onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void>;
+}
+
+export type RunSubscriptionOptions = RunShapeStreamOptions & {
+  provider: RunShapeProvider;
+  streamFactory: StreamSubscriptionFactory;
+};
 
 export class RunSubscription<TRunTypes extends AnyRunTypes> {
   private abortController: AbortController;
   private unsubscribeShape?: () => void;
   private stream: AsyncIterableStream<RunShape<TRunTypes>>;
   private packetCache = new Map<string, any>();
+  private _closeOnComplete: boolean;
+  private _isRunComplete = false;
 
-  constructor(
-    private url: string,
-    private options?: RunShapeStreamOptions
-  ) {
+  constructor(private options: RunSubscriptionOptions) {
     this.abortController = new AbortController();
+    this._closeOnComplete =
+      typeof options.closeOnComplete === "undefined" ? true : options.closeOnComplete;
 
     const source = new ReadableStream<SubscribeRunRawShape>({
       start: async (controller) => {
-        this.unsubscribeShape = await zodShapeStream(
-          SubscribeRunRawShape,
-          this.url,
-          async (shape) => {
-            controller.enqueue(shape);
-            if (
-              this.options?.closeOnComplete &&
-              shape.completedAt &&
-              !this.abortController.signal.aborted
-            ) {
-              controller.close();
-              this.abortController.abort();
-            }
-          },
-          {
-            signal: this.abortController.signal,
-            fetchClient: this.options?.fetchClient,
-            headers: this.options?.headers,
+        this.unsubscribeShape = await this.options.provider.onShape(async (shape) => {
+          controller.enqueue(shape);
+
+          this._isRunComplete = !!shape.completedAt;
+
+          if (
+            this._closeOnComplete &&
+            this._isRunComplete &&
+            !this.abortController.signal.aborted
+          ) {
+            controller.close();
+            this.abortController.abort();
           }
-        );
+        });
       },
       cancel: () => {
         this.unsubscribe();
@@ -119,6 +238,48 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 
   getReader(): ReadableStreamDefaultReader<RunShape<TRunTypes>> {
     return this.stream.getReader();
+  }
+
+  withStreams<TStreams extends Record<string, any>>(): AsyncIterableStream<
+    RunWithStreamsResult<RunShape<TRunTypes>, TStreams>
+  > {
+    // Keep track of which streams we've already subscribed to
+    const activeStreams = new Set<string>();
+
+    return createAsyncIterableStream(this.stream, {
+      transform: async (run, controller) => {
+        controller.enqueue({
+          type: "run",
+          run,
+        });
+
+        // Check for stream metadata
+        if (run.metadata) {
+          for (const [key] of Object.entries(run.metadata)) {
+            if (key.startsWith("$$stream.")) {
+              const streamKey = key.replace("$$stream.", "") as keyof TStreams;
+
+              if (!activeStreams.has(key)) {
+                activeStreams.add(key);
+
+                const subscription = this.options.streamFactory.createSubscription(
+                  run.id,
+                  streamKey.toString()
+                );
+
+                await subscription.subscribe(async (chunk) => {
+                  controller.enqueue({
+                    type: streamKey,
+                    chunk: chunk as TStreams[typeof streamKey],
+                    run,
+                  } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
+                });
+              }
+            }
+          }
+        }
+      },
+    });
   }
 
   private async transformRunShape(row: SubscribeRunRawShape): Promise<RunShape<TRunTypes>> {

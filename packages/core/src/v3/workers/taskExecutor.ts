@@ -3,7 +3,7 @@ import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import { parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
-import { runMetadata, TriggerConfig } from "../index.js";
+import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
   ServerBackgroundWorker,
@@ -223,6 +223,7 @@ export class TaskExecutor {
             }
           } finally {
             await this.#callTaskCleanup(parsedPayload, ctx, initOutput, signal);
+            await this.#blockForWaitUntil();
           }
         });
       },
@@ -492,6 +493,24 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan("cleanup", async (span) => {
       return await cleanupFn(payload, { ctx, init, signal });
     });
+  }
+
+  async #blockForWaitUntil() {
+    if (!waitUntil.requiresResolving()) {
+      return;
+    }
+
+    return this._tracer.startActiveSpan(
+      "waitUntil",
+      async (span) => {
+        return await waitUntil.blockUntilSettled(30_000);
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "clock",
+        },
+      }
+    );
   }
 
   async #handleError(

@@ -4,6 +4,7 @@ export type HttpLocalStorage = {
   requestId: string;
   path: string;
   host: string;
+  method: string;
 };
 
 const httpLocalStorage = new AsyncLocalStorage<HttpLocalStorage>();

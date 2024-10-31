@@ -15,6 +15,7 @@ import {
   ExecutorToWorkerMessageCatalog,
   timeout,
   runMetadata,
+  waitUntil,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
@@ -33,6 +34,7 @@ import {
   usage,
   getNumberEnvVar,
   StandardMetadataManager,
+  StandardWaitUntilManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -82,8 +84,17 @@ usage.setGlobalUsageManager(devUsageManager);
 const devRuntimeManager = new DevRuntimeManager();
 runtime.setGlobalRuntimeManager(devRuntimeManager);
 timeout.setGlobalManager(new UsageTimeoutManager(devUsageManager));
-const runMetadataManager = new StandardMetadataManager();
+const runMetadataManager = new StandardMetadataManager(
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
+);
 runMetadata.setGlobalManager(runMetadataManager);
+const waitUntilManager = new StandardWaitUntilManager();
+waitUntil.setGlobalManager(waitUntilManager);
+// Wait for all streams to finish before completing the run
+waitUntil.register({
+  requiresResolving: () => runMetadataManager.hasActiveStreams(),
+  promise: () => runMetadataManager.waitForAllStreams(),
+});
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
 

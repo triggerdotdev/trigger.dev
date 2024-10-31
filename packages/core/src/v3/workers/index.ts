@@ -15,3 +15,4 @@ export { DevUsageManager } from "../usage/devUsageManager.js";
 export { ProdUsageManager, type ProdUsageManagerOptions } from "../usage/prodUsageManager.js";
 export { UsageTimeoutManager } from "../timeout/usageTimeoutManager.js";
 export { StandardMetadataManager } from "../runMetadata/manager.js";
+export { StandardWaitUntilManager } from "../waitUntil/manager.js";
