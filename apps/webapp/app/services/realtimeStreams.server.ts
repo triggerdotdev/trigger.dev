@@ -1,4 +1,4 @@
-import Redis, { RedisOptions } from "ioredis";
+import Redis, { RedisKey, RedisOptions, RedisValue } from "ioredis";
 import { logger } from "./logger.server";
 
 export type RealtimeStreamsOptions = {
@@ -107,55 +107,68 @@ export class RealtimeStreams {
     streamId: string
   ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
-
     const streamKey = `stream:${runId}:${streamId}`;
 
-    async function cleanup(stream?: TransformStream) {
+    async function cleanup() {
       try {
         await redis.quit();
-        if (stream) {
-          const writer = stream.writable.getWriter();
-          await writer.close(); // Catch in case the stream is already closed
-        }
       } catch (error) {
         logger.error("[RealtimeStreams][ingestData] Error in cleanup:", { error });
       }
     }
 
     try {
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      // Use TextDecoderStream to simplify text decoding
+      const textStream = stream.pipeThrough(new TextDecoderStream());
+      const reader = textStream.getReader();
+
+      const batchSize = 10; // Adjust this value based on performance testing
+      let batchCommands: Array<[key: RedisKey, ...args: RedisValue[]]> = [];
 
       while (true) {
         const { done, value } = await reader.read();
 
-        logger.debug("[RealtimeStreams][ingestData] Reading data", { streamKey, done });
-
         if (done) {
-          if (buffer) {
-            const data = JSON.parse(buffer);
-            await redis.xadd(streamKey, "*", "data", JSON.stringify(data));
-          }
           break;
         }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        logger.debug("[RealtimeStreams][ingestData] Reading data", { streamKey, value });
+
+        // 'value' is a string containing the decoded text
+        const lines = value.split("\n");
 
         for (const line of lines) {
           if (line.trim()) {
-            const data = JSON.parse(line);
+            // Avoid unnecessary parsing; assume 'line' is already a JSON string
+            // Add XADD command with MAXLEN option to limit stream size
+            batchCommands.push([streamKey, "MAXLEN", "~", "1000", "*", "data", line]);
 
-            logger.debug("[RealtimeStreams][ingestData] Ingesting data", { streamKey });
-
-            await redis.xadd(streamKey, "*", "data", JSON.stringify(data));
+            if (batchCommands.length >= batchSize) {
+              // Send batch using a pipeline
+              const pipeline = redis.pipeline();
+              for (const args of batchCommands) {
+                pipeline.xadd(...args);
+              }
+              await pipeline.exec();
+              batchCommands = [];
+            }
           }
         }
       }
 
-      await redis.xadd(streamKey, "*", "data", JSON.stringify({ __end: true }));
+      // Send any remaining commands
+      if (batchCommands.length > 0) {
+        const pipeline = redis.pipeline();
+        for (const args of batchCommands) {
+          pipeline.xadd(...args);
+        }
+        await pipeline.exec();
+      }
+
+      // Send the __end message to indicate the end of the stream
+      const endData = JSON.stringify({ __end: true });
+      await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", endData);
+
       return new Response(null, { status: 200 });
     } catch (error) {
       console.error("Error in ingestData:", error);

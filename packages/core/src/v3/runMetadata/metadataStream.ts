@@ -1,3 +1,5 @@
+import { run } from "node:test";
+
 export type MetadataOptions<T> = {
   baseUrl: string;
   runId: string;

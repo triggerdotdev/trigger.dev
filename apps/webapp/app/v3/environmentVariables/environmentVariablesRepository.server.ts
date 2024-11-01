@@ -735,6 +735,10 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
       value: env.API_ORIGIN ?? env.APP_ORIGIN,
     },
     {
+      key: "TRIGGER_STREAM_URL",
+      value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
+    },
+    {
       key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
       value: String(env.CHECKPOINT_THRESHOLD_IN_MS),
     },
