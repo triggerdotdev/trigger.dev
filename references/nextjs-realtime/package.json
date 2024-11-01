@@ -30,6 +30,7 @@
     "zod": "3.22.3"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^15.0.2",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
