@@ -194,7 +194,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
 
   return (
     <Form
-      className="grid h-full max-h-full grid-rows-[1fr_2.5rem]"
+      className="grid h-full max-h-full grid-rows-[1fr_auto]"
       method="post"
       {...form.props}
       onSubmit={(e) => submitForm(e)}
@@ -287,16 +287,16 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
+      <div className="flex items-center justify-end gap-3 border-t border-grid-bright bg-background-dimmed p-2">
         <div className="flex items-center gap-1">
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
           </Paragraph>
-          <EnvironmentLabel environment={task.environment} />
+          <EnvironmentLabel environment={task.environment} size="large" />
         </div>
         <Button
           type="submit"
-          variant="primary/small"
+          variant="primary/medium"
           LeadingIcon={BeakerIcon}
           shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
         >
@@ -358,7 +358,7 @@ function ScheduledTaskForm({
   });
 
   return (
-    <Form className="grid h-full max-h-full grid-rows-[1fr_2.5rem]" method="post" {...form.props}>
+    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
       <input
         type="hidden"
         {...conform.input(triggerSource, { type: "hidden" })}
@@ -484,7 +484,7 @@ function ScheduledTaskForm({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed px-2">
+      <div className="flex items-center justify-end gap-2 border-t border-grid-bright bg-background-dimmed p-2">
         <div className="flex items-center gap-1">
           <Paragraph variant="small" className="whitespace-nowrap">
             This test will run in
