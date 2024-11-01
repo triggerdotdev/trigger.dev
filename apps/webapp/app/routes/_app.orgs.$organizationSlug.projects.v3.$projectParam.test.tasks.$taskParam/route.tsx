@@ -519,7 +519,7 @@ function RecentPayloads({
   onSelected: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 pl-4">
+    <div className="flex flex-col gap-2 px-3">
       <div className="flex h-10 items-center border-b border-grid-dimmed">
         <Header2>Recent payloads</Header2>
       </div>
