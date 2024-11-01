@@ -8,6 +8,7 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -122,8 +123,8 @@ export default function Page() {
                     <Spinner />
                   </div>
                 ) : hasSelectedEnvironment ? (
-                  <div className="grid grid-rows-[2rem_1fr] overflow-hidden">
-                    <div className="mx-3 flex items-end">
+                  <div className="grid grid-rows-[auto_1fr] overflow-hidden">
+                    <div className="flex items-end px-3 pt-2">
                       <Header2>Select a task</Header2>
                     </div>
                     {!rest.tasks?.length ? (
@@ -161,7 +162,7 @@ function TaskSelector({
   const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
 
   return (
-    <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
       <div className="p-2">
         <Input
           placeholder="Search tasks"
@@ -176,10 +177,9 @@ function TaskSelector({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHeaderCell className="px-2">
-              <span className="sr-only">Go to test task</span>
+            <TableHeaderCell className="pl-3" colSpan={2}>
+              Task
             </TableHeaderCell>
-            <TableHeaderCell className="px-2">Task</TableHeaderCell>
             <TableHeaderCell className="px-2">File path</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -204,9 +204,9 @@ function TaskSelector({
 function NoTaskInstructions({ environment }: { environment?: SelectedEnvironment }) {
   return (
     <div className="px-3 py-3">
-      <Paragraph spacing variant="small">
+      <Callout variant="info">
         You have no tasks {environment ? `in ${environmentTitle(environment)}` : ""}.
-      </Paragraph>
+      </Callout>
     </div>
   );
 }
@@ -224,7 +224,7 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
     >
       <TableCell
         to={path}
-        actionClassName="pl-2.5 pr-1 py-1"
+        actionClassName="pl-2.5 pr-2 py-1"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
         <RadioButtonCircle checked={isActive || isPending} />
