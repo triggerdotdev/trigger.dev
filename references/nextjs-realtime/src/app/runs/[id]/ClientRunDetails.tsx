@@ -2,11 +2,11 @@
 
 import RunDetails from "@/components/RunDetails";
 import { Card, CardContent } from "@/components/ui/card";
-import { TriggerAuthContext, useRun } from "@trigger.dev/react-hooks";
+import { TriggerAuthContext, useRealtimeRun } from "@trigger.dev/react-hooks";
 import type { exampleTask } from "@/trigger/example";
 
 function RunDetailsWrapper({ runId }: { runId: string }) {
-  const { run, error } = useRun<typeof exampleTask>(runId, { refreshInterval: 1000 });
+  const { run, error } = useRealtimeRun<typeof exampleTask>(runId);
 
   if (error) {
     return (

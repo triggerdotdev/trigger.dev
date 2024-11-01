@@ -8,6 +8,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
+import { ApiClient } from "./index.js";
 import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
@@ -50,6 +51,7 @@ export type RunShapeStreamOptions = {
   fetchClient?: typeof fetch;
   closeOnComplete?: boolean;
   signal?: AbortSignal;
+  client?: ApiClient;
 };
 
 export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
@@ -84,6 +86,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
         signal: options?.signal,
       }
     ),
+    ...options,
   };
 
   return new RunSubscription<TRunTypes>($options);
@@ -306,7 +309,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
           return cachedResult;
         }
 
-        const result = await conditionallyImportAndParsePacket(packet);
+        const result = await conditionallyImportAndParsePacket(packet, this.options.client);
         this.packetCache.set(`${row.friendlyId}/${key}`, result);
 
         return result;

@@ -598,6 +598,7 @@ export class ApiClient {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
       closeOnComplete: true,
       headers: this.#getRealtimeHeaders(),
+      client: this,
     });
   }
 
@@ -611,6 +612,7 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        client: this,
       }
     );
   }
@@ -619,6 +621,7 @@ export class ApiClient {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
       closeOnComplete: false,
       headers: this.#getRealtimeHeaders(),
+      client: this,
     });
   }
 
