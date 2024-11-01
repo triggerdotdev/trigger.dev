@@ -230,7 +230,7 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            scopes: [`read:batch:${data.batchId}`],
+            scopes: [`read:batch:${data.batchId}`].concat(data.runs.map((r) => `read:runs:${r}`)),
           },
           expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
         });
