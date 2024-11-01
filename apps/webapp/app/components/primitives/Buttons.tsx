@@ -46,7 +46,7 @@ const theme = {
       "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:bg-primary group-disabled:pointer-events-none",
     shortcut:
       "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
-    icon: "",
+    icon: "text-charcoal-900",
   },
   secondary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
@@ -54,7 +54,7 @@ const theme = {
       "bg-secondary group-hover:bg-charcoal-600 group-hover:border-charcoal-650 border border-charcoal-600 group-disabled:bg-secondary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
-    icon: "",
+    icon: "text-text-bright",
   },
   tertiary: {
     textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
@@ -62,7 +62,7 @@ const theme = {
       "bg-tertiary group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
-    icon: "",
+    icon: "text-text-bright",
   },
   minimal: {
     textColor:
@@ -71,7 +71,7 @@ const theme = {
       "bg-transparent group-hover:bg-tertiary disabled:opacity-50 group-disabled:bg-transparent group-disabled:pointer-events-none",
     shortcut:
       "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
-    icon: "",
+    icon: "text-text-dimmed",
   },
   danger: {
     textColor:
@@ -83,11 +83,11 @@ const theme = {
   },
   docs: {
     textColor: "text-blue-200/70 transition group-disabled:text-text-dimmed/80",
-    icon: "text-blue-500",
     button:
       "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover:bg-charcoal-650 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+    icon: "text-blue-500",
   },
 };
 
