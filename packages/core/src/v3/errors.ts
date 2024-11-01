@@ -167,6 +167,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "MAX_DURATION_EXCEEDED":
         case "DISK_SPACE_EXCEEDED":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
+        case "OUTDATED_SDK_VERSION":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
@@ -426,6 +427,14 @@ const prettyInternalErrors: Partial<
       name: "Contact us",
       href: links.site.contact,
       magic: "CONTACT_FORM",
+    },
+  },
+  OUTDATED_SDK_VERSION: {
+    message:
+      "Your task is using an outdated version of the SDK. Please upgrade to the latest version.",
+    link: {
+      name: "Beta upgrade guide",
+      href: links.docs.upgrade.beta,
     },
   },
 };

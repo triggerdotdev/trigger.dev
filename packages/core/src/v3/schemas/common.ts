@@ -104,6 +104,7 @@ export const TaskRunInternalError = z.object({
     "DISK_SPACE_EXCEEDED",
     "POD_EVICTED",
     "POD_UNKNOWN_ERROR",
+    "OUTDATED_SDK_VERSION",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),

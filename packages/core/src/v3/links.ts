@@ -9,6 +9,9 @@ export const links = {
     machines: {
       home: "https://trigger.dev/docs/v3/machines",
     },
+    upgrade: {
+      beta: "https://trigger.dev/docs/upgrading-beta",
+    },
   },
   site: {
     home: "https://trigger.dev",
