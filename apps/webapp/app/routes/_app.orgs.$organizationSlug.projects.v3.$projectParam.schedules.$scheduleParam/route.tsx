@@ -384,7 +384,7 @@ export default function Page() {
                 <DialogDescription className="mt-3">
                   Are you sure you want to delete this schedule? This can't be reversed.
                 </DialogDescription>
-                <DialogFooter>
+                <DialogFooter className="sm:justify-end">
                   <Form method="post">
                     <Button
                       type="submit"
