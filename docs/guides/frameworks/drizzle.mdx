@@ -1,0 +1,148 @@
+---
+title: "Drizzle setup guide"
+sidebarTitle: "Drizzle setup guide"
+description: "This guide will show you how to set up Drizzle ORM with Trigger.dev"
+icon: "D"
+---
+
+import Prerequisites from "/snippets/framework-prerequisites.mdx";
+import CliInitStep from "/snippets/step-cli-init.mdx";
+import CliDevStep from "/snippets/step-cli-dev.mdx";
+import CliRunTestStep from "/snippets/step-run-test.mdx";
+import CliViewRunStep from "/snippets/step-view-run.mdx";
+import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
+
+## Overview
+
+This guide will show you how to set up [Drizzle ORM](https://orm.drizzle.team/) with Trigger.dev, test and view an example task run.
+
+## Prerequisites
+
+- An existing Node.js project with a `package.json` file
+- Ensure TypeScript is installed
+- A [PostgreSQL](https://www.postgresql.org/) database server running locally, or accessible via a connection string
+- Drizzle ORM [installed and initialized](https://orm.drizzle.team/docs/get-started) in your project
+- A `DATABASE_URL` environment variable set in your `.env` file, pointing to your PostgreSQL database (e.g. `postgresql://user:password@localhost:5432/dbname`)
+
+## Initial setup (optional)
+
+Follow these steps if you don't already have Trigger.dev set up in your project.
+
+<Steps>
+  <CliInitStep />
+  <CliDevStep />
+  <CliRunTestStep />
+  <CliViewRunStep />
+</Steps>
+
+## Creating a task using Drizzle and deploying it to production
+
+<Steps>
+<Step title="The task using Drizzle">
+
+First, create a new task file in your `trigger` folder.
+
+This is a simple task that will add a new user to your database, we will call it `drizzle-add-new-user`.
+
+<Note>
+  For this task to work correctly, you will need to have a `users` table schema defined with Drizzle
+  that includes `name`, `age` and `email` fields.
+</Note>
+
+```ts /trigger/drizzle-add-new-user.ts
+import { eq } from "drizzle-orm";
+import { task } from "@trigger.dev/sdk/v3";
+import { users } from "src/db/schema";
+import { drizzle } from "drizzle-orm/node-postgres";
+
+// Initialize Drizzle client
+const db = drizzle(process.env.DATABASE_URL!);
+
+export const addNewUser = task({
+  id: "drizzle-add-new-user",
+  run: async (payload: typeof users.$inferInsert) => {
+    // Create new user
+    const [user] = await db.insert(users).values(payload).returning();
+
+    return {
+      createdUser: user,
+      message: "User created and updated successfully",
+    };
+  },
+});
+```
+
+</Step>
+<Step title="Configuring the build">
+
+Next, in your `trigger.config.js` file, add `pg` to the `externals` array. `pg` is a non-blocking PostgreSQL client for Node.js.
+
+It is marked as an external to ensure that it is not bundled into the task's bundle, and instead will be installed and loaded from `node_modules` at runtime.
+
+```js /trigger.config.js
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>", // Your project reference
+  // Your other config settings...
+  build: {
+    externals: ["pg"],
+  },
+});
+```
+
+</Step>
+
+<Step title="Deploying your task">
+Once the build configuration is added, you can now deploy your task using the Trigger.dev CLI.
+
+ <CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest deploy
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest deploy
+    ```
+
+    ```bash yarn
+    yarn dlx trigger.dev@latest deploy
+    ```
+
+    </CodeGroup>
+
+    </Step>
+
+<Step title="Adding your DATABASE_URL environment variable to Trigger.dev">
+
+In your Trigger.dev dashboard sidebar click "Environment Variables" <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, and then the "New environment variable" button <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />.
+
+![Environment variables page](/images/environment-variables-page.jpg)
+
+You can add values for your local dev environment, staging and prod. in this case we will add the `DATABASE_URL` for the production environment.
+
+![Environment variables
+  page](/images/environment-variables-panel.jpg)
+
+</Step>
+
+<Step title="Running your task">
+
+    To test this task, go to the 'test' page in the Trigger.dev dashboard and run the task with the following payload:
+
+```json
+{
+  "name": "<a-name>", // e.g. "John Doe"
+  "age": "<an-age>", // e.g. 25
+  "email": "<an-email>" // e.g. "john@doe.test"
+}
+```
+
+Congratulations! You should now see a new completed run, and a new user with the credentials you provided should be added to your database.
+
+</Step>
+
+</Steps>
+
+<UsefulNextSteps />

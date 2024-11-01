@@ -299,6 +299,7 @@
       "group": "Guides",
       "pages": [
         "guides/frameworks/prisma",
+        "guides/frameworks/drizzle",
         "guides/frameworks/sequin",
         {
           "group": "Supabase",
