@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.1.1
+
+### Patch Changes
+
+- Remove browser export condition - not necessary with the react-hooks package that uses core ([#1455](https://github.com/triggerdotdev/trigger.dev/pull/1455))
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.1`
+
 ## 3.1.0
 
 ### Minor Changes

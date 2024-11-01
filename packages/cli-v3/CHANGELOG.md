@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.1.1
+
+### Patch Changes
+
+- Increase max retry count for deploy run controller operations ([#1450](https://github.com/triggerdotdev/trigger.dev/pull/1450))
+- Set parent PATH on forked worker processes ([#1448](https://github.com/triggerdotdev/trigger.dev/pull/1448))
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.1`
+  - `@trigger.dev/build@3.1.1`
+
 ## 3.1.0
 
 ### Patch Changes
