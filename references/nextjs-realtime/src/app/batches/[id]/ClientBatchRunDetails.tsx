@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { TriggerAuthContext, useBatch } from "@trigger.dev/react-hooks";
+import { TriggerAuthContext, useRealtimeBatch } from "@trigger.dev/react-hooks";
 import type { exampleTask } from "@/trigger/example";
 
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +117,7 @@ export function BackgroundRunsTable({ runs }: { runs: TaskRunShape<typeof exampl
 }
 
 function BatchRunTableWrapper({ batchId }: { batchId: string }) {
-  const { runs, error } = useBatch<typeof exampleTask>(batchId);
+  const { runs, error } = useRealtimeBatch<typeof exampleTask>(batchId);
 
   console.log(runs);
 
