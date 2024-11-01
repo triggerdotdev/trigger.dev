@@ -220,15 +220,20 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
   return (
     <TableRow
       key={task.taskIdentifier}
-      className={cn(
-        (isActive || isPending) &&
-          "z-20 rounded-sm outline outline-1 outline-offset-[-1px] outline-secondary"
-      )}
+      className={cn((isActive || isPending) && "bg-indigo-500/10")}
     >
-      <TableCell to={path} actionClassName="pl-2.5 pr-1 py-1">
+      <TableCell
+        to={path}
+        actionClassName="pl-2.5 pr-1 py-1"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         <RadioButtonCircle checked={isActive || isPending} />
       </TableCell>
-      <TableCell to={path} actionClassName="pl-1 pr-2 py-1">
+      <TableCell
+        to={path}
+        actionClassName="pl-1 pr-2 py-1.5"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         <div className="flex flex-col gap-0.5">
           <TaskFunctionName
             variant="extra-small"
@@ -244,7 +249,11 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
         </div>
       </TableCell>
 
-      <TableCell to={path} actionClassName="px-2 py-1">
+      <TableCell
+        to={path}
+        actionClassName="px-2 py-1"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         {task.filePath}
       </TableCell>
     </TableRow>
