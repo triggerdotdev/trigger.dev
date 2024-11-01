@@ -107,7 +107,7 @@ export default function Page() {
                             "flex h-8 flex-1 items-center justify-center rounded-sm border text-xs uppercase tracking-wider",
                             isSelected
                               ? cn(environmentBorderClassName(env), environmentTextClassName(env))
-                              : "border-grid-bright text-text-dimmed"
+                              : "border-grid-bright text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
                           )}
                           key={env.id}
                           to={v3TestPath(organization, project, env.slug)}
