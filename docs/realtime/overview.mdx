@@ -261,3 +261,7 @@ We have a full demo app repo available [here](https://github.com/triggerdotdev/n
 ## Limits
 
 The Realtime API in the Trigger.dev Cloud limits the number of concurrent subscriptions, depending on your plan. If you exceed the limit, you will receive an error when trying to subscribe to a run. For more information, see our [pricing page](https://trigger.dev/pricing).
+
+## Known issues
+
+There is currently a known issue where the realtime API does not work if subscribing to a run that has a large payload or large output and are stored in object store instead of the database. We are working on a fix for this issue: https://github.com/triggerdotdev/trigger.dev/issues/1451. As a workaround you'll need to keep payloads and outputs below 128KB when using the realtime API.
