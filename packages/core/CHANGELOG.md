@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.1.1
+
+### Patch Changes
+
+- Pass init output to both local and global `handleError` functions ([#1441](https://github.com/triggerdotdev/trigger.dev/pull/1441))
+- Add outdated SDK error ([#1453](https://github.com/triggerdotdev/trigger.dev/pull/1453))
+- Add individual run ids to auto-generated public access token when calling batchTrigger ([#1449](https://github.com/triggerdotdev/trigger.dev/pull/1449))
+
 ## 3.1.0
 
 ### Minor Changes
