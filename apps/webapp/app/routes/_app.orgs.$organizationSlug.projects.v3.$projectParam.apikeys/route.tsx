@@ -104,7 +104,7 @@ export default function Page() {
                       className="w-full max-w-none"
                       secure={`tr_${environment.apiKey.split("_")[1]}_••••••••`}
                       value={environment.apiKey}
-                      variant={"tertiary/small"}
+                      variant={"secondary/small"}
                     />
                   </TableCell>
                   <TableCell>
@@ -112,19 +112,22 @@ export default function Page() {
                   </TableCell>
                   <TableCell>{environment.latestVersion ?? "–"}</TableCell>
                   <TableCell>{environment.environmentVariableCount}</TableCell>
-                  <TableCellMenu isSticky>
-                    <RegenerateApiKeyModal
-                      id={environment.id}
-                      title={environmentTitle(environment)}
-                    />
-                  </TableCellMenu>
+                  <TableCellMenu
+                    isSticky
+                    hiddenButtons={
+                      <RegenerateApiKeyModal
+                        id={environment.id}
+                        title={environmentTitle(environment)}
+                      />
+                    }
+                  ></TableCellMenu>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
 
           <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-full ml-3">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-full mx-3">
               <Paragraph variant="small">
                 Secret keys should be used on your server. They give full API access and allow you
                 to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
