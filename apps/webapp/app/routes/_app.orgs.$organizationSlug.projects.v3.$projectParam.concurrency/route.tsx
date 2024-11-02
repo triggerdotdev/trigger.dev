@@ -1,4 +1,8 @@
-import { ArrowUpCircleIcon, BookOpenIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowUpCircleIcon,
+  BookOpenIcon,
+  ChatBubbleLeftEllipsisIcon,
+} from "@heroicons/react/20/solid";
 import { Await } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
@@ -27,6 +31,8 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { LockOpenIcon } from "@heroicons/react/24/solid";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -71,49 +77,55 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-between p-2 pl-3">
-              <Header2>Environments</Header2>
-              {plan ? (
-                plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-                  <Feedback
-                    button={
-                      <Button LeadingIcon={ArrowUpCircleIcon} variant="tertiary/small">
-                        Request more concurrency
-                      </Button>
-                    }
-                    defaultValue="help"
-                  />
-                ) : (
-                  <LinkButton
-                    LeadingIcon={ArrowUpCircleIcon}
-                    to={v3BillingPath(organization)}
-                    variant="tertiary/small"
-                  >
-                    Upgrade for more concurrency
-                  </LinkButton>
-                )
-              ) : null}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Environment</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <Suspense fallback={<Spinner />}>
-                  <Await resolve={environments} errorElement={<p>Error loading environments</p>}>
-                    {(environments) => <EnvironmentsTable environments={environments} />}
-                  </Await>
-                </Suspense>
-              </TableBody>
-            </Table>
-          </div>
+        <div className="flex flex-col">
+          <Table containerClassName="border-t-0">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Environment</TableHeaderCell>
+                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <Suspense fallback={<Spinner />}>
+                <Await resolve={environments} errorElement={<p>Error loading environments</p>}>
+                  {(environments) => <EnvironmentsTable environments={environments} />}
+                </Await>
+              </Suspense>
+            </TableBody>
+          </Table>
+          {plan ? (
+            plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+              <div className="flex w-full items-center justify-end gap-2 pl-3 pr-2 pt-3">
+                <Paragraph variant="small" className="text-text-bright">
+                  Need more concurrency?
+                </Paragraph>
+                <Feedback
+                  button={
+                    <Button LeadingIcon={ChatBubbleLeftEllipsisIcon} variant="tertiary/small">
+                      Request more
+                    </Button>
+                  }
+                  defaultValue="help"
+                />
+              </div>
+            ) : (
+              <div className="flex w-full items-center justify-end gap-2 pl-3 pr-2 pt-3">
+                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
+                <Paragraph variant="small" className="text-text-bright">
+                  Upgrade for more concurrency
+                </Paragraph>
+                <LinkButton
+                  to={v3BillingPath(organization)}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                >
+                  Upgrade
+                </LinkButton>
+              </div>
+            )
+          ) : null}
         </div>
       </PageBody>
     </PageContainer>
