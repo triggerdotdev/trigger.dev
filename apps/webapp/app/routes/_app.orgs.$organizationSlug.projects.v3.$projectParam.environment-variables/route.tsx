@@ -8,6 +8,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -275,22 +276,25 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="mx-3 mt-3 flex flex-col gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-fit">
+          <div className="z-10 -mt-px flex w-full flex-wrap justify-between border-t border-grid-dimmed">
+            <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
               Dev environment variables specified here will be overridden by ones in your .env file
               when running locally.
             </InfoPanel>
             {!hasStaging && (
-              <InfoPanel
-                icon={LockOpenIcon}
-                variant="upgrade"
-                title="Unlock a Staging environment"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
-                iconClassName="text-indigo-500"
-              >
-                Upgrade your plan to add a Staging environment.
-              </InfoPanel>
+              <div className="flex items-center gap-2 pl-3 pr-2">
+                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
+                <Paragraph variant="small" className="text-text-bright">
+                  Upgrade to add a Staging environment
+                </Paragraph>
+                <LinkButton
+                  to={v3BillingPath(organization)}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                >
+                  Upgrade
+                </LinkButton>
+              </div>
             )}
           </div>
         </div>
