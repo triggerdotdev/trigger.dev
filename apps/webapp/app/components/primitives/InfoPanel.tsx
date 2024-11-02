@@ -5,10 +5,13 @@ import { Paragraph } from "./Paragraph";
 
 const variants = {
   info: {
-    panelStyle: "border-grid-bright bg-background-bright",
+    panelStyle: "border-grid-bright bg-background-bright rounded-md border p-4 gap-3",
   },
   upgrade: {
-    panelStyle: "border-indigo-400/20 bg-indigo-800/10",
+    panelStyle: "border-indigo-400/20 bg-indigo-800/10 rounded-md border p-4 gap-3",
+  },
+  minimal: {
+    panelStyle: "max-w-full w-full py-3 px-3 gap-2",
   },
 };
 
@@ -43,7 +46,7 @@ export function InfoPanel({
       className={cn(
         variantStyle.panelStyle,
         title ? "flex-col" : "",
-        "flex h-fit items-start gap-3 rounded-md border p-4",
+        "flex h-fit items-start",
         panelClassName
       )}
     >
