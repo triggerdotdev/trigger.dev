@@ -163,16 +163,16 @@ export default function Page() {
           <LinkButton
             LeadingIcon={BookOpenIcon}
             to={docsPath("v3/troubleshooting-alerts")}
-            variant="minimal/small"
+            variant="docs/small"
           >
             Alerts docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <div className={cn("flex h-full flex-col gap-3")}>
+      <PageBody scrollable={false}>
+        <div className={cn("flex h-full flex-col")}>
           {alertChannels.length > 0 && !requiresUpgrade && (
-            <div className="flex items-end justify-between">
+            <div className="flex items-end justify-between p-2 pl-3">
               <Header2 className="">Project alerts</Header2>
               <LinkButton
                 to={v3NewProjectAlertPath(organization, project)}
@@ -184,7 +184,7 @@ export default function Page() {
               </LinkButton>
             </div>
           )}
-          <Table>
+          <Table containerClassName={cn(alertChannels.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
@@ -238,7 +238,7 @@ export default function Page() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={6}>
                     <div className="flex flex-col items-center justify-center py-6">
                       <Header2 spacing className="text-text-bright">
                         You haven't created any project alerts yet
@@ -328,6 +328,7 @@ function DeleteAlertChannelButton(props: { id: string }) {
       <Button
         name="action"
         value="delete"
+        fullWidth
         type="submit"
         variant="small-menu-item"
         LeadingIcon={TrashIcon}
