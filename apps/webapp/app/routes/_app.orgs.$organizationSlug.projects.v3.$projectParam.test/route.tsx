@@ -245,7 +245,7 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
           <TaskFunctionName
             variant="extra-small"
             functionName={task.exportName}
-            className="-ml-1 inline-flex"
+            className="inline-flex w-fit"
           />
           <div className="flex items-start gap-1">
             <TaskTriggerSourceIcon source={task.triggerSource} className="size-3.5" />
