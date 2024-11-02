@@ -118,7 +118,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-3 pb-3 pt-2 align-middle text-sm font-medium text-text-bright",
+          "px-3 py-2.5 pb-3 align-middle text-sm font-medium text-text-bright",
           alignmentClassName,
           className
         )}
