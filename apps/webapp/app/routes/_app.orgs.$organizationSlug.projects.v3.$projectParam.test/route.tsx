@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Link, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -8,10 +9,11 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
@@ -43,7 +45,7 @@ import {
 } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 
 export const TestSearchParams = z.object({
   environment: z.string().optional(),
@@ -88,6 +90,11 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Test" />
+        <PageAccessories>
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/run-tests")}>
+            Test docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
