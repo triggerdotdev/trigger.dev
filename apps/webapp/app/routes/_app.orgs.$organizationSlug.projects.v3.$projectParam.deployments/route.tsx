@@ -231,7 +231,7 @@ function CreateDeploymentInstructions() {
     <MainCenteredContainer className="max-w-md">
       <InfoPanel
         icon={ServerStackIcon}
-        iconClassName="text-blue-400"
+        iconClassName="text-blue-500"
         title="Deploy for the first time"
         panelClassName="max-w-full"
       >
@@ -247,7 +247,7 @@ function CreateDeploymentInstructions() {
         <div className="flex gap-3">
           <LinkButton
             to={docsPath("v3/cli-deploy")}
-            variant="tertiary/small"
+            variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
@@ -255,7 +255,7 @@ function CreateDeploymentInstructions() {
           </LinkButton>
           <LinkButton
             to={docsPath("v3/github-actions")}
-            variant="tertiary/small"
+            variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
