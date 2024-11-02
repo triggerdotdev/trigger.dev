@@ -416,28 +416,21 @@ export default function Page() {
               <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
             </InputGroup>
             <FormError>{form.error}</FormError>
-            <div className="border-t border-grid-bright pt-3">
-              <FormButtons
-                confirmButton={
-                  <Button
-                    variant="primary/medium"
-                    disabled={isLoading}
-                    name="action"
-                    value="create"
-                  >
-                    {isLoading ? "Saving…" : "Save"}
-                  </Button>
-                }
-                cancelButton={
-                  <LinkButton
-                    to={v3ProjectAlertsPath(organization, project)}
-                    variant="tertiary/medium"
-                  >
-                    Cancel
-                  </LinkButton>
-                }
-              />
-            </div>
+            <FormButtons
+              confirmButton={
+                <Button variant="primary/medium" disabled={isLoading} name="action" value="create">
+                  {isLoading ? "Saving…" : "Save"}
+                </Button>
+              }
+              cancelButton={
+                <LinkButton
+                  to={v3ProjectAlertsPath(organization, project)}
+                  variant="tertiary/medium"
+                >
+                  Cancel
+                </LinkButton>
+              }
+            />
           </Fieldset>
         </Form>
       </DialogContent>
