@@ -60,7 +60,7 @@ If you are triggering a task from your backend code, you can use the `idempotenc
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
 
 // You can also pass an array of strings to create a idempotency key
-const idempotencyKey = await idempotenceKeys.create([myUser.id, "my-task"]);
+const idempotencyKey = await idempotencyKeys.create([myUser.id, "my-task"]);
 await tasks.trigger("my-task", { some: "data" }, { idempotencyKey });
 ```
 
@@ -83,7 +83,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 await tasks.batchTrigger("my-task", [
   {
     payload: { some: "data" },
-    options: { idempotencyKey: await idempotenceKeys.create(myUser.id) },
+    options: { idempotencyKey: await idempotencyKeys.create(myUser.id) },
   },
 ]);
 ```
