@@ -184,33 +184,33 @@ export default function Page() {
           <LinkButton
             LeadingIcon={BookOpenIcon}
             to={docsPath("v3/deploy-environment-variables")}
-            variant="minimal/small"
+            variant="docs/small"
           >
             Environment variables docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <div className={cn("flex h-full flex-col gap-3")}>
-          <div className="flex items-center justify-end gap-2">
-            {environmentVariables.length > 0 && (
+      <PageBody scrollable={false}>
+        <div className={cn("flex h-full flex-col")}>
+          {environmentVariables.length > 0 && (
+            <div className="flex items-center justify-end gap-2 px-2 py-2">
               <Switch
                 variant="small"
                 label="Reveal values"
                 checked={revealAll}
                 onCheckedChange={(e) => setRevealAll(e.valueOf())}
               />
-            )}
-            <LinkButton
-              to={v3NewEnvironmentVariablesPath(organization, project)}
-              variant="primary/small"
-              LeadingIcon={PlusIcon}
-              shortcut={{ key: "n" }}
-            >
-              Add new
-            </LinkButton>
-          </div>
-          <Table>
+              <LinkButton
+                to={v3NewEnvironmentVariablesPath(organization, project)}
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                shortcut={{ key: "n" }}
+              >
+                Add new
+              </LinkButton>
+            </div>
+          )}
+          <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Key</TableHeaderCell>
@@ -239,7 +239,7 @@ export default function Page() {
                             className="-ml-2"
                             secure={!revealAll}
                             value={value}
-                            variant={"tertiary/small"}
+                            variant={"secondary/small"}
                           />
                         </TableCell>
                       );
@@ -257,8 +257,16 @@ export default function Page() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={environments.length + 2}>
-                    <div className="flex items-center justify-center">
-                      <Paragraph>No environment variables have been set</Paragraph>
+                    <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                      <Paragraph>You haven't set any environment variables yet.</Paragraph>
+                      <LinkButton
+                        to={v3NewEnvironmentVariablesPath(organization, project)}
+                        variant="primary/medium"
+                        LeadingIcon={PlusIcon}
+                        shortcut={{ key: "n" }}
+                      >
+                        Add new
+                      </LinkButton>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -266,8 +274,8 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem]">
+          <div className="mx-3 mt-3 flex flex-col gap-3">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-fit">
               Dev environment variables specified here will be overridden by ones in your .env file
               when running locally.
             </InfoPanel>
