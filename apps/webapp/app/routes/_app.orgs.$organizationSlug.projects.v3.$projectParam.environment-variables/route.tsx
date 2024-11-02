@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -258,7 +259,7 @@ export default function Page() {
                 <TableRow>
                   <TableCell colSpan={environments.length + 2}>
                     <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                      <Paragraph>You haven't set any environment variables yet.</Paragraph>
+                      <Header2>You haven't set any environment variables yet.</Header2>
                       <LinkButton
                         to={v3NewEnvironmentVariablesPath(organization, project)}
                         variant="primary/medium"
