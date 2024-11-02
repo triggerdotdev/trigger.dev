@@ -1,4 +1,5 @@
 import { BookOpenIcon, InformationCircleIcon, LockOpenIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -81,7 +82,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col">
           <Table containerClassName="border-t-0">
             <TableHeader>
               <TableRow>
@@ -126,8 +127,8 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-full mx-3">
+          <div className="flex flex-wrap justify-between">
+            <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
               <Paragraph variant="small">
                 Secret keys should be used on your server. They give full API access and allow you
                 to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
@@ -136,16 +137,19 @@ export default function Page() {
             </InfoPanel>
 
             {!hasStaging && (
-              <InfoPanel
-                icon={LockOpenIcon}
-                variant="upgrade"
-                title="Unlock a Staging environment"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
-                iconClassName="text-indigo-500"
-              >
-                Upgrade your plan to add a Staging environment.
-              </InfoPanel>
+              <div className="flex items-center gap-2 pl-3 pr-2">
+                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
+                <Paragraph variant="small" className="text-text-bright">
+                  Upgrade to add a Staging environment
+                </Paragraph>
+                <LinkButton
+                  to={v3BillingPath(organization)}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                >
+                  Upgrade
+                </LinkButton>
+              </div>
             )}
           </div>
         </div>
