@@ -34,6 +34,7 @@ type DetailCellProps = {
   description?: string | React.ReactNode;
   className?: string;
   variant?: keyof typeof variations;
+  boxClassName?: string;
 };
 
 export function DetailCell({
@@ -45,6 +46,7 @@ export function DetailCell({
   description,
   className,
   variant = "small",
+  boxClassName,
 }: DetailCellProps) {
   const variation = variations[variant];
 
@@ -53,6 +55,7 @@ export function DetailCell({
       <IconInBox
         icon={leadingIcon}
         className={cn("flex-none transition group-hover:border-charcoal-750", leadingIconClassName)}
+        boxClassName={boxClassName}
       />
       <div className="flex flex-1 flex-col">
         <Paragraph
