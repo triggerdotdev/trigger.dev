@@ -62,7 +62,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip />
           <LinkButton
-            variant={"minimal/small"}
+            variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
             to={docsPath("/queue-concurrency")}
           >
@@ -70,10 +70,10 @@ export default function Page() {
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
+      <PageBody scrollable={false}>
         <div className="flex flex-col gap-4">
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center justify-between p-2 pl-3">
               <Header2>Environments</Header2>
               {plan ? (
                 plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
