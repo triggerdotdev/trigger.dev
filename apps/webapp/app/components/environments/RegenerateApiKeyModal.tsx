@@ -1,18 +1,16 @@
-import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/20/solid";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { generateTwoRandomWords } from "~/utils/randomWords";
 import { Button } from "../primitives/Buttons";
-import { Header1 } from "../primitives/Headers";
-import { Input } from "../primitives/Input";
-import { Paragraph } from "../primitives/Paragraph";
-import { Spinner } from "../primitives/Spinner";
 import { Callout } from "../primitives/Callout";
 import { Fieldset } from "../primitives/Fieldset";
-import { InputGroup } from "../primitives/InputGroup";
 import { FormButtons } from "../primitives/FormButtons";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Paragraph } from "../primitives/Paragraph";
+import { Spinner } from "../primitives/Spinner";
 
 type ModalProps = {
   id: string;
@@ -35,7 +33,7 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
           leadingIconClassName="text-text-dimmed"
           LeadingIcon={ArrowPathIcon}
         >
-          Regenerate
+          Regenerate…
         </Button>
       </DialogTrigger>
       <DialogContent>
