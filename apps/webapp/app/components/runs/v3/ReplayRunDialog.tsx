@@ -129,12 +129,12 @@ function ReplayForm({
           defaultValue={environment.id}
           items={environments}
           dropdownIcon
-          variant="tertiary/small"
+          variant="tertiary/medium"
           className="w-fit pl-1"
           text={(value) => {
             const env = environments.find((env) => env.id === value)!;
             return (
-              <div className="flex items-center pr-2">
+              <div className="flex items-center pl-1 pr-2">
                 <EnvironmentLabel environment={env} userName={env.userName} />
               </div>
             );
@@ -152,11 +152,11 @@ function ReplayForm({
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-grid-dimmed pt-3.5">
         <DialogClose asChild>
-          <Button variant="tertiary/small">Cancel</Button>
+          <Button variant="tertiary/medium">Cancel</Button>
         </DialogClose>
         <Button
           type="submit"
-          variant="primary/small"
+          variant="primary/medium"
           LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
           disabled={isSubmitting}
           shortcut={{ modifiers: ["meta"], key: "enter", enabledOnInputElements: true }}
