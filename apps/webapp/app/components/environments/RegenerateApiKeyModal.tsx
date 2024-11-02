@@ -39,7 +39,7 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>{`Regenerate ${title} Environment Key`}</DialogHeader>
+        <DialogHeader>{`Regenerate ${title.toUpperCase()} environment key`}</DialogHeader>
         <RegenerateApiKeyModalContent
           id={id}
           title={title}
@@ -62,10 +62,10 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
   }
 
   return (
-    <div className="flex flex-col items-center gap-y-5 py-4">
+    <div className="flex flex-col items-center gap-y-4 pt-4">
       <Callout variant="warning">
-        {`Regenerating the keys for this environment will temporarily break any live Jobs in the
-        ${title} Environmentuntil the new API keys are set in the relevant environment variables.`}
+        {`Regenerating the keys for this environment will temporarily break any live tasks in the
+        ${title} environment until the new API keys are set in the relevant environment variables.`}
       </Callout>
       <fetcher.Form
         method="post"
@@ -73,7 +73,7 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
         className="mt-2 w-full"
       >
         <Fieldset className="w-full">
-          <InputGroup>
+          <InputGroup className="max-w-full">
             <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
             <Paragraph
               variant="small"
@@ -93,14 +93,15 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
             confirmButton={
               <Button
                 type="submit"
-                variant={"primary/small"}
+                variant={"primary/medium"}
                 LeadingIcon={isSubmitting ? Spinner : undefined}
                 disabled={confirmationText !== randomWord}
               >
                 Regenerate
               </Button>
             }
-            cancelButton={<Button variant={"tertiary/small"}>Cancel</Button>}
+            cancelButton={<Button variant={"tertiary/medium"}>Cancel</Button>}
+            className="border-t border-grid-bright pt-4"
           />
         </Fieldset>
       </fetcher.Form>
