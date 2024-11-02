@@ -72,7 +72,7 @@ export default function Page() {
           </AdminDebugTooltip>
 
           <LinkButton
-            variant={"minimal/small"}
+            variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
             to={docsPath("/v3/apikeys")}
           >
@@ -80,9 +80,9 @@ export default function Page() {
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <div className="mt-1 flex flex-col gap-4">
-          <Table>
+      <PageBody scrollable={false}>
+        <div className="flex flex-col gap-4">
+          <Table containerClassName="border-t-0">
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Environment</TableHeaderCell>
@@ -124,7 +124,7 @@ export default function Page() {
           </Table>
 
           <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-sm">
+            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-full ml-3">
               <Paragraph variant="small">
                 Secret keys should be used on your server. They give full API access and allow you
                 to <TextLink to={docsPath("v3/triggering")}>trigger tasks</TextLink> from your
