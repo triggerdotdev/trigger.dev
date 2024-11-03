@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -27,10 +27,12 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import {
   CreatedPersonalAccessToken,
@@ -41,6 +43,7 @@ import {
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
 import { personalAccessTokensPath } from "~/utils/pathBuilder";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -139,9 +142,9 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
 
-      <PageBody>
-        <div className="flex flex-col gap-3">
-          <Table>
+      <PageBody scrollable={false}>
+        <div className="grid max-h-full grid-rows-1">
+          <Table containerClassName="border-t-0">
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
@@ -168,15 +171,19 @@ export default function Page() {
                           "Never"
                         )}
                       </TableCell>
-                      <TableCell alignment="right">
-                        <RevokePersonalAccessToken token={personalAccessToken} />
-                      </TableCell>
+                      <TableCellMenu
+                        isSticky
+                        visibleButtons={<RevokePersonalAccessToken token={personalAccessToken} />}
+                      />
                     </TableRow>
                   );
                 })
               ) : (
                 <TableBlankRow colSpan={5}>
-                  <Paragraph variant="small" className="flex items-center justify-center">
+                  <Paragraph
+                    variant="base/bright"
+                    className="flex items-center justify-center py-8"
+                  >
                     You have no Personal Access Tokens (that haven't been revoked).
                   </Paragraph>
                 </TableBlankRow>
@@ -249,6 +256,11 @@ function CreatePersonalAccessToken() {
                   Update
                 </Button>
               }
+              cancelButton={
+                <DialogClose asChild>
+                  <Button variant={"tertiary/medium"}>Cancel</Button>
+                </DialogClose>
+              }
             />
           </Fieldset>
         </fetcher.Form>
@@ -270,25 +282,44 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
   });
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon="trash-can" className="text-xs" />
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>Revoke Personal Access Token</DialogHeader>
-        <div className="flex flex-col gap-3 pt-3">
-          <Paragraph>
-            Are you sure you want to revoke "{token.name}"? This can't be reversed.
-          </Paragraph>
-          <Form method="post" {...form.props}>
-            <input type="hidden" name="action" value="revoke" />
-            <input type="hidden" name="tokenId" value={token.id} />
-            <Button type="submit" variant="danger/medium" fullWidth>
-              Revoke token
-            </Button>
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <SimpleTooltip
+      button={
+        <Dialog>
+          <DialogTrigger
+            asChild
+            className="size-6 rounded-sm p-1 text-error transition hover:bg-charcoal-700"
+          >
+            <TrashIcon className="size-3" />
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>Revoke Personal Access Token</DialogHeader>
+            <div className="flex flex-col gap-3 pt-3">
+              <Paragraph>
+                Are you sure you want to revoke "{token.name}"? This can't be reversed.
+              </Paragraph>
+              <FormButtons
+                confirmButton={
+                  <Form method="post" {...form.props}>
+                    <input type="hidden" name="action" value="revoke" />
+                    <input type="hidden" name="tokenId" value={token.id} />
+                    <Button type="submit" variant="danger/medium">
+                      Revoke token
+                    </Button>
+                  </Form>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant={"tertiary/medium"}>Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      }
+      content="Revoke token"
+      side="left"
+      disableHoverableContent
+    />
   );
 }
