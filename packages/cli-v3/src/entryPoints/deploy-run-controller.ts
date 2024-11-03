@@ -371,10 +371,18 @@ class ProdWorker {
   async #prepareForRetry() {
     // Clear state for retrying
     this.paused = false;
+    this.nextResumeAfter = undefined;
     this.waitForPostStart = false;
     this.executing = false;
     this.attemptFriendlyId = undefined;
     this.attemptNumber = undefined;
+
+    // Clear replay state
+    this.waitForTaskReplay = undefined;
+    this.waitForBatchReplay = undefined;
+    this.readyForLazyAttemptReplay = undefined;
+    this.durationResumeFallback = undefined;
+    this.readyForResumeReplay = undefined;
   }
 
   // MARK: CHECKPOINT PREP
