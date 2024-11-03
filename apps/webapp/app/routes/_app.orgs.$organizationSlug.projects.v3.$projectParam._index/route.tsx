@@ -162,7 +162,7 @@ export default function Page() {
             LeadingIcon={BookOpenIcon}
             to={docsPath("/tasks/overview")}
           >
-            Tasks docs
+            Task docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
