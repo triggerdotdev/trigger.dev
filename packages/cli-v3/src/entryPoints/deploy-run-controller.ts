@@ -97,6 +97,12 @@ class ProdWorker {
         idempotencyKey: string;
       }
     | undefined;
+  private readyForResumeReplay:
+    | {
+        idempotencyKey: string;
+        type: WaitReason;
+      }
+    | undefined;
 
   #httpPort: number;
   #httpServer: ReturnType<typeof createServer>;
@@ -405,12 +411,15 @@ class ProdWorker {
     this.waitForPostStart = false;
 
     this.durationResumeFallback = undefined;
+    this.readyForResumeReplay = undefined;
 
     this._taskRunProcess?.waitCompletedNotification();
   }
 
   async #readyForLazyAttempt() {
     const idempotencyKey = randomUUID();
+
+    logger.log("ready for lazy attempt", { idempotencyKey });
 
     this.readyForLazyAttemptReplay = {
       idempotencyKey,
@@ -420,7 +429,7 @@ class ProdWorker {
     // ..but we also have to be fast to avoid failing the task due to missing heartbeat
     for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(7)) {
       if (retry > 0) {
-        logger.log("retrying ready for lazy attempt", { retry });
+        logger.log("retrying ready for lazy attempt", { retry, idempotencyKey });
       }
 
       this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
@@ -451,6 +460,93 @@ class ProdWorker {
 
     // Fail the task with a more descriptive message as it likely failed with a generic missing heartbeat error
     this.#failRun(this.runId, "Failed to receive execute request in a reasonable time");
+  }
+
+  async #readyForResume() {
+    const idempotencyKey = randomUUID();
+
+    logger.log("readyForResume()", {
+      nextResumeAfter: this.nextResumeAfter,
+      attemptFriendlyId: this.attemptFriendlyId,
+      attemptNumber: this.attemptNumber,
+      idempotencyKey,
+    });
+
+    if (!this.nextResumeAfter) {
+      logger.error("Missing next resume reason", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoNextResume",
+        "Next resume reason not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    if (!this.attemptFriendlyId) {
+      logger.error("Missing attempt friendly ID", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoAttemptId",
+        "Attempt ID not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    if (!this.attemptNumber) {
+      logger.error("Missing attempt number", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoAttemptNumber",
+        "Attempt number not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    this.readyForResumeReplay = {
+      idempotencyKey,
+      type: this.nextResumeAfter,
+    };
+
+    const lockedMetadata = {
+      attemptFriendlyId: this.attemptFriendlyId,
+      attemptNumber: this.attemptNumber,
+      type: this.nextResumeAfter,
+    };
+
+    // Retry if we don't receive RESUME_AFTER_DEPENDENCY or RESUME_AFTER_DURATION in a reasonable time
+    // ..but we also have to be fast to avoid failing the task due to missing heartbeat
+    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(7)) {
+      if (retry > 0) {
+        logger.log("retrying ready for resume", { retry, idempotencyKey });
+      }
+
+      this.#coordinatorSocket.socket.emit("READY_FOR_RESUME", {
+        version: "v2",
+        ...lockedMetadata,
+      });
+
+      await timeout(delay.milliseconds);
+
+      if (!this.readyForResumeReplay) {
+        logger.log("replay ready for resume cancelled, discarding", {
+          idempotencyKey,
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.readyForResumeReplay.idempotencyKey) {
+        logger.log("replay ready for resume idempotency key mismatch, discarding", {
+          idempotencyKey,
+          newIdempotencyKey: this.readyForResumeReplay.idempotencyKey,
+        });
+
+        return;
+      }
+    }
   }
 
   #readyForCheckpoint() {
@@ -630,6 +726,7 @@ class ProdWorker {
           this.paused = false;
           this.nextResumeAfter = undefined;
           this.waitForPostStart = false;
+          this.readyForResumeReplay = undefined;
 
           for (let i = 0; i < completions.length; i++) {
             const completion = completions[i];
@@ -845,46 +942,7 @@ class ProdWorker {
           }
 
           if (this.paused) {
-            if (!this.nextResumeAfter) {
-              logger.error("Missing next resume reason", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoNextResume",
-                "Next resume reason not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            if (!this.attemptFriendlyId) {
-              logger.error("Missing attempt friendly ID", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoAttemptId",
-                "Attempt ID not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            if (!this.attemptNumber) {
-              logger.error("Missing attempt number", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoAttemptNumber",
-                "Attempt number not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            socket.emit("READY_FOR_RESUME", {
-              version: "v2",
-              attemptFriendlyId: this.attemptFriendlyId,
-              attemptNumber: this.attemptNumber,
-              type: this.nextResumeAfter,
-            });
-
+            await this.#readyForResume();
             return;
           }
 
@@ -1293,6 +1351,9 @@ class ProdWorker {
       attemptNumber: this.attemptNumber,
       waitForTaskReplay: this.waitForTaskReplay,
       waitForBatchReplay: this.waitForBatchReplay,
+      readyForLazyAttemptReplay: this.readyForLazyAttemptReplay,
+      durationResumeFallback: this.durationResumeFallback,
+      readyForResumeReplay: this.readyForResumeReplay,
     };
   }
 
