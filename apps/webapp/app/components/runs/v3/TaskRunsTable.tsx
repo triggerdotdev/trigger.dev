@@ -527,19 +527,29 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
 
   return (
     <TableBlankRow colSpan={14}>
-      <div className="flex flex-col items-center justify-center gap-2">
-        <Paragraph className="w-auto" variant="small">
-          No runs currently match your filters. Try refreshing or modifying your filters.
+      <div className="flex flex-col items-center justify-center gap-6">
+        <Paragraph className="w-auto" variant="base/bright">
+          No runs match your filters. Try refreshing, modifying your filters or run a test.
         </Paragraph>
-        <Button
-          LeadingIcon={ArrowPathIcon}
-          variant="tertiary/small"
-          onClick={() => {
-            window.location.reload();
-          }}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            LeadingIcon={ArrowPathIcon}
+            variant="tertiary/medium"
+            onClick={() => {
+              window.location.reload();
+            }}
+          >
+            Refresh
+          </Button>
+          <Paragraph>or</Paragraph>
+          <LinkButton
+            LeadingIcon={BeakerIcon}
+            variant="tertiary/medium"
+            to={v3TestPath(organization, project)}
+          >
+            Run a test
+          </LinkButton>
+        </div>
       </div>
     </TableBlankRow>
   );
