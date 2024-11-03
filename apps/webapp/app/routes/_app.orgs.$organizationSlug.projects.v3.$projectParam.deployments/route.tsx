@@ -292,35 +292,40 @@ function DeploymentActionsCell({
   }
 
   return (
-    <TableCellMenu isSticky>
-      {canRollback && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
-              Rollback…
-            </Button>
-          </DialogTrigger>
-          <RollbackDeploymentDialog
-            projectId={project.id}
-            deploymentShortCode={deployment.shortCode}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-      {canRetryIndexing && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-              Retry indexing…
-            </Button>
-          </DialogTrigger>
-          <RetryDeploymentIndexingDialog
-            projectId={project.id}
-            deploymentShortCode={deployment.shortCode}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-    </TableCellMenu>
+    <TableCellMenu
+      isSticky
+      popoverContent={
+        <>
+          {canRollback && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
+                  Rollback…
+                </Button>
+              </DialogTrigger>
+              <RollbackDeploymentDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+          {canRetryIndexing && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+                  Retry indexing…
+                </Button>
+              </DialogTrigger>
+              <RetryDeploymentIndexingDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+        </>
+      }
+    />
   );
 }
