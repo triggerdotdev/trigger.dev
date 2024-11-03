@@ -58,3 +58,7 @@ apps/**/public/build
 .yarn
 *.tsbuildinfo
 /packages/cli-v3/src/package.json
+/.vs/trigger.dev/FileContentIndex/05536c54-3db6-4b80-9a12-d86b750217d1.vsidx
+/.vs/trigger.dev/FileContentIndex/8cea524c-d508-4d3b-8ab5-61e62dfd862f.vsidx
+/.vs/trigger.dev/v17/.wsuo
+/.vs/trigger.dev/v17/DocumentLayout.json
