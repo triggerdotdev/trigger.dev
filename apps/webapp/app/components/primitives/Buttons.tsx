@@ -124,6 +124,7 @@ const variant = {
   "danger/small": createVariant("small", "danger"),
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
+  "danger/extra-large": createVariant("extra-large", "danger"),
   "docs/small": createVariant("small", "docs"),
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
