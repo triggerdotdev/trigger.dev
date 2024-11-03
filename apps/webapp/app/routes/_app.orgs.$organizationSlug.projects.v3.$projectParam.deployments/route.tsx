@@ -16,7 +16,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -98,13 +98,22 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Deployments" />
+        <PageAccessories>
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/cli-deploy")}
+          >
+            Deployments docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
           <ResizablePanel id="deployments-main" min="100px" className="max-h-full overflow-y-auto">
             {hasDeployments ? (
               <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <div className="flex flex-col gap-4 p-3">
+                <div className="flex flex-col gap-4">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -212,7 +221,7 @@ export default function Page() {
           {deploymentParam && (
             <>
               <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="225px" max="500px">
+              <ResizablePanel id="deployments-inspector" min="400px" max="700px">
                 <Outlet />
               </ResizablePanel>
             </>
