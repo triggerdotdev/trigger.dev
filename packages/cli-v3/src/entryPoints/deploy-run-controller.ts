@@ -585,7 +585,15 @@ class ProdWorker {
         reconnectionDelayMax: 3000,
       },
       handlers: {
-        RESUME_AFTER_DEPENDENCY: async ({ completions }) => {
+        RESUME_AFTER_DEPENDENCY: async ({ attemptId, completions }) => {
+          logger.log("Handling RESUME_AFTER_DEPENDENCY", {
+            attemptId,
+            completions: completions.map((c) => ({
+              id: c.id,
+              ok: c.ok,
+            })),
+          });
+
           if (!this.paused) {
             logger.error("Failed to resume after dependency: Worker not paused");
             return;
@@ -616,12 +624,48 @@ class ProdWorker {
             return;
           }
 
+          const firstCompletion = completions[0];
+          if (!firstCompletion) {
+            logger.error("Failed to resume after dependency: No first completion", {
+              completions,
+              waitForTaskReplay: this.waitForTaskReplay,
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
           switch (this.nextResumeAfter) {
             case "WAIT_FOR_TASK": {
+              if (this.waitForTaskReplay) {
+                if (this.waitForTaskReplay.message.friendlyId !== firstCompletion.id) {
+                  logger.error("Failed to resume after dependency: Task friendlyId mismatch", {
+                    completions,
+                    waitForTaskReplay: this.waitForTaskReplay,
+                  });
+                  return;
+                }
+              } else {
+                // Only log here so we don't break any existing behavior
+                logger.debug("No waitForTaskReplay", { completions });
+              }
+
               this.waitForTaskReplay = undefined;
               break;
             }
             case "WAIT_FOR_BATCH": {
+              if (this.waitForBatchReplay) {
+                if (!this.waitForBatchReplay.message.runFriendlyIds.includes(firstCompletion.id)) {
+                  logger.error("Failed to resume after dependency: Batch friendlyId mismatch", {
+                    completions,
+                    waitForBatchReplay: this.waitForBatchReplay,
+                  });
+                  return;
+                }
+              } else {
+                // Only log here so we don't break any existing behavior
+                logger.debug("No waitForBatchReplay", { completions });
+              }
+
               this.waitForBatchReplay = undefined;
               break;
             }
