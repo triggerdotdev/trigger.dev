@@ -418,7 +418,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                    className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
                   >
                     <StopIcon className="size-3" />
                   </DialogTrigger>

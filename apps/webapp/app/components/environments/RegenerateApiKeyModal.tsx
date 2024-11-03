@@ -99,7 +99,6 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
               </Button>
             }
             cancelButton={<Button variant={"tertiary/medium"}>Cancel</Button>}
-            className="border-t border-grid-bright pt-4"
           />
         </Fieldset>
       </fetcher.Form>
