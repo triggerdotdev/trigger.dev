@@ -168,6 +168,10 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "DISK_SPACE_EXCEEDED":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "OUTDATED_SDK_VERSION":
+        // run engine errors
+        case "TASK_DEQUEUED_INVALID_STATE":
+        case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
+        case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
