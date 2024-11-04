@@ -1,5 +1,28 @@
 # trigger.dev
 
+## 3.1.1
+
+### Patch Changes
+
+- Increase max retry count for deploy run controller operations ([#1450](https://github.com/triggerdotdev/trigger.dev/pull/1450))
+- Set parent PATH on forked worker processes ([#1448](https://github.com/triggerdotdev/trigger.dev/pull/1448))
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.1`
+  - `@trigger.dev/build@3.1.1`
+
+## 3.1.0
+
+### Patch Changes
+
+- Fix issue with prisma extension breaking deploy builds ([#1429](https://github.com/triggerdotdev/trigger.dev/pull/1429))
+- - Include retries.default in task retry config when indexing ([#1424](https://github.com/triggerdotdev/trigger.dev/pull/1424))
+  - New helpers for internal error retry mechanics
+  - Detection for segfaults and ffmpeg OOM errors
+  - Retries for packet import and export
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.0`
+  - `@trigger.dev/build@3.1.0`
+
 ## 3.0.13
 
 ### Patch Changes

@@ -4,6 +4,7 @@ import {
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
   TaskRunError,
+  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
@@ -517,6 +518,11 @@ export class SharedQueueConsumer {
               logger.error("Failed to create task run attempt for outdate worker", {
                 error,
                 taskRun: lockedTaskRun.id,
+              });
+
+              const service = new CrashTaskRunService();
+              await service.call(lockedTaskRun.id, {
+                errorCode: TaskRunErrorCodes.OUTDATED_SDK_VERSION,
               });
 
               await this.#ackAndDoMoreWork(message.messageId);

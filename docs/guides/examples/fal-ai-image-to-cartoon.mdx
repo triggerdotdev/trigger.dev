@@ -1,0 +1,100 @@
+---
+title: "Convert an image to a cartoon using fal AI"
+sidebarTitle: "fal AI image to cartoon"
+description: "This example demonstrates how to convert an image to a cartoon using fal AI with Trigger.dev."
+---
+
+## Overview
+
+Fal AI is a platform that provides access to advanced AI models for tasks such as image generation, text summarization, and hyperparameter tuning.
+
+## Prerequisites
+
+- A project with [Trigger.dev initialized](/quick-start)
+- A [fal AI](https://fal.ai/) account
+- A [Cloudflare](https://developers.cloudflare.com/r2/) account and bucket
+
+## Task code
+
+This task converts an image to a cartoon using fal AI, and uploads the result to Cloudflare R2.
+
+```ts trigger/fal-ai-image-to-cartoon.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import * as fal from "@fal-ai/serverless-client";
+import fetch from "node-fetch";
+import { z } from "zod";
+
+// Initialize fal.ai client
+fal.config({
+  credentials: process.env.FAL_KEY, // Get this from your fal AI dashboard
+});
+
+// Initialize S3-compatible client for Cloudflare R2
+const s3Client = new S3Client({
+  // How to authenticate to R2: https://developers.cloudflare.com/r2/api/s3/tokens/
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  },
+});
+
+export const FalResult = z.object({
+  images: z.tuple([z.object({ url: z.string() })]),
+});
+
+export const falAiImageToCartoon = task({
+  id: "fal-ai-image-to-cartoon",
+  run: async (payload: { imageUrl: string; fileName: string }) => {
+    logger.log("Converting image to cartoon", payload);
+
+    // Convert image to cartoon using fal.ai
+    const result = await fal.subscribe("fal-ai/flux/dev/image-to-image", {
+      input: {
+        prompt: "Turn the image into a cartoon in the style of a Pixar character",
+        image_url: payload.imageUrl,
+      },
+      onQueueUpdate: (update) => {
+        logger.info("Fal.ai processing update", { update });
+      },
+    });
+
+    const $result = FalResult.parse(result);
+    const [{ url: cartoonImageUrl }] = $result.images;
+
+    // Download the cartoon image
+    const imageResponse = await fetch(cartoonImageUrl);
+    const imageBuffer = await imageResponse.arrayBuffer().then(Buffer.from);
+
+    // Upload to Cloudflare R2
+    const r2Key = `cartoons/${payload.fileName}`;
+    const uploadParams = {
+      Bucket: process.env.R2_BUCKET, // Create a bucket in your Cloudflare dashboard
+      Key: r2Key,
+      Body: imageBuffer,
+      ContentType: "image/png",
+    };
+
+    logger.log("Uploading cartoon to R2", { key: r2Key });
+    await s3Client.send(new PutObjectCommand(uploadParams));
+
+    logger.log("Cartoon uploaded to R2", { key: r2Key });
+
+    return {
+      originalUrl: payload.imageUrl,
+      cartoonUrl: `File uploaded to storage at: ${r2Key}`,
+    };
+  },
+});
+```
+
+### Testing your task
+
+You can test your task by triggering it from the Trigger.dev dashboard.
+
+```json
+"imageUrl": "<image-url>", // Replace with the URL of the image you want to convert to a cartoon
+"fileName": "<file-name>" // Replace with the name you want to save the file as in Cloudflare R2
+```

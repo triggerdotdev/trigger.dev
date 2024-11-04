@@ -1,7 +1,7 @@
 ---
 title: "Prisma setup guide"
 sidebarTitle: "Prisma setup guide"
-description: "This guide will show you how to setup Prisma with Trigger.dev"
+description: "This guide will show you how to set up Prisma with Trigger.dev"
 icon: "Triangle"
 ---
 
@@ -14,7 +14,7 @@ import UsefulNextSteps from "/snippets/useful-next-steps.mdx";
 
 ## Overview
 
-This guide will show you how to set up Prisma with Trigger.dev, test and view an example task run.
+This guide will show you how to set up [Prisma](https://www.prisma.io/) with Trigger.dev, test and view an example task run.
 
 ## Prerequisites
 
@@ -24,7 +24,9 @@ This guide will show you how to set up Prisma with Trigger.dev, test and view an
 - Prisma ORM [installed and initialized](https://www.prisma.io/docs/getting-started/quickstart) in your project
 - A `DATABASE_URL` environment variable set in your `.env` file, pointing to your PostgreSQL database (e.g. `postgresql://user:password@localhost:5432/dbname`)
 
-## Initial setup
+## Initial setup (optional)
+
+Follow these steps if you don't already have Trigger.dev set up in your project.
 
 <Steps>
   <CliInitStep />
@@ -151,8 +153,7 @@ With the build extension and task configured, you can now deploy your task using
 
     <Step title="Adding your DATABASE_URL environment variable to Trigger.dev">
 
-In the sidebar select the "Environment Variables" page, then press the "New environment variable"
-button. ![Environment variables page](/images/environment-variables-page.jpg)
+In your Trigger.dev dashboard sidebar click "Environment Variables" <Icon icon="circle-1" iconType="solid" size={20} color="A8FF53" />, and then the "New environment variable" button <Icon icon="circle-2" iconType="solid" size={20} color="A8FF53" />.
 
 You can add values for your local dev environment, staging and prod. in this case we will add the `DATABASE_URL` for the production environment.
 
@@ -167,9 +168,9 @@ You can add values for your local dev environment, staging and prod. in this cas
 
 ```json
 {
-  "name": "John Doe",
-  "email": "john@doe.test",
-  "id": 12345
+  "name": "<a-name>", // e.g. "John Doe"
+  "email": "<a-email>", // e.g. "john@doe.test"
+  "id": <a-number> // e.g. 12345
 }
 ```
 

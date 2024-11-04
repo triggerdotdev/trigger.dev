@@ -99,6 +99,14 @@
     {
       "source": "/examples/:slug*",
       "destination": "/guides/examples/:slug*"
+    },
+    {
+      "source": "/realtime",
+      "destination": "/realtime/overview"
+    },
+    {
+      "source": "/runs-and-attempts",
+      "destination": "/runs"
     }
   ],
   "anchors": [
@@ -118,10 +126,10 @@
       "pages": [
         {
           "group": "Tasks",
-          "pages": ["tasks/overview", "tasks/scheduled"]
+          "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
         },
         "triggering",
-        "runs-and-attempts",
+        "runs",
         "apikeys",
         {
           "group": "Configuration",
@@ -136,8 +144,8 @@
     {
       "group": "Deployment",
       "pages": [
-        "deploy-environment-variables",
         "cli-deploy",
+        "deploy-environment-variables",
         "github-actions",
         {
           "group": "Deployment integrations",
@@ -165,6 +173,20 @@
         "runs/metadata",
         "run-usage",
         "context"
+      ]
+    },
+    {
+      "group": "Frontend usage",
+      "pages": ["frontend/overview", "frontend/react-hooks"]
+    },
+    {
+      "group": "Realtime API",
+      "pages": [
+        "realtime/overview",
+        "realtime/subscribe-to-run",
+        "realtime/subscribe-to-runs-with-tag",
+        "realtime/use-realtime-run",
+        "realtime/use-realtime-runs-with-tag"
       ]
     },
     {
@@ -277,6 +299,7 @@
       "group": "Guides",
       "pages": [
         "guides/frameworks/prisma",
+        "guides/frameworks/drizzle",
         "guides/frameworks/sequin",
         {
           "group": "Supabase",
@@ -306,11 +329,14 @@
       "pages": [
         "guides/examples/dall-e3-generate-image",
         "guides/examples/deepgram-transcribe-audio",
+        "guides/examples/fal-ai-image-to-cartoon",
         "guides/examples/ffmpeg-video-processing",
+        "guides/examples/firecrawl-url-crawl",
         "guides/examples/open-ai-with-retrying",
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",
         "guides/examples/scrape-hacker-news",
+        "guides/examples/sentry-error-tracking",
         "guides/examples/sharp-image-processing",
         "guides/examples/supabase-database-operations",
         "guides/examples/supabase-storage-upload",

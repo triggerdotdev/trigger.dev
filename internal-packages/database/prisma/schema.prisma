@@ -2452,6 +2452,9 @@ model Checkpoint {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([attemptId])
+  @@index([runId])
 }
 
 enum CheckpointType {

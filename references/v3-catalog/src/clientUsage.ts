@@ -1,5 +1,5 @@
 import { auth, runs, tasks } from "@trigger.dev/sdk/v3";
-import type { task1, task2 } from "./trigger/taskTypes.js";
+import type { task1, zodTask } from "./trigger/taskTypes.js";
 import { randomUUID } from "crypto";
 
 async function main() {
@@ -22,8 +22,18 @@ async function main() {
 
   console.log("Auto JWT", anyHandle.publicAccessToken);
 
+  const publicToken = await auth.createPublicToken({
+    scopes: {
+      read: {
+        runs: true,
+      },
+    },
+  });
+
   await auth.withAuth({ accessToken: anyHandle.publicAccessToken }, async () => {
-    const subscription = runs.subscribeToRunsWithTag<typeof task1 | typeof task2>(`user:${userId}`);
+    const subscription = runs.subscribeToRunsWithTag<typeof task1 | typeof zodTask>(
+      `user:${userId}`
+    );
 
     for await (const run of subscription) {
       switch (run.taskIdentifier) {
@@ -33,7 +43,7 @@ async function main() {
           console.log("Payload:", run.payload);
           break;
         }
-        case "types/task-2": {
+        case "types/zod": {
           console.log("Run update:", run);
           console.log("Output:", run.output);
           console.log("Payload:", run.payload);
