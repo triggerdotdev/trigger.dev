@@ -8,8 +8,7 @@ import {
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { workerQueue } from "~/services/worker.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
@@ -21,8 +20,8 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
-import { RunEngine } from "@internal/run-engine";
-import { prisma } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { engine, type RunEngine } from "../runEngine.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -40,35 +39,25 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
-//todo move this to a singleton somewhere
-const engine = new RunEngine({
-  prisma,
-  redis: {
-    port: env.REDIS_PORT,
-    host: env.REDIS_HOST,
-    username: env.REDIS_USERNAME,
-    password: env.REDIS_PASSWORD,
-    enableAutoPipelining: true,
-    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-  },
-  zodWorker: {
-    connectionString: env.DATABASE_URL,
-    concurrency: env.WORKER_CONCURRENCY,
-    pollInterval: env.WORKER_POLL_INTERVAL,
-    noPreparedStatements: env.DATABASE_URL !== env.DIRECT_URL,
-    schema: env.WORKER_SCHEMA,
-    maxPoolSize: env.WORKER_CONCURRENCY + 1,
-    shutdownTimeoutInMs: env.GRACEFUL_SHUTDOWN_TIMEOUT,
-  },
-});
+export class TriggerTaskServiceV2 extends BaseService {
+  private _engine: RunEngine;
 
-export class TriggerTaskService extends BaseService {
-  public async call(
-    taskId: string,
-    environment: AuthenticatedEnvironment,
-    body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ) {
+  constructor({ prisma, runEngine }: { prisma: PrismaClientOrTransaction; runEngine: RunEngine }) {
+    super(prisma);
+    this._engine = runEngine ?? engine;
+  }
+
+  public async call({
+    taskId,
+    environment,
+    body,
+    options = {},
+  }: {
+    taskId: string;
+    environment: AuthenticatedEnvironment;
+    body: TriggerTaskRequestBody;
+    options?: TriggerTaskServiceOptions;
+  }) {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
@@ -327,7 +316,7 @@ export class TriggerTaskService extends BaseService {
               event.setAttribute("runId", runFriendlyId);
               span.setAttribute("runId", runFriendlyId);
 
-              const taskRun = await engine.trigger(
+              const taskRun = await this._engine.trigger(
                 {
                   number: num,
                   friendlyId: runFriendlyId,
@@ -355,7 +344,6 @@ export class TriggerTaskService extends BaseService {
                   ttl,
                   tags: tagIds,
                   parentTaskRunId: parentAttempt?.taskRun.id,
-                  parentTaskRunAttemptId: parentAttempt?.id,
                   rootTaskRunId: parentAttempt?.taskRun.rootTaskRunId ?? parentAttempt?.taskRun.id,
                   batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                   resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
