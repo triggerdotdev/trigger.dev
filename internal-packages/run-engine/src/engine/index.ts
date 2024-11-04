@@ -9,7 +9,9 @@ import {
   sanitizeError,
   TaskRunExecution,
   TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
   TaskRunInternalError,
+  TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3";
 import {
   generateFriendlyId,
@@ -163,7 +165,7 @@ export class RunEngine {
           await this.#handleStalledSnapshot(payload);
         },
         expireRun: async ({ payload }) => {
-          await this.expire({ runId: payload.runId });
+          await this.expireRun({ runId: payload.runId });
         },
       },
     });
@@ -463,11 +465,6 @@ export class RunEngine {
         try {
           const dequeuedRun = await this.runLock.lock([runId], 5000, async (signal) => {
             const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-            if (!snapshot) {
-              throw new Error(
-                `RunEngine.dequeueFromMasterQueue(): No snapshot found for run: ${runId}`
-              );
-            }
 
             if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
               //create a failed snapshot
@@ -786,18 +783,6 @@ export class RunEngine {
     return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5000, async (signal) => {
         const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-        if (!latestSnapshot) {
-          await this.#systemFailure({
-            runId,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: "TASK_HAS_N0_EXECUTION_SNAPSHOT",
-              message: "Task had no execution snapshot when trying to create a run attempt",
-            },
-            tx: prisma,
-          });
-          throw new ServiceValidationError("No snapshot", 404);
-        }
 
         if (latestSnapshot.id !== snapshotId) {
           //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
@@ -1035,81 +1020,15 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-  }) {
-    return this.#trace("completeRunAttempt", { runId, snapshotId }, async (span) => {
-      return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
-        if (!latestSnapshot) {
-          throw new Error(`No execution snapshot found for TaskRun ${runId}`);
-        }
-
-        if (latestSnapshot.id !== snapshotId) {
-          throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
-        }
-
-        span.setAttribute("completionStatus", completion.ok);
-
-        if (completion.ok) {
-          const completedAt = new Date();
-          const run = await this.prisma.taskRun.update({
-            where: { id: runId },
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
-              completedAt,
-              output: completion.output,
-              outputType: completion.outputType,
-              executionSnapshots: {
-                create: {
-                  executionStatus: "FINISHED",
-                  description: "Task completed successfully",
-                  runStatus: "COMPLETED_SUCCESSFULLY",
-                  attemptNumber: latestSnapshot.attemptNumber,
-                },
-              },
-            },
-            select: {
-              spanId: true,
-              associatedWaitpoint: {
-                select: {
-                  id: true,
-                },
-              },
-              project: {
-                select: {
-                  organizationId: true,
-                },
-              },
-            },
-          });
-          await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
-
-          if (!run.associatedWaitpoint) {
-            throw new ServiceValidationError("No associated waitpoint found", 400);
-          }
-
-          await this.completeWaitpoint({
-            id: run.associatedWaitpoint.id,
-            output: completion.output
-              ? { value: completion.output, type: completion.outputType }
-              : undefined,
-          });
-
-          this.eventBus.emit("runCompletedSuccessfully", {
-            time: completedAt,
-            run: {
-              id: runId,
-              spanId: run.spanId,
-              output: completion.output,
-              outputType: completion.outputType,
-            },
-          });
-        } else {
-          const error = sanitizeError(completion.error);
-          //todo look at CompleteAttemptService
-          throw new NotImplementedError("TaskRun completion error handling not implemented yet");
-        }
-      });
-    });
+  }): Promise<"COMPLETED" | "RETRIED"> {
+    switch (completion.ok) {
+      case true: {
+        return this.#completeRunAttemptSuccess({ runId, snapshotId, completion });
+      }
+      case false: {
+        return this.#completeRunAttemptFailure({ runId, snapshotId, completion });
+      }
+    }
   }
 
   async waitForDuration({
@@ -1133,9 +1052,6 @@ export class RunEngine {
 
     return await this.runLock.lock([runId], 5_000, async (signal) => {
       const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-      if (!snapshot) {
-        throw new ServiceValidationError("Snapshot not found", 404);
-      }
 
       if (snapshot.id !== snapshotId) {
         throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1203,13 +1119,10 @@ export class RunEngine {
     });
   }
 
-  async expire({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
+  async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.prisma;
     await this.runLock.lock([runId], 5_000, async (signal) => {
       const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-      if (!snapshot) {
-        throw new Error(`No execution snapshot found for TaskRun ${runId}`);
-      }
 
       //if we're executing then we won't expire the run
       if (isExecuting(snapshot.executionStatus)) {
@@ -1258,6 +1171,26 @@ export class RunEngine {
     });
   }
 
+  async cancelRun({
+    runId,
+    completedAt,
+    reason,
+    tx,
+  }: {
+    runId: string;
+    completedAt: Date;
+    reason: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    return this.#trace("cancelRun", { runId }, async (span) => {
+      return this.runLock.lock([runId], 5_000, async (signal) => {
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+      });
+    });
+  }
+
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
   async completeWaitpoint({
@@ -1278,10 +1211,6 @@ export class RunEngine {
       throw new Error(`Waitpoint ${id} not found`);
     }
 
-    if (waitpoint.status === "COMPLETED") {
-      return;
-    }
-
     await $transaction(
       this.prisma,
       async (tx) => {
@@ -1292,7 +1221,9 @@ export class RunEngine {
         });
 
         if (affectedTaskRuns.length === 0) {
-          throw new Error(`No TaskRunWaitpoints found for waitpoint ${id}`);
+          this.logger.warn(`No TaskRunWaitpoints found for waitpoint`, {
+            waitpoint,
+          });
         }
 
         // 2. Delete the TaskRunWaitpoint entries for this specific waitpoint
@@ -1315,9 +1246,6 @@ export class RunEngine {
         for (const run of affectedTaskRuns) {
           await this.runLock.lock([run.taskRunId], 5_000, async (signal) => {
             const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, run.taskRunId);
-            if (!latestSnapshot) {
-              throw new Error(`No execution snapshot found for TaskRun ${run.taskRunId}`);
-            }
 
             await tx.taskRunExecutionSnapshot.update({
               where: { id: latestSnapshot.id },
@@ -1371,36 +1299,40 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
-    const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-    if (!snapshot) {
+    try {
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+
+      const executionData: RunExecutionData = {
+        version: "1" as const,
+        snapshot: {
+          id: snapshot.id,
+          executionStatus: snapshot.executionStatus,
+          description: snapshot.description,
+        },
+        run: {
+          id: snapshot.runId,
+          status: snapshot.runStatus,
+          attemptNumber: snapshot.attemptNumber ?? undefined,
+        },
+        checkpoint: snapshot.checkpoint
+          ? {
+              id: snapshot.checkpoint.id,
+              type: snapshot.checkpoint.type,
+              location: snapshot.checkpoint.location,
+              imageRef: snapshot.checkpoint.imageRef,
+              reason: snapshot.checkpoint.reason ?? undefined,
+            }
+          : undefined,
+        completedWaitpoints: snapshot.completedWaitpoints,
+      };
+
+      return executionData;
+    } catch (e) {
+      this.logger.error("Failed to getRunExecutionData", {
+        message: e instanceof Error ? e.message : e,
+      });
       return null;
     }
-
-    const executionData: RunExecutionData = {
-      version: "1" as const,
-      snapshot: {
-        id: snapshot.id,
-        executionStatus: snapshot.executionStatus,
-        description: snapshot.description,
-      },
-      run: {
-        id: snapshot.runId,
-        status: snapshot.runStatus,
-        attemptNumber: snapshot.attemptNumber ?? undefined,
-      },
-      checkpoint: snapshot.checkpoint
-        ? {
-            id: snapshot.checkpoint.id,
-            type: snapshot.checkpoint.type,
-            location: snapshot.checkpoint.location,
-            imageRef: snapshot.checkpoint.imageRef,
-            reason: snapshot.checkpoint.reason ?? undefined,
-          }
-        : undefined,
-      completedWaitpoints: snapshot.completedWaitpoints,
-    };
-
-    return executionData;
   }
 
   async quit() {
@@ -1438,6 +1370,120 @@ export class RunEngine {
   }) {}
 
   async #waitingForDeploy({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
+
+  async #completeRunAttemptSuccess({
+    runId,
+    snapshotId,
+    completion,
+  }: {
+    runId: string;
+    snapshotId: string;
+    completion: TaskRunSuccessfulExecutionResult;
+  }) {
+    return this.#trace("#completeRunAttemptSuccess", { runId, snapshotId }, async (span) => {
+      return this.runLock.lock([runId], 5_000, async (signal) => {
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+
+        if (latestSnapshot.id !== snapshotId) {
+          throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+        }
+
+        span.setAttribute("completionStatus", completion.ok);
+
+        const completedAt = new Date();
+        const run = await this.prisma.taskRun.update({
+          where: { id: runId },
+          data: {
+            status: "COMPLETED_SUCCESSFULLY",
+            completedAt,
+            output: completion.output,
+            outputType: completion.outputType,
+            executionSnapshots: {
+              create: {
+                executionStatus: "FINISHED",
+                description: "Task completed successfully",
+                runStatus: "COMPLETED_SUCCESSFULLY",
+                attemptNumber: latestSnapshot.attemptNumber,
+              },
+            },
+          },
+          select: {
+            spanId: true,
+            associatedWaitpoint: {
+              select: {
+                id: true,
+              },
+            },
+            project: {
+              select: {
+                organizationId: true,
+              },
+            },
+          },
+        });
+        await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
+
+        if (!run.associatedWaitpoint) {
+          throw new ServiceValidationError("No associated waitpoint found", 400);
+        }
+
+        await this.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: completion.output
+            ? { value: completion.output, type: completion.outputType }
+            : undefined,
+        });
+
+        this.eventBus.emit("runCompletedSuccessfully", {
+          time: completedAt,
+          run: {
+            id: runId,
+            spanId: run.spanId,
+            output: completion.output,
+            outputType: completion.outputType,
+          },
+        });
+
+        return "COMPLETED" as const;
+      });
+    });
+  }
+
+  async #completeRunAttemptFailure({
+    runId,
+    snapshotId,
+    completion,
+  }: {
+    runId: string;
+    snapshotId: string;
+    completion: TaskRunFailedExecutionResult;
+  }): Promise<"COMPLETED" | "RETRIED"> {
+    return this.#trace("completeRunAttemptFailure", { runId, snapshotId }, async (span) => {
+      return this.runLock.lock([runId], 5_000, async (signal) => {
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+
+        if (latestSnapshot.id !== snapshotId) {
+          throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+        }
+
+        span.setAttribute("completionStatus", completion.ok);
+
+        if (
+          completion.error.type === "INTERNAL_ERROR" &&
+          completion.error.code === "TASK_RUN_CANCELLED"
+        ) {
+          // We need to cancel the task run instead of fail it
+          await this.cancelRun({ runId, completedAt: new Date(), reason: "Cancelled by user" });
+
+          return "COMPLETED" as const;
+        }
+
+        const error = sanitizeError(completion.error);
+        //todo look at CompleteAttemptService
+        throw new NotImplementedError("TaskRun completion error handling not implemented yet");
+      });
+    });
+  }
 
   //MARK: RunQueue
 
@@ -1495,9 +1541,6 @@ export class RunEngine {
 
     await this.runLock.lock([run.id], 5000, async (signal) => {
       const snapshot = await this.#getLatestExecutionSnapshot(prisma, run.id);
-      if (!snapshot) {
-        throw new Error(`RunEngine.#continueRun(): No snapshot found for run: ${run.id}`);
-      }
 
       const completedWaitpoints = await this.#getExecutionSnapshotCompletedWaitpoints(
         prisma,
@@ -1595,11 +1638,6 @@ export class RunEngine {
     { orgId, runId, waitpoint }: { orgId: string; runId: string; waitpoint: Waitpoint }
   ) {
     await this.runLock.lock([runId], 5000, async (signal) => {
-      //todo it would be better if we didn't remove from the queue, because this removes the payload
-      //todo better would be to have a "block" function which remove it from the queue but doesn't remove the payload
-      //todo release concurrency and make sure the run isn't in the queue
-      // await this.runQueue.blockMessage(orgId, runId);
-
       const taskWaitpoint = await tx.taskRunWaitpoint.create({
         data: {
           taskRunId: runId,
@@ -1610,29 +1648,27 @@ export class RunEngine {
 
       const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, runId);
 
-      if (latestSnapshot) {
-        let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
-        if (
-          latestSnapshot.executionStatus === "EXECUTING" ||
-          latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
-        ) {
-          newStatus = "EXECUTING_WITH_WAITPOINTS";
-        }
+      let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
+      if (
+        latestSnapshot.executionStatus === "EXECUTING" ||
+        latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
+      ) {
+        newStatus = "EXECUTING_WITH_WAITPOINTS";
+      }
 
-        //if the state has changed, create a new snapshot
-        if (newStatus !== latestSnapshot.executionStatus) {
-          await this.#createExecutionSnapshot(tx, {
-            run: {
-              id: latestSnapshot.runId,
-              status: latestSnapshot.runStatus,
-              attemptNumber: latestSnapshot.attemptNumber,
-            },
-            snapshot: {
-              executionStatus: newStatus,
-              description: "Run was blocked by a waitpoint.",
-            },
-          });
-        }
+      //if the state has changed, create a new snapshot
+      if (newStatus !== latestSnapshot.executionStatus) {
+        await this.#createExecutionSnapshot(tx, {
+          run: {
+            id: latestSnapshot.runId,
+            status: latestSnapshot.runStatus,
+            attemptNumber: latestSnapshot.attemptNumber,
+          },
+          snapshot: {
+            executionStatus: newStatus,
+            description: "Run was blocked by a waitpoint.",
+          },
+        });
       }
     });
   }
@@ -1753,7 +1789,7 @@ export class RunEngine {
     });
 
     if (!snapshot) {
-      return null;
+      throw new Error(`No execution snapshot found for TaskRun ${runId}`);
     }
 
     return {
@@ -1829,7 +1865,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
-    if (latestSnapshot?.id !== snapshotId) {
+    if (latestSnapshot.id !== snapshotId) {
       this.logger.log(
         "RunEngine.#extendHeartbeatTimeout() no longer the latest snapshot, stopping the heartbeat.",
         {
@@ -1857,15 +1893,8 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
-    if (!latestSnapshot) {
-      this.logger.error("RunEngine.#handleStalledSnapshot() no latest snapshot found", {
-        runId,
-        snapshotId,
-      });
-      return;
-    }
 
-    if (latestSnapshot?.id !== snapshotId) {
+    if (latestSnapshot.id !== snapshotId) {
       this.logger.log(
         "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
         {
