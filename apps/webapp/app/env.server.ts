@@ -31,6 +31,7 @@ const EnvironmentSchema = z.object({
   REMIX_APP_PORT: z.string().optional(),
   LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
   APP_ORIGIN: z.string().default("http://localhost:3030"),
+  API_ORIGIN: z.string().optional(),
   ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
   APP_ENV: z.string().default(process.env.NODE_ENV),
   SERVICE_NAME: z.string().default("trigger.dev webapp"),

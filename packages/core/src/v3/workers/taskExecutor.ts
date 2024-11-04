@@ -92,9 +92,28 @@ export class TaskExecutor {
 
           try {
             const payloadPacket = await conditionallyImportPacket(originalPacket, this._tracer);
-
             parsedPayload = await parsePacket(payloadPacket);
+          } catch (inputError) {
+            recordSpanException(span, inputError);
 
+            return {
+              ok: false,
+              id: execution.run.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.TASK_INPUT_ERROR,
+                message:
+                  inputError instanceof Error
+                    ? `${inputError.name}: ${inputError.message}`
+                    : typeof inputError === "string"
+                    ? inputError
+                    : undefined,
+                stackTrace: inputError instanceof Error ? inputError.stack : undefined,
+              },
+            } satisfies TaskRunExecutionResult;
+          }
+
+          try {
             parsedPayload = await this.#parsePayload(parsedPayload);
 
             if (execution.attempt.number === 1) {
@@ -132,8 +151,8 @@ export class TaskExecutor {
                 output: finalOutput.data,
                 outputType: finalOutput.dataType,
               } satisfies TaskRunExecutionResult;
-            } catch (stringifyError) {
-              recordSpanException(span, stringifyError);
+            } catch (outputError) {
+              recordSpanException(span, outputError);
 
               return {
                 ok: false,
@@ -142,10 +161,10 @@ export class TaskExecutor {
                   type: "INTERNAL_ERROR",
                   code: TaskRunErrorCodes.TASK_OUTPUT_ERROR,
                   message:
-                    stringifyError instanceof Error
-                      ? stringifyError.message
-                      : typeof stringifyError === "string"
-                      ? stringifyError
+                    outputError instanceof Error
+                      ? outputError.message
+                      : typeof outputError === "string"
+                      ? outputError
                       : undefined,
                 },
               } satisfies TaskRunExecutionResult;
@@ -157,6 +176,7 @@ export class TaskExecutor {
                 runError,
                 parsedPayload,
                 ctx,
+                initOutput,
                 signal
               );
 
@@ -479,6 +499,7 @@ export class TaskExecutor {
     error: unknown,
     payload: any,
     ctx: TaskRunContext,
+    init: unknown,
     signal?: AbortSignal
   ): Promise<
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
@@ -531,6 +552,7 @@ export class TaskExecutor {
         const handleErrorResult = this.task.fns.handleError
           ? await this.task.fns.handleError(payload, error, {
               ctx,
+              init,
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,
@@ -539,6 +561,7 @@ export class TaskExecutor {
           : this._importedConfig
           ? await this._handleErrorFn?.(payload, error, {
               ctx,
+              init,
               retry,
               retryDelayInMs: delay,
               retryAt: delay ? new Date(Date.now() + delay) : undefined,

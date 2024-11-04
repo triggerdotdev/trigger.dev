@@ -1,6 +1,7 @@
 import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
+  TaskRunErrorCodes,
   TaskRunExecutionResult,
 } from "../schemas/index.js";
 import { RuntimeManager } from "./manager.js";
@@ -22,7 +23,10 @@ export class NoopRuntimeManager implements RuntimeManager {
     return Promise.resolve({
       ok: false,
       id: params.id,
-      error: { type: "INTERNAL_ERROR", code: "CONFIGURED_INCORRECTLY" },
+      error: {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
+      },
     });
   }
 

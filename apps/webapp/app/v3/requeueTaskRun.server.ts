@@ -7,6 +7,7 @@ import { BaseService } from "./services/baseService.server";
 import { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { socketIo } from "./handleSocketIo.server";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export class RequeueTaskRunService extends BaseService {
   public async call(runId: string) {
@@ -59,7 +60,7 @@ export class RequeueTaskRunService extends BaseService {
           retry: undefined,
           error: {
             type: "INTERNAL_ERROR",
-            code: "TASK_RUN_HEARTBEAT_TIMEOUT",
+            code: TaskRunErrorCodes.TASK_RUN_HEARTBEAT_TIMEOUT,
             message: "Did not receive a heartbeat from the worker in time",
           },
         });

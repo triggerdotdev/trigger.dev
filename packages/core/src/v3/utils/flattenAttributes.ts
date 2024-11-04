@@ -1,10 +1,12 @@
 import { Attributes } from "@opentelemetry/api";
 
 export const NULL_SENTINEL = "$@null((";
+export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
 export function flattenAttributes(
   obj: Record<string, unknown> | Array<unknown> | string | boolean | number | null | undefined,
-  prefix?: string
+  prefix?: string ,
+  seen: WeakSet<object> = new WeakSet()
 ): Attributes {
   const result: Attributes = {};
 
@@ -38,13 +40,25 @@ export function flattenAttributes(
     return result;
   }
 
+  // Check for circular reference
+  if (obj !== null && typeof obj === "object" && seen.has(obj)) {
+    result[prefix || ""] = CIRCULAR_REFERENCE_SENTINEL;
+    return result;
+  }
+
+  // Add object to seen set
+  if (obj !== null && typeof obj === "object") {
+    seen.add(obj);
+  }
+
+
   for (const [key, value] of Object.entries(obj)) {
     const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (typeof value[i] === "object" && value[i] !== null) {
           // update null check here as well
-          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`));
+          Object.assign(result, flattenAttributes(value[i], `${newPrefix}.[${i}]`,seen));
         } else {
           if (value[i] === null) {
             result[`${newPrefix}.[${i}]`] = NULL_SENTINEL;
@@ -55,7 +69,7 @@ export function flattenAttributes(
       }
     } else if (isRecord(value)) {
       // update null check here
-      Object.assign(result, flattenAttributes(value, newPrefix));
+      Object.assign(result, flattenAttributes(value, newPrefix, seen));
     } else {
       if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
         result[newPrefix] = value;
@@ -95,37 +109,50 @@ export function unflattenAttributes(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    const parts = key.split(".").reduce((acc, part) => {
-      if (part.includes("[")) {
-        // Handling nested array indices
-        const subparts = part.split(/\[|\]/).filter((p) => p !== "");
-        acc.push(...subparts);
-      } else {
-        acc.push(part);
-      }
-      return acc;
-    }, [] as string[]);
+    const parts = key.split(".").reduce(
+      (acc, part) => {
+        if (part.startsWith("[") && part.endsWith("]")) {
+          // Handle array indices more precisely
+          const match = part.match(/^\[(\d+)\]$/);
+          if (match && match[1]) {
+            acc.push(parseInt(match[1]));
+          } else {
+            // Remove brackets for non-numeric array keys
+            acc.push(part.slice(1, -1));
+          }
+        } else {
+          acc.push(part);
+        }
+        return acc;
+      },
+      [] as (string | number)[]
+    );
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+      const nextPart = parts[i + 1];
 
-      if (!part) {
+      if (!part && part !== 0) {
         continue;
       }
 
-      const nextPart = parts[i + 1];
-      const isArray = nextPart && /^\d+$/.test(nextPart);
-      if (isArray && !Array.isArray(current[part])) {
-        current[part] = [];
-      } else if (!isArray && current[part] === undefined) {
+      if (typeof nextPart === "number") {
+        // Ensure we create an array for numeric indices
+        current[part] = Array.isArray(current[part]) ? current[part] : [];
+      } else if (current[part] === undefined) {
+        // Create an object for non-numeric paths
         current[part] = {};
       }
+
       current = current[part];
     }
+
     const lastPart = parts[parts.length - 1];
-    if (lastPart) {
-      current[lastPart] = rehydrateNull(value);
+
+    if (lastPart !== undefined) {
+      current[lastPart] = rehydrateNull(rehydrateCircular(value));
+
     }
   }
 
@@ -140,6 +167,13 @@ export function unflattenAttributes(
   }
 
   return result;
+}
+
+function rehydrateCircular(value: any): any {
+  if (value === CIRCULAR_REFERENCE_SENTINEL) {
+    return "[Circular Reference]";
+  }
+  return value;
 }
 
 export function primitiveValueOrflattenedAttributes(

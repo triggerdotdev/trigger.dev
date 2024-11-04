@@ -43,7 +43,7 @@ const SHORT_HASH = env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
 const defaultBackoff = new ExponentialBackoff("FullJitter", {
-  maxRetries: 5,
+  maxRetries: 7,
 });
 
 cliLogger.loggerLevel = "debug";
@@ -418,7 +418,7 @@ class ProdWorker {
 
     // Retry if we don't receive EXECUTE_TASK_RUN_LAZY_ATTEMPT in a reasonable time
     // ..but we also have to be fast to avoid failing the task due to missing heartbeat
-    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(3)) {
+    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(7)) {
       if (retry > 0) {
         logger.log("retrying ready for lazy attempt", { retry });
       }
@@ -519,12 +519,12 @@ class ProdWorker {
 
     logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-    const exitCode =
+    const isNonZeroExitError =
       !completion.ok &&
       completion.error.type === "INTERNAL_ERROR" &&
-      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE
-        ? EXIT_CODE_CHILD_NONZERO
-        : 0;
+      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE;
+
+    const exitCode = isNonZeroExitError ? EXIT_CODE_CHILD_NONZERO : 0;
 
     if (shouldExit) {
       // Exit after completion, without any retrying

@@ -40,7 +40,7 @@ import {
 } from "~/utils/pathBuilder";
 import { TraceSpan } from "~/utils/taskEvent";
 import { SpanLink } from "~/v3/eventRepository.server";
-import { isFinalRunStatus } from "~/v3/taskStatus";
+import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { RunTimelineEvent, RunTimelineLine } from "./InspectorTimeline";
 import { RunTag } from "./RunTag";
 import { TaskRunStatusCombo } from "./TaskRunStatus";
@@ -479,6 +479,7 @@ function RunTimeline({ run }: { run: RawRun }) {
   const updatedAt = new Date(run.updatedAt);
 
   const isFinished = isFinalRunStatus(run.status);
+  const isError = isFailedRunStatus(run.status);
 
   return (
     <div className="min-w-fit max-w-80">
@@ -535,7 +536,7 @@ function RunTimeline({ run }: { run: RawRun }) {
               <RunTimelineEvent
                 title="Finished"
                 subtitle={<DateTimeAccurate date={updatedAt} />}
-                state="complete"
+                state={isError ? "error" : "complete"}
               />
             </>
           ) : (

@@ -123,6 +123,7 @@ export class TaskRunProcess {
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest),
+      PATH: process.env.PATH,
     };
 
     logger.debug(`[${this.runId}] initializing task run process`, {

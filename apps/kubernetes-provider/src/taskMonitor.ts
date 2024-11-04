@@ -160,7 +160,10 @@ export class TaskMonitor {
 
     let reason = rawReason || "Unknown error";
     let logs = rawLogs || "";
-    let overrideCompletion = false;
+
+    /** This will only override existing task errors. It will not crash the run.  */
+    let onlyOverrideExistingError = exitCode === EXIT_CODE_CHILD_NONZERO;
+
     let errorCode: TaskRunInternalError["code"] = TaskRunErrorCodes.POD_UNKNOWN_ERROR;
 
     switch (rawReason) {
@@ -185,10 +188,8 @@ export class TaskMonitor {
         }
         break;
       case "OOMKilled":
-        overrideCompletion = true;
-        reason = `${
-          exitCode === EXIT_CODE_CHILD_NONZERO ? "Child process" : "Parent process"
-        } ran out of memory! Try choosing a machine preset with more memory for this task.`;
+        reason =
+          "[TaskMonitor] Your task ran out of memory. Try increasing the machine specs. If this doesn't fix it there might be a memory leak.";
         errorCode = TaskRunErrorCodes.TASK_PROCESS_OOM_KILLED;
         break;
       default:
@@ -199,7 +200,7 @@ export class TaskMonitor {
       exitCode,
       reason,
       logs,
-      overrideCompletion,
+      overrideCompletion: onlyOverrideExistingError,
       errorCode,
     } satisfies FailureDetails;
 

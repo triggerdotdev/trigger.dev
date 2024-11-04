@@ -602,6 +602,9 @@ COPY --chown=node:node . .
 
 ${postInstallCommands}
 
+# IMPORTANT: Doing this again to fix an issue with prisma generate removing the files in node_modules/trigger.dev for some reason...
+COPY --chown=node:node . .
+
 FROM build AS indexer
 
 USER node

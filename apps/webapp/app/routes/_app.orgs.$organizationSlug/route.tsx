@@ -127,6 +127,6 @@ export function ErrorBoundary() {
   return org ? (
     <RouteErrorDisplay button={{ title: org.title, to: organizationPath(org) }} />
   ) : (
-    <RouteErrorDisplay button={{ title: "Home", to: "/" }} />
+    <RouteErrorDisplay button={{ title: "Go to homepage", to: "/" }} />
   );
 }

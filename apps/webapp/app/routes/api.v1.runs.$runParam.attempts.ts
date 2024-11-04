@@ -29,7 +29,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new CreateTaskRunAttemptService();
 
   try {
-    const { execution } = await service.call(runParam, authenticationResult.environment);
+    const { execution } = await service.call({
+      runId: runParam,
+      authenticatedEnv: authenticationResult.environment,
+    });
 
     return json(execution, { status: 200 });
   } catch (error) {
