@@ -1405,8 +1405,16 @@ export class RunEngine {
 
   async quit() {
     //stop the run queue
-    this.runQueue.quit();
-    this.worker.stop();
+    await this.runQueue.quit();
+    await this.worker.stop();
+    await this.runLock.quit();
+
+    try {
+      // This is just a failsafe
+      await this.redis.quit();
+    } catch (error) {
+      // And should always throw
+    }
   }
 
   async #systemFailure({

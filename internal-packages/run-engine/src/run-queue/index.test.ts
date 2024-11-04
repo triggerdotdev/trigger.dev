@@ -711,6 +711,7 @@ describe("RunQueue", () => {
 
       // Wait for the item to be redrived and processed
       await setTimeout(5_000);
+      await redisClient.quit();
 
       //shouldn't be in the dlq now
       const dlqMembersAfter = await redis.zrange(dlqKey, 0, -1);

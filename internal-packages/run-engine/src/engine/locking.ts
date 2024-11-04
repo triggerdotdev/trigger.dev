@@ -53,4 +53,8 @@ export class RunLocker {
   getCurrentResources(): string | undefined {
     return this.asyncLocalStorage.getStore()?.resources;
   }
+
+  async quit() {
+    await this.redlock.quit();
+  }
 }

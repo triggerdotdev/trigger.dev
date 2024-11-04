@@ -308,9 +308,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.isShuttingDown = true;
     this.logger.log("Shutting down workers...");
 
-    for (const worker of this.workers) {
-      worker.terminate();
-    }
+    await Promise.all(this.workers.map((worker) => worker.terminate()));
 
     await this.subscriber.unsubscribe();
     await this.subscriber.quit();
@@ -326,8 +324,8 @@ class Worker<TCatalog extends WorkerCatalog> {
     }
   }
 
-  public stop() {
-    this.shutdown();
+  public async stop() {
+    await this.shutdown();
   }
 }
 
