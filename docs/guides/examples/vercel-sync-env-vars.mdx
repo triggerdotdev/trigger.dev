@@ -1,0 +1,53 @@
+---
+title: "Syncing environment variables from your Vercel projects"
+sidebarTitle: "Vercel sync environment variables"
+description: "This example demonstrates how to sync environment variables from your Vercel project to Trigger.dev."
+---
+
+import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
+
+## Overview
+
+This example shows how to automatically sync environment variables from your Vercel project to Trigger.dev.
+
+## Build configuration
+
+To sync environment variables, you just need to add our build extension to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your Trigger.dev project.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables in the
+  Trigger.dev dashboard, or pass in the token and project ID as arguments to the `vercelSyncEnvVars`
+  build extension. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
+  the project with the environment variables you want to sync.
+</Note>
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    // Add the vercelSyncEnvVars build extension
+    extensions: [vercelSyncEnvVars()],
+  },
+});
+```
+
+<Note>
+  [Build extensions](/config/config-file#extensions) allow you to hook into the build system and
+  customize the build process or the resulting bundle and container image (in the case of
+  deploying). You can use pre-built extensions or create your own.
+</Note>
+
+## Running the sync operation
+
+To sync the environment variables, all you need to do is run our `deploy` command. You should see some output in the console indicating that the environment variables have been synced, and they should now be available in your Trigger.dev dashboard.
+
+```bash
+npx trigger.dev@latest deploy
+```
+
+<VercelDocsCards />
