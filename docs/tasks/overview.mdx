@@ -33,11 +33,11 @@ You can trigger this in two ways:
 Here's how to trigger a single run from elsewhere in your code:
 
 ```ts Your backend code
-import { helloWorldTask } from "./trigger/hello-world";
+import { helloWorld } from "./trigger/hello-world";
 
 async function triggerHelloWorld() {
   //This triggers the task and returns a handle
-  const handle = await helloWorldTask.trigger({ message: "Hello world!" });
+  const handle = await helloWorld.trigger({ message: "Hello world!" });
 
   //You can use the handle to check the status of the task, cancel and retry it.
   console.log("Task is running with handle", handle.id);
