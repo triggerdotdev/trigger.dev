@@ -63,6 +63,8 @@ export class MetadataStream<T> {
       cancel: () => this.controller.abort(),
     });
 
+    console.log("Posting server stream to ", this.options.baseUrl);
+
     return fetch(
       `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${this.options.key}`,
       {
@@ -73,9 +75,7 @@ export class MetadataStream<T> {
         duplex: "half",
         signal: this.controller.signal,
       }
-    ).catch((error) => {
-      console.error("Error in stream:", error);
-    });
+    );
   }
 
   public async wait(): Promise<void> {

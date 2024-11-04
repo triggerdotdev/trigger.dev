@@ -1338,6 +1338,9 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
+      '@epic-web/test-server':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1

@@ -16,6 +16,7 @@ import {
   timeout,
   runMetadata,
   waitUntil,
+  apiClientManager,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
@@ -103,6 +104,7 @@ taskCatalog.setGlobalTaskCatalog(new StandardTaskCatalog());
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
+  apiClientManager.clientOrThrow(),
   getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
 );
 runMetadata.setGlobalManager(runMetadataManager);
@@ -318,6 +320,8 @@ const zodIpc = new ZodIpcConnection({
         try {
           _execution = execution;
           _isRunning = true;
+
+          runMetadataManager.runId = execution.run.id;
 
           runMetadataManager.startPeriodicFlush(
             getNumberEnvVar("TRIGGER_RUN_METADATA_FLUSH_INTERVAL", 1000)

@@ -8,6 +8,9 @@ export interface RunMetadataManager {
   getKey(key: string): DeserializedJson | undefined;
   setKey(key: string, value: DeserializedJson): void;
   deleteKey(key: string): void;
+  appendKey(key: string, value: DeserializedJson): void;
+  incrementKey(key: string, value: number): void;
+  decrementKey(key: string, value: number): void;
   update(metadata: Record<string, DeserializedJson>): void;
   flush(requestOptions?: ApiRequestOptions): Promise<void>;
   stream<T>(key: string, value: AsyncIterable<T>, signal?: AbortSignal): Promise<AsyncIterable<T>>;

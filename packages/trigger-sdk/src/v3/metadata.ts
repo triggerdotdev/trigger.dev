@@ -26,6 +26,9 @@ export const metadata = {
   replace: replaceMetadata,
   flush: flushMetadata,
   stream: stream,
+  append: appendMetadataKey,
+  increment: incrementMetadataKey,
+  decrement: decrementMetadataKey,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;
@@ -104,6 +107,18 @@ function replaceMetadata(metadata: RunMetadata): void {
  */
 function saveMetadata(metadata: RunMetadata): void {
   runMetadata.update(metadata);
+}
+
+function incrementMetadataKey(key: string, value: number) {
+  runMetadata.incrementKey(key, value);
+}
+
+function decrementMetadataKey(key: string, value: number) {
+  runMetadata.decrementKey(key, value);
+}
+
+function appendMetadataKey(key: string, value: DeserializedJson) {
+  runMetadata.appendKey(key, value);
 }
 
 /**

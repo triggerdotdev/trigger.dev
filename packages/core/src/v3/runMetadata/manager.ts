@@ -1,11 +1,10 @@
 import { JSONHeroPath } from "@jsonhero/path";
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
-import { apiClientManager } from "../apiClientManager-api.js";
-import { taskContext } from "../task-context-api.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { RunMetadataManager } from "./types.js";
 import { MetadataStream } from "./metadataStream.js";
+import { ApiClient } from "../apiClient/index.js";
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
@@ -14,7 +13,12 @@ export class StandardMetadataManager implements RunMetadataManager {
   // Add a Map to track active streams
   private activeStreams = new Map<string, MetadataStream<any>>();
 
-  constructor(private streamsBaseUrl: string) {}
+  public runId: string | undefined;
+
+  constructor(
+    private apiClient: ApiClient,
+    private streamsBaseUrl: string
+  ) {}
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
     this.store = metadata ?? {};
@@ -29,9 +33,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   public setKey(key: string, value: DeserializedJson) {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
+    if (!this.runId) {
       return;
     }
 
@@ -61,9 +63,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   public deleteKey(key: string) {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
+    if (!this.runId) {
       return;
     }
 
@@ -77,10 +77,81 @@ export class StandardMetadataManager implements RunMetadataManager {
     this.store = nextStore;
   }
 
-  public update(metadata: Record<string, DeserializedJson>): void {
-    const runId = taskContext.ctx?.run.id;
+  public appendKey(key: string, value: DeserializedJson) {
+    if (!this.runId) {
+      return;
+    }
 
-    if (!runId) {
+    let nextStore: Record<string, DeserializedJson> | undefined = this.store
+      ? structuredClone(this.store)
+      : {};
+
+    if (key.startsWith("$.")) {
+      const path = new JSONHeroPath(key);
+      const currentValue = path.first(nextStore);
+
+      if (currentValue === undefined) {
+        // Initialize as array with single item
+        path.set(nextStore, [value]);
+      } else if (Array.isArray(currentValue)) {
+        // Append to existing array
+        path.set(nextStore, [...currentValue, value]);
+      } else {
+        // Convert to array if not already
+        path.set(nextStore, [currentValue, value]);
+      }
+    } else {
+      const currentValue = nextStore[key];
+
+      if (currentValue === undefined) {
+        // Initialize as array with single item
+        nextStore[key] = [value];
+      } else if (Array.isArray(currentValue)) {
+        // Append to existing array
+        nextStore[key] = [...currentValue, value];
+      } else {
+        // Convert to array if not already
+        nextStore[key] = [currentValue, value];
+      }
+    }
+
+    if (!dequal(this.store, nextStore)) {
+      this.hasChanges = true;
+    }
+
+    this.store = nextStore;
+  }
+
+  public incrementKey(key: string, increment: number = 1) {
+    if (!this.runId) {
+      return;
+    }
+
+    let nextStore = this.store ? structuredClone(this.store) : {};
+    let currentValue = key.startsWith("$.")
+      ? new JSONHeroPath(key).first(nextStore)
+      : nextStore[key];
+
+    const newValue = (typeof currentValue === "number" ? currentValue : 0) + increment;
+
+    if (key.startsWith("$.")) {
+      new JSONHeroPath(key).set(nextStore, newValue);
+    } else {
+      nextStore[key] = newValue;
+    }
+
+    if (!dequal(this.store, nextStore)) {
+      this.hasChanges = true;
+      this.store = nextStore;
+    }
+  }
+
+  public decrementKey(key: string, decrement: number = 1) {
+    this.incrementKey(key, -decrement);
+  }
+
+  public update(metadata: Record<string, DeserializedJson>): void {
+    if (!this.runId) {
       return;
     }
 
@@ -96,9 +167,7 @@ export class StandardMetadataManager implements RunMetadataManager {
     value: AsyncIterable<T>,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
+    if (!this.runId) {
       return value;
     }
 
@@ -109,7 +178,7 @@ export class StandardMetadataManager implements RunMetadataManager {
 
     const streamInstance = new MetadataStream({
       key,
-      runId,
+      runId: this.runId,
       iterator: value[Symbol.asyncIterator](),
       baseUrl: this.streamsBaseUrl,
       signal,
@@ -153,9 +222,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   public async flush(requestOptions?: ApiRequestOptions): Promise<void> {
-    const runId = taskContext.ctx?.run.id;
-
-    if (!runId) {
+    if (!this.runId) {
       return;
     }
 
@@ -167,11 +234,9 @@ export class StandardMetadataManager implements RunMetadataManager {
       return;
     }
 
-    const apiClient = apiClientManager.clientOrThrow();
-
     try {
       this.hasChanges = false;
-      await apiClient.updateRunMetadata(runId, { metadata: this.store }, requestOptions);
+      await this.apiClient.updateRunMetadata(this.runId, { metadata: this.store }, requestOptions);
     } catch (error) {
       this.hasChanges = true;
       throw error;

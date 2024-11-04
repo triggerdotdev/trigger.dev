@@ -3,6 +3,15 @@ import { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager } from "./types.js";
 
 export class NoopRunMetadataManager implements RunMetadataManager {
+  appendKey(key: string, value: DeserializedJson): void {
+    throw new Error("Method not implemented.");
+  }
+  incrementKey(key: string, value: number): void {
+    throw new Error("Method not implemented.");
+  }
+  decrementKey(key: string, value: number): void {
+    throw new Error("Method not implemented.");
+  }
   stream<T>(key: string, value: AsyncIterable<T>): Promise<AsyncIterable<T>> {
     throw new Error("Method not implemented.");
   }
