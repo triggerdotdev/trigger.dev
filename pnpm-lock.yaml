@@ -1011,6 +1011,9 @@ importers:
       '@testcontainers/redis':
         specifier: ^10.13.1
         version: 10.13.1
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       testcontainers:
         specifier: ^10.13.1
         version: 10.13.1
