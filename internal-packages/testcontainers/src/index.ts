@@ -6,6 +6,9 @@ import { PrismaClient } from "@trigger.dev/database";
 import { createPostgresContainer, createRedisContainer, createElectricContainer } from "./utils";
 import { Network, type StartedNetwork, type StartedTestContainer } from "testcontainers";
 
+export { StartedRedisContainer };
+export * from "./setup";
+
 type NetworkContext = { network: StartedNetwork };
 
 type PostgresContext = NetworkContext & {
