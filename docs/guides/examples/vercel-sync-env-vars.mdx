@@ -12,16 +12,14 @@ This example shows how to automatically sync environment variables from your Ver
 
 ## Build configuration
 
-To sync environment variables from your Vercel project to Trigger.dev, you just need to add this build configuration to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your project.
-
-This code syncs encrypted environment variables, filtering them based on the current environment (production, preview, or development).
+To sync environment variables, you just need to add our build extension to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your Trigger.dev project.
 
 <Note>
-  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
-  in the token and project ID as arguments to the `vercelSyncEnvVars` build extension. You can find
-  / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables in the
+  Trigger.dev dashboard, or pass in the token and project ID as arguments to the `vercelSyncEnvVars`
+  build extension. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
   [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
-  the project you want to sync.
+  the project with the environment variables you want to sync.
 </Note>
 
 ```ts trigger.config.ts
@@ -46,7 +44,7 @@ export default defineConfig({
 
 ## Running the sync operation
 
-To sync the environment variables, all you need to do is run the `deploy` command. You should see some output in the console indicating that the environment variables have been synced, and they should now be available in your Trigger.dev dashboard.
+To sync the environment variables, all you need to do is run our `deploy` command. You should see some output in the console indicating that the environment variables have been synced, and they should now be available in your Trigger.dev dashboard.
 
 ```bash
 npx trigger.dev@latest deploy
