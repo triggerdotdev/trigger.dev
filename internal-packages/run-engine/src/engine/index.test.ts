@@ -281,14 +281,19 @@ describe("RunEngine", () => {
         });
 
         //fail the attempt
+        const error = {
+          type: "BUILT_IN_ERROR" as const,
+          name: "UserError",
+          message: "This is a user error",
+          stackTrace: "Error: This is a user error\n    at <anonymous>:1:1",
+        };
         const result = await engine.completeRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: attemptResult.snapshot.id,
           completion: {
-            ok: true,
+            ok: false,
             id: dequeued[0].run.id,
-            output: `{ "foo": "bar" }`,
-            outputType: "application/json",
+            error,
           },
         });
         expect(result).toBe("COMPLETED");
@@ -298,7 +303,7 @@ describe("RunEngine", () => {
         assertNonNullable(executionData3);
         expect(executionData3.snapshot.executionStatus).toBe("FINISHED");
         expect(executionData3.run.attemptNumber).toBe(1);
-        expect(executionData3.run.status).toBe("COMPLETED_SUCCESSFULLY");
+        expect(executionData3.run.status).toBe("COMPLETED_WITH_ERRORS");
 
         //concurrency should have been released
         const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
@@ -314,7 +319,9 @@ describe("RunEngine", () => {
         });
         expect(runWaitpointAfter.length).toBe(1);
         expect(runWaitpointAfter[0].type).toBe("RUN");
-        expect(runWaitpointAfter[0].output).toBe(`{ "foo": "bar" }`);
+        const output = JSON.parse(runWaitpointAfter[0].output as string);
+        expect(output.type).toBe(error.type);
+        expect(runWaitpointAfter[0].outputIsError).toBe(true);
       } finally {
         engine.quit();
       }

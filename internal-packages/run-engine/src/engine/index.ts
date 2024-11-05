@@ -1608,6 +1608,14 @@ export class RunEngine {
           },
         });
 
+        await this.#createExecutionSnapshot(prisma, {
+          run,
+          snapshot: {
+            executionStatus: "FINISHED",
+            description: "Run failed",
+          },
+        });
+
         this.eventBus.emit("runFailed", {
           time: failedAt,
           run: {
