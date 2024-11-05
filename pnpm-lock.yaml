@@ -393,6 +393,9 @@ importers:
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
+      '@trigger.dev/worker':
+        specifier: workspace:*
+        version: link:../../packages/worker
       '@trigger.dev/yalt':
         specifier: npm:@trigger.dev/yalt
         version: 2.3.19
@@ -1539,6 +1542,34 @@ importers:
       typed-emitter:
         specifier: ^2.1.0
         version: 2.1.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
+
+  packages/worker:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 3.22.3
+        version: 3.22.3
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
+      '@types/node':
+        specifier: 20.14.14
+        version: 20.14.14
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      tshy:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
       typescript:
         specifier: ^5.5.4
         version: 5.5.4
