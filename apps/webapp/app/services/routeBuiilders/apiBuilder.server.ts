@@ -13,6 +13,10 @@ import {
   authenticateApiRequestWithPersonalAccessToken,
   PersonalAccessTokenAuthenticationResult,
 } from "../personalAccessToken.server";
+import {
+  AuthenticatedWorkerInstance,
+  WorkerGroupTokenService,
+} from "~/v3/services/worker/workerGroupTokenService.server";
 
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
@@ -257,4 +261,84 @@ export function createLoaderPATApiRoute<
 
 function wrapResponse(request: Request, response: Response, useCors: boolean) {
   return useCors ? apiCors(request, response) : response;
+}
+
+type WorkerRouteBuilderOptions<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+};
+
+type WorkerHandlerFunction<
+  TParamsSchema extends z.AnyZodObject | undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined
+> = (args: {
+  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
+  searchParams: TSearchParamsSchema extends z.AnyZodObject
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  authenticatedWorker: AuthenticatedWorkerInstance;
+  request: Request;
+}) => Promise<Response>;
+
+export function createLoaderWorkerApiRoute<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined
+>(
+  options: WorkerRouteBuilderOptions<TParamsSchema, TSearchParamsSchema>,
+  handler: WorkerHandlerFunction<TParamsSchema, TSearchParamsSchema>
+) {
+  return async function loader({ request, params }: LoaderFunctionArgs) {
+    const { params: paramsSchema, searchParams: searchParamsSchema } = options;
+
+    const service = new WorkerGroupTokenService();
+    const authenticationResult = await service.authenticate(request);
+
+    if (!authenticationResult) {
+      return json({ error: "Invalid or missing worker token" }, { status: 401 });
+    }
+
+    let parsedParams: any = undefined;
+    if (paramsSchema) {
+      const parsed = paramsSchema.safeParse(params);
+      if (!parsed.success) {
+        return json(
+          { error: "Params Error", details: fromZodError(parsed.error).details },
+          { status: 400 }
+        );
+      }
+      parsedParams = parsed.data;
+    }
+
+    let parsedSearchParams: any = undefined;
+    if (searchParamsSchema) {
+      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+      const parsed = searchParamsSchema.safeParse(searchParams);
+      if (!parsed.success) {
+        return json(
+          { error: "Query Error", details: fromZodError(parsed.error).details },
+          { status: 400 }
+        );
+      }
+      parsedSearchParams = parsed.data;
+    }
+
+    try {
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
 }
