@@ -7,6 +7,8 @@ import {
   parsePacket,
   QueueOptions,
   sanitizeError,
+  shouldRetryError,
+  taskRunErrorEnhancer,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
@@ -56,6 +58,8 @@ type Options = {
     machines: Record<string, MachinePreset>;
     baseCostInCents: number;
   };
+  /** If not set then checkpoints won't ever be used */
+  checkpointThresholdMs?: number;
   tracer: Tracer;
 };
 
@@ -408,9 +412,6 @@ export class RunEngine {
             await this.#enqueueRun({ run: taskRun, env: environment, tx: prisma });
           }
         });
-
-        //todo release parent concurrency (for the project, task, and environment, but not for the queue?)
-        //todo if this has been triggered with triggerAndWait or batchTriggerAndWait
 
         return taskRun;
       }
@@ -1023,10 +1024,10 @@ export class RunEngine {
   }): Promise<"COMPLETED" | "RETRIED"> {
     switch (completion.ok) {
       case true: {
-        return this.#completeRunAttemptSuccess({ runId, snapshotId, completion });
+        return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
       }
       case false: {
-        return this.#completeRunAttemptFailure({ runId, snapshotId, completion });
+        return this.#attemptFailed({ runId, snapshotId, completion, tx: this.prisma });
       }
     }
   }
@@ -1371,18 +1372,21 @@ export class RunEngine {
 
   async #waitingForDeploy({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
 
-  async #completeRunAttemptSuccess({
+  async #attemptSucceeded({
     runId,
     snapshotId,
     completion,
+    tx,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
+    tx: PrismaClientOrTransaction;
   }) {
+    const prisma = tx ?? this.prisma;
     return this.#trace("#completeRunAttemptSuccess", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
 
         if (latestSnapshot.id !== snapshotId) {
           throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1391,7 +1395,7 @@ export class RunEngine {
         span.setAttribute("completionStatus", completion.ok);
 
         const completedAt = new Date();
-        const run = await this.prisma.taskRun.update({
+        const run = await prisma.taskRun.update({
           where: { id: runId },
           data: {
             status: "COMPLETED_SUCCESSFULLY",
@@ -1449,18 +1453,23 @@ export class RunEngine {
     });
   }
 
-  async #completeRunAttemptFailure({
+  async #attemptFailed({
     runId,
     snapshotId,
     completion,
+    tx,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunFailedExecutionResult;
+
+    tx: PrismaClientOrTransaction;
   }): Promise<"COMPLETED" | "RETRIED"> {
+    const prisma = this.prisma;
+
     return this.#trace("completeRunAttemptFailure", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
 
         if (latestSnapshot.id !== snapshotId) {
           throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1468,19 +1477,105 @@ export class RunEngine {
 
         span.setAttribute("completionStatus", completion.ok);
 
+        const failedAt = new Date();
+
         if (
           completion.error.type === "INTERNAL_ERROR" &&
           completion.error.code === "TASK_RUN_CANCELLED"
         ) {
           // We need to cancel the task run instead of fail it
-          await this.cancelRun({ runId, completedAt: new Date(), reason: "Cancelled by user" });
-
+          await this.cancelRun({
+            runId,
+            completedAt: failedAt,
+            reason: "Cancelled by user",
+            tx: prisma,
+          });
           return "COMPLETED" as const;
         }
 
         const error = sanitizeError(completion.error);
-        //todo look at CompleteAttemptService
-        throw new NotImplementedError("TaskRun completion error handling not implemented yet");
+        const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
+
+        if (
+          retriableError &&
+          completion.retry !== undefined &&
+          (latestSnapshot.attemptNumber === null ||
+            latestSnapshot.attemptNumber < MAX_TASK_RUN_ATTEMPTS)
+        ) {
+          const retryAt = new Date(completion.retry.timestamp);
+
+          const attemptNumber =
+            latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
+
+          const run = await prisma.taskRun.update({
+            where: {
+              id: runId,
+            },
+            data: {
+              status: "RETRYING_AFTER_FAILURE",
+              attemptNumber,
+            },
+            include: {
+              runtimeEnvironment: {
+                include: {
+                  project: true,
+                  organization: true,
+                  orgMember: true,
+                },
+              },
+            },
+          });
+
+          this.eventBus.emit("runRetryScheduled", {
+            time: failedAt,
+            run: {
+              id: run.id,
+              attemptNumber,
+              queue: run.queue,
+              taskIdentifier: run.taskIdentifier,
+              traceContext: run.traceContext as Record<string, string | undefined>,
+            },
+            environment: run.runtimeEnvironment,
+            retryAt,
+          });
+
+          //todo anything special for DEV? Ideally not.
+
+          //if it's a long delay and we support checkpointing, put it back in the queue
+          if (
+            this.options.checkpointThresholdMs !== undefined &&
+            completion.retry.delay >= this.options.checkpointThresholdMs
+          ) {
+            //long delay for retry, so requeue
+            await this.#createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "QUEUED",
+                description: "Attempt failed with a long delay, putting back into the queue.",
+              },
+            });
+            await this.runQueue.nackMessage(
+              run.runtimeEnvironment.organizationId,
+              runId,
+              retryAt.getTime()
+            );
+          } else {
+            //it will continue running because the retry delay is short
+            await this.#createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "PENDING_EXECUTING",
+                description: "Attempt failed wth a short delay, starting a new attempt.",
+              },
+            });
+            await this.#sendRunChangedNotificationToWorker({ runId });
+          }
+
+          return "RETRIED" as const;
+        }
+
+        //run permanently failed
+        //todo
       });
     });
   }
@@ -1955,6 +2050,10 @@ export class RunEngine {
   }
 
   //#endregion
+
+  async #sendRunChangedNotificationToWorker({ runId }: { runId: string }) {
+    //todo: implement
+  }
 
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
     const prisma = tx ?? this.prisma;

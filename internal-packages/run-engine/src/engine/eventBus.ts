@@ -1,4 +1,5 @@
 import { TaskRunExecutionStatus } from "@trigger.dev/database";
+import { AuthenticatedEnvironment } from "../shared";
 
 export type EventBusEvents = {
   runExpired: [
@@ -20,6 +21,20 @@ export type EventBusEvents = {
         output: string | undefined;
         outputType: string;
       };
+    },
+  ];
+  runRetryScheduled: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        attemptNumber: number;
+        queue: string;
+        traceContext: Record<string, string | undefined>;
+        taskIdentifier: string;
+      };
+      environment: AuthenticatedEnvironment;
+      retryAt: Date;
     },
   ];
   executionSnapshotCreated: [
