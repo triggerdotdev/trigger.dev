@@ -240,6 +240,7 @@ export class RunEngine {
         //create run
         const taskRun = await prisma.taskRun.create({
           data: {
+            engine: "V2",
             status,
             number,
             friendlyId,
