@@ -2123,6 +2123,7 @@ model WorkerInstanceGroup {
   masterQueue String @unique
 
   description String?
+  hidden      Boolean @default(false)
 
   token   WorkerGroupToken @relation(fields: [tokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   tokenId String           @unique
