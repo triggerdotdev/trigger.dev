@@ -148,7 +148,139 @@ describe("RunEngine", () => {
         expect(executionData2.run.attemptNumber).toBe(1);
         expect(executionData2.run.status).toBe("EXECUTING");
 
+        let event: EventBusEventArgs<"runSucceeded">[0] | undefined = undefined;
+        engine.eventBus.on("runSucceeded", (result) => {
+          event = result;
+        });
+
         //complete the run
+        const result = await engine.completeRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: attemptResult.snapshot.id,
+          completion: {
+            ok: true,
+            id: dequeued[0].run.id,
+            output: `{"foo":"bar"}`,
+            outputType: "application/json",
+          },
+        });
+        expect(result).toBe("COMPLETED");
+
+        //state should be completed
+        const executionData3 = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData3);
+        expect(executionData3.snapshot.executionStatus).toBe("FINISHED");
+        expect(executionData3.run.attemptNumber).toBe(1);
+        expect(executionData3.run.status).toBe("COMPLETED_SUCCESSFULLY");
+
+        //event
+        assertNonNullable(event);
+        const completedEvent = event as EventBusEventArgs<"runSucceeded">[0];
+        expect(completedEvent.run.spanId).toBe(run.spanId);
+        expect(completedEvent.run.output).toBe('{"foo":"bar"}');
+        expect(completedEvent.run.outputType).toBe("application/json");
+
+        //concurrency should have been released
+        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrencyCompleted).toBe(0);
+
+        //waitpoint should have been completed, with the output
+        const runWaitpointAfter = await prisma.waitpoint.findMany({
+          where: {
+            completedByTaskRunId: run.id,
+          },
+        });
+        expect(runWaitpointAfter.length).toBe(1);
+        expect(runWaitpointAfter[0].type).toBe("RUN");
+        expect(runWaitpointAfter[0].output).toBe(`{"foo":"bar"}`);
+      } finally {
+        engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Single run (trigger to user-failure)",
+    { timeout: 15_000 },
+    async ({ prisma, redisContainer }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        //create background worker
+        const backgroundWorker = await setupBackgroundWorker(
+          prisma,
+          authenticatedEnvironment,
+          taskIdentifier
+        );
+
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //create an attempt
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].execution.id,
+        });
+
+        //fail the attempt
         const result = await engine.completeRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: attemptResult.snapshot.id,
@@ -255,9 +387,6 @@ describe("RunEngine", () => {
         masterQueue: parentRun.masterQueue,
         maxRunCount: 10,
       });
-      expect(dequeued.length).toBe(1);
-      expect(dequeued[0].run.id).toBe(parentRun.id);
-      expect(dequeued[0].run.attemptNumber).toBe(1);
 
       //create an attempt
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
@@ -266,9 +395,6 @@ describe("RunEngine", () => {
         runId: parentRun.id,
         snapshotId: initialExecutionData.snapshot.id,
       });
-      expect(attemptResult.run.id).toBe(parentRun.id);
-      expect(attemptResult.run.status).toBe("EXECUTING");
-      expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
       const childRun = await engine.trigger(
         {
@@ -313,11 +439,7 @@ describe("RunEngine", () => {
       expect(runWaitpoint.waitpoint.type).toBe("RUN");
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
-      let event: EventBusEventArgs<"runSucceeded">[0] | undefined = undefined;
-      engine.eventBus.on("runSucceeded", (result) => {
-        event = result;
-      });
-
+      // complete the child run
       await engine.completeRunAttempt({
         runId: childRun.id,
         snapshotId: childExecutionData.snapshot.id,
@@ -328,13 +450,6 @@ describe("RunEngine", () => {
           outputType: "application/json",
         },
       });
-
-      //event
-      assertNonNullable(event);
-      const completedEvent = event as EventBusEventArgs<"runSucceeded">[0];
-      expect(completedEvent.run.spanId).toBe(childRun.spanId);
-      expect(completedEvent.run.output).toBe('{"foo":"bar"}');
-      expect(completedEvent.run.outputType).toBe("application/json");
 
       //child snapshot
       const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
@@ -440,7 +555,6 @@ describe("RunEngine", () => {
         masterQueue: run.masterQueue,
         maxRunCount: 10,
       });
-      expect(dequeued.length).toBe(1);
 
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
@@ -483,7 +597,7 @@ describe("RunEngine", () => {
   //todo cancelling a run
 
   //todo expiring a run
-  containerTest("Run expiring", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -546,8 +660,6 @@ describe("RunEngine", () => {
         },
         prisma
       );
-      expect(run).toBeDefined();
-      expect(run.friendlyId).toBe("run_1234");
 
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData);
