@@ -1701,7 +1701,7 @@ export class RunEngine {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run: run,
           snapshot: {
-            executionStatus: "PENDING_EXECUTING",
+            executionStatus: "EXECUTING",
             description: "Run was continued, whilst still executing.",
           },
           completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),

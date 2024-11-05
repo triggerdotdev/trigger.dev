@@ -3,7 +3,12 @@ import {
   generateFriendlyId,
   sanitizeQueueName,
 } from "@trigger.dev/core/v3/apps";
-import { Prisma, PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
+import {
+  BackgroundWorkerTask,
+  Prisma,
+  PrismaClient,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };
@@ -58,7 +63,7 @@ export async function setupAuthenticatedEnvironment(
 export async function setupBackgroundWorker(
   prisma: PrismaClient,
   environment: AuthenticatedEnvironment,
-  taskIdentifier: string
+  taskIdentifier: string | string[]
 ) {
   const worker = await prisma.backgroundWorker.create({
     data: {
@@ -71,29 +76,37 @@ export async function setupBackgroundWorker(
     },
   });
 
-  const task = await prisma.backgroundWorkerTask.create({
-    data: {
-      friendlyId: generateFriendlyId("task"),
-      slug: taskIdentifier,
-      filePath: `/trigger/myTask.ts`,
-      exportName: "myTask",
-      workerId: worker.id,
-      runtimeEnvironmentId: environment.id,
-      projectId: environment.project.id,
-    },
-  });
+  const taskIdentifiers = Array.isArray(taskIdentifier) ? taskIdentifier : [taskIdentifier];
 
-  const queueName = sanitizeQueueName(`task/${taskIdentifier}`);
-  const taskQueue = await prisma.taskQueue.create({
-    data: {
-      friendlyId: generateFriendlyId("queue"),
-      name: queueName,
-      concurrencyLimit: 10,
-      runtimeEnvironmentId: worker.runtimeEnvironmentId,
-      projectId: worker.projectId,
-      type: "VIRTUAL",
-    },
-  });
+  const tasks: BackgroundWorkerTask[] = [];
+
+  for (const identifier of taskIdentifiers) {
+    const task = await prisma.backgroundWorkerTask.create({
+      data: {
+        friendlyId: generateFriendlyId("task"),
+        slug: identifier,
+        filePath: `/trigger/${identifier}.ts`,
+        exportName: identifier,
+        workerId: worker.id,
+        runtimeEnvironmentId: environment.id,
+        projectId: environment.project.id,
+      },
+    });
+
+    tasks.push(task);
+
+    const queueName = sanitizeQueueName(`task/${identifier}`);
+    const taskQueue = await prisma.taskQueue.create({
+      data: {
+        friendlyId: generateFriendlyId("queue"),
+        name: queueName,
+        concurrencyLimit: 10,
+        runtimeEnvironmentId: worker.runtimeEnvironmentId,
+        projectId: worker.projectId,
+        type: "VIRTUAL",
+      },
+    });
+  }
 
   if (environment.type !== "DEVELOPMENT") {
     const deployment = await prisma.workerDeployment.create({
@@ -120,7 +133,7 @@ export async function setupBackgroundWorker(
 
     return {
       worker,
-      task,
+      tasks,
       deployment,
       promotion,
     };
@@ -128,6 +141,6 @@ export async function setupBackgroundWorker(
 
   return {
     worker,
-    task,
+    tasks,
   };
 }
