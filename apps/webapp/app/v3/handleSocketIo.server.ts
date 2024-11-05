@@ -104,13 +104,16 @@ function createCoordinatorNamespace(io: Server) {
           );
 
           if (!payload) {
-            logger.error("Failed to retrieve lazy attempt payload", message);
-            return { success: false, reason: "Failed to retrieve payload" };
+            logger.error(
+              "READY_FOR_LAZY_ATTEMPT: Failed to retrieve lazy attempt payload",
+              message
+            );
+            return { success: false, reason: "READY_FOR_LAZY_ATTEMPT: Failed to retrieve payload" };
           }
 
           return { success: true, lazyPayload: payload };
         } catch (error) {
-          logger.error("Error while creating lazy attempt", {
+          logger.error("READY_FOR_LAZY_ATTEMPT: Error while creating lazy attempt", {
             runId: message.runId,
             envId: message.envId,
             totalCompletions: message.totalCompletions,
@@ -207,13 +210,19 @@ function createCoordinatorNamespace(io: Server) {
           });
 
           if (!payload) {
-            logger.error("Failed to retrieve payload after attempt creation", message);
-            return { success: false, reason: "Failed to retrieve payload" };
+            logger.error(
+              "CREATE_TASK_RUN_ATTEMPT: Failed to retrieve payload after attempt creation",
+              message
+            );
+            return {
+              success: false,
+              reason: "CREATE_TASK_RUN_ATTEMPT: Failed to retrieve payload",
+            };
           }
 
           return { success: true, executionPayload: payload };
         } catch (error) {
-          logger.error("Error while creating attempt", {
+          logger.error("CREATE_TASK_RUN_ATTEMPT: Error while creating attempt", {
             ...message,
             error,
           });

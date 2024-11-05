@@ -13,8 +13,8 @@ The `trigger.config.ts` file is used to configure your Trigger.dev project. It i
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //Your project ref (you can see it on the Project settings page in the dashboard)
-  project: "proj_gtcwttqhhtlasxgfuhxs",
+  // Your project ref (you can see it on the Project settings page in the dashboard)
+  project: "<project ref>",
   //The paths for your trigger folders
   dirs: ["./trigger"],
   retries: {
@@ -55,7 +55,8 @@ You can add lifecycle functions to get notified when any task starts, succeeds, 
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   onSuccess: async (payload, output, { ctx }) => {
     console.log("Task succeeded", ctx.task.id);
   },
@@ -87,7 +88,8 @@ import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   instrumentations: [new PrismaInstrumentation(), new OpenAIInstrumentation()],
 });
 ```
@@ -115,7 +117,8 @@ We currently only officially support the `node` runtime, but you can try our exp
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   runtime: "bun",
 });
 ```
@@ -130,7 +133,8 @@ You can specify the default machine for all tasks in your project:
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   defaultMachine: "large-1x",
 });
 ```
@@ -145,7 +149,8 @@ You can set the log level for your project:
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   logLevel: "debug",
 });
 ```
@@ -160,7 +165,8 @@ You can set the default `maxDuration` for all tasks in your project:
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   maxDuration: 60, // 60 seconds
 });
 ```
@@ -175,7 +181,8 @@ You can customize the build process using the `build` option:
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     // Don't bundle these packages
     external: ["header-generator"],
@@ -197,7 +204,8 @@ All code is bundled by default, but you can exclude some packages from the bundl
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     external: ["header-generator"],
   },
@@ -212,7 +220,8 @@ Each entry in the external should be a package name, not necessarily the import 
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     external: ["ai"],
   },
@@ -232,7 +241,8 @@ You can customize the `jsx` options that are passed to `esbuild` using the `jsx`
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     jsx: {
       // Use the Fragment component instead of React.Fragment
@@ -258,7 +268,8 @@ You can add custom [import conditions](https://esbuild.github.io/api/#conditions
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     conditions: ["react-server"],
   },
@@ -282,7 +293,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       additionalFiles({ files: ["wrangler/wrangler.toml", "./assets/**", "./fonts/**"] }),
@@ -304,7 +316,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { additionalPackages } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [additionalPackages({ packages: ["wrangler"] })],
   },
@@ -317,7 +330,8 @@ This allows you to include additional packages in the build that are not automat
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [additionalPackages({ packages: ["wrangler@1.19.0"] })],
   },
@@ -334,6 +348,7 @@ import { emitDecoratorMetadata } from "@trigger.dev/build/extensions/typescript"
 
 export default defineConfig({
   project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [emitDecoratorMetadata()],
   },
@@ -365,6 +380,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       prismaExtension({
@@ -389,6 +406,7 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       prismaExtension({
@@ -431,6 +449,7 @@ import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       prismaExtension({
@@ -451,6 +470,7 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
   project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       prismaExtension({
@@ -473,6 +493,43 @@ These environment variables are only used during the build process and are not e
 
 The `syncEnvVars` build extension replaces the deprecated `resolveEnvVars` export. Check out our [syncEnvVars documentation](/deploy-environment-variables#sync-env-vars-from-another-service) for more information.
 
+```ts
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [syncEnvVars()],
+  },
+});
+```
+
+#### vercelSyncEnvVars
+
+The `vercelSyncEnvVars` build extension syncs environment variables from your Vercel project to Trigger.dev.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `vercelSyncEnvVars` build extension. You can find
+  / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
+  the project you want to sync.
+</Note>
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { vercelSyncEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [vercelSyncEnvVars()],
+  },
+});
+```
+
 #### audioWaveform
 
 Previously, we installed [Audio Waveform](https://github.com/bbc/audiowaveform) in the build image. That's been moved to a build extension:
@@ -482,7 +539,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [audioWaveform()], // uses verson 1.1.0 of audiowaveform by default
   },
@@ -525,6 +583,7 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
+  project: "<project ref>",
   // Your other config settings...
   build: {
     extensions: [ffmpeg()],
@@ -539,7 +598,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { ffmpeg } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [ffmpeg({ version: "6.0-4" })],
   },
@@ -561,6 +621,7 @@ import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
 
 export default defineConfig({
   project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       esbuildPlugin(
@@ -586,7 +647,8 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 import { aptGet } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [aptGet({ packages: ["ffmpeg"] })],
   },
@@ -599,7 +661,8 @@ If you want to install a specific version of a package, you can specify the vers
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [aptGet({ packages: ["ffmpeg=6.0-4"] })],
   },
@@ -646,7 +709,8 @@ Instead of creating this function and worrying about types, you can define an ex
 import { defineConfig } from "@trigger.dev/sdk/v3";
 
 export default defineConfig({
-  //..other stuff
+  project: "<project ref>",
+  // Your other config settings...
   build: {
     extensions: [
       {

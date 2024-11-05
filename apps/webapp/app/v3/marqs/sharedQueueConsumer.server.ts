@@ -1086,7 +1086,7 @@ class SharedQueueTasks {
     });
 
     if (!attempt) {
-      logger.error("No attempt found", { id });
+      logger.error("getExecutionPayloadFromAttempt: No attempt found", { id });
       return;
     }
 
@@ -1094,10 +1094,13 @@ class SharedQueueTasks {
       switch (attempt.status) {
         case "CANCELED":
         case "EXECUTING": {
-          logger.error("Invalid attempt status for execution payload retrieval", {
-            attemptId: id,
-            status: attempt.status,
-          });
+          logger.error(
+            "getExecutionPayloadFromAttempt: Invalid attempt status for execution payload retrieval",
+            {
+              attemptId: id,
+              status: attempt.status,
+            }
+          );
           return;
         }
       }
@@ -1106,11 +1109,14 @@ class SharedQueueTasks {
         case "CANCELED":
         case "EXECUTING":
         case "INTERRUPTED": {
-          logger.error("Invalid run status for execution payload retrieval", {
-            attemptId: id,
-            runId: attempt.taskRunId,
-            status: attempt.taskRun.status,
-          });
+          logger.error(
+            "getExecutionPayloadFromAttempt: Invalid run status for execution payload retrieval",
+            {
+              attemptId: id,
+              runId: attempt.taskRunId,
+              status: attempt.taskRun.status,
+            }
+          );
           return;
         }
       }
@@ -1118,7 +1124,7 @@ class SharedQueueTasks {
 
     if (setToExecuting) {
       if (isFinalAttemptStatus(attempt.status) || isFinalRunStatus(attempt.taskRun.status)) {
-        logger.error("Status already in final state", {
+        logger.error("getExecutionPayloadFromAttempt: Status already in final state", {
           attempt: {
             id: attempt.id,
             status: attempt.status,
@@ -1309,7 +1315,7 @@ class SharedQueueTasks {
       },
     });
 
-    logger.debug("Getting lazy attempt payload for run", {
+    logger.debug("getLazyAttemptPayload: Getting lazy attempt payload for run", {
       run,
       attemptCount,
     });
