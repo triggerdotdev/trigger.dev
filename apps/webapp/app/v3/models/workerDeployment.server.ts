@@ -1,6 +1,6 @@
 import type { Prettify } from "@trigger.dev/core";
 import { BackgroundWorker } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { CURRENT_DEPLOYMENT_LABEL, CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
 import { Prisma, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
@@ -19,13 +19,14 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
 }>;
 
 export async function findCurrentWorkerDeployment(
-  environmentId: string
+  environmentId: string,
+  label = CURRENT_DEPLOYMENT_LABEL
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
   const promotion = await prisma.workerDeploymentPromotion.findUnique({
     where: {
       environmentId_label: {
         environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
+        label,
       },
     },
     include: {
@@ -44,8 +45,15 @@ export async function findCurrentWorkerDeployment(
   return promotion?.deployment;
 }
 
+export async function findCurrentUnmanagedWorkerDeployment(
+  environmentId: string
+): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
+  return await findCurrentWorkerDeployment(environmentId, CURRENT_UNMANAGED_DEPLOYMENT_LABEL);
+}
+
 export async function findCurrentWorkerFromEnvironment(
-  environment: Pick<AuthenticatedEnvironment, "id" | "type">
+  environment: Pick<AuthenticatedEnvironment, "id" | "type">,
+  label = CURRENT_DEPLOYMENT_LABEL
 ): Promise<BackgroundWorker | null> {
   if (environment.type === "DEVELOPMENT") {
     const latestDevWorker = await prisma.backgroundWorker.findFirst({
@@ -58,9 +66,19 @@ export async function findCurrentWorkerFromEnvironment(
     });
     return latestDevWorker;
   } else {
-    const deployment = await findCurrentWorkerDeployment(environment.id);
+    const deployment = await findCurrentWorkerDeployment(environment.id, label);
     return deployment?.worker ?? null;
   }
+}
+
+export async function findCurrentUnmanagedWorkerFromEnvironment(
+  environment: Pick<AuthenticatedEnvironment, "id" | "type">
+): Promise<BackgroundWorker | null> {
+  if (environment.type === "DEVELOPMENT") {
+    return null;
+  }
+
+  return await findCurrentWorkerFromEnvironment(environment, CURRENT_UNMANAGED_DEPLOYMENT_LABEL);
 }
 
 export async function getWorkerDeploymentFromWorker(
