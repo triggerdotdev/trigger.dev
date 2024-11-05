@@ -105,6 +105,8 @@ type TriggerParams = {
   seedMetadataType?: string;
 };
 
+type FailedAttemptResult = "COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY";
+
 const workerCatalog = {
   waitpointCompleteDateTime: {
     schema: z.object({
@@ -1024,7 +1026,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-  }): Promise<"COMPLETED" | "RETRIED"> {
+  }): Promise<FailedAttemptResult> {
     switch (completion.ok) {
       case true: {
         return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
@@ -1486,7 +1488,7 @@ export class RunEngine {
     snapshotId: string;
     completion: TaskRunFailedExecutionResult;
     tx: PrismaClientOrTransaction;
-  }): Promise<"COMPLETED" | "RETRIED"> {
+  }): Promise<"COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY"> {
     const prisma = this.prisma;
 
     return this.#trace("completeRunAttemptFailure", { runId, snapshotId }, async (span) => {
@@ -1575,19 +1577,21 @@ export class RunEngine {
               timestamp: retryAt.getTime(),
               tx: prisma,
             });
+
+            return "RETRY_QUEUED" as const;
           } else {
             //it will continue running because the retry delay is short
             await this.#createExecutionSnapshot(prisma, {
               run,
               snapshot: {
-                executionStatus: "PENDING_EXECUTING",
+                executionStatus: "EXECUTING",
                 description: "Attempt failed wth a short delay, starting a new attempt.",
               },
             });
             await this.#sendRunChangedNotificationToWorker({ runId });
           }
 
-          return "RETRIED" as const;
+          return "RETRY_IMMEDIATELY" as const;
         }
 
         const status = runStatusFromError(completion.error);
