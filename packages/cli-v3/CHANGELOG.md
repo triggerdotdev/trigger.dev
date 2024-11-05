@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.1.2
+
+### Patch Changes
+
+- Ignore duplicate dependency resume messages in deployed tasks ([#1459](https://github.com/triggerdotdev/trigger.dev/pull/1459))
+- Improve resume reliability by replaying ready signal of restored workers ([#1458](https://github.com/triggerdotdev/trigger.dev/pull/1458))
+- Updated dependencies:
+  - `@trigger.dev/build@3.1.2`
+  - `@trigger.dev/core@3.1.2`
+
 ## 3.1.1
 
 ### Patch Changes
