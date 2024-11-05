@@ -46,7 +46,7 @@ export type WithRunEngineOptions<T> = T & {
 export class WithRunEngine extends BaseService {
   protected readonly _engine: RunEngine;
 
-  constructor(opts: { prisma?: PrismaClientOrTransaction; engine?: RunEngine }) {
+  constructor(opts: { prisma?: PrismaClientOrTransaction; engine?: RunEngine } = {}) {
     super(opts.prisma);
     this._engine = opts.engine ?? engine;
   }

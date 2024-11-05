@@ -20,6 +20,7 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
+import { WorkerGroupService } from "./worker/workerGroupService.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -307,6 +308,22 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
               event.setAttribute("runId", runFriendlyId);
               span.setAttribute("runId", runFriendlyId);
 
+              const workerGroupService = new WorkerGroupService({
+                prisma: this._prisma,
+                engine: this._engine,
+              });
+              const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
+                projectId: environment.projectId,
+              });
+
+              if (!workerGroup) {
+                logger.error("Default worker group not found", {
+                  projectId: environment.projectId,
+                });
+
+                return;
+              }
+
               const taskRun = await this._engine.trigger(
                 {
                   number: num,
@@ -326,8 +343,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   concurrencyKey: body.options?.concurrencyKey,
                   queueName,
                   queue: body.options?.queue,
-                  //todo multiple worker pools support
-                  masterQueue: "main",
+                  masterQueue: workerGroup.masterQueue,
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
