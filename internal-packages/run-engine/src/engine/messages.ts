@@ -14,6 +14,7 @@ const CompletedWaitpoint = z.object({
   completedAfter: z.coerce.date().optional(),
   output: z.string().optional(),
   outputType: z.string().optional(),
+  outputIsError: z.boolean(),
 });
 
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */

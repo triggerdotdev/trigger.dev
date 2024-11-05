@@ -8,6 +8,7 @@ import {
   QueueOptions,
   sanitizeError,
   shouldRetryError,
+  TaskRunError,
   taskRunErrorEnhancer,
   TaskRunExecution,
   TaskRunExecutionResult,
@@ -46,6 +47,7 @@ import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { DequeuedMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
+import { runStatusFromError } from "./errors";
 
 type Options = {
   redis: RedisOptions;
@@ -1147,16 +1149,18 @@ export class RunEngine {
         return;
       }
 
+      const error: TaskRunError = {
+        type: "STRING_ERROR",
+        raw: `Run expired because the TTL (${run.ttl}) was reached`,
+      };
+
       const updatedRun = await prisma.taskRun.update({
         where: { id: runId },
         data: {
           status: "EXPIRED",
           completedAt: new Date(),
           expiredAt: new Date(),
-          error: {
-            type: "STRING_ERROR",
-            raw: `Run expired because the TTL (${run.ttl}) was reached`,
-          },
+          error,
           executionSnapshots: {
             create: {
               engine: "V2",
@@ -1166,6 +1170,18 @@ export class RunEngine {
             },
           },
         },
+        include: {
+          associatedWaitpoint: true,
+        },
+      });
+
+      if (!updatedRun.associatedWaitpoint) {
+        throw new ServiceValidationError("No associated waitpoint found", 400);
+      }
+
+      await this.completeWaitpoint({
+        id: updatedRun.associatedWaitpoint.id,
+        output: { value: JSON.stringify(error), isError: true },
       });
 
       this.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
@@ -1188,6 +1204,10 @@ export class RunEngine {
     return this.#trace("cancelRun", { runId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
         const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+
+        //todo
+        //ack
+        //complete waitpoint
       });
     });
   }
@@ -1202,6 +1222,7 @@ export class RunEngine {
     output?: {
       value: string;
       type?: string;
+      isError: boolean;
     };
   }) {
     const waitpoint = await this.prisma.waitpoint.findUnique({
@@ -1240,6 +1261,7 @@ export class RunEngine {
             completedAt: new Date(),
             output: output?.value,
             outputType: output?.type,
+            outputIsError: output?.isError,
           },
         });
 
@@ -1434,11 +1456,11 @@ export class RunEngine {
         await this.completeWaitpoint({
           id: run.associatedWaitpoint.id,
           output: completion.output
-            ? { value: completion.output, type: completion.outputType }
+            ? { value: completion.output, type: completion.outputType, isError: false }
             : undefined,
         });
 
-        this.eventBus.emit("runCompletedSuccessfully", {
+        this.eventBus.emit("runSucceeded", {
           time: completedAt,
           run: {
             id: runId,
@@ -1462,7 +1484,6 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunFailedExecutionResult;
-
     tx: PrismaClientOrTransaction;
   }): Promise<"COMPLETED" | "RETRIED"> {
     const prisma = this.prisma;
@@ -1547,18 +1568,12 @@ export class RunEngine {
             completion.retry.delay >= this.options.checkpointThresholdMs
           ) {
             //long delay for retry, so requeue
-            await this.#createExecutionSnapshot(prisma, {
+            await this.#enqueueRun({
               run,
-              snapshot: {
-                executionStatus: "QUEUED",
-                description: "Attempt failed with a long delay, putting back into the queue.",
-              },
+              env: run.runtimeEnvironment,
+              timestamp: retryAt.getTime(),
+              tx: prisma,
             });
-            await this.runQueue.nackMessage(
-              run.runtimeEnvironment.organizationId,
-              runId,
-              retryAt.getTime()
-            );
           } else {
             //it will continue running because the retry delay is short
             await this.#createExecutionSnapshot(prisma, {
@@ -1574,8 +1589,46 @@ export class RunEngine {
           return "RETRIED" as const;
         }
 
+        const status = runStatusFromError(completion.error);
+
         //run permanently failed
-        //todo
+        const run = await prisma.taskRun.update({
+          where: {
+            id: runId,
+          },
+          data: {
+            status,
+            completedAt: failedAt,
+            error,
+          },
+          include: {
+            runtimeEnvironment: true,
+            associatedWaitpoint: true,
+          },
+        });
+
+        this.eventBus.emit("runFailed", {
+          time: failedAt,
+          run: {
+            id: runId,
+            status: run.status,
+            spanId: run.spanId,
+            error,
+          },
+        });
+
+        if (!run.associatedWaitpoint) {
+          throw new ServiceValidationError("No associated waitpoint found", 400);
+        }
+
+        await this.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: { value: JSON.stringify(error), isError: true },
+        });
+
+        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+
+        return "COMPLETED" as const;
       });
     });
   }
@@ -1899,6 +1952,7 @@ export class RunEngine {
         completedAfter: w.completedAfter ?? undefined,
         output: w.output ?? undefined,
         outputType: w.outputType,
+        outputIsError: w.outputIsError,
       })),
     };
   }

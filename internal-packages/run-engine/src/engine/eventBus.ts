@@ -1,5 +1,6 @@
-import { TaskRunExecutionStatus } from "@trigger.dev/database";
+import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "../shared";
+import { TaskRunError } from "@trigger.dev/core/v3";
 
 export type EventBusEvents = {
   runExpired: [
@@ -12,7 +13,7 @@ export type EventBusEvents = {
       };
     },
   ];
-  runCompletedSuccessfully: [
+  runSucceeded: [
     {
       time: Date;
       run: {
@@ -20,6 +21,17 @@ export type EventBusEvents = {
         spanId: string;
         output: string | undefined;
         outputType: string;
+      };
+    },
+  ];
+  runFailed: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        status: TaskRunStatus;
+        spanId: string;
+        error: TaskRunError;
       };
     },
   ];

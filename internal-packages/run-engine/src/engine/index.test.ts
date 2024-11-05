@@ -251,8 +251,8 @@ describe("RunEngine", () => {
         expect(runWaitpoint.waitpoint.type).toBe("RUN");
         expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
-        let event: EventBusEventArgs<"runCompletedSuccessfully">[0] | undefined = undefined;
-        engine.eventBus.on("runCompletedSuccessfully", (result) => {
+        let event: EventBusEventArgs<"runSucceeded">[0] | undefined = undefined;
+        engine.eventBus.on("runSucceeded", (result) => {
           event = result;
         });
 
@@ -269,7 +269,7 @@ describe("RunEngine", () => {
 
         //event
         assertNonNullable(event);
-        const completedEvent = event as EventBusEventArgs<"runCompletedSuccessfully">[0];
+        const completedEvent = event as EventBusEventArgs<"runSucceeded">[0];
         expect(completedEvent.run.spanId).toBe(childRun.spanId);
         expect(completedEvent.run.output).toBe('{"foo":"bar"}');
         expect(completedEvent.run.outputType).toBe("application/json");
