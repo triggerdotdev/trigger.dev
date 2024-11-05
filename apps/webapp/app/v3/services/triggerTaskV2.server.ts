@@ -14,14 +14,12 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { BaseService, ServiceValidationError } from "./baseService.server";
+import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
-import type { PrismaClientOrTransaction } from "~/db.server";
-import { engine, type RunEngine } from "../runEngine.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -39,14 +37,7 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
-export class TriggerTaskServiceV2 extends BaseService {
-  private _engine: RunEngine;
-
-  constructor({ prisma, runEngine }: { prisma: PrismaClientOrTransaction; runEngine: RunEngine }) {
-    super(prisma);
-    this._engine = runEngine ?? engine;
-  }
-
+export class TriggerTaskServiceV2 extends WithRunEngine {
   public async call({
     taskId,
     environment,
