@@ -289,7 +289,10 @@ export const TableCellMenu = forwardRef<
             {/* Always visible popover with ellipsis trigger */}
             {popoverContent && (
               <Popover onOpenChange={(open) => setIsOpen(open)}>
-                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+                <PopoverVerticalEllipseTrigger
+                  isOpen={isOpen}
+                  className="duration-0 group-hover/table-row:text-text-bright"
+                />
                 <PopoverContent
                   className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
                   align="end"

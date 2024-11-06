@@ -420,7 +420,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
             leadingIconClassName="text-blue-500"
             title="View run"
           />
-          {!run.isCancellable && (
+          {run.isCancellable && (
             <Dialog>
               <DialogTrigger
                 asChild
@@ -470,13 +470,13 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
       }
       hiddenButtons={
         <div className="flex items-center">
-          {!run.isCancellable && (
+          {run.isCancellable && (
             <SimpleTooltip
               button={
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
                   >
                     <NoSymbolIcon className="size-3" />
                   </DialogTrigger>
@@ -491,7 +491,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
               disableHoverableContent
             />
           )}
-          {!run.isCancellable && run.isReplayable && (
+          {run.isCancellable && run.isReplayable && (
             <div className="mx-0.5 h-6 w-px bg-grid-dimmed" />
           )}
           {run.isReplayable && (
@@ -500,7 +500,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
                   >
                     <ArrowPathIcon className="size-3" />
                   </DialogTrigger>
