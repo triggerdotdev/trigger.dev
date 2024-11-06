@@ -49,6 +49,16 @@ export type EventBusEvents = {
       retryAt: Date;
     },
   ];
+  runCancelled: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        spanId: string;
+        error: TaskRunError;
+      };
+    },
+  ];
   executionSnapshotCreated: [
     {
       time: Date;

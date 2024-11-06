@@ -28,6 +28,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -46,7 +47,7 @@ import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { DequeuedMessage, RunExecutionData } from "./messages";
-import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
+import { isCancellable, isDequeueableExecutionStatus, isExecuting } from "./statuses";
 import { runStatusFromError } from "./errors";
 
 type Options = {
@@ -127,6 +128,14 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 5000,
   },
+  cancelRun: {
+    schema: z.object({
+      runId: z.string(),
+      completedAt: z.coerce.date(),
+      reason: z.string().optional(),
+    }),
+    visibilityTimeoutMs: 5000,
+  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -174,6 +183,13 @@ export class RunEngine {
         },
         expireRun: async ({ payload }) => {
           await this.expireRun({ runId: payload.runId });
+        },
+        cancelRun: async ({ payload }) => {
+          await this.cancelRun({
+            runId: payload.runId,
+            completedAt: payload.completedAt,
+            reason: payload.reason,
+          });
         },
       },
     });
@@ -1191,26 +1207,126 @@ export class RunEngine {
     });
   }
 
+  /**
+  Call this to cancel a run.
+  If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
+  If the run is not in-progress it will finish it.
+  You can pass `finalizeRun` in if you know it's no longer running, e.g. the worker has messaged to say it's done.
+  */
   async cancelRun({
     runId,
     completedAt,
     reason,
+    finalizeRun,
     tx,
   }: {
     runId: string;
-    completedAt: Date;
-    reason: string;
+    completedAt?: Date;
+    reason?: string;
+    finalizeRun?: boolean;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<"FINISHED" | "PENDING_CANCEL"> {
     const prisma = tx ?? this.prisma;
+    reason = reason ?? "Cancelled by user";
 
     return this.#trace("cancelRun", { runId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(this.prisma, runId);
+        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
 
-        //todo
-        //ack
-        //complete waitpoint
+        //already finished, do nothing
+        if (latestSnapshot.executionStatus === "FINISHED") {
+          return "FINISHED" as const;
+        }
+
+        //is pending cancellation and we're not finalizing, alert the worker again
+        if (latestSnapshot.executionStatus === "PENDING_CANCEL" && !finalizeRun) {
+          await this.#sendRunChangedNotificationToWorker({ runId });
+          return "PENDING_CANCEL" as const;
+        }
+
+        //set the run to cancelled immediately
+        const error: TaskRunError = {
+          type: "STRING_ERROR",
+          raw: reason,
+        };
+
+        const run = await prisma.taskRun.update({
+          where: { id: runId },
+          data: {
+            status: "CANCELED",
+            completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
+            error,
+          },
+          include: {
+            runtimeEnvironment: true,
+            associatedWaitpoint: true,
+            childRuns: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        });
+
+        //remove it from the queue and release concurrency
+        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+
+        //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
+        if (isExecuting(latestSnapshot.executionStatus)) {
+          const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+            run,
+            snapshot: {
+              executionStatus: "PENDING_CANCEL",
+              description: "Run was cancelled",
+            },
+          });
+
+          await this.#sendRunChangedNotificationToWorker({ runId });
+          return "PENDING_CANCEL" as const;
+        }
+
+        //not executing, so we will actually finish the run
+        await this.#createExecutionSnapshot(prisma, {
+          run,
+          snapshot: {
+            executionStatus: "FINISHED",
+            description: "Run was cancelled, not finished",
+          },
+        });
+
+        if (!run.associatedWaitpoint) {
+          throw new ServiceValidationError("No associated waitpoint found", 400);
+        }
+
+        //complete the waitpoint so the parent run can continue
+        await this.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: { value: JSON.stringify(error), isError: true },
+        });
+
+        this.eventBus.emit("runCancelled", {
+          time: new Date(),
+          run: {
+            id: run.id,
+            spanId: run.spanId,
+            error,
+          },
+        });
+
+        //schedule the cancellation of all the child runs
+        //it will call this function for each child,
+        //which will recursively cancel all children if they need to be
+        if (run.childRuns.length > 0) {
+          for (const childRun of run.childRuns) {
+            await this.worker.enqueue({
+              id: `cancelRun:${childRun.id}`,
+              job: "cancelRun",
+              payload: { runId: childRun.id, completedAt: run.completedAt ?? new Date(), reason },
+            });
+          }
+        }
+
+        return "FINISHED" as const;
       });
     });
   }
@@ -1345,6 +1461,36 @@ export class RunEngine {
 
       //todo return a Result, which will determine if the server is allowed to shutdown
     });
+  }
+
+  /**
+  Send a heartbeat to signal the the run is still executing.
+  If a heartbeat isn't received, after a while the run is considered "stalled"
+  and some logic will be run to try recover it
+  */
+  async heartbeatRun({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
+    if (latestSnapshot.id !== snapshotId) {
+      this.logger.log("heartbeatRun no longer the latest snapshot, stopping the heartbeat.", {
+        runId,
+        snapshotId,
+        latestSnapshot: latestSnapshot,
+      });
+
+      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+      return;
+    }
+
+    //it's the same as creating a new heartbeat
+    await this.#setHeartbeatDeadline({ runId, snapshotId, status: latestSnapshot.executionStatus });
   }
 
   /** Get required data to execute the run */
@@ -1542,7 +1688,8 @@ export class RunEngine {
           await this.cancelRun({
             runId,
             completedAt: failedAt,
-            reason: "Cancelled by user",
+            reason: completion.error.message,
+            finalizeRun: true,
             tx: prisma,
           });
           return "COMPLETED" as const;
@@ -1936,31 +2083,29 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
   }) {
+    await this.#setHeartbeatDeadline({
+      runId,
+      snapshotId,
+      status,
+    });
+  }
+
+  #getHeartbeatInterval(status: TaskRunExecutionStatus): number | null {
     switch (status) {
       case "RUN_CREATED":
       case "FINISHED":
       case "BLOCKED_BY_WAITPOINTS":
       case "QUEUED": {
         //we don't need to heartbeat these statuses
-        break;
+        return null;
       }
       case "PENDING_EXECUTING":
       case "PENDING_CANCEL": {
-        await this.#startHeartbeating({
-          runId,
-          snapshotId,
-          intervalSeconds: 60,
-        });
-        break;
+        return 60;
       }
       case "EXECUTING":
       case "EXECUTING_WITH_WAITPOINTS": {
-        await this.#startHeartbeating({
-          runId,
-          snapshotId,
-          intervalSeconds: 60 * 15,
-        });
-        break;
+        return 60 * 15;
       }
       default: {
         assertNever(status);
@@ -2028,51 +2173,27 @@ export class RunEngine {
   //#endregion
 
   //#region Heartbeat
-  async #startHeartbeating({
+  async #setHeartbeatDeadline({
     runId,
     snapshotId,
-    intervalSeconds,
+    status,
   }: {
     runId: string;
     snapshotId: string;
-    intervalSeconds: number;
+    status: TaskRunExecutionStatus;
   }) {
+    const intervalSeconds = this.#getHeartbeatInterval(status);
+
+    if (intervalSeconds === null) {
+      return;
+    }
+
     await this.worker.enqueue({
       id: `heartbeatSnapshot.${snapshotId}`,
       job: "heartbeatSnapshot",
       payload: { snapshotId, runId },
       availableAt: new Date(Date.now() + intervalSeconds * 1000),
     });
-  }
-
-  async #extendHeartbeatTimeout({
-    runId,
-    snapshotId,
-    intervalSeconds,
-    tx,
-  }: {
-    runId: string;
-    snapshotId: string;
-    intervalSeconds: number;
-    tx?: PrismaClientOrTransaction;
-  }) {
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
-    if (latestSnapshot.id !== snapshotId) {
-      this.logger.log(
-        "RunEngine.#extendHeartbeatTimeout() no longer the latest snapshot, stopping the heartbeat.",
-        {
-          runId,
-          snapshotId,
-          latestSnapshot: latestSnapshot,
-        }
-      );
-
-      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
-      return;
-    }
-
-    //it's the same as creating a new heartbeat
-    await this.#startHeartbeating({ runId, snapshotId, intervalSeconds });
   }
 
   async #handleStalledSnapshot({
@@ -2133,8 +2254,11 @@ export class RunEngine {
         throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
       }
       case "PENDING_CANCEL": {
-        //we need to check if the run is still pending cancel
-        throw new NotImplementedError("Not implemented PENDING_CANCEL");
+        await this.cancelRun({
+          runId: latestSnapshot.runId,
+          finalizeRun: true,
+          tx,
+        });
       }
       case "FINISHED": {
         //we need to check if the run is still finished

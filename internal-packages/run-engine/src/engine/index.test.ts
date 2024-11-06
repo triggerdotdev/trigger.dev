@@ -739,16 +739,142 @@ describe("RunEngine", () => {
 
   //todo heartbeats
 
-  //todo failing a run
+  containerTest(
+    "Cancelling a run with children (that is executing)",
+    { timeout: 15_000 },
+    async ({ prisma, redisContainer }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-  //todo cancelling a run
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //create an attempt
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+        expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+        //cancel
+        const result = await engine.cancelRun({
+          runId: run.id,
+          completedAt: new Date(),
+          reason: "Cancelled by the user",
+        });
+        expect(result).toBe("PENDING_CANCEL");
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData?.snapshot.executionStatus).toBe("PENDING_CANCEL");
+        expect(executionData?.run.status).toBe("CANCELED");
+
+        let cancelledEventData: EventBusEventArgs<"runCancelled">[0] | undefined = undefined;
+        engine.eventBus.on("runCancelled", (result) => {
+          cancelledEventData = result;
+        });
+
+        //todo call completeAttempt (this will happen from the worker)
+        const completeResult = await engine.completeRunAttempt({
+          runId: run.id,
+          snapshotId: executionData!.snapshot.id,
+          completion: {
+            ok: false,
+            id: executionData!.run.id,
+            error: {
+              type: "INTERNAL_ERROR" as const,
+              code: "TASK_RUN_CANCELLED" as const,
+            },
+          },
+        });
+
+        //should now be fully cancelled
+        const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionDataAfter?.snapshot.executionStatus).toBe("FINISHED");
+        expect(executionDataAfter?.run.status).toBe("CANCELED");
+
+        //check emitted event
+        assertNonNullable(cancelledEventData);
+        const assertedExpiredEventData = cancelledEventData as EventBusEventArgs<"runCancelled">[0];
+        expect(assertedExpiredEventData.run.spanId).toBe(run.spanId);
+
+        //concurrency should have been released
+        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrencyCompleted).toBe(0);
+      } finally {
+        engine.quit();
+      }
+    }
+  );
+
+  //todo cancelling a run (not executing)
+
+  //todo bulk cancelling runs
 
   //todo crashed run
 
   //todo system failure run
 
-  //todo delaying a run
-  containerTest("Run delayed", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Run start delayed", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -828,6 +954,8 @@ describe("RunEngine", () => {
       engine.quit();
     }
   });
+
+  //todo extending the delay of a run
 
   //todo expiring a run
   containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
@@ -915,6 +1043,12 @@ describe("RunEngine", () => {
       expect(executionData2.snapshot.executionStatus).toBe("FINISHED");
       expect(executionData2.run.attemptNumber).toBe(undefined);
       expect(executionData2.run.status).toBe("EXPIRED");
+
+      //concurrency should have been released
+      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
+        authenticatedEnvironment
+      );
+      expect(envConcurrencyCompleted).toBe(0);
     } finally {
       engine.quit();
     }
