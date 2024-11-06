@@ -233,16 +233,17 @@ export default function Page() {
                     </TableCell>
                     <TableCellMenu
                       isSticky
+                      popoverContent={
+                        alertChannel.enabled ? (
+                          <DisableAlertChannelButton id={alertChannel.id} />
+                        ) : (
+                          <EnableAlertChannelButton id={alertChannel.id} />
+                        )
+                      }
                       className={
                         alertChannel.enabled ? "" : "group-hover/table-row:bg-charcoal-800/50"
                       }
                     >
-                      {alertChannel.enabled ? (
-                        <DisableAlertChannelButton id={alertChannel.id} />
-                      ) : (
-                        <EnableAlertChannelButton id={alertChannel.id} />
-                      )}
-
                       <DeleteAlertChannelButton id={alertChannel.id} />
                     </TableCellMenu>
                   </TableRow>
@@ -394,6 +395,8 @@ function DisableAlertChannelButton(props: { id: string }) {
         name="action"
         value="disable"
         type="submit"
+        fullWidth
+        textAlignLeft
         variant="small-menu-item"
         LeadingIcon={BellSlashIcon}
         leadingIconClassName="text-dimmed"
@@ -432,6 +435,8 @@ function EnableAlertChannelButton(props: { id: string }) {
         name="action"
         value="enable"
         type="submit"
+        fullWidth
+        textAlignLeft
         variant="small-menu-item"
         LeadingIcon={BellAlertIcon}
         leadingIconClassName="text-success"
