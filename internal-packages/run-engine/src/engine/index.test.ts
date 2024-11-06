@@ -735,6 +735,92 @@ describe("RunEngine", () => {
 
   //todo cancelling a run
 
+  //todo crashed run
+
+  //todo system failure run
+
+  //todo delaying a run
+  containerTest("Run delayed", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+    //create environment
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      redis: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+        enableAutoPipelining: true,
+      },
+      worker: {
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      const backgroundWorker = await setupBackgroundWorker(
+        prisma,
+        authenticatedEnvironment,
+        taskIdentifier
+      );
+
+      //trigger the run
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queueName: "task/test-task",
+          isTest: false,
+          tags: [],
+          delayUntil: new Date(Date.now() + 500),
+        },
+        prisma
+      );
+
+      //should be created but not queued yet
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
+
+      //wait for 1 seconds
+      await setTimeout(1_000);
+
+      //should now be queued
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData2);
+      expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
+    } finally {
+      engine.quit();
+    }
+  });
+
   //todo expiring a run
   containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
     //create environment
@@ -825,6 +911,4 @@ describe("RunEngine", () => {
       engine.quit();
     }
   });
-
-  //todo delaying a run
 });
