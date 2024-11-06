@@ -2,7 +2,9 @@ import {
   ArrowPathIcon,
   ClockIcon,
   CpuChipIcon,
+  NoSymbolIcon,
   RectangleStackIcon,
+  StopCircleIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
@@ -420,7 +422,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
                     asChild
                     className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
                   >
-                    <StopIcon className="size-3" />
+                    <NoSymbolIcon className="size-3" />
                   </DialogTrigger>
                   <CancelRunDialog
                     runFriendlyId={run.friendlyId}

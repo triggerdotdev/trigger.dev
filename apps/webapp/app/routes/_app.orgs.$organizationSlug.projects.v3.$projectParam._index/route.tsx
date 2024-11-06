@@ -26,6 +26,7 @@ import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -284,21 +285,49 @@ export default function Page() {
                             </TableCell>
                             <TableCellMenu
                               isSticky
+                              popoverContent={
+                                <>
+                                  <PopoverMenuItem
+                                    icon="runs"
+                                    to={path}
+                                    title="View runs"
+                                    leadingIconClassName="text-teal-500"
+                                  />
+                                  <PopoverMenuItem
+                                    icon="beaker"
+                                    //TODO Get this path working so we can link to the exact task on the test page
+                                    // to={v3TestTaskPath(
+                                    //   organization,
+                                    //   project,
+                                    //   task.slug,
+                                    //   task.environments[0].slug
+                                    // )}
+                                    to={v3TestPath(organization, project)}
+                                    title="Test"
+                                  />
+                                </>
+                              }
                               hiddenButtons={
-                                <LinkButton
-                                  variant="minimal/small"
-                                  LeadingIcon={BeakerIcon}
-                                  //TODO Get this path working so we can link to the exact task on the test page
-                                  // to={v3TestTaskPath(
-                                  //   organization,
-                                  //   project,
-                                  //   task.slug,
-                                  //   task.environments[0].slug
-                                  // )}
-                                  to={v3TestPath(organization, project)}
-                                >
-                                  Test
-                                </LinkButton>
+                                <SimpleTooltip
+                                  button={
+                                    <LinkButton
+                                      variant="minimal/small"
+                                      LeadingIcon={BeakerIcon}
+                                      leadingIconClassName="text-text-bright"
+                                      //TODO Get this path working so we can link to the exact task on the test page
+                                      // to={v3TestTaskPath(
+                                      //   organization,
+                                      //   project,
+                                      //   task.slug,
+                                      //   task.environments[0].slug
+                                      // )}
+                                      to={v3TestPath(organization, project)}
+                                    />
+                                  }
+                                  content="Test"
+                                  side="left"
+                                  disableHoverableContent
+                                />
                               }
                             />
                           </TableRow>
