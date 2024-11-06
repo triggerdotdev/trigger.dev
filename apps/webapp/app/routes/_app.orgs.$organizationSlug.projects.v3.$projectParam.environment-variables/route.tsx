@@ -246,14 +246,19 @@ export default function Page() {
                         </TableCell>
                       );
                     })}
-                    <TableCellMenu isSticky>
-                      <EditEnvironmentVariablePanel
-                        environments={environments}
-                        variable={variable}
-                        revealAll={revealAll}
-                      />
-                      <DeleteEnvironmentVariableButton variable={variable} />
-                    </TableCellMenu>
+                    <TableCellMenu
+                      isSticky
+                      popoverContent={
+                        <>
+                          <EditEnvironmentVariablePanel
+                            environments={environments}
+                            variable={variable}
+                            revealAll={revealAll}
+                          />
+                          <DeleteEnvironmentVariableButton variable={variable} />
+                        </>
+                      }
+                    ></TableCellMenu>
                   </TableRow>
                 ))
               ) : (
@@ -470,6 +475,8 @@ function DeleteEnvironmentVariableButton({
         value="delete"
         type="submit"
         variant="small-menu-item"
+        fullWidth
+        textAlignLeft
         LeadingIcon={TrashIcon}
         leadingIconClassName="text-rose-500"
         className="text-xs"
