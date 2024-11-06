@@ -115,7 +115,7 @@ export default function Page() {
                   <TableCell>{environment.environmentVariableCount}</TableCell>
                   <TableCellMenu
                     isSticky
-                    hiddenButtons={
+                    popoverContent={
                       <RegenerateApiKeyModal
                         id={environment.id}
                         title={environmentTitle(environment)}

@@ -29,8 +29,10 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
-          variant="minimal/small"
-          leadingIconClassName="text-text-dimmed"
+          variant="small-menu-item"
+          fullWidth
+          textAlignLeft
+          leadingIconClassName="text-success"
           LeadingIcon={ArrowPathIcon}
         >
           Regenerate…
