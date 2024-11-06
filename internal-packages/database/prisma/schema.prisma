@@ -1799,6 +1799,8 @@ model TaskRun {
   @@index([parentSpanId])
   // Finding completed runs
   @@index([completedAt])
+  // Schedule list page
+  @@index([scheduleId, createdAt(sort: Desc)])
 }
 
 enum TaskRunStatus {
