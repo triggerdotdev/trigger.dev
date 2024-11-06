@@ -2,6 +2,7 @@ version: "3"
 
 volumes:
   database-data:
+  database-data-alt:
   pgadmin-data:
   redis-data:
 
@@ -15,7 +16,7 @@ services:
     image: postgres:14
     restart: always
     volumes:
-      - database-data:/var/lib/postgresql/data/
+      - ${DB_VOLUME:-database-data}:/var/lib/postgresql/data/
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
