@@ -421,14 +421,22 @@ describe("RunEngine", () => {
         //state should be completed
         const executionData3 = await engine.getRunExecutionData({ runId: run.id });
         assertNonNullable(executionData3);
-        expect(executionData3.snapshot.executionStatus).toBe("EXECUTING");
-        expect(executionData3.run.attemptNumber).toBe(2);
+        expect(executionData3.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+        //only when the new attempt is created, should the attempt be increased
+        expect(executionData3.run.attemptNumber).toBe(1);
         expect(executionData3.run.status).toBe("RETRYING_AFTER_FAILURE");
+
+        //create a second attempt
+        const attemptResult2 = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: executionData3.snapshot.id,
+        });
+        expect(attemptResult2.run.attemptNumber).toBe(2);
 
         //now complete it successfully
         const result2 = await engine.completeRunAttempt({
           runId: dequeued[0].run.id,
-          snapshotId: executionData3.snapshot.id,
+          snapshotId: attemptResult2.snapshot.id,
           completion: {
             ok: true,
             id: dequeued[0].run.id,

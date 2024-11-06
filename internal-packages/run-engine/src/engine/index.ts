@@ -1559,16 +1559,12 @@ export class RunEngine {
         ) {
           const retryAt = new Date(completion.retry.timestamp);
 
-          const attemptNumber =
-            latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
-
           const run = await prisma.taskRun.update({
             where: {
               id: runId,
             },
             data: {
               status: "RETRYING_AFTER_FAILURE",
-              attemptNumber,
             },
             include: {
               runtimeEnvironment: {
@@ -1581,11 +1577,14 @@ export class RunEngine {
             },
           });
 
+          const nextAttemptNumber =
+            latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
+
           this.eventBus.emit("runRetryScheduled", {
             time: failedAt,
             run: {
               id: run.id,
-              attemptNumber,
+              attemptNumber: nextAttemptNumber,
               queue: run.queue,
               taskIdentifier: run.taskIdentifier,
               traceContext: run.traceContext as Record<string, string | undefined>,
@@ -1615,7 +1614,7 @@ export class RunEngine {
             await this.#createExecutionSnapshot(prisma, {
               run,
               snapshot: {
-                executionStatus: "EXECUTING",
+                executionStatus: "PENDING_EXECUTING",
                 description: "Attempt failed wth a short delay, starting a new attempt.",
               },
             });
