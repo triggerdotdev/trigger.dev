@@ -344,6 +344,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       return [];
     }
 
+    await this._prisma.workerInstance.update({
+      where: {
+        id: this.workerInstanceId,
+      },
+      data: {
+        lastDequeueAt: new Date(),
+      },
+    });
+
     if (this.isLatestDeployment) {
       return await this._engine.dequeueFromEnvironmentMasterQueue({
         consumerId: this.workerInstanceId,

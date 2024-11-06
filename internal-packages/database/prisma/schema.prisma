@@ -2102,7 +2102,7 @@ model WorkerInstance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  lastPullAt      DateTime?
+  lastDequeueAt   DateTime?
   lastHeartbeatAt DateTime?
 
   @@unique([workerGroupId, name])
