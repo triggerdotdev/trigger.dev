@@ -153,7 +153,7 @@ await sendMessageInCatalog(
       "TASKS_FAILED_TO_PARSE",
       { zodIssues: err.error.issues, tasks },
       async (msg) => {
-        await process.send?.(msg);
+        process.send?.(msg);
       }
     );
   } else {
