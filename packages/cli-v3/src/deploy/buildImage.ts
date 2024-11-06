@@ -434,11 +434,19 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
+const BASE_IMAGE: Record<BuildRuntime, string> = {
+  bun: "imbios/bun-node:1.1.24-22-slim@sha256:9cfb7cd87529261c482fe17d8894c0986263f3a5ccf84ad65c00ec0e1ed539c6",
+  node: "node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170",
+  "node-22":
+    "node:22-bookworm-slim@sha256:f73e9c70d4279d5e7b7cc1fe307c5de18b61089ffa2235230408dfb14e2f09a0",
+};
+
 const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
-    case "node": {
+    case "node":
+    case "node-22": {
       return await generateNodeContainerfile(options);
     }
     case "bun": {
@@ -447,7 +455,7 @@ export async function generateContainerfile(options: GenerateContainerfileOption
   }
 }
 
-async function generateBunContainerfile(options: GenerateContainerfileOptions) {
+const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
   const buildArgs = Object.entries(options.build.env || {})
     .flatMap(([key]) => `ARG ${key}`)
     .join("\n");
@@ -463,19 +471,38 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
     " "
   );
 
+  return {
+    baseImage: BASE_IMAGE[options.runtime],
+    baseInstructions,
+    buildArgs,
+    buildEnvVars,
+    packages,
+    postInstallCommands,
+  };
+};
+
+async function generateBunContainerfile(options: GenerateContainerfileOptions) {
+  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+    parseGenerateOptions(options);
+
   return `# syntax=docker/dockerfile:1
-FROM imbios/bun-node:1.1.24-22-slim@sha256:9cfb7cd87529261c482fe17d8894c0986263f3a5ccf84ad65c00ec0e1ed539c6 AS base
+FROM ${baseImage} AS base
 
 ${baseInstructions}
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends ${packages} && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+  apt-get --fix-broken install -y && \
+  apt-get install -y --no-install-recommends ${packages} && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 FROM base AS build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends python3 make g++ && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 USER bun
 WORKDIR /app
@@ -553,35 +580,27 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const buildArgs = Object.entries(options.build.env || {})
-    .flatMap(([key]) => `ARG ${key}`)
-    .join("\n");
-
-  const buildEnvVars = Object.entries(options.build.env || {})
-    .flatMap(([key]) => `ENV ${key}=$${key}`)
-    .join("\n");
-
-  const postInstallCommands = (options.build.commands || []).map((cmd) => `RUN ${cmd}`).join("\n");
-
-  const baseInstructions = (options.image?.instructions || []).join("\n");
-  const packages = Array.from(new Set(DEFAULT_PACKAGES.concat(options.image?.pkgs || []))).join(
-    " "
-  );
+  const { baseImage, buildArgs, buildEnvVars, postInstallCommands, baseInstructions, packages } =
+    parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
-FROM node:21-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170 AS base
+FROM ${baseImage} AS base
 
 ${baseInstructions}
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get --fix-broken install -y && apt-get install -y --no-install-recommends ${packages} && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+  apt-get --fix-broken install -y && \
+  apt-get install -y --no-install-recommends ${packages} && \
+  apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM base AS build
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends python3 make g++ && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
 USER node
 WORKDIR /app
