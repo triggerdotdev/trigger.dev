@@ -130,7 +130,7 @@ describe("RunEngine", () => {
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
         runId: dequeued[0].run.id,
-        snapshotId: dequeued[0].execution.id,
+        snapshotId: dequeued[0].snapshot.id,
       });
       expect(attemptResult.run.id).toBe(run.id);
       expect(attemptResult.run.status).toBe("EXECUTING");
@@ -267,7 +267,7 @@ describe("RunEngine", () => {
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
         runId: dequeued[0].run.id,
-        snapshotId: dequeued[0].execution.id,
+        snapshotId: dequeued[0].snapshot.id,
       });
 
       //fail the attempt
@@ -393,7 +393,7 @@ describe("RunEngine", () => {
         //create an attempt
         const attemptResult = await engine.startRunAttempt({
           runId: dequeued[0].run.id,
-          snapshotId: dequeued[0].execution.id,
+          snapshotId: dequeued[0].snapshot.id,
         });
 
         //fail the attempt
@@ -698,7 +698,7 @@ describe("RunEngine", () => {
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
         runId: dequeued[0].run.id,
-        snapshotId: dequeued[0].execution.id,
+        snapshotId: dequeued[0].snapshot.id,
       });
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
