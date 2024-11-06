@@ -61,7 +61,7 @@ type Options = {
     baseCostInCents: number;
   };
   /** If not set then checkpoints won't ever be used */
-  checkpointThresholdMs?: number;
+  retryWarmStartThresholdMs?: number;
   tracer: Tracer;
 };
 
@@ -679,7 +679,7 @@ export class RunEngine {
 
             return {
               version: "1" as const,
-              execution: {
+              snapshot: {
                 id: newSnapshot.id,
               },
               image: result.deployment?.imageReference ?? undefined,
@@ -1316,6 +1316,37 @@ export class RunEngine {
     );
   }
 
+  async createCheckpoint({
+    runId,
+    snapshotId,
+    checkpoint,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    //todo
+    checkpoint: Record<string, unknown>;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    return await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      if (snapshot.id !== snapshotId) {
+        return {
+          ok: false as const,
+          error: "Not the latest snapshot",
+        };
+      }
+
+      //we know it's the latest snapshot, so we can checkpoint
+
+      //todo check the status is checkpointable
+
+      //todo return a Result, which will determine if the server is allowed to shutdown
+    });
+  }
+
   /** Get required data to execute the run */
   async getRunExecutionData({
     runId,
@@ -1567,8 +1598,8 @@ export class RunEngine {
 
           //if it's a long delay and we support checkpointing, put it back in the queue
           if (
-            this.options.checkpointThresholdMs !== undefined &&
-            completion.retry.delay >= this.options.checkpointThresholdMs
+            this.options.retryWarmStartThresholdMs !== undefined &&
+            completion.retry.delay >= this.options.retryWarmStartThresholdMs
           ) {
             //long delay for retry, so requeue
             await this.#enqueueRun({

@@ -20,7 +20,7 @@ const CompletedWaitpoint = z.object({
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
 const DequeuedMessage = z.object({
   version: z.literal("1"),
-  execution: z.object({
+  snapshot: z.object({
     id: z.string(),
   }),
   image: z.string().optional(),
