@@ -586,10 +586,23 @@ describe("RunEngine", () => {
       expect(runWaitpoint.waitpoint.type).toBe("RUN");
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
 
+      //dequeue the child run
+      const dequeuedChild = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: childRun.masterQueue,
+        maxRunCount: 10,
+      });
+
+      //start the child run
+      const childAttempt = await engine.startRunAttempt({
+        runId: childRun.id,
+        snapshotId: dequeuedChild[0].snapshot.id,
+      });
+
       // complete the child run
       await engine.completeRunAttempt({
         runId: childRun.id,
-        snapshotId: childExecutionData.snapshot.id,
+        snapshotId: childAttempt.snapshot.id,
         completion: {
           id: childRun.id,
           ok: true,
@@ -775,17 +788,19 @@ describe("RunEngine", () => {
       });
 
       try {
-        const taskIdentifier = "test-task";
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+
         //create background worker
-        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask, childTask]);
 
         //trigger the run
-        const run = await engine.trigger(
+        const parentRun = await engine.trigger(
           {
             number: 1,
             friendlyId: "run_p1234",
             environment: authenticatedEnvironment,
-            taskIdentifier,
+            taskIdentifier: parentTask,
             payload: "{}",
             payloadType: "application/json",
             context: {},
@@ -793,7 +808,7 @@ describe("RunEngine", () => {
             traceId: "t12345",
             spanId: "s12345",
             masterQueue: "main",
-            queueName: "task/test-task",
+            queueName: `task/${parentTask}`,
             isTest: false,
             tags: [],
           },
@@ -803,7 +818,7 @@ describe("RunEngine", () => {
         //dequeue the run
         const dequeued = await engine.dequeueFromMasterQueue({
           consumerId: "test_12345",
-          masterQueue: run.masterQueue,
+          masterQueue: parentRun.masterQueue,
           maxRunCount: 10,
         });
 
@@ -814,26 +829,62 @@ describe("RunEngine", () => {
         });
         expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
-        //cancel
+        //start child run
+        const childRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_c1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: childTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: `task/${childTask}`,
+            isTest: false,
+            tags: [],
+            resumeParentOnCompletion: true,
+            parentTaskRunId: parentRun.id,
+          },
+          prisma
+        );
+
+        //dequeue the child run
+        const dequeuedChild = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: childRun.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //start the child run
+        const childAttempt = await engine.startRunAttempt({
+          runId: childRun.id,
+          snapshotId: dequeuedChild[0].snapshot.id,
+        });
+
+        //cancel the parent run
         const result = await engine.cancelRun({
-          runId: run.id,
+          runId: parentRun.id,
           completedAt: new Date(),
           reason: "Cancelled by the user",
         });
         expect(result).toBe("PENDING_CANCEL");
 
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
         expect(executionData?.snapshot.executionStatus).toBe("PENDING_CANCEL");
         expect(executionData?.run.status).toBe("CANCELED");
 
-        let cancelledEventData: EventBusEventArgs<"runCancelled">[0] | undefined = undefined;
+        let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
         engine.eventBus.on("runCancelled", (result) => {
-          cancelledEventData = result;
+          cancelledEventData.push(result);
         });
 
         //todo call completeAttempt (this will happen from the worker)
         const completeResult = await engine.completeRunAttempt({
-          runId: run.id,
+          runId: parentRun.id,
           snapshotId: executionData!.snapshot.id,
           completion: {
             ok: false,
@@ -845,15 +896,49 @@ describe("RunEngine", () => {
           },
         });
 
-        //should now be fully cancelled
-        const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
+        //parent should now be fully cancelled
+        const executionDataAfter = await engine.getRunExecutionData({ runId: parentRun.id });
         expect(executionDataAfter?.snapshot.executionStatus).toBe("FINISHED");
         expect(executionDataAfter?.run.status).toBe("CANCELED");
 
+        const parentEvent = cancelledEventData.find((r) => r.run.id === parentRun.id);
+        assertNonNullable(parentEvent);
+        expect(parentEvent.run.spanId).toBe(parentRun.spanId);
+
+        //cancelling children is async, so we need to wait a brief moment
+        await setTimeout(200);
+
+        //child should now be pending cancel
+        const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
+        expect(childExecutionDataAfter?.snapshot.executionStatus).toBe("PENDING_CANCEL");
+        expect(childExecutionDataAfter?.run.status).toBe("CANCELED");
+
+        //cancel the child (this will come from the worker)
+        const completeChildResult = await engine.completeRunAttempt({
+          runId: childRun.id,
+          snapshotId: childExecutionDataAfter!.snapshot.id,
+          completion: {
+            ok: false,
+            id: childRun.id,
+            error: {
+              type: "INTERNAL_ERROR" as const,
+              code: "TASK_RUN_CANCELLED" as const,
+            },
+          },
+        });
+
+        //child should now be pending cancel
+        const childExecutionDataCancelled = await engine.getRunExecutionData({
+          runId: childRun.id,
+        });
+        expect(childExecutionDataCancelled?.snapshot.executionStatus).toBe("FINISHED");
+        expect(childExecutionDataCancelled?.run.status).toBe("CANCELED");
+
         //check emitted event
-        assertNonNullable(cancelledEventData);
-        const assertedExpiredEventData = cancelledEventData as EventBusEventArgs<"runCancelled">[0];
-        expect(assertedExpiredEventData.run.spanId).toBe(run.spanId);
+        expect(cancelledEventData.length).toBe(2);
+        const childEvent = cancelledEventData.find((r) => r.run.id === childRun.id);
+        assertNonNullable(childEvent);
+        expect(childEvent.run.spanId).toBe(childRun.spanId);
 
         //concurrency should have been released
         const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
