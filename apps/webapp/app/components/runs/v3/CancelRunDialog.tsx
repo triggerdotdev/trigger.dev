@@ -1,4 +1,6 @@
 import { StopCircleIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon } from "@heroicons/react/24/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useFetcher, useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -7,6 +9,8 @@ import {
   DialogFooter,
   DialogHeader,
 } from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { Paragraph } from "~/components/primitives/Paragraph";
 
 type CancelRunDialogProps = {
   runFriendlyId: string;
@@ -22,24 +26,35 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
   return (
     <DialogContent key="cancel">
       <DialogHeader>Cancel this run?</DialogHeader>
-      <DialogDescription>
-        Canceling a run will stop execution, along with any executing subtasks.
-      </DialogDescription>
-      <DialogFooter>
-        <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
-          <Button
-            type="submit"
-            name="redirectUrl"
-            value={redirectPath}
-            variant="danger/small"
-            LeadingIcon={isLoading ? "spinner-white" : StopCircleIcon}
-            disabled={isLoading}
-            shortcut={{ modifiers: ["meta"], key: "enter" }}
-          >
-            {isLoading ? "Canceling..." : "Cancel run"}
-          </Button>
-        </Form>
-      </DialogFooter>
+      <div className="flex flex-col gap-3 pt-3">
+        <Paragraph>
+          Canceling a run will stop execution, along with any executing subtasks.
+        </Paragraph>
+        <DialogFooter className="sm:justify-end">
+          <FormButtons
+            confirmButton={
+              <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
+                <Button
+                  type="submit"
+                  name="redirectUrl"
+                  value={redirectPath}
+                  variant="danger/medium"
+                  LeadingIcon={isLoading ? "spinner-white" : NoSymbolIcon}
+                  disabled={isLoading}
+                  shortcut={{ modifiers: ["meta"], key: "enter" }}
+                >
+                  {isLoading ? "Canceling..." : "Cancel run"}
+                </Button>
+              </Form>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant={"tertiary/medium"}>Close</Button>
+              </DialogClose>
+            }
+          />
+        </DialogFooter>
+      </div>
     </DialogContent>
   );
 }
