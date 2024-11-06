@@ -973,29 +973,36 @@ export class RunEngine {
           attempt: {
             number: nextAttemptNumber,
             startedAt: latestSnapshot.updatedAt,
-            //todo deprecate everything below
-            id: generateFriendlyId("attempt"),
-            backgroundWorkerId: run.lockedBy!.worker.id,
-            backgroundWorkerTaskId: run.lockedBy!.id,
-            status: "EXECUTING" as const,
+            /** @deprecated */
+            id: "deprecated",
+            /** @deprecated */
+            backgroundWorkerId: "deprecated",
+            /** @deprecated */
+            backgroundWorkerTaskId: "deprecated",
+            /** @deprecated */
+            status: "deprecated",
           },
           run: {
             id: run.friendlyId,
             payload: run.payload,
             payloadType: run.payloadType,
-            context: run.context,
             createdAt: run.createdAt,
             tags: run.tags.map((tag) => tag.name),
             isTest: run.isTest,
             idempotencyKey: run.idempotencyKey ?? undefined,
             startedAt: run.startedAt ?? run.createdAt,
-            durationMs: run.usageDurationMs,
-            costInCents: run.costInCents,
-            baseCostInCents: run.baseCostInCents,
             maxAttempts: run.maxAttempts ?? undefined,
             version: run.lockedBy!.worker.version,
             metadata,
             maxDuration: run.maxDurationInSeconds ?? undefined,
+            /** @deprecated */
+            context: undefined,
+            /** @deprecated */
+            durationMs: run.usageDurationMs,
+            /** @deprecated */
+            costInCents: run.costInCents,
+            /** @deprecated */
+            baseCostInCents: run.baseCostInCents,
           },
           queue: {
             id: queue.friendlyId,

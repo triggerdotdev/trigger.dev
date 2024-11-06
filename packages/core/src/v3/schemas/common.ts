@@ -130,19 +130,32 @@ export const TaskRun = z.object({
   id: z.string(),
   payload: z.string(),
   payloadType: z.string(),
-  context: z.any(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   idempotencyKey: z.string().optional(),
   maxAttempts: z.number().optional(),
-  durationMs: z.number().default(0),
-  costInCents: z.number().default(0),
-  baseCostInCents: z.number().default(0),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
+  /** @deprecated */
+  context: z.any(),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  durationMs: z.number().default(0),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  costInCents: z.number().default(0),
+  /**
+   * @deprecated For live values use the `usage` SDK functions
+   * @link https://trigger.dev/docs/run-usage
+   */
+  baseCostInCents: z.number().default(0),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
@@ -156,11 +169,15 @@ export const TaskRunExecutionTask = z.object({
 export type TaskRunExecutionTask = z.infer<typeof TaskRunExecutionTask>;
 
 export const TaskRunExecutionAttempt = z.object({
-  id: z.string(),
   number: z.number(),
   startedAt: z.coerce.date(),
+  /** @deprecated */
+  id: z.string(),
+  /** @deprecated */
   backgroundWorkerId: z.string(),
+  /** @deprecated */
   backgroundWorkerTaskId: z.string(),
+  /** @deprecated */
   status: z.string(),
 });
 
