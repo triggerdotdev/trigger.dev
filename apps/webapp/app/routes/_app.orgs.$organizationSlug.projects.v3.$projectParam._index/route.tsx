@@ -303,7 +303,7 @@ export default function Page() {
                                     //   task.environments[0].slug
                                     // )}
                                     to={v3TestPath(organization, project)}
-                                    title="Test"
+                                    title="Test task"
                                   />
                                 </>
                               }
@@ -324,7 +324,7 @@ export default function Page() {
                                       to={v3TestPath(organization, project)}
                                     />
                                   }
-                                  content="Test"
+                                  content="Test task"
                                   side="left"
                                   disableHoverableContent
                                 />
