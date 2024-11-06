@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApiAuthenticationResult, authenticateApiRequest } from "../apiAuth.server";
-import { json, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import {
@@ -265,15 +265,18 @@ function wrapResponse(request: Request, response: Response, useCors: boolean) {
 
 type WorkerRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
+  body?: TBodySchema;
 };
 
 type WorkerHandlerFunction<
   TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined
+  TSearchParamsSchema extends z.AnyZodObject | undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
 > = (args: {
   params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
   searchParams: TSearchParamsSchema extends z.AnyZodObject
@@ -281,6 +284,7 @@ type WorkerHandlerFunction<
     : undefined;
   authenticatedWorker: AuthenticatedWorkerInstance;
   request: Request;
+  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
 }) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
@@ -331,6 +335,82 @@ export function createLoaderWorkerApiRoute<
         searchParams: parsedSearchParams,
         authenticatedWorker: authenticationResult,
         request,
+        body: undefined,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
+}
+
+export function createActionWorkerApiRoute<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
+>(
+  options: WorkerRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, TBodySchema>,
+  handler: WorkerHandlerFunction<TParamsSchema, TSearchParamsSchema, TBodySchema>
+) {
+  return async function action({ request, params }: ActionFunctionArgs) {
+    const { params: paramsSchema, searchParams: searchParamsSchema, body: bodySchema } = options;
+
+    const service = new WorkerGroupTokenService();
+    const authenticationResult = await service.authenticate(request);
+
+    if (!authenticationResult) {
+      return json({ error: "Invalid or missing worker token" }, { status: 401 });
+    }
+
+    let parsedParams: any = undefined;
+    if (paramsSchema) {
+      const parsed = paramsSchema.safeParse(params);
+      if (!parsed.success) {
+        return json(
+          { error: "Params Error", details: fromZodError(parsed.error).details },
+          { status: 400 }
+        );
+      }
+      parsedParams = parsed.data;
+    }
+
+    let parsedSearchParams: any = undefined;
+    if (searchParamsSchema) {
+      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+      const parsed = searchParamsSchema.safeParse(searchParams);
+      if (!parsed.success) {
+        return json(
+          { error: "Query Error", details: fromZodError(parsed.error).details },
+          { status: 400 }
+        );
+      }
+      parsedSearchParams = parsed.data;
+    }
+
+    let parsedBody: any = undefined;
+    if (bodySchema) {
+      const body = await request.clone().json();
+      const parsed = bodySchema.safeParse(body);
+      if (!parsed.success) {
+        return json(
+          { error: "Body Error", details: fromZodError(parsed.error).details },
+          { status: 400 }
+        );
+      }
+      parsedBody = parsed.data;
+    }
+
+    try {
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+        body: parsedBody,
       });
       return result;
     } catch (error) {

@@ -6,6 +6,7 @@ import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/datab
 import { z } from "zod";
 import { HEADER_NAME } from "@trigger.dev/worker";
 import { DequeuedMessage } from "@internal/run-engine/engine/messages";
+import { TaskRunExecutionResult } from "@trigger.dev/core/v3";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -368,7 +369,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async heartbeat() {
+  async heartbeatWorkerInstance() {
     await this._prisma.workerInstance.update({
       where: {
         id: this.workerInstanceId,
@@ -377,6 +378,26 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         lastHeartbeatAt: new Date(),
       },
     });
+  }
+
+  async heartbeatRun({ runId, snapshotId }: { runId: string; snapshotId: string }) {
+    // await this._engine.heartbeatRun({ runId, snapshotId });
+  }
+
+  async startRunAttempt({ runId, snapshotId }: { runId: string; snapshotId: string }) {
+    return await this._engine.startRunAttempt({ runId, snapshotId });
+  }
+
+  async completeRunAttempt({
+    runId,
+    snapshotId,
+    completion,
+  }: {
+    runId: string;
+    snapshotId: string;
+    completion: TaskRunExecutionResult;
+  }) {
+    return await this._engine.completeRunAttempt({ runId, snapshotId, completion });
   }
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
