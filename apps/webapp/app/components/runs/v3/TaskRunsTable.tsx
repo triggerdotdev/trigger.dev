@@ -1,11 +1,10 @@
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
   ClockIcon,
   CpuChipIcon,
   NoSymbolIcon,
   RectangleStackIcon,
-  StopCircleIcon,
-  StopIcon,
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
@@ -16,6 +15,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -412,9 +412,65 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
   return (
     <TableCellMenu
       isSticky
+      popoverContent={
+        <>
+          <PopoverMenuItem
+            to={path}
+            icon={ArrowRightIcon}
+            leadingIconClassName="text-blue-500"
+            title="View run"
+          />
+          {!run.isCancellable && (
+            <Dialog>
+              <DialogTrigger
+                asChild
+                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={NoSymbolIcon}
+                  leadingIconClassName="text-error"
+                  fullWidth
+                  textAlignLeft
+                  className="w-full px-1.5 py-[0.9rem]"
+                >
+                  Cancel run
+                </Button>
+              </DialogTrigger>
+              <CancelRunDialog
+                runFriendlyId={run.friendlyId}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+          {run.isReplayable && (
+            <Dialog>
+              <DialogTrigger
+                asChild
+                className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowPathIcon}
+                  leadingIconClassName="text-success"
+                  fullWidth
+                  textAlignLeft
+                  className="w-full px-1.5 py-[0.9rem]"
+                >
+                  Replay run
+                </Button>
+              </DialogTrigger>
+              <ReplayRunDialog
+                runFriendlyId={run.friendlyId}
+                failedRedirect={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+        </>
+      }
       hiddenButtons={
-        <div className="flex items-center gap-1">
-          {run.isCancellable && (
+        <div className="flex items-center">
+          {!run.isCancellable && (
             <SimpleTooltip
               button={
                 <Dialog>
@@ -434,6 +490,9 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
               side="left"
               disableHoverableContent
             />
+          )}
+          {!run.isCancellable && run.isReplayable && (
+            <div className="mx-0.5 h-6 w-px bg-grid-dimmed" />
           )}
           {run.isReplayable && (
             <SimpleTooltip

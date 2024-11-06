@@ -277,7 +277,7 @@ export const TableCellMenu = forwardRef<
         hasAction={true}
       >
         <div className="relative p-1">
-          <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 bg-background-dimmed p-0.5 shadow-lg group-hover/table-row:rounded-[0.25rem] group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
+          <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 bg-background-dimmed p-0.5 group-hover/table-row:rounded-[0.25rem] group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
             {/* Hidden buttons that show on hover */}
             {hiddenButtons && (
               <div className="hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r group-hover/table-row:border-grid-dimmed">
