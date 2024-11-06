@@ -105,7 +105,7 @@ type TriggerParams = {
   seedMetadataType?: string;
 };
 
-type FailedAttemptResult = "COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY";
+type CompleteAttemptResult = "COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY";
 
 const workerCatalog = {
   waitpointCompleteDateTime: {
@@ -1026,7 +1026,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-  }): Promise<FailedAttemptResult> {
+  }): Promise<CompleteAttemptResult> {
     switch (completion.ok) {
       case true: {
         return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
