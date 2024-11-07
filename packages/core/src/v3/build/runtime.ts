@@ -41,7 +41,8 @@ export type ExecOptions = {
 
 export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOptions): string {
   switch (runtime) {
-    case "node": {
+    case "node":
+    case "node-22": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;
