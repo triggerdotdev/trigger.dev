@@ -18,6 +18,7 @@ import { Paragraph } from "./primitives/Paragraph";
 import { Select, SelectItem } from "./primitives/Select";
 import { TextArea } from "./primitives/TextArea";
 import { TextLink } from "./primitives/TextLink";
+import { DialogClose } from "@radix-ui/react-dialog";
 
 type FeedbackProps = {
   button: ReactNode;
@@ -120,16 +121,18 @@ export function Feedback({ button, defaultValue = "bug" }: FeedbackProps) {
                 <FormError id={message.errorId}>{message.error}</FormError>
               </InputGroup>
               <FormError>{form.error}</FormError>
-              <div className="flex w-full justify-end">
-                <FormButtons
-                  className="m-0 w-max"
-                  confirmButton={
-                    <Button type="submit" variant="tertiary/medium">
-                      Send message
-                    </Button>
-                  }
-                />
-              </div>
+              <FormButtons
+                confirmButton={
+                  <Button type="submit" variant="primary/medium">
+                    Send message
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/medium">Cancel</Button>
+                  </DialogClose>
+                }
+              />
             </Fieldset>
           </Form>
         </div>
