@@ -47,7 +47,7 @@ import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { DequeuedMessage, RunExecutionData } from "./messages";
-import { isCancellable, isDequeueableExecutionStatus, isExecuting } from "./statuses";
+import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
 import { runStatusFromError } from "./errors";
 
 type Options = {

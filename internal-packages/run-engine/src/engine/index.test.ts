@@ -901,6 +901,8 @@ describe("RunEngine", () => {
         expect(executionDataAfter?.snapshot.executionStatus).toBe("FINISHED");
         expect(executionDataAfter?.run.status).toBe("CANCELED");
 
+        //check emitted event
+        expect(cancelledEventData.length).toBe(1);
         const parentEvent = cancelledEventData.find((r) => r.run.id === parentRun.id);
         assertNonNullable(parentEvent);
         expect(parentEvent.run.spanId).toBe(parentRun.spanId);
