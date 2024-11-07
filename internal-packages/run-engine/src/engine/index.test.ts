@@ -1215,18 +1215,18 @@ describe("RunEngine", () => {
         assertNonNullable(executionData);
         expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
 
-        await engine.rescheduleRun({ runId: run.id, delayUntil: new Date(Date.now() + 1_000) });
+        await engine.rescheduleRun({ runId: run.id, delayUntil: new Date(Date.now() + 1_500) });
 
-        //wait for 1.5 seconds
-        await setTimeout(500);
+        //wait so the initial delay passes
+        await setTimeout(1_000);
 
         //should still be created
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("RUN_CREATED");
 
-        //wait for 1.5 seconds
-        await setTimeout(1_500);
+        //wait so the updated delay passes
+        await setTimeout(1_750);
 
         //should now be queued
         const executionData3 = await engine.getRunExecutionData({ runId: run.id });
