@@ -457,7 +457,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
                   textAlignLeft
                   className="w-full px-1.5 py-[0.9rem]"
                 >
-                  Replay run
+                  Replay run…
                 </Button>
               </DialogTrigger>
               <ReplayRunDialog
