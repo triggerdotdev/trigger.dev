@@ -64,7 +64,15 @@ type Options = {
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
+  heartbeatTimeouts?: Partial<HeartbeatTimeouts>;
   tracer: Tracer;
+};
+
+type HeartbeatTimeouts = {
+  PENDING_EXECUTING: number;
+  PENDING_CANCEL: number;
+  EXECUTING: number;
+  EXECUTING_WITH_WAITPOINTS: number;
 };
 
 type MachineResources = {
@@ -149,6 +157,7 @@ export class RunEngine {
   private worker: EngineWorker;
   private logger = new Logger("RunEngine", "debug");
   private tracer: Tracer;
+  private heartbeatTimeouts: HeartbeatTimeouts;
   eventBus = new EventEmitter<EventBusEvents>();
 
   constructor(private readonly options: Options) {
@@ -196,6 +205,17 @@ export class RunEngine {
     });
 
     this.tracer = options.tracer;
+
+    const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
+      PENDING_EXECUTING: 60,
+      PENDING_CANCEL: 60,
+      EXECUTING: 60,
+      EXECUTING_WITH_WAITPOINTS: 60,
+    };
+    this.heartbeatTimeouts = {
+      ...defaultHeartbeatTimeouts,
+      ...(options.heartbeatTimeouts ?? {}),
+    };
   }
 
   //MARK: - Run functions
@@ -1549,7 +1569,10 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
+    const prisma = tx ?? this.prisma;
+
+    //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
+    const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
     if (latestSnapshot.id !== snapshotId) {
       this.logger.log("heartbeatRun no longer the latest snapshot, stopping the heartbeat.", {
         runId,
@@ -1561,7 +1584,15 @@ export class RunEngine {
       return;
     }
 
-    //it's the same as creating a new heartbeat
+    //update the snapshot heartbeat time
+    await prisma.taskRunExecutionSnapshot.update({
+      where: { id: latestSnapshot.id },
+      data: {
+        lastHeartbeatAt: new Date(),
+      },
+    });
+
+    //extending is the same as creating a new heartbeat
     await this.#setHeartbeatDeadline({ runId, snapshotId, status: latestSnapshot.executionStatus });
   }
 
@@ -2206,23 +2237,20 @@ export class RunEngine {
 
   #getHeartbeatInterval(status: TaskRunExecutionStatus): number | null {
     switch (status) {
-      case "RUN_CREATED":
-      case "FINISHED":
-      case "BLOCKED_BY_WAITPOINTS":
-      case "QUEUED": {
-        //we don't need to heartbeat these statuses
-        return null;
+      case "PENDING_EXECUTING": {
+        return this.heartbeatTimeouts.PENDING_EXECUTING;
       }
-      case "PENDING_EXECUTING":
       case "PENDING_CANCEL": {
-        return 60;
+        return this.heartbeatTimeouts.PENDING_CANCEL;
       }
-      case "EXECUTING":
+      case "EXECUTING": {
+        return this.heartbeatTimeouts.EXECUTING;
+      }
       case "EXECUTING_WITH_WAITPOINTS": {
-        return 60 * 15;
+        return this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS;
       }
       default: {
-        assertNever(status);
+        return null;
       }
     }
   }
