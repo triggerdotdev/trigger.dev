@@ -289,13 +289,18 @@ function CreateScheduledTaskInstructions() {
         icon={ClockIcon}
         iconClassName="text-sun-500"
         panelClassName="max-w-full"
-        to={docsPath("v3/tasks-scheduled")}
-        buttonLabel="Schedules docs"
       >
-        <Paragraph variant="small">
+        <Paragraph spacing variant="small">
           You have no scheduled tasks in your project. Before you can schedule a task you need to
           create a <InlineCode>schedules.task</InlineCode>.
         </Paragraph>
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/medium"
+          LeadingIcon={BookOpenIcon}
+        >
+          View the docs
+        </LinkButton>
       </InfoPanel>
     </MainCenteredContainer>
   );
