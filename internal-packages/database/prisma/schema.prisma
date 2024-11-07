@@ -1905,7 +1905,7 @@ enum RunEngineVersion {
 model TaskRunExecutionSnapshot {
   id String @id @default(cuid())
 
-  /// This should never be V1
+  /// This should always be 2+ (V1 didn't use the run engine or snapshots)
   engine RunEngineVersion @default(V2)
 
   /// The execution status
@@ -1922,6 +1922,7 @@ model TaskRunExecutionSnapshot {
   run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
 
+  /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
   /// Waitpoints that have been completed for this execution
