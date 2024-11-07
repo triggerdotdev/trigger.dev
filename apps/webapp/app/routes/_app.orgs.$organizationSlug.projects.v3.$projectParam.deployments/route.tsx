@@ -299,7 +299,13 @@ function DeploymentActionsCell({
           {canRollback && (
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowUturnLeftIcon}
+                  leadingIconClassName="text-blue-500"
+                  fullWidth
+                  textAlignLeft
+                >
                   Rollback…
                 </Button>
               </DialogTrigger>
@@ -313,7 +319,13 @@ function DeploymentActionsCell({
           {canRetryIndexing && (
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowPathIcon}
+                  leadingIconClassName="text-blue-500"
+                  fullWidth
+                  textAlignLeft
+                >
                   Retry indexing…
                 </Button>
               </DialogTrigger>
