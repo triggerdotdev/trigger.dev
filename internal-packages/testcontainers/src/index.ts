@@ -8,6 +8,7 @@ import { Network, type StartedNetwork, type StartedTestContainer } from "testcon
 
 export { StartedRedisContainer };
 export * from "./setup";
+export { assertNonNullable } from "./utils";
 
 type NetworkContext = { network: StartedNetwork };
 

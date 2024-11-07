@@ -3,6 +3,7 @@ import { RedisContainer } from "@testcontainers/redis";
 import path from "path";
 import { GenericContainer, StartedNetwork } from "testcontainers";
 import { x } from "tinyexec";
+import { expect } from "vitest";
 
 export async function createPostgresContainer(network: StartedNetwork) {
   const container = await new PostgreSqlContainer("docker.io/postgres:14")
@@ -67,4 +68,9 @@ export async function createElectricContainer(
     container,
     origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
   };
+}
+
+export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
+  expect(value).toBeDefined();
+  expect(value).not.toBeNull();
 }

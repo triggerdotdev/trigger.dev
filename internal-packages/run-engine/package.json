@@ -23,6 +23,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest --sequence.concurrent=false"
   }
 }
