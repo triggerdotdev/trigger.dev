@@ -1248,7 +1248,7 @@ export class RunEngine {
 
         //is pending cancellation and we're not finalizing, alert the worker again
         if (latestSnapshot.executionStatus === "PENDING_CANCEL" && !finalizeRun) {
-          await this.#sendRunChangedNotificationToWorker({ runId });
+          await this.#sendNotificationToWorker({ runId });
           return "PENDING_CANCEL" as const;
         }
 
@@ -1289,7 +1289,8 @@ export class RunEngine {
             },
           });
 
-          await this.#sendRunChangedNotificationToWorker({ runId });
+          //the worker needs to be notified so it can kill the run and complete the attempt
+          await this.#sendNotificationToWorker({ runId });
           return "PENDING_CANCEL" as const;
         }
 
@@ -1772,8 +1773,8 @@ export class RunEngine {
         if (
           retriableError &&
           completion.retry !== undefined &&
-          (latestSnapshot.attemptNumber === null ||
-            latestSnapshot.attemptNumber < MAX_TASK_RUN_ATTEMPTS)
+          latestSnapshot.attemptNumber !== null &&
+          latestSnapshot.attemptNumber < MAX_TASK_RUN_ATTEMPTS
         ) {
           const retryAt = new Date(completion.retry.timestamp);
 
@@ -1836,7 +1837,8 @@ export class RunEngine {
                 description: "Attempt failed wth a short delay, starting a new attempt.",
               },
             });
-            await this.#sendRunChangedNotificationToWorker({ runId });
+            //the worker can fetch the latest snapshot and should create a new attempt
+            await this.#sendNotificationToWorker({ runId });
           }
 
           return "RETRY_IMMEDIATELY" as const;
@@ -2384,8 +2386,12 @@ export class RunEngine {
 
   //#endregion
 
-  async #sendRunChangedNotificationToWorker({ runId }: { runId: string }) {
-    //todo: implement
+  /**
+   * Sends a notification that a run has changed and we need to fetch the latest run state.
+   * The worker will call `getRunExecutionData` via the API and act accordingly.
+   */
+  async #sendNotificationToWorker({ runId }: { runId: string }) {
+    this.eventBus.emit("workerNotification", { time: new Date(), run: { id: runId } });
   }
 
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {

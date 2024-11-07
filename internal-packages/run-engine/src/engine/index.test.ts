@@ -865,6 +865,11 @@ describe("RunEngine", () => {
           snapshotId: dequeuedChild[0].snapshot.id,
         });
 
+        let workerNotifications: EventBusEventArgs<"workerNotification">[0][] = [];
+        engine.eventBus.on("workerNotification", (result) => {
+          workerNotifications.push(result);
+        });
+
         //cancel the parent run
         const result = await engine.cancelRun({
           runId: parentRun.id,
@@ -872,6 +877,10 @@ describe("RunEngine", () => {
           reason: "Cancelled by the user",
         });
         expect(result).toBe("PENDING_CANCEL");
+
+        //check a worker notification was sent for the running parent
+        expect(workerNotifications).toHaveLength(1);
+        expect(workerNotifications[0].run.id).toBe(parentRun.id);
 
         const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
         expect(executionData?.snapshot.executionStatus).toBe("PENDING_CANCEL");
@@ -909,6 +918,10 @@ describe("RunEngine", () => {
 
         //cancelling children is async, so we need to wait a brief moment
         await setTimeout(200);
+
+        //check a worker notification was sent for the running parent
+        expect(workerNotifications).toHaveLength(2);
+        expect(workerNotifications[1].run.id).toBe(childRun.id);
 
         //child should now be pending cancel
         const childExecutionDataAfter = await engine.getRunExecutionData({ runId: childRun.id });
@@ -1238,7 +1251,6 @@ describe("RunEngine", () => {
     }
   );
 
-  //todo expiring a run
   containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

@@ -59,6 +59,14 @@ export type EventBusEvents = {
       };
     },
   ];
+  workerNotification: [
+    {
+      time: Date;
+      run: {
+        id: string;
+      };
+    },
+  ];
   executionSnapshotCreated: [
     {
       time: Date;
