@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { VERSION } from "../version.js";
-import { BundleResult, bundleWorker } from "./bundle.js";
+import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
 import {
   createBuildContext,
   notifyExtensionOnBuildComplete,
@@ -56,7 +56,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     resolvedConfig,
     options.forcedExternals
   );
-  const buildContext = createBuildContext("deploy", resolvedConfig);
+  const buildContext = createBuildContext(options.target, resolvedConfig);
   buildContext.prependExtension(externalsExtension);
   await notifyExtensionOnBuildStart(buildContext);
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
@@ -77,35 +77,14 @@ export async function buildWorker(options: BuildWorkerOptions) {
 
   options.listener?.onBundleComplete?.(bundleResult);
 
-  let buildManifest: BuildManifest = {
-    contentHash: bundleResult.contentHash,
-    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+  let buildManifest = await createBuildManifestFromBundle({
+    bundle: bundleResult,
+    destination: options.destination,
+    resolvedConfig,
     environment: options.environment,
-    packageVersion: CORE_VERSION,
-    cliPackageVersion: VERSION,
-    target: "deploy",
-    files: bundleResult.files,
-    sources: await resolveFileSources(bundleResult.files, resolvedConfig),
-    config: {
-      project: resolvedConfig.project,
-      dirs: resolvedConfig.dirs,
-    },
-    outputPath: options.destination,
-    runControllerEntryPoint: bundleResult.runControllerEntryPoint ?? deployRunController,
-    runWorkerEntryPoint: bundleResult.runWorkerEntryPoint ?? deployRunWorker,
-    indexControllerEntryPoint: bundleResult.indexControllerEntryPoint ?? deployIndexController,
-    indexWorkerEntryPoint: bundleResult.indexWorkerEntryPoint ?? deployIndexWorker,
-    loaderEntryPoint: bundleResult.loaderEntryPoint,
-    configPath: bundleResult.configPath,
-    customConditions: resolvedConfig.build.conditions ?? [],
-    deploy: {
-      env: options.envVars ? options.envVars : {},
-    },
-    build: {},
-    otelImportHook: {
-      include: resolvedConfig.instrumentedPackageNames ?? [],
-    },
-  };
+    target: options.target,
+    envVars: options.envVars,
+  });
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 

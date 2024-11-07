@@ -1,5 +1,5 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
+import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
@@ -7,7 +7,13 @@ import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
+  deployIndexController,
+  deployIndexWorker,
+  deployRunController,
+  deployRunWorker,
   devEntryPoints,
+  devIndexWorker,
+  devRunWorker,
   isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
@@ -17,6 +23,10 @@ import {
   telemetryEntryPoint,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { VERSION } from "../../../core/src/version.js";
+import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
+import { copyManifestToDir } from "./manifests.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -267,4 +277,63 @@ export function logBuildFailure(errors: esbuild.Message[], warnings: esbuild.Mes
     console.error(log);
   }
   logBuildWarnings(warnings);
+}
+
+export async function createBuildManifestFromBundle({
+  bundle,
+  destination,
+  resolvedConfig,
+  workerDir,
+  environment,
+  target,
+  envVars,
+}: {
+  bundle: BundleResult;
+  destination: string;
+  resolvedConfig: ResolvedConfig;
+  workerDir?: string;
+  environment: string;
+  target: BuildTarget;
+  envVars?: Record<string, string>;
+}): Promise<BuildManifest> {
+  const buildManifest: BuildManifest = {
+    contentHash: bundle.contentHash,
+    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+    environment: environment,
+    packageVersion: CORE_VERSION,
+    cliPackageVersion: VERSION,
+    target: target,
+    files: bundle.files,
+    sources: await resolveFileSources(bundle.files, resolvedConfig),
+    externals: [],
+    config: {
+      project: resolvedConfig.project,
+      dirs: resolvedConfig.dirs,
+    },
+    outputPath: destination,
+    indexControllerEntryPoint:
+      bundle.indexControllerEntryPoint ?? target === "deploy" ? deployIndexController : undefined,
+    indexWorkerEntryPoint:
+      bundle.indexWorkerEntryPoint ?? target === "deploy" ? deployIndexWorker : devIndexWorker,
+    runControllerEntryPoint:
+      bundle.runControllerEntryPoint ?? target === "deploy" ? deployRunController : undefined,
+    runWorkerEntryPoint:
+      bundle.runWorkerEntryPoint ?? target === "deploy" ? deployRunWorker : devRunWorker,
+    loaderEntryPoint: bundle.loaderEntryPoint,
+    configPath: bundle.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
+    deploy: {
+      env: envVars ?? {},
+    },
+    build: {},
+    otelImportHook: {
+      include: resolvedConfig.instrumentedPackageNames ?? [],
+    },
+  };
+
+  if (!workerDir) {
+    return buildManifest;
+  }
+
+  return copyManifestToDir(buildManifest, destination, workerDir);
 }

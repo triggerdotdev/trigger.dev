@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "url";
 import { BuildRuntime } from "../schemas/build.js";
 
-export const DEFAULT_RUNTIME: BuildRuntime = "node";
+export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {

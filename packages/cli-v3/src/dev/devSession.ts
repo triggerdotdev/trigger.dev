@@ -1,11 +1,10 @@
-import { CORE_VERSION } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildManifest } from "@trigger.dev/core/v3/schemas";
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as esbuild from "esbuild";
 import { CliApiClient } from "../apiClient.js";
 import {
   BundleResult,
   bundleWorker,
+  createBuildManifestFromBundle,
   getBundleResultFromBuild,
   logBuildFailure,
   logBuildWarnings,
@@ -17,14 +16,10 @@ import {
   resolvePluginsForContext,
 } from "../build/extensions.js";
 import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/externals.js";
-import { copyManifestToDir } from "../build/manifests.js";
-import { devIndexWorker, devRunWorker, telemetryEntryPoint } from "../build/packageModules.js";
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
-import { VERSION } from "../version.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
 
@@ -82,12 +77,14 @@ export async function startDevSession({
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
   async function updateBundle(bundle: BundleResult, workerDir?: EphemeralDirectory) {
-    let buildManifest = await createBuildManifestFromBundle(
+    let buildManifest = await createBuildManifestFromBundle({
       bundle,
-      destination.path,
-      rawConfig,
-      workerDir?.path
-    );
+      destination: destination.path,
+      resolvedConfig: rawConfig,
+      workerDir: workerDir?.path,
+      environment: "dev",
+      target: "dev",
+    });
 
     logger.debug("Created build manifest from bundle", { buildManifest });
 
@@ -181,46 +178,4 @@ export async function startDevSession({
       stopOutput();
     },
   };
-}
-
-async function createBuildManifestFromBundle(
-  bundle: BundleResult,
-  destination: string,
-  resolvedConfig: ResolvedConfig,
-  workerDir: string | undefined
-): Promise<BuildManifest> {
-  const buildManifest: BuildManifest = {
-    contentHash: bundle.contentHash,
-    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
-    cliPackageVersion: VERSION,
-    packageVersion: CORE_VERSION,
-    environment: "dev",
-    target: "dev",
-    files: bundle.files,
-    sources: await resolveFileSources(bundle.files, resolvedConfig),
-    externals: [],
-    config: {
-      project: resolvedConfig.project,
-      dirs: resolvedConfig.dirs,
-    },
-    outputPath: destination,
-    runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? devRunWorker,
-    indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? devIndexWorker,
-    loaderEntryPoint: bundle.loaderEntryPoint,
-    configPath: bundle.configPath,
-    customConditions: resolvedConfig.build.conditions ?? [],
-    deploy: {
-      env: {},
-    },
-    build: {},
-    otelImportHook: {
-      include: resolvedConfig.instrumentedPackageNames ?? [],
-    },
-  };
-
-  if (!workerDir) {
-    return buildManifest;
-  }
-
-  return copyManifestToDir(buildManifest, destination, workerDir);
 }
