@@ -6,6 +6,7 @@ import {
   MachinePresetName,
   parsePacket,
   QueueOptions,
+  RescheduleRunRequestBody,
   sanitizeError,
   shouldRetryError,
   TaskRunError,
@@ -1338,6 +1339,69 @@ export class RunEngine {
     });
   }
 
+  /**
+   * Reschedules a delayed run where the run hasn't been queued yet
+   */
+  async rescheduleRun({
+    runId,
+    delayUntil,
+    tx,
+  }: {
+    runId: string;
+    delayUntil: Date;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+    return this.#trace("rescheduleRun", { runId }, async (span) => {
+      await this.runLock.lock([runId], 5_000, async (signal) => {
+        const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+
+        //if the run isn't just created then we can't reschedule it
+        if (snapshot.executionStatus !== "RUN_CREATED") {
+          throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
+        }
+
+        const updatedRun = await prisma.taskRun.update({
+          where: {
+            id: runId,
+          },
+          data: {
+            delayUntil: delayUntil,
+            executionSnapshots: {
+              create: {
+                engine: "V2",
+                executionStatus: "RUN_CREATED",
+                description: "Delayed run was rescheduled to a future date",
+                runStatus: "EXPIRED",
+              },
+            },
+          },
+          include: {
+            blockedByWaitpoints: true,
+          },
+        });
+
+        if (updatedRun.blockedByWaitpoints.length === 0) {
+          throw new ServiceValidationError(
+            "Cannot reschedule a run that is not blocked by a waitpoint"
+          );
+        }
+
+        const result = await this.#rescheduleDateTimeWaitpoint(
+          prisma,
+          updatedRun.blockedByWaitpoints[0].waitpointId,
+          delayUntil
+        );
+
+        if (!result.success) {
+          throw new ServiceValidationError("Failed to reschedule waitpoint, too late.", 400);
+        }
+
+        return updatedRun;
+      });
+    });
+  }
+
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
    * if they're no longer blocked. This doesn't suffer from race conditions. */
   async completeWaitpoint({
@@ -1976,6 +2040,47 @@ export class RunEngine {
     });
 
     return waitpoint;
+  }
+
+  async #rescheduleDateTimeWaitpoint(
+    tx: PrismaClientOrTransaction,
+    waitpointId: string,
+    completedAfter: Date
+  ): Promise<{ success: true } | { success: false; error: string }> {
+    try {
+      const updatedWaitpoint = await tx.waitpoint.update({
+        where: { id: waitpointId, status: "PENDING" },
+        data: {
+          completedAfter,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return {
+          success: false,
+          error: "Waitpoint doesn't exist or is already completed",
+        };
+      }
+
+      this.logger.error("Error rescheduling waitpoint", { error });
+
+      return {
+        success: false,
+        error: "An unknown error occurred",
+      };
+    }
+
+    //reschedule completion
+    await this.worker.enqueue({
+      id: `waitpointCompleteDateTime.${waitpointId}`,
+      job: "waitpointCompleteDateTime",
+      payload: { waitpointId: waitpointId },
+      availableAt: completedAfter,
+    });
+
+    return {
+      success: true,
+    };
   }
 
   async #blockRunWithWaitpoint(
