@@ -346,14 +346,7 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={PencilSquareIcon}
-          leadingIconClassName="text-charcoal-500"
-          className="text-xs"
-          fullWidth
-          textAlignLeft
-        >
+        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
           Edit
         </Button>
       </DialogTrigger>
@@ -478,8 +471,8 @@ function DeleteEnvironmentVariableButton({
         fullWidth
         textAlignLeft
         LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500"
-        className="text-xs"
+        leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
+        className="transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : "Delete"}
       </Button>
