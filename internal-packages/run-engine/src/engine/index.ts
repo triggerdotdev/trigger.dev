@@ -64,7 +64,7 @@ type Options = {
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
-  heartbeatTimeouts?: Partial<HeartbeatTimeouts>;
+  heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   tracer: Tracer;
 };
 
@@ -207,14 +207,14 @@ export class RunEngine {
     this.tracer = options.tracer;
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
-      PENDING_EXECUTING: 60,
-      PENDING_CANCEL: 60,
-      EXECUTING: 60,
-      EXECUTING_WITH_WAITPOINTS: 60,
+      PENDING_EXECUTING: 60_000,
+      PENDING_CANCEL: 60_000,
+      EXECUTING: 60_000,
+      EXECUTING_WITH_WAITPOINTS: 60_000,
     };
     this.heartbeatTimeouts = {
       ...defaultHeartbeatTimeouts,
-      ...(options.heartbeatTimeouts ?? {}),
+      ...(options.heartbeatTimeoutsMs ?? {}),
     };
   }
 
@@ -1850,15 +1850,24 @@ export class RunEngine {
             this.options.retryWarmStartThresholdMs !== undefined &&
             completion.retry.delay >= this.options.retryWarmStartThresholdMs
           ) {
-            //long delay for retry, so requeue
-            await this.#enqueueRun({
+            //we nack the message, this allows another work to pick up the run
+            const gotRequeued = await this.#tryNackAndRequeue({
               run,
-              env: run.runtimeEnvironment,
+              orgId: run.runtimeEnvironment.organizationId,
               timestamp: retryAt.getTime(),
+              error: {
+                type: "INTERNAL_ERROR",
+                code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+                message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
+              },
               tx: prisma,
             });
 
-            return "RETRY_QUEUED" as const;
+            if (!gotRequeued) {
+              return "COMPLETED";
+            } else {
+              return "RETRY_QUEUED";
+            }
           } else {
             //it will continue running because the retry delay is short
             await this.#createExecutionSnapshot(prisma, {
@@ -1872,7 +1881,7 @@ export class RunEngine {
             await this.#sendNotificationToWorker({ runId });
           }
 
-          return "RETRY_IMMEDIATELY" as const;
+          return "RETRY_IMMEDIATELY";
         }
 
         const status = runStatusFromError(completion.error);
@@ -1943,6 +1952,7 @@ export class RunEngine {
   }) {
     const prisma = tx ?? this.prisma;
 
+    await this.runLock.lock([run.id], 5000, async (signal) => {
     const newSnapshot = await this.#createExecutionSnapshot(prisma, {
       run: run,
       snapshot: {
@@ -1971,6 +1981,47 @@ export class RunEngine {
         timestamp: timestamp ?? Date.now(),
         attempt: 0,
       },
+    });
+    });
+  }
+
+  async #tryNackAndRequeue({
+    run,
+    orgId,
+    timestamp,
+    error,
+    tx,
+  }: {
+    run: TaskRun;
+    orgId: string;
+    timestamp?: number;
+    error: TaskRunInternalError;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<boolean> {
+    const prisma = tx ?? this.prisma;
+
+    return await this.runLock.lock([run.id], 5000, async (signal) => {
+      //we nack the message, this allows another work to pick up the run
+      const gotRequeued = await this.runQueue.nackMessage(orgId, run.id, timestamp);
+
+      if (!gotRequeued) {
+        await this.#systemFailure({
+          runId: run.id,
+          error,
+          tx: prisma,
+        });
+        return false;
+      }
+
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run: run,
+        snapshot: {
+          executionStatus: "QUEUED",
+          description: "Requeued the run after a failure",
+        },
+      });
+
+      return true;
     });
   }
 
@@ -2235,7 +2286,7 @@ export class RunEngine {
     });
   }
 
-  #getHeartbeatInterval(status: TaskRunExecutionStatus): number | null {
+  #getHeartbeatIntervalMs(status: TaskRunExecutionStatus): number | null {
     switch (status) {
       case "PENDING_EXECUTING": {
         return this.heartbeatTimeouts.PENDING_EXECUTING;
@@ -2324,9 +2375,9 @@ export class RunEngine {
     snapshotId: string;
     status: TaskRunExecutionStatus;
   }) {
-    const intervalSeconds = this.#getHeartbeatInterval(status);
+    const intervalMs = this.#getHeartbeatIntervalMs(status);
 
-    if (intervalSeconds === null) {
+    if (intervalMs === null) {
       return;
     }
 
@@ -2334,7 +2385,7 @@ export class RunEngine {
       id: `heartbeatSnapshot.${snapshotId}`,
       job: "heartbeatSnapshot",
       payload: { snapshotId, runId },
-      availableAt: new Date(Date.now() + intervalSeconds * 1000),
+      availableAt: new Date(Date.now() + intervalMs),
     });
   }
 
@@ -2347,8 +2398,9 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(tx ?? this.prisma, runId);
-
+    const prisma = tx ?? this.prisma;
+    return await this.runLock.lock([runId], 5_000, async (signal) => {
+      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
     if (latestSnapshot.id !== snapshotId) {
       this.logger.log(
         "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
@@ -2368,8 +2420,6 @@ export class RunEngine {
       snapshot: latestSnapshot,
     });
 
-    //todo fail attempt if there is one?
-
     switch (latestSnapshot.executionStatus) {
       case "RUN_CREATED": {
         //we need to check if the run is still created
@@ -2380,8 +2430,41 @@ export class RunEngine {
         throw new NotImplementedError("Not implemented QUEUED");
       }
       case "PENDING_EXECUTING": {
-        //we need to check if the run is still dequeued
-        throw new NotImplementedError("Not implemented DEQUEUED_FOR_EXECUTION");
+          //the run didn't start executing, we need to requeue it
+          const run = await prisma.taskRun.findFirst({
+            where: { id: runId },
+            include: {
+              runtimeEnvironment: {
+                include: {
+                  organization: true,
+                },
+              },
+            },
+          });
+
+          if (!run) {
+            this.logger.error(
+              "RunEngine.#handleStalledSnapshot() PENDING_EXECUTING run not found",
+              {
+                runId,
+                snapshot: latestSnapshot,
+              }
+            );
+
+            throw new Error(`Run ${runId} not found`);
+          }
+
+          //it will automatically be requeued X times depending on the queue retry settings
+          const gotRequeued = await this.#tryNackAndRequeue({
+            run,
+            orgId: run.runtimeEnvironment.organizationId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+              message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
+            },
+            tx: prisma,
+          });
       }
       case "EXECUTING": {
         //we need to check if the run is still executing
@@ -2410,6 +2493,7 @@ export class RunEngine {
         assertNever(latestSnapshot.executionStatus);
       }
     }
+    });
   }
 
   //#endregion

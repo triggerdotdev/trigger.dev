@@ -34,6 +34,7 @@ export function runStatusFromError(error: TaskRunError): TaskRunStatus {
     case "TASK_RUN_HEARTBEAT_TIMEOUT":
     case "TASK_DEQUEUED_INVALID_STATE":
     case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
+    case "TASK_RUN_DEQUEUED_MAX_RETRIES":
     case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
     case "GRACEFUL_EXIT_TIMEOUT":
     case "TASK_INPUT_ERROR":

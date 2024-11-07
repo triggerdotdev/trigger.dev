@@ -172,6 +172,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_DEQUEUED_INVALID_STATE":
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
         case "TASK_HAS_N0_EXECUTION_SNAPSHOT":
+        case "TASK_RUN_DEQUEUED_MAX_RETRIES":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
