@@ -23,10 +23,10 @@ import {
   telemetryEntryPoint,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
-import { VERSION } from "../../../core/src/version.js";
 import { CORE_VERSION } from "@trigger.dev/core/v3";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { copyManifestToDir } from "./manifests.js";
+import { VERSION } from "../version.js";
 
 export interface BundleOptions {
   target: BuildTarget;
