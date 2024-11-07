@@ -953,7 +953,108 @@ describe("RunEngine", () => {
     }
   );
 
-  //todo cancelling a run (not executing)
+  containerTest(
+    "Cancelling a run (not executing)",
+    { timeout: 15_000 },
+    async ({ prisma, redisContainer }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const parentTask = "parent-task";
+
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, [parentTask]);
+
+        //trigger the run
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: parentRun.masterQueue,
+          maxRunCount: 10,
+        });
+
+        let cancelledEventData: EventBusEventArgs<"runCancelled">[0][] = [];
+        engine.eventBus.on("runCancelled", (result) => {
+          cancelledEventData.push(result);
+        });
+
+        //cancel the parent run
+        const result = await engine.cancelRun({
+          runId: parentRun.id,
+          completedAt: new Date(),
+          reason: "Cancelled by the user",
+        });
+        expect(result).toBe("FINISHED");
+
+        const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        expect(executionData?.snapshot.executionStatus).toBe("FINISHED");
+        expect(executionData?.run.status).toBe("CANCELED");
+
+        //check emitted event
+        expect(cancelledEventData.length).toBe(1);
+        const parentEvent = cancelledEventData.find((r) => r.run.id === parentRun.id);
+        assertNonNullable(parentEvent);
+        expect(parentEvent.run.spanId).toBe(parentRun.spanId);
+
+        //concurrency should have been released
+        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
+          authenticatedEnvironment
+        );
+        expect(envConcurrencyCompleted).toBe(0);
+      } finally {
+        engine.quit();
+      }
+    }
+  );
 
   //todo bulk cancelling runs
 
