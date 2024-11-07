@@ -6,7 +6,7 @@ import {
   MachinePresetName,
   parsePacket,
   QueueOptions,
-  RescheduleRunRequestBody,
+  RetryOptions,
   sanitizeError,
   shouldRetryError,
   TaskRunError,
@@ -29,7 +29,6 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
-  TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
   Waitpoint,
@@ -44,12 +43,12 @@ import { SimpleWeightedChoiceStrategy } from "../run-queue/simpleWeightedPriorit
 import { MinimalAuthenticatedEnvironment } from "../shared";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
+import { runStatusFromError } from "./errors";
 import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { DequeuedMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
-import { runStatusFromError } from "./errors";
 
 type Options = {
   redis: RedisOptions;
@@ -61,6 +60,9 @@ type Options = {
     defaultMachine: MachinePresetName;
     machines: Record<string, MachinePreset>;
     baseCostInCents: number;
+  };
+  queue?: {
+    retryOptions?: RetryOptions;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
@@ -175,6 +177,7 @@ export class RunEngine {
       enableRebalancing: false,
       logger: new Logger("RunQueue", "warn"),
       redis: options.redis,
+      retryOptions: options.queue?.retryOptions,
     });
 
     this.worker = new Worker({
