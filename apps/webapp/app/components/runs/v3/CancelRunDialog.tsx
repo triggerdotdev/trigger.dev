@@ -30,30 +30,28 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
         <Paragraph>
           Canceling a run will stop execution, along with any executing subtasks.
         </Paragraph>
-        <DialogFooter className="sm:justify-end">
-          <FormButtons
-            confirmButton={
-              <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
-                <Button
-                  type="submit"
-                  name="redirectUrl"
-                  value={redirectPath}
-                  variant="danger/medium"
-                  LeadingIcon={isLoading ? "spinner-white" : NoSymbolIcon}
-                  disabled={isLoading}
-                  shortcut={{ modifiers: ["meta"], key: "enter" }}
-                >
-                  {isLoading ? "Canceling..." : "Cancel run"}
-                </Button>
-              </Form>
-            }
-            cancelButton={
-              <DialogClose asChild>
-                <Button variant={"tertiary/medium"}>Close</Button>
-              </DialogClose>
-            }
-          />
-        </DialogFooter>
+        <FormButtons
+          confirmButton={
+            <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
+              <Button
+                type="submit"
+                name="redirectUrl"
+                value={redirectPath}
+                variant="danger/medium"
+                LeadingIcon={isLoading ? "spinner-white" : NoSymbolIcon}
+                disabled={isLoading}
+                shortcut={{ modifiers: ["meta"], key: "enter" }}
+              >
+                {isLoading ? "Canceling..." : "Cancel run"}
+              </Button>
+            </Form>
+          }
+          cancelButton={
+            <DialogClose asChild>
+              <Button variant={"tertiary/medium"}>Close</Button>
+            </DialogClose>
+          }
+        />
       </div>
     </DialogContent>
   );
