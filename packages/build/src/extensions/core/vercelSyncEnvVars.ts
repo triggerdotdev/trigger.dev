@@ -41,7 +41,7 @@ export function syncVercelEnvVars(
     }
     const params = new URLSearchParams();
     if (vercelTeamId) params.set("teamId", vercelTeamId);
-    const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
+    const vercelApiUrl = `https://api.vercel.com/v9/projects/${projectId}/env?${params}`;
 
     try {
       const response = await fetch(vercelApiUrl, {
