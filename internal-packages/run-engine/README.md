@@ -143,7 +143,7 @@ The Waitpoint  `idempotencyKey` should be prefixed like `debounce-${debounce.key
 
 Both when triggering tasks and also any helpers we wanted inside the task.
 
-We could either use the DATETIME waitpoints. Or it might be easier to use an existing rate limiting library with Redis and receive notifications when a limit is cleared and complete associated waitpoints.
+For inside tasks, we could use the DATETIME waitpoints. Or it might be easier to use an existing rate limiting library with Redis and receive notifications when a limit is cleared and complete associated waitpoints.
 
 ## Emitting events
 
