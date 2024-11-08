@@ -1,18 +1,32 @@
 # Trigger.dev Run Engine
 
-The Run Engine process runs from triggering, to executing, and completing them.
+The Run Engine process runs from triggering, to executing, retrying, and completing them.
 
 It is responsible for:
 
-- Creating and updating runs as they progress.
+- Creating, updating, and completing runs as they progress.
 - Operating the run queue, including handling concurrency.
-- Mutating the state of runs.
+- Heartbeats which detects stalled runs and attempts to automatically recover them.
+- Registering checkpoints which enable pausing/resuming of runs.
+
+## Run locking
+
+Many operations on the run are "atomic" in the sense that only a single operation can mutate them at a time. We use RedLock to create a distributed lock to ensure this. Postgres locking is not enough on its own because we have multiple API instances and Redis is used for the queue.
+
+There are race conditions we need to deal with:
+- When checkpointing the run continues to execute until the checkpoint has been stored. At the same time the run continues and the checkpoint can become irrelevant if the waitpoint is completed. Both can happen at the same time, so we must lock the run and protect against outdated checkpoints.
 
 ## Run execution
 
-The execution of a run is stored in the `TaskRunExecutionSnapshot` table in Postgres.
+The execution state of a run is stored in the `TaskRunExecutionSnapshot` table in Postgres. This is separate from the `TaskRun` status which is exposed to users via the dashboard and API.
 
 ![The execution states](./execution-states.png)
+
+The `TaskRunExecutionSnapshot` `executionStatus` is used to determine the execution status and is internal to the run engine. It is a log of events that impact run execution – the data is used to execute the run.
+
+A common pattern we use is to read the current state and check that the passed in `snapshotId` matches the current `snapshotId`. If it doesn't, we know that the state has moved on. In the case of a checkpoint coming in, we know we can just ignore it.
+
+We can also store invalid states by setting an error. These invalid states are purely used for debugging and are ignored for execution purposes.
 
 ## Workers
 
@@ -38,224 +52,102 @@ For dev environments, we will pass the `environment` id.
 
 If there's only a `workerGroup`, we can just `dequeueFromMasterQueue()` to get runs. If there's a `BackgroundWorker` id, we need to determine if that `BackgroundWorker` is the latest. If it's the latest we call `dequeueFromEnvironmentMasterQueue()` to get any runs that aren't locked to a version. If it's not the latest, we call `dequeueFromBackgroundWorkerMasterQueue()` to get runs that are locked to that version.
 
-## Components
-
-### Run Engine
-
-This is used to actually process a run and store the state at each step. It coordinates with the other components.
-
-#### Atomicity
-
-Operations on the run are "atomic" in the sense that only a single operation can mutate them at a time. We use RedLock to ensure this.
-
-#### Valid state transitions
-
-The run engine ensures that the run can only transition to valid states.
-
-#### State history
-
-When a run is mutated in any way, we store the state. This data is used for the next step for the run, and also for debugging.
-
-`TaskRunState` is a decent table name. We should have a "description" column which describes the change, this would be purely for internal use but would be very useful for debugging.
-
 ### Run Queue
 
-This is used to queue, dequeue, and manage concurrency. It also provides visibility into the concurrency for the env, org, etc.
+This is a fair multi-tenant queue. It is designed to fairly select runs, respect concurrency limits, and have high throughput. It provides visibility into the current concurrency for the env, org, etc.
 
-Run IDs are enqueued. They're pulled from the queue in a fair way with advanced options for debouncing and visibility.
+It has built-in reliability features:
+- When nacking we increment the `attempt` and if it continually fails we will move it to a Dead Letter Queue (DLQ).
+- If a run is in the DLQ you can redrive it.
 
 ### Heartbeats
 
-Heartbeats are used to determine if a run has stopped responding. If a heartbeat isn't received within a defined period then the run is judged to have become stuck and the attempt is failed.
+Heartbeats are used to determine if a run has become stalled. Depending on the current execution status, we do different things. For example, if the run has been dequeued but the attempt hasn't been started we requeue it.
 
 ### Checkpoints
 
-Checkpoints allow pausing an executing run and then resuming it later.
+Checkpoints allow pausing an executing run and then resuming it later. This is an optimization to avoid wasted compute and is especially useful with "Waitpoints".
 
 ## Waitpoints
 
-A "Waitpoint" is something that prevents a run from continuing:
+A "Waitpoint" is something that can block a run from continuing:
 
-- `wait.for()` a future time.
-- `triggerAndWait()` until the run is finished.
-- `batchTriggerAndWait()` until all runs are finished.
-- `wait.forRequest()` wait until a request has been received (not implemented yet).
+A single Waitpoint can block many runs, the same waitpoint can only block a run once (there's a unique constraint). They block run execution from continuing until all of them are completed.
 
-They block run execution from continuing until all of them are completed/removed.
+They can have output data associated with them, e.g. the finished run payload. That includes an error, e.g. a failed run.
 
-Some of them have data associated with them, e.g. the finished run payload.
+There are currently three types:
+  - `RUN` which gets completed when the associated run completes. Every run has an `associatedWaitpoint` that matches the lifetime of the run.
+  - `DATETIME` which gets completed when the datetime is reached.
+  - `EVENT` which gets completed when that event occurs.
 
-Could a run have multiple at once? That might allow us to support Promise.all wrapped. It would also allow more advanced use cases.
+Waitpoints can have an idempotencyKey which allows stops them from being created multiple times. This is especially useful for event waitpoints, where you don't want to create a new waitpoint for the same event twice.
 
-Could this be how we implement other features like `delay`, `rate limit`, and retries waiting before the next try?
+### Use cases
 
-Could we even open up a direct API/SDK for creating one inside a run (would pause execution)? And then completing one (would continue execution)? It could also be "failed" which the run could act upon differently.
+#### `wait.for()` or `wait.until()`
+Wait for a future time, then continue. We should add the option to pass an `idempotencyKey` so a second attempt doesn't wait again. By default it would wait again.
 
-## Notes from call with Eric
+#### `triggerAndWait()` or `batchTriggerAndWait()`
+Trigger and then wait for run(s) to finish. If the run fails it will still continue but with the errors so the developer can decide what to do.
 
-We could expose the API/SDK for creating/completing Waitpoints.
+### The `trigger` `delay` option
 
-> They need to be associated with attempts, because that's what gets continued. And if an attempts fails, we don't want to keep the waitpoints.
+When triggering a run and passing the `delay` option, we use a `DATETIME` waitpoint to block the run from starting.
 
-> We should have idempotency keys for `wait.for()` and `wait.until()`, so they wouldn't wait on a second attempt. "Waitpoints" have idempotency keys, and these are used for a `wait.forEvent()` (or whatever we call it).
+#### `wait.forRequest()`
+Wait until a request has been received at the URL that you are given. This is useful for pausing a run and then continuing it again when some external event occurs on another service. For example, Replicate have an API where they will callback when their work is complete.
 
-> How would debounce use this? When the waitpoint is completed, we would "clear" the "idempotencyKey" which would be the user-provided "debounceKey". It wouldn't literally clear it necessarily. Maybe another column `idempotencyKeyActive` would be set to `false`. Or move the key to another column, which is just for reference.
+#### `wait.forWaitpoint(waitpointId)`
 
-> `triggerAndWait`, cancelling a child task run. It would clear the waitpoint `idempotencyKey`, same as above.
+A more advanced SDK which would require uses to explicitly create a waitpoint. We would also need `createWaitpoint()`, `completeWaitpoint()`, and `failWaitpoint()`.
 
-> Copying the output from the run into the waitpoint actually does make sense. It simplifies the API for continuing runs.
+#### `wait.forRunToComplete(runId)`
 
-> Inside a run you could wait for another run or runs using the run ID. `const output = await wait.forRunToComplete(runId)`. This would basically just get a run by ID, then wait for it's waitpoint to be completed. This means every run would have a waitpoint associated with it.
+You could wait for another run (or runs) using their run ids. This would allow you to wait for runs that you haven't triggered inside that run.
 
-```ts
-//inside a run function
-import { runs } from "@trigger.dev/sdk/v3";
+#### Debouncing
 
-// Loop through all runs with the tag "user_123456" that have completed
+Using a `DateTime` waitpoint and an `idempotencyKey` debounce can be implemented.
 
-for await (const run of runs.list({ tag: "user_123456" })) {
-  await wait.forRunToComplete(run.id);
-}
-
-//wait for many runs to complete
-await wait.forRunToComplete(runId);
-await wait.forRunsToComplete({ tag: "user_123456" });
-```
-
-Rate limit inside a task. This is much trickier.
+Suggested usage:
 
 ```ts
-//simple time-based rate limit
-await wait.forRateLimit(`timed-${payload.user.id}`, { per: { minute: 10 } });
-
-const openAiResult = await wait.forRateLimit(
-  `openai-${payload.user.id}`,
-  { limit: 100, recharge: { seconds: 2 } },
-  (rateLimit, refreshes) => {
-    const result = await openai.createCompletion({
-      model: "gpt-3.5-turbo",
-      prompt: "What is the meaning of life?",
-    });
-    const tokensUsed = result.tokensUsed;
-
-    await rateLimit.used(tokensUsed);
-
-    return result;
-  }
+await myTask.trigger(
+  { some: "data" },
+  { debounce: { key: user.id, wait: "30s", maxWait: "2m", leading: true } }
 );
-
-//do stuff with openAiResult
 ```
 
-#### `triggerAndWait()` implementation
+Implementation:
 
-Inside the SDK
+The Waitpoint  `idempotencyKey` should be prefixed like `debounce-${debounce.key}`. Also probably with the `taskIdentifier`?
 
-```ts
-function triggerAndWait_internal(data) {
-  //if you don't pass in a string, it won't have a "key"
-  const waitpoint = await createWaitpoint();
-  const response = await apiClient.triggerTask({ ...data, waitpointId: waitpoint.id });
+1. When trigger is called with `debounce`, we check if there's an active waitpoint with the relevant `idempotencyKey`.
+2. If `leading` is false (default):
+   - If there's a waiting run: update its payload and extend the waitpoint's completionTime
+   - If no waiting run: create a new run and DATETIME waitpoint
+3. If `leading` is true:
+   - If there is no pending waitpoint: execute immediately but create a waitpoint with the idempotencyKey.
+   - If there is a pending waitpoint
+     - If there's a blocked run already, update the payload and extend the `completionTime`.
+     - If there's not a blocked run, create the run and block it with the waitpoint.
+4. If `maxWait` is specified:
+   - The waitpoint's completionTime is capped at the waitpoint `createdAt` + maxWait.
+   - Ensures execution happens even during constant triggering
+5. When the waitpoint is completed we need to clear the `idempotencyKey`. To clear an `idempotencyKey`, move the original value to the `inactiveIdempotencyKey` column and set the main one to a new randomly generated one.
 
-  //...do normal stuff
+//todo implement auto-deactivating of the idempotencyKey when the waitpoint is completed. This would make it easier to implement features like this.
 
-  // wait for the waitpoint to be completed
-  // in reality this probably needs to happen inside the runtime
-  const result = await waitpointCompletion(waitpoint.id);
-}
-```
+#### Rate limiting
 
-Pseudo-code for completing a run and completing the waitpoint:
+Both when triggering tasks and also any helpers we wanted inside the task.
 
-```ts
-function completeRun(tx, data) {
-  //complete the child run
-  const run = await tx.taskRun.update({ where: { id: runId }, data, include: { waitpoint } });
-  if (run.waitpoint) {
-    await completeWaitpoint(tx, { id: run.waitpoint.id });
+We could either use the DATETIME waitpoints. Or it might be easier to use an existing rate limiting library with Redis and receive notifications when a limit is cleared and complete associated waitpoints.
 
-    //todo in completeWaitpoint it would check if the blocked runs can now continue
-    //if they have no more blockers then they can continue
+## Emitting events
 
-    //batchTriggerAndWait with two items
-    //blocked_by: ["w_1", "w_2"]
-    //blocked_by: ["w_2"]
-    //blocked_by: [] then you can continue
-  }
-
-  const state = await tx.taskRunState.create({
-    where: { runId: id },
-    data: { runId, status: run.status },
-  });
-
-  const previousState = await tx.taskRunState.findFirst({ where: { runId: runId, latest: true } });
-  const waitingOn = previousState.waitingOn?.filter((w) => w !== waitpoint?.id) ?? [];
-
-  if (waitingOn.length === 0) {
-  }
-}
-```
-
-#### `batchTriggerAndWait()` implementation
-
-```ts
-//todo
-```
-
-### Example: User-defined waitpoint
-
-A user's backend code:
-
-```ts
-import { waitpoint } from "@trigger.dev/sdk/v3";
-import type { NextApiRequest, NextApiResponse } from "next";
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse<{ id: string }>) {
-  const userId = req.query.userId;
-  const isPaying = req.query.isPaying;
-
-  //internal SDK calls, this would be nicer for users to use
-  const waitpoint = waitpoint(`${userId}/onboarding-completed`);
-  await waitpoint.complete({ data: { isPaying } });
-
-  //todo instead this would be a single call
-
-  res.status(200).json(handle);
-}
-```
-
-Inside a user's run
-
-```ts
-export const myTask = task({
-  id: "my-task",
-  run: async (payload) => {
-    //it doesn't matter if this was completed before the run started
-    const result = await wait.forPoint<{ isPaying: boolean }>(
-      `${payload.userId}/onboarding-completed`
-    );
-  },
-});
-```
-
-### How would we implement `batchTriggerAndWait`?
-
-```ts
-
-```
-
-## How does it work?
-
-It's very important that a run can only be acted on by one process at a time. We lock runs using RedLock while they're being mutated. This prevents some network-related race conditions like the timing of checkpoints and heartbeats permanently hanging runs.
-
-# Sending messages to the worker
-
-Sending messages to the worker is challenging because we many servers and we're going to have many workers. We need to make sure that the message is sent to the correct worker.
-
-We could add timeouts using the heartbeat system
-
-## #continueRun
-When all waitpoints are finished, we need to continue a run. Sometimes they're still running in the cluster.
+The Run Engine emits events using its `eventBus`. This is used for runs completing, failing, or things that any workers should be aware of.
 
 # Legacy system
 
