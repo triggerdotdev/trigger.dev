@@ -756,14 +756,41 @@ export class RunEngine {
           }
         } catch (error) {
           this.logger.error(
-            "RunEngine.dequeueFromMasterQueue(): Error while preparing run to be run",
+            "RunEngine.dequeueFromMasterQueue(): Thrown error while preparing run to be run",
             {
               error,
               runId,
             }
           );
 
-          await this.runQueue.nackMessage(orgId, runId);
+          const run = await prisma.taskRun.findFirst({ where: { id: runId } });
+
+          if (!run) {
+            //this isn't ideal because we're not creating a snapshot… but we can't do much else
+            this.logger.error(
+              "RunEngine.dequeueFromMasterQueue(): Thrown error, then run not found. Nacking.",
+              {
+                runId,
+                orgId,
+              }
+            );
+            await this.runQueue.nackMessage(orgId, runId);
+            continue;
+          }
+
+          //this is an unknown error, we'll reattempt (with auto-backoff and eventually DLQ)
+          const gotRequeued = await this.#tryNackAndRequeue({
+            run,
+            orgId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+              message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
+            },
+            tx: prisma,
+          });
+          //we don't need this, but it makes it clear we're in a loop here
+          continue;
         }
       }
 
@@ -1956,35 +1983,35 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     await this.runLock.lock([run.id], 5000, async (signal) => {
-    const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-      run: run,
-      snapshot: {
-        executionStatus: "QUEUED",
-        description: "Run was QUEUED",
-      },
-    });
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run: run,
+        snapshot: {
+          executionStatus: "QUEUED",
+          description: "Run was QUEUED",
+        },
+      });
 
-    const masterQueues = [run.masterQueue];
-    if (run.secondaryMasterQueue) {
-      masterQueues.push(run.secondaryMasterQueue);
-    }
+      const masterQueues = [run.masterQueue];
+      if (run.secondaryMasterQueue) {
+        masterQueues.push(run.secondaryMasterQueue);
+      }
 
-    await this.runQueue.enqueueMessage({
-      env,
-      masterQueues,
-      message: {
-        runId: run.id,
-        taskIdentifier: run.taskIdentifier,
-        orgId: env.organization.id,
-        projectId: env.project.id,
-        environmentId: env.id,
-        environmentType: env.type,
-        queue: run.queue,
-        concurrencyKey: run.concurrencyKey ?? undefined,
-        timestamp: timestamp ?? Date.now(),
-        attempt: 0,
-      },
-    });
+      await this.runQueue.enqueueMessage({
+        env,
+        masterQueues,
+        message: {
+          runId: run.id,
+          taskIdentifier: run.taskIdentifier,
+          orgId: env.organization.id,
+          projectId: env.project.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          queue: run.queue,
+          concurrencyKey: run.concurrencyKey ?? undefined,
+          timestamp: timestamp ?? Date.now(),
+          attempt: 0,
+        },
+      });
     });
   }
 
@@ -2404,35 +2431,35 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
     return await this.runLock.lock([runId], 5_000, async (signal) => {
       const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
-    if (latestSnapshot.id !== snapshotId) {
-      this.logger.log(
-        "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
-        {
-          runId,
-          snapshotId,
-          latestSnapshot: latestSnapshot,
+      if (latestSnapshot.id !== snapshotId) {
+        this.logger.log(
+          "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
+          {
+            runId,
+            snapshotId,
+            latestSnapshot: latestSnapshot,
+          }
+        );
+
+        await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+        return;
+      }
+
+      this.logger.log("RunEngine.#handleStalledSnapshot() handling stalled snapshot", {
+        runId,
+        snapshot: latestSnapshot,
+      });
+
+      switch (latestSnapshot.executionStatus) {
+        case "RUN_CREATED": {
+          //we need to check if the run is still created
+          throw new NotImplementedError("Not implemented RUN_CREATED");
         }
-      );
-
-      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
-      return;
-    }
-
-    this.logger.log("RunEngine.#handleStalledSnapshot() handling stalled snapshot", {
-      runId,
-      snapshot: latestSnapshot,
-    });
-
-    switch (latestSnapshot.executionStatus) {
-      case "RUN_CREATED": {
-        //we need to check if the run is still created
-        throw new NotImplementedError("Not implemented RUN_CREATED");
-      }
-      case "QUEUED": {
-        //we need to check if the run is still QUEUED
-        throw new NotImplementedError("Not implemented QUEUED");
-      }
-      case "PENDING_EXECUTING": {
+        case "QUEUED": {
+          //we need to check if the run is still QUEUED
+          throw new NotImplementedError("Not implemented QUEUED");
+        }
+        case "PENDING_EXECUTING": {
           //the run didn't start executing, we need to requeue it
           const run = await prisma.taskRun.findFirst({
             where: { id: runId },
@@ -2468,34 +2495,34 @@ export class RunEngine {
             },
             tx: prisma,
           });
+        }
+        case "EXECUTING": {
+          //we need to check if the run is still executing
+          throw new NotImplementedError("Not implemented EXECUTING");
+        }
+        case "EXECUTING_WITH_WAITPOINTS": {
+          //we need to check if the run is still executing
+          throw new NotImplementedError("Not implemented EXECUTING_WITH_WAITPOINTS");
+        }
+        case "BLOCKED_BY_WAITPOINTS": {
+          //we need to check if the waitpoints are still blocking the run
+          throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
+        }
+        case "PENDING_CANCEL": {
+          await this.cancelRun({
+            runId: latestSnapshot.runId,
+            finalizeRun: true,
+            tx,
+          });
+        }
+        case "FINISHED": {
+          //we need to check if the run is still finished
+          throw new NotImplementedError("Not implemented FINISHED");
+        }
+        default: {
+          assertNever(latestSnapshot.executionStatus);
+        }
       }
-      case "EXECUTING": {
-        //we need to check if the run is still executing
-        throw new NotImplementedError("Not implemented EXECUTING");
-      }
-      case "EXECUTING_WITH_WAITPOINTS": {
-        //we need to check if the run is still executing
-        throw new NotImplementedError("Not implemented EXECUTING_WITH_WAITPOINTS");
-      }
-      case "BLOCKED_BY_WAITPOINTS": {
-        //we need to check if the waitpoints are still blocking the run
-        throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
-      }
-      case "PENDING_CANCEL": {
-        await this.cancelRun({
-          runId: latestSnapshot.runId,
-          finalizeRun: true,
-          tx,
-        });
-      }
-      case "FINISHED": {
-        //we need to check if the run is still finished
-        throw new NotImplementedError("Not implemented FINISHED");
-      }
-      default: {
-        assertNever(latestSnapshot.executionStatus);
-      }
-    }
     });
   }
 
