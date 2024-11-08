@@ -488,7 +488,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
     const prisma = tx ?? this.prisma;
-    return this.#trace("createRunAttempt", { consumerId, masterQueue }, async (span) => {
+    return this.#trace("dequeueFromMasterQueue", { consumerId, masterQueue }, async (span) => {
       //gets multiple runs from the queue
       const messages = await this.runQueue.dequeueMessageFromMasterQueue(
         consumerId,
@@ -853,7 +853,7 @@ export class RunEngine {
   }) {
     const prisma = tx ?? this.prisma;
 
-    return this.#trace("createRunAttempt", { runId, snapshotId }, async (span) => {
+    return this.#trace("startRunAttempt", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5000, async (signal) => {
         const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
 
@@ -1693,7 +1693,29 @@ export class RunEngine {
     runId: string;
     error: TaskRunInternalError;
     tx?: PrismaClientOrTransaction;
-  }) {}
+  }) {
+    const prisma = tx ?? this.prisma;
+    return this.#trace("#systemFailure", { runId }, async (span) => {
+      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+
+      //already finished
+      if (latestSnapshot.executionStatus === "FINISHED") {
+        //todo check run is in the correct state
+        return;
+      }
+
+      await this.#attemptFailed({
+        runId,
+        snapshotId: latestSnapshot.id,
+        completion: {
+          ok: false,
+          id: runId,
+          error,
+        },
+        tx: prisma,
+      });
+    });
+  }
 
   async #crash({
     runId,
