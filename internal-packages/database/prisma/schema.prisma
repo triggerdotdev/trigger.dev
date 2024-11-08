@@ -2004,7 +2004,13 @@ model Waitpoint {
 
   /// If it's an Event type waitpoint, this is the event. It can also be provided for the DATETIME type
   idempotencyKey             String
+  /// If this is true then we can show it in the dashboard/return it from the SDK
   userProvidedIdempotencyKey Boolean
+
+  //todo
+  /// Will automatically deactivate the idempotencyKey when the waitpoint is completed
+  /// "Deactivating" means moving it to the inactiveIdempotencyKey field and generating a random new one for the main column
+  /// deactivateIdempotencyKeyWhenCompleted Boolean @default(false)
 
   /// If an idempotencyKey is no longer active, we store it here and generate a new one for the idempotencyKey field.
   /// Clearing an idempotencyKey is useful for debounce or cancelling child runs.
