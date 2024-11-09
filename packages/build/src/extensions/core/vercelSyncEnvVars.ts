@@ -1,7 +1,7 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { syncEnvVars } from "../core.js";
 
-export function syncVercelEnvVars(
+export function vercelSyncEnvVars(
   options?: { projectId?: string; vercelAccessToken?: string; vercelTeamId?: string },
 ): BuildExtension {
   const sync = syncEnvVars(async (ctx) => {
