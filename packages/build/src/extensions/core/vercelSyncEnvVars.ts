@@ -39,9 +39,9 @@ export function syncVercelEnvVars(
         `Invalid environment '${ctx.environment}'. Expected 'prod', 'staging', or 'dev'.`,
       );
     }
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ decrypt: "true" });
     if (vercelTeamId) params.set("teamId", vercelTeamId);
-    const vercelApiUrl = `https://api.vercel.com/v9/projects/${projectId}/env?${params}`;
+    const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
 
     try {
       const response = await fetch(vercelApiUrl, {
