@@ -340,7 +340,7 @@ describe("RunEngine heartbeats", () => {
         });
 
         //create an attempt
-        const attemptResult = await engine.startRunAttempt({
+        await engine.startRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: dequeued[0].snapshot.id,
         });
@@ -354,33 +354,39 @@ describe("RunEngine heartbeats", () => {
         //wait long enough for the heartbeat to timeout
         await setTimeout(1_000);
 
-        //expect it to be pending with 3 consecutiveFailures
+        //expect it to be queued again
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
-        // await setTimeout(500);
+        //have to dequeue again
+        const dequeued2 = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+        expect(dequeued2.length).toBe(1);
 
-        // //have to dequeue again
-        // const dequeued2 = await engine.dequeueFromMasterQueue({
-        //   consumerId: "test_12345",
-        //   masterQueue: run.masterQueue,
-        //   maxRunCount: 10,
-        // });
-        // expect(dequeued2.length).toBe(1);
+        //create an attempt
+        await engine.startRunAttempt({
+          runId: dequeued2[0].run.id,
+          snapshotId: dequeued2[0].snapshot.id,
+        });
 
-        // //expect it to be pending
-        // const executionData3 = await engine.getRunExecutionData({ runId: run.id });
-        // assertNonNullable(executionData3);
-        // expect(executionData3.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+        //should be executing
+        const executionData3 = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData3);
+        expect(executionData3.snapshot.executionStatus).toBe("EXECUTING");
+        expect(executionData3.run.status).toBe("EXECUTING");
 
-        // await setTimeout(executingTimeout * 3);
+        //again wait long enough that the heartbeat fails
+        await setTimeout(1_000);
 
-        // //expect it to be pending with 3 consecutiveFailures
-        // const executionData4 = await engine.getRunExecutionData({ runId: run.id });
-        // assertNonNullable(executionData4);
-        // expect(executionData4.snapshot.executionStatus).toBe("FINISHED");
-        // expect(executionData4.run.status).toBe("SYSTEM_FAILURE");
+        //expect it to be queued again
+        const executionData4 = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData4);
+        expect(executionData4.snapshot.executionStatus).toBe("FINISHED");
+        expect(executionData4.run.status).toBe("SYSTEM_FAILURE");
       } finally {
         await engine.quit();
       }
