@@ -108,6 +108,8 @@ export const TaskRunInternalError = z.object({
     "TASK_DEQUEUED_INVALID_STATE",
     "TASK_DEQUEUED_QUEUE_NOT_FOUND",
     "TASK_RUN_DEQUEUED_MAX_RETRIES",
+    "TASK_RUN_STALLED_EXECUTING",
+    "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
     "OUTDATED_SDK_VERSION",
   ]),
   message: z.string().optional(),

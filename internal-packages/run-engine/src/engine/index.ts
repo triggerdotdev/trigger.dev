@@ -1814,11 +1814,13 @@ export class RunEngine {
     runId,
     snapshotId,
     completion,
+    forceRequeue,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunFailedExecutionResult;
+    forceRequeue?: boolean;
     tx: PrismaClientOrTransaction;
   }): Promise<"COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY"> {
     const prisma = this.prisma;
@@ -1899,8 +1901,9 @@ export class RunEngine {
 
           //if it's a long delay and we support checkpointing, put it back in the queue
           if (
-            this.options.retryWarmStartThresholdMs !== undefined &&
-            completion.retry.delay >= this.options.retryWarmStartThresholdMs
+            forceRequeue ||
+            (this.options.retryWarmStartThresholdMs !== undefined &&
+              completion.retry.delay >= this.options.retryWarmStartThresholdMs)
           ) {
             //we nack the message, this allows another work to pick up the run
             const gotRequeued = await this.#tryNackAndRequeue({
@@ -2474,12 +2477,10 @@ export class RunEngine {
 
       switch (latestSnapshot.executionStatus) {
         case "RUN_CREATED": {
-          //we need to check if the run is still created
-          throw new NotImplementedError("Not implemented RUN_CREATED");
+          throw new NotImplementedError("There shouldn't be a heartbeat for RUN_CREATED");
         }
         case "QUEUED": {
-          //we need to check if the run is still QUEUED
-          throw new NotImplementedError("Not implemented QUEUED");
+          throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED");
         }
         case "PENDING_EXECUTING": {
           //the run didn't start executing, we need to requeue it
@@ -2517,29 +2518,56 @@ export class RunEngine {
             },
             tx: prisma,
           });
+          break;
         }
-        case "EXECUTING": {
-          //we need to check if the run is still executing
-          throw new NotImplementedError("Not implemented EXECUTING");
-        }
+        case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
-          //we need to check if the run is still executing
-          throw new NotImplementedError("Not implemented EXECUTING_WITH_WAITPOINTS");
+
+          const retryDelay = 250;
+
+          //todo call attemptFailed and force requeuing
+          await this.#attemptFailed({
+            runId,
+            snapshotId: latestSnapshot.id,
+            completion: {
+              ok: false,
+              id: runId,
+              error: {
+                type: "INTERNAL_ERROR",
+                code:
+                  latestSnapshot.executionStatus === "EXECUTING"
+                    ? "TASK_RUN_STALLED_EXECUTING"
+                    : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
+                message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
+              },
+              retry: {
+                //250ms in the future
+                timestamp: Date.now() + retryDelay,
+                delay: retryDelay,
+              },
+            },
+            forceRequeue: true,
+            tx: prisma,
+          });
+          break;
         }
         case "BLOCKED_BY_WAITPOINTS": {
-          //we need to check if the waitpoints are still blocking the run
+          //todo should we do a periodic check here for whether waitpoints are actually still blocking?
+          //we could at least log some things out if a run has been in this state for a long time
           throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
         }
         case "PENDING_CANCEL": {
+          //if the run is waiting to cancel but the worker hasn't confirmed that,
+          //we force the run to be cancelled
           await this.cancelRun({
             runId: latestSnapshot.runId,
             finalizeRun: true,
             tx,
           });
+          break;
         }
         case "FINISHED": {
-          //we need to check if the run is still finished
-          throw new NotImplementedError("Not implemented FINISHED");
+          throw new NotImplementedError("There shouldn't be a heartbeat for FINISHED");
         }
         default: {
           assertNever(latestSnapshot.executionStatus);
