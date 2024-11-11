@@ -945,6 +945,18 @@ export class RunEngine {
           throw new ServiceValidationError("Max attempts reached", 400);
         }
 
+        this.eventBus.emit("runAttemptStarted", {
+          time: new Date(),
+          run: {
+            id: taskRun.id,
+            attemptNumber: nextAttemptNumber,
+            baseCostInCents: taskRun.baseCostInCents,
+          },
+          organization: {
+            id: environment.organization.id,
+          },
+        });
+
         const result = await $transaction(
           prisma,
           async (tx) => {

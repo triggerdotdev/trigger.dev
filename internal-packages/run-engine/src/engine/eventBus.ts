@@ -3,6 +3,21 @@ import { AuthenticatedEnvironment } from "../shared";
 import { TaskRunError } from "@trigger.dev/core/v3";
 
 export type EventBusEvents = {
+  //todo reportInvocationUsage()
+  runAttemptStarted: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        attemptNumber: number;
+        baseCostInCents: number;
+      };
+      organization: {
+        id: string;
+      };
+    },
+  ];
+  //todo eventRepository
   runExpired: [
     {
       time: Date;
@@ -13,6 +28,7 @@ export type EventBusEvents = {
       };
     },
   ];
+  //todo eventRepository
   runSucceeded: [
     {
       time: Date;
@@ -24,6 +40,7 @@ export type EventBusEvents = {
       };
     },
   ];
+  //todo eventRepository
   runFailed: [
     {
       time: Date;
@@ -35,6 +52,7 @@ export type EventBusEvents = {
       };
     },
   ];
+  //todo eventRepository
   runRetryScheduled: [
     {
       time: Date;
@@ -49,6 +67,7 @@ export type EventBusEvents = {
       retryAt: Date;
     },
   ];
+  //todo eventRepository
   runCancelled: [
     {
       time: Date;
@@ -59,6 +78,7 @@ export type EventBusEvents = {
       };
     },
   ];
+  //todo send socket message to the worker
   workerNotification: [
     {
       time: Date;
@@ -67,6 +87,7 @@ export type EventBusEvents = {
       };
     },
   ];
+  //todo advanced logging
   executionSnapshotCreated: [
     {
       time: Date;

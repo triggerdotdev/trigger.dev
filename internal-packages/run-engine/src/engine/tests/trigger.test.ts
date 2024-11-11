@@ -37,7 +37,7 @@ describe("RunEngine trigger()", () => {
             centsPerMs: 0.0001,
           },
         },
-        baseCostInCents: 0.0001,
+        baseCostInCents: 0.0005,
       },
       tracer: trace.getTracer("test", "0.0.0"),
     });
@@ -122,6 +122,11 @@ describe("RunEngine trigger()", () => {
       );
       expect(envConcurrencyAfter).toBe(1);
 
+      let attemptEvent: EventBusEventArgs<"runAttemptStarted">[0] | undefined = undefined;
+      engine.eventBus.on("runAttemptStarted", (result) => {
+        attemptEvent = result;
+      });
+
       //create an attempt
       const attemptResult = await engine.startRunAttempt({
         runId: dequeued[0].run.id,
@@ -131,15 +136,21 @@ describe("RunEngine trigger()", () => {
       expect(attemptResult.run.status).toBe("EXECUTING");
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
+      //attempt event
+      assertNonNullable(attemptEvent);
+      const attemptedEvent = attemptEvent as EventBusEventArgs<"runAttemptStarted">[0];
+      expect(attemptedEvent.run.id).toBe(run.id);
+      expect(attemptedEvent.run.baseCostInCents).toBe(0.0005);
+
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);
       expect(executionData2.snapshot.executionStatus).toBe("EXECUTING");
       expect(executionData2.run.attemptNumber).toBe(1);
       expect(executionData2.run.status).toBe("EXECUTING");
 
-      let event: EventBusEventArgs<"runSucceeded">[0] | undefined = undefined;
+      let successEvent: EventBusEventArgs<"runSucceeded">[0] | undefined = undefined;
       engine.eventBus.on("runSucceeded", (result) => {
-        event = result;
+        successEvent = result;
       });
 
       //complete the run
@@ -162,9 +173,9 @@ describe("RunEngine trigger()", () => {
       expect(executionData3.run.attemptNumber).toBe(1);
       expect(executionData3.run.status).toBe("COMPLETED_SUCCESSFULLY");
 
-      //event
-      assertNonNullable(event);
-      const completedEvent = event as EventBusEventArgs<"runSucceeded">[0];
+      //success event
+      assertNonNullable(successEvent);
+      const completedEvent = successEvent as EventBusEventArgs<"runSucceeded">[0];
       expect(completedEvent.run.spanId).toBe(run.spanId);
       expect(completedEvent.run.output).toBe('{"foo":"bar"}');
       expect(completedEvent.run.outputType).toBe("application/json");
