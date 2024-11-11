@@ -468,10 +468,6 @@ export class RunEngine {
    */
   async batchTrigger() {}
 
-  async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment) {
-    return this.runQueue.lengthOfEnvQueue(environment);
-  }
-
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
    * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
@@ -1467,6 +1463,10 @@ export class RunEngine {
         return updatedRun;
       });
     });
+  }
+
+  async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment) {
+    return this.runQueue.lengthOfEnvQueue(environment);
   }
 
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
