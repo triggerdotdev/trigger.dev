@@ -79,7 +79,7 @@ They can have output data associated with them, e.g. the finished run payload. T
 There are currently three types:
   - `RUN` which gets completed when the associated run completes. Every run has an `associatedWaitpoint` that matches the lifetime of the run.
   - `DATETIME` which gets completed when the datetime is reached.
-  - `EVENT` which gets completed when that event occurs.
+  - `MANUAL` which gets completed when that event occurs.
 
 Waitpoints can have an idempotencyKey which allows stops them from being created multiple times. This is especially useful for event waitpoints, where you don't want to create a new waitpoint for the same event twice.
 
@@ -87,6 +87,11 @@ Waitpoints can have an idempotencyKey which allows stops them from being created
 
 #### `wait.for()` or `wait.until()`
 Wait for a future time, then continue. We should add the option to pass an `idempotencyKey` so a second attempt doesn't wait again. By default it would wait again.
+
+```ts
+await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "first-wait" });
+await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "second-wait" });
+```
 
 #### `triggerAndWait()` or `batchTriggerAndWait()`
 Trigger and then wait for run(s) to finish. If the run fails it will still continue but with the errors so the developer can decide what to do.
@@ -102,6 +107,24 @@ Wait until a request has been received at the URL that you are given. This is us
 
 A more advanced SDK which would require uses to explicitly create a waitpoint. We would also need `createWaitpoint()`, `completeWaitpoint()`, and `failWaitpoint()`.
 
+```ts
+const waitpoint = await waitpoints.create({ idempotencyKey: `purchase-${payload.cart.id}` });
+const waitpoint = await waitpoints.retrieve(waitpoint.id);
+const waitpoint = await waitpoints.complete(waitpoint.id, result);
+const waitpoint = await waitpoints.fail(waitpoint.id, error);
+
+export const approvalFlow = task({
+  id: "approvalFlow",
+  run: async (payload) => {
+    //...do stuff
+
+    await wait.forWaitpoint(waitpoint.id, { timeout: "1h" });
+
+    //...do more stuff
+  },
+});
+```
+
 #### `wait.forRunToComplete(runId)`
 
 You could wait for another run (or runs) using their run ids. This would allow you to wait for runs that you haven't triggered inside that run.
@@ -115,9 +138,11 @@ Suggested usage:
 ```ts
 await myTask.trigger(
   { some: "data" },
-  { debounce: { key: user.id, wait: "30s", maxWait: "2m", leading: true } }
+  { debounce: { key: user.id, wait: "30s", maxWait: "2m", } }
 );
 ```
+
+//todo do you get the first or last payload when it triggers? Bit confusing with leading.
 
 Implementation:
 
@@ -127,15 +152,10 @@ The Waitpoint  `idempotencyKey` should be prefixed like `debounce-${debounce.key
 2. If `leading` is false (default):
    - If there's a waiting run: update its payload and extend the waitpoint's completionTime
    - If no waiting run: create a new run and DATETIME waitpoint
-3. If `leading` is true:
-   - If there is no pending waitpoint: execute immediately but create a waitpoint with the idempotencyKey.
-   - If there is a pending waitpoint
-     - If there's a blocked run already, update the payload and extend the `completionTime`.
-     - If there's not a blocked run, create the run and block it with the waitpoint.
-4. If `maxWait` is specified:
+3. If `maxWait` is specified:
    - The waitpoint's completionTime is capped at the waitpoint `createdAt` + maxWait.
    - Ensures execution happens even during constant triggering
-5. When the waitpoint is completed we need to clear the `idempotencyKey`. To clear an `idempotencyKey`, move the original value to the `inactiveIdempotencyKey` column and set the main one to a new randomly generated one.
+4. When the waitpoint is completed we need to clear the `idempotencyKey`. To clear an `idempotencyKey`, move the original value to the `inactiveIdempotencyKey` column and set the main one to a new randomly generated one.
 
 //todo implement auto-deactivating of the idempotencyKey when the waitpoint is completed. This would make it easier to implement features like this.
 
