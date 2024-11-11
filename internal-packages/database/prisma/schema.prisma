@@ -2050,7 +2050,7 @@ model Waitpoint {
 enum WaitpointType {
   RUN
   DATETIME
-  EVENT
+  MANUAL
 }
 
 enum WaitpointStatus {
