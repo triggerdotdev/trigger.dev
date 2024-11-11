@@ -219,14 +219,12 @@ describe("RunEngine heartbeats", () => {
         assertNonNullable(executionData);
         expect(executionData.snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
-        await setTimeout(pendingExecutingTimeout * 2);
+        await setTimeout(500);
 
         //expect it to be pending with 3 consecutiveFailures
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
-
-        await setTimeout(500);
 
         //have to dequeue again
         const dequeued2 = await engine.dequeueFromMasterQueue({
