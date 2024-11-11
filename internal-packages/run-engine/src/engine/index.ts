@@ -120,9 +120,10 @@ type TriggerParams = {
 type CompleteAttemptResult = "COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY";
 
 const workerCatalog = {
-  waitpointCompleteDateTime: {
+  finishWaitpoint: {
     schema: z.object({
       waitpointId: z.string(),
+      error: z.string().optional(),
     }),
     visibilityTimeoutMs: 5000,
   },
@@ -188,8 +189,16 @@ export class RunEngine {
       pollIntervalMs: options.worker.pollIntervalMs,
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
-        waitpointCompleteDateTime: async ({ payload }) => {
-          await this.completeWaitpoint({ id: payload.waitpointId });
+        finishWaitpoint: async ({ payload }) => {
+          await this.completeWaitpoint({
+            id: payload.waitpointId,
+            output: payload.error
+              ? {
+                  value: payload.error,
+                  isError: true,
+                }
+              : undefined,
+          });
         },
         heartbeatSnapshot: async ({ payload }) => {
           await this.#handleStalledSnapshot(payload);
@@ -1532,12 +1541,14 @@ export class RunEngine {
     runId,
     waitpointId,
     projectId,
+    failAfter,
     tx,
   }: {
     runId: string;
     waitpointId: string;
     environmentId: string;
     projectId: string;
+    failAfter?: Date;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -1573,6 +1584,15 @@ export class RunEngine {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
           },
+        });
+      }
+
+      if (failAfter) {
+        await this.worker.enqueue({
+          id: `finishWaitpoint.${waitpointId}`,
+          job: "finishWaitpoint",
+          payload: { waitpointId, error: "Waitpoint timed out" },
+          availableAt: failAfter,
         });
       }
     });
@@ -2303,8 +2323,8 @@ export class RunEngine {
     });
 
     await this.worker.enqueue({
-      id: `waitpointCompleteDateTime.${waitpoint.id}`,
-      job: "waitpointCompleteDateTime",
+      id: `finishWaitpoint.${waitpoint.id}`,
+      job: "finishWaitpoint",
       payload: { waitpointId: waitpoint.id },
       availableAt: completedAfter,
     });
@@ -2342,8 +2362,8 @@ export class RunEngine {
 
     //reschedule completion
     await this.worker.enqueue({
-      id: `waitpointCompleteDateTime.${waitpointId}`,
-      job: "waitpointCompleteDateTime",
+      id: `finishWaitpoint.${waitpointId}`,
+      job: "finishWaitpoint",
       payload: { waitpointId: waitpointId },
       availableAt: completedAfter,
     });

@@ -118,7 +118,10 @@ export const approvalFlow = task({
   run: async (payload) => {
     //...do stuff
 
-    await wait.forWaitpoint(waitpoint.id, { timeout: "1h" });
+    const result = await wait.forWaitpoint(waitpoint.id, { timeout: "1h" });
+    if (!result.ok) {
+      //...timeout
+    }
 
     //...do more stuff
   },
