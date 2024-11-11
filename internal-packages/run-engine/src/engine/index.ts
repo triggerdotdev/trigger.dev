@@ -569,30 +569,13 @@ export class RunEngine {
                     result,
                   });
 
-                  if (result.run.runtimeEnvironment.type === "DEVELOPMENT") {
-                    //it will automatically be requeued X times depending on the queue retry settings
-                    const gotRequeued = await this.runQueue.nackMessage(orgId, runId);
-
-                    if (!gotRequeued) {
-                      await this.#systemFailure({
-                        runId: result.run.id,
-                        error: {
-                          type: "INTERNAL_ERROR",
-                          code: "COULD_NOT_FIND_TASK",
-                          message: `We tried to dequeue this DEV run multiple times but could not find the task to run: ${result.run.taskIdentifier}`,
-                        },
-                        tx: prisma,
-                      });
-                    }
-                  } else {
-                    //not deployed yet, so we'll wait for the deploy
-                    await this.#waitingForDeploy({
-                      runId,
-                      tx: prisma,
-                    });
-                    //we ack because when it's deployed it will be requeued
-                    await this.runQueue.acknowledgeMessage(orgId, runId);
-                  }
+                  //not deployed yet, so we'll wait for the deploy
+                  await this.#waitingForDeploy({
+                    runId,
+                    tx: prisma,
+                  });
+                  //we ack because when it's deployed it will be requeued
+                  await this.runQueue.acknowledgeMessage(orgId, runId);
 
                   return null;
                 }
@@ -1593,9 +1576,9 @@ export class RunEngine {
         };
       }
 
-      //we know it's the latest snapshot, so we can checkpoint
-
       //todo check the status is checkpointable
+
+      //create a new execution snapshot, with the checkpoint
 
       //todo return a Result, which will determine if the server is allowed to shutdown
     });
