@@ -5,100 +5,93 @@ export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;
 };
 
+const END_SENTINEL = "<<CLOSE_STREAM>>";
+
 export class RealtimeStreams {
   constructor(private options: RealtimeStreamsOptions) {}
 
   async streamResponse(runId: string, streamId: string, signal: AbortSignal): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
+    let isCleanedUp = false;
 
-    const stream = new TransformStream({
-      transform(chunk: string, controller) {
+    const stream = new ReadableStream({
+      start: async (controller) => {
+        let lastId = "0";
+        let retryCount = 0;
+        const maxRetries = 3;
+
         try {
-          const data = JSON.parse(chunk);
+          while (!signal.aborted) {
+            try {
+              const messages = await redis.xread(
+                "COUNT",
+                100,
+                "BLOCK",
+                5000,
+                "STREAMS",
+                streamKey,
+                lastId
+              );
 
-          if (typeof data === "object" && data !== null && "__end" in data && data.__end === true) {
-            controller.terminate();
-            return;
+              retryCount = 0;
+
+              if (messages && messages.length > 0) {
+                const [_key, entries] = messages[0];
+
+                for (const [id, fields] of entries) {
+                  lastId = id;
+
+                  if (fields && fields.length >= 2) {
+                    if (fields[1] === END_SENTINEL) {
+                      controller.close();
+                      return;
+                    }
+                    controller.enqueue(`data: ${fields[1]}\n\n`);
+
+                    if (signal.aborted) {
+                      controller.close();
+                      return;
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              if (signal.aborted) break;
+
+              console.error("Error reading from Redis stream:", error);
+              retryCount++;
+              if (retryCount >= maxRetries) throw error;
+              await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+            }
           }
-          controller.enqueue(`data: ${chunk}\n\n`);
         } catch (error) {
-          console.error("Invalid JSON in stream:", error);
+          console.error("Fatal error in stream processing:", error);
+          controller.error(error);
+        } finally {
+          await cleanup();
         }
+      },
+      cancel: async () => {
+        await cleanup();
       },
     });
 
-    const response = new Response(stream.readable, {
+    async function cleanup() {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      await redis.quit().catch(console.error);
+    }
+
+    signal.addEventListener("abort", cleanup);
+
+    return new Response(stream.pipeThrough(new TextEncoderStream()), {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       },
     });
-
-    let isCleanedUp = false;
-
-    async function cleanup() {
-      if (isCleanedUp) return;
-      isCleanedUp = true;
-      await redis.quit();
-      const writer = stream.writable.getWriter();
-      if (writer) await writer.close().catch(() => {}); // Ensure close doesn't error if already closed
-    }
-
-    signal.addEventListener("abort", cleanup);
-
-    (async () => {
-      let lastId = "0";
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      try {
-        while (!signal.aborted) {
-          try {
-            const messages = await redis.xread(
-              "COUNT",
-              100,
-              "BLOCK",
-              5000,
-              "STREAMS",
-              streamKey,
-              lastId
-            );
-
-            retryCount = 0;
-
-            if (messages && messages.length > 0) {
-              const [_key, entries] = messages[0];
-
-              for (const [id, fields] of entries) {
-                lastId = id;
-
-                if (fields && fields.length >= 2 && !stream.writable.locked) {
-                  const writer = stream.writable.getWriter();
-                  try {
-                    await writer.write(fields[1]);
-                  } finally {
-                    writer.releaseLock();
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            console.error("Error reading from Redis stream:", error);
-            retryCount++;
-            if (retryCount >= maxRetries) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
-          }
-        }
-      } catch (error) {
-        console.error("Fatal error in stream processing:", error);
-      } finally {
-        await cleanup();
-      }
-    })();
-
-    return response;
   }
 
   async ingestData(
@@ -166,8 +159,7 @@ export class RealtimeStreams {
       }
 
       // Send the __end message to indicate the end of the stream
-      const endData = JSON.stringify({ __end: true });
-      await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", endData);
+      await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", END_SENTINEL);
 
       return new Response(null, { status: 200 });
     } catch (error) {

@@ -10,6 +10,7 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiClient } from "./index.js";
 import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
+import { EventSourceParserStream } from "eventsource-parser/stream";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -121,43 +122,18 @@ export class SSEStreamSubscription implements StreamSubscription {
       throw new Error("No response body");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+    const reader = response.body
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(new EventSourceParserStream())
+      .getReader();
 
-    (async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
+    while (true) {
+      const { done, value } = await reader.read();
 
-          if (done) break;
+      if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (line.trim() && !line.startsWith(":")) {
-              try {
-                // Strip the "data: " prefix before parsing
-                const data = line.replace(/^data: /, "");
-                const chunk = JSON.parse(data);
-                await onChunk(chunk);
-              } catch (e) {
-                console.error("Error parsing stream chunk:", e);
-                console.error("Raw line:", line);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        console.error("Error in stream subscription:", error);
-      }
-    })();
+      await onChunk(safeParseJSON(value.data));
+    }
 
     return () => reader.cancel();
   }
@@ -392,5 +368,13 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     default: {
       throw new Error(`Unknown status: ${status}`);
     }
+  }
+}
+
+function safeParseJSON(data: string): unknown {
+  try {
+    return JSON.parse(data);
+  } catch (error) {
+    return data;
   }
 }

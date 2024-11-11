@@ -1307,6 +1307,9 @@ importers:
       dequal:
         specifier: ^2.0.3
         version: 2.0.3
+      eventsource-parser:
+        specifier: ^3.0.0
+        version: 3.0.0
       execa:
         specifier: ^8.0.1
         version: 8.0.1
@@ -20292,6 +20295,11 @@ packages:
   /eventsource-parser@1.1.2:
     resolution: {integrity: sha512-v0eOBUbiaFojBu2s2NPBfYUoRR9GjcDNvCXVaqEf5vVfpIAh9f8RCo4vXTP8c63QRKCFwoLpMpTdPwwhEKVgzA==}
     engines: {node: '>=14.18'}
+    dev: false
+
+  /eventsource-parser@3.0.0:
+    resolution: {integrity: sha512-T1C0XCUimhxVQzW4zFipdx0SficT651NnkR0ZSH3yQwh+mFMdLfgjABVi4YtMTtaL4s168593DaoaRLMqryavA==}
+    engines: {node: '>=18.0.0'}
     dev: false
 
   /evt@2.4.13:

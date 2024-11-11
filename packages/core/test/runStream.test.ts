@@ -68,7 +68,7 @@ class DelayedTestShapeProvider implements RunShapeProvider {
   async onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void> {
     // Only emit the first shape immediately
     if (this.shapes.length > 0) {
-      await callback(this.shapes[this.currentShapeIndex++]);
+      await callback(this.shapes[this.currentShapeIndex++]!);
     }
 
     // Set up an interval to emit remaining shapes
@@ -77,7 +77,7 @@ class DelayedTestShapeProvider implements RunShapeProvider {
         clearInterval(interval);
         return;
       }
-      await callback(this.shapes[this.currentShapeIndex++]);
+      await callback(this.shapes[this.currentShapeIndex++]!);
     }, 100);
 
     return () => {
@@ -560,7 +560,7 @@ describe("RunSubscription withStreams", () => {
     // Verify run updates
     const runUpdates = results.filter((r) => r.type === "run");
     expect(runUpdates).toHaveLength(3);
-    expect(runUpdates[2].run.status).toBe("COMPLETED");
+    expect(runUpdates[2]!.run.status).toBe("COMPLETED");
 
     // Verify openai chunks
     const openaiChunks = results.filter((r) => r.type === "openai");
