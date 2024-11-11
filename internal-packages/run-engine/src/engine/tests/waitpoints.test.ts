@@ -238,4 +238,132 @@ describe("RunEngine Waitpoints", () => {
       }
     }
   );
+
+  containerTest(
+    "Create, block, and complete a Manual waitpoint",
+    { timeout: 15_000 },
+    async ({ prisma, redisContainer }) => {
+      //create environment
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+          enableAutoPipelining: true,
+        },
+        worker: {
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        //create background worker
+        await setupBackgroundWorker(prisma, authenticatedEnvironment, taskIdentifier);
+
+        //trigger the run
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_p1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        //dequeue the run
+        const dequeued = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //create an attempt
+        const attemptResult = await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+        expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+
+        //create a manual waitpoint
+        const waitpoint = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        //block the run
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpointId: waitpoint.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        //check there is a waitpoint blocking the parent run
+        const runWaitpointBefore = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpointBefore?.waitpointId).toBe(waitpoint.id);
+
+        //complete the waitpoint
+        await engine.completeWaitpoint({
+          id: waitpoint.id,
+        });
+
+        const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+        expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
+
+        //check there are no waitpoints blocking the parent run
+        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
+          where: {
+            taskRunId: run.id,
+          },
+          include: {
+            waitpoint: true,
+          },
+        });
+        expect(runWaitpoint).toBeNull();
+      } finally {
+        engine.quit();
+      }
+    }
+  );
 });

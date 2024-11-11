@@ -346,10 +346,12 @@ export class RunEngine {
           //triggerAndWait or batchTriggerAndWait
           if (resumeParentOnCompletion && parentTaskRunId) {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
-            await this.#blockRunWithWaitpoint(prisma, {
-              orgId: environment.organization.id,
+            await this.blockRunWithWaitpoint({
               runId: parentTaskRunId,
-              waitpoint: associatedWaitpoint,
+              waitpointId: associatedWaitpoint.id,
+              environmentId: associatedWaitpoint.environmentId,
+              projectId: associatedWaitpoint.projectId,
+              tx: prisma,
             });
 
             //release the concurrency
@@ -1175,10 +1177,12 @@ export class RunEngine {
       }
 
       //block the run
-      await this.#blockRunWithWaitpoint(prisma, {
-        orgId: run.runtimeEnvironment.organizationId,
+      await this.blockRunWithWaitpoint({
         runId,
-        waitpoint,
+        waitpointId: waitpoint.id,
+        environmentId: waitpoint.environmentId,
+        projectId: waitpoint.projectId,
+        tx: prisma,
       });
 
       //release concurrency
@@ -1450,6 +1454,128 @@ export class RunEngine {
 
   async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment) {
     return this.runQueue.lengthOfEnvQueue(environment);
+  }
+
+  /** This creates a MANUAL waitpoint, that can be explicitly completed (or failed).
+   * If you pass an `idempotencyKey` and it already exists, it will return the existing waitpoint.
+   */
+  async createManualWaitpoint({
+    environmentId,
+    projectId,
+    idempotencyKey,
+  }: {
+    environmentId: string;
+    projectId: string;
+    idempotencyKey?: string;
+  }) {
+    const existingWaitpoint = idempotencyKey
+      ? await this.prisma.waitpoint.findUnique({
+          where: {
+            environmentId_idempotencyKey: {
+              environmentId,
+              idempotencyKey,
+            },
+          },
+        })
+      : undefined;
+
+    if (existingWaitpoint) {
+      return existingWaitpoint;
+    }
+
+    return this.prisma.waitpoint.create({
+      data: {
+        type: "MANUAL",
+        idempotencyKey: idempotencyKey ?? nanoid(24),
+        userProvidedIdempotencyKey: !!idempotencyKey,
+        environmentId,
+        projectId,
+      },
+    });
+  }
+
+  async getWaitpoint({
+    waitpointId,
+    environmentId,
+    projectId,
+  }: {
+    environmentId: string;
+    projectId: string;
+    waitpointId: string;
+  }) {
+    const waitpoint = await this.prisma.waitpoint.findFirst({
+      where: { id: waitpointId },
+      include: {
+        blockingTaskRuns: {
+          select: {
+            taskRun: {
+              select: {
+                id: true,
+                friendlyId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!waitpoint) return null;
+    if (waitpoint.environmentId !== environmentId) return null;
+
+    return waitpoint;
+  }
+
+  /**
+   * Prevents a run from continuing until the waitpoint is completed.
+   */
+  async blockRunWithWaitpoint({
+    runId,
+    waitpointId,
+    projectId,
+    tx,
+  }: {
+    runId: string;
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    await this.runLock.lock([runId], 5000, async (signal) => {
+      const taskWaitpoint = await prisma.taskRunWaitpoint.create({
+        data: {
+          taskRunId: runId,
+          waitpointId: waitpointId,
+          projectId: projectId,
+        },
+      });
+
+      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+
+      let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
+      if (
+        latestSnapshot.executionStatus === "EXECUTING" ||
+        latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
+      ) {
+        newStatus = "EXECUTING_WITH_WAITPOINTS";
+      }
+
+      //if the state has changed, create a new snapshot
+      if (newStatus !== latestSnapshot.executionStatus) {
+        await this.#createExecutionSnapshot(prisma, {
+          run: {
+            id: latestSnapshot.runId,
+            status: latestSnapshot.runStatus,
+            attemptNumber: latestSnapshot.attemptNumber,
+          },
+          snapshot: {
+            executionStatus: newStatus,
+            description: "Run was blocked by a waitpoint.",
+          },
+        });
+      }
+    });
   }
 
   /** This completes a waitpoint and updates all entries so the run isn't blocked,
@@ -2225,46 +2351,6 @@ export class RunEngine {
     return {
       success: true,
     };
-  }
-
-  async #blockRunWithWaitpoint(
-    tx: PrismaClientOrTransaction,
-    { orgId, runId, waitpoint }: { orgId: string; runId: string; waitpoint: Waitpoint }
-  ) {
-    await this.runLock.lock([runId], 5000, async (signal) => {
-      const taskWaitpoint = await tx.taskRunWaitpoint.create({
-        data: {
-          taskRunId: runId,
-          waitpointId: waitpoint.id,
-          projectId: waitpoint.projectId,
-        },
-      });
-
-      const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, runId);
-
-      let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
-      if (
-        latestSnapshot.executionStatus === "EXECUTING" ||
-        latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
-      ) {
-        newStatus = "EXECUTING_WITH_WAITPOINTS";
-      }
-
-      //if the state has changed, create a new snapshot
-      if (newStatus !== latestSnapshot.executionStatus) {
-        await this.#createExecutionSnapshot(tx, {
-          run: {
-            id: latestSnapshot.runId,
-            status: latestSnapshot.runStatus,
-            attemptNumber: latestSnapshot.attemptNumber,
-          },
-          snapshot: {
-            executionStatus: newStatus,
-            description: "Run was blocked by a waitpoint.",
-          },
-        });
-      }
-    });
   }
 
   async #clearBlockingWaitpoints({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
