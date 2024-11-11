@@ -223,7 +223,7 @@ describe("RunEngine Waitpoints", () => {
         expect(executionData2.run.status).toBe("RETRYING_AFTER_FAILURE");
         expect(executionData2.completedWaitpoints.length).toBe(0);
 
-        //check the waitpoint blocking the parent run
+        //check there are no waitpoints blocking the parent run
         const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
           where: {
             taskRunId: run.id,
