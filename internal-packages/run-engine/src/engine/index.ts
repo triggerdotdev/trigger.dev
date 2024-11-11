@@ -2539,8 +2539,6 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
-          //todo when a run fails, do we need to fail any pending subtasks?
-
           const retryDelay = 250;
 
           //todo call attemptFailed and force requeuing
