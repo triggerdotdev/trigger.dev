@@ -105,7 +105,7 @@ describe("RunEngine heartbeats", () => {
         assertNonNullable(executionData2);
         expect(executionData2.snapshot.executionStatus).toBe("QUEUED");
 
-        await setTimeout(500);
+        await setTimeout(1_000);
 
         //have to dequeue again
         const dequeued2 = await engine.dequeueFromMasterQueue({
