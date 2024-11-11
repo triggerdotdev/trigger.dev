@@ -393,5 +393,104 @@ describe("RunEngine heartbeats", () => {
     }
   );
 
-  //todo pending_cancel
+  containerTest("Pending cancel", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const heartbeatTimeout = 100;
+
+    const engine = new RunEngine({
+      prisma,
+      redis: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+        enableAutoPipelining: true,
+      },
+      worker: {
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      heartbeatTimeoutsMs: {
+        PENDING_CANCEL: heartbeatTimeout,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      //create background worker
+      const backgroundWorker = await setupBackgroundWorker(
+        prisma,
+        authenticatedEnvironment,
+        taskIdentifier
+      );
+
+      //trigger the run
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          masterQueue: "main",
+          queueName: "task/test-task",
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      //dequeue the run
+      const dequeued = await engine.dequeueFromMasterQueue({
+        consumerId: "test_12345",
+        masterQueue: run.masterQueue,
+        maxRunCount: 10,
+      });
+
+      //create an attempt
+      await engine.startRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].snapshot.id,
+      });
+
+      //cancel run
+      await engine.cancelRun({ runId: dequeued[0].run.id });
+
+      //expect it to be pending_cancel
+      const executionData2 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData2);
+      expect(executionData2.snapshot.executionStatus).toBe("PENDING_CANCEL");
+
+      //wait long enough for the heartbeat to timeout
+      await setTimeout(1_000);
+
+      //expect it to be queued again
+      const executionData3 = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData3);
+      expect(executionData3.snapshot.executionStatus).toBe("FINISHED");
+      expect(executionData3.run.status).toBe("CANCELED");
+    } finally {
+      await engine.quit();
+    }
+  });
 });
