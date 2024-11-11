@@ -151,6 +151,8 @@ describe("RunQueue", () => {
         //initial queue length
         const result = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result).toBe(0);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
+        expect(envQueueLength).toBe(0);
 
         //initial oldest message
         const oldestScore = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
@@ -168,6 +170,8 @@ describe("RunQueue", () => {
         //queue length
         const result2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
         expect(result2).toBe(1);
+        const envQueueLength2 = await queue.lengthOfEnvQueue(authenticatedEnvDev);
+        expect(envQueueLength2).toBe(1);
 
         //oldest message
         const oldestScore2 = await queue.oldestMessageInQueue(
@@ -219,6 +223,12 @@ describe("RunQueue", () => {
         );
         expect(taskConcurrency2).toBe(1);
 
+        //queue lengths
+        const result3 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(result3).toBe(0);
+        const envQueueLength3 = await queue.lengthOfEnvQueue(authenticatedEnvDev);
+        expect(envQueueLength3).toBe(0);
+
         const dequeued2 = await queue.dequeueMessageFromMasterQueue(
           "test_12345",
           envMasterQueue,
@@ -247,6 +257,8 @@ describe("RunQueue", () => {
         //initial queue length
         const result = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(result).toBe(0);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envQueueLength).toBe(0);
 
         //initial oldest message
         const oldestScore = await queue.oldestMessageInQueue(
@@ -265,8 +277,10 @@ describe("RunQueue", () => {
         });
 
         //queue length
-        const result2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
-        expect(result2).toBe(1);
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+        expect(queueLength).toBe(1);
+        const envLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envLength).toBe(1);
 
         //oldest message
         const oldestScore2 = await queue.oldestMessageInQueue(
@@ -318,6 +332,8 @@ describe("RunQueue", () => {
         //queue length
         const length2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
         expect(length2).toBe(0);
+        const envLength2 = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envLength2).toBe(0);
 
         const dequeued2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
         expect(dequeued2.length).toBe(0);
@@ -358,6 +374,8 @@ describe("RunQueue", () => {
         const initialLength2 = await queue.lengthOfQueue(authenticatedEnvProd, "task/other-task");
         expect(initialLength1).toBe(15);
         expect(initialLength2).toBe(5);
+        const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(envQueueLength).toBe(20);
 
         // Dequeue first batch of 10 messages
         const dequeued1 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
@@ -383,6 +401,8 @@ describe("RunQueue", () => {
         const finalLength2 = await queue.lengthOfQueue(authenticatedEnvProd, "task/other-task");
         expect(finalLength1).toBe(0);
         expect(finalLength2).toBe(0);
+        const finalEnvQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+        expect(finalEnvQueueLength).toBe(0);
       } finally {
         await queue.quit();
       }
@@ -435,8 +455,18 @@ describe("RunQueue", () => {
         masterQueues: "main",
       });
 
+      const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength).toBe(1);
+      const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength).toBe(1);
+
       const messages = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
       expect(messages.length).toBe(1);
+
+      const queueLength2 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength2).toBe(0);
+      const envQueueLength2 = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength2).toBe(0);
 
       //check the message is gone
       const key = queue.keys.messageKey(messages[0].message.orgId, messages[0].messageId);
@@ -461,9 +491,65 @@ describe("RunQueue", () => {
       );
       expect(taskConcurrency).toBe(0);
 
+      //queue lengths
+      const queueLength3 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength3).toBe(0);
+      const envQueueLength3 = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength3).toBe(0);
+
       //check the message is gone
       const exists2 = await redis.exists(key);
       expect(exists2).toBe(0);
+
+      //dequeue
+      const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
+      expect(messages2.length).toBe(0);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("Ack (before dequeue)", { timeout: 5_000 }, async ({ redisContainer, redis }) => {
+    const queue = new RunQueue({
+      ...testOptions,
+      redis: { host: redisContainer.getHost(), port: redisContainer.getPort() },
+    });
+
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvProd,
+        message: messageProd,
+        masterQueues: "main",
+      });
+
+      const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength).toBe(1);
+      const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength).toBe(1);
+
+      await queue.acknowledgeMessage(messageProd.orgId, messageProd.runId);
+
+      //concurrencies
+      const queueConcurrency = await queue.currentConcurrencyOfQueue(
+        authenticatedEnvProd,
+        messageProd.queue
+      );
+      expect(queueConcurrency).toBe(0);
+      const envConcurrency = await queue.currentConcurrencyOfEnvironment(authenticatedEnvProd);
+      expect(envConcurrency).toBe(0);
+      const projectConcurrency = await queue.currentConcurrencyOfProject(authenticatedEnvProd);
+      expect(projectConcurrency).toBe(0);
+      const taskConcurrency = await queue.currentConcurrencyOfTask(
+        authenticatedEnvProd,
+        messageProd.taskIdentifier
+      );
+      expect(taskConcurrency).toBe(0);
+
+      //queue lengths
+      const queueLength3 = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength3).toBe(0);
+      const envQueueLength3 = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength3).toBe(0);
 
       //dequeue
       const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
@@ -530,6 +616,12 @@ describe("RunQueue", () => {
         messageProd.taskIdentifier
       );
       expect(taskConcurrency2).toBe(0);
+
+      //queue lengths
+      const queueLength = await queue.lengthOfQueue(authenticatedEnvProd, messageProd.queue);
+      expect(queueLength).toBe(1);
+      const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvProd);
+      expect(envQueueLength).toBe(1);
 
       //check the message is there
       const exists2 = await redis.exists(key);

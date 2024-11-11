@@ -57,6 +57,15 @@ export class RunQueueShortKeyProducer implements RunQueueKeyProducer {
       .join(":");
   }
 
+  envQueueKey(env: MinimalAuthenticatedEnvironment) {
+    return [this.orgKeySection(env.organization.id), this.envKeySection(env.id)].join(":");
+  }
+
+  envQueueKeyFromQueue(queue: string) {
+    const { orgId, envId } = this.extractComponentsFromQueue(queue);
+    return [this.orgKeySection(orgId), this.envKeySection(envId)].join(":");
+  }
+
   concurrencyLimitKeyFromQueue(queue: string) {
     const concurrencyQueueName = queue.replace(/:ck:.+$/, "");
     return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;

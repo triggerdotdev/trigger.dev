@@ -46,6 +46,8 @@ export interface RunQueueKeyProducer {
   queueCurrentConcurrencyScanPattern(): string;
   //queue
   queueKey(env: MinimalAuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  envQueueKey(env: MinimalAuthenticatedEnvironment): string;
+  envQueueKeyFromQueue(queue: string): string;
   queueConcurrencyLimitKey(env: MinimalAuthenticatedEnvironment, queue: string): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
