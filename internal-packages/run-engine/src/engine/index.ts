@@ -1835,6 +1835,12 @@ export class RunEngine {
 
         span.setAttribute("completionStatus", completion.ok);
 
+        //remove waitpoints blocking the run
+        const deletedCount = await this.#clearBlockingWaitpoints({ runId, tx });
+        if (deletedCount > 0) {
+          this.logger.debug("Cleared blocking waitpoints", { runId, deletedCount });
+        }
+
         const failedAt = new Date();
 
         if (
@@ -2262,6 +2268,17 @@ export class RunEngine {
     });
   }
 
+  async #clearBlockingWaitpoints({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
+    const prisma = tx ?? this.prisma;
+    const deleted = await prisma.taskRunWaitpoint.deleteMany({
+      where: {
+        taskRunId: runId,
+      },
+    });
+
+    return deleted.count;
+  }
+
   //#region TaskRunExecutionSnapshots
   async #createExecutionSnapshot(
     prisma: PrismaClientOrTransaction,
@@ -2522,6 +2539,7 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
+          //todo when a run fails, do we need to fail any pending subtasks?
 
           const retryDelay = 250;
 
