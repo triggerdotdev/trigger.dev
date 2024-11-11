@@ -21,6 +21,7 @@ import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { WorkerGroupService } from "./worker/workerGroupService.server";
+import { engine } from "../runEngine.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -84,6 +85,25 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
+      }
+
+      //check the env queue isn't beyond the limit
+      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment);
+
+      logger.debug("Queue size guard result", {
+        queueSizeGuard,
+        environment: {
+          id: environment.id,
+          type: environment.type,
+          organization: environment.organization,
+          project: environment.project,
+        },
+      });
+
+      if (!queueSizeGuard.isWithinLimits) {
+        throw new ServiceValidationError(
+          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+        );
       }
 
       if (
@@ -583,4 +603,28 @@ function stringifyDuration(seconds: number): string | undefined {
     .join("");
 
   return result;
+}
+
+async function guardQueueSizeLimitsForEnv(environment: AuthenticatedEnvironment) {
+  const maximumSize = getMaximumSizeForEnvironment(environment);
+
+  if (typeof maximumSize === "undefined") {
+    return { isWithinLimits: true };
+  }
+
+  const queueSize = await engine.lengthOfEnvQueue(environment);
+
+  return {
+    isWithinLimits: queueSize < maximumSize,
+    maximumSize,
+    queueSize,
+  };
+}
+
+function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+  if (environment.type === "DEVELOPMENT") {
+    return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
+  } else {
+    return environment.organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE;
+  }
 }
