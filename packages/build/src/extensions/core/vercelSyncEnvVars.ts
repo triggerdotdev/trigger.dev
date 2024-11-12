@@ -1,8 +1,8 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { syncEnvVars } from "../core.js";
 
-export function syncVercelEnvVars(
-  options?: { projectId?: string; vercelAccessToken?: string },
+export function vercelSyncEnvVars(
+  options?: { projectId?: string; vercelAccessToken?: string; vercelTeamId?: string },
 ): BuildExtension {
   const sync = syncEnvVars(async (ctx) => {
     const projectId = options?.projectId ?? process.env.VERCEL_PROJECT_ID ??
@@ -10,6 +10,8 @@ export function syncVercelEnvVars(
     const vercelAccessToken = options?.vercelAccessToken ??
       process.env.VERCEL_ACCESS_TOKEN ??
       ctx.env.VERCEL_ACCESS_TOKEN;
+    const vercelTeamId = options?.vercelTeamId ?? process.env.VERCEL_TEAM_ID ??
+      ctx.env.VERCEL_TEAM_ID;
 
     if (!projectId) {
       throw new Error(
@@ -37,8 +39,9 @@ export function syncVercelEnvVars(
         `Invalid environment '${ctx.environment}'. Expected 'prod', 'staging', or 'dev'.`,
       );
     }
-    const vercelApiUrl =
-      `https://api.vercel.com/v8/projects/${projectId}/env?decrypt=true`;
+    const params = new URLSearchParams({ decrypt: "true" });
+    if (vercelTeamId) params.set("teamId", vercelTeamId);
+    const vercelApiUrl = `https://api.vercel.com/v8/projects/${projectId}/env?${params}`;
 
     try {
       const response = await fetch(vercelApiUrl, {

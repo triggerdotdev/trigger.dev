@@ -13,7 +13,8 @@ To sync environment variables, you just need to add our build extension to your 
 <Note>
   You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables in the
   Trigger.dev dashboard, or pass in the token and project ID as arguments to the `vercelSyncEnvVars`
-  build extension. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  build extension. If you're working with a team project, you'll also need to set `VERCEL_TEAM_ID`. 
+  You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
   [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
   the project with the environment variables you want to sync.
 </Note>
