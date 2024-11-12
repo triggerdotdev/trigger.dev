@@ -11,13 +11,14 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 import {
   PrismaClient,
   PrismaClientOrTransaction,
+  RunEngineVersion,
   TaskRunStatus,
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { HEADER_NAME } from "@trigger.dev/worker";
 import { RunEngine } from "@internal/run-engine";
 import { trace } from "@opentelemetry/api";
-import { TriggerTaskServiceV2 } from "~/v3/services/triggerTaskV2.server";
+import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 
 describe("worker", () => {
   const defaultInstanceName = "test_worker";
@@ -109,7 +110,7 @@ describe("worker", () => {
       assert(deployment, "deployment should be defined");
 
       const engine = setupRunEngine(prisma, redisContainer);
-      const triggerService = new TriggerTaskServiceV2({ prisma, engine });
+      const triggerService = new TriggerTaskService({ prisma, engine });
 
       const { token, workerGroupService, workerGroup } = await setupWorkerGroup({
         prisma,
@@ -143,12 +144,11 @@ describe("worker", () => {
         );
 
         // Trigger
-        const run = await triggerService.call({
-          environment: authenticatedEnvironment,
-          taskId: taskIdentifier,
-          body: {},
-        });
+        const run = await triggerService.call(taskIdentifier, authenticatedEnvironment, {});
         assert(run, "run should be defined");
+
+        // Check this is a V2 run
+        expect(run.engine).toBe(RunEngineVersion.V2);
 
         const queueLengthBefore = await engine.runQueue.lengthOfQueue(
           authenticatedEnvironment,
