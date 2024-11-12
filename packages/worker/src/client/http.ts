@@ -24,8 +24,6 @@ export class WorkerHttpClient {
     this.apiURL = opts.apiUrl.replace(/\/$/, "");
     this.workerToken = opts.workerToken;
     this.instanceName = opts.instanceName;
-    this.deploymentId = opts.deploymentId;
-    this.managedWorkerSecret = opts.managedWorkerSecret;
     this.defaultHeaders = getDefaultHeaders(opts);
 
     if (!this.apiURL) {
