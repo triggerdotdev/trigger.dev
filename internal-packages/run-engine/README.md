@@ -52,7 +52,7 @@ For dev environments, we will pass the `environment` id.
 
 If there's only a `workerGroup`, we can just `dequeueFromMasterQueue()` to get runs. If there's a `BackgroundWorker` id, we need to determine if that `BackgroundWorker` is the latest. If it's the latest we call `dequeueFromEnvironmentMasterQueue()` to get any runs that aren't locked to a version. If it's not the latest, we call `dequeueFromBackgroundWorkerMasterQueue()` to get runs that are locked to that version.
 
-### Run Queue
+## Run Queue
 
 This is a fair multi-tenant queue. It is designed to fairly select runs, respect concurrency limits, and have high throughput. It provides visibility into the current concurrency for the env, org, etc.
 
@@ -60,11 +60,11 @@ It has built-in reliability features:
 - When nacking we increment the `attempt` and if it continually fails we will move it to a Dead Letter Queue (DLQ).
 - If a run is in the DLQ you can redrive it.
 
-### Heartbeats
+## Heartbeats
 
 Heartbeats are used to determine if a run has become stalled. Depending on the current execution status, we do different things. For example, if the run has been dequeued but the attempt hasn't been started we requeue it.
 
-### Checkpoints
+## Checkpoints
 
 Checkpoints allow pausing an executing run and then resuming it later. This is an optimization to avoid wasted compute and is especially useful with "Waitpoints".
 
@@ -83,27 +83,27 @@ There are currently three types:
 
 Waitpoints can have an idempotencyKey which allows stops them from being created multiple times. This is especially useful for event waitpoints, where you don't want to create a new waitpoint for the same event twice.
 
-### Use cases
-
-#### `wait.for()` or `wait.until()`
+### `wait.for()` or `wait.until()`
 Wait for a future time, then continue. We should add the option to pass an `idempotencyKey` so a second attempt doesn't wait again. By default it would wait again.
 
 ```ts
+//Note if the idempotency key is a string, it will get prefixed with the run id.
+//you can explicitly pass in an idempotency key created with the the global scope.
 await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "first-wait" });
 await wait.until(new Date('2022-01-01T00:00:00Z'), { idempotencyKey: "second-wait" });
 ```
 
-#### `triggerAndWait()` or `batchTriggerAndWait()`
+### `triggerAndWait()` or `batchTriggerAndWait()`
 Trigger and then wait for run(s) to finish. If the run fails it will still continue but with the errors so the developer can decide what to do.
 
 ### The `trigger` `delay` option
 
 When triggering a run and passing the `delay` option, we use a `DATETIME` waitpoint to block the run from starting.
 
-#### `wait.forRequest()`
+### `wait.forRequest()`
 Wait until a request has been received at the URL that you are given. This is useful for pausing a run and then continuing it again when some external event occurs on another service. For example, Replicate have an API where they will callback when their work is complete.
 
-#### `wait.forWaitpoint(waitpointId)`
+### `wait.forWaitpoint(waitpointId)`
 
 A more advanced SDK which would require uses to explicitly create a waitpoint. We would also need `createWaitpoint()`, `completeWaitpoint()`, and `failWaitpoint()`.
 
@@ -128,45 +128,51 @@ export const approvalFlow = task({
 });
 ```
 
-#### `wait.forRunToComplete(runId)`
+### `wait.forRunToComplete(runId)`
 
 You could wait for another run (or runs) using their run ids. This would allow you to wait for runs that you haven't triggered inside that run.
 
-#### Debouncing
+## Run flow control
 
-Using a `DateTime` waitpoint and an `idempotencyKey` debounce can be implemented.
+There are several ways to control when a run will execute (or not). Each of these should be configurable on a task, a named queue that is shared between tasks, and at trigger time including the ability to pass a `key` so you can have per-tenant controls.
 
-Suggested usage:
+### Concurrency limits
 
-```ts
-await myTask.trigger(
-  { some: "data" },
-  { debounce: { key: user.id, wait: "30s", maxWait: "2m", } }
-);
-```
+When `trigger` is called the run is added to the queue. We only dequeue when the concurrency limit hasn't been exceeded for that task/queue.
 
-//todo do you get the first or last payload when it triggers? Bit confusing with leading.
+### Rate limiting
 
-Implementation:
+When `trigger` is called, we check if the rate limit has been exceeded. If it has then we ignore the trigger. The run is thrown away and an appropriate error is returned.
 
-The Waitpoint  `idempotencyKey` should be prefixed like `debounce-${debounce.key}`. Also probably with the `taskIdentifier`?
+This is useful:
+- To prevent abuse.
+- To control how many executions a user can do (using a `key` with rate limiting).
 
-1. When trigger is called with `debounce`, we check if there's an active waitpoint with the relevant `idempotencyKey`.
-2. If `leading` is false (default):
-   - If there's a waiting run: update its payload and extend the waitpoint's completionTime
-   - If no waiting run: create a new run and DATETIME waitpoint
-3. If `maxWait` is specified:
-   - The waitpoint's completionTime is capped at the waitpoint `createdAt` + maxWait.
-   - Ensures execution happens even during constant triggering
-4. When the waitpoint is completed we need to clear the `idempotencyKey`. To clear an `idempotencyKey`, move the original value to the `inactiveIdempotencyKey` column and set the main one to a new randomly generated one.
+### Debouncing
 
-//todo implement auto-deactivating of the idempotencyKey when the waitpoint is completed. This would make it easier to implement features like this.
+When `trigger` is called, we prevent too many runs happening in a period by collapsing into a single run. This is done by discarding some runs in a period.
 
-#### Rate limiting
+This is useful:
+- To prevent too many runs happening in a short period.
 
-Both when triggering tasks and also any helpers we wanted inside the task.
+We should mark the run as `"DELAYED"` with the correct `delayUntil` time. This will allow the user to see that the run is delayed and why.
 
-For inside tasks, we could use the DATETIME waitpoints. Or it might be easier to use an existing rate limiting library with Redis and receive notifications when a limit is cleared and complete associated waitpoints.
+### Throttling
+
+When `trigger` is called the run is added to the queue. We only run them when they don't exceed the limit in that time period, by controlling the timing of when they are dequeued.
+
+This is useful:
+- To prevent too many runs happening in a short period.
+- To control how many executions a user can do (using a `key` with throttling).
+- When you need to execute every run but not too many in a short period, e.g. avoiding rate limits.
+
+### Batching
+
+When `trigger` is called, we batch the runs together. This means the payload of the run is an array of items, each being a single payload.
+
+This is useful:
+- For performance, as it reduces the number of runs in the system.
+- It can be useful when using 3rd party APIs that support batching.
 
 ## Emitting events
 
