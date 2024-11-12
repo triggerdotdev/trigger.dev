@@ -96,6 +96,16 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.setupSubscriber();
   }
 
+  /**
+   * Enqueues a job for processing.
+   * @param options - The enqueue options.
+   * @param options.id - Optional unique identifier for the job. If not provided, one will be generated. It prevents duplication.
+   * @param options.job - The job type from the worker catalog.
+   * @param options.payload - The job payload that matches the schema defined in the catalog.
+   * @param options.visibilityTimeoutMs - Optional visibility timeout in milliseconds. Defaults to value from catalog.
+   * @param options.availableAt - Optional date when the job should become available for processing. Defaults to now.
+   * @returns A promise that resolves when the job is enqueued.
+   */
   enqueue<K extends keyof TCatalog>({
     id,
     job,
