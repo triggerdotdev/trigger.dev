@@ -8,7 +8,7 @@ import {
   SharedQueueToClientMessages,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
@@ -25,6 +25,7 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
+import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -38,12 +39,14 @@ function initalizeIoServer() {
   const coordinatorNamespace = createCoordinatorNamespace(io);
   const providerNamespace = createProviderNamespace(io);
   const sharedQueueConsumerNamespace = createSharedQueueConsumerNamespace(io);
+  const workerNamespace = createWorkerNamespace(io);
 
   return {
     io,
     coordinatorNamespace,
     providerNamespace,
     sharedQueueConsumerNamespace,
+    workerNamespace,
   };
 }
 
@@ -365,4 +368,69 @@ function createSharedQueueConsumerNamespace(io: Server) {
   });
 
   return sharedQueue.namespace;
+}
+
+function headersFromHandshake(handshake: Socket["handshake"]) {
+  const headers = new Headers();
+
+  for (const [key, value] of Object.entries(handshake.headers)) {
+    if (typeof value !== "string") continue;
+    headers.append(key, value);
+  }
+
+  return headers;
+}
+
+function createWorkerNamespace(io: Server) {
+  const provider = new ZodNamespace({
+    // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
+    io,
+    name: "worker",
+    clientMessages: ProviderToPlatformMessages,
+    serverMessages: PlatformToProviderMessages,
+    preAuth: async (socket, next, logger) => {
+      const request = new Request("https://example.com", {
+        headers: headersFromHandshake(socket.handshake),
+      });
+
+      const tokenService = new WorkerGroupTokenService();
+      const authenticatedInstance = await tokenService.authenticate(request);
+
+      if (!authenticatedInstance) {
+        logger.error("authentication failed", { handshake: socket.handshake });
+        next(new Error("unauthorized"));
+        return;
+      }
+
+      logger.debug("authentication succeeded", { authenticatedInstance });
+
+      next();
+    },
+    handlers: {
+      WORKER_CRASHED: async (message) => {
+        try {
+          if (message.overrideCompletion) {
+            const updateErrorService = new UpdateFatalRunErrorService();
+            await updateErrorService.call(message.runId, { ...message });
+          } else {
+            const crashRunService = new CrashTaskRunService();
+            await crashRunService.call(message.runId, { ...message });
+          }
+        } catch (error) {
+          logger.error("Error while handling crashed worker", { error });
+        }
+      },
+      INDEXING_FAILED: async (message) => {
+        try {
+          const service = new DeploymentIndexFailed();
+
+          await service.call(message.deploymentId, message.error, message.overrideCompletion);
+        } catch (e) {
+          logger.error("Error while indexing", { error: e });
+        }
+      },
+    },
+  });
+
+  return provider.namespace;
 }
