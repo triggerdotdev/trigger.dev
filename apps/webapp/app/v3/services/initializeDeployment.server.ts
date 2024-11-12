@@ -7,6 +7,8 @@ import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
+import { WorkerInstanceGroupType } from "@trigger.dev/database";
+import { logger } from "~/services/logger.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -46,6 +48,38 @@ export class InitializeDeploymentService extends BaseService {
           })
         : undefined;
 
+      const sharedImageTag = `${payload.namespace ?? env.DEPLOY_REGISTRY_NAMESPACE}/${
+        environment.project.externalRef
+      }:${nextVersion}.${environment.slug}`;
+
+      const unmanagedImageParts = [];
+
+      if (payload.registryHost) {
+        unmanagedImageParts.push(payload.registryHost);
+      }
+      if (payload.namespace) {
+        unmanagedImageParts.push(payload.namespace);
+      }
+      unmanagedImageParts.push(
+        `${environment.project.externalRef}:${nextVersion}.${environment.slug}`
+      );
+
+      const unmanagedImageTag = unmanagedImageParts.join("/");
+
+      const defaultType = WorkerInstanceGroupType.SHARED;
+      const deploymentType = payload.type ?? defaultType;
+      const isShared = deploymentType === WorkerInstanceGroupType.SHARED;
+
+      logger.debug("Creating deployment", {
+        environmentId: environment.id,
+        projectId: environment.projectId,
+        version: nextVersion,
+        triggeredById: triggeredBy?.id,
+        type: deploymentType,
+        imageTag: isShared ? sharedImageTag : unmanagedImageTag,
+        imageReference: isShared ? undefined : unmanagedImageTag,
+      });
+
       const deployment = await this._prisma.workerDeployment.create({
         data: {
           friendlyId: generateFriendlyId("deployment"),
@@ -57,6 +91,8 @@ export class InitializeDeploymentService extends BaseService {
           projectId: environment.projectId,
           externalBuildData,
           triggeredById: triggeredBy?.id,
+          type: deploymentType,
+          imageReference: isShared ? undefined : unmanagedImageTag,
         },
       });
 
@@ -67,11 +103,10 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + 180_000) // 3 minutes
       );
 
-      const imageTag = `${payload.namespace ?? env.DEPLOY_REGISTRY_NAMESPACE}/${
-        environment.project.externalRef
-      }:${deployment.version}.${environment.slug}`;
-
-      return { deployment, imageTag };
+      return {
+        deployment,
+        imageTag: isShared ? sharedImageTag : unmanagedImageTag,
+      };
     });
   }
 }

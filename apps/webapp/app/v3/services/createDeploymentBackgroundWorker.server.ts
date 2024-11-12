@@ -97,7 +97,7 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
         data: {
           status: "DEPLOYING",
           workerId: backgroundWorker.id,
-          deployedAt: new Date(),
+          builtAt: new Date(),
         },
       });
 
