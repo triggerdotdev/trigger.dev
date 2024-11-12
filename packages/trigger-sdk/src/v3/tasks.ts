@@ -3,6 +3,7 @@ import {
   batchTriggerAndWait,
   createTask,
   createSchemaTask,
+  createToolTask,
   SubtaskUnwrapError,
   trigger,
   triggerAndPoll,
@@ -64,6 +65,8 @@ export type {
 export const task = createTask;
 
 export const schemaTask = createSchemaTask;
+
+export const toolTask = createToolTask;
 
 export const tasks = {
   trigger,

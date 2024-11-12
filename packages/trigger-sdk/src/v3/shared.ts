@@ -11,6 +11,7 @@ import {
   ApiRequestOptions,
   BatchTaskRunExecutionResult,
   conditionallyImportPacket,
+  convertToolParametersToSchema,
   createErrorTaskError,
   defaultRetryOptions,
   getSchemaParseFn,
@@ -32,6 +33,7 @@ import {
 import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
+import type { Schema as AISchema, CoreTool } from "ai";
 
 import type {
   AnyRunHandle,
@@ -60,9 +62,14 @@ import type {
   TaskRunOptions,
   TaskRunResult,
   TaskSchema,
+  TaskWithSchema,
   TaskWithSchemaOptions,
+  TaskWithToolOptions,
+  ToolTask,
+  ToolTaskParameters,
   TriggerApiRequestOptions,
 } from "@trigger.dev/core/v3";
+import { z } from "zod";
 
 export type {
   AnyRunHandle,
@@ -111,6 +118,7 @@ export function createTask<
 
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
+    description: params.description,
     trigger: async (payload, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
@@ -183,6 +191,7 @@ export function createTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
+    description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
@@ -205,6 +214,31 @@ export function createTask<
   return task;
 }
 
+export function createToolTask<
+  TIdentifier extends string,
+  TParameters extends ToolTaskParameters,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskWithToolOptions<TIdentifier, TParameters, TOutput, TInitOutput>
+): ToolTask<TIdentifier, TParameters, TOutput> {
+  const task = createSchemaTask({
+    ...params,
+    schema: convertToolParametersToSchema(params.parameters),
+  });
+
+  return {
+    ...task,
+    tool: {
+      parameters: params.parameters,
+      description: params.description,
+      execute: async (args: any) => {
+        return task.triggerAndWait(args).unwrap();
+      },
+    },
+  };
+}
+
 export function createSchemaTask<
   TIdentifier extends string,
   TSchema extends TaskSchema | undefined = undefined,
@@ -212,7 +246,7 @@ export function createSchemaTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
-): Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> {
+): TaskWithSchema<TIdentifier, TSchema, TOutput> {
   const customQueue = params.queue
     ? queue({
         name: params.queue?.name ?? `task/${params.id}`,
@@ -224,8 +258,10 @@ export function createSchemaTask<
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
     : undefined;
 
-  const task: Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> = {
+  const task: TaskWithSchema<TIdentifier, TSchema, TOutput> = {
     id: params.id,
+    description: params.description,
+    schema: params.schema,
     trigger: async (payload, options, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
@@ -299,6 +335,7 @@ export function createSchemaTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
+    description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,

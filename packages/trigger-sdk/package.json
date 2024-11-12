@@ -57,8 +57,7 @@
     "terminal-link": "^3.0.0",
     "ulid": "^2.3.0",
     "uuid": "^9.0.0",
-    "ws": "^8.11.0",
-    "zod": "3.22.3"
+    "ws": "^8.11.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
@@ -67,12 +66,17 @@
     "@types/slug": "^5.0.3",
     "@types/uuid": "^9.0.0",
     "@types/ws": "^8.5.3",
+    "ai": "^3.4.33",
     "encoding": "^0.1.13",
     "rimraf": "^3.0.2",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "zod": "3.22.3"
+  },
+  "peerDependencies": {
+    "zod": "^3.0.0"
   },
   "engines": {
     "node": ">=18.20.0"

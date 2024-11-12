@@ -150,6 +150,7 @@ export async function createBackgroundTasks(
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           workerId: worker.id,
           slug: task.id,
+          description: task.description,
           filePath: task.filePath,
           exportName: task.exportName,
           retryConfig: task.retry,

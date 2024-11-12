@@ -204,16 +204,18 @@
     "nanoid": "^3.3.4",
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
-    "zod": "3.22.3",
     "zod-error": "1.5.0",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^1.5.0",
+    "zod": "3.22.3"
   },
   "devDependencies": {
+    "@ai-sdk/provider-utils": "^1.0.22",
     "@arethetypeswrong/cli": "^0.15.4",
     "@epic-web/test-server": "^0.1.0",
     "@types/humanize-duration": "^3.27.1",
     "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
+    "ai": "^3.4.33",
     "defu": "^6.1.4",
     "esbuild": "^0.23.0",
     "rimraf": "^3.0.2",
