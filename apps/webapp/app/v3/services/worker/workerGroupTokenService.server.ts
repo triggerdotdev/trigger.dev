@@ -488,12 +488,13 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         consumerId: this.workerInstanceId,
         environmentId: this.environmentId,
         maxRunCount,
+        backgroundWorkerId: this.backgroundWorkerId,
       });
     }
 
     return await this._engine.dequeueFromBackgroundWorkerMasterQueue({
       consumerId: this.workerInstanceId,
-      backgroundWorkerId: this.deploymentId,
+      backgroundWorkerId: this.backgroundWorkerId,
       maxRunCount,
     });
   }

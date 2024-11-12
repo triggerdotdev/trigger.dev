@@ -26,8 +26,22 @@ type RunWithBackgroundWorkerTasksResult =
     }
   | {
       success: false;
-      code: "NO_WORKER" | "TASK_NOT_IN_LATEST" | "TASK_NEVER_REGISTERED";
+      code:
+        | "NO_WORKER"
+        | "TASK_NOT_IN_LATEST"
+        | "TASK_NEVER_REGISTERED"
+        | "BACKGROUND_WORKER_MISMATCH";
       message: string;
+      run: RunWithMininimalEnvironment;
+    }
+  | {
+      success: false;
+      code: "BACKGROUND_WORKER_MISMATCH";
+      message: string;
+      backgroundWorker: {
+        expected: string;
+        received: string;
+      };
       run: RunWithMininimalEnvironment;
     }
   | {
@@ -40,7 +54,8 @@ type RunWithBackgroundWorkerTasksResult =
 
 export async function getRunWithBackgroundWorkerTasks(
   prisma: PrismaClientOrTransaction,
-  runId: string
+  runId: string,
+  backgroundWorkerId?: string
 ): Promise<RunWithBackgroundWorkerTasksResult> {
   const run = await prisma.taskRun.findFirst({
     where: {
@@ -70,9 +85,11 @@ export async function getRunWithBackgroundWorkerTasks(
     };
   }
 
+  const workerId = run.lockedToVersionId ?? backgroundWorkerId;
+
   //get the relevant BackgroundWorker with tasks and deployment (if not DEV)
-  const workerWithTasks = run.lockedToVersionId
-    ? await getWorkerDeploymentFromWorker(prisma, run.lockedToVersionId)
+  const workerWithTasks = workerId
+    ? await getWorkerDeploymentFromWorker(prisma, workerId)
     : run.runtimeEnvironment.type === "DEVELOPMENT"
     ? await getMostRecentWorker(prisma, run.runtimeEnvironmentId)
     : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
@@ -84,6 +101,21 @@ export async function getRunWithBackgroundWorkerTasks(
       message: `No worker found for run: ${run.id}`,
       run,
     };
+  }
+
+  if (backgroundWorkerId) {
+    if (backgroundWorkerId !== workerWithTasks.worker.id) {
+      return {
+        success: false as const,
+        code: "BACKGROUND_WORKER_MISMATCH",
+        message: `Background worker mismatch for run: ${run.id}`,
+        backgroundWorker: {
+          expected: backgroundWorkerId,
+          received: workerWithTasks.worker.id,
+        },
+        run,
+      };
+    }
   }
 
   const backgroundTask = workerWithTasks.tasks.find((task) => task.slug === run.taskIdentifier);

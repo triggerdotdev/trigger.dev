@@ -51,6 +51,7 @@ import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
+import { assertExhaustive } from "@trigger.dev/core";
 
 type Options = {
   redis: RedisOptions;
@@ -490,12 +491,14 @@ export class RunEngine {
     masterQueue,
     maxRunCount,
     maxResources,
+    backgroundWorkerId,
     tx,
   }: {
     consumerId: string;
     masterQueue: string;
     maxRunCount: number;
     maxResources?: MachineResources;
+    backgroundWorkerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
     const prisma = tx ?? this.prisma;
@@ -558,7 +561,7 @@ export class RunEngine {
               return null;
             }
 
-            const result = await getRunWithBackgroundWorkerTasks(prisma, runId);
+            const result = await getRunWithBackgroundWorkerTasks(prisma, runId, backgroundWorkerId);
 
             if (!result.success) {
               switch (result.code) {
@@ -589,6 +592,24 @@ export class RunEngine {
                   await this.runQueue.acknowledgeMessage(orgId, runId);
 
                   return null;
+                }
+                case "BACKGROUND_WORKER_MISMATCH": {
+                  this.logger.warn(
+                    "RunEngine.dequeueFromMasterQueue(): Background worker mismatch",
+                    {
+                      runId,
+                      latestSnapshot: snapshot.id,
+                      result,
+                    }
+                  );
+
+                  //worker mismatch so put it back in the queue
+                  await this.runQueue.nackMessage(orgId, runId);
+
+                  return null;
+                }
+                default: {
+                  assertExhaustive(result);
                 }
               }
             }
@@ -797,12 +818,14 @@ export class RunEngine {
     environmentId,
     maxRunCount,
     maxResources,
+    backgroundWorkerId,
     tx,
   }: {
     consumerId: string;
     environmentId: string;
     maxRunCount: number;
     maxResources?: MachineResources;
+    backgroundWorkerId: string;
     tx?: PrismaClientOrTransaction;
   }) {
     return this.dequeueFromMasterQueue({
@@ -810,6 +833,7 @@ export class RunEngine {
       masterQueue: this.#environmentMasterQueueKey(environmentId),
       maxRunCount,
       maxResources,
+      backgroundWorkerId,
       tx,
     });
   }
@@ -832,6 +856,7 @@ export class RunEngine {
       masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
       maxRunCount,
       maxResources,
+      backgroundWorkerId,
       tx,
     });
   }
