@@ -8,36 +8,34 @@ import {
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { sanitizeQueueName } from "~/v3/marqs/index.server";
+import { workerQueue } from "~/services/worker.server";
+import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { ServiceValidationError, WithRunEngine } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { handleMetadataPacket } from "~/utils/packets";
-import { WorkerGroupService } from "./worker/workerGroupService.server";
+import { parseNaturalLanguageDuration, stringifyDuration } from "@trigger.dev/core/v3/apps";
+import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 import { parseDelay } from "~/utils/delays";
-import { stringifyDuration } from "@trigger.dev/core/v3/apps";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
-export class TriggerTaskServiceV2 extends WithRunEngine {
-  public async call({
-    taskId,
-    environment,
-    body,
-    options = {},
-  }: {
-    taskId: string;
-    environment: AuthenticatedEnvironment;
-    body: TriggerTaskRequestBody;
-    options?: TriggerTaskServiceOptions;
-  }) {
+export class TriggerTaskServiceV1 extends BaseService {
+  public async call(
+    taskId: string,
+    environment: AuthenticatedEnvironment,
+    body: TriggerTaskRequestBody,
+    options: TriggerTaskServiceOptions = {}
+  ) {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
@@ -74,8 +72,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         }
       }
 
-      //check the env queue isn't beyond the limit
-      const queueSizeGuard = await this.#guardQueueSizeLimitsForEnv(environment);
+      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
 
       logger.debug("Queue size guard result", {
         queueSizeGuard,
@@ -312,30 +309,13 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
                 : 0;
 
-              event.setAttribute("runId", runFriendlyId);
-              span.setAttribute("runId", runFriendlyId);
-
-              const workerGroupService = new WorkerGroupService({
-                prisma: this._prisma,
-                engine: this._engine,
-              });
-              const workerGroup = await workerGroupService.getDefaultWorkerGroupForProject({
-                projectId: environment.projectId,
-              });
-
-              if (!workerGroup) {
-                logger.error("Default worker group not found", {
-                  projectId: environment.projectId,
-                });
-
-                return;
-              }
-
-              const taskRun = await this._engine.trigger(
-                {
+              const taskRun = await tx.taskRun.create({
+                data: {
+                  status: delayUntil ? "DELAYED" : "PENDING",
                   number: num,
                   friendlyId: runFriendlyId,
-                  environment: environment,
+                  runtimeEnvironmentId: environment.id,
+                  projectId: environment.projectId,
                   idempotencyKey,
                   taskIdentifier: taskId,
                   payload: payloadPacket.data ?? "",
@@ -348,17 +328,33 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
                   concurrencyKey: body.options?.concurrencyKey,
-                  queueName,
-                  queue: body.options?.queue,
-                  masterQueue: workerGroup.masterQueue,
+                  queue: queueName,
                   isTest: body.options?.test ?? false,
                   delayUntil,
                   queuedAt: delayUntil ? undefined : new Date(),
                   maxAttempts: body.options?.maxAttempts,
                   ttl,
-                  tags: tagIds,
-                  parentTaskRunId: parentAttempt?.taskRun.id,
-                  rootTaskRunId: parentAttempt?.taskRun.rootTaskRunId ?? parentAttempt?.taskRun.id,
+                  tags:
+                    tagIds.length === 0
+                      ? undefined
+                      : {
+                          connect: tagIds.map((id) => ({ id })),
+                        },
+                  parentTaskRunId:
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                  parentTaskRunAttemptId:
+                    dependentAttempt?.id ??
+                    parentAttempt?.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.id,
+                  rootTaskRunId:
+                    dependentAttempt?.taskRun.rootTaskRunId ??
+                    dependentAttempt?.taskRun.id ??
+                    parentAttempt?.taskRun.rootTaskRunId ??
+                    parentAttempt?.taskRun.id ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
+                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
                   batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
                   resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
                   depth,
@@ -366,9 +362,95 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   metadataType: metadataPacket?.dataType,
                   seedMetadata: metadataPacket?.data,
                   seedMetadataType: metadataPacket?.dataType,
+                  maxDurationInSeconds: body.options?.maxDuration
+                    ? clampMaxDuration(body.options.maxDuration)
+                    : undefined,
+                  runTags: bodyTags,
                 },
-                this._prisma
-              );
+              });
+
+              event.setAttribute("runId", taskRun.friendlyId);
+              span.setAttribute("runId", taskRun.friendlyId);
+
+              if (dependentAttempt) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentAttemptId: dependentAttempt.id,
+                  },
+                });
+              } else if (dependentBatchRun) {
+                await tx.taskRunDependency.create({
+                  data: {
+                    taskRunId: taskRun.id,
+                    dependentBatchRunId: dependentBatchRun.id,
+                  },
+                });
+              }
+
+              if (body.options?.queue) {
+                const concurrencyLimit =
+                  typeof body.options.queue.concurrencyLimit === "number"
+                    ? Math.max(0, body.options.queue.concurrencyLimit)
+                    : undefined;
+
+                let taskQueue = await tx.taskQueue.findFirst({
+                  where: {
+                    runtimeEnvironmentId: environment.id,
+                    name: queueName,
+                  },
+                });
+
+                if (taskQueue) {
+                  taskQueue = await tx.taskQueue.update({
+                    where: {
+                      id: taskQueue.id,
+                    },
+                    data: {
+                      concurrencyLimit,
+                      rateLimit: body.options.queue.rateLimit,
+                    },
+                  });
+                } else {
+                  taskQueue = await tx.taskQueue.create({
+                    data: {
+                      friendlyId: generateFriendlyId("queue"),
+                      name: queueName,
+                      concurrencyLimit,
+                      runtimeEnvironmentId: environment.id,
+                      projectId: environment.projectId,
+                      rateLimit: body.options.queue.rateLimit,
+                      type: "NAMED",
+                    },
+                  });
+                }
+
+                if (typeof taskQueue.concurrencyLimit === "number") {
+                  await marqs?.updateQueueConcurrencyLimits(
+                    environment,
+                    taskQueue.name,
+                    taskQueue.concurrencyLimit
+                  );
+                } else {
+                  await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                }
+              }
+
+              if (taskRun.delayUntil) {
+                await workerQueue.enqueue(
+                  "v3.enqueueDelayedRun",
+                  { runId: taskRun.id },
+                  { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
+                );
+              }
+
+              if (!taskRun.delayUntil && taskRun.ttl) {
+                const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+                if (expireAt) {
+                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
+                }
+              }
 
               return taskRun;
             },
@@ -387,6 +469,41 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             },
             this._prisma
           );
+
+          //release the concurrency for the env and org, if part of a (batch)triggerAndWait
+          if (dependentAttempt) {
+            const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
+          }
+          if (dependentBatchRun?.dependentTaskAttempt) {
+            const isSameTask =
+              dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
+            await marqs?.releaseConcurrency(
+              dependentBatchRun.dependentTaskAttempt.taskRun.id,
+              isSameTask
+            );
+          }
+
+          if (!run) {
+            return;
+          }
+
+          // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+          if (run.status === "PENDING") {
+            await marqs?.enqueueMessage(
+              environment,
+              run.queue,
+              run.id,
+              {
+                type: "EXECUTE",
+                taskIdentifier: taskId,
+                projectId: environment.projectId,
+                environmentId: environment.id,
+                environmentType: environment.type,
+              },
+              body.options?.concurrencyKey
+            );
+          }
 
           return run;
         }
@@ -488,29 +605,5 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
     }
 
     return { dataType: payloadType };
-  }
-
-  async #guardQueueSizeLimitsForEnv(environment: AuthenticatedEnvironment) {
-    const maximumSize = getMaximumSizeForEnvironment(environment);
-
-    if (typeof maximumSize === "undefined") {
-      return { isWithinLimits: true };
-    }
-
-    const queueSize = await this._engine.lengthOfEnvQueue(environment);
-
-    return {
-      isWithinLimits: queueSize < maximumSize,
-      maximumSize,
-      queueSize,
-    };
-  }
-}
-
-function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
-  if (environment.type === "DEVELOPMENT") {
-    return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
-  } else {
-    return environment.organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE;
   }
 }
