@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { MachinePreset } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
+import type * as DB_TYPES from "@trigger.dev/database";
+
+type Enum<T extends string> = { [K in T]: K };
 
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",
@@ -11,7 +14,7 @@ export const TaskRunExecutionStatus = {
   BLOCKED_BY_WAITPOINTS: "BLOCKED_BY_WAITPOINTS",
   PENDING_CANCEL: "PENDING_CANCEL",
   FINISHED: "FINISHED",
-} as const;
+} satisfies Enum<DB_TYPES.TaskRunExecutionStatus>;
 
 export type TaskRunExecutionStatus =
   (typeof TaskRunExecutionStatus)[keyof typeof TaskRunExecutionStatus];
@@ -32,7 +35,7 @@ export const TaskRunStatus = {
   CRASHED: "CRASHED",
   EXPIRED: "EXPIRED",
   TIMED_OUT: "TIMED_OUT",
-} as const;
+} satisfies Enum<DB_TYPES.TaskRunStatus>;
 
 export type TaskRunStatus = (typeof TaskRunStatus)[keyof typeof TaskRunStatus];
 
@@ -40,7 +43,7 @@ export const WaitpointType = {
   RUN: "RUN",
   DATETIME: "DATETIME",
   MANUAL: "MANUAL",
-} as const;
+} satisfies Enum<DB_TYPES.WaitpointType>;
 
 export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 

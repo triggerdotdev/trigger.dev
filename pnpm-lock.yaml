@@ -1390,6 +1390,9 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
+      '@trigger.dev/database':
+        specifier: workspace:^
+        version: link:../../internal-packages/database
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1
