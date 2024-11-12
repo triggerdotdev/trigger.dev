@@ -2460,6 +2460,7 @@ model BatchTaskRun {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
+  /// This isn't used with the new RunEngine
   dependentTaskAttempt   TaskRunAttempt? @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dependentTaskAttemptId String?
 

@@ -70,6 +70,7 @@ type Options = {
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
+  queueRunsWaitingForWorkerBatchSize?: number;
   tracer: Tracer;
 };
 
@@ -149,6 +150,12 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 5000,
   },
+  queueRunsWaitingForWorker: {
+    schema: z.object({
+      backgroundWorkerId: z.string(),
+    }),
+    visibilityTimeoutMs: 5000,
+  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -213,6 +220,9 @@ export class RunEngine {
             completedAt: payload.completedAt,
             reason: payload.reason,
           });
+        },
+        queueRunsWaitingForWorker: async ({ payload }) => {
+          await this.#queueRunsWaitingForWorker({ backgroundWorkerId: payload.backgroundWorkerId });
         },
       },
     });
@@ -475,11 +485,6 @@ export class RunEngine {
     );
   }
 
-  /** Triggers multiple runs.
-   * This doesn't start execution, but it will create a batch and schedule them for execution.
-   */
-  async batchTrigger() {}
-
   /**
    * Gets a fairly selected run from the specified master queue, returning the information required to run it.
    * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
@@ -585,12 +590,10 @@ export class RunEngine {
 
                   //not deployed yet, so we'll wait for the deploy
                   await this.#waitingForDeploy({
+                    orgId,
                     runId,
                     tx: prisma,
                   });
-                  //we ack because when it's deployed it will be requeued
-                  await this.runQueue.acknowledgeMessage(orgId, runId);
-
                   return null;
                 }
                 case "BACKGROUND_WORKER_MISMATCH": {
@@ -624,11 +627,11 @@ export class RunEngine {
                 });
                 //not deployed yet, so we'll wait for the deploy
                 await this.#waitingForDeploy({
+                  orgId,
                   runId,
                   tx: prisma,
                 });
-                //we ack because when it's deployed it will be requeued
-                await this.runQueue.acknowledgeMessage(orgId, runId);
+
                 return null;
               }
             }
@@ -1423,6 +1426,14 @@ export class RunEngine {
     });
   }
 
+  async queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
+    //we want this to happen in the background
+    await this.worker.enqueue({
+      job: "queueRunsWaitingForWorker",
+      payload: { backgroundWorkerId },
+    });
+  }
+
   /**
    * Reschedules a delayed run where the run hasn't been queued yet
    */
@@ -1897,7 +1908,41 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {}
 
-  async #waitingForDeploy({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {}
+  async #waitingForDeploy({
+    orgId,
+    runId,
+    tx,
+  }: {
+    orgId: string;
+    runId: string;
+    tx?: PrismaClientOrTransaction;
+  }) {
+    const prisma = tx ?? this.prisma;
+
+    return this.#trace("#waitingForDeploy", { runId }, async (span) => {
+      return this.runLock.lock([runId], 5_000, async (signal) => {
+        //mark run as waiting for deploy
+        const run = await prisma.taskRun.update({
+          where: { id: runId },
+          data: {
+            status: "WAITING_FOR_DEPLOY",
+          },
+        });
+
+        await this.#createExecutionSnapshot(prisma, {
+          run,
+          snapshot: {
+            executionStatus: "RUN_CREATED",
+            description:
+              "The run doesn't have a background worker, so we're going to ack it for now.",
+          },
+        });
+
+        //we ack because when it's deployed it will be requeued
+        await this.runQueue.acknowledgeMessage(orgId, runId);
+      });
+    });
+  }
 
   async #attemptSucceeded({
     runId,
@@ -2302,6 +2347,78 @@ export class RunEngine {
         await this.#enqueueRun({ run, env, timestamp: run.createdAt.getTime(), tx: prisma });
       }
     });
+  }
+
+  async #queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
+    //It could be a lot of runs, so we will process them in a batch
+    //if there are still more to process we will enqueue this function again
+    const maxCount = this.options.queueRunsWaitingForWorkerBatchSize ?? 200;
+
+    const backgroundWorker = await this.prisma.backgroundWorker.findFirst({
+      where: {
+        id: backgroundWorkerId,
+      },
+      include: {
+        runtimeEnvironment: {
+          include: {
+            project: true,
+            organization: true,
+          },
+        },
+        tasks: true,
+      },
+    });
+
+    if (!backgroundWorker) {
+      this.logger.error("#queueRunsWaitingForWorker: background worker not found", {
+        id: backgroundWorkerId,
+      });
+      return;
+    }
+
+    const runsWaitingForDeploy = await this.prisma.taskRun.findMany({
+      where: {
+        runtimeEnvironmentId: backgroundWorker.runtimeEnvironmentId,
+        projectId: backgroundWorker.projectId,
+        status: "WAITING_FOR_DEPLOY",
+        taskIdentifier: {
+          in: backgroundWorker.tasks.map((task) => task.slug),
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: maxCount + 1,
+    });
+
+    //none to process
+    if (!runsWaitingForDeploy.length) return;
+
+    for (const run of runsWaitingForDeploy) {
+      await this.prisma.$transaction(async (tx) => {
+        const updatedRun = await tx.taskRun.update({
+          where: {
+            id: run.id,
+          },
+          data: {
+            status: "PENDING",
+          },
+        });
+        await this.#enqueueRun({
+          run: updatedRun,
+          env: backgroundWorker.runtimeEnvironment,
+          //add to the queue using the original run created time
+          //this should ensure they're in the correct order in the queue
+          timestamp: updatedRun.createdAt.getTime(),
+          tx,
+        });
+      });
+    }
+
+    //enqueue more if needed
+    if (runsWaitingForDeploy.length > maxCount) {
+      await this.queueRunsWaitingForWorker({ backgroundWorkerId });
+    }
   }
 
   //MARK: - Waitpoints
