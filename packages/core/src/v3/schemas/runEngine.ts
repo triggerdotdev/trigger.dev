@@ -1,8 +1,49 @@
-import { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
-import { TaskRunExecutionStatus, TaskRunStatus, WaitpointType } from "@trigger.dev/database";
 import { z } from "zod";
+import { MachinePreset } from "./common.js";
+import { EnvironmentType } from "./schemas.js";
 
-//todo it will need to move into core because the Worker will need to use these
+export const TaskRunExecutionStatus = {
+  RUN_CREATED: "RUN_CREATED",
+  QUEUED: "QUEUED",
+  PENDING_EXECUTING: "PENDING_EXECUTING",
+  EXECUTING: "EXECUTING",
+  EXECUTING_WITH_WAITPOINTS: "EXECUTING_WITH_WAITPOINTS",
+  BLOCKED_BY_WAITPOINTS: "BLOCKED_BY_WAITPOINTS",
+  PENDING_CANCEL: "PENDING_CANCEL",
+  FINISHED: "FINISHED",
+} as const;
+
+export type TaskRunExecutionStatus =
+  (typeof TaskRunExecutionStatus)[keyof typeof TaskRunExecutionStatus];
+
+export const TaskRunStatus = {
+  DELAYED: "DELAYED",
+  PENDING: "PENDING",
+  WAITING_FOR_DEPLOY: "WAITING_FOR_DEPLOY",
+  EXECUTING: "EXECUTING",
+  WAITING_TO_RESUME: "WAITING_TO_RESUME",
+  RETRYING_AFTER_FAILURE: "RETRYING_AFTER_FAILURE",
+  PAUSED: "PAUSED",
+  CANCELED: "CANCELED",
+  INTERRUPTED: "INTERRUPTED",
+  COMPLETED_SUCCESSFULLY: "COMPLETED_SUCCESSFULLY",
+  COMPLETED_WITH_ERRORS: "COMPLETED_WITH_ERRORS",
+  SYSTEM_FAILURE: "SYSTEM_FAILURE",
+  CRASHED: "CRASHED",
+  EXPIRED: "EXPIRED",
+  TIMED_OUT: "TIMED_OUT",
+} as const;
+
+export type TaskRunStatus = (typeof TaskRunStatus)[keyof typeof TaskRunStatus];
+
+export const WaitpointType = {
+  RUN: "RUN",
+  DATETIME: "DATETIME",
+  MANUAL: "MANUAL",
+} as const;
+
+export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
+
 const CompletedWaitpoint = z.object({
   id: z.string(),
   type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
@@ -18,7 +59,7 @@ const CompletedWaitpoint = z.object({
 });
 
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
-const DequeuedMessage = z.object({
+export const DequeuedMessage = z.object({
   version: z.literal("1"),
   snapshot: z.object({
     id: z.string(),
@@ -84,3 +125,6 @@ export const RunExecutionData = z.object({
 });
 
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
+
+export const CompleteAttemptResult = z.enum(["COMPLETED", "RETRY_QUEUED", "RETRY_IMMEDIATELY"]);
+export type CompleteAttemptResult = z.infer<typeof CompleteAttemptResult>;

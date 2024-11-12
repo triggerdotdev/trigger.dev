@@ -2,11 +2,14 @@ import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
 import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
 import {
+  CompleteAttemptResult,
+  DequeuedMessage,
   MachinePreset,
   MachinePresetName,
   parsePacket,
   QueueOptions,
   RetryOptions,
+  RunExecutionData,
   sanitizeError,
   shouldRetryError,
   TaskRunError,
@@ -47,7 +50,6 @@ import { runStatusFromError } from "./errors";
 import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
-import { DequeuedMessage, RunExecutionData } from "./messages";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
 
 type Options = {
@@ -116,8 +118,6 @@ type TriggerParams = {
   seedMetadata?: string;
   seedMetadataType?: string;
 };
-
-type CompleteAttemptResult = "COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY";
 
 const workerCatalog = {
   finishWaitpoint: {

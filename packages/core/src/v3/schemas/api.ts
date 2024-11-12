@@ -193,6 +193,7 @@ export const InitializeDeploymentRequestBody = z.object({
   registryHost: z.string().optional(),
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
+  type: z.enum(["SHARED", "UNMANAGED"]).optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;

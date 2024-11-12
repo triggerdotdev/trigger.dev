@@ -1,23 +1,34 @@
 type HeartbeatServiceOptions = {
   heartbeat: () => Promise<void>;
-  pingIntervalInMs?: number;
+  intervalMs?: number;
   leadingEdge?: boolean;
+  onError?: (error: unknown) => Promise<void>;
 };
 
 export class HeartbeatService {
   private _heartbeat: () => Promise<void>;
-  private _heartbeatIntervalInMs: number;
+  private _intervalMs: number;
   private _nextHeartbeat: NodeJS.Timeout | undefined;
   private _leadingEdge: boolean;
+  private _isHeartbeating: boolean;
+  private _onError?: (error: unknown) => Promise<void>;
 
   constructor(opts: HeartbeatServiceOptions) {
     this._heartbeat = opts.heartbeat;
-    this._heartbeatIntervalInMs = opts.pingIntervalInMs ?? 45_000;
+    this._intervalMs = opts.intervalMs ?? 45_000;
     this._nextHeartbeat = undefined;
     this._leadingEdge = opts.leadingEdge ?? false;
+    this._isHeartbeating = false;
+    this._onError = opts.onError;
   }
 
   start() {
+    if (this._isHeartbeating) {
+      return;
+    }
+
+    this._isHeartbeating = true;
+
     if (this._leadingEdge) {
       this.#doHeartbeat();
     } else {
@@ -26,13 +37,28 @@ export class HeartbeatService {
   }
 
   stop() {
+    if (!this._isHeartbeating) {
+      return;
+    }
+
+    this._isHeartbeating = false;
     this.#clearNextHeartbeat();
   }
 
   #doHeartbeat = async () => {
     this.#clearNextHeartbeat();
 
-    await this._heartbeat();
+    try {
+      await this._heartbeat();
+    } catch (error) {
+      if (this._onError) {
+        try {
+          await this._onError(error);
+        } catch (error) {
+          console.error("Error handling heartbeat error", error);
+        }
+      }
+    }
 
     this.#scheduleNextHeartbeat();
   };
@@ -44,6 +70,6 @@ export class HeartbeatService {
   }
 
   #scheduleNextHeartbeat() {
-    this._nextHeartbeat = setTimeout(this.#doHeartbeat, this._heartbeatIntervalInMs);
+    this._nextHeartbeat = setTimeout(this.#doHeartbeat, this._intervalMs);
   }
 }
