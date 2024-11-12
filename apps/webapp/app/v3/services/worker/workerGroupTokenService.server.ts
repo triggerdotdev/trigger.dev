@@ -1,12 +1,14 @@
 import { customAlphabet } from "nanoid";
 import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { logger } from "~/services/logger.server";
 import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { z } from "zod";
 import { HEADER_NAME } from "@trigger.dev/worker";
-import { DequeuedMessage } from "@internal/run-engine/engine/messages";
-import { TaskRunExecutionResult } from "@trigger.dev/core/v3";
+import { TaskRunExecutionResult, DequeuedMessage } from "@trigger.dev/core/v3";
+import { env } from "~/env.server";
+import { $transaction } from "~/db.server";
+import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -136,6 +138,38 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
+    if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
+      const managedWorkerSecret = request.headers.get(HEADER_NAME.WORKER_MANAGED_SECRET);
+
+      if (!managedWorkerSecret) {
+        logger.error("[WorkerGroupTokenService] Managed secret not found in request", {
+          headers: this.sanitizeHeaders(request),
+        });
+        return;
+      }
+
+      const encoder = new TextEncoder();
+
+      const a = encoder.encode(managedWorkerSecret);
+      const b = encoder.encode(env.MANAGED_WORKER_SECRET);
+
+      if (a.byteLength !== b.byteLength) {
+        logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
+          managedWorkerSecret,
+          headers: this.sanitizeHeaders(request),
+        });
+        return;
+      }
+
+      if (!timingSafeEqual(a, b)) {
+        logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
+          managedWorkerSecret,
+          headers: this.sanitizeHeaders(request),
+        });
+        return;
+      }
+    }
+
     const workerInstance = await this.getOrCreateWorkerInstance({
       workerGroup,
       instanceName,
@@ -207,76 +241,171 @@ export class WorkerGroupTokenService extends WithRunEngine {
     instanceName: string;
     deploymentId?: string;
   }) {
-    const workerInstance = await this._prisma.workerInstance.findUnique({
-      where: {
-        workerGroupId_name: {
-          workerGroupId: workerGroup.id,
-          name: instanceName,
-        },
-      },
-      include: {
-        deployment: true,
-      },
-    });
+    return await $transaction(this._prisma, async (tx) => {
+      const resourceIdentifier = deploymentId ? `${deploymentId}:${instanceName}` : instanceName;
 
-    if (workerInstance) {
-      return workerInstance;
-    }
-
-    if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
-      return this._prisma.workerInstance.create({
-        data: {
-          workerGroupId: workerGroup.id,
-          name: instanceName,
+      const workerInstance = await tx.workerInstance.findUnique({
+        where: {
+          workerGroupId_resourceIdentifier: {
+            workerGroupId: workerGroup.id,
+            resourceIdentifier,
+          },
         },
         include: {
           deployment: true,
         },
       });
-    }
 
-    if (!workerGroup.projectId || !workerGroup.organizationId) {
-      logger.error(
-        "[WorkerGroupTokenService] Non-shared worker group missing project or organization",
-        workerGroup
-      );
-      return;
-    }
+      if (workerInstance) {
+        return workerInstance;
+      }
 
-    // Unmanaged workers instances are locked to a specific deployment version
+      if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
+        if (deploymentId) {
+          logger.warn(
+            "[WorkerGroupTokenService] Shared worker group instances should not authenticate with a deployment ID",
+            {
+              workerGroup,
+              workerInstance,
+              deploymentId,
+            }
+          );
+        }
 
-    const deployment = await this._prisma.workerDeployment.findUnique({
-      where: {
-        id: deploymentId,
-      },
-    });
+        return tx.workerInstance.create({
+          data: {
+            workerGroupId: workerGroup.id,
+            name: instanceName,
+            resourceIdentifier,
+          },
+          include: {
+            // This will always be empty for shared worker instances, but required for types
+            deployment: true,
+          },
+        });
+      }
 
-    if (!deployment) {
-      logger.error("[WorkerGroupTokenService] Deployment not found", { deploymentId });
-      return;
-    }
+      if (!workerGroup.projectId || !workerGroup.organizationId) {
+        logger.error(
+          "[WorkerGroupTokenService] Non-shared worker group missing project or organization",
+          {
+            workerGroup,
+            workerInstance,
+            deploymentId,
+          }
+        );
+        return;
+      }
 
-    if (deployment.projectId !== workerGroup.projectId) {
-      logger.error("[WorkerGroupTokenService] Deployment does not match worker group project", {
-        deployment,
-        workerGroup,
+      if (!deploymentId) {
+        logger.error("[WorkerGroupTokenService] Non-shared worker group required deployment ID", {
+          workerGroup,
+          workerInstance,
+        });
+        return;
+      }
+
+      // Unmanaged workers instances are locked to a specific deployment version
+
+      const deployment = await tx.workerDeployment.findUnique({
+        where: {
+          ...(deploymentId.startsWith("deployment_")
+            ? {
+                friendlyId: deploymentId,
+              }
+            : {
+                id: deploymentId,
+              }),
+        },
       });
-      return;
-    }
 
-    const nonSharedWorkerInstance = this._prisma.workerInstance.create({
-      data: {
-        workerGroupId: workerGroup.id,
-        name: instanceName,
-        environmentId: deployment.environmentId,
-        deploymentId: deployment.id,
-      },
-      include: {
-        deployment: true,
-      },
+      if (!deployment) {
+        logger.error("[WorkerGroupTokenService] Deployment not found", {
+          workerGroup,
+          workerInstance,
+          deploymentId,
+        });
+        return;
+      }
+
+      if (deployment.projectId !== workerGroup.projectId) {
+        logger.error("[WorkerGroupTokenService] Deployment does not match worker group project", {
+          deployment,
+          workerGroup,
+          workerInstance,
+        });
+        return;
+      }
+
+      if (deployment.status === "DEPLOYING") {
+        // This is the first instance to be created for this deployment, so mark it as deployed
+        await tx.workerDeployment.update({
+          where: {
+            id: deployment.id,
+          },
+          data: {
+            status: "DEPLOYED",
+            deployedAt: new Date(),
+          },
+        });
+
+        // Check if the deployment should be promoted
+        const workerPromotion = await tx.workerDeploymentPromotion.findFirst({
+          where: {
+            label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
+            environmentId: deployment.environmentId,
+          },
+          include: {
+            deployment: true,
+          },
+        });
+
+        const shouldPromote =
+          !workerPromotion || deployment.createdAt > workerPromotion.deployment.createdAt;
+
+        if (shouldPromote) {
+          // Promote the deployment
+          await tx.workerDeploymentPromotion.upsert({
+            where: {
+              environmentId_label: {
+                environmentId: deployment.environmentId,
+                label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
+              },
+            },
+            create: {
+              deploymentId: deployment.id,
+              environmentId: deployment.environmentId,
+              label: CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
+            },
+            update: {
+              deploymentId: deployment.id,
+            },
+          });
+        }
+      } else if (deployment.status !== "DEPLOYED") {
+        logger.error("[WorkerGroupTokenService] Deployment not deploying or deployed", {
+          deployment,
+          workerGroup,
+          workerInstance,
+        });
+        return;
+      }
+
+      const nonSharedWorkerInstance = tx.workerInstance.create({
+        data: {
+          workerGroupId: workerGroup.id,
+          name: instanceName,
+          resourceIdentifier,
+          environmentId: deployment.environmentId,
+          deploymentId: deployment.id,
+        },
+        include: {
+          deployment: true,
+        },
+      });
+
+      return nonSharedWorkerInstance;
     });
-
-    return nonSharedWorkerInstance;
   }
 
   private sanitizeHeaders(request: Request, skipHeaders = ["authorization"]) {

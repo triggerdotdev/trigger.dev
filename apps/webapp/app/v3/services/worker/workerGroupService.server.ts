@@ -48,15 +48,17 @@ export class WorkerGroupService extends WithRunEngine {
     };
   }
 
+  /**
+    This updates a single worker group.
+    The name should never be updated. This would mean changing the masterQueue name which can have unexpected consequences.
+    */
   async updateWorkerGroup({
     projectId,
     workerGroupId,
-    name,
     description,
   }: {
     projectId: string;
     workerGroupId: string;
-    name?: string;
     description?: string;
   }) {
     const workerGroup = await this._prisma.workerInstanceGroup.findUnique({
@@ -69,7 +71,6 @@ export class WorkerGroupService extends WithRunEngine {
     if (!workerGroup) {
       logger.error("[WorkerGroupService] No worker group found for update", {
         workerGroupId,
-        name,
         description,
       });
       return;
@@ -81,11 +82,15 @@ export class WorkerGroupService extends WithRunEngine {
       },
       data: {
         description,
-        name,
       },
     });
   }
 
+  /**
+    This lists worker groups.
+    Without a project ID, only shared worker groups will be returned.
+    With a project ID, in addition to all shared worker groups, ones associated with the project will also be returned.
+    */
   async listWorkerGroups({ projectId }: { projectId?: string }) {
     const workerGroups = await this._prisma.workerInstanceGroup.findMany({
       where: {

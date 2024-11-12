@@ -450,7 +450,8 @@ model Project {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  version ProjectVersion @default(V2)
+  version ProjectVersion   @default(V2)
+  engine  RunEngineVersion @default(V1)
 
   builderProjectId String?
 
@@ -2086,8 +2087,14 @@ model FeatureFlag {
 }
 
 model WorkerInstance {
-  id   String @id @default(cuid())
+  id String @id @default(cuid())
+
+  /// For example "worker-1"
   name String
+
+  /// If managed, it will default to the name, e.g. "worker-1"
+  /// If unmanged, it will be prefixed with the deployment ID e.g. "deploy-123-worker-1"
+  resourceIdentifier String
 
   workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
   workerGroupId String
@@ -2112,7 +2119,7 @@ model WorkerInstance {
   lastDequeueAt   DateTime?
   lastHeartbeatAt DateTime?
 
-  @@unique([workerGroupId, name])
+  @@unique([workerGroupId, resourceIdentifier])
 }
 
 enum WorkerInstanceGroupType {
@@ -2150,8 +2157,6 @@ model WorkerInstanceGroup {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@map("WorkerGroup")
 }
 
 model WorkerGroupToken {
@@ -2613,7 +2618,8 @@ model WorkerDeployment {
 
   externalBuildData Json?
 
-  status WorkerDeploymentStatus @default(PENDING)
+  status WorkerDeploymentStatus  @default(PENDING)
+  type   WorkerInstanceGroupType @default(SHARED)
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String

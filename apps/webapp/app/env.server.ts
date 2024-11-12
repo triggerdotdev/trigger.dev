@@ -150,6 +150,7 @@ const EnvironmentSchema = z.object({
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
+  MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
 
   // Development OTEL environment variables
   DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
