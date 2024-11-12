@@ -277,7 +277,8 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  const canRollback = !deployment.isCurrent && deployment.isDeployed;
+  const canRollback =
+    deployment.type === "SHARED" && !deployment.isCurrent && deployment.isDeployed;
   const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
 
   if (!canRollback && !canRetryIndexing) {

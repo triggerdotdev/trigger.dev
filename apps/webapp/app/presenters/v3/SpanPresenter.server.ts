@@ -83,6 +83,7 @@ export class SpanPresenter extends BasePresenter {
             sdkVersion: true,
           },
         },
+        engine: true,
         //status + duration
         status: true,
         startedAt: true,
@@ -312,6 +313,7 @@ export class SpanPresenter extends BasePresenter {
       context: JSON.stringify(context, null, 2),
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
+      engine: run.engine,
     };
   }
 

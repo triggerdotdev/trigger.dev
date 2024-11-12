@@ -68,6 +68,7 @@ export class DeploymentPresenter {
         imageReference: true,
         externalBuildData: true,
         projectId: true,
+        type: true,
         environment: {
           select: {
             id: true,
@@ -152,6 +153,7 @@ export class DeploymentPresenter {
         organizationId: project.organizationId,
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
+        type: deployment.type,
       },
     };
   }

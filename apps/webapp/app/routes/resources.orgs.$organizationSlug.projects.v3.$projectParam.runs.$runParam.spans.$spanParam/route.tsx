@@ -616,6 +616,10 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>Engine version</Property.Label>
+                  <Property.Value>{run.engine}</Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Test run</Property.Label>
                   <Property.Value>
                     {run.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}

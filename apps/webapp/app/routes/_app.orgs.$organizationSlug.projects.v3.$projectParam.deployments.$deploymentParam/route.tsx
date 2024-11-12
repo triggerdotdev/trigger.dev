@@ -30,6 +30,7 @@ import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server"
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3DeploymentParams, v3DeploymentsPath } from "~/utils/pathBuilder";
+import { capitalizeWord } from "~/utils/string";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -150,6 +151,10 @@ export default function Page() {
             <Property.Item>
               <Property.Label>SDK Version</Property.Label>
               <Property.Value>{deployment.sdkVersion ? deployment.sdkVersion : "–"}</Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Worker type</Property.Label>
+              <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Started at</Property.Label>
