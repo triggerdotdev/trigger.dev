@@ -1,0 +1,72 @@
+---
+title: "Convert an image to a cartoon using Fal.ai and Trigger.dev Realtime"
+sidebarTitle: "Fal.ai with Realtime"
+description: "This example demonstrates how to convert an image to a cartoon using Fal.ai and shows the progress of the task on the frontend using Trigger.dev Realtime."
+---
+
+## Walkthrough
+
+This video walks through the process of creating this task in a Next.js project.
+
+<div className="w-full h-full aspect-video mb-3">
+  <iframe width="100%" height="100%" src="https://www.youtube.com/embed/BWZqYfUaigg?si=XpqVUEIf1j4bsYZ4" title="Trigger.dev walkthrough" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen/>
+</div>
+
+## Prerequisites
+
+- An existing project
+- A [Trigger.dev account](https://cloud.trigger.dev) with Trigger.dev [initialized in your project](/quick-start)
+- A [Fal.ai](https://fal.ai/) account
+
+## Task code
+
+This task converts an image to a cartoon using fal AI, and uploads the result to Cloudflare R2.
+
+```ts trigger/fal-ai-image-from-prompt-realtime.ts
+import * as fal from "@fal-ai/serverless-client";
+import { logger, schemaTask } from "@trigger.dev/sdk/v3";
+import { z } from "zod";
+
+export const FalResult = z.object({
+  images: z.tuple([z.object({ url: z.string() })]),
+});
+
+export const payloadSchema = z.object({
+  imageUrl: z.string().url(),
+  prompt: z.string(),
+});
+
+export const realtimeImageGeneration = schemaTask({
+  id: "realtime-image-generation",
+  schema: payloadSchema,
+  run: async (payload) => {
+    const result = await fal.subscribe("fal-ai/flux/dev/image-to-image", {
+      input: {
+        image_url: payload.imageUrl,
+        prompt: payload.prompt,
+      },
+      onQueueUpdate: (update) => {
+        logger.info("Fal.ai processing update", { update });
+      },
+    });
+
+    const $result = FalResult.parse(result);
+    const [{ url: cartoonUrl }] = $result.images;
+
+    return {
+      imageUrl: cartoonUrl,
+    };
+  },
+});
+```
+
+### Testing your task
+
+You can test your task by triggering it from the Trigger.dev dashboard. Here's an example payload:
+
+```json
+{
+  "imageUrl": "https://static.vecteezy.com/system/resources/previews/005/857/332/non_2x/funny-portrait-of-cute-corgi-dog-outdoors-free-photo.jpg",
+  "prompt": "Dress this dog for Christmas"
+}
+```
