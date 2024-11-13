@@ -140,10 +140,6 @@ export const CompleteRunAttemptResult = z
   .and(ExecutionResult);
 export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
 
-/** The response when cancelling a run. */
-export const CancelRunResult = ExecutionResult;
-export type CancelRunResult = z.infer<typeof CancelRunResult>;
-
 /** The response when a Worker asks for the latest execution state */
 export const RunExecutionData = z.object({
   version: z.literal("1"),
@@ -161,3 +157,14 @@ export const RunExecutionData = z.object({
   completedWaitpoints: z.array(CompletedWaitpoint),
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
+
+export const WaitForDurationResult = z
+  .object({
+    /**
+        If you pass an idempotencyKey, you may actually not need to wait.
+        Use this date to determine when to continue.
+    */
+    waitUntil: z.coerce.date(),
+  })
+  .and(ExecutionResult);
+export type WaitForDurationResult = z.infer<typeof WaitForDurationResult>;

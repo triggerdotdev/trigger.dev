@@ -3,7 +3,6 @@ import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
 import {
-  CancelRunResult,
   CompleteRunAttemptResult,
   DequeuedMessage,
   ExecutionResult,
@@ -19,6 +18,7 @@ import {
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
+  WaitForDurationResult,
 } from "@trigger.dev/core/v3";
 import {
   generateFriendlyId,
@@ -1100,9 +1100,7 @@ export class RunEngine {
     releaseConcurrency?: boolean;
     idempotencyKey?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<{
-    willWaitUntil: Date;
-  }> {
+  }): Promise<WaitForDurationResult> {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([runId], 5_000, async (signal) => {
@@ -1151,11 +1149,14 @@ export class RunEngine {
 
       //waitpoint already completed, so we don't need to wait
       if (waitpoint.status === "COMPLETED") {
-        return { willWaitUntil: waitpoint.completedAt ?? new Date() };
+        return {
+          waitUntil: waitpoint.completedAt ?? new Date(),
+          ...executionResultFromSnapshot(snapshot),
+        };
       }
 
       //block the run
-      await this.blockRunWithWaitpoint({
+      const blockResult = await this.blockRunWithWaitpoint({
         runId,
         waitpointId: waitpoint.id,
         environmentId: waitpoint.environmentId,
@@ -1171,7 +1172,8 @@ export class RunEngine {
       );
 
       return {
-        willWaitUntil: date,
+        waitUntil: date,
+        ...executionResultFromSnapshot(blockResult),
       };
     });
   }
@@ -1260,7 +1262,7 @@ export class RunEngine {
     reason?: string;
     finalizeRun?: boolean;
     tx?: PrismaClientOrTransaction;
-  }): Promise<CancelRunResult> {
+  }): Promise<ExecutionResult> {
     const prisma = tx ?? this.prisma;
     reason = reason ?? "Cancelled by user";
 
@@ -1527,10 +1529,10 @@ export class RunEngine {
     projectId: string;
     failAfter?: Date;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
 
-    await this.runLock.lock([runId], 5000, async (signal) => {
+    return await this.runLock.lock([runId], 5000, async (signal) => {
       const taskWaitpoint = await prisma.taskRunWaitpoint.create({
         data: {
           taskRunId: runId,
@@ -1539,23 +1541,23 @@ export class RunEngine {
         },
       });
 
-      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+      let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
       if (
-        latestSnapshot.executionStatus === "EXECUTING" ||
-        latestSnapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
+        snapshot.executionStatus === "EXECUTING" ||
+        snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
       ) {
         newStatus = "EXECUTING_WITH_WAITPOINTS";
       }
 
       //if the state has changed, create a new snapshot
-      if (newStatus !== latestSnapshot.executionStatus) {
-        await this.#createExecutionSnapshot(prisma, {
+      if (newStatus !== snapshot.executionStatus) {
+        snapshot = await this.#createExecutionSnapshot(prisma, {
           run: {
-            id: latestSnapshot.runId,
-            status: latestSnapshot.runStatus,
-            attemptNumber: latestSnapshot.attemptNumber,
+            id: snapshot.runId,
+            status: snapshot.runStatus,
+            attemptNumber: snapshot.attemptNumber,
           },
           snapshot: {
             executionStatus: newStatus,
@@ -1572,6 +1574,8 @@ export class RunEngine {
           availableAt: failAfter,
         });
       }
+
+      return snapshot;
     });
   }
 

@@ -91,8 +91,9 @@ describe("RunEngine Waitpoints", () => {
         date,
         releaseConcurrency: false,
       });
-
-      expect(result.willWaitUntil.toISOString()).toBe(date.toISOString());
+      expect(result.waitUntil.toISOString()).toBe(date.toISOString());
+      expect(result.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+      expect(result.run.status).toBe("EXECUTING");
 
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
