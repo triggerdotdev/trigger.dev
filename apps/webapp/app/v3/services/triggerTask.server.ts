@@ -31,17 +31,22 @@ export class TriggerTaskService extends WithRunEngine {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
+      //todo we need to determine the version using the BackgroundWorker
+      //- triggerAndWait we can lookup the BackgroundWorker easily, and get the engine.
+      //- No locked version: lookup the BackgroundWorker via the Deployment/latest dev BW
+      // const workerWithTasks = workerId
+      //   ? await getWorkerDeploymentFromWorker(prisma, workerId)
+      //   : run.runtimeEnvironment.type === "DEVELOPMENT"
+      //   ? await getMostRecentWorker(prisma, run.runtimeEnvironmentId)
+      //   : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+
       if (environment.project.engine === RunEngineVersion.V1) {
         return await this.callV1(taskId, environment, body, options);
       }
 
-      // The project is using the new Run Engine
-
       if (environment.type === RuntimeEnvironmentType.DEVELOPMENT) {
         return await this.callV1(taskId, environment, body, options);
       }
-
-      // The environment is not development, so we need to use the new Run Engine
 
       //todo Additional checks
       /*
