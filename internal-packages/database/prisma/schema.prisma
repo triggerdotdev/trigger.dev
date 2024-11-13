@@ -2445,38 +2445,26 @@ enum TaskQueueType {
 }
 
 model BatchTaskRun {
-  id String @id @default(cuid())
-
-  friendlyId String @unique
-
-  status BatchTaskRunStatus @default(PENDING)
-
-  idempotencyKey String?
-
-  //engine v1 only
-  taskIdentifier String?
-
-  //engine v1 only
-  checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  checkpointEventId String?                 @unique
-
+  id                   String             @id @default(cuid())
+  friendlyId           String             @unique
+  idempotencyKey       String?
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
+  runs                 TaskRun[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  //engine v1 only
-  dependentTaskAttempt   TaskRunAttempt? @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ///all the below properties are engine v1 only
+  items                  BatchTaskRunItem[]
+  status                 BatchTaskRunStatus      @default(PENDING)
+  taskIdentifier         String?
+  checkpointEvent        CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  checkpointEventId      String?                 @unique
+  dependentTaskAttempt   TaskRunAttempt?         @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dependentTaskAttemptId String?
+  runDependencies        TaskRunDependency[]     @relation("dependentBatchRun")
 
-  items BatchTaskRunItem[]
-
-  //engine v1 only
-  runDependencies TaskRunDependency[] @relation("dependentBatchRun")
-
-  runs TaskRun[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
 
@@ -2485,6 +2473,7 @@ enum BatchTaskRunStatus {
   COMPLETED
 }
 
+///Used in engine V1 only
 model BatchTaskRunItem {
   id String @id @default(cuid())
 
