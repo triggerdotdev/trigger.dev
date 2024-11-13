@@ -1,14 +1,11 @@
-import { Worker, type WorkerConcurrencyOptions } from "@internal/redis-worker";
+import { Worker } from "@internal/redis-worker";
 import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
+import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CompleteAttemptResult,
   DequeuedMessage,
-  MachinePreset,
-  MachinePresetName,
   parsePacket,
-  QueueOptions,
-  RetryOptions,
   RunExecutionData,
   sanitizeError,
   shouldRetryError,
@@ -34,10 +31,9 @@ import {
   TaskRun,
   TaskRunExecutionStatus,
   TaskRunStatus,
-  Waitpoint,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { Redis, type RedisOptions } from "ioredis";
+import { Redis } from "ioredis";
 import { nanoid } from "nanoid";
 import { EventEmitter } from "node:events";
 import { z } from "zod";
@@ -51,75 +47,7 @@ import { EventBusEvents } from "./eventBus";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
-import { assertExhaustive } from "@trigger.dev/core";
-
-type Options = {
-  redis: RedisOptions;
-  prisma: PrismaClient;
-  worker: WorkerConcurrencyOptions & {
-    pollIntervalMs?: number;
-  };
-  machines: {
-    defaultMachine: MachinePresetName;
-    machines: Record<string, MachinePreset>;
-    baseCostInCents: number;
-  };
-  queue?: {
-    retryOptions?: RetryOptions;
-  };
-  /** If not set then checkpoints won't ever be used */
-  retryWarmStartThresholdMs?: number;
-  heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
-  queueRunsWaitingForWorkerBatchSize?: number;
-  tracer: Tracer;
-};
-
-type HeartbeatTimeouts = {
-  PENDING_EXECUTING: number;
-  PENDING_CANCEL: number;
-  EXECUTING: number;
-  EXECUTING_WITH_WAITPOINTS: number;
-};
-
-type MachineResources = {
-  cpu: number;
-  memory: number;
-};
-
-type TriggerParams = {
-  friendlyId: string;
-  number: number;
-  environment: MinimalAuthenticatedEnvironment;
-  idempotencyKey?: string;
-  taskIdentifier: string;
-  payload: string;
-  payloadType: string;
-  context: any;
-  traceContext: Record<string, string | undefined>;
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-  lockedToVersionId?: string;
-  concurrencyKey?: string;
-  masterQueue: string;
-  queueName: string;
-  queue?: QueueOptions;
-  isTest: boolean;
-  delayUntil?: Date;
-  queuedAt?: Date;
-  maxAttempts?: number;
-  ttl?: string;
-  tags: string[];
-  parentTaskRunId?: string;
-  rootTaskRunId?: string;
-  batchId?: string;
-  resumeParentOnCompletion?: boolean;
-  depth?: number;
-  metadata?: string;
-  metadataType?: string;
-  seedMetadata?: string;
-  seedMetadataType?: string;
-};
+import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -171,7 +99,7 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
   eventBus = new EventEmitter<EventBusEvents>();
 
-  constructor(private readonly options: Options) {
+  constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
     this.redis = new Redis(options.redis);
     this.runLock = new RunLocker({ redis: this.redis });
