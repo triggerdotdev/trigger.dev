@@ -418,9 +418,7 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-export type BatchItem<TInput> = TInput extends void
-  ? { payload?: TInput; options?: TaskRunOptions }
-  : { payload: TInput; options?: TaskRunOptions };
+export type BatchItem<TInput> = { payload: TInput; options?: TaskRunOptions };
 
 export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**

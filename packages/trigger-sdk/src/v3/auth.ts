@@ -28,7 +28,7 @@ export const auth = {
   withAuth,
 };
 
-type PublicTokenPermissionAction = "read"; // Add more actions as needed
+type PublicTokenPermissionAction = "read" | "write"; // Add more actions as needed
 
 type PublicTokenPermissionProperties = {
   /**

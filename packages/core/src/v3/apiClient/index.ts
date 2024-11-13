@@ -182,6 +182,15 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ response, data }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -651,6 +660,10 @@ export class ApiClient {
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";
       }
+    }
+
+    if (typeof window !== "undefined" && typeof window.document !== "undefined") {
+      headers["x-trigger-client"] = "browser";
     }
 
     return headers;

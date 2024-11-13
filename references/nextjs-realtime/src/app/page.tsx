@@ -1,8 +1,18 @@
 import RunButton from "@/components/RunButton";
 import BatchRunButton from "@/components/BatchRunButton";
+import TriggerButton from "@/components/TriggerButton";
 import { ImageUploadDropzone } from "@/components/ImageUploadButton";
+import { auth } from "@trigger.dev/sdk/v3";
 
-export default function Home() {
+export default async function Home() {
+  const publicAccessToken = await auth.createPublicToken({
+    scopes: {
+      write: {
+        tasks: ["openai-streaming"],
+      },
+    },
+  });
+
   return (
     <main className="grid grid-rows-[1fr_auto] min-h-screen items-center justify-center w-full bg-gray-900">
       <div className="flex flex-col space-y-8">
@@ -14,6 +24,7 @@ export default function Home() {
       <div className="flex items-center space-x-4 justify-center w-full">
         <RunButton />
         <BatchRunButton />
+        <TriggerButton publicAccessToken={publicAccessToken} />
       </div>
     </main>
   );

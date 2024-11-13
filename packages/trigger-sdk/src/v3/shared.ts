@@ -17,6 +17,7 @@ import {
   getSchemaParseFn,
   InitOutput,
   logger,
+  makeIdempotencyKey,
   parsePacket,
   Queue,
   QueueOptions,
@@ -30,10 +31,8 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
-import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
-import type { Schema as AISchema, CoreTool } from "ai";
 
 import type {
   AnyRunHandle,
@@ -534,7 +533,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
-        idempotencyKey: await makeKey(options?.idempotencyKey),
+        idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         delay: options?.delay,
         ttl: options?.ttl,
         tags: options?.tags,
@@ -597,7 +596,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeKey(item.options?.idempotencyKey),
+              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
@@ -667,7 +666,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
-            idempotencyKey: await makeKey(options?.idempotencyKey),
+            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -764,7 +763,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
-                  idempotencyKey: await makeKey(item.options?.idempotencyKey),
+                  idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
                   delay: item.options?.delay,
                   ttl: item.options?.ttl,
                   tags: item.options?.tags,
@@ -928,18 +927,4 @@ async function handleTaskRunExecutionResult<TOutput>(
       error: createErrorTaskError(execution.error),
     };
   }
-}
-
-async function makeKey(
-  idempotencyKey?: IdempotencyKey | string | string[]
-): Promise<IdempotencyKey | undefined> {
-  if (!idempotencyKey) {
-    return;
-  }
-
-  if (isIdempotencyKey(idempotencyKey)) {
-    return idempotencyKey;
-  }
-
-  return await idempotencyKeys.create(idempotencyKey, { scope: "global" });
 }

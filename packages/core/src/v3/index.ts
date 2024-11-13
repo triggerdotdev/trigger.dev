@@ -20,6 +20,7 @@ export * from "./task-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
+export * from "./idempotencyKeys.js";
 export {
   formatDuration,
   formatDurationInDays,

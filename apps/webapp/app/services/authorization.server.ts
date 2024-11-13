@@ -1,4 +1,4 @@
-export type AuthorizationAction = "read"; // Add more actions as needed
+export type AuthorizationAction = "read" | "write"; // Add more actions as needed
 
 const ResourceTypes = ["tasks", "tags", "runs", "batch"] as const;
 
