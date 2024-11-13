@@ -830,7 +830,7 @@ export class RunEngine {
     maxResources?: MachineResources;
     backgroundWorkerId: string;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<DequeuedMessage[]> {
     return this.dequeueFromMasterQueue({
       consumerId,
       masterQueue: this.#environmentMasterQueueKey(environmentId),
@@ -853,7 +853,7 @@ export class RunEngine {
     maxRunCount: number;
     maxResources?: MachineResources;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<DequeuedMessage[]> {
     return this.dequeueFromMasterQueue({
       consumerId,
       masterQueue: this.#backgroundWorkerQueueKey(backgroundWorkerId),
