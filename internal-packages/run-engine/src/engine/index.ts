@@ -149,7 +149,7 @@ export class RunEngine {
           await this.#handleStalledSnapshot(payload);
         },
         expireRun: async ({ payload }) => {
-          await this.expireRun({ runId: payload.runId });
+          await this.#expireRun({ runId: payload.runId });
         },
         cancelRun: async ({ payload }) => {
           await this.cancelRun({
@@ -1178,72 +1178,6 @@ export class RunEngine {
     });
   }
 
-  async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
-    const prisma = tx ?? this.prisma;
-    await this.runLock.lock([runId], 5_000, async (signal) => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
-
-      //if we're executing then we won't expire the run
-      if (isExecuting(snapshot.executionStatus)) {
-        return;
-      }
-
-      //only expire "PENDING" runs
-      const run = await prisma.taskRun.findUnique({ where: { id: runId } });
-
-      if (!run) {
-        this.logger.debug("Could not find enqueued run to expire", {
-          runId,
-        });
-        return;
-      }
-
-      if (run.status !== "PENDING") {
-        this.logger.debug("Run cannot be expired because it's not in PENDING status", {
-          run,
-        });
-        return;
-      }
-
-      const error: TaskRunError = {
-        type: "STRING_ERROR",
-        raw: `Run expired because the TTL (${run.ttl}) was reached`,
-      };
-
-      const updatedRun = await prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "EXPIRED",
-          completedAt: new Date(),
-          expiredAt: new Date(),
-          error,
-          executionSnapshots: {
-            create: {
-              engine: "V2",
-              executionStatus: "FINISHED",
-              description: "Run was expired because the TTL was reached",
-              runStatus: "EXPIRED",
-            },
-          },
-        },
-        include: {
-          associatedWaitpoint: true,
-        },
-      });
-
-      if (!updatedRun.associatedWaitpoint) {
-        throw new ServiceValidationError("No associated waitpoint found", 400);
-      }
-
-      await this.completeWaitpoint({
-        id: updatedRun.associatedWaitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
-      });
-
-      this.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
-    });
-  }
-
   /**
   Call this to cancel a run.
   If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
@@ -1369,7 +1303,11 @@ export class RunEngine {
     });
   }
 
-  async queueRunsWaitingForWorker({ backgroundWorkerId }: { backgroundWorkerId: string }) {
+  async queueRunsWaitingForWorker({
+    backgroundWorkerId,
+  }: {
+    backgroundWorkerId: string;
+  }): Promise<void> {
     //we want this to happen in the background
     await this.worker.enqueue({
       job: "queueRunsWaitingForWorker",
@@ -1388,10 +1326,10 @@ export class RunEngine {
     runId: string;
     delayUntil: Date;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<TaskRun> {
     const prisma = tx ?? this.prisma;
     return this.#trace("rescheduleRun", { runId }, async (span) => {
-      await this.runLock.lock([runId], 5_000, async (signal) => {
+      return await this.runLock.lock([runId], 5_000, async (signal) => {
         const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //if the run isn't just created then we can't reschedule it
@@ -1850,6 +1788,72 @@ export class RunEngine {
       });
 
       return result;
+    });
+  }
+
+  async #expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
+    const prisma = tx ?? this.prisma;
+    await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+      //if we're executing then we won't expire the run
+      if (isExecuting(snapshot.executionStatus)) {
+        return;
+      }
+
+      //only expire "PENDING" runs
+      const run = await prisma.taskRun.findUnique({ where: { id: runId } });
+
+      if (!run) {
+        this.logger.debug("Could not find enqueued run to expire", {
+          runId,
+        });
+        return;
+      }
+
+      if (run.status !== "PENDING") {
+        this.logger.debug("Run cannot be expired because it's not in PENDING status", {
+          run,
+        });
+        return;
+      }
+
+      const error: TaskRunError = {
+        type: "STRING_ERROR",
+        raw: `Run expired because the TTL (${run.ttl}) was reached`,
+      };
+
+      const updatedRun = await prisma.taskRun.update({
+        where: { id: runId },
+        data: {
+          status: "EXPIRED",
+          completedAt: new Date(),
+          expiredAt: new Date(),
+          error,
+          executionSnapshots: {
+            create: {
+              engine: "V2",
+              executionStatus: "FINISHED",
+              description: "Run was expired because the TTL was reached",
+              runStatus: "EXPIRED",
+            },
+          },
+        },
+        include: {
+          associatedWaitpoint: true,
+        },
+      });
+
+      if (!updatedRun.associatedWaitpoint) {
+        throw new ServiceValidationError("No associated waitpoint found", 400);
+      }
+
+      await this.completeWaitpoint({
+        id: updatedRun.associatedWaitpoint.id,
+        output: { value: JSON.stringify(error), isError: true },
+      });
+
+      this.eventBus.emit("runExpired", { run: updatedRun, time: new Date() });
     });
   }
 

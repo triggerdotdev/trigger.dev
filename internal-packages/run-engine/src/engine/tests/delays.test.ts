@@ -163,7 +163,9 @@ describe("RunEngine delays", () => {
         assertNonNullable(executionData);
         expect(executionData.snapshot.executionStatus).toBe("RUN_CREATED");
 
-        await engine.rescheduleRun({ runId: run.id, delayUntil: new Date(Date.now() + 1_500) });
+        const rescheduleTo = new Date(Date.now() + 1_500);
+        const updatedRun = await engine.rescheduleRun({ runId: run.id, delayUntil: rescheduleTo });
+        expect(updatedRun.delayUntil?.toISOString()).toBe(rescheduleTo.toISOString());
 
         //wait so the initial delay passes
         await setTimeout(1_000);
