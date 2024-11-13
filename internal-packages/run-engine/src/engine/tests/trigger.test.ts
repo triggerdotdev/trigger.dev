@@ -164,7 +164,10 @@ describe("RunEngine trigger()", () => {
           outputType: "application/json",
         },
       });
-      expect(result).toBe("COMPLETED");
+      expect(result.attemptStatus).toBe("RUN_FINISHED");
+      expect(result.snapshot.executionStatus).toBe("FINISHED");
+      expect(result.run.attemptNumber).toBe(1);
+      expect(result.run.status).toBe("COMPLETED_SUCCESSFULLY");
 
       //state should be completed
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });
@@ -292,7 +295,10 @@ describe("RunEngine trigger()", () => {
           error,
         },
       });
-      expect(result).toBe("COMPLETED");
+      expect(result.attemptStatus).toBe("RUN_FINISHED");
+      expect(result.snapshot.executionStatus).toBe("FINISHED");
+      expect(result.run.attemptNumber).toBe(1);
+      expect(result.run.status).toBe("COMPLETED_WITH_ERRORS");
 
       //state should be completed
       const executionData3 = await engine.getRunExecutionData({ runId: run.id });
@@ -422,7 +428,9 @@ describe("RunEngine trigger()", () => {
             },
           },
         });
-        expect(result).toBe("RETRY_IMMEDIATELY");
+        expect(result.attemptStatus).toBe("RETRY_IMMEDIATELY");
+        expect(result.snapshot.executionStatus).toBe("PENDING_EXECUTING");
+        expect(result.run.status).toBe("RETRYING_AFTER_FAILURE");
 
         //state should be completed
         const executionData3 = await engine.getRunExecutionData({ runId: run.id });
@@ -450,6 +458,9 @@ describe("RunEngine trigger()", () => {
             outputType: "application/json",
           },
         });
+        expect(result2.snapshot.executionStatus).toBe("FINISHED");
+        expect(result2.run.attemptNumber).toBe(2);
+        expect(result2.run.status).toBe("COMPLETED_SUCCESSFULLY");
 
         //waitpoint should have been completed, with the output
         const runWaitpointAfter = await prisma.waitpoint.findMany({

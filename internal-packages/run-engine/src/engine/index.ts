@@ -3,12 +3,15 @@ import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
 import {
-  CompleteAttemptResult,
+  CancelRunResult,
+  CompleteRunAttemptResult,
   DequeuedMessage,
+  ExecutionResult,
   parsePacket,
   RunExecutionData,
   sanitizeError,
   shouldRetryError,
+  StartRunAttemptResult,
   TaskRunError,
   taskRunErrorEnhancer,
   TaskRunExecution,
@@ -29,6 +32,7 @@ import {
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
 } from "@trigger.dev/database";
@@ -48,6 +52,11 @@ import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
 import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
+import {
+  executionResultFromSnapshot,
+  getExecutionSnapshotCompletedWaitpoints,
+  getLatestExecutionSnapshot,
+} from "./executionSnapshots";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -208,7 +217,7 @@ export class RunEngine {
       seedMetadataType,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
-  ) {
+  ): Promise<TaskRun> {
     const prisma = tx ?? this.prisma;
 
     return this.#trace(
@@ -457,7 +466,7 @@ export class RunEngine {
         //lock the run so nothing else can modify it
         try {
           const dequeuedRun = await this.runLock.lock([runId], 5000, async (signal) => {
-            const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+            const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
             if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
               //create a failed snapshot
@@ -667,6 +676,8 @@ export class RunEngine {
               version: "1" as const,
               snapshot: {
                 id: newSnapshot.id,
+                executionStatus: newSnapshot.executionStatus,
+                description: newSnapshot.description,
               },
               image: result.deployment?.imageReference ?? undefined,
               checkpoint: newSnapshot.checkpoint ?? undefined,
@@ -800,12 +811,12 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<StartRunAttemptResult> {
     const prisma = tx ?? this.prisma;
 
     return this.#trace("startRunAttempt", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         if (latestSnapshot.id !== snapshotId) {
           //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
@@ -884,13 +895,19 @@ export class RunEngine {
         const nextAttemptNumber = (taskRun.attemptNumber ?? 0) + 1;
 
         if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
-          await this.#crash({
+          await this.#attemptFailed({
             runId: taskRun.id,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: "TASK_RUN_CRASHED",
-              message: "Max attempts reached.",
+            snapshotId,
+            completion: {
+              ok: false,
+              id: taskRun.id,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: "TASK_RUN_CRASHED",
+                message: "Max attempts reached.",
+              },
             },
+            tx: prisma,
           });
           throw new ServiceValidationError("Max attempts reached", 400);
         }
@@ -1044,11 +1061,7 @@ export class RunEngine {
           machine: machinePreset,
         };
 
-        return {
-          run,
-          snapshot,
-          execution,
-        };
+        return { run, snapshot, execution };
       });
     });
   }
@@ -1062,7 +1075,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-  }): Promise<CompleteAttemptResult> {
+  }): Promise<CompleteRunAttemptResult> {
     switch (completion.ok) {
       case true: {
         return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
@@ -1093,7 +1106,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([runId], 5_000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       if (snapshot.id !== snapshotId) {
         throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1166,7 +1179,7 @@ export class RunEngine {
   async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.prisma;
     await this.runLock.lock([runId], 5_000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //if we're executing then we won't expire the run
       if (isExecuting(snapshot.executionStatus)) {
@@ -1247,23 +1260,23 @@ export class RunEngine {
     reason?: string;
     finalizeRun?: boolean;
     tx?: PrismaClientOrTransaction;
-  }): Promise<"FINISHED" | "PENDING_CANCEL"> {
+  }): Promise<CancelRunResult> {
     const prisma = tx ?? this.prisma;
     reason = reason ?? "Cancelled by user";
 
     return this.#trace("cancelRun", { runId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
-          return "FINISHED" as const;
+          return executionResultFromSnapshot(latestSnapshot);
         }
 
         //is pending cancellation and we're not finalizing, alert the worker again
         if (latestSnapshot.executionStatus === "PENDING_CANCEL" && !finalizeRun) {
           await this.#sendNotificationToWorker({ runId });
-          return "PENDING_CANCEL" as const;
+          return executionResultFromSnapshot(latestSnapshot);
         }
 
         //set the run to cancelled immediately
@@ -1305,11 +1318,11 @@ export class RunEngine {
 
           //the worker needs to be notified so it can kill the run and complete the attempt
           await this.#sendNotificationToWorker({ runId });
-          return "PENDING_CANCEL" as const;
+          return executionResultFromSnapshot(newSnapshot);
         }
 
         //not executing, so we will actually finish the run
-        await this.#createExecutionSnapshot(prisma, {
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run,
           snapshot: {
             executionStatus: "FINISHED",
@@ -1349,7 +1362,7 @@ export class RunEngine {
           }
         }
 
-        return "FINISHED" as const;
+        return executionResultFromSnapshot(newSnapshot);
       });
     });
   }
@@ -1377,7 +1390,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
     return this.#trace("rescheduleRun", { runId }, async (span) => {
       await this.runLock.lock([runId], 5_000, async (signal) => {
-        const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //if the run isn't just created then we can't reschedule it
         if (snapshot.executionStatus !== "RUN_CREATED") {
@@ -1526,7 +1539,7 @@ export class RunEngine {
         },
       });
 
-      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
       if (
@@ -1618,7 +1631,7 @@ export class RunEngine {
         // 4. Add the completed waitpoints to the snapshots
         for (const run of affectedTaskRuns) {
           await this.runLock.lock([run.taskRunId], 5_000, async (signal) => {
-            const latestSnapshot = await this.#getLatestExecutionSnapshot(tx, run.taskRunId);
+            const latestSnapshot = await getLatestExecutionSnapshot(tx, run.taskRunId);
 
             await tx.taskRunExecutionSnapshot.update({
               where: { id: latestSnapshot.id },
@@ -1678,7 +1691,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([runId], 5_000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (snapshot.id !== snapshotId) {
         return {
           ok: false as const,
@@ -1711,7 +1724,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
-    const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
     if (latestSnapshot.id !== snapshotId) {
       this.logger.log("heartbeatRun no longer the latest snapshot, stopping the heartbeat.", {
         runId,
@@ -1745,7 +1758,7 @@ export class RunEngine {
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
     try {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       const executionData: RunExecutionData = {
         version: "1" as const,
@@ -1802,18 +1815,26 @@ export class RunEngine {
     runId: string;
     error: TaskRunInternalError;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.prisma;
     return this.#trace("#systemFailure", { runId }, async (span) => {
-      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //already finished
       if (latestSnapshot.executionStatus === "FINISHED") {
         //todo check run is in the correct state
-        return;
+        return {
+          attemptStatus: "RUN_FINISHED",
+          snapshot: latestSnapshot,
+          run: {
+            id: runId,
+            status: latestSnapshot.runStatus,
+            attemptNumber: latestSnapshot.attemptNumber,
+          },
+        };
       }
 
-      await this.#attemptFailed({
+      const result = await this.#attemptFailed({
         runId,
         snapshotId: latestSnapshot.id,
         completion: {
@@ -1823,18 +1844,10 @@ export class RunEngine {
         },
         tx: prisma,
       });
+
+      return result;
     });
   }
-
-  async #crash({
-    runId,
-    error,
-    tx,
-  }: {
-    runId: string;
-    error: TaskRunInternalError;
-    tx?: PrismaClientOrTransaction;
-  }) {}
 
   async #waitingForDeploy({
     orgId,
@@ -1882,11 +1895,11 @@ export class RunEngine {
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
     tx: PrismaClientOrTransaction;
-  }) {
+  }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.prisma;
     return this.#trace("#completeRunAttemptSuccess", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         if (latestSnapshot.id !== snapshotId) {
           throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1895,6 +1908,7 @@ export class RunEngine {
         span.setAttribute("completionStatus", completion.ok);
 
         const completedAt = new Date();
+
         const run = await prisma.taskRun.update({
           where: { id: runId },
           data: {
@@ -1912,6 +1926,9 @@ export class RunEngine {
             },
           },
           select: {
+            id: true,
+            status: true,
+            attemptNumber: true,
             spanId: true,
             associatedWaitpoint: {
               select: {
@@ -1925,6 +1942,7 @@ export class RunEngine {
             },
           },
         });
+        const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
         await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
 
         if (!run.associatedWaitpoint) {
@@ -1948,7 +1966,11 @@ export class RunEngine {
           },
         });
 
-        return "COMPLETED" as const;
+        return {
+          attemptStatus: "RUN_FINISHED",
+          snapshot: newSnapshot,
+          run,
+        };
       });
     });
   }
@@ -1965,12 +1987,12 @@ export class RunEngine {
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
     tx: PrismaClientOrTransaction;
-  }): Promise<"COMPLETED" | "RETRY_QUEUED" | "RETRY_IMMEDIATELY"> {
+  }): Promise<CompleteRunAttemptResult> {
     const prisma = this.prisma;
 
     return this.#trace("completeRunAttemptFailure", { runId, snapshotId }, async (span) => {
       return this.runLock.lock([runId], 5_000, async (signal) => {
-        const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         if (latestSnapshot.id !== snapshotId) {
           throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -1991,14 +2013,20 @@ export class RunEngine {
           completion.error.code === "TASK_RUN_CANCELLED"
         ) {
           // We need to cancel the task run instead of fail it
-          await this.cancelRun({
+          const result = await this.cancelRun({
             runId,
             completedAt: failedAt,
             reason: completion.error.message,
             finalizeRun: true,
             tx: prisma,
           });
-          return "COMPLETED" as const;
+          return {
+            attemptStatus:
+              result.snapshot.executionStatus === "PENDING_CANCEL"
+                ? "RUN_PENDING_CANCEL"
+                : "RUN_FINISHED",
+            ...result,
+          };
         }
 
         const error = sanitizeError(completion.error);
@@ -2054,8 +2082,8 @@ export class RunEngine {
             (this.options.retryWarmStartThresholdMs !== undefined &&
               completion.retry.delay >= this.options.retryWarmStartThresholdMs)
           ) {
-            //we nack the message, this allows another work to pick up the run
-            const gotRequeued = await this.#tryNackAndRequeue({
+            //we nack the message, requeuing it for later
+            const nackResult = await this.#tryNackAndRequeue({
               run,
               orgId: run.runtimeEnvironment.organizationId,
               timestamp: retryAt.getTime(),
@@ -2067,25 +2095,31 @@ export class RunEngine {
               tx: prisma,
             });
 
-            if (!gotRequeued) {
-              return "COMPLETED";
+            if (!nackResult.wasRequeued) {
+              return {
+                attemptStatus: "RUN_FINISHED",
+                ...nackResult,
+              };
             } else {
-              return "RETRY_QUEUED";
+              return { attemptStatus: "RETRY_QUEUED", ...nackResult };
             }
-          } else {
-            //it will continue running because the retry delay is short
-            await this.#createExecutionSnapshot(prisma, {
-              run,
-              snapshot: {
-                executionStatus: "PENDING_EXECUTING",
-                description: "Attempt failed wth a short delay, starting a new attempt.",
-              },
-            });
-            //the worker can fetch the latest snapshot and should create a new attempt
-            await this.#sendNotificationToWorker({ runId });
           }
 
-          return "RETRY_IMMEDIATELY";
+          //it will continue running because the retry delay is short
+          const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+            run,
+            snapshot: {
+              executionStatus: "PENDING_EXECUTING",
+              description: "Attempt failed wth a short delay, starting a new attempt.",
+            },
+          });
+          //the worker can fetch the latest snapshot and should create a new attempt
+          await this.#sendNotificationToWorker({ runId });
+
+          return {
+            attemptStatus: "RETRY_IMMEDIATELY",
+            ...executionResultFromSnapshot(newSnapshot),
+          };
         }
 
         const status = runStatusFromError(completion.error);
@@ -2106,7 +2140,7 @@ export class RunEngine {
           },
         });
 
-        await this.#createExecutionSnapshot(prisma, {
+        const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run,
           snapshot: {
             executionStatus: "FINISHED",
@@ -2135,7 +2169,11 @@ export class RunEngine {
           },
         });
 
-        return "COMPLETED" as const;
+        return {
+          attemptStatus: "RUN_FINISHED",
+          snapshot: newSnapshot,
+          run,
+        };
       });
     });
   }
@@ -2201,7 +2239,7 @@ export class RunEngine {
     timestamp?: number;
     error: TaskRunInternalError;
     tx?: PrismaClientOrTransaction;
-  }): Promise<boolean> {
+  }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([run.id], 5000, async (signal) => {
@@ -2209,12 +2247,12 @@ export class RunEngine {
       const gotRequeued = await this.runQueue.nackMessage(orgId, run.id, timestamp);
 
       if (!gotRequeued) {
-        await this.#systemFailure({
+        const result = await this.#systemFailure({
           runId: run.id,
           error,
           tx: prisma,
         });
-        return false;
+        return { wasRequeued: false, ...result };
       }
 
       const newSnapshot = await this.#createExecutionSnapshot(prisma, {
@@ -2225,7 +2263,19 @@ export class RunEngine {
         },
       });
 
-      return true;
+      return {
+        wasRequeued: true,
+        snapshot: {
+          id: newSnapshot.id,
+          executionStatus: newSnapshot.executionStatus,
+          description: newSnapshot.description,
+        },
+        run: {
+          id: newSnapshot.runId,
+          status: newSnapshot.runStatus,
+          attemptNumber: newSnapshot.attemptNumber,
+        },
+      };
     });
   }
 
@@ -2237,9 +2287,9 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     await this.runLock.lock([run.id], 5000, async (signal) => {
-      const snapshot = await this.#getLatestExecutionSnapshot(prisma, run.id);
+      const snapshot = await getLatestExecutionSnapshot(prisma, run.id);
 
-      const completedWaitpoints = await this.#getExecutionSnapshotCompletedWaitpoints(
+      const completedWaitpoints = await getExecutionSnapshotCompletedWaitpoints(
         prisma,
         snapshot.id
       );
@@ -2553,63 +2603,6 @@ export class RunEngine {
     }
   }
 
-  /* Gets the most recent valid snapshot for a run */
-  async #getLatestExecutionSnapshot(prisma: PrismaClientOrTransaction, runId: string) {
-    const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId, isValid: true },
-      include: {
-        completedWaitpoints: true,
-        checkpoint: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!snapshot) {
-      throw new Error(`No execution snapshot found for TaskRun ${runId}`);
-    }
-
-    return {
-      ...snapshot,
-      completedWaitpoints: snapshot.completedWaitpoints.map((w) => ({
-        id: w.id,
-        type: w.type,
-        completedAt: w.completedAt ?? new Date(),
-        idempotencyKey:
-          w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
-        completedByTaskRunId: w.completedByTaskRunId ?? undefined,
-        completedAfter: w.completedAfter ?? undefined,
-        output: w.output ?? undefined,
-        outputType: w.outputType,
-        outputIsError: w.outputIsError,
-      })),
-    };
-  }
-
-  async #getExecutionSnapshotCompletedWaitpoints(
-    prisma: PrismaClientOrTransaction,
-    snapshotId: string
-  ) {
-    const waitpoints = await prisma.taskRunExecutionSnapshot.findFirst({
-      where: { id: snapshotId },
-      include: {
-        completedWaitpoints: true,
-      },
-    });
-
-    //deduplicate waitpoints
-    const waitpointIds = new Set<string>();
-    return (
-      waitpoints?.completedWaitpoints.filter((waitpoint) => {
-        if (waitpointIds.has(waitpoint.id)) {
-          return false;
-        } else {
-          waitpointIds.add(waitpoint.id);
-          return true;
-        }
-      }) ?? []
-    );
-  }
-
   //#endregion
 
   //#region Heartbeat
@@ -2647,7 +2640,7 @@ export class RunEngine {
   }) {
     const prisma = tx ?? this.prisma;
     return await this.runLock.lock([runId], 5_000, async (signal) => {
-      const latestSnapshot = await this.#getLatestExecutionSnapshot(prisma, runId);
+      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
           "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",

@@ -135,7 +135,7 @@ describe("RunEngine cancelling", () => {
           completedAt: new Date(),
           reason: "Cancelled by the user",
         });
-        expect(result).toBe("PENDING_CANCEL");
+        expect(result.snapshot.executionStatus).toBe("PENDING_CANCEL");
 
         //check a worker notification was sent for the running parent
         expect(workerNotifications).toHaveLength(1);
@@ -200,6 +200,8 @@ describe("RunEngine cancelling", () => {
             },
           },
         });
+        expect(completeChildResult.snapshot.executionStatus).toBe("FINISHED");
+        expect(completeChildResult.run.status).toBe("CANCELED");
 
         //child should now be pending cancel
         const childExecutionDataCancelled = await engine.getRunExecutionData({
@@ -305,7 +307,7 @@ describe("RunEngine cancelling", () => {
           completedAt: new Date(),
           reason: "Cancelled by the user",
         });
-        expect(result).toBe("FINISHED");
+        expect(result.snapshot.executionStatus).toBe("FINISHED");
 
         const executionData = await engine.getRunExecutionData({ runId: parentRun.id });
         expect(executionData?.snapshot.executionStatus).toBe("FINISHED");

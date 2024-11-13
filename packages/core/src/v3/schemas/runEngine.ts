@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MachinePreset } from "./common.js";
+import { MachinePreset, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
 import type * as DB_TYPES from "@trigger.dev/database";
 
@@ -61,12 +61,29 @@ const CompletedWaitpoint = z.object({
   outputIsError: z.boolean(),
 });
 
+const ExecutionSnapshot = z.object({
+  id: z.string(),
+  executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
+  description: z.string(),
+});
+
+const BaseRunMetadata = z.object({
+  id: z.string(),
+  status: z.enum(Object.values(TaskRunStatus) as [TaskRunStatus]),
+  attemptNumber: z.number().nullish(),
+});
+
+export const ExecutionResult = z.object({
+  snapshot: ExecutionSnapshot,
+  run: BaseRunMetadata,
+});
+
+export type ExecutionResult = z.infer<typeof ExecutionResult>;
+
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
 export const DequeuedMessage = z.object({
   version: z.literal("1"),
-  snapshot: z.object({
-    id: z.string(),
-  }),
+  snapshot: ExecutionSnapshot,
   image: z.string().optional(),
   checkpoint: z
     .object({
@@ -103,18 +120,35 @@ export const DequeuedMessage = z.object({
 });
 export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
 
+/** The response to the Worker when starting an attempt */
+export type StartRunAttemptResult = ExecutionResult & {
+  execution: TaskRunExecution;
+};
+
+/** The response to the Worker when completing an attempt */
+const CompleteAttemptStatus = z.enum([
+  "RUN_FINISHED",
+  "RUN_PENDING_CANCEL",
+  "RETRY_QUEUED",
+  "RETRY_IMMEDIATELY",
+]);
+
+export const CompleteRunAttemptResult = z
+  .object({
+    attemptStatus: CompleteAttemptStatus,
+  })
+  .and(ExecutionResult);
+export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
+
+/** The response when cancelling a run. */
+export const CancelRunResult = ExecutionResult;
+export type CancelRunResult = z.infer<typeof CancelRunResult>;
+
+/** The response when a Worker asks for the latest execution state */
 export const RunExecutionData = z.object({
   version: z.literal("1"),
-  snapshot: z.object({
-    id: z.string(),
-    executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
-    description: z.string(),
-  }),
-  run: z.object({
-    id: z.string(),
-    status: z.enum(Object.values(TaskRunStatus) as [TaskRunStatus]),
-    attemptNumber: z.number().optional(),
-  }),
+  snapshot: ExecutionSnapshot,
+  run: BaseRunMetadata,
   checkpoint: z
     .object({
       id: z.string(),
@@ -126,8 +160,4 @@ export const RunExecutionData = z.object({
     .optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),
 });
-
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
-
-export const CompleteAttemptResult = z.enum(["COMPLETED", "RETRY_QUEUED", "RETRY_IMMEDIATELY"]);
-export type CompleteAttemptResult = z.infer<typeof CompleteAttemptResult>;
