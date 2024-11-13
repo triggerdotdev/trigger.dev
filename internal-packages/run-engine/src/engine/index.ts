@@ -2186,16 +2186,6 @@ export class RunEngine {
           },
         });
 
-        this.eventBus.emit("runFailed", {
-          time: failedAt,
-          run: {
-            id: runId,
-            status: run.status,
-            spanId: run.spanId,
-            error,
-          },
-        });
-
         if (!run.associatedWaitpoint) {
           throw new ServiceValidationError("No associated waitpoint found", 400);
         }
@@ -2206,6 +2196,16 @@ export class RunEngine {
         });
 
         await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+
+        this.eventBus.emit("runFailed", {
+          time: failedAt,
+          run: {
+            id: runId,
+            status: run.status,
+            spanId: run.spanId,
+            error,
+          },
+        });
 
         return "COMPLETED" as const;
       });
