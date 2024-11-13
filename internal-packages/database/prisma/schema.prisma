@@ -2147,7 +2147,7 @@ model WorkerInstanceGroup {
   workers           WorkerInstance[]
   backgroundWorkers BackgroundWorker[]
 
-  defaultForProject Project? @relation("ProjectDefaultWorkerGroup")
+  defaultForProjects Project[] @relation("ProjectDefaultWorkerGroup")
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
