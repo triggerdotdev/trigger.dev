@@ -20,6 +20,7 @@ import {
   FailDeploymentRequestBody,
   FailDeploymentResponseBody,
   FinalizeDeploymentRequestBody,
+  ListWorkersResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
@@ -300,6 +301,25 @@ export class CliApiClient {
         },
       }
     );
+  }
+
+  get workers() {
+    return {
+      list: this.listWorkers.bind(this),
+    };
+  }
+
+  private async listWorkers() {
+    if (!this.accessToken) {
+      throw new Error("listWorkers: No access token");
+    }
+
+    return wrapZodFetch(ListWorkersResponseBody, `${this.apiURL}/api/v1/workers`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+    });
   }
 }
 

@@ -91,7 +91,7 @@ export class WorkerGroupService extends WithRunEngine {
     Without a project ID, only shared worker groups will be returned.
     With a project ID, in addition to all shared worker groups, ones associated with the project will also be returned.
     */
-  async listWorkerGroups({ projectId }: { projectId?: string }) {
+  async listWorkerGroups({ projectId, listHidden }: { projectId?: string; listHidden?: boolean }) {
     const workerGroups = await this._prisma.workerInstanceGroup.findMany({
       where: {
         OR: [
@@ -102,6 +102,7 @@ export class WorkerGroupService extends WithRunEngine {
             projectId,
           },
         ],
+        AND: listHidden ? [] : [{ hidden: false }],
       },
     });
 

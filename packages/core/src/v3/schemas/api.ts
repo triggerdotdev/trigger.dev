@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { coerce, date, z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import { SerializedError } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
@@ -252,6 +252,19 @@ export const GetDeploymentResponseBody = z.object({
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
+
+export const ListWorkersResponseBody = z
+  .object({
+    type: z.string(),
+    name: z.string(),
+    description: z.string().nullish(),
+    latestVersion: z.string().nullish(),
+    lastHeartbeatAt: z.string().nullish(),
+    isDefault: z.boolean(),
+    updatedAt: z.coerce.date(),
+  })
+  .array();
+export type ListWorkersResponseBody = z.infer<typeof ListWorkersResponseBody>;
 
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
