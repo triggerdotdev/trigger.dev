@@ -1998,6 +1998,8 @@ enum TaskRunCheckpointType {
 model Waitpoint {
   id String @id @default(cuid())
 
+  friendlyId String @unique
+
   type   WaitpointType
   status WaitpointStatus @default(PENDING)
 

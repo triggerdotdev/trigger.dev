@@ -324,6 +324,7 @@ describe("RunEngine Waitpoints", () => {
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
         });
+        expect(waitpoint.status).toBe("PENDING");
 
         //block the run
         await engine.blockRunWithWaitpoint({

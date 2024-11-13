@@ -35,6 +35,7 @@ import {
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   TaskRunStatus,
+  Waitpoint,
 } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Redis } from "ioredis";
@@ -1378,7 +1379,7 @@ export class RunEngine {
     });
   }
 
-  async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment) {
+  async lengthOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
@@ -1393,7 +1394,7 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
-  }) {
+  }): Promise<Waitpoint> {
     const existingWaitpoint = idempotencyKey
       ? await this.prisma.waitpoint.findUnique({
           where: {
@@ -1411,6 +1412,7 @@ export class RunEngine {
 
     return this.prisma.waitpoint.create({
       data: {
+        friendlyId: generateFriendlyId("waitpoint"),
         type: "MANUAL",
         idempotencyKey: idempotencyKey ?? nanoid(24),
         userProvidedIdempotencyKey: !!idempotencyKey,
@@ -2418,6 +2420,7 @@ export class RunEngine {
   ) {
     return tx.waitpoint.create({
       data: {
+        friendlyId: generateFriendlyId("waitpoint"),
         type: "RUN",
         status: "PENDING",
         idempotencyKey: nanoid(24),
@@ -2440,6 +2443,7 @@ export class RunEngine {
   ) {
     const waitpoint = await tx.waitpoint.create({
       data: {
+        friendlyId: generateFriendlyId("waitpoint"),
         type: "DATETIME",
         status: "PENDING",
         idempotencyKey: idempotencyKey ?? nanoid(24),
