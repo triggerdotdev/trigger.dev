@@ -1430,7 +1430,7 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     waitpointId: string;
-  }) {
+  }): Promise<Waitpoint | null> {
     const waitpoint = await this.prisma.waitpoint.findFirst({
       where: { id: waitpointId },
       include: {
@@ -1531,7 +1531,7 @@ export class RunEngine {
       type?: string;
       isError: boolean;
     };
-  }) {
+  }): Promise<Waitpoint> {
     const waitpoint = await this.prisma.waitpoint.findUnique({
       where: { id },
     });
@@ -1540,7 +1540,7 @@ export class RunEngine {
       throw new Error(`Waitpoint ${id} not found`);
     }
 
-    await $transaction(
+    const updatedWaitpoint = await $transaction(
       this.prisma,
       async (tx) => {
         // 1. Find the TaskRuns associated with this waitpoint
@@ -1561,7 +1561,7 @@ export class RunEngine {
         });
 
         // 3. Update the waitpoint status
-        await tx.waitpoint.update({
+        const updatedWaitpoint = await tx.waitpoint.update({
           where: { id },
           data: {
             status: "COMPLETED",
@@ -1611,6 +1611,8 @@ export class RunEngine {
         for (const run of taskRunsToResume) {
           await this.#continueRun(run, run.runtimeEnvironment, tx);
         }
+
+        return updatedWaitpoint;
       },
       (error) => {
         this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
@@ -1618,6 +1620,12 @@ export class RunEngine {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
     );
+
+    if (!updatedWaitpoint) {
+      throw new Error(`Waitpoint couldn't be updated`);
+    }
+
+    return updatedWaitpoint;
   }
 
   async createCheckpoint({
@@ -1654,7 +1662,8 @@ export class RunEngine {
   /**
   Send a heartbeat to signal the the run is still executing.
   If a heartbeat isn't received, after a while the run is considered "stalled"
-  and some logic will be run to try recover it
+  and some logic will be run to try recover it.
+  @returns The ExecutionResult, which could be a different snapshot.
   */
   async heartbeatRun({
     runId,
@@ -1664,7 +1673,7 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<ExecutionResult> {
     const prisma = tx ?? this.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
@@ -1677,7 +1686,7 @@ export class RunEngine {
       });
 
       await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
-      return;
+      return executionResultFromSnapshot(latestSnapshot);
     }
 
     //update the snapshot heartbeat time
@@ -1690,6 +1699,8 @@ export class RunEngine {
 
     //extending is the same as creating a new heartbeat
     await this.#setHeartbeatDeadline({ runId, snapshotId, status: latestSnapshot.executionStatus });
+
+    return executionResultFromSnapshot(latestSnapshot);
   }
 
   /** Get required data to execute the run */
