@@ -78,7 +78,7 @@ export function writeAuthConfigFile(config: UserAuthConfigFile) {
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,
   });
-  writeFileSync(path.join(authConfigFilePath), JSON.stringify(config), {
+  writeFileSync(path.join(authConfigFilePath), JSON.stringify(config, undefined, 2), {
     encoding: "utf-8",
   });
 }
