@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  CompleteAttemptResult,
+  CompleteRunAttemptResult,
   DequeuedMessage,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -50,7 +50,7 @@ export type WorkerApiRunAttemptCompleteRequestBody = z.infer<
 >;
 
 export const WorkerApiRunAttemptCompleteResponseBody = z.object({
-  result: CompleteAttemptResult,
+  result: CompleteRunAttemptResult,
 });
 export type WorkerApiRunAttemptCompleteResponseBody = z.infer<
   typeof WorkerApiRunAttemptCompleteResponseBody
