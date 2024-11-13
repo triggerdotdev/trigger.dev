@@ -1148,9 +1148,6 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:3.1.2
         version: link:../core
-      '@trigger.dev/worker':
-        specifier: workspace:3.1.2
-        version: link:../worker
       c12:
         specifier: ^1.11.1
         version: 1.11.1(magicast@0.3.4)
@@ -1391,7 +1388,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/database':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../../internal-packages/database
       '@types/humanize-duration':
         specifier: ^3.27.1
