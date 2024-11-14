@@ -70,7 +70,7 @@ export class RealtimeClient {
   #constructElectricUrl(url: URL | string, whereClause: string): URL {
     const $url = new URL(url.toString());
 
-    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape/public."TaskRun"`);
+    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
 
     // Copy over all the url search params to the electric url
     $url.searchParams.forEach((value, key) => {
@@ -86,6 +86,7 @@ export class RealtimeClient {
     // });
 
     electricUrl.searchParams.set("where", whereClause);
+    electricUrl.searchParams.set("table", 'public."TaskRun"');
 
     return electricUrl;
   }
@@ -231,7 +232,7 @@ export class RealtimeClient {
 }
 
 function extractShapeId(url: URL) {
-  return url.searchParams.get("shape_id");
+  return url.searchParams.get("handle");
 }
 
 function isLiveRequestUrl(url: URL) {

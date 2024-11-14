@@ -61,7 +61,7 @@ services:
       - 6379:6379
 
   electric:
-    image: electricsql/electric:0.7.5
+    image: electricsql/electric:0.8.1
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable

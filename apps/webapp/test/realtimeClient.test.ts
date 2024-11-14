@@ -86,8 +86,10 @@ describe("RealtimeClient", () => {
 
       const headers = Object.fromEntries(response.headers.entries());
 
-      const shapeId = headers["electric-shape-id"];
-      const chunkOffset = headers["electric-chunk-last-offset"];
+      console.log(headers);
+
+      const shapeId = headers["electric-handle"];
+      const chunkOffset = headers["electric-offset"];
 
       expect(response.status).toBe(200);
       expect(response2.status).toBe(200);
@@ -96,7 +98,7 @@ describe("RealtimeClient", () => {
 
       // Okay, now we will do two live requests, and the second one should fail because of the concurrency limit
       const liveResponsePromise = client.streamRun(
-        `http://localhost:3000?offset=0_0&live=true&shape_id=${shapeId}`,
+        `http://localhost:3000?offset=0_0&live=true&handle=${shapeId}`,
         environment,
         run.id
       );
@@ -104,7 +106,7 @@ describe("RealtimeClient", () => {
       const liveResponsePromise2 = new Promise<Response>((resolve) => {
         setTimeout(async () => {
           const response = await client.streamRun(
-            `http://localhost:3000?offset=0_0&live=true&shape_id=${shapeId}`,
+            `http://localhost:3000?offset=0_0&live=true&handle=${shapeId}`,
             environment,
             run.id
           );
@@ -200,8 +202,8 @@ describe("RealtimeClient", () => {
 
       const headers = Object.fromEntries(response.headers.entries());
 
-      const shapeId = headers["electric-shape-id"];
-      const chunkOffset = headers["electric-chunk-last-offset"];
+      const shapeId = headers["electric-handle"];
+      const chunkOffset = headers["electric-offset"];
 
       expect(response.status).toBe(200);
       expect(shapeId).toBeDefined();

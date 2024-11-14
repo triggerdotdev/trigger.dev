@@ -23,14 +23,14 @@ export async function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
 
   const shape = new Shape(stream);
 
-  const initialValue = await shape.value;
+  const initialRows = await shape.rows;
 
-  for (const shapeRow of initialValue.values()) {
+  for (const shapeRow of initialRows) {
     await callback(schema.parse(shapeRow));
   }
 
   return shape.subscribe(async (newShape) => {
-    for (const shapeRow of newShape.values()) {
+    for (const shapeRow of newShape.rows) {
       await callback(schema.parse(shapeRow));
     }
   });

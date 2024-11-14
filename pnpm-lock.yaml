@@ -1263,8 +1263,8 @@ importers:
   packages/core:
     dependencies:
       '@electric-sql/client':
-        specifier: 0.6.3
-        version: 0.6.3
+        specifier: 0.7.1
+        version: 0.7.1
       '@google-cloud/precise-date':
         specifier: ^4.0.0
         version: 4.0.0
@@ -4954,8 +4954,8 @@ packages:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
 
-  /@electric-sql/client@0.6.3:
-    resolution: {integrity: sha512-/AYkRrEASKIGcjtNp8IVJ3sAUm+IQ2l0NrGgDvvAG/n1+ifOl7kD1E4dRyg1qdY/b+HdKhGNYlNgsPuwMKO2Mg==}
+  /@electric-sql/client@0.7.1:
+    resolution: {integrity: sha512-NpKEn5hDSy+NaAdG9Ql8kIGfjrj/XfakJOOHTTutb99db3Dza0uUfnkqycFpyUAarFMQ4hYSKgx8AbOm1PCeFQ==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
     dev: false
