@@ -96,6 +96,7 @@ export function useRealtimeTaskTriggerWithStreams<
   const triggerInstance = useTaskTrigger<TTask>(id, options);
   const realtimeInstance = useRealtimeRunWithStreams<TTask, TStreams>(triggerInstance.handle?.id, {
     ...options,
+    id: triggerInstance.handle?.id,
     accessToken: triggerInstance.handle?.publicAccessToken ?? options?.accessToken,
   });
 
