@@ -12,6 +12,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^0.0.72",
     "@fal-ai/serverless-client": "^0.15.0",
+    "@radix-ui/react-dialog": "^1.0.3",
     "@radix-ui/react-icons": "^1.3.0",
     "@radix-ui/react-scroll-area": "^1.2.0",
     "@radix-ui/react-slot": "^1.1.0",

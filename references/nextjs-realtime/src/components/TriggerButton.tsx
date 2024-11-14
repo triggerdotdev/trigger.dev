@@ -2,12 +2,15 @@
 
 import { Button } from "@/components/ui/button";
 import { type openaiStreaming } from "@/trigger/ai";
-import { TriggerAuthContext, useTaskTrigger } from "@trigger.dev/react-hooks";
+import { useTaskTrigger } from "@trigger.dev/react-hooks";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-function TriggerButton() {
-  const { submit, handle, isLoading } = useTaskTrigger<typeof openaiStreaming>("openai-streaming");
+export default function TriggerButton({ accessToken }: { accessToken: string }) {
+  const { submit, handle, isLoading } = useTaskTrigger<typeof openaiStreaming>("openai-streaming", {
+    accessToken,
+    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+  });
   const router = useRouter();
 
   useEffect(() => {
@@ -31,19 +34,5 @@ function TriggerButton() {
     >
       {isLoading ? "Triggering..." : "Trigger Task"}
     </Button>
-  );
-}
-
-export default function TriggerButtonClientWrapper({
-  publicAccessToken,
-}: {
-  publicAccessToken: string;
-}) {
-  return (
-    <TriggerAuthContext.Provider
-      value={{ accessToken: publicAccessToken, baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}
-    >
-      <TriggerButton />
-    </TriggerAuthContext.Provider>
   );
 }

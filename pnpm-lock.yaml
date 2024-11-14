@@ -1567,6 +1567,9 @@ importers:
       '@fal-ai/serverless-client':
         specifier: ^0.15.0
         version: 0.15.0
+      '@radix-ui/react-dialog':
+        specifier: ^1.0.3
+        version: 1.0.4(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
       '@radix-ui/react-icons':
         specifier: ^1.3.0
         version: 1.3.0(react@18.3.1)
@@ -9046,6 +9049,40 @@ packages:
       react-remove-scroll: 2.5.5(@types/react@18.2.69)(react@18.2.0)
     dev: false
 
+  /@radix-ui/react-dialog@1.0.4(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1):
+    resolution: {integrity: sha512-hJtRy/jPULGQZceSAP2Re6/4NpKo8im6V8P2hUqZsdFiSL8l35kYsw3qbRI6Ay5mQd2+wlLqje770eq+RJ3yZg==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0
+      react-dom: ^16.8 || ^17.0 || ^18.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.24.5
+      '@radix-ui/primitive': 1.0.1
+      '@radix-ui/react-compose-refs': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-context': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-dismissable-layer': 1.0.4(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-focus-guards': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-focus-scope': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-id': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-portal': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-presence': 1.0.1(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-primitive': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-slot': 1.0.2(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-use-controllable-state': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@types/react': 18.3.1
+      '@types/react-dom': 18.2.7
+      aria-hidden: 1.2.3
+      react: 18.3.1
+      react-dom: 18.2.0(react@18.3.1)
+      react-remove-scroll: 2.5.5(@types/react@18.3.1)(react@18.3.1)
+    dev: false
+
   /@radix-ui/react-direction@1.0.0(react@18.2.0):
     resolution: {integrity: sha512-2HV05lGUgYcA6xgLQ4BKPDmtL+QbIZYH5fCOTAOOcJ5O0QbWS3i9lKaurLzliYUDhORI2Qr3pyjhJh44lKA3rQ==}
     peerDependencies:
@@ -9259,6 +9296,29 @@ packages:
       '@types/react-dom': 18.2.7
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
+    dev: false
+
+  /@radix-ui/react-focus-scope@1.0.3(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1):
+    resolution: {integrity: sha512-upXdPfqI4islj2CslyfUBNlaJCPybbqRHAi1KER7Isel9Q2AtSJ0zRBZv8mWQiFXD2nyAJ4BhC3yXgZ6kMBSrQ==}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: ^16.8 || ^17.0 || ^18.0
+      react-dom: ^16.8 || ^17.0 || ^18.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.24.5
+      '@radix-ui/react-compose-refs': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@radix-ui/react-primitive': 1.0.3(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1)
+      '@radix-ui/react-use-callback-ref': 1.0.1(@types/react@18.3.1)(react@18.3.1)
+      '@types/react': 18.3.1
+      '@types/react-dom': 18.2.7
+      react: 18.3.1
+      react-dom: 18.2.0(react@18.3.1)
     dev: false
 
   /@radix-ui/react-focus-scope@1.0.4(@types/react-dom@18.2.7)(@types/react@18.3.1)(react-dom@18.2.0)(react@18.3.1):

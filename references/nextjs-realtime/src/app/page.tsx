@@ -1,6 +1,7 @@
 import RunButton from "@/components/RunButton";
 import BatchRunButton from "@/components/BatchRunButton";
 import TriggerButton from "@/components/TriggerButton";
+import TriggerButtonWithStreaming from "@/components/TriggerButtonWithStreaming";
 import { ImageUploadDropzone } from "@/components/ImageUploadButton";
 import { auth } from "@trigger.dev/sdk/v3";
 
@@ -24,7 +25,8 @@ export default async function Home() {
       <div className="flex items-center space-x-4 justify-center w-full">
         <RunButton />
         <BatchRunButton />
-        <TriggerButton publicAccessToken={publicAccessToken} />
+        <TriggerButton accessToken={publicAccessToken} />
+        <TriggerButtonWithStreaming accessToken={publicAccessToken} />
       </div>
     </main>
   );

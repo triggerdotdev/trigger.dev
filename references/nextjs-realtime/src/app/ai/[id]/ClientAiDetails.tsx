@@ -8,7 +8,6 @@ function AiRunDetailsWrapper({ runId, accessToken }: { runId: string; accessToke
   const { run, streams, error } = useRealtimeRunWithStreams<typeof openaiStreaming, STREAMS>(
     runId,
     {
-      throttleInMs: 500,
       accessToken,
       baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     }

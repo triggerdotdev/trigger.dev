@@ -9,7 +9,7 @@ import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;
   enabled?: boolean;
-  throttleInMs?: number;
+  experimental_throttleInMs?: number;
 };
 
 export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
@@ -37,7 +37,7 @@ export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
  * ```
  */
 export function useRealtimeRun<TTask extends AnyTask>(
-  runId: string,
+  runId?: string,
   options?: UseRealtimeRunOptions
 ): UseRealtimeRunInstance<TTask> {
   const hookId = useId();
@@ -71,13 +71,17 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
   const triggerRequest = useCallback(async () => {
     try {
+      if (!runId) {
+        return;
+      }
+
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
       await processRealtimeRun(
         runId,
         apiClient,
-        throttle(mutateRun, options?.throttleInMs),
+        throttle(mutateRun, options?.experimental_throttleInMs),
         abortControllerRef
       );
     } catch (err) {
@@ -93,6 +97,10 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
+      return;
+    }
+
+    if (!runId) {
       return;
     }
 
@@ -130,7 +138,7 @@ export function useRealtimeRunWithStreams<
   TTask extends AnyTask = AnyTask,
   TStreams extends Record<string, any> = Record<string, any>,
 >(
-  runId: string,
+  runId?: string,
   options?: UseRealtimeRunOptions
 ): UseRealtimeRunWithStreamsInstance<TTask, TStreams> {
   const hookId = useId();
@@ -181,14 +189,18 @@ export function useRealtimeRunWithStreams<
 
   const triggerRequest = useCallback(async () => {
     try {
+      if (!runId) {
+        return;
+      }
+
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
       await processRealtimeRunWithStreams(
         runId,
         apiClient,
-        throttle(mutateRun, options?.throttleInMs),
-        throttle(mutateStreams, options?.throttleInMs),
+        throttle(mutateRun, options?.experimental_throttleInMs),
+        throttle(mutateStreams, options?.experimental_throttleInMs),
         streamsRef,
         abortControllerRef
       );
@@ -205,6 +217,10 @@ export function useRealtimeRunWithStreams<
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
+      return;
+    }
+
+    if (!runId) {
       return;
     }
 
@@ -272,7 +288,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
       await processRealtimeRunsWithTag(
         tag,
         apiClient,
-        throttle(mutateRuns, options?.throttleInMs),
+        throttle(mutateRuns, options?.experimental_throttleInMs),
         runsRef,
         abortControllerRef
       );
@@ -359,7 +375,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
       await processRealtimeBatch(
         batchId,
         apiClient,
-        throttle(mutateRuns, options?.throttleInMs),
+        throttle(mutateRuns, options?.experimental_throttleInMs),
         runsRef,
         abortControllerRef
       );
