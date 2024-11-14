@@ -205,6 +205,7 @@ export class RunEngine {
       delayUntil,
       queuedAt,
       maxAttempts,
+      priorityMs,
       ttl,
       tags,
       parentTaskRunId,
@@ -264,6 +265,7 @@ export class RunEngine {
             delayUntil,
             queuedAt,
             maxAttempts,
+            priorityMs,
             ttl,
             tags:
               tags.length === 0
@@ -414,7 +416,12 @@ export class RunEngine {
 
           //enqueue the run if it's not delayed
           if (!taskRun.delayUntil) {
-            await this.#enqueueRun({ run: taskRun, env: environment, tx: prisma });
+            await this.#enqueueRun({
+              run: taskRun,
+              env: environment,
+              timestamp: Date.now() - taskRun.priorityMs,
+              tx: prisma,
+            });
           }
         });
 
@@ -2210,7 +2217,7 @@ export class RunEngine {
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
-    timestamp?: number;
+    timestamp: number;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -2241,7 +2248,7 @@ export class RunEngine {
           environmentType: env.type,
           queue: run.queue,
           concurrencyKey: run.concurrencyKey ?? undefined,
-          timestamp: timestamp ?? Date.now(),
+          timestamp,
           attempt: 0,
         },
       });
@@ -2341,9 +2348,14 @@ export class RunEngine {
           completedWaitpointIds: completedWaitpoints.map((waitpoint) => waitpoint.id),
         });
 
-        //put it back in the queue, with the original timestamp
-        //this will prioritise it over new runs
-        await this.#enqueueRun({ run, env, timestamp: run.createdAt.getTime(), tx: prisma });
+        //put it back in the queue, with the original timestamp (w/ priority)
+        //this prioritizes dequeuing waiting runs over new runs
+        await this.#enqueueRun({
+          run,
+          env,
+          timestamp: run.createdAt.getTime() - run.priorityMs,
+          tx: prisma,
+        });
       }
     });
   }
@@ -2408,7 +2420,7 @@ export class RunEngine {
           env: backgroundWorker.runtimeEnvironment,
           //add to the queue using the original run created time
           //this should ensure they're in the correct order in the queue
-          timestamp: updatedRun.createdAt.getTime(),
+          timestamp: updatedRun.createdAt.getTime() - updatedRun.priorityMs,
           tx,
         });
       });

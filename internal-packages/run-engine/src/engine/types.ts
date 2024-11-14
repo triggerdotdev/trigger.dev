@@ -60,6 +60,7 @@ export type TriggerParams = {
   delayUntil?: Date;
   queuedAt?: Date;
   maxAttempts?: number;
+  priorityMs?: number;
   ttl?: string;
   tags: string[];
   parentTaskRunId?: string;
