@@ -7,6 +7,7 @@ export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
+    case "node-22":
       return "node";
     case "bun":
       return "bun";
@@ -18,6 +19,7 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
 export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
+    case "node-22":
       return process.execPath;
     case "bun":
       if (typeof process.env.BUN_INSTALL === "string") {
