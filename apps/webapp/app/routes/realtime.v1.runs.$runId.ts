@@ -31,6 +31,11 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Run not found" }, { status: 404 });
     }
 
-    return realtimeClient.streamRun(request.url, authentication.environment, run.id);
+    return realtimeClient.streamRun(
+      request.url,
+      authentication.environment,
+      run.id,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );

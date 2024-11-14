@@ -16,7 +16,10 @@ export async function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
 
   const stream = new ShapeStream<z.input<TShapeSchema>>({
     url,
-    headers: options?.headers,
+    headers: {
+      ...options?.headers,
+      "x-trigger-electric-version": "0.8.1",
+    },
     fetchClient: options?.fetchClient,
     signal: options?.signal,
   });

@@ -23,6 +23,11 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request }) => {
-    return realtimeClient.streamRuns(request.url, authentication.environment, searchParams);
+    return realtimeClient.streamRuns(
+      request.url,
+      authentication.environment,
+      searchParams,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );

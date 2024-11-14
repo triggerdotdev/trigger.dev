@@ -31,6 +31,11 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Batch not found" }, { status: 404 });
     }
 
-    return realtimeClient.streamBatch(request.url, authentication.environment, batchRun.id);
+    return realtimeClient.streamBatch(
+      request.url,
+      authentication.environment,
+      batchRun.id,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );
