@@ -12,13 +12,11 @@ export class WorkerGroupService extends WithRunEngine {
     organizationId,
     name,
     description,
-    type,
   }: {
     projectId?: string;
     organizationId?: string;
     name?: string;
     description?: string;
-    type?: WorkerInstanceGroupType;
   }) {
     name = name ?? (await this.generateWorkerName({ projectId }));
 
@@ -32,9 +30,7 @@ export class WorkerGroupService extends WithRunEngine {
       data: {
         projectId,
         organizationId,
-        type: projectId
-          ? WorkerInstanceGroupType.UNMANAGED
-          : type ?? WorkerInstanceGroupType.SHARED,
+        type: projectId ? WorkerInstanceGroupType.UNMANAGED : WorkerInstanceGroupType.SHARED,
         masterQueue: this.generateMasterQueueName({ projectId, name }),
         tokenId: token.id,
         description,

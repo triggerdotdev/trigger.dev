@@ -273,7 +273,16 @@ export const GetDeploymentResponseBody = z.object({
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
 
-export const ListWorkersResponseBody = z
+export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
+  worker: true,
+});
+export type GetLatestDeploymentResponseBody = z.infer<typeof GetLatestDeploymentResponseBody>;
+
+export const CreateUploadPayloadUrlResponseBody = z.object({
+  presignedUrl: z.string(),
+});
+
+export const WorkersListResponseBody = z
   .object({
     type: z.string(),
     name: z.string(),
@@ -284,11 +293,24 @@ export const ListWorkersResponseBody = z
     updatedAt: z.coerce.date(),
   })
   .array();
-export type ListWorkersResponseBody = z.infer<typeof ListWorkersResponseBody>;
+export type WorkersListResponseBody = z.infer<typeof WorkersListResponseBody>;
 
-export const CreateUploadPayloadUrlResponseBody = z.object({
-  presignedUrl: z.string(),
+export const WorkersCreateRequestBody = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
 });
+export type WorkersCreateRequestBody = z.infer<typeof WorkersCreateRequestBody>;
+
+export const WorkersCreateResponseBody = z.object({
+  workerGroup: z.object({
+    name: z.string(),
+    description: z.string().nullish(),
+  }),
+  token: z.object({
+    plaintext: z.string(),
+  }),
+});
+export type WorkersCreateResponseBody = z.infer<typeof WorkersCreateResponseBody>;
 
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 

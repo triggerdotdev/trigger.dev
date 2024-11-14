@@ -1,13 +1,20 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { ListWorkersResponseBody } from "@trigger.dev/core/v3";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import {
+  WorkersCreateRequestBody,
+  WorkersCreateResponseBody,
+  WorkersListResponseBody,
+} from "@trigger.dev/core/v3";
+import {
+  createActionApiRoute,
+  createLoaderApiRoute,
+} from "~/services/routeBuiilders/apiBuilder.server";
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 
 export const loader = createLoaderApiRoute(
   {
     corsStrategy: "all",
   },
-  async ({ authentication }): Promise<TypedResponse<ListWorkersResponseBody>> => {
+  async ({ authentication }): Promise<TypedResponse<WorkersListResponseBody>> => {
     const service = new WorkerGroupService();
     const workers = await service.listWorkerGroups({
       projectId: authentication.environment.projectId,
@@ -22,5 +29,31 @@ export const loader = createLoaderApiRoute(
         updatedAt: w.updatedAt,
       }))
     );
+  }
+);
+
+export const action = createActionApiRoute(
+  {
+    corsStrategy: "all",
+    body: WorkersCreateRequestBody,
+  },
+  async ({ authentication, body }): Promise<TypedResponse<WorkersCreateResponseBody>> => {
+    const service = new WorkerGroupService();
+    const { workerGroup, token } = await service.createWorkerGroup({
+      projectId: authentication.environment.projectId,
+      organizationId: authentication.environment.organizationId,
+      name: body.name,
+      description: body.description,
+    });
+
+    return json({
+      token: {
+        plaintext: token.plaintext,
+      },
+      workerGroup: {
+        name: workerGroup.name,
+        description: workerGroup.description,
+      },
+    });
   }
 );

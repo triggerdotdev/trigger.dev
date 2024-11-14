@@ -20,10 +20,12 @@ import {
 
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
+  body?: TBodySchema;
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
   authorization?: {
@@ -40,7 +42,8 @@ type ApiKeyRouteBuilderOptions<
 
 type ApiKeyHandlerFunction<
   TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined
+  TSearchParamsSchema extends z.AnyZodObject | undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
 > = (args: {
   params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
   searchParams: TSearchParamsSchema extends z.AnyZodObject
@@ -48,6 +51,7 @@ type ApiKeyHandlerFunction<
     : undefined;
   authentication: ApiAuthenticationResult;
   request: Request;
+  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
 }) => Promise<Response>;
 
 export function createLoaderApiRoute<
@@ -139,6 +143,132 @@ export function createLoaderApiRoute<
         searchParams: parsedSearchParams,
         authentication: authenticationResult,
         request,
+        body: undefined,
+      });
+      return wrapResponse(request, result, corsStrategy !== "none");
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return wrapResponse(request, error, corsStrategy !== "none");
+      }
+      return wrapResponse(
+        request,
+        json({ error: "Internal Server Error" }, { status: 500 }),
+        corsStrategy !== "none"
+      );
+    }
+  };
+}
+
+export function createActionApiRoute<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
+>(
+  options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, TBodySchema>,
+  handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, TBodySchema>
+) {
+  return async function loader({ request, params }: LoaderFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      body: bodySchema,
+      allowJWT = false,
+      corsStrategy = "none",
+      authorization,
+    } = options;
+
+    if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
+      return apiCors(request, json({}));
+    }
+
+    const authenticationResult = await authenticateApiRequest(request, { allowJWT });
+
+    if (!authenticationResult) {
+      return wrapResponse(
+        request,
+        json({ error: "Invalid or Missing API key" }, { status: 401 }),
+        corsStrategy !== "none"
+      );
+    }
+
+    let parsedParams: any = undefined;
+    if (paramsSchema) {
+      const parsed = paramsSchema.safeParse(params);
+      if (!parsed.success) {
+        return wrapResponse(
+          request,
+          json(
+            { error: "Params Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          ),
+          corsStrategy !== "none"
+        );
+      }
+      parsedParams = parsed.data;
+    }
+
+    let parsedSearchParams: any = undefined;
+    if (searchParamsSchema) {
+      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+      const parsed = searchParamsSchema.safeParse(searchParams);
+      if (!parsed.success) {
+        return wrapResponse(
+          request,
+          json(
+            { error: "Query Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          ),
+          corsStrategy !== "none"
+        );
+      }
+      parsedSearchParams = parsed.data;
+    }
+
+    let parsedBody: any = undefined;
+    if (bodySchema) {
+      const body = await request.clone().json();
+      const parsed = bodySchema.safeParse(body);
+      if (!parsed.success) {
+        return wrapResponse(
+          request,
+          json(
+            { error: "Body Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          ),
+          corsStrategy !== "none"
+        );
+      }
+      parsedBody = parsed.data;
+    }
+
+    if (authorization) {
+      const { action, resource, superScopes } = authorization;
+      const $resource = resource(parsedParams, parsedSearchParams);
+
+      logger.debug("Checking authorization", {
+        action,
+        resource: $resource,
+        superScopes,
+        scopes: authenticationResult.scopes,
+      });
+
+      if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
+        return wrapResponse(
+          request,
+          json({ error: "Unauthorized" }, { status: 403 }),
+          corsStrategy !== "none"
+        );
+      }
+    }
+
+    try {
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authentication: authenticationResult,
+        request,
+        body: parsedBody,
       });
       return wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {

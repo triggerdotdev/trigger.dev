@@ -12,20 +12,23 @@ import { resolve } from "path";
 import { getProjectClient } from "../../utilities/session.js";
 import { logger } from "../../utilities/logger.js";
 import { z } from "zod";
-import { intro } from "@clack/prompts";
+import { env } from "std-env";
+import { x } from "tinyexec";
 
-const WorkersListCommandOptions = CommonCommandOptions.extend({
+const WorkersRunCommandOptions = CommonCommandOptions.extend({
   env: z.enum(["prod", "staging"]),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  token: z.string().default(env.TRIGGER_WORKER_TOKEN ?? ""),
+  network: z.enum(["default", "none", "host"]).default("default"),
 });
-type WorkersListCommandOptions = z.infer<typeof WorkersListCommandOptions>;
+type WorkersRunCommandOptions = z.infer<typeof WorkersRunCommandOptions>;
 
-export function configureWorkersListCommand(program: Command) {
+export function configureWorkersRunCommand(program: Command) {
   return commonOptions(
     program
-      .command("list")
-      .description("List all available workers")
+      .command("run")
+      .description("Runs a worker locally")
       .argument("[path]", "The path to the project", ".")
       .option(
         "-e, --env <env>",
@@ -37,28 +40,36 @@ export function configureWorkersListCommand(program: Command) {
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file. This will override the project specified in the config file."
       )
+      .option("-t, --token <token>", "The worker token to use for authentication")
+      .option("--network <mode>", "The networking mode for the container", "host")
       .action(async (path, options) => {
         await handleTelemetry(async () => {
           await printStandloneInitialBanner(true);
-          await workersListCommand(path, options);
+          await workersRunCommand(path, options);
         });
       })
   );
 }
 
-async function workersListCommand(dir: string, options: unknown) {
+async function workersRunCommand(dir: string, options: unknown) {
   return await wrapCommandAction(
-    "workerListCommand",
-    WorkersListCommandOptions,
+    "workerRunCommand",
+    WorkersRunCommandOptions,
     options,
     async (opts) => {
-      return await _workersListCommand(dir, opts);
+      return await _workersRunCommand(dir, opts);
     }
   );
 }
 
-async function _workersListCommand(dir: string, options: WorkersListCommandOptions) {
-  intro("Listing workers");
+async function _workersRunCommand(dir: string, options: WorkersRunCommandOptions) {
+  if (!options.token) {
+    throw new Error(
+      "You must provide a worker token to run a worker locally. Either use the `--token` flag or set the `TRIGGER_WORKER_TOKEN` environment variable."
+    );
+  }
+
+  logger.log("Running worker locally");
 
   const authorization = await login({
     embedded: true,
@@ -101,19 +112,40 @@ async function _workersListCommand(dir: string, options: WorkersListCommandOptio
     throw new Error("Failed to get project client");
   }
 
-  const workers = await projectClient.client.workers.list();
+  const deployment = await projectClient.client.deployments.unmanaged.latest();
 
-  if (!workers.success) {
-    throw new Error("Failed to list workers");
+  if (!deployment.success) {
+    throw new Error("Failed to get latest deployment");
   }
 
-  logger.table(
-    workers.data.map((worker) => ({
-      default: worker.isDefault ? "x" : "-",
-      type: worker.type,
-      name: worker.name,
-      description: worker.description ?? "-",
-      "updated at": worker.updatedAt.toLocaleString(),
-    }))
-  );
+  const { version, imageReference } = deployment.data;
+
+  if (!imageReference) {
+    throw new Error("No image reference found for the latest deployment");
+  }
+
+  logger.log(`Version ${version}`);
+  logger.log(`Image: ${imageReference}`);
+
+  const command = "docker";
+  const args = [
+    "run",
+    "--rm",
+    "--network",
+    options.network,
+    "-e",
+    `TRIGGER_WORKER_TOKEN=${options.token}`,
+    "-e",
+    `TRIGGER_API_URL=${authorization.auth.apiUrl}`,
+    imageReference,
+  ];
+
+  logger.debug(`Command: ${command} ${args.join(" ")}`);
+  logger.log(); // spacing
+
+  const proc = x("docker", args);
+
+  for await (const line of proc) {
+    logger.log(line);
+  }
 }

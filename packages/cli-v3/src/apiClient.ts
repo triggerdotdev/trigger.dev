@@ -20,7 +20,12 @@ import {
   FailDeploymentRequestBody,
   FailDeploymentResponseBody,
   FinalizeDeploymentRequestBody,
-  ListWorkersResponseBody,
+  WorkersListResponseBody,
+  WorkersCreateResponseBody,
+  WorkersCreateRequestBody,
+  TriggerTaskRequestBody,
+  TriggerTaskResponse,
+  GetLatestDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
@@ -303,10 +308,51 @@ export class CliApiClient {
     );
   }
 
+  async triggerTaskRun(taskId: string, body?: TriggerTaskRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("triggerTaskRun: No access token");
+    }
+
+    return wrapZodFetch(TriggerTaskResponse, `${this.apiURL}/api/v1/tasks/${taskId}/trigger`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
   get workers() {
     return {
       list: this.listWorkers.bind(this),
+      create: this.createWorker.bind(this),
     };
+  }
+
+  get deployments() {
+    return {
+      unmanaged: {
+        latest: this.getLatestUnmanagedDeployment.bind(this),
+      },
+    };
+  }
+
+  private async getLatestUnmanagedDeployment() {
+    if (!this.accessToken) {
+      throw new Error("getLatestUnmanagedDeployment: No access token");
+    }
+
+    return wrapZodFetch(
+      GetLatestDeploymentResponseBody,
+      `${this.apiURL}/api/v1/deployments/latest`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          Accept: "application/json",
+        },
+      }
+    );
   }
 
   private async listWorkers() {
@@ -314,11 +360,26 @@ export class CliApiClient {
       throw new Error("listWorkers: No access token");
     }
 
-    return wrapZodFetch(ListWorkersResponseBody, `${this.apiURL}/api/v1/workers`, {
+    return wrapZodFetch(WorkersListResponseBody, `${this.apiURL}/api/v1/workers`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
       },
+    });
+  }
+
+  private async createWorker(options: WorkersCreateRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createWorker: No access token");
+    }
+
+    return wrapZodFetch(WorkersCreateResponseBody, `${this.apiURL}/api/v1/workers`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(options),
     });
   }
 }
