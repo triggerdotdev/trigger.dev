@@ -506,5 +506,7 @@ export function createActionApiRoute<
 }
 
 function wrapResponse(request: Request, response: Response, useCors: boolean) {
-  return useCors ? apiCors(request, response) : response;
+  return useCors
+    ? apiCors(request, response, { exposedHeaders: ["x-trigger-jwt", "x-trigger-jwt-claims"] })
+    : response;
 }

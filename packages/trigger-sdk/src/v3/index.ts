@@ -39,6 +39,7 @@ export {
   type RunShape,
   type AnyRunShape,
   type TaskRunShape,
+  type RealtimeRun,
   type RetrieveRunResult,
   type AnyRetrieveRunResult,
 } from "./runs.js";

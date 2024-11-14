@@ -4,7 +4,7 @@ import { streamText, type TextStreamPart } from "ai";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
-type STREAMS = { openai: TextStreamPart<{ getWeather: typeof weatherTask.tool }> };
+export type STREAMS = { openai: TextStreamPart<{ getWeather: typeof weatherTask.tool }> };
 
 export const openaiConsumer = schemaTask({
   id: "openai-consumer",
@@ -82,7 +82,7 @@ export const weatherTask = toolTask({
 
 export const openaiStreaming = schemaTask({
   id: "openai-streaming",
-  description: "Stream data from OpenAI",
+  description: "Stream data from OpenAI to get the weather",
   schema: z.object({
     model: z.string().default("chatgpt-4o-latest"),
     prompt: z.string().default("Hello, how are you?"),
@@ -96,13 +96,21 @@ export const openaiStreaming = schemaTask({
       tools: {
         getWeather: weatherTask.tool,
       },
+      maxSteps: 10,
     });
 
     const stream = await metadata.stream("openai", result.fullStream);
 
+    let text = "";
+
     for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      if (chunk.type === "text-delta") {
+        text += chunk.textDelta;
+      }
     }
 
-    await setTimeout(1000);
+    return { text };
   },
 });

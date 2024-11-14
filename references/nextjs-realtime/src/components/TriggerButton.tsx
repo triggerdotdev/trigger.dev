@@ -3,11 +3,18 @@
 import { Button } from "@/components/ui/button";
 import { type openaiStreaming } from "@/trigger/ai";
 import { TriggerAuthContext, useTaskTrigger } from "@trigger.dev/react-hooks";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 function TriggerButton() {
   const { submit, handle, isLoading } = useTaskTrigger<typeof openaiStreaming>("openai-streaming");
+  const router = useRouter();
 
-  console.log(handle);
+  useEffect(() => {
+    if (handle) {
+      router.push(`/ai/${handle.id}?publicAccessToken=${handle.publicAccessToken}`);
+    }
+  }, [handle]);
 
   return (
     <Button
@@ -17,7 +24,8 @@ function TriggerButton() {
       onClick={() => {
         submit({
           model: "gpt-4o-mini",
-          prompt: "What's the weather like in San Francisco today?",
+          prompt:
+            "Based on the temperature, will I need to wear extra clothes today in San Fransico? Please be detailed.",
         });
       }}
     >

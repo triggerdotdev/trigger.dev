@@ -1401,6 +1401,9 @@ importers:
       swr:
         specifier: ^2.2.5
         version: 2.2.5(react@18.3.1)
+      throttleit:
+        specifier: ^2.1.0
+        version: 2.1.0
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4

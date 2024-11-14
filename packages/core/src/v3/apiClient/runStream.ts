@@ -42,6 +42,7 @@ export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTy
 export type AnyRunShape = RunShape<AnyRunTypes>;
 
 export type TaskRunShape<TTask extends AnyTask> = RunShape<InferRunTypes<TTask>>;
+export type RealtimeRun<TTask extends AnyTask> = TaskRunShape<TTask>;
 
 export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
   run: RunShape<TRunTypes>
@@ -99,7 +100,7 @@ export interface StreamSubscription {
 }
 
 export interface StreamSubscriptionFactory {
-  createSubscription(runId: string, streamKey: string): StreamSubscription;
+  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription;
 }
 
 // Real implementation for production
@@ -145,8 +146,8 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
     private options: { headers?: Record<string, string>; signal?: AbortSignal }
   ) {}
 
-  createSubscription(runId: string, streamKey: string): StreamSubscription {
-    const url = `${this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
+  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription {
+    const url = `${baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
     return new SSEStreamSubscription(url, this.options);
   }
 }
@@ -243,7 +244,8 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 
                 const subscription = this.options.streamFactory.createSubscription(
                   run.id,
-                  streamKey.toString()
+                  streamKey.toString(),
+                  this.options.client?.baseUrl
                 );
 
                 await subscription.subscribe(async (chunk) => {

@@ -8,6 +8,7 @@ type CorsOptions = {
   maxAge?: number;
   origin?: boolean | string;
   credentials?: boolean;
+  exposedHeaders?: string[];
 };
 
 export async function apiCors(

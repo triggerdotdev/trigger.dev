@@ -1,16 +1,28 @@
 "use client";
 
-import { ApiClient } from "@trigger.dev/core/v3";
-import { useTriggerAuthContext } from "../contexts.js";
+import { ApiClient, ApiRequestOptions } from "@trigger.dev/core/v3";
+import { useTriggerAuthContextOptional } from "../contexts.js";
 
-export function useApiClient() {
-  const auth = useTriggerAuthContext();
+export type UseApiClientOptions = {
+  accessToken?: string;
+  baseURL?: string;
+  requestOptions?: ApiRequestOptions;
+};
 
-  const baseUrl = auth.baseURL ?? "https://api.trigger.dev";
+export function useApiClient(options?: UseApiClientOptions): ApiClient {
+  const auth = useTriggerAuthContextOptional();
 
-  if (!auth.accessToken) {
-    throw new Error("Missing accessToken in TriggerAuthContext");
+  const baseUrl = auth?.baseURL ?? options?.baseURL ?? "https://api.trigger.dev";
+  const accessToken = auth?.accessToken ?? options?.accessToken;
+
+  if (!accessToken) {
+    throw new Error("Missing accessToken in TriggerAuthContext or useApiClient options");
   }
 
-  return new ApiClient(baseUrl, auth.accessToken, auth.requestOptions);
+  const requestOptions: ApiRequestOptions = {
+    ...auth?.requestOptions,
+    ...options?.requestOptions,
+  };
+
+  return new ApiClient(baseUrl, accessToken, requestOptions);
 }

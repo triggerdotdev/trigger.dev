@@ -111,13 +111,13 @@ async function responseHeaders(
   triggerClient?: string | null
 ): Promise<Record<string, string>> {
   const claimsHeader = JSON.stringify({
-    sub: run.runtimeEnvironmentId,
+    sub: environment.id,
     pub: true,
   });
 
   if (triggerClient === "browser") {
     const claims = {
-      sub: run.runtimeEnvironmentId,
+      sub: environment.id,
       pub: true,
       scopes: [`read:runs:${run.friendlyId}`],
     };
