@@ -2,9 +2,9 @@
 
 import { AnyTask, ApiClient, InferRunTypes, RealtimeRun } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { throttle } from "../utils/throttle.js";
 import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import { createThrottledQueue } from "../utils/throttle.js";
 
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;
@@ -78,12 +78,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeRun(
-        runId,
-        apiClient,
-        throttle(mutateRun, options?.experimental_throttleInMs),
-        abortControllerRef
-      );
+      await processRealtimeRun(runId, apiClient, mutateRun, abortControllerRef);
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -199,10 +194,11 @@ export function useRealtimeRunWithStreams<
       await processRealtimeRunWithStreams(
         runId,
         apiClient,
-        throttle(mutateRun, options?.experimental_throttleInMs),
-        throttle(mutateStreams, options?.experimental_throttleInMs),
+        mutateRun,
+        mutateStreams,
         streamsRef,
-        abortControllerRef
+        abortControllerRef,
+        options?.experimental_throttleInMs
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -285,13 +281,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeRunsWithTag(
-        tag,
-        apiClient,
-        throttle(mutateRuns, options?.experimental_throttleInMs),
-        runsRef,
-        abortControllerRef
-      );
+      await processRealtimeRunsWithTag(tag, apiClient, mutateRuns, runsRef, abortControllerRef);
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -372,13 +362,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeBatch(
-        batchId,
-        apiClient,
-        throttle(mutateRuns, options?.experimental_throttleInMs),
-        runsRef,
-        abortControllerRef
-      );
+      await processRealtimeBatch(batchId, apiClient, mutateRuns, runsRef, abortControllerRef);
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -486,23 +470,51 @@ async function processRealtimeRunWithStreams<
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   mutateStreamData: KeyedMutator<StreamResults<TStreams>>,
   existingDataRef: React.MutableRefObject<StreamResults<TStreams>>,
-  abortControllerRef: React.MutableRefObject<AbortController | null>
+  abortControllerRef: React.MutableRefObject<AbortController | null>,
+  throttleInMs?: number
 ) {
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
   });
 
+  type StreamUpdate = {
+    type: keyof TStreams;
+    chunk: any;
+  };
+
+  const streamQueue = createThrottledQueue<StreamUpdate>(async (updates) => {
+    const nextStreamData = { ...existingDataRef.current };
+
+    // Group updates by type
+    const updatesByType = updates.reduce(
+      (acc, update) => {
+        if (!acc[update.type]) {
+          acc[update.type] = [];
+        }
+        acc[update.type].push(update.chunk);
+        return acc;
+      },
+      {} as Record<keyof TStreams, any[]>
+    );
+
+    // Apply all updates
+    for (const [type, chunks] of Object.entries(updatesByType)) {
+      // @ts-ignore
+      nextStreamData[type] = [...(existingDataRef.current[type] || []), ...chunks];
+    }
+
+    await mutateStreamData(nextStreamData);
+  }, throttleInMs);
+
   for await (const part of subscription.withStreams<TStreams>()) {
     if (part.type === "run") {
       mutateRunData(part.run);
     } else {
-      const nextStreamData = {
-        ...existingDataRef.current,
+      streamQueue.add({
+        type: part.type,
         // @ts-ignore
-        [part.type]: [...(existingDataRef.current[part.type] || []), part.chunk],
-      };
-
-      mutateStreamData(nextStreamData);
+        chunk: part.chunk,
+      });
     }
   }
 }
