@@ -119,6 +119,7 @@ export function useRealtimeTaskTrigger<TTask extends AnyTask>(
   const triggerInstance = useTaskTrigger<TTask>(id, options);
   const realtimeInstance = useRealtimeRun<TTask>(triggerInstance.handle?.id, {
     ...options,
+    id: triggerInstance.handle?.id,
     accessToken: triggerInstance.handle?.publicAccessToken ?? options?.accessToken,
   });
 
