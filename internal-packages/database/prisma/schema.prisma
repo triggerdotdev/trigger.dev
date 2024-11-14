@@ -1734,6 +1734,9 @@ model TaskRun {
   lockedToVersion   BackgroundWorker? @relation(fields: [lockedToVersionId], references: [id])
   lockedToVersionId String?
 
+  /// The "priority" of the run. This is just an offset in ms for the queue timestamp
+  priorityMs Int @default(0)
+
   concurrencyKey String?
 
   delayUntil  DateTime?
