@@ -68,10 +68,30 @@ export const TriggerTaskRequestBody = z.object({
   context: z.any(),
   options: z
     .object({
+      /** @deprecated engine v1 only */
       dependentAttempt: z.string().optional(),
+      /** @deprecated engine v1 only */
       parentAttempt: z.string().optional(),
+      /** @deprecated engine v1 only */
       dependentBatch: z.string().optional(),
+      /**
+       * If triggered in a batch, this is the BatchTaskRun id
+       */
       parentBatch: z.string().optional(),
+      /**
+       * RunEngine v2
+       * If triggered inside another run, the parentRunId is the id of the parent run.
+       */
+      parentRunId: z.string().optional(),
+      /**
+       * RunEngine v2
+       * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+       */
+      resumeParentOnCompletion: z.boolean().optional(),
+      /**
+       * Locks the version to the passed value.
+       * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
+       */
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),

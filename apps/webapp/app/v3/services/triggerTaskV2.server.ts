@@ -50,19 +50,35 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
           : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
 
       const existingRun = idempotencyKey
-        ? await this._prisma.taskRun.findUnique({
+        ? await this._prisma.taskRun.findFirst({
             where: {
-              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
-                runtimeEnvironmentId: environment.id,
-                idempotencyKey,
-                taskIdentifier: taskId,
-              },
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey,
+              taskIdentifier: taskId,
+            },
+            include: {
+              associatedWaitpoint: true,
             },
           })
         : undefined;
 
       if (existingRun) {
         span.setAttribute("runId", existingRun.friendlyId);
+
+        //We're using `andWait` so we need to block the parent run with a waitpoint
+        if (
+          existingRun.associatedWaitpoint?.status === "PENDING" &&
+          body.options?.resumeParentOnCompletion &&
+          body.options?.parentRunId
+        ) {
+          await this._engine.blockRunWithWaitpoint({
+            runId: body.options.parentRunId,
+            waitpointId: existingRun.associatedWaitpoint.id,
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            tx: this._prisma,
+          });
+        }
 
         return existingRun;
       }
@@ -119,123 +135,22 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
           )
         : undefined;
 
-      const dependentAttempt = body.options?.dependentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
-            where: { friendlyId: body.options.dependentAttempt },
-            include: {
-              taskRun: {
-                select: {
-                  id: true,
-                  status: true,
-                  taskIdentifier: true,
-                  rootTaskRunId: true,
-                  depth: true,
-                },
-              },
-            },
+      //todo we will pass in the `parentRun` and `resumeParentOnCompletion`
+      const parentRun = body.options?.parentRunId
+        ? await this._prisma.taskRun.findFirst({
+            where: { id: body.options.parentRunId },
           })
         : undefined;
 
-      if (
-        dependentAttempt &&
-        (isFinalAttemptStatus(dependentAttempt.status) ||
-          isFinalRunStatus(dependentAttempt.taskRun.status))
-      ) {
-        logger.debug("Dependent attempt or run is in a terminal state", {
-          dependentAttempt: dependentAttempt,
+      if (parentRun && isFinalRunStatus(parentRun.status)) {
+        logger.debug("Parent run is in a terminal state", {
+          parentRun,
         });
 
-        if (isFinalAttemptStatus(dependentAttempt.status)) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentAttempt.status}`
-          );
-        } else {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent run has a status of ${dependentAttempt.taskRun.status}`
-          );
-        }
+        throw new ServiceValidationError(
+          `Cannot trigger ${taskId} as the parent run has a status of ${parentRun.status}`
+        );
       }
-
-      const parentAttempt = body.options?.parentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
-            where: { friendlyId: body.options.parentAttempt },
-            include: {
-              taskRun: {
-                select: {
-                  id: true,
-                  status: true,
-                  taskIdentifier: true,
-                  rootTaskRunId: true,
-                  depth: true,
-                },
-              },
-            },
-          })
-        : undefined;
-
-      const dependentBatchRun = body.options?.dependentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
-            where: { friendlyId: body.options.dependentBatch },
-            include: {
-              dependentTaskAttempt: {
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                      taskIdentifier: true,
-                      rootTaskRunId: true,
-                      depth: true,
-                    },
-                  },
-                },
-              },
-            },
-          })
-        : undefined;
-
-      if (
-        dependentBatchRun &&
-        dependentBatchRun.dependentTaskAttempt &&
-        (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status) ||
-          isFinalRunStatus(dependentBatchRun.dependentTaskAttempt.taskRun.status))
-      ) {
-        logger.debug("Dependent batch run task attempt or run has been canceled", {
-          dependentBatchRunId: dependentBatchRun.id,
-          status: dependentBatchRun.status,
-          attempt: dependentBatchRun.dependentTaskAttempt,
-        });
-
-        if (isFinalAttemptStatus(dependentBatchRun.dependentTaskAttempt.status)) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent attempt has a status of ${dependentBatchRun.dependentTaskAttempt.status}`
-          );
-        } else {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the parent run has a status of ${dependentBatchRun.dependentTaskAttempt.taskRun.status}`
-          );
-        }
-      }
-
-      const parentBatchRun = body.options?.parentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
-            where: { friendlyId: body.options.parentBatch },
-            include: {
-              dependentTaskAttempt: {
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                      taskIdentifier: true,
-                      rootTaskRunId: true,
-                    },
-                  },
-                },
-              },
-            },
-          })
-        : undefined;
 
       return await eventRepository.traceEvent(
         taskId,
@@ -304,13 +219,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 }
               }
 
-              const depth = dependentAttempt
-                ? dependentAttempt.taskRun.depth + 1
-                : parentAttempt
-                ? parentAttempt.taskRun.depth + 1
-                : dependentBatchRun?.dependentTaskAttempt
-                ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
-                : 0;
+              const depth = parentRun ? parentRun.depth + 1 : 0;
 
               event.setAttribute("runId", runFriendlyId);
               span.setAttribute("runId", runFriendlyId);
@@ -357,10 +266,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   maxAttempts: body.options?.maxAttempts,
                   ttl,
                   tags: tagIds,
-                  parentTaskRunId: parentAttempt?.taskRun.id,
-                  rootTaskRunId: parentAttempt?.taskRun.rootTaskRunId ?? parentAttempt?.taskRun.id,
-                  batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
-                  resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
+                  parentTaskRunId: parentRun?.id,
+                  rootTaskRunId: parentRun?.rootTaskRunId ?? undefined,
+                  batchId: body.options?.parentBatch ?? undefined,
+                  resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
                   depth,
                   metadata: metadataPacket?.data,
                   metadataType: metadataPacket?.dataType,
