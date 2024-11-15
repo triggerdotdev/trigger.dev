@@ -127,6 +127,7 @@ export type HandleErrorResult =
 
 export type HandleErrorArgs = {
   ctx: Context;
+  init: unknown;
   retry?: RetryOptions;
   retryAt?: Date;
   retryDelayInMs?: number;
@@ -152,9 +153,9 @@ type CommonTaskOptions<
   /** The retry settings when an uncaught error is thrown.
        *
        * If omitted it will use the values in your `trigger.config.ts` file.
-       * 
+       *
        * @example
-       * 
+       *
        * ```
        * export const taskWithRetries = task({
           id: "task-with-retries",
@@ -174,10 +175,10 @@ type CommonTaskOptions<
   retry?: RetryOptions;
 
   /** Used to configure what should happen when more than one run is triggered at the same time.
-   * 
-   * @example 
+   *
+   * @example
    * one at a time execution
-   * 
+   *
    * ```ts
    * export const oneAtATime = task({
       id: "one-at-a-time",
@@ -192,9 +193,9 @@ type CommonTaskOptions<
    */
   queue?: QueueOptions;
   /** Configure the spec of the machine you want your task to run on.
-   * 
+   *
    * @example
-   * 
+   *
    * ```ts
    * export const heavyTask = task({
       id: "heavy-task",

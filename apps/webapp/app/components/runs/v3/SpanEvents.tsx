@@ -1,3 +1,4 @@
+import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import {
   exceptionEventEnhancer,
   isExceptionSpanEvent,
@@ -5,6 +6,8 @@ import {
   type SpanEvent as OtelSpanEvent,
 } from "@trigger.dev/core/v3";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { Feedback } from "~/components/Feedback";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -75,11 +78,26 @@ export function SpanEventError({
         titleClassName="text-rose-500"
       />
       {enhancedException.message && <Callout variant="error">{enhancedException.message}</Callout>}
-      {enhancedException.link && (
-        <Callout variant="docs" to={enhancedException.link.href}>
-          {enhancedException.link.name}
-        </Callout>
-      )}
+      {enhancedException.link &&
+        (enhancedException.link.magic === "CONTACT_FORM" ? (
+          <Feedback
+            button={
+              <Button
+                variant="tertiary/medium"
+                LeadingIcon={EnvelopeIcon}
+                leadingIconClassName="text-blue-400"
+                fullWidth
+                textAlignLeft
+              >
+                {enhancedException.link.name}
+              </Button>
+            }
+          />
+        ) : (
+          <Callout variant="docs" to={enhancedException.link.href}>
+            {enhancedException.link.name}
+          </Callout>
+        ))}
       {enhancedException.stacktrace && (
         <CodeBlock
           showCopyButton={false}

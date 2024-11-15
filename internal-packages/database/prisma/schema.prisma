@@ -1799,6 +1799,8 @@ model TaskRun {
   @@index([parentSpanId])
   // Finding completed runs
   @@index([completedAt])
+  // Schedule list page
+  @@index([scheduleId, createdAt(sort: Desc)])
 }
 
 enum TaskRunStatus {
@@ -2246,6 +2248,9 @@ model Checkpoint {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([attemptId])
+  @@index([runId])
 }
 
 enum CheckpointType {

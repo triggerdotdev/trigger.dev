@@ -24,6 +24,7 @@ import { Redis } from "ioredis";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
+import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -103,13 +104,16 @@ function createCoordinatorNamespace(io: Server) {
           );
 
           if (!payload) {
-            logger.error("Failed to retrieve lazy attempt payload", message);
-            return { success: false, reason: "Failed to retrieve payload" };
+            logger.error(
+              "READY_FOR_LAZY_ATTEMPT: Failed to retrieve lazy attempt payload",
+              message
+            );
+            return { success: false, reason: "READY_FOR_LAZY_ATTEMPT: Failed to retrieve payload" };
           }
 
           return { success: true, lazyPayload: payload };
         } catch (error) {
-          logger.error("Error while creating lazy attempt", {
+          logger.error("READY_FOR_LAZY_ATTEMPT: Error while creating lazy attempt", {
             runId: message.runId,
             envId: message.envId,
             totalCompletions: message.totalCompletions,
@@ -123,12 +127,13 @@ function createCoordinatorNamespace(io: Server) {
         await resumeAttempt.call(message);
       },
       TASK_RUN_COMPLETED: async (message) => {
-        const completeAttempt = new CompleteAttemptService();
+        const completeAttempt = new CompleteAttemptService({
+          supportsRetryCheckpoints: message.version === "v1",
+        });
         await completeAttempt.call({
           completion: message.completion,
           execution: message.execution,
           checkpoint: message.checkpoint,
-          supportsRetryCheckpoints: message.version === "v1",
         });
       },
       TASK_RUN_FAILED_TO_RUN: async (message) => {
@@ -205,13 +210,19 @@ function createCoordinatorNamespace(io: Server) {
           });
 
           if (!payload) {
-            logger.error("Failed to retrieve payload after attempt creation", message);
-            return { success: false, reason: "Failed to retrieve payload" };
+            logger.error(
+              "CREATE_TASK_RUN_ATTEMPT: Failed to retrieve payload after attempt creation",
+              message
+            );
+            return {
+              success: false,
+              reason: "CREATE_TASK_RUN_ATTEMPT: Failed to retrieve payload",
+            };
           }
 
           return { success: true, executionPayload: payload };
         } catch (error) {
-          logger.error("Error while creating attempt", {
+          logger.error("CREATE_TASK_RUN_ATTEMPT: Error while creating attempt", {
             ...message,
             error,
           });
@@ -301,11 +312,13 @@ function createProviderNamespace(io: Server) {
     handlers: {
       WORKER_CRASHED: async (message) => {
         try {
-          const service = new CrashTaskRunService();
-
-          await service.call(message.runId, {
-            ...message,
-          });
+          if (message.overrideCompletion) {
+            const updateErrorService = new UpdateFatalRunErrorService();
+            await updateErrorService.call(message.runId, { ...message });
+          } else {
+            const crashRunService = new CrashTaskRunService();
+            await crashRunService.call(message.runId, { ...message });
+          }
         } catch (error) {
           logger.error("Error while handling crashed worker", { error });
         }

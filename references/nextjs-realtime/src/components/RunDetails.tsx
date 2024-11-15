@@ -1,8 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { RetrieveRunResult } from "@trigger.dev/sdk/v3";
 import { exampleTask } from "@/trigger/example";
+import type { RetrieveRunResult } from "@trigger.dev/sdk/v3";
+import { AlertTriangleIcon, CheckCheckIcon, XIcon } from "lucide-react";
 
 function formatDate(date: Date | undefined) {
   return date ? new Date(date).toLocaleString() : "N/A";
@@ -10,7 +11,7 @@ function formatDate(date: Date | undefined) {
 
 function JsonDisplay({ data }: { data: any }) {
   return (
-    <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+    <ScrollArea className="h-[200px] w-full rounded-md border p-4 bg-gray-900 border-gray-700">
       <pre className="text-sm">{JSON.stringify(data, null, 2)}</pre>
     </ScrollArea>
   );
@@ -18,7 +19,7 @@ function JsonDisplay({ data }: { data: any }) {
 
 export default function RunDetails({ record }: { record: RetrieveRunResult<typeof exampleTask> }) {
   return (
-    <Card className="w-full max-w-screen-xl mx-auto">
+    <Card className="w-full max-w-4xl mx-auto bg-gray-800 border-gray-700 text-gray-200">
       <CardHeader>
         <CardTitle className="text-2xl font-bold">Run Details</CardTitle>
       </CardHeader>
@@ -40,9 +41,16 @@ export default function RunDetails({ record }: { record: RetrieveRunResult<typeo
           </div>
           <div>
             <h3 className="font-semibold mb-1">Is Test</h3>
-            <Badge variant={record.isTest ? "default" : "outline"}>
-              {record.isTest ? "Yes" : "No"}
-            </Badge>
+            {record.isTest ? (
+              <span className="text-gray-200 flex items-center gap-1 text-sm">
+                <CheckCheckIcon className="size-4 text-green-500" />
+                Yes
+              </span>
+            ) : (
+              <span className="text-gray-200 flex items-center gap-1 text-sm">
+                <XIcon className="size-4" /> No
+              </span>
+            )}
           </div>
           {record.idempotencyKey && (
             <div>
@@ -121,14 +129,16 @@ export default function RunDetails({ record }: { record: RetrieveRunResult<typeo
 
         {record.error && (
           <div>
-            <h3 className="font-semibold mb-1">Error</h3>
-            <Card className="bg-red-50">
+            <h3 className="font-semibold mb-1 flex items-center gap-1 text-rose-500">
+              <AlertTriangleIcon className="size-5" /> Error
+            </h3>
+            <Card className="bg-gray-900 border-rose-500">
               <CardContent className="pt-6">
-                <p className="font-semibold text-red-600">{record.error.name}</p>
-                <p className="text-sm text-red-700">{record.error.message}</p>
+                <p className="font-semibold text-rose-500">{record.error.name}</p>
+                <p className="text-sm text-rose-500">{record.error.message}</p>
                 {record.error.stackTrace && (
                   <ScrollArea className="h-[100px] w-full mt-2">
-                    <pre className="text-xs text-red-800">{record.error.stackTrace}</pre>
+                    <pre className="text-xs text-rose-800">{record.error.stackTrace}</pre>
                   </ScrollArea>
                 )}
               </CardContent>

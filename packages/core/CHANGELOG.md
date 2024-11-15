@@ -1,5 +1,31 @@
 # internal-platform
 
+## 3.2.0
+
+## 3.1.2
+
+## 3.1.1
+
+### Patch Changes
+
+- Pass init output to both local and global `handleError` functions ([#1441](https://github.com/triggerdotdev/trigger.dev/pull/1441))
+- Add outdated SDK error ([#1453](https://github.com/triggerdotdev/trigger.dev/pull/1453))
+- Add individual run ids to auto-generated public access token when calling batchTrigger ([#1449](https://github.com/triggerdotdev/trigger.dev/pull/1449))
+
+## 3.1.0
+
+### Minor Changes
+
+- Access run status updates in realtime, from your server or from your frontend ([#1402](https://github.com/triggerdotdev/trigger.dev/pull/1402))
+
+### Patch Changes
+
+- Fix: Handle circular references in flattenAttributes function ([#1433](https://github.com/triggerdotdev/trigger.dev/pull/1433))
+- - Include retries.default in task retry config when indexing ([#1424](https://github.com/triggerdotdev/trigger.dev/pull/1424))
+  - New helpers for internal error retry mechanics
+  - Detection for segfaults and ffmpeg OOM errors
+  - Retries for packet import and export
+
 ## 3.0.13
 
 ### Patch Changes

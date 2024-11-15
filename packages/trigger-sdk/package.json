@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "3.0.13",
+  "version": "3.2.0",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -27,9 +27,6 @@
     },
     "sourceDialects": [
       "@triggerdotdev/source"
-    ],
-    "esmDialects": [
-      "browser"
     ]
   },
   "typesVersions": {
@@ -51,7 +48,7 @@
     "@opentelemetry/api": "1.9.0",
     "@opentelemetry/api-logs": "0.52.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
-    "@trigger.dev/core": "workspace:3.0.13",
+    "@trigger.dev/core": "workspace:3.2.0",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -83,10 +80,6 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "browser": {
-        "types": "./dist/browser/index.d.ts",
-        "default": "./dist/browser/index.js"
-      },
       "import": {
         "@triggerdotdev/source": "./src/index.ts",
         "types": "./dist/esm/index.d.ts",
@@ -98,10 +91,6 @@
       }
     },
     "./v3": {
-      "browser": {
-        "types": "./dist/browser/v3/index.d.ts",
-        "default": "./dist/browser/v3/index.js"
-      },
       "import": {
         "@triggerdotdev/source": "./src/v3/index.ts",
         "types": "./dist/esm/v3/index.d.ts",

@@ -43,7 +43,7 @@ const SHORT_HASH = env.TRIGGER_CONTENT_HASH!.slice(0, 9);
 const logger = new SimpleLogger(`[${MACHINE_NAME}][${SHORT_HASH}]`);
 
 const defaultBackoff = new ExponentialBackoff("FullJitter", {
-  maxRetries: 5,
+  maxRetries: 7,
 });
 
 cliLogger.loggerLevel = "debug";
@@ -95,6 +95,12 @@ class ProdWorker {
   private durationResumeFallback:
     | {
         idempotencyKey: string;
+      }
+    | undefined;
+  private readyForResumeReplay:
+    | {
+        idempotencyKey: string;
+        type: WaitReason;
       }
     | undefined;
 
@@ -365,10 +371,18 @@ class ProdWorker {
   async #prepareForRetry() {
     // Clear state for retrying
     this.paused = false;
+    this.nextResumeAfter = undefined;
     this.waitForPostStart = false;
     this.executing = false;
     this.attemptFriendlyId = undefined;
     this.attemptNumber = undefined;
+
+    // Clear replay state
+    this.waitForTaskReplay = undefined;
+    this.waitForBatchReplay = undefined;
+    this.readyForLazyAttemptReplay = undefined;
+    this.durationResumeFallback = undefined;
+    this.readyForResumeReplay = undefined;
   }
 
   // MARK: CHECKPOINT PREP
@@ -405,6 +419,7 @@ class ProdWorker {
     this.waitForPostStart = false;
 
     this.durationResumeFallback = undefined;
+    this.readyForResumeReplay = undefined;
 
     this._taskRunProcess?.waitCompletedNotification();
   }
@@ -412,15 +427,17 @@ class ProdWorker {
   async #readyForLazyAttempt() {
     const idempotencyKey = randomUUID();
 
+    logger.log("ready for lazy attempt", { idempotencyKey });
+
     this.readyForLazyAttemptReplay = {
       idempotencyKey,
     };
 
     // Retry if we don't receive EXECUTE_TASK_RUN_LAZY_ATTEMPT in a reasonable time
     // ..but we also have to be fast to avoid failing the task due to missing heartbeat
-    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(3)) {
+    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(7)) {
       if (retry > 0) {
-        logger.log("retrying ready for lazy attempt", { retry });
+        logger.log("retrying ready for lazy attempt", { retry, idempotencyKey });
       }
 
       this.#coordinatorSocket.socket.emit("READY_FOR_LAZY_ATTEMPT", {
@@ -451,6 +468,93 @@ class ProdWorker {
 
     // Fail the task with a more descriptive message as it likely failed with a generic missing heartbeat error
     this.#failRun(this.runId, "Failed to receive execute request in a reasonable time");
+  }
+
+  async #readyForResume() {
+    const idempotencyKey = randomUUID();
+
+    logger.log("readyForResume()", {
+      nextResumeAfter: this.nextResumeAfter,
+      attemptFriendlyId: this.attemptFriendlyId,
+      attemptNumber: this.attemptNumber,
+      idempotencyKey,
+    });
+
+    if (!this.nextResumeAfter) {
+      logger.error("Missing next resume reason", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoNextResume",
+        "Next resume reason not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    if (!this.attemptFriendlyId) {
+      logger.error("Missing attempt friendly ID", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoAttemptId",
+        "Attempt ID not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    if (!this.attemptNumber) {
+      logger.error("Missing attempt number", { status: this.#status });
+
+      this.#emitUnrecoverableError(
+        "NoAttemptNumber",
+        "Attempt number not set while resuming from paused state"
+      );
+
+      return;
+    }
+
+    this.readyForResumeReplay = {
+      idempotencyKey,
+      type: this.nextResumeAfter,
+    };
+
+    const lockedMetadata = {
+      attemptFriendlyId: this.attemptFriendlyId,
+      attemptNumber: this.attemptNumber,
+      type: this.nextResumeAfter,
+    };
+
+    // Retry if we don't receive RESUME_AFTER_DEPENDENCY or RESUME_AFTER_DURATION in a reasonable time
+    // ..but we also have to be fast to avoid failing the task due to missing heartbeat
+    for await (const { delay, retry } of defaultBackoff.min(10).maxRetries(7)) {
+      if (retry > 0) {
+        logger.log("retrying ready for resume", { retry, idempotencyKey });
+      }
+
+      this.#coordinatorSocket.socket.emit("READY_FOR_RESUME", {
+        version: "v2",
+        ...lockedMetadata,
+      });
+
+      await timeout(delay.milliseconds);
+
+      if (!this.readyForResumeReplay) {
+        logger.log("replay ready for resume cancelled, discarding", {
+          idempotencyKey,
+        });
+
+        return;
+      }
+
+      if (idempotencyKey !== this.readyForResumeReplay.idempotencyKey) {
+        logger.log("replay ready for resume idempotency key mismatch, discarding", {
+          idempotencyKey,
+          newIdempotencyKey: this.readyForResumeReplay.idempotencyKey,
+        });
+
+        return;
+      }
+    }
   }
 
   #readyForCheckpoint() {
@@ -519,12 +623,12 @@ class ProdWorker {
 
     logger.log("completion acknowledged", { willCheckpointAndRestore, shouldExit });
 
-    const exitCode =
+    const isNonZeroExitError =
       !completion.ok &&
       completion.error.type === "INTERNAL_ERROR" &&
-      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE
-        ? EXIT_CODE_CHILD_NONZERO
-        : 0;
+      completion.error.code === TaskRunErrorCodes.TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE;
+
+    const exitCode = isNonZeroExitError ? EXIT_CODE_CHILD_NONZERO : 0;
 
     if (shouldExit) {
       // Exit after completion, without any retrying
@@ -585,7 +689,15 @@ class ProdWorker {
         reconnectionDelayMax: 3000,
       },
       handlers: {
-        RESUME_AFTER_DEPENDENCY: async ({ completions }) => {
+        RESUME_AFTER_DEPENDENCY: async ({ attemptId, completions }) => {
+          logger.log("Handling RESUME_AFTER_DEPENDENCY", {
+            attemptId,
+            completions: completions.map((c) => ({
+              id: c.id,
+              ok: c.ok,
+            })),
+          });
+
           if (!this.paused) {
             logger.error("Failed to resume after dependency: Worker not paused");
             return;
@@ -616,12 +728,48 @@ class ProdWorker {
             return;
           }
 
+          const firstCompletion = completions[0];
+          if (!firstCompletion) {
+            logger.error("Failed to resume after dependency: No first completion", {
+              completions,
+              waitForTaskReplay: this.waitForTaskReplay,
+              nextResumeAfter: this.nextResumeAfter,
+            });
+            return;
+          }
+
           switch (this.nextResumeAfter) {
             case "WAIT_FOR_TASK": {
+              if (this.waitForTaskReplay) {
+                if (this.waitForTaskReplay.message.friendlyId !== firstCompletion.id) {
+                  logger.error("Failed to resume after dependency: Task friendlyId mismatch", {
+                    completions,
+                    waitForTaskReplay: this.waitForTaskReplay,
+                  });
+                  return;
+                }
+              } else {
+                // Only log here so we don't break any existing behavior
+                logger.debug("No waitForTaskReplay", { completions });
+              }
+
               this.waitForTaskReplay = undefined;
               break;
             }
             case "WAIT_FOR_BATCH": {
+              if (this.waitForBatchReplay) {
+                if (!this.waitForBatchReplay.message.runFriendlyIds.includes(firstCompletion.id)) {
+                  logger.error("Failed to resume after dependency: Batch friendlyId mismatch", {
+                    completions,
+                    waitForBatchReplay: this.waitForBatchReplay,
+                  });
+                  return;
+                }
+              } else {
+                // Only log here so we don't break any existing behavior
+                logger.debug("No waitForBatchReplay", { completions });
+              }
+
               this.waitForBatchReplay = undefined;
               break;
             }
@@ -630,6 +778,7 @@ class ProdWorker {
           this.paused = false;
           this.nextResumeAfter = undefined;
           this.waitForPostStart = false;
+          this.readyForResumeReplay = undefined;
 
           for (let i = 0; i < completions.length; i++) {
             const completion = completions[i];
@@ -845,46 +994,7 @@ class ProdWorker {
           }
 
           if (this.paused) {
-            if (!this.nextResumeAfter) {
-              logger.error("Missing next resume reason", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoNextResume",
-                "Next resume reason not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            if (!this.attemptFriendlyId) {
-              logger.error("Missing attempt friendly ID", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoAttemptId",
-                "Attempt ID not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            if (!this.attemptNumber) {
-              logger.error("Missing attempt number", { status: this.#status });
-
-              this.#emitUnrecoverableError(
-                "NoAttemptNumber",
-                "Attempt number not set while resuming from paused state"
-              );
-
-              return;
-            }
-
-            socket.emit("READY_FOR_RESUME", {
-              version: "v2",
-              attemptFriendlyId: this.attemptFriendlyId,
-              attemptNumber: this.attemptNumber,
-              type: this.nextResumeAfter,
-            });
-
+            await this.#readyForResume();
             return;
           }
 
@@ -1293,6 +1403,9 @@ class ProdWorker {
       attemptNumber: this.attemptNumber,
       waitForTaskReplay: this.waitForTaskReplay,
       waitForBatchReplay: this.waitForBatchReplay,
+      readyForLazyAttemptReplay: this.readyForLazyAttemptReplay,
+      durationResumeFallback: this.durationResumeFallback,
+      readyForResumeReplay: this.readyForResumeReplay,
     };
   }
 

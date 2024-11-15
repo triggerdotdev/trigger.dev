@@ -13,7 +13,7 @@ Here's an incredibly simple task:
 ```ts /trigger/hello-world.ts
 import { task } from "@trigger.dev/sdk/v3";
 
-//1. You need to export each task
+//1. You need to export each task, even if it's a subtask
 export const helloWorld = task({
   //2. Use a unique id for each task
   id: "hello-world",
@@ -25,6 +25,10 @@ export const helloWorld = task({
 });
 ```
 
+<Note>
+  You must `export` each task, even subtasks inside the same file. When exported they are accessible so their configuration can be registered with the platform.
+</Note>
+
 You can trigger this in two ways:
 
 1. From the dashboard [using the "Test" feature](/run-tests).
@@ -33,7 +37,7 @@ You can trigger this in two ways:
 Here's how to trigger a single run from elsewhere in your code:
 
 ```ts Your backend code
-import { helloWorldTask } from "./trigger/hello-world";
+import { helloWorld } from "./trigger/hello-world";
 
 async function triggerHelloWorld() {
   //This triggers the task and returns a handle

@@ -4,7 +4,21 @@ import { AnyTask, InferRunTypes, TaskRunShape } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
 import { useApiClient } from "./useApiClient.js";
 
-export function useBatch<TTask extends AnyTask>(batchId: string) {
+/**
+ * hook to subscribe to realtime updates of a batch of task runs.
+ *
+ * @template TTask - The type of the task.
+ * @param {string} batchId - The unique identifier of the batch to subscribe to.
+ * @returns {{ runs: TaskRunShape<TTask>[], error: Error | null }} An object containing the current state of the runs and any error encountered.
+ *
+ * @example
+ *
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { runs, error } = useRealtimeBatch<typeof myTask>('batch-id-123');
+ * ```
+ */
+export function useRealtimeBatch<TTask extends AnyTask>(batchId: string) {
   const [runShapes, setRunShapes] = useState<TaskRunShape<TTask>[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const apiClient = useApiClient();

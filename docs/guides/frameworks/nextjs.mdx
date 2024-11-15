@@ -17,6 +17,7 @@ import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.md
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import AddEnvironmentVariables from "/snippets/add-environment-variables.mdx";
 import DeployingYourTask from "/snippets/deplopying-your-task.mdx";
+import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
 
 <Note>This guide can be followed for both App and Pages router as well as Server Actions.</Note>
 
@@ -244,24 +245,190 @@ Here are the steps to trigger your task in the Next.js App and Pages router and 
 
 </Tabs>
 
+## Automatically sync environment variables from your Vercel project (optional)
+
+If you want to automatically sync environment variables from your Vercel project to Trigger.dev, you can add our `syncVercelEnvVars` build extension to your `trigger.config.ts` file.
+
+<Note>
+  You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
+  in the token and project ID as arguments to the `syncVercelEnvVars` build extension. If you're
+  working with a team project, you'll also need to set `VERCEL_TEAM_ID`, which can be found in your
+  team settings. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
+  [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
+  the project with the environment variables you want to sync.
+</Note>
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+import { syncVercelEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  build: {
+    extensions: [syncVercelEnvVars()],
+  },
+});
+```
+
+<Note>
+  For more information, see our [Vercel sync environment
+  variables](/guides/examples/vercel-sync-env-vars) guide.
+</Note>
+
 <AddEnvironmentVariables />
 
 <DeployingYourTask />
 
-## Troubleshooting
+## Troubleshooting & extra resources
+
+### Revalidation from your Trigger.dev tasks
+
+[Revalidation](https://vercel.com/docs/incremental-static-regeneration/quickstart#on-demand-revalidation) allows you to purge the cache for an ISR route. To revalidate an ISR route from a Trigger.dev task, you have to set up a handler for the `revalidate` event. This is an API route that you can add to your Next.js app.
+
+This handler will run the `revalidatePath` function from Next.js, which purges the cache for the given path.
+
+The handlers are slightly different for the App and Pages router:
+
+#### Revalidation handler: App Router
+
+If you are using the App router, create a new revalidation route at `app/api/revalidate/path/route.ts`:
+
+```ts app/api/revalidate/path/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
+
+export async function POST(request: NextRequest) {
+  try {
+    const { path, type, secret } = await request.json();
+    // Create a REVALIDATION_SECRET and set it in your environment variables
+    if (secret !== process.env.REVALIDATION_SECRET) {
+      return NextResponse.json({ message: "Invalid secret" }, { status: 401 });
+    }
+
+    if (!path) {
+      return NextResponse.json({ message: "Path is required" }, { status: 400 });
+    }
+
+    revalidatePath(path, type);
+
+    return NextResponse.json({ revalidated: true });
+  } catch (err) {
+    console.error("Error revalidating path:", err);
+    return NextResponse.json({ message: "Error revalidating path" }, { status: 500 });
+  }
+}
+```
+
+#### Revalidation handler: Pages Router
+
+If you are using the Pages router, create a new revalidation route at `pages/api/revalidate/path.ts`:
+
+```ts pages/api/revalidate/path.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ message: "Method not allowed" });
+    }
+
+    const { path, secret } = req.body;
+
+    if (secret !== process.env.REVALIDATION_SECRET) {
+      return res.status(401).json({ message: "Invalid secret" });
+    }
+
+    if (!path) {
+      return res.status(400).json({ message: "Path is required" });
+    }
+
+    await res.revalidate(path);
+
+    return res.json({ revalidated: true });
+  } catch (err) {
+    console.error("Error revalidating path:", err);
+    return res.status(500).json({ message: "Error revalidating path" });
+  }
+}
+```
+
+#### Revalidation task
+
+This task takes a `path` as a payload and will revalidate the path you specify, using the handler you set up previously.
+
+<Note>
+
+To run this task locally you will need to set the `REVALIDATION_SECRET` environment variable in your `.env.local` file (or `.env` file if using Pages router).
+
+To run this task in production, you will need to set the `REVALIDATION_SECRET` environment variable in Vercel, in your project settings, and also in your environment variables in the Trigger.dev dashboard.
+
+</Note>
+
+```ts trigger/revalidate-path.ts
+import { logger, task } from "@trigger.dev/sdk/v3";
+
+const NEXTJS_APP_URL = process.env.NEXTJS_APP_URL; // e.g. "http://localhost:3000" or "https://my-nextjs-app.vercel.app"
+const REVALIDATION_SECRET = process.env.REVALIDATION_SECRET; // Create a REVALIDATION_SECRET and set it in your environment variables
+
+export const revalidatePath = task({
+  id: "revalidate-path",
+  run: async (payload: { path: string }) => {
+    const { path } = payload;
+
+    try {
+      const response = await fetch(`${NEXTJS_APP_URL}/api/revalidate/path`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          path: `${NEXTJS_APP_URL}/${path}`,
+          secret: REVALIDATION_SECRET,
+        }),
+      });
+
+      if (response.ok) {
+        logger.log("Path revalidation successful", { path });
+        return { success: true };
+      } else {
+        logger.error("Path revalidation failed", {
+          path,
+          statusCode: response.status,
+          statusText: response.statusText,
+        });
+        return {
+          success: false,
+          error: `Revalidation failed with status ${response.status}: ${response.statusText}`,
+        };
+      }
+    } catch (error) {
+      logger.error("Path revalidation encountered an error", {
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: `Failed to revalidate path due to an unexpected error`,
+      };
+    }
+  },
+});
+```
+
+#### Testing the revalidation task
+
+You can test your revalidation task in the Trigger.dev dashboard on the testing page, using the following payload.
+
+```json
+{
+  "path": "<path-to-revalidate>" // e.g. "blog"
+}
+```
 
     <NextjsTroubleshootingMissingApiKey/>
     <NextjsTroubleshootingButtonSyntax/>
     <WorkerFailedToStartWhenRunningDevCommand/>
 
-## Additional resources for Next.js
-
-<Card
-  title="Next.js - triggering tasks using webhooks"
-  icon="N"
-  href="/guides/frameworks/nextjs-webhooks"
->
-  How to create a webhook handler in a Next.js app, and trigger a task from it.
-</Card>
-
+<VercelDocsCards />
 <UsefulNextSteps />

@@ -12,6 +12,177 @@ The main difference is that things in v3 are far simpler. That's because in v3 y
 3. Just use official SDKs, not integrations.
 4. `task`s are the new primitive, not `job`s.
 
+## Convert your v2 job using an AI prompt
+
+The prompt in the accordion below gives good results when using Anthropic Claude 3.5 Sonnet. You’ll need a relatively large token limit.
+
+<Note>Don't forget to paste your own v2 code in a markdown codeblock at the bottom of the prompt before running it.</Note>
+
+<Accordion title="Copy and paste this prompt in full:">
+
+I would like you to help me convert from Trigger.dev v2 to Trigger.dev v3.
+The important differences:
+1. The syntax for creating "background jobs" has changed. In v2 it looked like this:
+
+```ts
+import { eventTrigger } from "@trigger.dev/sdk";
+import { client } from "@/trigger";
+import { db } from "@/lib/db";
+client.defineJob({
+  enabled: true,
+  id: "my-job-id",
+  name: "My job name",
+  version: "0.0.1",
+  // This is triggered by an event using eventTrigger. You can also trigger Jobs with webhooks, on schedules, and more: https://trigger.dev/docs/documentation/concepts/triggers/introduction
+  trigger: eventTrigger({
+    name: "theevent.name",
+    schema: z.object({
+      phoneNumber: z.string(),
+      verified: z.boolean(),
+    }),
+  }),
+  run: async (payload, io) => {
+    
+    //everything needed to be wrapped in io.runTask in v2, to make it possible for long-running code to work
+    const result = await io.runTask("get-stuff-from-db", async () => {
+      const socials = await db.query.Socials.findMany({
+        where: eq(Socials.service, "tiktok"),
+      });
+      return socials;
+    });
+    
+    io.logger.info("Completed fetch successfully");
+  },
+});
+```
+
+In v3 it looks like this:
+
+```ts
+import { task } from "@trigger.dev/sdk/v3";
+import { db } from "@/lib/db";
+export const getCreatorVideosFromTikTok = task({
+  id: "my-job-id",
+  run: async (payload: { phoneNumber: string, verified: boolean }) => {
+    //in v3 there are no timeouts, so you can just use the code as is, no need to wrap in `io.runTask`
+    const socials = await db.query.Socials.findMany({
+      where: eq(Socials.service, "tiktok"),
+    });
+    
+    //use `logger` instead of `io.logger`
+    logger.info("Completed fetch successfully");
+  },
+});
+```
+
+Notice that the schema on v2 `eventTrigger` defines the payload type. In v3 that needs to be done on the TypeScript type of the `run` payload param.
+2. v2 had integrations with some APIs. Any package that isn't `@trigger.dev/sdk` can be replaced with an official SDK. The syntax may need to be adapted.
+For example:
+v2:
+
+```ts
+import { OpenAI } from "@trigger.dev/openai";
+const openai = new OpenAI({
+  id: "openai",
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+client.defineJob({
+  id: "openai-job",
+  name: "OpenAI Job",
+  version: "1.0.0",
+  trigger: invokeTrigger(),
+  integrations: {
+    openai, // Add the OpenAI client as an integration
+  },
+  run: async (payload, io, ctx) => {
+    // Now you can access it through the io object
+    const completion = await io.openai.chat.completions.create("completion", {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: "Create a good programming joke about background jobs",
+        },
+      ],
+    });
+  },
+});
+```
+
+Would become in v3:
+
+```ts
+import OpenAI from "openai";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+export const openaiJob = task({
+  id: "openai-job",
+  run: async (payload) => {
+    const completion = await openai.chat.completions.create(
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "user",
+            content: "Create a good programming joke about background jobs",
+          },
+        ],
+    });
+  },
+});
+```
+
+So don't use the `@trigger.dev/openai` package in v3, use the official OpenAI SDK.
+Bear in mind that the syntax for the latest official SDK will probably be different from the @trigger.dev integration SDK. You will need to adapt the code accordingly.
+3. The most critical difference is that inside the `run` function you do NOT need to wrap everything in `io.runTask`. So anything inside there can be extracted out and be used in the main body of the function without wrapping it.
+4. The import for `task` in v3 is `import { task } from "@trigger.dev/sdk/v3";`
+5. You can trigger jobs from other jobs. In v2 this was typically done by either calling `io.sendEvent()` or by calling `yourOtherTask.invoke()`. In v3 you call `.trigger()` on the other task, there are no events in v3.
+v2:
+
+```ts
+export const parentJob = client.defineJob({
+  id: "parent-job",
+  run: async (payload, io) => {
+    //send event
+    await client.sendEvent({
+      name: "user.created",
+      payload: { name: "John Doe", email: "john@doe.com", paidPlan: true },
+    });
+    
+    //invoke
+    await exampleJob.invoke({ foo: "bar" }, {
+      idempotencyKey: `some_string_here_${
+        payload.someValue
+      }_${new Date().toDateString()}`,
+    });
+  },
+});
+```
+
+v3:
+
+```ts
+export const parentJob = task({
+  id: "parent-job",
+  run: async (payload) => {
+    //trigger
+    await userCreated.trigger({ name: "John Doe", email: "john@doe.com", paidPlan: true });
+    
+    //trigger, you can pass in an idempotency key
+    await exampleJob.trigger({ foo: "bar" }, {
+      idempotencyKey: `some_string_here_${
+        payload.someValue
+      }_${new Date().toDateString()}`,
+    });
+  }
+});
+```
+
+Can you help me convert the following code from v2 to v3? Please include the full converted code in the answer, do not truncate it anywhere.
+
+</Accordion>
+
 ## OpenAI example comparison
 
 This is a (very contrived) example that does a long OpenAI API call (>10s), stores the result in a database, waits for 5 mins, and then returns the result.

@@ -1012,7 +1012,7 @@ importers:
   packages/build:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:3.0.13
+        specifier: workspace:3.2.0
         version: link:../core
       pkg-types:
         specifier: ^1.1.3
@@ -1091,10 +1091,10 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/build':
-        specifier: workspace:3.0.13
+        specifier: workspace:3.2.0
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:3.0.13
+        specifier: workspace:3.2.0
         version: link:../core
       c12:
         specifier: ^1.11.1
@@ -1375,7 +1375,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^3.0.12
+        specifier: workspace:^3.2.0
         version: link:../core
       react:
         specifier: '>=18 || >=19.0.0-beta'
@@ -1424,7 +1424,7 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/core':
-        specifier: workspace:3.0.13
+        specifier: workspace:3.2.0
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -1614,30 +1614,11 @@ importers:
         specifier: ^5
         version: 5.5.4
 
-  references/prisma-catalog:
-    dependencies:
-      '@prisma/client':
-        specifier: 5.19.0
-        version: 5.19.0(prisma@5.19.0)
-      '@trigger.dev/sdk':
-        specifier: workspace:*
-        version: link:../../packages/trigger-sdk
-    devDependencies:
-      '@trigger.dev/build':
-        specifier: workspace:*
-        version: link:../../packages/build
-      prisma:
-        specifier: 5.19.0
-        version: 5.19.0
-      trigger.dev:
-        specifier: workspace:*
-        version: link:../../packages/cli-v3
-      typescript:
-        specifier: ^5.5.4
-        version: 5.5.4
-
   references/v3-catalog:
     dependencies:
+      '@effect/schema':
+        specifier: ^0.75.5
+        version: 0.75.5(effect@3.9.2)
       '@infisical/sdk':
         specifier: ^2.1.9
         version: 2.3.5
@@ -1656,6 +1637,9 @@ importers:
       '@sentry/esbuild-plugin':
         specifier: ^2.22.2
         version: 2.22.2
+      '@sinclair/typebox':
+        specifier: ^0.33.17
+        version: 0.33.17
       '@sindresorhus/slugify':
         specifier: ^2.2.1
         version: 2.2.1
@@ -1671,9 +1655,15 @@ importers:
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
+      '@typeschema/typebox':
+        specifier: ^0.14.0
+        version: 0.14.0(@sinclair/typebox@0.33.17)
       ai:
         specifier: ^3.3.24
         version: 3.3.24(openai@4.56.0)(react@19.0.0-rc.0)(svelte@4.2.19)(vue@3.4.38)(zod@3.22.3)
+      arktype:
+        specifier: 2.0.0-rc.17
+        version: 2.0.0-rc.17
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -1713,21 +1703,33 @@ importers:
       reflect-metadata:
         specifier: ^0.1.13
         version: 0.1.14
+      runtypes:
+        specifier: ^6.7.0
+        version: 6.7.0
       server-only:
         specifier: ^0.0.1
         version: 0.0.1
       stripe:
         specifier: ^12.14.0
         version: 12.18.0
+      superstruct:
+        specifier: ^2.0.2
+        version: 2.0.2
       typeorm:
         specifier: ^0.3.20
         version: 0.3.20(pg@8.11.5)(ts-node@10.9.2)
+      valibot:
+        specifier: ^0.42.1
+        version: 0.42.1(typescript@5.5.4)
       wrangler:
         specifier: 3.70.0
         version: 3.70.0
       yt-dlp-wrap:
         specifier: ^2.3.12
         version: 2.3.12
+      yup:
+        specifier: ^1.4.0
+        version: 1.4.0
       zod:
         specifier: 3.22.3
         version: 3.22.3
@@ -2008,6 +2010,16 @@ packages:
       '@ariakit/react-core': 0.4.6(react-dom@18.2.0)(react@18.2.0)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
+    dev: false
+
+  /@ark/schema@0.19.0:
+    resolution: {integrity: sha512-m+NLBrfewxH1IieXxK7i2cjJtMksZm2PlobbZDcsNDpYKjuDAzWimXZb+GaxawKMBV9rhO3XY2Lnvf2TLq+JTQ==}
+    dependencies:
+      '@ark/util': 0.18.0
+    dev: false
+
+  /@ark/util@0.18.0:
+    resolution: {integrity: sha512-TpHY532LKQwwYHui5NN/eO/6eSiSMvf652YNt1BsV7fya7RzXL27IiU9x4bm7jTFZxLQGYDQTB7nw41TqeuF4g==}
     dev: false
 
   /@aws-crypto/crc32@3.0.0:
@@ -4770,6 +4782,15 @@ packages:
       effect: ^3.7.2
     dependencies:
       effect: 3.7.2
+      fast-check: 3.22.0
+    dev: false
+
+  /@effect/schema@0.75.5(effect@3.9.2):
+    resolution: {integrity: sha512-TQInulTVCuF+9EIbJpyLP6dvxbQJMphrnRqgexm/Ze39rSjfhJuufF7XvU3SxTgg3HnL7B/kpORTJbHhlE6thw==}
+    peerDependencies:
+      effect: ^3.9.2
+    dependencies:
+      effect: 3.9.2
       fast-check: 3.22.0
     dev: false
 
@@ -13897,6 +13918,10 @@ packages:
     resolution: {integrity: sha512-+Fj43pSMwJs4KRrH/938Uf+uAELIgVBmQzg/q1YG10djyfA3TnrU8N8XzqCh/okZdszqBQTZf96idMfE5lnwTA==}
     dev: true
 
+  /@sinclair/typebox@0.33.17:
+    resolution: {integrity: sha512-75232GRx3wp3P7NP+yc4nRK3XUAnaQShxTAzapgmQrgs0QvSq0/mOJGoZXRpH15cFCKyys+4laCPbBselqJ5Ag==}
+    dev: false
+
   /@sindresorhus/is@0.14.0:
     resolution: {integrity: sha512-9NET910DNaIPngYnLLPeg+Ogzqsi9uM4mSboU5y6p8S5DzMTVEsJZrawi+BoDNUVBa2DhJqQYUFvMDfgU062LQ==}
     engines: {node: '>=6'}
@@ -15440,6 +15465,29 @@ packages:
     dev: false
     optional: true
 
+  /@typeschema/core@0.14.0:
+    resolution: {integrity: sha512-Ia6PtZHcL3KqsAWXjMi5xIyZ7XMH4aSnOQes8mfMLx+wGFGtGRNlwe6Y7cYvX+WfNK67OL0/HSe9t8QDygV0/w==}
+    peerDependencies:
+      '@types/json-schema': ^7.0.15
+    peerDependenciesMeta:
+      '@types/json-schema':
+        optional: true
+    dev: false
+
+  /@typeschema/typebox@0.14.0(@sinclair/typebox@0.33.17):
+    resolution: {integrity: sha512-+Td4CHkWQ17T60gEtA2SzeFp382CHEwsI7aWiqBq9YeqAwbkTrluGh6R9MNFHJzOLaYL+AG60b8fX9Rbcex0Tg==}
+    peerDependencies:
+      '@sinclair/typebox': ^0.33.7
+    peerDependenciesMeta:
+      '@sinclair/typebox':
+        optional: true
+    dependencies:
+      '@sinclair/typebox': 0.33.17
+      '@typeschema/core': 0.14.0
+    transitivePeerDependencies:
+      - '@types/json-schema'
+    dev: false
+
   /@typescript-eslint/eslint-plugin@5.59.6(@typescript-eslint/parser@5.59.6)(eslint@8.31.0)(typescript@5.2.2):
     resolution: {integrity: sha512-sXtOgJNEuRU5RLwPUb1jxtToZbgvq3M6FPpY4QENxoOggK+UpTxUBpj6tD8+Qh2g46Pi9We87E+eHnUw8YcGsw==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
@@ -16524,6 +16572,13 @@ packages:
     resolution: {integrity: sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A==}
     dependencies:
       dequal: 2.0.3
+
+  /arktype@2.0.0-rc.17:
+    resolution: {integrity: sha512-1m1VG9ZGcGx8OIbeA4ghw8n1QVpu7MYcel3My2Tob17mMBaLy6+M116RRwx9GvaCyGpHhgu1RK5XfhP4wX17ug==}
+    dependencies:
+      '@ark/schema': 0.19.0
+      '@ark/util': 0.18.0
+    dev: false
 
   /array-buffer-byte-length@1.0.1:
     resolution: {integrity: sha512-ahC5W1xgou+KTXix4sAO8Ki12Q+jf4i0+tmk3sC+zgcynshkHxzpXdImBehiUYKKKDwvfFiJl1tZt6ewscS1Mg==}
@@ -18813,6 +18868,10 @@ packages:
 
   /effect@3.7.2:
     resolution: {integrity: sha512-pV7l1+LSZFvVObj4zuy4nYiBaC7qZOfrKV6s/Ef4p3KueiQwZFgamazklwyZ+x7Nyj2etRDFvHE/xkThTfQD1w==}
+    dev: false
+
+  /effect@3.9.2:
+    resolution: {integrity: sha512-1sx/v1HTWHTodXfzWxAFg+SCF+ACgpJVruaAMIh/NmDVvrUsf0x9PzpXvkgJUbQ1fMdmKYK//FqxeHSQ+Zxv/Q==}
     dev: false
 
   /electron-to-chromium@1.4.433:
@@ -25496,6 +25555,10 @@ packages:
       mkdirp: 1.0.4
     dev: true
 
+  /property-expr@2.0.6:
+    resolution: {integrity: sha512-SVtmxhRE/CGkn3eZY1T6pC8Nln6Fr/lu1mKSgRud0eC73whjGfoAogbn78LkD8aFL0zz3bAFerKSnOl7NlErBA==}
+    dev: false
+
   /property-information@6.2.0:
     resolution: {integrity: sha512-kma4U7AFCTwpqq5twzC1YVIDXSqg6qQK6JN0smOw8fgRy1OkMi0CYSzFmsy6dnqSenamAtj0CyXMUJ1Mf6oROg==}
     dev: true
@@ -26953,6 +27016,10 @@ packages:
     dependencies:
       queue-microtask: 1.2.3
 
+  /runtypes@6.7.0:
+    resolution: {integrity: sha512-3TLdfFX8YHNFOhwHrSJza6uxVBmBrEjnNQlNXvXCdItS0Pdskfg5vVXUTWIN+Y23QR09jWpSl99UHkA83m4uWA==}
+    dev: false
+
   /rusha@0.8.14:
     resolution: {integrity: sha512-cLgakCUf6PedEu15t8kbsjnwIFFR2D4RfL+W3iWFJ4iac7z4B0ZI8fxy4R3J956kAI68HclCFGL8MPoUVC3qVA==}
     dev: false
@@ -27945,6 +28012,11 @@ packages:
       copy-anything: 3.0.5
     dev: false
 
+  /superstruct@2.0.2:
+    resolution: {integrity: sha512-uV+TFRZdXsqXTL2pRvujROjdZQ4RAlBUS5BTh9IGm+jTqQntYThciG/qu57Gs69yjnVUSqdxF9YLmSnpupBW9A==}
+    engines: {node: '>=14.0.0'}
+    dev: false
+
   /supertest@7.0.0:
     resolution: {integrity: sha512-qlsr7fIC0lSddmA3tzojvzubYxvlGtzumcdHgPwbFWMISQwL22MhM2Y3LNt+6w9Yyx7559VW5ab70dgphm8qQA==}
     engines: {node: '>=14.18.0'}
@@ -28444,6 +28516,10 @@ packages:
     resolution: {integrity: sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==}
     dev: false
 
+  /tiny-case@1.0.3:
+    resolution: {integrity: sha512-Eet/eeMhkO6TX8mnUteS9zgPbUMQa4I6Kkp5ORiBD5476/m+PIRiumP5tmh5ioJpH7k51Kehawy2UDfsnxxY8Q==}
+    dev: false
+
   /tiny-glob@0.2.9:
     resolution: {integrity: sha512-g/55ssRPUjShh+xkfx9UPDXqhckHEsHr4Vd9zX55oSdGZc/MD0m3sferOkwWtp98bv+kcVfEHtRJgBVJzelrzg==}
     dependencies:
@@ -28573,6 +28649,10 @@ packages:
   /toml@3.0.0:
     resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
     dev: true
+
+  /toposort@2.0.2:
+    resolution: {integrity: sha512-0a5EOkAUp8D4moMi2W8ZF8jcga7BgZd91O/yabJCFY8az+XSzeGyTKs0Aoo897iV1Nj6guFq8orWDS96z91oGg==}
+    dev: false
 
   /tough-cookie@2.5.0:
     resolution: {integrity: sha512-nlLsUzgm1kfLXSXfRZMc1KLAugd4hqJHDTvc2hDIwS3mZAfMEuMbc03SujMF+GEcpaX/qboeycw6iO8JwVv2+g==}
@@ -28991,6 +29071,11 @@ packages:
   /type-fest@1.4.0:
     resolution: {integrity: sha512-yGSza74xk0UG8k+pLh5oeoYirvIiWo5t0/o3zHHAO2tRDiZcxWP7fywNlXhqb6/r6sWvwi+RsyQMWhVLe4BVuA==}
     engines: {node: '>=10'}
+    dev: false
+
+  /type-fest@2.19.0:
+    resolution: {integrity: sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA==}
+    engines: {node: '>=12.20'}
     dev: false
 
   /type-fest@4.10.3:
@@ -29603,6 +29688,17 @@ packages:
   /vali-date@1.0.0:
     resolution: {integrity: sha512-sgECfZthyaCKW10N0fm27cg8HYTFK5qMWgypqkXMQ4Wbl/zZKx7xZICgcoxIIE+WFAP/MBL2EFwC/YvLxw3Zeg==}
     engines: {node: '>=0.10.0'}
+    dev: false
+
+  /valibot@0.42.1(typescript@5.5.4):
+    resolution: {integrity: sha512-3keXV29Ar5b//Hqi4MbSdV7lfVp6zuYLZuA9V1PvQUsXqogr+u5lvLPLk3A4f74VUXDnf/JfWMN6sB+koJ/FFw==}
+    peerDependencies:
+      typescript: '>=5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      typescript: 5.5.4
     dev: false
 
   /validate-npm-package-license@3.0.4:
@@ -30830,6 +30926,15 @@ packages:
 
   /yt-dlp-wrap@2.3.12:
     resolution: {integrity: sha512-P8fJ+6M1YjukyJENCTviNLiZ8mokxprR54ho3DsSKPWDcac489OjRiStGEARJr6un6ETS6goTn4CWl/b/rM3aA==}
+    dev: false
+
+  /yup@1.4.0:
+    resolution: {integrity: sha512-wPbgkJRCqIf+OHyiTBQoJiP5PFuAXaWiJK6AmYkzQAh5/c2K9hzSApBZG5wV9KoKSePF7sAxmNSvh/13YHkFDg==}
+    dependencies:
+      property-expr: 2.0.6
+      tiny-case: 1.0.3
+      toposort: 2.0.2
+      type-fest: 2.19.0
     dev: false
 
   /zip-stream@4.1.1:

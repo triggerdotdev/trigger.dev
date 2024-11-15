@@ -1,5 +1,47 @@
 # trigger.dev
 
+## 3.2.0
+
+### Patch Changes
+
+- fix: unintended project initialization at absolute path `/trigger` during project initialization ([#1412](https://github.com/triggerdotdev/trigger.dev/pull/1412))
+- Updated dependencies:
+  - `@trigger.dev/build@3.2.0`
+  - `@trigger.dev/core@3.2.0`
+
+## 3.1.2
+
+### Patch Changes
+
+- Ignore duplicate dependency resume messages in deployed tasks ([#1459](https://github.com/triggerdotdev/trigger.dev/pull/1459))
+- Improve resume reliability by replaying ready signal of restored workers ([#1458](https://github.com/triggerdotdev/trigger.dev/pull/1458))
+- Updated dependencies:
+  - `@trigger.dev/build@3.1.2`
+  - `@trigger.dev/core@3.1.2`
+
+## 3.1.1
+
+### Patch Changes
+
+- Increase max retry count for deploy run controller operations ([#1450](https://github.com/triggerdotdev/trigger.dev/pull/1450))
+- Set parent PATH on forked worker processes ([#1448](https://github.com/triggerdotdev/trigger.dev/pull/1448))
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.1`
+  - `@trigger.dev/build@3.1.1`
+
+## 3.1.0
+
+### Patch Changes
+
+- Fix issue with prisma extension breaking deploy builds ([#1429](https://github.com/triggerdotdev/trigger.dev/pull/1429))
+- - Include retries.default in task retry config when indexing ([#1424](https://github.com/triggerdotdev/trigger.dev/pull/1424))
+  - New helpers for internal error retry mechanics
+  - Detection for segfaults and ffmpeg OOM errors
+  - Retries for packet import and export
+- Updated dependencies:
+  - `@trigger.dev/core@3.1.0`
+  - `@trigger.dev/build@3.1.0`
+
 ## 3.0.13
 
 ### Patch Changes

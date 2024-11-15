@@ -661,6 +661,7 @@ provider.listen();
 
 const taskMonitor = new TaskMonitor({
   runtimeEnv: RUNTIME_ENV,
+  namespace: KUBERNETES_NAMESPACE,
   onIndexFailure: async (deploymentId, details) => {
     logger.log("Indexing failed", { deploymentId, details });
 
