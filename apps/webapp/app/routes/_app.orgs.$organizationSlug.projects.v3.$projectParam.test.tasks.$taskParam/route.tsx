@@ -5,7 +5,7 @@ import { Form, useActionData, useSubmit } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
@@ -32,7 +32,11 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { redirectBackWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectBackWithErrorMessage,
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
+} from "~/models/message.server";
 import {
   ScheduledRun,
   StandardRun,
@@ -42,7 +46,7 @@ import {
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, v3RunSpanPath, v3TaskParamsSchema } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { TestTaskService } from "~/v3/services/testTask.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { TestTaskData } from "~/v3/testTask";
@@ -51,14 +55,30 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, taskParam } = v3TaskParamsSchema.parse(params);
 
-  const presenter = new TestTaskPresenter();
-  const result = await presenter.call({
-    userId,
-    projectSlug: projectParam,
-    taskFriendlyId: taskParam,
-  });
+  //need an environment
+  const searchParams = new URL(request.url).searchParams;
+  const environment = searchParams.get("environment");
+  if (!environment) {
+    return redirect(v3TestPath({ slug: organizationSlug }, { slug: projectParam }));
+  }
 
-  return typedjson(result);
+  const presenter = new TestTaskPresenter();
+  try {
+    const result = await presenter.call({
+      userId,
+      projectSlug: projectParam,
+      taskIdentifier: taskParam,
+      environmentSlug: environment,
+    });
+
+    return typedjson(result);
+  } catch (error) {
+    return redirectWithErrorMessage(
+      v3TestPath({ slug: organizationSlug }, { slug: projectParam }, environment),
+      request,
+      `Couldn't load test page for ${taskParam}`
+    );
+  }
 };
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -113,16 +133,20 @@ export const action: ActionFunction = async ({ request, params }) => {
 export default function Page() {
   const result = useTypedLoaderData<typeof loader>();
 
-  switch (result.triggerSource) {
+  if (!result.foundTask) {
+    return <div></div>;
+  }
+
+  switch (result.task.triggerSource) {
     case "STANDARD": {
-      return <StandardTaskForm task={result.task} runs={result.runs} />;
+      return <StandardTaskForm task={result.task.task} runs={result.task.runs} />;
     }
     case "SCHEDULED": {
       return (
         <ScheduledTaskForm
-          task={result.task}
-          runs={result.runs}
-          possibleTimezones={result.possibleTimezones}
+          task={result.task.task}
+          runs={result.task.runs}
+          possibleTimezones={result.task.possibleTimezones}
         />
       );
     }

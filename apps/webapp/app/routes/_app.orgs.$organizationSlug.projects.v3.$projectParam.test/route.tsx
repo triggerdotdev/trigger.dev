@@ -78,13 +78,13 @@ export default function Page() {
   const navigation = useNavigation();
 
   const location = useLocation();
-  const locationSearchParams = new URLSearchParams(location.search);
-  const navigationSearchParams = new URLSearchParams(navigation.location?.search);
+  const currentEnvironment = new URLSearchParams(location.search).get("environment");
+  const pendingEnvironment = new URLSearchParams(navigation.location?.search).get("environment");
 
   const isLoadingTasks =
     navigation.state === "loading" &&
     navigation.location.pathname === location.pathname &&
-    navigationSearchParams.get("environment") !== locationSearchParams.get("environment");
+    currentEnvironment !== pendingEnvironment;
 
   return (
     <PageContainer>
@@ -117,7 +117,16 @@ export default function Page() {
                               : "border-grid-bright text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
                           )}
                           key={env.id}
-                          to={v3TestPath(organization, project, env.slug)}
+                          to={
+                            taskParam
+                              ? v3TestTaskPath(
+                                  organization,
+                                  project,
+                                  { taskIdentifier: taskParam },
+                                  env.slug
+                                )
+                              : v3TestPath(organization, project, env.slug)
+                          }
                         >
                           <span>{environmentTitle(env)}</span>
                         </Link>
@@ -140,6 +149,7 @@ export default function Page() {
                       <TaskSelector
                         tasks={rest.tasks}
                         environmentSlug={rest.selectedEnvironment.slug}
+                        activeTaskIdentifier={taskParam}
                       />
                     )}
                   </div>
@@ -162,14 +172,24 @@ export default function Page() {
 function TaskSelector({
   tasks,
   environmentSlug,
+  activeTaskIdentifier,
 }: {
   tasks: TaskListItem[];
   environmentSlug: string;
+  activeTaskIdentifier?: string;
 }) {
   const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
+  const hasTaskInEnvironment = activeTaskIdentifier
+    ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)
+    : undefined;
 
   return (
-    <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+    <div
+      className={cn(
+        "grid max-h-full  overflow-hidden",
+        hasTaskInEnvironment === false ? "grid-rows-[auto_auto_1fr]" : "grid-rows-[auto_1fr]"
+      )}
+    >
       <div className="p-2">
         <Input
           placeholder="Search tasks"
@@ -181,6 +201,13 @@ function TaskSelector({
           onChange={(e) => setFilterText(e.target.value)}
         />
       </div>
+      {hasTaskInEnvironment === false && (
+        <div className="px-2 pb-2">
+          <Callout variant="warning">
+            There is no task {activeTaskIdentifier} in the selected environment.
+          </Callout>
+        </div>
+      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -224,6 +251,7 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
 
   const path = v3TestTaskPath(organization, project, task, environmentSlug);
   const { isActive, isPending } = useLinkStatus(path);
+
   return (
     <TableRow
       key={task.taskIdentifier}
