@@ -13,5 +13,9 @@ export interface RunMetadataManager {
   decrementKey(key: string, value: number): void;
   update(metadata: Record<string, DeserializedJson>): void;
   flush(requestOptions?: ApiRequestOptions): Promise<void>;
-  stream<T>(key: string, value: AsyncIterable<T>, signal?: AbortSignal): Promise<AsyncIterable<T>>;
+  stream<T>(
+    key: string,
+    value: AsyncIterable<T> | ReadableStream<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>>;
 }

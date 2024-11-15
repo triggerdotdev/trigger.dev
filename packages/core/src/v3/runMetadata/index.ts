@@ -67,7 +67,7 @@ export class RunMetadataAPI implements RunMetadataManager {
 
   public stream<T>(
     key: string,
-    value: AsyncIterable<T>,
+    value: AsyncIterable<T> | ReadableStream<T>,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
     return this.#getManager().stream(key, value, signal);

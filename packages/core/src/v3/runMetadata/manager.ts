@@ -164,11 +164,13 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   public async stream<T>(
     key: string,
-    value: AsyncIterable<T>,
+    value: AsyncIterable<T> | ReadableStream<T>,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
+    const $value = value as AsyncIterable<T>;
+
     if (!this.runId) {
-      return value;
+      return $value;
     }
 
     // Add the key to the special stream metadata object
@@ -179,7 +181,7 @@ export class StandardMetadataManager implements RunMetadataManager {
     const streamInstance = new MetadataStream({
       key,
       runId: this.runId,
-      iterator: value[Symbol.asyncIterator](),
+      iterator: $value[Symbol.asyncIterator](),
       baseUrl: this.streamsBaseUrl,
       signal,
     });

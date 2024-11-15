@@ -1,0 +1,76 @@
+{
+  "name": "@trigger.dev/rsc",
+  "version": "3.1.2",
+  "description": "trigger.dev rsc",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/react-hooks"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "tshy": {
+    "selfLink": false,
+    "main": true,
+    "module": true,
+    "project": "./tsconfig.json",
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./src/index.ts"
+    },
+    "sourceDialects": [
+      "@triggerdotdev/source"
+    ]
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tshy && pnpm run update-version",
+    "dev": "tshy --watch",
+    "typecheck": "tsc --noEmit",
+    "update-version": "tsx ../../scripts/updateVersion.ts",
+    "check-exports": "attw --pack ."
+  },
+  "dependencies": {
+    "@trigger.dev/core": "workspace:^3.1.2",
+    "mlly": "^1.7.1",
+    "react": "19.0.0-rc.1",
+    "react-dom": "19.0.0-rc.1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.15.4",
+    "@trigger.dev/build": "workspace:^3.1.2",
+    "@types/node": "^20.14.14",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "rimraf": "^3.0.2",
+    "tshy": "^3.0.2",
+    "tsx": "4.17.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/index.d.ts",
+        "default": "./dist/commonjs/index.js"
+      }
+    }
+  },
+  "main": "./dist/commonjs/index.js",
+  "types": "./dist/commonjs/index.d.ts",
+  "module": "./dist/esm/index.js"
+}

@@ -14,6 +14,16 @@ export default async function Home() {
     },
   });
 
+  const readAll = await auth.createPublicToken({
+    scopes: {
+      read: {
+        runs: true,
+      },
+    },
+  });
+
+  console.log({ publicAccessToken, readAll });
+
   return (
     <main className="grid grid-rows-[1fr_auto] min-h-screen items-center justify-center w-full bg-gray-900">
       <div className="flex flex-col space-y-8">

@@ -142,7 +142,7 @@ async function flushMetadata(requestOptions?: ApiRequestOptions): Promise<void> 
 
 async function stream<T>(
   key: string,
-  value: AsyncIterable<T>,
+  value: AsyncIterable<T> | ReadableStream<T>,
   signal?: AbortSignal
 ): Promise<AsyncIterable<T>> {
   return runMetadata.stream(key, value, signal);

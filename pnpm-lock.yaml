@@ -1430,6 +1430,49 @@ importers:
         specifier: ^5.5.4
         version: 5.5.4
 
+  packages/rsc:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:^3.1.2
+        version: link:../core
+      mlly:
+        specifier: ^1.7.1
+        version: 1.7.1
+      react:
+        specifier: 19.0.0-rc.1
+        version: 19.0.0-rc.1
+      react-dom:
+        specifier: 19.0.0-rc.1
+        version: 19.0.0-rc.1(react@19.0.0-rc.1)
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.15.4
+        version: 0.15.4
+      '@trigger.dev/build':
+        specifier: workspace:^3.1.2
+        version: link:../build
+      '@types/node':
+        specifier: ^20.14.14
+        version: 20.14.14
+      '@types/react':
+        specifier: '*'
+        version: 18.3.1
+      '@types/react-dom':
+        specifier: '*'
+        version: 18.2.7
+      rimraf:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tshy:
+        specifier: ^3.0.2
+        version: 3.0.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.5.4
+
   packages/trigger-sdk:
     dependencies:
       '@opentelemetry/api':
@@ -1628,6 +1671,9 @@ importers:
       '@next/bundle-analyzer':
         specifier: ^15.0.2
         version: 15.0.2
+      '@trigger.dev/rsc':
+        specifier: workspace:^3
+        version: link:../../packages/rsc
       '@types/node':
         specifier: ^20
         version: 20.14.14
@@ -16439,14 +16485,6 @@ packages:
     dependencies:
       acorn: 8.12.1
 
-  /acorn-jsx@5.3.2(acorn@8.10.0):
-    resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
-    peerDependencies:
-      acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
-    dependencies:
-      acorn: 8.10.0
-    dev: true
-
   /acorn-jsx@5.3.2(acorn@8.12.1):
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
@@ -20366,8 +20404,8 @@ packages:
     resolution: {integrity: sha512-XwctdmTO6SIvCzd9810yyNzIrOrqNYV9Koizx4C/mRhf9uq0o4yHoCEU/670pOxOL/MSraektvSAji79kX90Vg==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     dependencies:
-      acorn: 8.10.0
-      acorn-jsx: 5.3.2(acorn@8.10.0)
+      acorn: 8.12.1
+      acorn-jsx: 5.3.2(acorn@8.12.1)
       eslint-visitor-keys: 3.4.2
     dev: true
 
@@ -26249,6 +26287,15 @@ packages:
       scheduler: 0.23.0
     dev: false
 
+  /react-dom@19.0.0-rc.1(react@19.0.0-rc.1):
+    resolution: {integrity: sha512-k8MfDX+4G+eaa1cXXI9QF4d+pQtYol3nx8vauqRWUEOPqC7NQn2qmEqUsLoSd28rrZUL+R3T2VC+kZ2Hyx1geQ==}
+    peerDependencies:
+      react: 19.0.0-rc.1
+    dependencies:
+      react: 19.0.0-rc.1
+      scheduler: 0.25.0-rc.1
+    dev: false
+
   /react-email@2.1.2(eslint@8.45.0):
     resolution: {integrity: sha512-HBHhpzEE5es9YUoo7VSj6qy1omjwndxf3/Sb44UJm/uJ2AjmqALo2yryux0CjW9QAVfitc9rxHkLvIb9H87QQw==}
     engines: {node: '>=18.0.0'}
@@ -26660,6 +26707,11 @@ packages:
 
   /react@19.0.0-rc.0:
     resolution: {integrity: sha512-8nrDCl5uE54FHeKqKrEO0TS+10bT4cxutJGb2okiJc0FHMQ6I3FeItaqly/1nbijlhSO3HmAVyPIexIQQWYAtQ==}
+    engines: {node: '>=0.10.0'}
+    dev: false
+
+  /react@19.0.0-rc.1:
+    resolution: {integrity: sha512-NZKln+uyPuyHchzP07I6GGYFxdAoaKhehgpCa3ltJGzwE31OYumLeshGaitA1R/fS5d9D2qpZVwTFAr6zCLM9w==}
     engines: {node: '>=0.10.0'}
     dev: false
 
@@ -27409,6 +27461,10 @@ packages:
     resolution: {integrity: sha512-CtuThmgHNg7zIZWAXi3AsyIzA3n4xx7aNyjwC2VJldO2LMVDhFK+63xGqq6CsJH4rTAt6/M+N4GhZiDYPx9eUw==}
     dependencies:
       loose-envify: 1.4.0
+
+  /scheduler@0.25.0-rc.1:
+    resolution: {integrity: sha512-fVinv2lXqYpKConAMdergOl5owd0rY1O4P/QTe0aWKCqGtu7VsCt1iqQFxSJtqK4Lci/upVSBpGwVC7eWcuS9Q==}
+    dev: false
 
   /schema-utils@3.3.0:
     resolution: {integrity: sha512-pN/yOAvcC+5rQ5nERGuwrjLlYvLTbCibnZ1I7B1LaiAz9BRBlE9GMgE/eqV30P7aJQUf7Ddimy/RsbYO/GrVGg==}
