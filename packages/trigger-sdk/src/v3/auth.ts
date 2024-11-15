@@ -150,6 +150,8 @@ function flattenScopes(permissions: PublicTokenPermissions): string[] {
             }
           } else if (typeof value === "string") {
             flattenedPermissions.push(`${action}:${property}:${value}`);
+          } else if (typeof value === "boolean" && value) {
+            flattenedPermissions.push(`${action}:${property}`);
           }
         }
       }
