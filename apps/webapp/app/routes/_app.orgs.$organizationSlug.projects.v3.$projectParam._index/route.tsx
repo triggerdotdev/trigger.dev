@@ -203,6 +203,24 @@ export default function Page() {
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
                         });
+
+                        const devYouEnvironment = task.environments.find(
+                          (e) => e.type === "DEVELOPMENT" && !e.userName
+                        );
+                        const firstDeployedEnvironment = task.environments
+                          .filter((e) => e.type !== "DEVELOPMENT")
+                          .at(0);
+                        const testEnvironment = devYouEnvironment ?? firstDeployedEnvironment;
+
+                        const testPath = testEnvironment
+                          ? v3TestTaskPath(
+                              organization,
+                              project,
+                              { taskIdentifier: task.slug },
+                              testEnvironment.slug
+                            )
+                          : v3TestPath(organization, project);
+
                         return (
                           <TableRow key={task.slug} className="group">
                             <TableCell to={path}>
@@ -293,41 +311,18 @@ export default function Page() {
                                     title="View runs"
                                     leadingIconClassName="text-teal-500"
                                   />
-                                  <PopoverMenuItem
-                                    icon="beaker"
-                                    //TODO Get this path working so we can link to the exact task on the test page
-                                    // to={v3TestTaskPath(
-                                    //   organization,
-                                    //   project,
-                                    //   task.slug,
-                                    //   task.environments[0].slug
-                                    // )}
-                                    to={v3TestPath(organization, project)}
-                                    title="Test task"
-                                  />
+                                  <PopoverMenuItem icon="beaker" to={testPath} title="Test task" />
                                 </>
                               }
                               hiddenButtons={
-                                <SimpleTooltip
-                                  button={
-                                    <LinkButton
-                                      variant="minimal/small"
-                                      LeadingIcon={BeakerIcon}
-                                      leadingIconClassName="text-text-bright"
-                                      //TODO Get this path working so we can link to the exact task on the test page
-                                      // to={v3TestTaskPath(
-                                      //   organization,
-                                      //   project,
-                                      //   task.slug,
-                                      //   task.environments[0].slug
-                                      // )}
-                                      to={v3TestPath(organization, project)}
-                                    />
-                                  }
-                                  content="Test task"
-                                  side="left"
-                                  disableHoverableContent
-                                />
+                                <LinkButton
+                                  variant="minimal/small"
+                                  LeadingIcon={BeakerIcon}
+                                  leadingIconClassName="text-text-bright"
+                                  to={testPath}
+                                >
+                                  Test
+                                </LinkButton>
                               }
                             />
                           </TableRow>
