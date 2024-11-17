@@ -271,7 +271,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
     if (result.exitCode !== 0) {
       logger.debug(`"docker buildx version" failed (${result.exitCode}):`, result);
-      throw new Error("Failed to find docker buildx, please install it.");
+      throw new Error(
+        "Failed to find docker buildx. Please install it: https://github.com/docker/buildx#installing."
+      );
     }
   }
 
