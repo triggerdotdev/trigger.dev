@@ -270,7 +270,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     const result = await x("docker", ["buildx", "version"]);
 
     if (result.exitCode !== 0) {
-      logger.debug("`docker buildx version` exited with a non-zero code:", result.exitCode);
+      logger.debug(`"docker buildx version" failed (${result.exitCode}):`, result);
       throw new Error("Failed to find docker buildx, please install it.");
     }
   }
