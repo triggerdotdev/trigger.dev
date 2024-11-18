@@ -1,13 +1,14 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -42,8 +43,7 @@ import {
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
-import { personalAccessTokensPath } from "~/utils/pathBuilder";
-import { DialogClose } from "@radix-ui/react-dialog";
+import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -130,6 +130,13 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Personal Access Tokens" />
         <PageAccessories>
+          <LinkButton
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("management/overview#personal-access-token-pat")}
+            variant="docs/small"
+          >
+            Personal Access Token docs
+          </LinkButton>
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="primary/small">Create new token</Button>
@@ -294,7 +301,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
           <DialogContent className="max-w-md">
             <DialogHeader>Revoke Personal Access Token</DialogHeader>
             <div className="flex flex-col gap-3 pt-3">
-              <Paragraph>
+              <Paragraph spacing>
                 Are you sure you want to revoke "{token.name}"? This can't be reversed.
               </Paragraph>
               <FormButtons
@@ -317,7 +324,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
           </DialogContent>
         </Dialog>
       }
-      content="Revoke token"
+      content="Revoke token…"
       side="left"
       disableHoverableContent
     />
