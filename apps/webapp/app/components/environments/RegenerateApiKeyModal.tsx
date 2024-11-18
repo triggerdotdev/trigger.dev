@@ -1,18 +1,16 @@
-import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/20/solid";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { generateTwoRandomWords } from "~/utils/randomWords";
 import { Button } from "../primitives/Buttons";
-import { Header1 } from "../primitives/Headers";
-import { Input } from "../primitives/Input";
-import { Paragraph } from "../primitives/Paragraph";
-import { Spinner } from "../primitives/Spinner";
 import { Callout } from "../primitives/Callout";
 import { Fieldset } from "../primitives/Fieldset";
-import { InputGroup } from "../primitives/InputGroup";
 import { FormButtons } from "../primitives/FormButtons";
+import { Input } from "../primitives/Input";
+import { InputGroup } from "../primitives/InputGroup";
+import { Paragraph } from "../primitives/Paragraph";
+import { Spinner } from "../primitives/Spinner";
 
 type ModalProps = {
   id: string;
@@ -31,15 +29,17 @@ export function RegenerateApiKeyModal({ id, title }: ModalProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
-          variant="minimal/small"
-          leadingIconClassName="text-text-dimmed"
+          variant="small-menu-item"
+          fullWidth
+          textAlignLeft
+          leadingIconClassName="text-success"
           LeadingIcon={ArrowPathIcon}
         >
-          Regenerate
+          Regenerate…
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>{`Regenerate ${title} Environment Key`}</DialogHeader>
+        <DialogHeader>{`Regenerate ${title.toUpperCase()} environment key`}</DialogHeader>
         <RegenerateApiKeyModalContent
           id={id}
           title={title}
@@ -62,10 +62,10 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
   }
 
   return (
-    <div className="flex flex-col items-center gap-y-5 py-4">
+    <div className="flex flex-col items-center gap-y-4 pt-4">
       <Callout variant="warning">
-        {`Regenerating the keys for this environment will temporarily break any live Jobs in the
-        ${title} Environmentuntil the new API keys are set in the relevant environment variables.`}
+        {`Regenerating the keys for this environment will temporarily break any live tasks in the
+        ${title} environment until the new API keys are set in the relevant environment variables.`}
       </Callout>
       <fetcher.Form
         method="post"
@@ -73,7 +73,7 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
         className="mt-2 w-full"
       >
         <Fieldset className="w-full">
-          <InputGroup>
+          <InputGroup className="max-w-full">
             <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
             <Paragraph
               variant="small"
@@ -93,14 +93,14 @@ const RegenerateApiKeyModalContent = ({ id, randomWord, title, closeModal }: Mod
             confirmButton={
               <Button
                 type="submit"
-                variant={"primary/small"}
+                variant={"primary/medium"}
                 LeadingIcon={isSubmitting ? Spinner : undefined}
                 disabled={confirmationText !== randomWord}
               >
                 Regenerate
               </Button>
             }
-            cancelButton={<Button variant={"tertiary/small"}>Cancel</Button>}
+            cancelButton={<Button variant={"tertiary/medium"}>Cancel</Button>}
           />
         </Fieldset>
       </fetcher.Form>

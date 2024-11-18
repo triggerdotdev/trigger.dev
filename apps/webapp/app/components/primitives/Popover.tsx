@@ -190,11 +190,11 @@ function PopoverVerticalEllipseTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded px-1.5 py-1.5 text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright",
+        "group flex items-center justify-end gap-1 rounded-[3px] p-0.5 text-text-dimmed transition focus-custom hover:bg-tertiary hover:text-text-bright",
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn("h-5 w-5 transition group-hover:text-text-bright")} />
+      <EllipsisVerticalIcon className={cn("size-5 transition group-hover:text-text-bright")} />
     </PopoverTrigger>
   );
 }

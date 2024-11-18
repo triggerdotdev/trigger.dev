@@ -63,6 +63,8 @@ import {
   v3SchedulePath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -94,7 +96,6 @@ export default function Page() {
     possibleTasks,
     possibleEnvironments,
     hasFilters,
-    filters,
     limits,
     currentPage,
     totalPages,
@@ -132,11 +133,20 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
 
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/tasks/scheduled")}
+          >
+            Schedules docs
+          </LinkButton>
+
           {limits.used >= limits.limit ? (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
                   LeadingIcon={PlusIcon}
+                  leadingIconClassName="text-background-dimmed"
                   variant="primary/small"
                   shortcut={{ key: "n" }}
                   disabled={possibleTasks.length === 0 || isShowingNewPane}
@@ -177,74 +187,83 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="schedules-main" min={"100px"}>
-            <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
               {possibleTasks.length === 0 ? (
                 <CreateScheduledTaskInstructions />
               ) : schedules.length === 0 && !hasFilters ? (
                 <AttachYourFirstScheduleInstructions />
               ) : (
-                <div className="p-3">
-                  <div className="mb-2 flex items-center justify-between gap-x-2">
+                <>
+                  <div className="flex items-center justify-between gap-x-2 p-2">
                     <ScheduleFilters
                       possibleEnvironments={possibleEnvironments}
                       possibleTasks={possibleTasks}
                     />
-                    <div className="flex items-center justify-end gap-x-2">
-                      <PaginationControls
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        showPageNumbers={false}
-                      />
-                    </div>
                   </div>
 
                   <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                  <div className="mt-3 flex w-full items-start justify-between">
-                    {requiresUpgrade ? (
-                      <InfoPanel
-                        variant="upgrade"
-                        icon={LockOpenIcon}
-                        iconClassName="text-indigo-500"
-                        title="Unlock more schedules"
-                        to={v3BillingPath(organization)}
-                        buttonLabel="Upgrade"
-                      >
-                        <Paragraph variant="small">
-                          You've used all {limits.limit} of your available schedules. Upgrade your
-                          plan to enable more.
-                        </Paragraph>
-                      </InfoPanel>
-                    ) : (
-                      <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
-                        <div className="flex items-center justify-between gap-6">
+                  <div className="flex w-full items-start justify-between">
+                    <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
+                      <SimpleTooltip
+                        button={
+                          <div className="size-6">
+                            <svg className="h-full w-full -rotate-90 overflow-visible">
+                              <circle
+                                className="fill-none stroke-grid-bright"
+                                strokeWidth="4"
+                                r="10"
+                                cx="12"
+                                cy="12"
+                              />
+                              <circle
+                                className={`fill-none ${
+                                  requiresUpgrade ? "stroke-error" : "stroke-success"
+                                }`}
+                                strokeWidth="4"
+                                r="10"
+                                cx="12"
+                                cy="12"
+                                strokeDasharray={`${(limits.used / limits.limit) * 62.8} 62.8`}
+                                strokeDashoffset="0"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </div>
+                        }
+                        content={`${Math.round((limits.used / limits.limit) * 100)}%`}
+                      />
+                      <div className="flex w-full items-center justify-between gap-6">
+                        {requiresUpgrade ? (
+                          <Header3 className="text-error">
+                            You've used all {limits.limit} of your available schedules. Upgrade your
+                            plan to enable more.
+                          </Header3>
+                        ) : (
                           <Header3>
                             You've used {limits.used}/{limits.limit} of your schedules.
                           </Header3>
+                        )}
 
-                          {canUpgrade ? (
-                            <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                              Upgrade
-                            </LinkButton>
-                          ) : (
-                            <Feedback
-                              button={<Button variant="secondary/small">Request more</Button>}
-                              defaultValue="help"
-                            />
-                          )}
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
-                          <div
-                            className="h-full bg-grid-bright"
-                            style={{ width: `${(limits.used / limits.limit) * 100}%` }}
+                        {canUpgrade ? (
+                          <LinkButton
+                            to={v3BillingPath(organization)}
+                            variant="secondary/small"
+                            LeadingIcon={ArrowUpCircleIcon}
+                          >
+                            Upgrade
+                          </LinkButton>
+                        ) : (
+                          <Feedback
+                            button={<Button variant="secondary/small">Request more</Button>}
+                            defaultValue="help"
                           />
-                        </div>
+                        )}
                       </div>
-                    )}
-                    <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </ResizablePanel>
@@ -270,13 +289,18 @@ function CreateScheduledTaskInstructions() {
         icon={ClockIcon}
         iconClassName="text-sun-500"
         panelClassName="max-w-full"
-        to={docsPath("v3/tasks-scheduled")}
-        buttonLabel="Scheduled task docs"
       >
-        <Paragraph variant="small">
+        <Paragraph spacing variant="small">
           You have no scheduled tasks in your project. Before you can schedule a task you need to
           create a <InlineCode>schedules.task</InlineCode>.
         </Paragraph>
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/medium"
+          LeadingIcon={BookOpenIcon}
+        >
+          View the docs
+        </LinkButton>
       </InfoPanel>
     </MainCenteredContainer>
   );
@@ -335,7 +359,7 @@ function SchedulesTable({
   const { scheduleParam } = useParams();
 
   return (
-    <Table>
+    <Table containerClassName="max-h-full h-fit overflow-x-auto border-b border-grid-bright">
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
@@ -372,14 +396,14 @@ function SchedulesTable({
                     deleted from the dashboard or using the SDK.
                   </Paragraph>
                 </div>
-                <div>
-                  <LinkButton
-                    variant="tertiary/medium"
-                    to="https://trigger.dev/docs/v3/tasks-scheduled"
-                  >
-                    View the docs
-                  </LinkButton>
-                </div>
+                <LinkButton
+                  variant="docs/small"
+                  to={docsPath("v3/tasks-scheduled")}
+                  LeadingIcon={BookOpenIcon}
+                  className="mb-1"
+                >
+                  View the docs
+                </LinkButton>
               </div>
             }
           >

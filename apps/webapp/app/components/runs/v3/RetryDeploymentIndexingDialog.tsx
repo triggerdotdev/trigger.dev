@@ -1,4 +1,5 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -33,6 +34,9 @@ export function RetryDeploymentIndexingDialog({
         any errors and re-deploy.
       </DialogDescription>
       <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="tertiary/medium">Cancel</Button>
+        </DialogClose>
         <Form
           action={`/resources/${projectId}/deployments/${deploymentShortCode}/retry-indexing`}
           method="post"
@@ -41,7 +45,7 @@ export function RetryDeploymentIndexingDialog({
             type="submit"
             name="redirectUrl"
             value={redirectPath}
-            variant="primary/small"
+            variant="primary/medium"
             LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
             disabled={isLoading}
             shortcut={{ modifiers: ["meta"], key: "enter" }}

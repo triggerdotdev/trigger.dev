@@ -41,40 +41,53 @@ type Size = keyof typeof sizes;
 const theme = {
   primary: {
     textColor:
-      "text-charcoal-900 group-hover:text-charcoal-900 transition group-disabled:text-charcoal-900",
+      "text-charcoal-900 group-hover/button:text-charcoal-900 transition group-disabled/button:text-charcoal-900",
     button:
-      "bg-primary group-hover:bg-apple-200 group-disabled:opacity-50 group-disabled:bg-primary group-disabled:pointer-events-none",
+      "bg-primary group-hover/button:bg-apple-200 group-disabled/button:opacity-50 group-disabled/button:bg-primary group-disabled/button:pointer-events-none",
     shortcut:
-      "border-black/40 text-charcoal-900 group-hover:border-black/60 group-hover:text-charcoal-900",
+      "border-black/40 text-charcoal-900 group-hover/button:border-black/60 group-hover/button:text-charcoal-900",
+    icon: "text-charcoal-900",
   },
   secondary: {
-    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary group-hover:bg-charcoal-600 group-hover:border-charcoal-650 border border-charcoal-600 group-disabled:bg-secondary group-disabled:opacity-60 group-disabled:pointer-events-none",
+      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-650 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
+    icon: "text-text-bright",
   },
   tertiary: {
-    textColor: "text-text-bright transition group-disabled:text-text-dimmed/80",
+    textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-tertiary group-hover:bg-charcoal-600 group-disabled:bg-tertiary group-disabled:opacity-60 group-disabled:pointer-events-none",
+      "bg-tertiary group-hover/button:bg-charcoal-600 group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
-      "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright group-hover:border-text-dimmed",
+      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
+    icon: "text-text-bright",
   },
   minimal: {
     textColor:
-      "text-text-dimmed group-hover:text-text-bright transition group-disabled:text-text-dimmed/80",
+      "text-text-dimmed group-hover/button:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-transparent group-hover:bg-tertiary disabled:opacity-50 group-disabled:bg-transparent group-disabled:pointer-events-none",
+      "bg-transparent group-hover/button:bg-tertiary disabled:opacity-50 group-disabled/button:bg-transparent group-disabled/button:pointer-events-none",
     shortcut:
-      "border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60",
+      "border-dimmed/40 text-text-dimmed group-hover/button:text-text-bright/80 group-hover/button:border-dimmed/60",
+    icon: "text-text-dimmed",
   },
   danger: {
     textColor:
-      "text-text-bright group-hover:text-white transition group-disabled:text-text-bright/80",
+      "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-bright/80",
     button:
-      "bg-error group-hover:bg-rose-500 disabled:opacity-50 group-disabled:bg-error group-disabled:pointer-events-none",
-    shortcut: "border-text-bright text-text-bright group-hover:border-bright/60",
+      "bg-error group-hover/button:bg-rose-500 disabled:opacity-50 group-disabled/button:bg-error group-disabled/button:pointer-events-none",
+    shortcut: "border-text-bright text-text-bright group-hover/button:border-bright/60",
+    icon: "text-text-bright",
+  },
+  docs: {
+    textColor: "text-blue-200/70 transition group-disabled/button:text-text-dimmed/80",
+    button:
+      "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover/button:bg-charcoal-650 group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+    shortcut:
+      "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
+    icon: "text-blue-500",
   },
 };
 
@@ -84,7 +97,7 @@ function createVariant(sizeName: Size, themeName: Theme) {
   return {
     textColor: theme[themeName].textColor,
     button: cn(sizes[sizeName].button, theme[themeName].button),
-    icon: sizes[sizeName].icon,
+    icon: cn(sizes[sizeName].icon, theme[themeName].icon),
     iconSpacing: sizes[sizeName].iconSpacing,
     shortcutVariant: sizes[sizeName].shortcutVariant,
     shortcut: cn(sizes[sizeName].shortcut, theme[themeName].shortcut),
@@ -112,9 +125,14 @@ const variant = {
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
   "danger/extra-large": createVariant("extra-large", "danger"),
+  "docs/small": createVariant("small", "docs"),
+  "docs/medium": createVariant("medium", "docs"),
+  "docs/large": createVariant("large", "docs"),
+  "docs/extra-large": createVariant("extra-large", "docs"),
   "menu-item": {
     textColor: "text-text-bright px-1",
-    button: "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover:bg-charcoal-750",
+    button:
+      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover/button:bg-charcoal-750",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
@@ -123,7 +141,7 @@ const variant = {
   "small-menu-item": {
     textColor: "text-text-bright",
     button:
-      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750",
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
     icon: "h-4",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
@@ -132,7 +150,7 @@ const variant = {
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
     button:
-      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover:bg-charcoal-750 focus-custom",
+      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750 focus-custom",
     icon: undefined,
     iconSpacing: undefined,
     shortcutVariant: undefined,
@@ -141,7 +159,7 @@ const variant = {
 };
 
 const allVariants = {
-  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus:outline-none group-disabled:opacity-75 group-disabled:pointer-events-none focus-custom",
+  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus/button:outline-none group-disabled/button:opacity-75 group-disabled/button:pointer-events-none focus-custom",
   variant: variant,
 };
 
@@ -192,13 +210,18 @@ export function ButtonContent(props: ButtonContentPropsType) {
           (typeof LeadingIcon === "string" ? (
             <NamedIcon
               name={LeadingIcon}
-              className={cn(iconClassName, leadingIconClassName, "shrink-0 justify-start")}
+              className={cn(
+                iconClassName,
+                leadingIconClassName,
+                "shrink-0 justify-start",
+                variation.icon
+              )}
             />
           ) : (
             <LeadingIcon
               className={cn(
                 iconClassName,
-                textColorClassName,
+                variation.icon,
                 leadingIconClassName,
                 "shrink-0 justify-start"
               )}
@@ -218,13 +241,18 @@ export function ButtonContent(props: ButtonContentPropsType) {
           (typeof TrailingIcon === "string" ? (
             <NamedIcon
               name={TrailingIcon}
-              className={cn(iconClassName, trailingIconClassName, "shrink-0 justify-end")}
+              className={cn(
+                iconClassName,
+                trailingIconClassName,
+                "shrink-0 justify-end",
+                variation.icon
+              )}
             />
           ) : (
             <TrailingIcon
               className={cn(
                 iconClassName,
-                textColorClassName,
+                variation.icon,
                 trailingIconClassName,
                 "shrink-0 justify-end"
               )}
@@ -267,7 +295,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
     return (
       <button
-        className={cn("group outline-none focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button outline-none focus-custom", props.fullWidth ? "w-full" : "")}
         type={type}
         disabled={disabled}
         onClick={onClick}
@@ -313,7 +341,7 @@ export const LinkButton = ({
     return (
       <div
         className={cn(
-          "group pointer-events-none cursor-default opacity-40 outline-none",
+          "group/button pointer-events-none cursor-default opacity-40 outline-none",
           props.fullWidth ? "w-full" : ""
         )}
       >
@@ -327,7 +355,7 @@ export const LinkButton = ({
       <ExtLink
         href={to.toString()}
         ref={innerRef}
-        className={cn("group focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -342,7 +370,7 @@ export const LinkButton = ({
       <Link
         to={to}
         ref={innerRef}
-        className={cn("group focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
         onMouseEnter={onMouseEnter}
@@ -363,7 +391,7 @@ export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsT
   return (
     <NavLink
       to={to}
-      className={cn("group outline-none", props.fullWidth ? "w-full" : "")}
+      className={cn("group/button outline-none", props.fullWidth ? "w-full" : "")}
       target={target}
     >
       {({ isActive, isPending }) => (

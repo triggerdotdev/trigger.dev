@@ -1,9 +1,10 @@
 import {
   ArrowPathIcon,
+  ArrowRightIcon,
   ClockIcon,
   CpuChipIcon,
+  NoSymbolIcon,
   RectangleStackIcon,
-  StopCircleIcon,
 } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
@@ -14,6 +15,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironments } from "~/hooks/useEnvironments";
@@ -102,11 +104,11 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table>
+    <Table className="max-h-full overflow-y-auto">
       <TableHeader>
         <TableRow>
           {allowSelection && (
-            <TableHeaderCell className="pl-2 pr-0">
+            <TableHeaderCell className="pl-3 pr-0">
               {runs.length > 0 && (
                 <Checkbox
                   checked={hasAll(runs.map((r) => r.id))}
@@ -210,8 +212,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/triggering")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
@@ -233,8 +236,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/triggering")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
@@ -254,8 +258,9 @@ export function TaskRunsTable({
                 </Paragraph>
                 <LinkButton
                   to={docsPath("v3/tags")}
-                  variant="tertiary/small"
+                  variant="docs/small"
                   LeadingIcon={BookOpenIcon}
+                  className="mt-3"
                 >
                   Read docs
                 </LinkButton>
@@ -282,7 +287,7 @@ export function TaskRunsTable({
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
-                  <TableCell className="pl-2 pr-0">
+                  <TableCell className="pl-3 pr-0">
                     <Checkbox
                       checked={has(run.id)}
                       onChange={(element) => {
@@ -367,7 +372,7 @@ export function TaskRunsTable({
                   </TableCell>
                 )}
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="h-4 w-4 text-charcoal-400" /> : "–"}
+                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
@@ -405,34 +410,114 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
   if (!run.isCancellable && !run.isReplayable) return <TableCell to={path}>{""}</TableCell>;
 
   return (
-    <TableCellMenu isSticky>
-      {run.isCancellable && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={StopCircleIcon}>
-              Cancel run
-            </Button>
-          </DialogTrigger>
-          <CancelRunDialog
-            runFriendlyId={run.friendlyId}
-            redirectPath={`${location.pathname}${location.search}`}
+    <TableCellMenu
+      isSticky
+      popoverContent={
+        <>
+          <PopoverMenuItem
+            to={path}
+            icon={ArrowRightIcon}
+            leadingIconClassName="text-blue-500"
+            title="View run"
           />
-        </Dialog>
-      )}
-      {run.isReplayable && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-              Replay run
-            </Button>
-          </DialogTrigger>
-          <ReplayRunDialog
-            runFriendlyId={run.friendlyId}
-            failedRedirect={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-    </TableCellMenu>
+          {run.isCancellable && (
+            <Dialog>
+              <DialogTrigger
+                asChild
+                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={NoSymbolIcon}
+                  leadingIconClassName="text-error"
+                  fullWidth
+                  textAlignLeft
+                  className="w-full px-1.5 py-[0.9rem]"
+                >
+                  Cancel run
+                </Button>
+              </DialogTrigger>
+              <CancelRunDialog
+                runFriendlyId={run.friendlyId}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+          {run.isReplayable && (
+            <Dialog>
+              <DialogTrigger
+                asChild
+                className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowPathIcon}
+                  leadingIconClassName="text-success"
+                  fullWidth
+                  textAlignLeft
+                  className="w-full px-1.5 py-[0.9rem]"
+                >
+                  Replay run…
+                </Button>
+              </DialogTrigger>
+              <ReplayRunDialog
+                runFriendlyId={run.friendlyId}
+                failedRedirect={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+        </>
+      }
+      hiddenButtons={
+        <div className="flex items-center">
+          {run.isCancellable && (
+            <SimpleTooltip
+              button={
+                <Dialog>
+                  <DialogTrigger
+                    asChild
+                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                  >
+                    <NoSymbolIcon className="size-3" />
+                  </DialogTrigger>
+                  <CancelRunDialog
+                    runFriendlyId={run.friendlyId}
+                    redirectPath={`${location.pathname}${location.search}`}
+                  />
+                </Dialog>
+              }
+              content="Cancel run"
+              side="left"
+              disableHoverableContent
+            />
+          )}
+          {run.isCancellable && run.isReplayable && (
+            <div className="mx-0.5 h-6 w-px bg-grid-dimmed" />
+          )}
+          {run.isReplayable && (
+            <SimpleTooltip
+              button={
+                <Dialog>
+                  <DialogTrigger
+                    asChild
+                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                  >
+                    <ArrowPathIcon className="size-3" />
+                  </DialogTrigger>
+                  <ReplayRunDialog
+                    runFriendlyId={run.friendlyId}
+                    failedRedirect={`${location.pathname}${location.search}`}
+                  />
+                </Dialog>
+              }
+              content="Replay run"
+              side="left"
+              disableHoverableContent
+            />
+          )}
+        </div>
+      }
+    />
   );
 }
 
@@ -503,19 +588,29 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
 
   return (
     <TableBlankRow colSpan={14}>
-      <div className="flex flex-col items-center justify-center gap-2">
-        <Paragraph className="w-auto" variant="small">
-          No runs currently match your filters. Try refreshing or modifying your filters.
+      <div className="flex flex-col items-center justify-center gap-6">
+        <Paragraph className="w-auto" variant="base/bright">
+          No runs match your filters. Try refreshing, modifying your filters or run a test.
         </Paragraph>
-        <Button
-          LeadingIcon={ArrowPathIcon}
-          variant="tertiary/small"
-          onClick={() => {
-            window.location.reload();
-          }}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            LeadingIcon={ArrowPathIcon}
+            variant="tertiary/medium"
+            onClick={() => {
+              window.location.reload();
+            }}
+          >
+            Refresh
+          </Button>
+          <Paragraph>or</Paragraph>
+          <LinkButton
+            LeadingIcon={BeakerIcon}
+            variant="tertiary/medium"
+            to={v3TestPath(organization, project)}
+          >
+            Run a test
+          </LinkButton>
+        </div>
       </div>
     </TableBlankRow>
   );

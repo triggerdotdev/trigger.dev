@@ -16,7 +16,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -98,111 +98,118 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Deployments" />
+        <PageAccessories>
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/cli-deploy")}
+          >
+            Deployments docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
-          <ResizablePanel id="deployments-main" min="100px" className="max-h-full overflow-y-auto">
+          <ResizablePanel id="deployments-main" min="100px" className="max-h-full">
             {hasDeployments ? (
-              <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <div className="flex flex-col gap-4 p-3">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHeaderCell>Deploy</TableHeaderCell>
-                        <TableHeaderCell>Env</TableHeaderCell>
-                        <TableHeaderCell>Version</TableHeaderCell>
-                        <TableHeaderCell>Status</TableHeaderCell>
-                        <TableHeaderCell>Tasks</TableHeaderCell>
-                        <TableHeaderCell>Deployed at</TableHeaderCell>
-                        <TableHeaderCell>Deployed by</TableHeaderCell>
-                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {deployments.length > 0 ? (
-                        deployments.map((deployment) => {
-                          const usernameForEnv =
-                            user.id !== deployment.environment.userId
-                              ? deployment.environment.userName
-                              : undefined;
-                          const path = v3DeploymentPath(
-                            organization,
-                            project,
-                            deployment,
-                            currentPage
-                          );
-                          return (
-                            <TableRow key={deployment.id} className="group">
-                              <TableCell to={path}>
-                                <div className="flex items-center gap-2">
+              <div className="grid max-h-full grid-rows-[1fr_auto]">
+                <Table containerClassName="border-t-0">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Deploy</TableHeaderCell>
+                      <TableHeaderCell>Env</TableHeaderCell>
+                      <TableHeaderCell>Version</TableHeaderCell>
+                      <TableHeaderCell>Status</TableHeaderCell>
+                      <TableHeaderCell>Tasks</TableHeaderCell>
+                      <TableHeaderCell>Deployed at</TableHeaderCell>
+                      <TableHeaderCell>Deployed by</TableHeaderCell>
+                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deployments.length > 0 ? (
+                      deployments.map((deployment) => {
+                        const usernameForEnv =
+                          user.id !== deployment.environment.userId
+                            ? deployment.environment.userName
+                            : undefined;
+                        const path = v3DeploymentPath(
+                          organization,
+                          project,
+                          deployment,
+                          currentPage
+                        );
+                        return (
+                          <TableRow key={deployment.id} className="group">
+                            <TableCell to={path}>
+                              <div className="flex items-center gap-2">
+                                <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
+                                {deployment.label && (
+                                  <Badge variant="outline-rounded">{deployment.label}</Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell to={path}>
+                              <EnvironmentLabel
+                                environment={deployment.environment}
+                                userName={usernameForEnv}
+                              />
+                            </TableCell>
+                            <TableCell to={path}>{deployment.version}</TableCell>
+                            <TableCell to={path}>
+                              <DeploymentStatus
+                                status={deployment.status}
+                                isBuilt={deployment.isBuilt}
+                              />
+                            </TableCell>
+                            <TableCell to={path}>
+                              {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {deployment.deployedAt ? (
+                                <DateTime date={deployment.deployedAt} />
+                              ) : (
+                                "–"
+                              )}
+                            </TableCell>
+                            <TableCell to={path}>
+                              {deployment.deployedBy ? (
+                                <div className="flex items-center gap-1">
+                                  <UserAvatar
+                                    avatarUrl={deployment.deployedBy.avatarUrl}
+                                    name={
+                                      deployment.deployedBy.name ??
+                                      deployment.deployedBy.displayName
+                                    }
+                                    className="h-4 w-4"
+                                  />
                                   <Paragraph variant="extra-small">
-                                    {deployment.shortCode}
+                                    {deployment.deployedBy.name ??
+                                      deployment.deployedBy.displayName}
                                   </Paragraph>
-                                  {deployment.label && (
-                                    <Badge variant="outline-rounded">{deployment.label}</Badge>
-                                  )}
                                 </div>
-                              </TableCell>
-                              <TableCell to={path}>
-                                <EnvironmentLabel
-                                  environment={deployment.environment}
-                                  userName={usernameForEnv}
-                                />
-                              </TableCell>
-                              <TableCell to={path}>{deployment.version}</TableCell>
-                              <TableCell to={path}>
-                                <DeploymentStatus
-                                  status={deployment.status}
-                                  isBuilt={deployment.isBuilt}
-                                />
-                              </TableCell>
-                              <TableCell to={path}>
-                                {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
-                              </TableCell>
-                              <TableCell to={path}>
-                                {deployment.deployedAt ? (
-                                  <DateTime date={deployment.deployedAt} />
-                                ) : (
-                                  "–"
-                                )}
-                              </TableCell>
-                              <TableCell to={path}>
-                                {deployment.deployedBy ? (
-                                  <div className="flex items-center gap-1">
-                                    <UserAvatar
-                                      avatarUrl={deployment.deployedBy.avatarUrl}
-                                      name={
-                                        deployment.deployedBy.name ??
-                                        deployment.deployedBy.displayName
-                                      }
-                                      className="h-4 w-4"
-                                    />
-                                    <Paragraph variant="extra-small">
-                                      {deployment.deployedBy.name ??
-                                        deployment.deployedBy.displayName}
-                                    </Paragraph>
-                                  </div>
-                                ) : (
-                                  "–"
-                                )}
-                              </TableCell>
-                              <DeploymentActionsCell deployment={deployment} path={path} />
-                            </TableRow>
-                          );
-                        })
-                      ) : (
-                        <TableBlankRow colSpan={6}>
-                          <Paragraph variant="small" className="flex items-center justify-center">
-                            No deploys match your filters
-                          </Paragraph>
-                        </TableBlankRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                  <div className="flex justify-end">
+                              ) : (
+                                "–"
+                              )}
+                            </TableCell>
+                            <DeploymentActionsCell deployment={deployment} path={path} />
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableBlankRow colSpan={8}>
+                        <Paragraph className="flex items-center justify-center">
+                          No deploys match your filters
+                        </Paragraph>
+                      </TableBlankRow>
+                    )}
+                  </TableBody>
+                </Table>
+                {totalPages > 1 && (
+                  <div className="-mt-px flex justify-end border-t border-grid-dimmed py-2 pr-2">
                     <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <CreateDeploymentInstructions />
@@ -212,7 +219,7 @@ export default function Page() {
           {deploymentParam && (
             <>
               <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="225px" max="500px">
+              <ResizablePanel id="deployments-inspector" min="400px" max="700px">
                 <Outlet />
               </ResizablePanel>
             </>
@@ -231,7 +238,7 @@ function CreateDeploymentInstructions() {
     <MainCenteredContainer className="max-w-md">
       <InfoPanel
         icon={ServerStackIcon}
-        iconClassName="text-blue-400"
+        iconClassName="text-blue-500"
         title="Deploy for the first time"
         panelClassName="max-w-full"
       >
@@ -247,7 +254,7 @@ function CreateDeploymentInstructions() {
         <div className="flex gap-3">
           <LinkButton
             to={docsPath("v3/cli-deploy")}
-            variant="tertiary/small"
+            variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
@@ -255,7 +262,7 @@ function CreateDeploymentInstructions() {
           </LinkButton>
           <LinkButton
             to={docsPath("v3/github-actions")}
-            variant="tertiary/small"
+            variant="docs/medium"
             LeadingIcon={BookOpenIcon}
             className="inline-flex"
           >
@@ -285,35 +292,52 @@ function DeploymentActionsCell({
   }
 
   return (
-    <TableCellMenu isSticky>
-      {canRollback && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowUturnLeftIcon}>
-              Rollback
-            </Button>
-          </DialogTrigger>
-          <RollbackDeploymentDialog
-            projectId={project.id}
-            deploymentShortCode={deployment.shortCode}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-      {canRetryIndexing && (
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="small-menu-item" LeadingIcon={ArrowPathIcon}>
-              Retry indexing
-            </Button>
-          </DialogTrigger>
-          <RetryDeploymentIndexingDialog
-            projectId={project.id}
-            deploymentShortCode={deployment.shortCode}
-            redirectPath={`${location.pathname}${location.search}`}
-          />
-        </Dialog>
-      )}
-    </TableCellMenu>
+    <TableCellMenu
+      isSticky
+      popoverContent={
+        <>
+          {canRollback && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowUturnLeftIcon}
+                  leadingIconClassName="text-blue-500"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Rollback…
+                </Button>
+              </DialogTrigger>
+              <RollbackDeploymentDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+          {canRetryIndexing && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowPathIcon}
+                  leadingIconClassName="text-blue-500"
+                  fullWidth
+                  textAlignLeft
+                >
+                  Retry indexing…
+                </Button>
+              </DialogTrigger>
+              <RetryDeploymentIndexingDialog
+                projectId={project.id}
+                deploymentShortCode={deployment.shortCode}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+        </>
+      }
+    />
   );
 }

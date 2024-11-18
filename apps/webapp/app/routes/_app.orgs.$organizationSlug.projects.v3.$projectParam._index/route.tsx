@@ -1,4 +1,10 @@
-import { ChatBubbleLeftRightIcon, ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
+import {
+  BeakerIcon,
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+} from "@heroicons/react/20/solid";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
@@ -13,13 +19,14 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -28,7 +35,7 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -38,8 +45,8 @@ import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
-  TaskTriggerSourceIcon,
   taskTriggerSourceDescription,
+  TaskTriggerSourceIcon,
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -48,7 +55,14 @@ import { useTextFilter } from "~/hooks/useTextFilter";
 import { Task, TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3RunsPath, v3TasksStreamingPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  ProjectParamSchema,
+  v3RunsPath,
+  v3TasksStreamingPath,
+  v3TestPath,
+  v3TestTaskPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -144,15 +158,22 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/tasks/overview")}
+          >
+            Task docs
+          </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
+      <PageBody scrollable={false}>
         <div className={cn("grid h-full grid-rows-1")}>
           {hasTasks ? (
-            <div className="flex flex-col gap-4 pb-4">
+            <div className="flex flex-col">
               {!userHasTasks && <UserHasNoTasks />}
-              <div className="pb-4">
-                <div className="h-8">
+              <div className="max-h-full overflow-hidden">
+                <div className="p-2">
                   <Input
                     placeholder="Search tasks"
                     variant="tertiary"
@@ -163,7 +184,7 @@ export default function Page() {
                     autoFocus
                   />
                 </div>
-                <Table>
+                <Table containerClassName="max-h-full mb-[2.5rem]">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
@@ -182,6 +203,24 @@ export default function Page() {
                         const path = v3RunsPath(organization, project, {
                           tasks: [task.slug],
                         });
+
+                        const devYouEnvironment = task.environments.find(
+                          (e) => e.type === "DEVELOPMENT" && !e.userName
+                        );
+                        const firstDeployedEnvironment = task.environments
+                          .filter((e) => e.type !== "DEVELOPMENT")
+                          .at(0);
+                        const testEnvironment = devYouEnvironment ?? firstDeployedEnvironment;
+
+                        const testPath = testEnvironment
+                          ? v3TestTaskPath(
+                              organization,
+                              project,
+                              { taskIdentifier: task.slug },
+                              testEnvironment.slug
+                            )
+                          : v3TestPath(organization, project);
+
                         return (
                           <TableRow key={task.slug} className="group">
                             <TableCell to={path}>
@@ -262,7 +301,30 @@ export default function Page() {
                             <TableCell to={path}>
                               <EnvironmentLabels environments={task.environments} />
                             </TableCell>
-                            <TableCellChevron to={path} />
+                            <TableCellMenu
+                              isSticky
+                              popoverContent={
+                                <>
+                                  <PopoverMenuItem
+                                    icon="runs"
+                                    to={path}
+                                    title="View runs"
+                                    leadingIconClassName="text-teal-500"
+                                  />
+                                  <PopoverMenuItem icon="beaker" to={testPath} title="Test task" />
+                                </>
+                              }
+                              hiddenButtons={
+                                <LinkButton
+                                  variant="minimal/small"
+                                  LeadingIcon={BeakerIcon}
+                                  leadingIconClassName="text-text-bright"
+                                  to={testPath}
+                                >
+                                  Test
+                                </LinkButton>
+                              }
+                            />
                           </TableRow>
                         );
                       })
@@ -457,7 +519,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b-charcoal-650 border-b pb-2">{formattedDate}</Header3>
+          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
           <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
             {items.map((item) => (
               <Fragment key={item.status}>

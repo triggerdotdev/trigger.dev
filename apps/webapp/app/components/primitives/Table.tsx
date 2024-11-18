@@ -17,7 +17,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
     return (
       <div
         className={cn(
-          "overflow-x-auto whitespace-nowrap rounded-md border border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+          "overflow-x-auto whitespace-nowrap border-t border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
           containerClassName,
           fullWidth && "w-full"
         )}
@@ -41,7 +41,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 divide-y divide-grid-dimmed rounded-t-md bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-dimmed",
+          "sticky top-0 z-10 bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
           className
         )}
       >
@@ -59,10 +59,7 @@ type TableBodyProps = {
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
   ({ className, children }, ref) => {
     return (
-      <tbody
-        ref={ref}
-        className={cn("relative divide-y divide-grid-dimmed overflow-y-auto", className)}
-      >
+      <tbody ref={ref} className={cn("relative overflow-y-auto", className)}>
         {children}
       </tbody>
     );
@@ -78,7 +75,14 @@ type TableRowProps = {
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, children }, ref) => {
     return (
-      <tr ref={ref} className={cn(disabled && "opacity-50", "group/table-row w-full", className)}>
+      <tr
+        ref={ref}
+        className={cn(
+          disabled && "opacity-50",
+          "group/table-row relative w-full after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          className
+        )}
+      >
         {children}
       </tr>
     );
@@ -114,7 +118,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         ref={ref}
         scope="col"
         className={cn(
-          "px-3 py-2 align-middle text-xxs font-normal uppercase tracking-wider text-text-dimmed",
+          "px-3 py-2.5 pb-3 align-middle text-sm font-medium text-text-bright",
           alignmentClassName,
           className
         )}
@@ -145,13 +149,16 @@ type TableCellProps = TableCellBasicProps & {
 };
 
 const rowHoverStyles = {
-  default: "group-hover/table-row:bg-charcoal-800",
-  dimmed: "group-hover/table-row:bg-charcoal-850",
-  bright: "group-hover/table-row:bg-charcoal-750",
+  default:
+    "group-hover/table-row:bg-charcoal-800 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+  dimmed:
+    "group-hover/table-row:bg-charcoal-850 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-800 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-800 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+  bright:
+    "group-hover/table-row:bg-charcoal-750 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-700 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-700 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
 };
 
 const stickyStyles =
-  "sticky right-0 w-[2.8rem] min-w-[2.8rem] bg-background-dimmed before:absolute before:pointer-events-none before:-left-8 before:top-0 before:h-full before:min-w-[2rem]";
+  "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 w-[--sticky-width] [&:has(.group-hover\\/table-row\\:block)]:w-auto";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
@@ -192,7 +199,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400 transition-colors",
+          "text-xs text-charcoal-400",
           to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
@@ -237,7 +244,7 @@ export const TableCellChevron = forwardRef<
       alignment="right"
     >
       {children}
-      <ChevronRightIcon className="h-4 w-4 text-text-dimmed transition group-hover:text-text-bright" />
+      <ChevronRightIcon className="size-4 text-text-dimmed transition group-hover:text-text-bright" />
     </TableCell>
   );
 });
@@ -246,33 +253,72 @@ export const TableCellMenu = forwardRef<
   HTMLTableCellElement,
   {
     className?: string;
-    children?: ReactNode;
     isSticky?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+    visibleButtons?: ReactNode;
+    hiddenButtons?: ReactNode;
+    popoverContent?: ReactNode;
+    children?: ReactNode;
   }
->(({ className, children, isSticky, onClick }, ref) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <TableCell
-      className={className}
-      isSticky={isSticky}
-      onClick={onClick}
-      ref={ref}
-      alignment="right"
-      hasAction={true}
-    >
-      <Popover onOpenChange={(open) => setIsOpen(open)}>
-        <PopoverVerticalEllipseTrigger isOpen={isOpen} />
-        <PopoverContent
-          className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-          align="end"
-        >
-          <div className="flex flex-col gap-1 p-1">{children}</div>
-        </PopoverContent>
-      </Popover>
-    </TableCell>
-  );
-});
+>(
+  (
+    { className, isSticky, onClick, visibleButtons, hiddenButtons, popoverContent, children },
+    ref
+  ) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    return (
+      <TableCell
+        className={className}
+        isSticky={isSticky}
+        onClick={onClick}
+        ref={ref}
+        alignment="right"
+        hasAction={true}
+      >
+        <div className="relative p-1">
+          <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 bg-background-dimmed p-0.5 group-hover/table-row:rounded-[0.25rem] group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
+            {/* Hidden buttons that show on hover */}
+            {hiddenButtons && (
+              <div className="hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r group-hover/table-row:border-grid-dimmed">
+                {hiddenButtons}
+              </div>
+            )}
+            {/* Always visible buttons  */}
+            {visibleButtons}
+            {/* Always visible popover with ellipsis trigger */}
+            {popoverContent && (
+              <Popover onOpenChange={(open) => setIsOpen(open)}>
+                <PopoverVerticalEllipseTrigger
+                  isOpen={isOpen}
+                  className="duration-0 group-hover/table-row:text-text-bright"
+                />
+                <PopoverContent
+                  className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  align="end"
+                >
+                  <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
+                </PopoverContent>
+              </Popover>
+            )}
+            {/* Optionally pass in children to render in a popover */}
+            {!visibleButtons && !hiddenButtons && !popoverContent && (
+              <Popover onOpenChange={(open) => setIsOpen(open)}>
+                <PopoverVerticalEllipseTrigger isOpen={isOpen} />
+                <PopoverContent
+                  className="w-fit max-w-[10rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  align="end"
+                >
+                  <div className="flex flex-col gap-1 p-1">{children}</div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        </div>
+      </TableCell>
+    );
+  }
+);
 
 type TableBlankRowProps = {
   className?: string;

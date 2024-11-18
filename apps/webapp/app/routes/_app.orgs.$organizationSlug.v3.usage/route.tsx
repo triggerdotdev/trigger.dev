@@ -101,13 +101,13 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Usage" />
       </NavBar>
-      <PageBody scrollable={true}>
+      <PageBody scrollable={true} className="p-0">
         <div className="flex flex-col gap-6">
           <div>
             <Select
               name="month"
               placeholder="Select a month"
-              className="mb-3"
+              className="m-3"
               defaultValue={month}
               items={months.map((date) => ({
                 label: monthDateFormatter.format(date),
@@ -118,7 +118,7 @@ export default function Page() {
                 replace({ month: value });
               }}
               dropdownIcon
-              variant="tertiary/medium"
+              variant="tertiary/small"
             >
               {(matches) =>
                 matches.map((month) => (
@@ -128,7 +128,7 @@ export default function Page() {
                 ))
               }
             </Select>
-            <div className="flex w-full flex-col gap-2 rounded-sm border border-grid-dimmed p-4">
+            <div className="flex w-full flex-col gap-2 border-t border-grid-dimmed p-3">
               <Suspense fallback={<Spinner />}>
                 <Await
                   resolve={usage}
@@ -139,11 +139,11 @@ export default function Page() {
                   }
                 >
                   {(usage) => (
-                    <div className="flex items-center gap-8">
-                      <div className="flex flex-col gap-2">
-                        <Header3 className="whitespace-nowrap">
+                    <div className="flex items-end gap-8">
+                      <div className="flex flex-col gap-1">
+                        <Header2 className="whitespace-nowrap">
                           {isCurrentMonth ? "Month-to-date" : "Usage"}
-                        </Header3>
+                        </Header2>
                         <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
                           {formatCurrency(usage.overall.current, false)}
                         </p>
@@ -164,8 +164,10 @@ export default function Page() {
             </div>
           </div>
           <div>
-            <Header2 spacing>Usage by day</Header2>
-            <div className="rounded-sm border border-grid-dimmed p-4">
+            <Header2 spacing className="pl-3">
+              Usage by day
+            </Header2>
+            <div className="p-3">
               <Suspense
                 fallback={
                   <div className="flex min-h-40 items-center justify-center">
@@ -187,7 +189,9 @@ export default function Page() {
             </div>
           </div>
           <div>
-            <Header2 spacing>Tasks</Header2>
+            <Header2 spacing className="pl-3">
+              Tasks
+            </Header2>
             <Suspense fallback={<Spinner />}>
               <Await
                 resolve={tasks}
@@ -215,8 +219,10 @@ export default function Page() {
                           {tasks.length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={6}>
-                                <div className="flex items-center justify-center">
-                                  <Paragraph variant="small">No runs for this period</Paragraph>
+                                <div className="flex items-center justify-center py-8">
+                                  <Paragraph variant="base/bright">
+                                    No runs for this period
+                                  </Paragraph>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -248,7 +254,11 @@ export default function Page() {
                           )}
                         </TableBody>
                       </Table>
-                      <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem] mt-3">
+                      <InfoPanel
+                        icon={InformationCircleIcon}
+                        variant="minimal"
+                        panelClassName="max-w-full"
+                      >
                         Dev environment runs are excluded from the usage data above, since they do
                         not have an associated compute cost.
                       </InfoPanel>

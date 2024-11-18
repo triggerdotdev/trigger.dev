@@ -26,7 +26,7 @@ function NextButton({ cursor }: { cursor?: string }) {
     <LinkButton
       to={path ?? "#"}
       variant={"minimal/small"}
-      TrailingIcon="arrow-right"
+      TrailingIcon="chevron-right"
       trailingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
@@ -47,7 +47,7 @@ function PreviousButton({ cursor }: { cursor?: string }) {
     <LinkButton
       to={path ?? "#"}
       variant={"minimal/small"}
-      LeadingIcon="arrow-left"
+      LeadingIcon="chevron-left"
       leadingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
