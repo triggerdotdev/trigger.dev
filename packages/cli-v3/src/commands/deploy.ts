@@ -37,6 +37,7 @@ import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
+import { x } from "tinyexec";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -263,6 +264,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error(
       `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
     );
+  }
+
+  if (options.selfHosted) {
+    const result = await x("docker", ["buildx", "version"]);
+
+    if (result.exitCode !== 0) {
+      logger.debug(`"docker buildx version" failed (${result.exitCode}):`, result);
+      throw new Error(
+        "Failed to find docker buildx. Please install it: https://github.com/docker/buildx#installing."
+      );
+    }
   }
 
   if (
