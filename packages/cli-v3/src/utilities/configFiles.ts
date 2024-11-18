@@ -33,6 +33,11 @@ function getAuthConfigFilePath() {
   return path.join(getGlobalConfigFolderPath(), "default.json");
 }
 
+function getAuthConfigFileBackupPath() {
+  // Multiple calls won't overwrite old backups
+  return path.join(getGlobalConfigFolderPath(), `default.json.bak-${Date.now()}`);
+}
+
 export function writeAuthConfigCurrentProfileName(profile: string) {
   const existingConfig = readAuthConfigFile();
 
@@ -92,13 +97,21 @@ export function readAuthConfigFile(): CliConfigFile {
     }
 
     // This is the old format and we need to convert it
-    const parsed = OldCliConfigFile.parse(json);
+    const oldConfigFormat = OldCliConfigFile.parse(json);
 
-    return {
+    const newConfigFormat = {
       version: 2,
       currentProfile: DEFFAULT_PROFILE,
-      profiles: parsed,
-    };
+      profiles: oldConfigFormat,
+    } satisfies CliConfigFile;
+
+    // Save a backup
+    backupOldConfigFile(oldConfigFormat);
+
+    // Then overwrite the old config with the new format
+    writeAuthConfigFile(newConfigFormat);
+
+    return newConfigFormat;
   } catch (error) {
     logger.debug(`Error reading auth config file: ${error}`);
     throw new Error(`Error reading auth config file: ${error}`);
@@ -107,6 +120,16 @@ export function readAuthConfigFile(): CliConfigFile {
 
 export function writeAuthConfigFile(config: CliConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
+  mkdirSync(path.dirname(authConfigFilePath), {
+    recursive: true,
+  });
+  writeFileSync(path.join(authConfigFilePath), JSON.stringify(config, undefined, 2), {
+    encoding: "utf-8",
+  });
+}
+
+export function backupOldConfigFile(config: OldCliConfigFile) {
+  const authConfigFilePath = getAuthConfigFileBackupPath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,
   });
