@@ -13,6 +13,7 @@ import {
   authenticateApiRequestWithPersonalAccessToken,
   PersonalAccessTokenAuthenticationResult,
 } from "../personalAccessToken.server";
+import { safeJsonParse } from "~/utils/json";
 
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
@@ -448,7 +449,17 @@ export function createActionApiRoute<
         );
       }
 
-      const body = bodySchema.safeParse(JSON.parse(rawBody));
+      const rawParsedJson = safeJsonParse(rawBody);
+
+      if (!rawParsedJson) {
+        return wrapResponse(
+          request,
+          json({ error: "Invalid JSON" }, { status: 400 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      const body = bodySchema.safeParse(rawParsedJson);
       if (!body.success) {
         return wrapResponse(
           request,

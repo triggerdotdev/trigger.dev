@@ -87,6 +87,10 @@ export function useRealtimeRun<TTask extends AnyTask>(
       }
 
       setError(err as Error);
+    } finally {
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
     }
   }, [runId, mutateRun, abortControllerRef, apiClient, setError]);
 
@@ -104,7 +108,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, triggerRequest]);
 
   return { run, error, stop };
 }
@@ -208,6 +212,10 @@ export function useRealtimeRunWithStreams<
       }
 
       setError(err as Error);
+    } finally {
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
     }
   }, [runId, mutateRun, mutateStreams, streamsRef, abortControllerRef, apiClient, setError]);
 
@@ -225,7 +233,7 @@ export function useRealtimeRunWithStreams<
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, triggerRequest]);
 
   return { run, streams: streams ?? initialStreamsFallback, error, stop };
 }
@@ -290,6 +298,10 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
       }
 
       setError(err as Error);
+    } finally {
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
     }
   }, [tag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
@@ -303,7 +315,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [tag, stop, options?.enabled]);
+  }, [tag, stop, options?.enabled, triggerRequest]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -371,6 +383,10 @@ export function useRealtimeBatch<TTask extends AnyTask>(
       }
 
       setError(err as Error);
+    } finally {
+      if (abortControllerRef.current) {
+        abortControllerRef.current = null;
+      }
     }
   }, [batchId, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
@@ -384,7 +400,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [batchId, stop, options?.enabled]);
+  }, [batchId, stop, options?.enabled, triggerRequest]);
 
   return { runs: runs ?? [], error, stop };
 }

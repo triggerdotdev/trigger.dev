@@ -23,6 +23,7 @@ export interface TriggerInstance<TTask extends AnyTask> {
   submit: (payload: TaskPayload<TTask>) => void;
   isLoading: boolean;
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
+  error?: Error;
 }
 
 export type UseTaskTriggerOptions = UseApiClientOptions;
@@ -69,6 +70,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
     },
     isLoading: mutation.isMutating,
     handle: mutation.data as RunHandleFromTypes<InferRunTypes<TTask>>,
+    error: mutation.error,
   };
 }
 
@@ -124,7 +126,11 @@ export function useRealtimeTaskTrigger<TTask extends AnyTask>(
   });
 
   return {
-    ...realtimeInstance,
-    ...triggerInstance,
+    submit: triggerInstance.submit,
+    isLoading: triggerInstance.isLoading,
+    handle: triggerInstance.handle,
+    run: realtimeInstance.run,
+    error: realtimeInstance.error ?? triggerInstance.error,
+    stop: realtimeInstance.stop,
   };
 }

@@ -173,25 +173,31 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
-    // Add the key to the special stream metadata object
-    this.setKey(`$$stream.${key}`, key);
+    try {
+      // Add the key to the special stream metadata object
+      this.setKey(`$$stream.${key}`, key);
 
-    await this.flush();
+      await this.flush();
 
-    const streamInstance = new MetadataStream({
-      key,
-      runId: this.runId,
-      iterator: $value[Symbol.asyncIterator](),
-      baseUrl: this.streamsBaseUrl,
-      signal,
-    });
+      const streamInstance = new MetadataStream({
+        key,
+        runId: this.runId,
+        iterator: $value[Symbol.asyncIterator](),
+        baseUrl: this.streamsBaseUrl,
+        signal,
+      });
 
-    this.activeStreams.set(key, streamInstance);
+      this.activeStreams.set(key, streamInstance);
 
-    // Clean up when stream completes
-    streamInstance.wait().finally(() => this.activeStreams.delete(key));
+      // Clean up when stream completes
+      streamInstance.wait().finally(() => this.activeStreams.delete(key));
 
-    return streamInstance;
+      return streamInstance;
+    } catch (error) {
+      // Clean up metadata key if stream creation fails
+      this.deleteKey(`$$stream.${key}`);
+      throw error;
+    }
   }
 
   public hasActiveStreams(): boolean {

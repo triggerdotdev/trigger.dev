@@ -109,14 +109,48 @@ function saveMetadata(metadata: RunMetadata): void {
   runMetadata.update(metadata);
 }
 
-function incrementMetadataKey(key: string, value: number) {
+/**
+ * Increments a numeric value in the metadata of the current run by the specified amount.
+ * This function allows you to atomically increment a numeric metadata value.
+ *
+ * @param {string} key - The key of the numeric value to increment.
+ * @param {number} value - The amount to increment the value by.
+ *
+ * @example
+ * metadata.increment("counter", 1); // Increments counter by 1
+ * metadata.increment("score", 10); // Increments score by 10
+ */
+function incrementMetadataKey(key: string, value: number = 1) {
   runMetadata.incrementKey(key, value);
 }
 
-function decrementMetadataKey(key: string, value: number) {
+/**
+ * Decrements a numeric value in the metadata of the current run by the specified amount.
+ * This function allows you to atomically decrement a numeric metadata value.
+ *
+ * @param {string} key - The key of the numeric value to decrement.
+ * @param {number} value - The amount to decrement the value by.
+ *
+ * @example
+ * metadata.decrement("counter", 1); // Decrements counter by 1
+ * metadata.decrement("score", 5); // Decrements score by 5
+ */
+function decrementMetadataKey(key: string, value: number = 1) {
   runMetadata.decrementKey(key, value);
 }
 
+/**
+ * Appends a value to an array in the metadata of the current run.
+ * If the key doesn't exist, it creates a new array with the value.
+ * If the key exists but isn't an array, it converts the existing value to an array.
+ *
+ * @param {string} key - The key of the array in metadata.
+ * @param {DeserializedJson} value - The value to append to the array.
+ *
+ * @example
+ * metadata.append("logs", "User logged in");
+ * metadata.append("events", { type: "click", timestamp: Date.now() });
+ */
 function appendMetadataKey(key: string, value: DeserializedJson) {
   runMetadata.appendKey(key, value);
 }

@@ -12,8 +12,8 @@ export type UseApiClientOptions = {
 export function useApiClient(options?: UseApiClientOptions): ApiClient {
   const auth = useTriggerAuthContextOptional();
 
-  const baseUrl = auth?.baseURL ?? options?.baseURL ?? "https://api.trigger.dev";
-  const accessToken = auth?.accessToken ?? options?.accessToken;
+  const baseUrl = options?.baseURL ?? auth?.baseURL ?? "https://api.trigger.dev";
+  const accessToken = options?.accessToken ?? auth?.accessToken;
 
   if (!accessToken) {
     throw new Error("Missing accessToken in TriggerAuthContext or useApiClient options");

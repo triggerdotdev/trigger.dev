@@ -44,6 +44,7 @@ import type {
   BatchRunHandleFromTypes,
   InferRunTypes,
   inferSchemaIn,
+  inferToolParameters,
   RetrieveRunResult,
   RunHandle,
   RunHandleFromTypes,
@@ -231,7 +232,7 @@ export function createToolTask<
     tool: {
       parameters: params.parameters,
       description: params.description,
-      execute: async (args: any) => {
+      execute: async (args: inferToolParameters<TParameters>) => {
         return task.triggerAndWait(args).unwrap();
       },
     },

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z

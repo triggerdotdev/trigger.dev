@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
