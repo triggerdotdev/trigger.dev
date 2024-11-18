@@ -301,11 +301,7 @@ export const TableCellMenu = forwardRef<
                 </PopoverContent>
               </Popover>
             )}
-
-            {/*
-              Todo: This is support for the legacy TableCell where all buttons were in Popovers.
-              Replace all instances of this with the new options above and remove when done.
-            */}
+            {/* Optionally pass in children to render in a popover */}
             {!visibleButtons && !hiddenButtons && !popoverContent && (
               <Popover onOpenChange={(open) => setIsOpen(open)}>
                 <PopoverVerticalEllipseTrigger isOpen={isOpen} />
