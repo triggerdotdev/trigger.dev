@@ -1,9 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import { logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
 import { streamUI } from "ai/rsc";
-import { z } from "zod";
-import { createStreamableUI } from "ai/rsc";
 import { renderToReadableStream } from "react-dom/server";
+import { z } from "zod";
 
 const LoadingComponent = () => <div className="animate-pulse p-4">getting weather...</div>;
 
@@ -72,7 +71,6 @@ function App() {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="/styles.css"></link>
         <title>My app</title>
       </head>
       <body></body>
@@ -87,26 +85,20 @@ export const weatherUI = schemaTask({
     message: z.string(),
   }),
   run: async ({ message }) => {
-    const weatherUI = createStreamableUI();
+    logger.info("Running weather UI", { message });
 
-    weatherUI.update(<div style={{ color: "gray" }}>Loading...</div>);
+    const readableStream = await renderToReadableStream(<App />);
 
-    setTimeout(() => {
-      weatherUI.done(<div>{message}</div>);
-    }, 1000);
+    const reader = readableStream.getReader();
 
-    const readableStream = await renderToReadableStream(<App />, {
-      onError(error, errorInfo) {
-        logger.error("Error rendering UI", { error, errorInfo });
-      },
-    });
+    while (true) {
+      const { done, value } = await reader.read();
 
-    const stream = await metadata.stream("weather-ui", readableStream);
+      if (done) {
+        break;
+      }
 
-    for await (const chunk of stream) {
-      logger.log("Received chunk", { chunk });
+      logger.log("Received chunk", { value });
     }
-
-    return weatherUI.value;
   },
 });

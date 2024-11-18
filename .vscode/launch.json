@@ -48,6 +48,14 @@
     {
       "type": "node-terminal",
       "request": "launch",
+      "name": "Debug Dev Next.js Realtime",
+      "command": "pnpm exec trigger dev",
+      "cwd": "${workspaceFolder}/references/nextjs-realtime",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
       "name": "Debug prisma-catalog deploy CLI",
       "command": "pnpm exec trigger deploy --self-hosted --load-image",
       "cwd": "${workspaceFolder}/references/prisma-catalog",

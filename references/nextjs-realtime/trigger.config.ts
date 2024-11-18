@@ -5,6 +5,6 @@ export default defineConfig({
   project: "proj_bzhdaqhlymtuhlrcgbqy",
   dirs: ["./src/trigger"],
   build: {
-    extensions: [rscExtension()],
+    extensions: [rscExtension({ reactDomEnvironment: "worker" })],
   },
 });

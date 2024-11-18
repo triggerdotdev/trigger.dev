@@ -1,7 +1,12 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { sourceDir } from "./sourceDir.js";
 
-export function rscExtension(): BuildExtension {
+export type RSCExtensionOptions = {
+  resolveDir?: string;
+  reactDomEnvironment?: "node" | "worker" | "bun";
+};
+
+export function rscExtension(options?: RSCExtensionOptions): BuildExtension {
   return {
     name: "rsc",
     onBuildStart(context) {
@@ -9,6 +14,8 @@ export function rscExtension(): BuildExtension {
         id: "rsc",
         conditions: ["react-server"],
       });
+
+      const srcDir = options?.resolveDir ?? sourceDir;
 
       context.config.build.conditions ??= [];
       context.config.build.conditions.push("react-server");
@@ -23,7 +30,7 @@ export function rscExtension(): BuildExtension {
 
             try {
               const resolvedPath = esmResolveSync(args.path, {
-                url: sourceDir,
+                url: srcDir,
                 conditions: ["react-server"],
               });
 
@@ -44,7 +51,7 @@ export function rscExtension(): BuildExtension {
 
             try {
               const resolvedPath = esmResolveSync(args.path, {
-                url: sourceDir,
+                url: srcDir,
                 conditions: ["react-server"],
               });
 
@@ -65,7 +72,7 @@ export function rscExtension(): BuildExtension {
 
             try {
               const resolvedPath = esmResolveSync(args.path, {
-                url: sourceDir,
+                url: srcDir,
                 conditions: ["react-server"],
               });
 
@@ -82,12 +89,15 @@ export function rscExtension(): BuildExtension {
           });
 
           build.onResolve({ filter: /^react-dom\/server$/ }, (args) => {
-            context.logger.debug("Resolving react-dom/server", { args });
+            const condition =
+              context.config.runtime === "bun" ? "bun" : options?.reactDomEnvironment ?? "node";
+
+            context.logger.debug("Resolving react-dom/server", { args, condition });
 
             try {
               const resolvedPath = esmResolveSync(args.path, {
-                url: sourceDir,
-                conditions: ["worker"],
+                url: srcDir,
+                conditions: [condition],
               });
 
               context.logger.debug("Resolved react-dom/server", { resolvedPath });
