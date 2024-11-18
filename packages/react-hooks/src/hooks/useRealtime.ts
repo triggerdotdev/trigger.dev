@@ -108,7 +108,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled, triggerRequest]);
+  }, [runId, stop, options?.enabled]);
 
   return { run, error, stop };
 }
@@ -233,7 +233,7 @@ export function useRealtimeRunWithStreams<
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled, triggerRequest]);
+  }, [runId, stop, options?.enabled]);
 
   return { run, streams: streams ?? initialStreamsFallback, error, stop };
 }
@@ -315,7 +315,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [tag, stop, options?.enabled, triggerRequest]);
+  }, [tag, stop, options?.enabled]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -400,7 +400,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [batchId, stop, options?.enabled, triggerRequest]);
+  }, [batchId, stop, options?.enabled]);
 
   return { runs: runs ?? [], error, stop };
 }
