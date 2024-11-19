@@ -1,5 +1,8 @@
 import { PGlite } from "@electric-sql/pglite";
+import { electricSync } from "@electric-sql/pglite-sync";
 import { live } from "@electric-sql/pglite/live";
+
+export type PGClient = Awaited<ReturnType<typeof createClient>>;
 
 export async function createClient() {
   const dataDir = "idb://triggerdotdev";
@@ -17,7 +20,7 @@ export async function createClient() {
 
   const db = await PGlite.create({
     dataDir,
-    extensions: { live },
+    extensions: { live, electric: electricSync() },
     wasmModule,
     fsBundle, // Provide the data file as a blob
     // debug: 5,

@@ -16,6 +16,7 @@ import { useHighlight } from "./hooks/useHighlight";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
+import { useTypedMatchData, useTypedMatchesData } from "./hooks/useTypedMatchData";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -58,6 +59,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export type LoaderType = typeof loader;
+
+export function useAppOrigin() {
+  const routeMatch = useTypedMatchesData<typeof loader>({
+    id: "root",
+  });
+
+  return routeMatch!.appOrigin;
+}
 
 export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
   if (options.formAction === "/resources/environment") {

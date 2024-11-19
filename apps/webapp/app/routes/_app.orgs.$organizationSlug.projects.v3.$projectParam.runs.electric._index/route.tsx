@@ -55,16 +55,16 @@ import { useLiveQuery } from "@electric-sql/pglite-react";
 import type { TaskRun } from "@trigger.dev/database";
 
 export default function Page() {
+  const project = useProject();
+
   return (
-    <PgProvider>
+    <PgProvider projectId={project.id}>
       <Content />
     </PgProvider>
   );
 }
 
 function Content() {
-  const project = useProject();
-
   const items = useLiveQuery<TaskRun>(`SELECT * FROM "TaskRun";`);
 
   console.log(items);

@@ -237,6 +237,9 @@ importers:
       '@electric-sql/pglite-react':
         specifier: ^0.2.13
         version: 0.2.13(@electric-sql/pglite@0.2.13)(react@18.2.0)
+      '@electric-sql/pglite-sync':
+        specifier: ^0.2.14
+        version: 0.2.14(@electric-sql/pglite@0.2.13)
       '@electric-sql/react':
         specifier: ^0.3.5
         version: 0.3.5(react@18.2.0)
@@ -4823,6 +4826,15 @@ packages:
     dependencies:
       '@electric-sql/pglite': 0.2.13
       react: 18.2.0
+    dev: false
+
+  /@electric-sql/pglite-sync@0.2.14(@electric-sql/pglite@0.2.13):
+    resolution: {integrity: sha512-k5bqr42zpY80QTbFA/6nHyO4habS0xrIrMRpbTZn+iR1R+Rox5ulrXTpKfYH7uMaTf1A/wPcQHFskzVPrX41LA==}
+    peerDependencies:
+      '@electric-sql/pglite': ^0.2.13
+    dependencies:
+      '@electric-sql/client': 0.6.3
+      '@electric-sql/pglite': 0.2.13
     dev: false
 
   /@electric-sql/pglite@0.2.13:

@@ -1,9 +1,10 @@
 import { PGliteProvider } from "@electric-sql/pglite-react";
-import { createClient } from ".";
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { createClient, PGClient } from "./client";
+import { useAppOrigin } from "~/root";
 
-export function PgProvider({ children }: { children: ReactNode }) {
-  const [db, setDb] = useState<any>(null);
+export function PgProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
+  const [db, setDb] = useState<PGClient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -18,6 +19,8 @@ export function PgProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  usePgSync({ pg: db, projectId });
+
   if (isLoading) {
     return <div>Loading database...</div>;
   }
@@ -27,4 +30,34 @@ export function PgProvider({ children }: { children: ReactNode }) {
   }
 
   return <PGliteProvider db={db}>{children}</PGliteProvider>;
+}
+
+function usePgSync({ pg, projectId }: { pg: PGClient | null; projectId: string }) {
+  const origin = useAppOrigin();
+
+  useEffect(() => {
+    if (!pg) return;
+
+    let shape: { unsubscribe: () => void };
+
+    const setupSync = async () => {
+      try {
+        shape = await pg.electric.syncShapeToTable({
+          shape: { url: `${origin}/sync/${projectId}/runs` },
+          table: "TaskRun",
+          primaryKey: ["id"],
+        });
+      } catch (error) {
+        console.error("Error syncing shape:", error);
+      }
+    };
+
+    setupSync();
+
+    return () => {
+      if (shape) {
+        shape.unsubscribe();
+      }
+    };
+  }, [projectId, pg]);
 }
