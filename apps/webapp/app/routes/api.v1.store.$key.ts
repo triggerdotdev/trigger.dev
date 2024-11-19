@@ -1,6 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { assertExhaustive } from "@trigger.dev/core";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -69,9 +68,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         return json({ action: "SET", key: decodedKey, value: setValue });
       }
-      default: {
-        assertExhaustive(parsedMethod.data);
-      }
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -135,9 +131,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         }
 
         return new Response("Key found", { status: 200 });
-      }
-      default: {
-        assertExhaustive(parsedMethod.data);
       }
     }
   } catch (error) {

@@ -73,7 +73,7 @@
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
     "typescript": "^5.5.4",
-    "zod": "3.22.3"
+    "zod": "3.23.8"
   },
   "peerDependencies": {
     "zod": "^3.0.0"
