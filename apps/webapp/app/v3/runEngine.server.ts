@@ -3,13 +3,14 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { tracer } from "./tracer.server";
 import { singleton } from "~/utils/singleton";
+import { eventRepository } from "./eventRepository.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
 export type { RunEngine };
 
 function createRunEngine() {
-  return new RunEngine({
+  const engine = new RunEngine({
     prisma,
     redis: {
       port: env.REDIS_PORT,
@@ -38,4 +39,17 @@ function createRunEngine() {
     },
     tracer,
   });
+
+  engine.eventBus.on("runSucceeded", async ({ time, run }) => {
+    await eventRepository.completeEvent(run.spanId, {
+      endTime: time,
+      attributes: {
+        isError: false,
+        output: run.output,
+        outputType: run.outputType,
+      },
+    });
+  });
+
+  return engine;
 }
