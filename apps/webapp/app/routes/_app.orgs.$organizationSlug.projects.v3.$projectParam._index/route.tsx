@@ -5,7 +5,6 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
-import { WindowIcon } from "@heroicons/react/24/outline";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
@@ -13,6 +12,8 @@ import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { SideMenuRightClosedIcon } from "~/assets/icons/SideMenuRightClosed";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -69,6 +70,7 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { AnimatePresence, motion } from "framer-motion";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -176,11 +178,11 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
-          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="tasks-main" className="max-h-full">
             <div className={cn("grid h-full grid-rows-1")}>
               {hasTasks ? (
-                <div className="flex flex-col">
+                <div className="flex min-w-0 max-w-full flex-col">
                   {!userHasTasks && <UserHasNoTasks />}
                   <div className="max-h-full overflow-hidden">
                     <div className="flex items-center gap-2 p-2">
@@ -193,13 +195,14 @@ export default function Page() {
                         onChange={(e) => setFilterText(e.target.value)}
                         autoFocus
                       />
-                      <Button
-                        variant="minimal/small"
-                        TrailingIcon={WindowIcon}
-                        onClick={() => setShowQuickStart(false)}
-                      >
-                        Quick start
-                      </Button>
+                      {!showQuickStart && (
+                        <Button
+                          variant="minimal/small"
+                          TrailingIcon={SideMenuRightClosedIcon}
+                          onClick={() => setShowQuickStart(true)}
+                          className="px-[0.375rem]"
+                        />
+                      )}
                     </div>
                     <Table containerClassName="max-h-full mb-[2.5rem]">
                       <TableHeader>
@@ -367,23 +370,20 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-
-          {!hasTasks && (
+          {hasTasks && showQuickStart ? (
             <>
               <ResizableHandle id="tasks-handle" />
-              <ResizablePanel id="tasks-inspector" min="400px" max="700px">
-                <HelpfulInfoNoTasks />
+              <ResizablePanel
+                id="tasks-inspector"
+                min="200px"
+                default="400px"
+                max="700px"
+                className="w-full"
+              >
+                <HelpfulInfoHasTasks onClose={() => setShowQuickStart(false)} />
               </ResizablePanel>
             </>
-          )}
-          {hasTasks && !showQuickStart && (
-            <>
-              <ResizableHandle id="tasks-handle" />
-              <ResizablePanel id="tasks-inspector" min="400px" max="700px">
-                <HelpfulInfoHasTasks />
-              </ResizablePanel>
-            </>
-          )}
+          ) : null}
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -576,10 +576,20 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
-function HelpfulInfoNoTasks() {
-  return <div>no tasks</div>;
-}
-
-function HelpfulInfoHasTasks() {
-  return <div>has tasks</div>;
+function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed py-2">
+        <Header2>Next steps</Header2>
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-[0.375rem]"
+        />
+      </div>
+    </div>
+  );
 }
