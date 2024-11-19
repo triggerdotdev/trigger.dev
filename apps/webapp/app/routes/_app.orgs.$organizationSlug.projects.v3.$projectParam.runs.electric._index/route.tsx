@@ -49,34 +49,13 @@ import {
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { useEffect } from "react";
-import { pglite } from "~/pglite";
 import { PGliteWorker } from "@electric-sql/pglite/worker";
+import { usePglite } from "~/pglite/usePgLite";
 
 export default function Page() {
   const project = useProject();
 
-  const [db, setDb] = useState<PGliteWorker | null>(null);
-
-  useEffect(() => {
-    const initDb = async () => {
-      const database = await pglite();
-      setDb(database);
-    };
-
-    initDb();
-  }, []);
-
-  useEffect(() => {
-    const runQueries = async () => {
-      if (!db) return;
-
-      // Run your queries here using db
-      // Example:
-      // const result = await db.query("SELECT * FROM table");
-    };
-
-    runQueries();
-  }, [db]);
+  const { isLoading, client } = usePglite();
 
   return (
     <>
@@ -114,6 +93,7 @@ export default function Page() {
                   </div>
                 }
               >
+                {isLoading ? <Spinner /> : <div>Loaded</div>}
                 {/* <TypedAwait resolve={data}>
                   {(list) => (
                     <>
