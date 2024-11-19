@@ -216,9 +216,10 @@ export default function Page() {
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
           to={`${v3SchedulesPath(organization, project)}${location.search}`}
-          variant="minimal/medium"
-          LeadingIcon={ExitIcon}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
         />
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
