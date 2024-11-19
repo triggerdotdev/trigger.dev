@@ -12,7 +12,7 @@
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
     "typescript": "^5.5.4",
-    "zod": "3.22.3"
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",

@@ -54,7 +54,7 @@
     "wrangler": "3.70.0",
     "yt-dlp-wrap": "^2.3.12",
     "yup": "^1.4.0",
-    "zod": "3.22.3"
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@opentelemetry/api": "^1.8.0",
