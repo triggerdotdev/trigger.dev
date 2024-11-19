@@ -1,3 +1,5 @@
+import type { JWTPayload } from "jose";
+
 export type GenerateJWTOptions = {
   secretKey: string;
   payload: Record<string, any>;
@@ -22,8 +24,19 @@ export async function generateJWT(options: GenerateJWTOptions): Promise<string> 
     .sign(secret);
 }
 
-export async function validateJWT(token: string, apiKey: string) {
-  const { jwtVerify } = await import("jose");
+export type ValidationResult =
+  | {
+      ok: true;
+      payload: JWTPayload;
+    }
+  | {
+      ok: false;
+      error: string;
+      code: string;
+    };
+
+export async function validateJWT(token: string, apiKey: string): Promise<ValidationResult> {
+  const { jwtVerify, errors } = await import("jose");
 
   const secret = new TextEncoder().encode(apiKey);
 
@@ -33,8 +46,20 @@ export async function validateJWT(token: string, apiKey: string) {
       audience: JWT_AUDIENCE,
     });
 
-    return payload;
-  } catch (e) {
-    return;
+    return { ok: true, payload };
+  } catch (error) {
+    if (error instanceof errors.JOSEError) {
+      return {
+        ok: false,
+        error: error.message,
+        code: error.code,
+      };
+    } else {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        code: "ERR_UNKNOWN",
+      };
+    }
   }
 }

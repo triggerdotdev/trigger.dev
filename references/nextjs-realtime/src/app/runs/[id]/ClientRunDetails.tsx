@@ -5,8 +5,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TriggerAuthContext, useRealtimeRun } from "@trigger.dev/react-hooks";
 import type { exampleTask } from "@/trigger/example";
 
-function RunDetailsWrapper({ runId }: { runId: string }) {
-  const { run, error } = useRealtimeRun<typeof exampleTask>(runId);
+function RunDetailsWrapper({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, error } = useRealtimeRun<typeof exampleTask>(runId, {
+    accessToken: publicAccessToken,
+  });
 
   if (error) {
     return (
@@ -41,10 +49,8 @@ function RunDetailsWrapper({ runId }: { runId: string }) {
 
 export default function ClientRunDetails({ runId, jwt }: { runId: string; jwt: string }) {
   return (
-    <TriggerAuthContext.Provider
-      value={{ accessToken: jwt, baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}
-    >
-      <RunDetailsWrapper runId={runId} />
+    <TriggerAuthContext.Provider value={{ baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}>
+      <RunDetailsWrapper runId={runId} publicAccessToken={jwt} />
     </TriggerAuthContext.Provider>
   );
 }

@@ -74,87 +74,102 @@ export function createLoaderApiRoute<
       return apiCors(request, json({}));
     }
 
-    const authenticationResult = await authenticateApiRequest(request, { allowJWT });
-
-    if (!authenticationResult) {
-      return wrapResponse(
-        request,
-        json({ error: "Invalid or Missing API key" }, { status: 401 }),
-        corsStrategy !== "none"
-      );
-    }
-
-    let parsedParams: any = undefined;
-    if (paramsSchema) {
-      const parsed = paramsSchema.safeParse(params);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Params Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedParams = parsed.data;
-    }
-
-    let parsedSearchParams: any = undefined;
-    if (searchParamsSchema) {
-      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
-      const parsed = searchParamsSchema.safeParse(searchParams);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Query Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedSearchParams = parsed.data;
-    }
-
-    let parsedHeaders: any = undefined;
-    if (headersSchema) {
-      const rawHeaders = Object.fromEntries(request.headers);
-      const headers = headersSchema.safeParse(rawHeaders);
-      if (!headers.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Headers Error", details: fromZodError(headers.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedHeaders = headers.data;
-    }
-
-    if (authorization) {
-      const { action, resource, superScopes } = authorization;
-      const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
-
-      logger.debug("Checking authorization", {
-        action,
-        resource: $resource,
-        superScopes,
-        scopes: authenticationResult.scopes,
-      });
-
-      if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
-        return wrapResponse(
-          request,
-          json({ error: "Unauthorized" }, { status: 403 }),
-          corsStrategy !== "none"
-        );
-      }
-    }
-
     try {
+      const authenticationResult = await authenticateApiRequest(request, { allowJWT });
+
+      if (!authenticationResult) {
+        return wrapResponse(
+          request,
+          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      if (authorization) {
+        const { action, resource, superScopes } = authorization;
+        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
+
+        logger.debug("Checking authorization", {
+          action,
+          resource: $resource,
+          superScopes,
+          scopes: authenticationResult.scopes,
+        });
+
+        const authorizationResult = checkAuthorization(
+          authenticationResult,
+          action,
+          $resource,
+          superScopes
+        );
+
+        if (!authorizationResult.authorized) {
+          return wrapResponse(
+            request,
+            json(
+              {
+                error: `Unauthorized: ${authorizationResult.reason}`,
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -164,7 +179,6 @@ export function createLoaderApiRoute<
       });
       return wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
-      console.error("Error in API route:", error);
       if (error instanceof Response) {
         return wrapResponse(request, error, corsStrategy !== "none");
       }
@@ -222,67 +236,67 @@ export function createLoaderPATApiRoute<
       return apiCors(request, json({}));
     }
 
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return wrapResponse(
-        request,
-        json({ error: "Invalid or Missing API key" }, { status: 401 }),
-        corsStrategy !== "none"
-      );
-    }
-
-    let parsedParams: any = undefined;
-    if (paramsSchema) {
-      const parsed = paramsSchema.safeParse(params);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Params Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedParams = parsed.data;
-    }
-
-    let parsedSearchParams: any = undefined;
-    if (searchParamsSchema) {
-      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
-      const parsed = searchParamsSchema.safeParse(searchParams);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Query Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedSearchParams = parsed.data;
-    }
-
-    let parsedHeaders: any = undefined;
-    if (headersSchema) {
-      const rawHeaders = Object.fromEntries(request.headers);
-      const headers = headersSchema.safeParse(rawHeaders);
-      if (!headers.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Headers Error", details: fromZodError(headers.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedHeaders = headers.data;
-    }
-
     try {
+      const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+      if (!authenticationResult) {
+        return wrapResponse(
+          request,
+          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -370,127 +384,127 @@ export function createActionApiRoute<
   }
 
   async function action({ request, params }: ActionFunctionArgs) {
-    const authenticationResult = await authenticateApiRequest(request, { allowJWT });
-
-    if (!authenticationResult) {
-      return wrapResponse(
-        request,
-        json({ error: "Invalid or Missing API key" }, { status: 401 }),
-        corsStrategy !== "none"
-      );
-    }
-
-    if (maxContentLength) {
-      const contentLength = request.headers.get("content-length");
-
-      if (!contentLength || parseInt(contentLength) > maxContentLength) {
-        return json({ error: "Request body too large" }, { status: 413 });
-      }
-    }
-
-    let parsedParams: any = undefined;
-    if (paramsSchema) {
-      const parsed = paramsSchema.safeParse(params);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Params Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedParams = parsed.data;
-    }
-
-    let parsedSearchParams: any = undefined;
-    if (searchParamsSchema) {
-      const searchParams = Object.fromEntries(new URL(request.url).searchParams);
-      const parsed = searchParamsSchema.safeParse(searchParams);
-      if (!parsed.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Query Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedSearchParams = parsed.data;
-    }
-
-    let parsedHeaders: any = undefined;
-    if (headersSchema) {
-      const rawHeaders = Object.fromEntries(request.headers);
-      const headers = headersSchema.safeParse(rawHeaders);
-      if (!headers.success) {
-        return wrapResponse(
-          request,
-          json(
-            { error: "Headers Error", details: fromZodError(headers.error).details },
-            { status: 400 }
-          ),
-          corsStrategy !== "none"
-        );
-      }
-      parsedHeaders = headers.data;
-    }
-
-    let parsedBody: any = undefined;
-    if (bodySchema) {
-      const rawBody = await request.text();
-      if (rawBody.length === 0) {
-        return wrapResponse(
-          request,
-          json({ error: "Request body is empty" }, { status: 400 }),
-          corsStrategy !== "none"
-        );
-      }
-
-      const rawParsedJson = safeJsonParse(rawBody);
-
-      if (!rawParsedJson) {
-        return wrapResponse(
-          request,
-          json({ error: "Invalid JSON" }, { status: 400 }),
-          corsStrategy !== "none"
-        );
-      }
-
-      const body = bodySchema.safeParse(rawParsedJson);
-      if (!body.success) {
-        return wrapResponse(
-          request,
-          json({ error: fromZodError(body.error).toString() }, { status: 400 }),
-          corsStrategy !== "none"
-        );
-      }
-      parsedBody = body.data;
-    }
-
-    if (authorization) {
-      const { action, resource, superScopes } = authorization;
-      const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
-
-      logger.debug("Checking authorization", {
-        action,
-        resource: $resource,
-        superScopes,
-        scopes: authenticationResult.scopes,
-      });
-
-      if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
-        return wrapResponse(
-          request,
-          json({ error: "Unauthorized" }, { status: 403 }),
-          corsStrategy !== "none"
-        );
-      }
-    }
-
     try {
+      const authenticationResult = await authenticateApiRequest(request, { allowJWT });
+
+      if (!authenticationResult) {
+        return wrapResponse(
+          request,
+          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      if (maxContentLength) {
+        const contentLength = request.headers.get("content-length");
+
+        if (!contentLength || parseInt(contentLength) > maxContentLength) {
+          return json({ error: "Request body too large" }, { status: 413 });
+        }
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const rawBody = await request.text();
+        if (rawBody.length === 0) {
+          return wrapResponse(
+            request,
+            json({ error: "Request body is empty" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const rawParsedJson = safeJsonParse(rawBody);
+
+        if (!rawParsedJson) {
+          return wrapResponse(
+            request,
+            json({ error: "Invalid JSON" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const body = bodySchema.safeParse(rawParsedJson);
+        if (!body.success) {
+          return wrapResponse(
+            request,
+            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+        parsedBody = body.data;
+      }
+
+      if (authorization) {
+        const { action, resource, superScopes } = authorization;
+        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
+
+        logger.debug("Checking authorization", {
+          action,
+          resource: $resource,
+          superScopes,
+          scopes: authenticationResult.scopes,
+        });
+
+        if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
+          return wrapResponse(
+            request,
+            json({ error: "Unauthorized" }, { status: 403 }),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,

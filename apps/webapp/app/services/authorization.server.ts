@@ -35,36 +35,45 @@ export type AuthorizationEntity = {
  * checkAuthorization(entity, "read", { tasks: ["task_5678"] }); // Returns true
  * ```
  */
+export type AuthorizationResult = { authorized: true } | { authorized: false; reason: string };
+
+/**
+ * Checks if the given entity is authorized to perform a specific action on a resource.
+ */
 export function checkAuthorization(
   entity: AuthorizationEntity,
   action: AuthorizationAction,
   resource: AuthorizationResources,
   superScopes?: string[]
-) {
+): AuthorizationResult {
   // "PRIVATE" is a secret key and has access to everything
   if (entity.type === "PRIVATE") {
-    return true;
+    return { authorized: true };
   }
 
   // "PUBLIC" is a deprecated key and has no access
   if (entity.type === "PUBLIC") {
-    return false;
+    return { authorized: false, reason: "PUBLIC type is deprecated and has no access" };
   }
 
   // If the entity has no permissions, deny access
   if (!entity.scopes || entity.scopes.length === 0) {
-    return false;
+    return {
+      authorized: false,
+      reason:
+        "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+    };
   }
 
   // If the resource object is empty, deny access
   if (Object.keys(resource).length === 0) {
-    return false;
+    return { authorized: false, reason: "Resource object is empty" };
   }
 
   // Check for any of the super scopes
   if (superScopes && superScopes.length > 0) {
     if (superScopes.some((permission) => entity.scopes?.includes(permission))) {
-      return true;
+      return { authorized: true };
     }
   }
 
@@ -94,10 +103,19 @@ export function checkAuthorization(
 
     // If any resource is not authorized, return false
     if (!resourceAuthorized) {
-      return false;
+      return {
+        authorized: false,
+        reason: `Public Access Token is missing required permissions. Permissions required for ${resourceValues
+          .map((v) => `'${action}:${resourceType}:${v}'`)
+          .join(", ")} but token has the following permissions: ${entity.scopes
+          .map((s) => `'${s}'`)
+          .join(
+            ", "
+          )}. See https://trigger.dev/docs/frontend/overview#authentication for more information.`,
+      };
     }
   }
 
   // All resources are authorized
-  return true;
+  return { authorized: true };
 }
