@@ -19,15 +19,41 @@ import {
   UseRealtimeRunWithStreamsInstance,
 } from "./useRealtime.js";
 
+/**
+ * Base interface for task trigger instances.
+ *
+ * @template TTask - The type of the task
+ */
 export interface TriggerInstance<TTask extends AnyTask> {
+  /** Function to submit the task with a payload */
   submit: (payload: TaskPayload<TTask>) => void;
+  /** Whether the task is currently being submitted */
   isLoading: boolean;
+  /** The handle returned after successful task submission */
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
+  /** Any error that occurred during submission */
   error?: Error;
 }
 
 export type UseTaskTriggerOptions = UseApiClientOptions;
 
+/**
+ * Hook to trigger a task and manage its initial execution state.
+ *
+ * @template TTask - The type of the task
+ * @param {TaskIdentifier<TTask>} id - The identifier of the task to trigger
+ * @param {UseTaskTriggerOptions} [options] - Configuration options for the task trigger
+ * @returns {TriggerInstance<TTask>} An object containing the submit function, loading state, handle, and any errors
+ *
+ * @example
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { submit, isLoading, handle, error } = useTaskTrigger<typeof myTask>('my-task-id');
+ *
+ * // Submit the task with payload
+ * submit({ foo: 'bar' });
+ * ```
+ */
 export function useTaskTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   options?: UseTaskTriggerOptions
@@ -74,8 +100,13 @@ export function useTaskTrigger<TTask extends AnyTask>(
   };
 }
 
+/**
+ * Configuration options for task triggers with realtime updates.
+ */
 export type UseRealtimeTaskTriggerOptions = UseTaskTriggerOptions & {
+  /** Whether the realtime subscription is enabled */
   enabled?: boolean;
+  /** Optional throttle time in milliseconds for stream updates */
   experimental_throttleInMs?: number;
 };
 
@@ -88,6 +119,28 @@ export type RealtimeTriggerInstanceWithStreams<
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
 };
 
+/**
+ * Hook to trigger a task and subscribe to its realtime updates including stream data.
+ *
+ * @template TTask - The type of the task
+ * @template TStreams - The type of the streams data
+ * @param {TaskIdentifier<TTask>} id - The identifier of the task to trigger
+ * @param {UseRealtimeTaskTriggerOptions} [options] - Configuration options for the task trigger and realtime updates
+ * @returns {RealtimeTriggerInstanceWithStreams<TTask, TStreams>} An object containing the submit function, loading state,
+ *          handle, run state, streams data, and error handling
+ *
+ * @example
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { submit, run, streams, error } = useRealtimeTaskTriggerWithStreams<
+ *   typeof myTask,
+ *   { output: string }
+ * >('my-task-id');
+ *
+ * // Submit and monitor the task with streams
+ * submit({ foo: 'bar' });
+ * ```
+ */
 export function useRealtimeTaskTriggerWithStreams<
   TTask extends AnyTask,
   TStreams extends Record<string, any> = Record<string, any>,
@@ -113,6 +166,28 @@ export type RealtimeTriggerInstance<TTask extends AnyTask> = UseRealtimeRunInsta
   isLoading: boolean;
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
 };
+
+/**
+ * Hook to trigger a task and subscribe to its realtime updates.
+ *
+ * @template TTask - The type of the task
+ * @param {TaskIdentifier<TTask>} id - The identifier of the task to trigger
+ * @param {UseRealtimeTaskTriggerOptions} [options] - Configuration options for the task trigger and realtime updates
+ * @returns {RealtimeTriggerInstance<TTask>} An object containing the submit function, loading state,
+ *          handle, run state, and error handling
+ *
+ * @example
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { submit, run, error, stop } = useRealtimeTaskTrigger<typeof myTask>('my-task-id');
+ *
+ * // Submit and monitor the task
+ * submit({ foo: 'bar' });
+ *
+ * // Stop monitoring when needed
+ * stop();
+ * ```
+ */
 
 export function useRealtimeTaskTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,

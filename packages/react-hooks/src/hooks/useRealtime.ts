@@ -24,11 +24,12 @@ export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
 };
 
 /**
- * hook to subscribe to realtime updates of a task run.
+ * Hook to subscribe to realtime updates of a task run.
  *
- * @template TTask - The type of the task.
- * @param {string} runId - The unique identifier of the run to subscribe to.
- * @returns {{ run: RealtimeRun<TTask> | undefined, error: Error | null }} An object containing the current state of the run and any error encountered.
+ * @template TTask - The type of the task
+ * @param {string} [runId] - The unique identifier of the run to subscribe to
+ * @param {UseRealtimeRunOptions} [options] - Configuration options for the subscription
+ * @returns {UseRealtimeRunInstance<TTask>} An object containing the current state of the run, error handling, and control methods
  *
  * @example
  * ```ts
@@ -36,6 +37,7 @@ export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
  * const { run, error } = useRealtimeRun<typeof myTask>('run-id-123');
  * ```
  */
+
 export function useRealtimeRun<TTask extends AnyTask>(
   runId?: string,
   options?: UseRealtimeRunOptions
@@ -133,6 +135,23 @@ export type UseRealtimeRunWithStreamsInstance<
   stop: () => void;
 };
 
+/**
+ * Hook to subscribe to realtime updates of a task run with associated data streams.
+ *
+ * @template TTask - The type of the task
+ * @template TStreams - The type of the streams data
+ * @param {string} [runId] - The unique identifier of the run to subscribe to
+ * @param {UseRealtimeRunOptions} [options] - Configuration options for the subscription
+ * @returns {UseRealtimeRunWithStreamsInstance<TTask, TStreams>} An object containing the current state of the run, streams data, and error handling
+ *
+ * @example
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { run, streams, error } = useRealtimeRunWithStreams<typeof myTask, {
+ *   output: string;
+ * }>('run-id-123');
+ * ```
+ */
 export function useRealtimeRunWithStreams<
   TTask extends AnyTask = AnyTask,
   TStreams extends Record<string, any> = Record<string, any>,
@@ -249,6 +268,22 @@ export type UseRealtimeRunsInstance<TTask extends AnyTask = AnyTask> = {
   stop: () => void;
 };
 
+/**
+ * Hook to subscribe to realtime updates of task runs filtered by tag(s).
+ *
+ * @template TTask - The type of the task
+ * @param {string | string[]} tag - The tag or array of tags to filter runs by
+ * @param {UseRealtimeRunOptions} [options] - Configuration options for the subscription
+ * @returns {UseRealtimeRunsInstance<TTask>} An object containing the current state of the runs and any error encountered
+ *
+ * @example
+ * ```ts
+ * import type { myTask } from './path/to/task';
+ * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>('my-tag');
+ * // Or with multiple tags
+ * const { runs, error } = useRealtimeRunsWithTag<typeof myTask>(['tag1', 'tag2']);
+ * ```
+ */
 export function useRealtimeRunsWithTag<TTask extends AnyTask>(
   tag: string | string[],
   options?: UseRealtimeRunOptions
@@ -321,19 +356,20 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 }
 
 /**
- * hook to subscribe to realtime updates of a batch of task runs.
+ * Hook to subscribe to realtime updates of a batch of task runs.
  *
- * @template TTask - The type of the task.
- * @param {string} batchId - The unique identifier of the batch to subscribe to.
- * @returns {{ runs: RealtimeRun<TTask>[], error: Error | null }} An object containing the current state of the runs and any error encountered.
+ * @template TTask - The type of the task
+ * @param {string} batchId - The unique identifier of the batch to subscribe to
+ * @param {UseRealtimeRunOptions} [options] - Configuration options for the subscription
+ * @returns {UseRealtimeRunsInstance<TTask>} An object containing the current state of the runs, error handling, and control methods
  *
  * @example
- *
  * ```ts
  * import type { myTask } from './path/to/task';
  * const { runs, error } = useRealtimeBatch<typeof myTask>('batch-id-123');
  * ```
  */
+
 export function useRealtimeBatch<TTask extends AnyTask>(
   batchId: string,
   options?: UseRealtimeRunOptions
