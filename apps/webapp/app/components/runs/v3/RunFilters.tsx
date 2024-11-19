@@ -105,6 +105,35 @@ type RunFiltersProps = {
   hasFilters: boolean;
 };
 
+export function useRunFilters() {
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+
+  const filters = {
+    cursor: searchParams.get("cursor") ?? undefined,
+    direction: searchParams.get("direction") ?? undefined,
+    statuses: searchParams.getAll("statuses") as TaskRunStatus[],
+    environments: searchParams.getAll("environments"),
+    tasks: searchParams.getAll("tasks"),
+    period: searchParams.get("period") ?? undefined,
+    bulkId: searchParams.get("bulkId") ?? undefined,
+    tags: searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    versions: searchParams.getAll("versions"),
+    from: searchParams.get("from") ? parseInt(searchParams.get("from")!) : undefined,
+    to: searchParams.get("to") ? parseInt(searchParams.get("to")!) : undefined,
+  };
+
+  const hasFilters =
+    searchParams.has("statuses") ||
+    searchParams.has("environments") ||
+    searchParams.has("tasks") ||
+    searchParams.has("period") ||
+    searchParams.has("bulkId") ||
+    searchParams.has("tags");
+
+  return { filters, hasFilters };
+}
+
 export function RunsFilters(props: RunFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);

@@ -1,12 +1,12 @@
+import { useLiveQuery } from "@electric-sql/pglite-react";
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
+import type { TaskRun } from "@trigger.dev/database";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListChecks, ListX } from "lucide-react";
-import { Suspense, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { useState } from "react";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
@@ -30,29 +30,16 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { useRunFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
+import { MatchedProject, useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
-import { findProjectBySlug } from "~/models/project.server";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import {
-  docsPath,
-  ProjectParamSchema,
-  v3ProjectPath,
-  v3RunsPath,
-  v3TestPath,
-} from "~/utils/pathBuilder";
-import { ListPagination } from "../../components/ListPagination";
-import { useEffect } from "react";
-import { PGliteWorker } from "@electric-sql/pglite/worker";
 import { PgProvider } from "~/pglite/provider";
-import { useLiveQuery } from "@electric-sql/pglite-react";
-import type { TaskRun } from "@trigger.dev/database";
+import { cn } from "~/utils/cn";
+import { docsPath, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
+import { isCancellableRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 
 export default function Page() {
   const project = useProject();
@@ -64,22 +51,62 @@ export default function Page() {
   );
 }
 
+function transformRuns({
+  userId,
+  project,
+  runs,
+}: {
+  userId: string;
+  project: MatchedProject;
+  runs: TaskRun[];
+}) {
+  return runs.flatMap((run) => {
+    const hasFinished = isFinalRunStatus(run.status);
+    const environment = project.environments.find((env) => env.id === run.runtimeEnvironmentId);
+    if (!environment) return [];
+
+    return [
+      {
+        ...run,
+        idempotencyKey: run.idempotencyKey ?? undefined,
+        hasFinished,
+        createdAt: run.createdAt.toISOString(),
+        updatedAt: run.updatedAt.toISOString(),
+        startedAt: run.startedAt?.toISOString(),
+        finishedAt: hasFinished ? run.updatedAt.toISOString() : undefined,
+        delayUntil: run.delayUntil?.toISOString(),
+        expiredAt: run.expiredAt?.toISOString(),
+        isReplayable: true,
+        isCancellable: isCancellableRunStatus(run.status),
+        environment: {
+          id: environment.id,
+          type: environment.type,
+          slug: environment.slug,
+          userName: userId === environment.userId ? undefined : environment.userName,
+        },
+        version: "NEED TO FILL",
+        tags: run.runTags ? run.runTags : [],
+        ttl: run.ttl ?? undefined,
+      },
+    ];
+  });
+}
+
 function Content() {
+  const user = useUser();
+  const project = useProject();
+  const { filters, hasFilters } = useRunFilters();
   const items = useLiveQuery<TaskRun>(`SELECT * FROM "TaskRun";`);
 
   console.log(items);
 
-  if (!items) return <div>Loading...</div>;
-
-  return (
-    <div className="h-max">
-      {items.rows.map((row) => (
-        <div key={row.id}>
-          {row.id} - {row.taskIdentifier} - {row.status}
-        </div>
-      ))}
-    </div>
-  );
+  const runs = items
+    ? transformRuns({
+        userId: user.id,
+        project,
+        runs: items.rows,
+      })
+    : undefined;
 
   return (
     <>
@@ -107,57 +134,40 @@ function Content() {
                 selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
               )}
             >
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center py-2">
-                    <div className="mx-auto flex items-center gap-2">
-                      <Spinner />
-                      <Paragraph variant="small">Loading runs</Paragraph>
-                    </div>
+              {!runs ? (
+                <div className="flex items-center justify-center py-2">
+                  <div className="mx-auto flex items-center gap-2">
+                    <Spinner />
+                    <Paragraph variant="small">Loading runs</Paragraph>
                   </div>
-                }
-              >
-                {/* <TypedAwait resolve={data}>
-              {(list) => (
-                <>
-                  {list.runs.length === 0 && !list.hasFilters ? (
-                    list.possibleTasks.length === 0 ? (
-                      <CreateFirstTaskInstructions />
-                    ) : (
-                      <RunTaskInstructions />
-                    )
-                  ) : (
-                    <div
-                      className={cn(
-                        "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-x-2 p-2">
-                        <RunsFilters
+                </div>
+              ) : runs.length === 0 && !hasFilters ? (
+                <CreateFirstTaskInstructions />
+              ) : (
+                <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
+                  <div className="flex items-start justify-between gap-x-2 p-2">
+                    {/* <RunsFilters
                           possibleEnvironments={project.environments}
                           possibleTasks={list.possibleTasks}
                           bulkActions={list.bulkActions}
                           hasFilters={list.hasFilters}
-                        />
-                        <div className="flex items-center justify-end gap-x-2">
-                          <ListPagination list={list} />
-                        </div>
-                      </div>
-
-                      <TaskRunsTable
-                        total={list.runs.length}
-                        hasFilters={list.hasFilters}
-                        filters={list.filters}
-                        runs={list.runs}
-                        isLoading={isLoading}
-                        allowSelection
-                      />
+                        /> */}
+                    <div className="flex items-center justify-end gap-x-2">
+                      {/* <ListPagination list={list} /> */}
                     </div>
-                  )}
-                </>
+                  </div>
+
+                  <TaskRunsTable
+                    total={runs.length}
+                    hasFilters={true}
+                    filters={filters}
+                    runs={runs}
+                    isLoading={false}
+                    allowSelection
+                  />
+                </div>
               )}
-            </TypedAwait> */}
-              </Suspense>
+
               <BulkActionBar />
             </div>
           )}
