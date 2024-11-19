@@ -24,7 +24,9 @@ export type TriggerForPath = Pick<TriggerSource, "id">;
 export type EventForPath = Pick<EventRecord, "id">;
 export type WebhookForPath = Pick<Webhook, "id">;
 export type HttpEndpointForPath = Pick<TriggerHttpEndpoint, "key">;
-export type TaskForPath = Pick<BackgroundWorkerTask, "friendlyId">;
+export type TaskForPath = {
+  taskIdentifier: string;
+};
 export type v3RunForPath = Pick<TaskRun, "friendlyId">;
 export type v3SpanForPath = Pick<TaskRun, "spanId">;
 export type DeploymentForPath = Pick<WorkerDeployment, "shortCode">;
@@ -362,9 +364,9 @@ export function v3TestTaskPath(
   task: TaskForPath,
   environmentSlug: string
 ) {
-  return `${v3TestPath(organization, project)}/tasks/${
-    task.friendlyId
-  }?environment=${environmentSlug}`;
+  return `${v3TestPath(organization, project)}/tasks/${encodeURIComponent(
+    task.taskIdentifier
+  )}?environment=${environmentSlug}`;
 }
 
 export function v3RunsPath(

@@ -1,5 +1,16 @@
 # @trigger.dev/build
 
+## 3.2.0
+
+### Minor Changes
+
+- Add teamId option to vercelSyncEnvVars ([#1463](https://github.com/triggerdotdev/trigger.dev/pull/1463))
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.2.0`
+
 ## 3.1.2
 
 ### Patch Changes

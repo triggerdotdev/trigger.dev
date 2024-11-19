@@ -113,10 +113,10 @@ export class TestPresenter extends BasePresenter {
           triggerSource: TaskTriggerSource;
         }[]
       >`WITH workers AS (
-          SELECT 
+          SELECT
                 bw.*,
                 ROW_NUMBER() OVER(ORDER BY string_to_array(bw.version, '.')::int[] DESC) AS rn
-          FROM 
+          FROM
                 ${sqlDatabaseSchema}."BackgroundWorker" bw
           WHERE "runtimeEnvironmentId" = ${envId}
         ),

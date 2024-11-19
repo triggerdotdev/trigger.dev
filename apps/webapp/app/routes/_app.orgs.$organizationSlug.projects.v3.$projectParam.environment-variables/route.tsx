@@ -8,6 +8,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
@@ -28,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -184,33 +186,33 @@ export default function Page() {
           <LinkButton
             LeadingIcon={BookOpenIcon}
             to={docsPath("v3/deploy-environment-variables")}
-            variant="minimal/small"
+            variant="docs/small"
           >
             Environment variables docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <div className={cn("flex h-full flex-col gap-3")}>
-          <div className="flex items-center justify-end gap-2">
-            {environmentVariables.length > 0 && (
+      <PageBody scrollable={false}>
+        <div className={cn("flex h-full flex-col")}>
+          {environmentVariables.length > 0 && (
+            <div className="flex items-center justify-end gap-2 px-2 py-2">
               <Switch
                 variant="small"
                 label="Reveal values"
                 checked={revealAll}
                 onCheckedChange={(e) => setRevealAll(e.valueOf())}
               />
-            )}
-            <LinkButton
-              to={v3NewEnvironmentVariablesPath(organization, project)}
-              variant="primary/small"
-              LeadingIcon={PlusIcon}
-              shortcut={{ key: "n" }}
-            >
-              Add new
-            </LinkButton>
-          </div>
-          <Table>
+              <LinkButton
+                to={v3NewEnvironmentVariablesPath(organization, project)}
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                shortcut={{ key: "n" }}
+              >
+                Add new
+              </LinkButton>
+            </div>
+          )}
+          <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Key</TableHeaderCell>
@@ -239,26 +241,39 @@ export default function Page() {
                             className="-ml-2"
                             secure={!revealAll}
                             value={value}
-                            variant={"tertiary/small"}
+                            variant={"secondary/small"}
                           />
                         </TableCell>
                       );
                     })}
-                    <TableCellMenu isSticky>
-                      <EditEnvironmentVariablePanel
-                        environments={environments}
-                        variable={variable}
-                        revealAll={revealAll}
-                      />
-                      <DeleteEnvironmentVariableButton variable={variable} />
-                    </TableCellMenu>
+                    <TableCellMenu
+                      isSticky
+                      popoverContent={
+                        <>
+                          <EditEnvironmentVariablePanel
+                            environments={environments}
+                            variable={variable}
+                            revealAll={revealAll}
+                          />
+                          <DeleteEnvironmentVariableButton variable={variable} />
+                        </>
+                      }
+                    ></TableCellMenu>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
                   <TableCell colSpan={environments.length + 2}>
-                    <div className="flex items-center justify-center">
-                      <Paragraph>No environment variables have been set</Paragraph>
+                    <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                      <Header2>You haven't set any environment variables yet.</Header2>
+                      <LinkButton
+                        to={v3NewEnvironmentVariablesPath(organization, project)}
+                        variant="primary/medium"
+                        LeadingIcon={PlusIcon}
+                        shortcut={{ key: "n" }}
+                      >
+                        Add new
+                      </LinkButton>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -266,22 +281,25 @@ export default function Page() {
             </TableBody>
           </Table>
 
-          <div className="flex gap-3">
-            <InfoPanel icon={InformationCircleIcon} panelClassName="max-w-[22rem]">
+          <div className="z-10 -mt-px flex w-full flex-wrap justify-between border-t border-grid-dimmed">
+            <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
               Dev environment variables specified here will be overridden by ones in your .env file
               when running locally.
             </InfoPanel>
             {!hasStaging && (
-              <InfoPanel
-                icon={LockOpenIcon}
-                variant="upgrade"
-                title="Unlock a Staging environment"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
-                iconClassName="text-indigo-500"
-              >
-                Upgrade your plan to add a Staging environment.
-              </InfoPanel>
+              <div className="flex items-center gap-2 pl-3 pr-2">
+                <LockOpenIcon className="size-5 min-w-5 text-indigo-500" />
+                <Paragraph variant="small" className="text-text-bright">
+                  Upgrade to add a Staging environment
+                </Paragraph>
+                <LinkButton
+                  to={v3BillingPath(organization)}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                >
+                  Upgrade
+                </LinkButton>
+              </div>
             )}
           </div>
         </div>
@@ -328,14 +346,7 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={PencilSquareIcon}
-          leadingIconClassName="text-charcoal-500"
-          className="text-xs"
-          fullWidth
-          textAlignLeft
-        >
+        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
           Edit
         </Button>
       </DialogTrigger>
@@ -457,9 +468,11 @@ function DeleteEnvironmentVariableButton({
         value="delete"
         type="submit"
         variant="small-menu-item"
+        fullWidth
+        textAlignLeft
         LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500"
-        className="text-xs"
+        leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
+        className="transition-colors group-hover/button:bg-error"
       >
         {isLoading ? "Deleting" : "Delete"}
       </Button>

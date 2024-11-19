@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.2.0
+
+### Patch Changes
+
+- fix: unintended project initialization at absolute path `/trigger` during project initialization ([#1412](https://github.com/triggerdotdev/trigger.dev/pull/1412))
+- Updated dependencies:
+  - `@trigger.dev/build@3.2.0`
+  - `@trigger.dev/core@3.2.0`
+
 ## 3.1.2
 
 ### Patch Changes

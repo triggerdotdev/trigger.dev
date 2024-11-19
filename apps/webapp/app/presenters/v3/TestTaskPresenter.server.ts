@@ -1,13 +1,15 @@
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
+import { BackgroundWorkerTask, RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { getUsername } from "~/utils/username";
+import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 
 type TestTaskOptions = {
   userId: string;
   projectSlug: string;
-  taskFriendlyId: string;
+  environmentSlug: string;
+  taskIdentifier: string;
 };
 
 type Task = {
@@ -35,6 +37,15 @@ export type TestTask =
       task: Task;
       possibleTimezones: string[];
       runs: ScheduledRun[];
+    };
+
+export type TestTaskResult =
+  | {
+      foundTask: true;
+      task: TestTask;
+    }
+  | {
+      foundTask: false;
     };
 
 type RawRun = {
@@ -71,55 +82,79 @@ export class TestTaskPresenter {
     this.#prismaClient = prismaClient;
   }
 
-  public async call({ userId, projectSlug, taskFriendlyId }: TestTaskOptions): Promise<TestTask> {
-    const task = await this.#prismaClient.backgroundWorkerTask.findFirstOrThrow({
+  public async call({
+    userId,
+    projectSlug,
+    environmentSlug,
+    taskIdentifier,
+  }: TestTaskOptions): Promise<TestTaskResult> {
+    const environment = await this.#prismaClient.runtimeEnvironment.findFirstOrThrow({
+      where: {
+        slug: environmentSlug,
+        project: {
+          slug: projectSlug,
+        },
+        orgMember: environmentSlug === "dev" ? { userId } : undefined,
+      },
       select: {
         id: true,
-        filePath: true,
-        exportName: true,
-        slug: true,
-        triggerSource: true,
-        runtimeEnvironment: {
+        type: true,
+        orgMember: {
           select: {
-            id: true,
-            type: true,
-            orgMember: {
+            user: {
               select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
+                id: true,
+                name: true,
+                displayName: true,
               },
             },
           },
         },
       },
-      where: {
-        friendlyId: taskFriendlyId,
-      },
     });
+
+    let task: BackgroundWorkerTask | null = null;
+    if (environment.type !== "DEVELOPMENT") {
+      const deployment = await findCurrentWorkerDeployment(environment.id);
+      if (deployment) {
+        task = deployment.worker?.tasks.find((t) => t.slug === taskIdentifier) ?? null;
+      }
+    } else {
+      task = await this.#prismaClient.backgroundWorkerTask.findFirst({
+        where: {
+          slug: taskIdentifier,
+          runtimeEnvironmentId: environment.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    }
+
+    if (!task) {
+      return {
+        foundTask: false,
+      };
+    }
 
     const latestRuns = await this.#prismaClient.$queryRaw<RawRun[]>`
     WITH taskruns AS (
-      SELECT 
-          tr.* 
-      FROM 
+      SELECT
+          tr.*
+      FROM
           ${sqlDatabaseSchema}."TaskRun" as tr
       JOIN
           ${sqlDatabaseSchema}."BackgroundWorkerTask" as bwt
       ON
           tr."taskIdentifier" = bwt.slug
       WHERE
-          bwt."friendlyId" = ${taskFriendlyId} AND
-          tr."runtimeEnvironmentId" = ${task.runtimeEnvironment.id}
-      ORDER BY 
+          bwt."friendlyId" = ${task.friendlyId} AND
+          tr."runtimeEnvironmentId" = ${environment.id}
+      ORDER BY
           tr."createdAt" DESC
       LIMIT 5
     )
-    SELECT 
+    SELECT
         taskr.id,
         taskr.number,
         taskr."friendlyId",
@@ -131,7 +166,7 @@ export class TestTaskPresenter {
         taskr."seedMetadata",
         taskr."seedMetadataType",
         taskr."runtimeEnvironmentId"
-    FROM 
+    FROM
         taskruns AS taskr
     WHERE
         taskr."payloadType" = 'application/json' OR taskr."payloadType" = 'application/super+json'
@@ -143,58 +178,64 @@ export class TestTaskPresenter {
       taskIdentifier: task.slug,
       filePath: task.filePath,
       exportName: task.exportName,
-      friendlyId: taskFriendlyId,
+      friendlyId: task.friendlyId,
       environment: {
-        id: task.runtimeEnvironment.id,
-        type: task.runtimeEnvironment.type,
-        userId: task.runtimeEnvironment.orgMember?.user.id,
-        userName: getUsername(task.runtimeEnvironment.orgMember?.user),
+        id: environment.id,
+        type: environment.type,
+        userId: environment.orgMember?.user.id,
+        userName: getUsername(environment.orgMember?.user),
       },
     };
 
     switch (task.triggerSource) {
       case "STANDARD":
         return {
-          triggerSource: "STANDARD",
-          task: taskWithEnvironment,
-          runs: await Promise.all(
-            latestRuns.map(async (r) => {
-              const number = Number(r.number);
+          foundTask: true,
+          task: {
+            triggerSource: "STANDARD",
+            task: taskWithEnvironment,
+            runs: await Promise.all(
+              latestRuns.map(async (r) => {
+                const number = Number(r.number);
 
-              return {
-                ...r,
-                number,
-                payload: await prettyPrintPacket(r.payload, r.payloadType),
-                metadata: r.seedMetadata
-                  ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
-                  : undefined,
-              };
-            })
-          ),
+                return {
+                  ...r,
+                  number,
+                  payload: await prettyPrintPacket(r.payload, r.payloadType),
+                  metadata: r.seedMetadata
+                    ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
+                    : undefined,
+                };
+              })
+            ),
+          },
         };
       case "SCHEDULED":
         const possibleTimezones = getTimezones();
         return {
-          triggerSource: "SCHEDULED",
-          task: taskWithEnvironment,
-          possibleTimezones,
-          runs: (
-            await Promise.all(
-              latestRuns.map(async (r) => {
-                const number = Number(r.number);
+          foundTask: true,
+          task: {
+            triggerSource: "SCHEDULED",
+            task: taskWithEnvironment,
+            possibleTimezones,
+            runs: (
+              await Promise.all(
+                latestRuns.map(async (r) => {
+                  const number = Number(r.number);
 
-                const payload = await getScheduleTaskRunPayload(r);
+                  const payload = await getScheduleTaskRunPayload(r);
 
-                if (payload.success) {
-                  return {
-                    ...r,
-                    number,
-                    payload: payload.data,
-                  };
-                }
-              })
-            )
-          ).filter(Boolean),
+                  if (payload.success) {
+                    return {
+                      ...r,
+                      number,
+                      payload: payload.data,
+                    };
+                  }
+                })
+              )
+            ).filter(Boolean),
+          },
         };
     }
   }

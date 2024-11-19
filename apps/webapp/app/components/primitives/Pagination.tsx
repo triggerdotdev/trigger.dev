@@ -20,14 +20,14 @@ export function PaginationControls({
   }
 
   return (
-    <nav className="flex items-center gap-1" aria-label="Pagination">
+    <nav className="flex items-center gap-0.5" aria-label="Pagination">
       <LinkDisabled
         to={pageUrl(location, currentPage - 1)}
         className={currentPage > 1 ? "group" : ""}
         disabled={currentPage === 1}
         disabledClassName="opacity-30 cursor-default"
       >
-        <ButtonContent variant="minimal/medium" LeadingIcon={ChevronLeftIcon}>
+        <ButtonContent variant="minimal/small" LeadingIcon={ChevronLeftIcon}>
           Previous
         </ButtonContent>
       </LinkDisabled>
@@ -44,7 +44,7 @@ export function PaginationControls({
         disabled={currentPage === totalPages}
         disabledClassName="opacity-30 cursor-default"
       >
-        <ButtonContent variant="minimal/medium" TrailingIcon={ChevronRightIcon}>
+        <ButtonContent variant="minimal/small" TrailingIcon={ChevronRightIcon}>
           Next
         </ButtonContent>
       </LinkDisabled>
@@ -61,9 +61,9 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 }
 
 const baseClass =
-  "flex items-center justify-center border border-transparent h-8 w-8 text-xs font-medium transition text-text-dimmed rounded-sm";
+  "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm";
 const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
-const selectedClass = "border-text-dimmed text-text-bright hover:bg-tertiary";
+const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-charcoal-600/50";
 
 function PageLinkComponent({
   page,

@@ -21,7 +21,7 @@ import {
 } from "~/components/primitives/Dialog";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   SelectedItemsProvider,
@@ -40,7 +40,13 @@ import { findProjectBySlug } from "~/models/project.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  ProjectParamSchema,
+  v3ProjectPath,
+  v3RunsPath,
+  v3TestPath,
+} from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -111,6 +117,15 @@ export default function Page() {
     <>
       <NavBar>
         <PageTitle title="Runs" />
+        <PageAccessories>
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/runs-and-attempts")}
+          >
+            Runs docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <SelectedItemsProvider
@@ -121,61 +136,60 @@ export default function Page() {
             <div
               className={cn(
                 "grid h-full max-h-full overflow-hidden",
-                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_3.5rem]"
+                selectedItems.size === 0 ? "grid-rows-1" : "grid-rows-[1fr_auto]"
               )}
             >
-              <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center py-2">
-                      <div className="mx-auto flex items-center gap-2">
-                        <Spinner />
-                        <Paragraph variant="small">Loading runs</Paragraph>
-                      </div>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-2">
+                    <div className="mx-auto flex items-center gap-2">
+                      <Spinner />
+                      <Paragraph variant="small">Loading runs</Paragraph>
                     </div>
-                  }
-                >
-                  <TypedAwait resolve={data}>
-                    {(list) => (
-                      <>
-                        {list.runs.length === 0 && !list.hasFilters ? (
-                          list.possibleTasks.length === 0 ? (
-                            <CreateFirstTaskInstructions />
-                          ) : (
-                            <RunTaskInstructions />
-                          )
+                  </div>
+                }
+              >
+                <TypedAwait resolve={data}>
+                  {(list) => (
+                    <>
+                      {list.runs.length === 0 && !list.hasFilters ? (
+                        list.possibleTasks.length === 0 ? (
+                          <CreateFirstTaskInstructions />
                         ) : (
-                          <div className={cn("grid h-fit grid-cols-1 gap-4")}>
-                            <div>
-                              <div className="mb-2 flex items-start justify-between gap-x-2">
-                                <RunsFilters
-                                  possibleEnvironments={project.environments}
-                                  possibleTasks={list.possibleTasks}
-                                  bulkActions={list.bulkActions}
-                                  hasFilters={list.hasFilters}
-                                />
-                                <div className="flex items-center justify-end gap-x-2">
-                                  <ListPagination list={list} />
-                                </div>
-                              </div>
-
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                isLoading={isLoading}
-                                allowSelection
-                              />
-                              <ListPagination list={list} className="mt-2 justify-end" />
+                          <RunTaskInstructions />
+                        )
+                      ) : (
+                        <div
+                          className={cn(
+                            "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-x-2 p-2">
+                            <RunsFilters
+                              possibleEnvironments={project.environments}
+                              possibleTasks={list.possibleTasks}
+                              bulkActions={list.bulkActions}
+                              hasFilters={list.hasFilters}
+                            />
+                            <div className="flex items-center justify-end gap-x-2">
+                              <ListPagination list={list} />
                             </div>
                           </div>
-                        )}
-                      </>
-                    )}
-                  </TypedAwait>
-                </Suspense>
-              </div>
+
+                          <TaskRunsTable
+                            total={list.runs.length}
+                            hasFilters={list.hasFilters}
+                            filters={list.filters}
+                            runs={list.runs}
+                            isLoading={isLoading}
+                            allowSelection
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </TypedAwait>
+              </Suspense>
               <BulkActionBar />
             </div>
           )}
@@ -198,7 +212,7 @@ function BulkActionBar() {
           initial={{ translateY: "100%" }}
           animate={{ translateY: 0 }}
           exit={{ translateY: "100%" }}
-          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright pl-4 pr-3"
+          className="flex items-center justify-between gap-3 border-t border-grid-bright bg-background-bright py-3 pl-4 pr-3"
         >
           <div className="flex items-center gap-1.5 text-sm text-text-bright">
             <ListChecks className="mr-1 size-7 text-indigo-400" />

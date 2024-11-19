@@ -119,7 +119,14 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["introduction", "quick-start", "how-it-works", "upgrading-beta", "limits"]
+      "pages": [
+        "introduction",
+        "quick-start",
+        "video-walkthrough",
+        "how-it-works",
+        "upgrading-beta",
+        "limits"
+      ]
     },
     {
       "group": "Fundamentals",
@@ -330,8 +337,10 @@
         "guides/examples/dall-e3-generate-image",
         "guides/examples/deepgram-transcribe-audio",
         "guides/examples/fal-ai-image-to-cartoon",
+        "guides/examples/fal-ai-realtime",
         "guides/examples/ffmpeg-video-processing",
         "guides/examples/firecrawl-url-crawl",
+        "guides/examples/libreoffice-pdf-conversion",
         "guides/examples/open-ai-with-retrying",
         "guides/examples/pdf-to-image",
         "guides/examples/puppeteer",

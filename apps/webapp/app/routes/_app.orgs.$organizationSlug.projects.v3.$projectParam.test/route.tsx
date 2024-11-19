@@ -1,3 +1,4 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Link, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -8,9 +9,11 @@ import {
   environmentTitle,
 } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
@@ -42,7 +45,7 @@ import {
 } from "~/presenters/v3/TestPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 
 export const TestSearchParams = z.object({
   environment: z.string().optional(),
@@ -75,18 +78,23 @@ export default function Page() {
   const navigation = useNavigation();
 
   const location = useLocation();
-  const locationSearchParams = new URLSearchParams(location.search);
-  const navigationSearchParams = new URLSearchParams(navigation.location?.search);
+  const currentEnvironment = new URLSearchParams(location.search).get("environment");
+  const pendingEnvironment = new URLSearchParams(navigation.location?.search).get("environment");
 
   const isLoadingTasks =
     navigation.state === "loading" &&
     navigation.location.pathname === location.pathname &&
-    navigationSearchParams.get("environment") !== locationSearchParams.get("environment");
+    currentEnvironment !== pendingEnvironment;
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Test" />
+        <PageAccessories>
+          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/run-tests")}>
+            Test docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full max-h-full grid-cols-1")}>
@@ -106,10 +114,19 @@ export default function Page() {
                             "flex h-8 flex-1 items-center justify-center rounded-sm border text-xs uppercase tracking-wider",
                             isSelected
                               ? cn(environmentBorderClassName(env), environmentTextClassName(env))
-                              : "border-grid-bright text-text-dimmed"
+                              : "border-grid-bright text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
                           )}
                           key={env.id}
-                          to={v3TestPath(organization, project, env.slug)}
+                          to={
+                            taskParam
+                              ? v3TestTaskPath(
+                                  organization,
+                                  project,
+                                  { taskIdentifier: taskParam },
+                                  env.slug
+                                )
+                              : v3TestPath(organization, project, env.slug)
+                          }
                         >
                           <span>{environmentTitle(env)}</span>
                         </Link>
@@ -122,8 +139,8 @@ export default function Page() {
                     <Spinner />
                   </div>
                 ) : hasSelectedEnvironment ? (
-                  <div className="grid grid-rows-[2rem_1fr] overflow-hidden">
-                    <div className="mx-3 flex items-end">
+                  <div className="grid grid-rows-[auto_1fr] overflow-hidden">
+                    <div className="flex items-end px-3 pt-2">
                       <Header2>Select a task</Header2>
                     </div>
                     {!rest.tasks?.length ? (
@@ -132,6 +149,7 @@ export default function Page() {
                       <TaskSelector
                         tasks={rest.tasks}
                         environmentSlug={rest.selectedEnvironment.slug}
+                        activeTaskIdentifier={taskParam}
                       />
                     )}
                   </div>
@@ -154,14 +172,24 @@ export default function Page() {
 function TaskSelector({
   tasks,
   environmentSlug,
+  activeTaskIdentifier,
 }: {
   tasks: TaskListItem[];
   environmentSlug: string;
+  activeTaskIdentifier?: string;
 }) {
   const { filterText, setFilterText, filteredItems } = useFilterTasks<TaskListItem>({ tasks });
+  const hasTaskInEnvironment = activeTaskIdentifier
+    ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)
+    : undefined;
 
   return (
-    <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div
+      className={cn(
+        "grid max-h-full  overflow-hidden",
+        hasTaskInEnvironment === false ? "grid-rows-[auto_auto_1fr]" : "grid-rows-[auto_1fr]"
+      )}
+    >
       <div className="p-2">
         <Input
           placeholder="Search tasks"
@@ -173,13 +201,19 @@ function TaskSelector({
           onChange={(e) => setFilterText(e.target.value)}
         />
       </div>
+      {hasTaskInEnvironment === false && (
+        <div className="px-2 pb-2">
+          <Callout variant="warning">
+            There is no task {activeTaskIdentifier} in the selected environment.
+          </Callout>
+        </div>
+      )}
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHeaderCell className="px-2">
-              <span className="sr-only">Go to test task</span>
+            <TableHeaderCell className="pl-3" colSpan={2}>
+              Task
             </TableHeaderCell>
-            <TableHeaderCell className="px-2">Task</TableHeaderCell>
             <TableHeaderCell className="px-2">File path</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -204,9 +238,9 @@ function TaskSelector({
 function NoTaskInstructions({ environment }: { environment?: SelectedEnvironment }) {
   return (
     <div className="px-3 py-3">
-      <Paragraph spacing variant="small">
+      <Callout variant="info">
         You have no tasks {environment ? `in ${environmentTitle(environment)}` : ""}.
-      </Paragraph>
+      </Callout>
     </div>
   );
 }
@@ -217,23 +251,29 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
 
   const path = v3TestTaskPath(organization, project, task, environmentSlug);
   const { isActive, isPending } = useLinkStatus(path);
+
   return (
     <TableRow
       key={task.taskIdentifier}
-      className={cn(
-        (isActive || isPending) &&
-          "z-20 rounded-sm outline outline-1 outline-offset-[-1px] outline-secondary"
-      )}
+      className={cn((isActive || isPending) && "bg-indigo-500/10")}
     >
-      <TableCell to={path} actionClassName="pl-2.5 pr-1 py-1">
+      <TableCell
+        to={path}
+        actionClassName="pl-2.5 pr-2 py-1"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         <RadioButtonCircle checked={isActive || isPending} />
       </TableCell>
-      <TableCell to={path} actionClassName="pl-1 pr-2 py-1">
+      <TableCell
+        to={path}
+        actionClassName="pl-1 pr-2 py-1.5"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         <div className="flex flex-col gap-0.5">
           <TaskFunctionName
             variant="extra-small"
             functionName={task.exportName}
-            className="-ml-1 inline-flex"
+            className="inline-flex w-fit"
           />
           <div className="flex items-start gap-1">
             <TaskTriggerSourceIcon source={task.triggerSource} className="size-3.5" />
@@ -244,7 +284,11 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
         </div>
       </TableCell>
 
-      <TableCell to={path} actionClassName="px-2 py-1">
+      <TableCell
+        to={path}
+        actionClassName="px-2 py-1"
+        className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
+      >
         {task.filePath}
       </TableCell>
     </TableRow>

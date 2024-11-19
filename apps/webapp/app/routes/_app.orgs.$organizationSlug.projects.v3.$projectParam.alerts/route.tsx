@@ -37,6 +37,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import {
+  SimpleTooltip,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -163,16 +164,21 @@ export default function Page() {
           <LinkButton
             LeadingIcon={BookOpenIcon}
             to={docsPath("v3/troubleshooting-alerts")}
-            variant="minimal/small"
+            variant="docs/small"
           >
             Alerts docs
           </LinkButton>
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <div className={cn("flex h-full flex-col gap-3")}>
+      <PageBody scrollable={false}>
+        <div
+          className={cn(
+            "grid max-h-full min-h-full",
+            alertChannels.length === 0 ? "grid-rows-[1fr_auto]" : "grid-rows-[auto_1fr_auto]"
+          )}
+        >
           {alertChannels.length > 0 && !requiresUpgrade && (
-            <div className="flex items-end justify-between">
+            <div className="flex h-fit items-end justify-between p-2 pl-3">
               <Header2 className="">Project alerts</Header2>
               <LinkButton
                 to={v3NewProjectAlertPath(organization, project)}
@@ -184,7 +190,7 @@ export default function Page() {
               </LinkButton>
             </div>
           )}
-          <Table>
+          <Table containerClassName={cn(alertChannels.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
@@ -225,20 +231,26 @@ export default function Page() {
                         disabledIcon={BellSlashIcon}
                       />
                     </TableCell>
-                    <TableCellMenu isSticky>
-                      {alertChannel.enabled ? (
-                        <DisableAlertChannelButton id={alertChannel.id} />
-                      ) : (
-                        <EnableAlertChannelButton id={alertChannel.id} />
-                      )}
-
+                    <TableCellMenu
+                      isSticky
+                      popoverContent={
+                        alertChannel.enabled ? (
+                          <DisableAlertChannelButton id={alertChannel.id} />
+                        ) : (
+                          <EnableAlertChannelButton id={alertChannel.id} />
+                        )
+                      }
+                      className={
+                        alertChannel.enabled ? "" : "group-hover/table-row:bg-charcoal-800/50"
+                      }
+                    >
                       <DeleteAlertChannelButton id={alertChannel.id} />
                     </TableCellMenu>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={6}>
                     <div className="flex flex-col items-center justify-center py-6">
                       <Header2 spacing className="text-text-bright">
                         You haven't created any project alerts yet
@@ -261,40 +273,55 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-          <div className="flex items-stretch gap-3">
-            {requiresUpgrade ? (
-              <InfoPanel
-                variant="upgrade"
-                icon={LockOpenIcon}
-                iconClassName="text-indigo-500"
-                title="Unlock more alerts"
-                to={v3BillingPath(organization)}
-                buttonLabel="Upgrade"
-              >
-                <Paragraph variant="small">
-                  You've used all {limits.limit} of your available alerts. Upgrade your plan to
-                  enable more.
-                </Paragraph>
-              </InfoPanel>
-            ) : (
-              <div className="flex h-fit flex-col items-start gap-4 rounded-md border border-grid-bright bg-background-bright p-4">
-                <div className="flex items-center justify-between gap-6">
-                  <Header3>
-                    You've used {limits.used}/{limits.limit} of your alerts.
-                  </Header3>
+          <div className="flex h-fit items-stretch gap-3">
+            <div className="flex w-full items-start justify-between">
+              <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
+                <SimpleTooltip
+                  button={
+                    <div className="size-6">
+                      <svg className="h-full w-full -rotate-90 overflow-visible">
+                        <circle
+                          className="fill-none stroke-grid-bright"
+                          strokeWidth="4"
+                          r="10"
+                          cx="12"
+                          cy="12"
+                        />
+                        <circle
+                          className={`fill-none ${
+                            requiresUpgrade ? "stroke-error" : "stroke-success"
+                          }`}
+                          strokeWidth="4"
+                          r="10"
+                          cx="12"
+                          cy="12"
+                          strokeDasharray={`${(limits.used / limits.limit) * 62.8} 62.8`}
+                          strokeDashoffset="0"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </div>
+                  }
+                  content={`${Math.round((limits.used / limits.limit) * 100)}%`}
+                />
+                <div className="flex w-full items-center justify-between gap-6">
+                  {requiresUpgrade ? (
+                    <Header3 className="text-error">
+                      You've used all {limits.limit} of your available alerts. Upgrade your plan to
+                      enable more.
+                    </Header3>
+                  ) : (
+                    <Header3>
+                      You've used {limits.used}/{limits.limit} of your alerts.
+                    </Header3>
+                  )}
 
                   <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
                     Upgrade
                   </LinkButton>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full border border-grid-bright">
-                  <div
-                    className="h-full bg-grid-bright"
-                    style={{ width: `${(limits.used / limits.limit) * 100}%` }}
-                  />
-                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
         <Outlet />
@@ -328,6 +355,7 @@ function DeleteAlertChannelButton(props: { id: string }) {
       <Button
         name="action"
         value="delete"
+        fullWidth
         type="submit"
         variant="small-menu-item"
         LeadingIcon={TrashIcon}
@@ -367,6 +395,8 @@ function DisableAlertChannelButton(props: { id: string }) {
         name="action"
         value="disable"
         type="submit"
+        fullWidth
+        textAlignLeft
         variant="small-menu-item"
         LeadingIcon={BellSlashIcon}
         leadingIconClassName="text-dimmed"
@@ -405,6 +435,8 @@ function EnableAlertChannelButton(props: { id: string }) {
         name="action"
         value="enable"
         type="submit"
+        fullWidth
+        textAlignLeft
         variant="small-menu-item"
         LeadingIcon={BellAlertIcon}
         leadingIconClassName="text-success"
@@ -430,6 +462,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIconClassName="text-charcoal-400"
           label={"Email"}
           description={alertChannel.properties.email}
+          boxClassName="group-hover/table-row:bg-charcoal-800"
         />
       );
     }
@@ -461,6 +494,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
               className="mt-1 w-80"
             />
           }
+          boxClassName="group-hover/table-row:bg-charcoal-800"
         />
       );
     }
@@ -476,6 +510,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIconClassName="text-charcoal-400"
           label={"Slack"}
           description={`#${alertChannel.properties.channelName}`}
+          boxClassName="group-hover/table-row:bg-charcoal-800"
         />
       );
     }

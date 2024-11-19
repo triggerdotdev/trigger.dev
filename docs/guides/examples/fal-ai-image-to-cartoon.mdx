@@ -1,22 +1,27 @@
 ---
-title: "Convert an image to a cartoon using fal AI"
-sidebarTitle: "fal AI image to cartoon"
-description: "This example demonstrates how to convert an image to a cartoon using fal AI with Trigger.dev."
+title: "Convert an image to a cartoon using Fal.ai"
+sidebarTitle: "Fal.ai image to cartoon"
+description: "This example task generates an image from a URL using Fal.ai and uploads it to Cloudflare R2."
 ---
 
-## Overview
+## Walkthrough
 
-Fal AI is a platform that provides access to advanced AI models for tasks such as image generation, text summarization, and hyperparameter tuning.
+This video walks through the process of creating this task in a Next.js project.
+
+<div className="w-full h-full aspect-video mb-3">
+  <iframe width="100%" height="100%" src="https://www.youtube.com/embed/AyRT4X8dHK0?si=ugA172V_3TMjik9h" title="Trigger.dev walkthrough" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen/>
+</div>
 
 ## Prerequisites
 
-- A project with [Trigger.dev initialized](/quick-start)
-- A [fal AI](https://fal.ai/) account
-- A [Cloudflare](https://developers.cloudflare.com/r2/) account and bucket
+- An existing project 
+- A [Trigger.dev account](https://cloud.trigger.dev) with Trigger.dev [initialized in your project](/quick-start)
+- A [Fal.ai](https://fal.ai/) account
+- A [Cloudflare](https://developers.cloudflare.com/r2/) account with an R2 bucket setup
 
 ## Task code
 
-This task converts an image to a cartoon using fal AI, and uploads the result to Cloudflare R2.
+This task converts an image to a cartoon using Fal.ai, and uploads the result to Cloudflare R2.
 
 ```ts trigger/fal-ai-image-to-cartoon.ts
 import { logger, task } from "@trigger.dev/sdk/v3";
@@ -27,7 +32,7 @@ import { z } from "zod";
 
 // Initialize fal.ai client
 fal.config({
-  credentials: process.env.FAL_KEY, // Get this from your fal AI dashboard
+  credentials: process.env.FAL_KEY, // Get this from your fal.ai dashboard
 });
 
 // Initialize S3-compatible client for Cloudflare R2

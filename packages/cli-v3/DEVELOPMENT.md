@@ -7,11 +7,11 @@ cd packages/cli-v3
 pnpm run dev
 ```
 
-2. In the job-catalog folder you can use the CLI
+2. Test the local CLI using the job-catalogs located in the `/references` directory
 
 ```sh
 pnpm i
-pnpm exec trigger-v3-cli
+pnpm exec trigger <command>
 ```
 
 ---

@@ -311,7 +311,6 @@ export default function Page() {
                   Cancel
                 </LinkButton>
               }
-              className="mt-2"
             />
           </Fieldset>
         </Form>

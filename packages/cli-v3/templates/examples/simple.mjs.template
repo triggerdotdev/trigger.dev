@@ -2,7 +2,8 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 
 export const helloWorldTask = task({
   id: "hello-world",
-  maxDuration: 300, // 5 minutes
+  // Set an optional maxDuration to prevent tasks from running indefinitely
+  maxDuration: 300, // Stop executing after 300 secs (5 mins) of compute
   run: async (payload, { ctx }) => {
     logger.log("Hello, world!", { payload, ctx });
 
