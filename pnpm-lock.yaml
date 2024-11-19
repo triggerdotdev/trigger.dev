@@ -234,6 +234,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.13
         version: 0.2.13
+      '@electric-sql/pglite-react':
+        specifier: ^0.2.13
+        version: 0.2.13(@electric-sql/pglite@0.2.13)(react@18.2.0)
       '@electric-sql/react':
         specifier: ^0.3.5
         version: 0.3.5(react@18.2.0)
@@ -4810,6 +4813,16 @@ packages:
     resolution: {integrity: sha512-/AYkRrEASKIGcjtNp8IVJ3sAUm+IQ2l0NrGgDvvAG/n1+ifOl7kD1E4dRyg1qdY/b+HdKhGNYlNgsPuwMKO2Mg==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
+    dev: false
+
+  /@electric-sql/pglite-react@0.2.13(@electric-sql/pglite@0.2.13)(react@18.2.0):
+    resolution: {integrity: sha512-JNhC16yFOzEl8u1pZuhS5Av2Ly/ZsLdc3qHEd+H5vJilchBIg1p++pT8LLCg6SkCUP85yGq8VMwg2vM4nADTvA==}
+    peerDependencies:
+      '@electric-sql/pglite': ^0.2.13
+      react: ^18.0.0
+    dependencies:
+      '@electric-sql/pglite': 0.2.13
+      react: 18.2.0
     dev: false
 
   /@electric-sql/pglite@0.2.13:
