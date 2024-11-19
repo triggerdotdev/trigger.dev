@@ -177,9 +177,9 @@ export default function Page() {
             alertChannels.length === 0 ? "grid-rows-[1fr_auto]" : "grid-rows-[auto_1fr_auto]"
           )}
         >
-          {alertChannels.length > 0 && !requiresUpgrade && (
-            <div className="flex h-fit items-end justify-between p-2 pl-3">
-              <Header2 className="">Project alerts</Header2>
+          <div className="flex h-fit items-end justify-between p-2 pl-3">
+            <Header2 className="">Project alerts</Header2>
+            {alertChannels.length > 0 && !requiresUpgrade && (
               <LinkButton
                 to={v3NewProjectAlertPath(organization, project)}
                 variant="primary/small"
@@ -188,8 +188,8 @@ export default function Page() {
               >
                 New alert
               </LinkButton>
-            </div>
-          )}
+            )}
+          </div>
           <Table containerClassName={cn(alertChannels.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
