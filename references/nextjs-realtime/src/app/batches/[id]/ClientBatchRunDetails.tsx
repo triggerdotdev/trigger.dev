@@ -1,20 +1,19 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { TriggerAuthContext, useRealtimeBatch } from "@trigger.dev/react-hooks";
 import type { exampleTask } from "@/trigger/example";
+import { useRealtimeBatch } from "@trigger.dev/react-hooks";
 
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TaskRunShape, AnyRunShape } from "@trigger.dev/sdk/v3";
+import { AnyRunShape, TaskRunShape } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 
 const MetadataSchema = z.object({
@@ -116,8 +115,17 @@ export function BackgroundRunsTable({ runs }: { runs: TaskRunShape<typeof exampl
   );
 }
 
-function BatchRunTableWrapper({ batchId }: { batchId: string }) {
-  const { runs, error } = useRealtimeBatch<typeof exampleTask>(batchId);
+function BatchRunTableWrapper({
+  batchId,
+  publicAccessToken,
+}: {
+  batchId: string;
+  publicAccessToken: string;
+}) {
+  const { runs, error } = useRealtimeBatch<typeof exampleTask>(batchId, {
+    accessToken: publicAccessToken,
+    baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+  });
 
   console.log(runs);
 
@@ -141,11 +149,5 @@ function BatchRunTableWrapper({ batchId }: { batchId: string }) {
 }
 
 export default function ClientBatchRunDetails({ batchId, jwt }: { batchId: string; jwt: string }) {
-  return (
-    <TriggerAuthContext.Provider
-      value={{ accessToken: jwt, baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL }}
-    >
-      <BatchRunTableWrapper batchId={batchId} />
-    </TriggerAuthContext.Provider>
-  );
+  return <BatchRunTableWrapper batchId={batchId} publicAccessToken={jwt} />;
 }

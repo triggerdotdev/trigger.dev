@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
@@ -31,6 +31,11 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Batch not found" }, { status: 404 });
     }
 
-    return realtimeClient.streamBatch(request.url, authentication.environment, batchRun.id);
+    return realtimeClient.streamBatch(
+      request.url,
+      authentication.environment,
+      batchRun.id,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );

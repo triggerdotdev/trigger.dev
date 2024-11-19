@@ -28,7 +28,7 @@ export const auth = {
   withAuth,
 };
 
-type PublicTokenPermissionAction = "read"; // Add more actions as needed
+type PublicTokenPermissionAction = "read" | "write"; // Add more actions as needed
 
 type PublicTokenPermissionProperties = {
   /**
@@ -150,6 +150,8 @@ function flattenScopes(permissions: PublicTokenPermissions): string[] {
             }
           } else if (typeof value === "string") {
             flattenedPermissions.push(`${action}:${property}:${value}`);
+          } else if (typeof value === "boolean" && value) {
+            flattenedPermissions.push(`${action}:${property}`);
           }
         }
       }

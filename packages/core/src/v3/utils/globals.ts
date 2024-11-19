@@ -7,6 +7,7 @@ import { TaskCatalog } from "../task-catalog/catalog.js";
 import { TaskContext } from "../taskContext/types.js";
 import { TimeoutManager } from "../timeout/types.js";
 import { UsageManager } from "../usage/types.js";
+import { WaitUntilManager } from "../waitUntil/types.js";
 import { _globalThis } from "./platform.js";
 
 const GLOBAL_TRIGGER_DOT_DEV_KEY = Symbol.for(`dev.trigger.ts.api`);
@@ -59,4 +60,5 @@ type TriggerDotDevGlobalAPI = {
   ["api-client"]?: ApiClientConfiguration;
   ["run-metadata"]?: RunMetadataManager;
   ["timeout"]?: TimeoutManager;
+  ["wait-until"]?: WaitUntilManager;
 };

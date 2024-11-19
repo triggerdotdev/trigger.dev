@@ -41,6 +41,7 @@ export async function authenticateApiRequest(
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
   const apiKey = getApiKeyFromRequest(request);
+
   if (!apiKey) {
     return;
   }

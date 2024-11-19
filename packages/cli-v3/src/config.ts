@@ -142,7 +142,11 @@ async function resolveConfig(
   const lockfilePath = await resolveLockfile(cwd);
   const workspaceDir = await findWorkspaceDir(cwd);
 
-  const workingDir = packageJsonPath ? dirname(packageJsonPath) : cwd;
+  const workingDir = result.configFile
+    ? dirname(result.configFile)
+    : packageJsonPath
+    ? dirname(packageJsonPath)
+    : cwd;
 
   const config =
     "config" in result.config ? (result.config.config as TriggerConfig) : result.config;

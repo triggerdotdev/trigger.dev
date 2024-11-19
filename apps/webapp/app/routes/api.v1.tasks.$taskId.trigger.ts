@@ -1,15 +1,13 @@
-import { fromZodError } from "zod-validation-error";
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { generateJWT as internal_generateJWT, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { parseRequestJsonAsync } from "~/utils/parseRequestJson.server";
+import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
-import { startActiveSpan } from "~/v3/tracer.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -20,115 +18,125 @@ export const HeadersSchema = z.object({
   "trigger-version": z.string().nullish(),
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
   "x-trigger-worker": z.string().nullish(),
+  "x-trigger-client": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
+const { action, loader } = createActionApiRoute(
+  {
+    headers: HeadersSchema,
+    params: ParamsSchema,
+    body: TriggerTaskRequestBody,
+    allowJWT: true,
+    maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
+    authorization: {
+      action: "write",
+      resource: (params) => ({ tasks: params.taskId }),
+      superScopes: ["write:tasks", "admin"],
+    },
+    corsStrategy: "all",
+  },
+  async ({ body, headers, params, authentication }) => {
+    const {
+      "idempotency-key": idempotencyKey,
+      "trigger-version": triggerVersion,
+      "x-trigger-span-parent-as-link": spanParentAsLink,
+      traceparent,
+      tracestate,
+      "x-trigger-worker": isFromWorker,
+      "x-trigger-client": triggerClient,
+    } = headers;
+
+    const service = new TriggerTaskService();
+
+    try {
+      const traceContext =
+        traceparent && isFromWorker /// If the request is from a worker, we should pass the trace context
+          ? { traceparent, tracestate }
+          : undefined;
+
+      logger.debug("Triggering task", {
+        taskId: params.taskId,
+        idempotencyKey,
+        triggerVersion,
+        headers,
+        options: body.options,
+        isFromWorker,
+        traceContext,
+      });
+
+      const run = await service.call(params.taskId, authentication.environment, body, {
+        idempotencyKey: idempotencyKey ?? undefined,
+        triggerVersion: triggerVersion ?? undefined,
+        traceContext,
+        spanParentAsLink: spanParentAsLink === 1,
+      });
+
+      if (!run) {
+        return json({ error: "Task not found" }, { status: 404 });
+      }
+
+      const $responseHeaders = await responseHeaders(
+        run,
+        authentication.environment,
+        triggerClient
+      );
+
+      return json(
+        {
+          id: run.friendlyId,
+        },
+        {
+          headers: $responseHeaders,
+        }
+      );
+    } catch (error) {
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: 422 });
+      } else if (error instanceof OutOfEntitlementError) {
+        return json({ error: error.message }, { status: 422 });
+      } else if (error instanceof Error) {
+        return json({ error: error.message }, { status: 500 });
+      }
+
+      return json({ error: "Something went wrong" }, { status: 500 });
+    }
   }
+);
 
-  logger.debug("TriggerTask action", { headers: Object.fromEntries(request.headers) });
-
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const contentLength = request.headers.get("content-length");
-
-  if (!contentLength || parseInt(contentLength) > env.TASK_PAYLOAD_MAXIMUM_SIZE) {
-    return json({ error: "Request body too large" }, { status: 413 });
-  }
-
-  const rawHeaders = Object.fromEntries(request.headers);
-
-  const headers = HeadersSchema.safeParse(rawHeaders);
-
-  if (!headers.success) {
-    return json({ error: "Invalid headers" }, { status: 400 });
-  }
-
-  const {
-    "idempotency-key": idempotencyKey,
-    "trigger-version": triggerVersion,
-    "x-trigger-span-parent-as-link": spanParentAsLink,
-    traceparent,
-    tracestate,
-    "x-trigger-worker": isFromWorker,
-  } = headers.data;
-
-  const { taskId } = ParamsSchema.parse(params);
-
-  // Now parse the request body
-  const anyBody = await parseRequestJsonAsync(request, { taskId });
-
-  const body = await startActiveSpan("TriggerTaskRequestBody.safeParse()", async (span) => {
-    return TriggerTaskRequestBody.safeParse(anyBody);
+async function responseHeaders(
+  run: TaskRun,
+  environment: AuthenticatedEnvironment,
+  triggerClient?: string | null
+): Promise<Record<string, string>> {
+  const claimsHeader = JSON.stringify({
+    sub: environment.id,
+    pub: true,
   });
 
-  if (!body.success) {
-    return json(
-      { error: fromZodError(body.error, { prefix: "Invalid trigger call" }).toString() },
-      { status: 400 }
-    );
-  }
+  if (triggerClient === "browser") {
+    const claims = {
+      sub: environment.id,
+      pub: true,
+      scopes: [`read:runs:${run.friendlyId}`],
+    };
 
-  const service = new TriggerTaskService();
-
-  try {
-    const traceContext =
-      traceparent && isFromWorker /// If the request is from a worker, we should pass the trace context
-        ? { traceparent, tracestate }
-        : undefined;
-
-    logger.debug("Triggering task", {
-      taskId,
-      idempotencyKey,
-      triggerVersion,
-      headers: Object.fromEntries(request.headers),
-      options: body.data.options,
-      isFromWorker,
-      traceContext,
+    const jwt = await internal_generateJWT({
+      secretKey: environment.apiKey,
+      payload: claims,
+      expirationTime: "1h",
     });
 
-    const run = await service.call(taskId, authenticationResult.environment, body.data, {
-      idempotencyKey: idempotencyKey ?? undefined,
-      triggerVersion: triggerVersion ?? undefined,
-      traceContext,
-      spanParentAsLink: spanParentAsLink === 1,
-    });
-
-    if (!run) {
-      return json({ error: "Task not found" }, { status: 404 });
-    }
-
-    return json(
-      {
-        id: run.friendlyId,
-      },
-      {
-        headers: {
-          "x-trigger-jwt-claims": JSON.stringify({
-            sub: authenticationResult.environment.id,
-            pub: true,
-          }),
-        },
-      }
-    );
-  } catch (error) {
-    if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 422 });
-    } else if (error instanceof OutOfEntitlementError) {
-      return json({ error: error.message }, { status: 422 });
-    } else if (error instanceof Error) {
-      return json({ error: error.message }, { status: 400 });
-    }
-
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return {
+      "x-trigger-jwt-claims": claimsHeader,
+      "x-trigger-jwt": jwt,
+    };
   }
+
+  return {
+    "x-trigger-jwt-claims": claimsHeader,
+  };
 }
+
+export { action, loader };

@@ -1,3 +1,4 @@
+import { json } from "@remix-run/server-runtime";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 
@@ -9,24 +10,51 @@ export async function validatePublicJwtKey(token: string) {
   const sub = extractJWTSub(token);
 
   if (!sub) {
-    return;
+    throw json({ error: "Invalid Public Access Token, missing subject." }, { status: 401 });
   }
 
   const environment = await findEnvironmentById(sub);
 
   if (!environment) {
-    return;
+    throw json({ error: "Invalid Public Access Token, environment not found." }, { status: 401 });
   }
 
-  const claims = await validateJWT(token, environment.apiKey);
+  const result = await validateJWT(token, environment.apiKey);
 
-  if (!claims) {
-    return;
+  if (!result.ok) {
+    switch (result.code) {
+      case "ERR_JWT_EXPIRED": {
+        throw json(
+          {
+            error:
+              "Public Access Token has expired. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+          },
+          { status: 401 }
+        );
+      }
+      case "ERR_JWT_CLAIM_INVALID": {
+        throw json(
+          {
+            error: `Public Access Token is invalid: ${result.error}. See https://trigger.dev/docs/frontend/overview#authentication for more information.`,
+          },
+          { status: 401 }
+        );
+      }
+      default: {
+        throw json(
+          {
+            error:
+              "Public Access Token is invalid. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+          },
+          { status: 401 }
+        );
+      }
+    }
   }
 
   return {
     environment,
-    claims,
+    claims: result.payload,
   };
 }
 

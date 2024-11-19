@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generatePresignedUrl } from "~/v3/r2.server";
 
 const ParamsSchema = z.object({
@@ -39,28 +40,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
   return json({ presignedUrl });
 }
 
-export async function loader({ request, params }: ActionFunctionArgs) {
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+export const loader = createLoaderApiRoute(
+  {
+    params: ParamsSchema,
+    allowJWT: true,
+    corsStrategy: "all",
+  },
+  async ({ params, authentication }) => {
+    const filename = params["*"];
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    const presignedUrl = await generatePresignedUrl(
+      authentication.environment.project.externalRef,
+      authentication.environment.slug,
+      filename,
+      "GET"
+    );
+
+    if (!presignedUrl) {
+      return json({ error: "Failed to generate presigned URL" }, { status: 500 });
+    }
+
+    // Caller can now use this URL to fetch that object.
+    return json({ presignedUrl });
   }
-
-  const parsedParams = ParamsSchema.parse(params);
-  const filename = parsedParams["*"];
-
-  const presignedUrl = await generatePresignedUrl(
-    authenticationResult.environment.project.externalRef,
-    authenticationResult.environment.slug,
-    filename,
-    "GET"
-  );
-
-  if (!presignedUrl) {
-    return json({ error: "Failed to generate presigned URL" }, { status: 500 });
-  }
-
-  // Caller can now use this URL to fetch that object.
-  return json({ presignedUrl });
-}
+);

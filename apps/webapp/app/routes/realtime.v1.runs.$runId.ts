@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -31,6 +31,11 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Run not found" }, { status: 404 });
     }
 
-    return realtimeClient.streamRun(request.url, authentication.environment, run.id);
+    return realtimeClient.streamRun(
+      request.url,
+      authentication.environment,
+      run.id,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );

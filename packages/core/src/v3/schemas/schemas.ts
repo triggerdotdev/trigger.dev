@@ -149,6 +149,7 @@ export const ScheduleMetadata = z.object({
 
 const taskMetadata = {
   id: z.string(),
+  description: z.string().optional(),
   queue: QueueOptions.optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),

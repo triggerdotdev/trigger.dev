@@ -184,6 +184,12 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     }
   }
 
+  if (layer.conditions) {
+    $manifest.customConditions ??= [];
+    $manifest.customConditions = $manifest.customConditions.concat(layer.conditions);
+    $manifest.customConditions = Array.from(new Set($manifest.customConditions));
+  }
+
   return $manifest;
 }
 

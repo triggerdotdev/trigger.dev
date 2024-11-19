@@ -54,7 +54,7 @@ export default function ImageDisplay({
       {/* Grid of smaller images */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
         {gridImages.map((image, index) => (
-          <div className="flex flex-col">
+          <div className="flex flex-col" key={index}>
             <p className="text-base text-gray-400 mb-2">Style {index + 1}</p>
             <Card key={index} className="overflow-hidden border border-gray-700 rounded-lg">
               <CardContent className="p-0">

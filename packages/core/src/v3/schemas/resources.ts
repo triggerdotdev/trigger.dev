@@ -4,6 +4,7 @@ import { MachineConfig } from "./common.js";
 
 export const TaskResource = z.object({
   id: z.string(),
+  description: z.string().optional(),
   filePath: z.string(),
   exportName: z.string(),
   queue: QueueOptions.optional(),

@@ -49,8 +49,32 @@ export class RunMetadataAPI implements RunMetadataManager {
     return this.#getManager().deleteKey(key);
   }
 
+  public incrementKey(key: string, value: number): void {
+    return this.#getManager().incrementKey(key, value);
+  }
+
+  decrementKey(key: string, value: number): void {
+    return this.#getManager().decrementKey(key, value);
+  }
+
+  appendKey(key: string, value: DeserializedJson): void {
+    this.#getManager().appendKey(key, value);
+  }
+
+  removeFromKey(key: string, value: DeserializedJson): void {
+    this.#getManager().removeFromKey(key, value);
+  }
+
   public update(metadata: Record<string, DeserializedJson>): void {
     return this.#getManager().update(metadata);
+  }
+
+  public stream<T>(
+    key: string,
+    value: AsyncIterable<T> | ReadableStream<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>> {
+    return this.#getManager().stream(key, value, signal);
   }
 
   flush(requestOptions?: ApiRequestOptions): Promise<void> {

@@ -65,6 +65,7 @@ export interface BuildLayer {
     override?: boolean;
   };
   dependencies?: Record<string, string>;
+  conditions?: string[];
 }
 
 export type PluginPlacement = "first" | "last";

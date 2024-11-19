@@ -182,7 +182,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@electric-sql/client": "0.6.3",
+    "@electric-sql/client": "0.7.1",
     "@google-cloud/precise-date": "^4.0.0",
     "@jsonhero/path": "^1.0.21",
     "@opentelemetry/api": "1.9.0",
@@ -197,6 +197,7 @@
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
     "dequal": "^2.0.3",
+    "eventsource-parser": "^3.0.0",
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",
     "jose": "^5.4.0",
@@ -208,10 +209,13 @@
     "zod-validation-error": "^1.5.0"
   },
   "devDependencies": {
+    "@ai-sdk/provider-utils": "^1.0.22",
     "@arethetypeswrong/cli": "^0.15.4",
+    "@epic-web/test-server": "^0.1.0",
     "@types/humanize-duration": "^3.27.1",
     "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
+    "ai": "^3.4.33",
     "defu": "^6.1.4",
     "esbuild": "^0.23.0",
     "rimraf": "^3.0.2",
