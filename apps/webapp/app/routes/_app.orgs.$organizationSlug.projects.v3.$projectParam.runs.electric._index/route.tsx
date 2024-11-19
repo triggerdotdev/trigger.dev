@@ -1,12 +1,10 @@
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form, useNavigation } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListChecks, ListX } from "lucide-react";
 import { Suspense, useState } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
@@ -30,32 +28,19 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
-import { findProjectBySlug } from "~/models/project.server";
-import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { usePglite } from "~/pglite/usePglite";
 import { cn } from "~/utils/cn";
-import {
-  docsPath,
-  ProjectParamSchema,
-  v3ProjectPath,
-  v3RunsPath,
-  v3TestPath,
-} from "~/utils/pathBuilder";
-import { ListPagination } from "../../components/ListPagination";
-import { useEffect } from "react";
-import { PGliteWorker } from "@electric-sql/pglite/worker";
-import { usePglite } from "~/pglite/usePgLite";
+import { docsPath, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
 
 export default function Page() {
   const project = useProject();
 
-  const { isLoading, client } = usePglite();
+  const { client, isLoading } = usePglite();
+
+  console.log("PG", { isLoading, client });
 
   return (
     <>
@@ -93,7 +78,6 @@ export default function Page() {
                   </div>
                 }
               >
-                {isLoading ? <Spinner /> : <div>Loaded</div>}
                 {/* <TypedAwait resolve={data}>
                   {(list) => (
                     <>

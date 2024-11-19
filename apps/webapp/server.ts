@@ -32,6 +32,10 @@ app.use(
       if (path.endsWith(".wasm")) {
         res.set("Content-Type", "application/wasm");
       }
+      if (path.endsWith(".data")) {
+        // .data files should be served as binary data
+        res.set("Content-Type", "application/octet-stream");
+      }
     },
     maxAge: "1h",
   })

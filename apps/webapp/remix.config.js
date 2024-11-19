@@ -23,9 +23,12 @@ module.exports = {
     "superjson",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
+    /^@electric-sql.*/,
   ],
-  browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
+  browserNodeBuiltinsPolyfill: {
+    modules: { path: true, os: true, crypto: true, fs: true, buffer: true },
+  },
   watchPaths: async () => {
-    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*"];
+    return ["../../packages/core/src/**/*", "../../packages/emails/src/**/*", "./pglite/**/*"];
   },
 };

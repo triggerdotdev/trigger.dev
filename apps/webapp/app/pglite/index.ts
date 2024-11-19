@@ -1,24 +1,51 @@
-import { PGlite, PGliteOptions } from "@electric-sql/pglite";
+import { PGlite } from "@electric-sql/pglite";
+import { live } from "@electric-sql/pglite/live";
 
-export async function client(options?: PGliteOptions) {
-  // Load the data file
-  const dataResponse = await fetch("/wasm/postgres.data");
-  const dataBlob = await dataResponse.blob();
+export async function createClient() {
+  const dataDir = "idb://triggerdotdev";
 
-  const db = new PGlite("idb://triggerdotdev", {
-    relaxedDurability: true,
-    wasmModule: "/wasm/postgres.wasm",
-    loadDataDir: dataBlob,
-    ...options,
+  // Fetch both files
+  const [wasmResponse, dataResponse] = await Promise.all([
+    fetch("/wasm/postgres.wasm"),
+    fetch("/wasm/postgres.data"),
+  ]);
+
+  // Convert to appropriate formats
+  const wasmBuffer = await wasmResponse.arrayBuffer();
+  const wasmModule = await WebAssembly.compile(wasmBuffer);
+  const fsBundle = new Blob([await dataResponse.arrayBuffer()]);
+
+  const db = await PGlite.create({
+    dataDir,
+    extensions: { live },
+    wasmModule,
+    fsBundle, // Provide the data file as a blob
+    // debug: 5,
   });
 
-  console.log("Creating tables...");
+  //TaskRunStatus
+  await db
+    .exec(
+      `
+      CREATE TYPE "public"."TaskRunStatus" AS ENUM (
+        'PENDING', 'EXECUTING', 'WAITING_TO_RESUME', 'RETRYING_AFTER_FAILURE',
+        'PAUSED', 'CANCELED', 'COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS',
+        'INTERRUPTED', 'SYSTEM_FAILURE', 'CRASHED', 'WAITING_FOR_DEPLOY',
+        'DELAYED', 'EXPIRED', 'TIMED_OUT'
+      );
+    `
+    )
+    .catch((err) => {
+      // Ignore error if type already exists
+      if (!err.message.includes("already exists")) {
+        throw err;
+      }
+    });
 
-  const results = await db.exec(`
-    DROP TYPE IF EXISTS "public"."TaskRunStatus";
-    CREATE TYPE "public"."TaskRunStatus" AS ENUM ('PENDING', 'EXECUTING', 'WAITING_TO_RESUME', 'RETRYING_AFTER_FAILURE', 'PAUSED', 'CANCELED', 'COMPLETED_SUCCESSFULLY', 'COMPLETED_WITH_ERRORS', 'INTERRUPTED', 'SYSTEM_FAILURE', 'CRASHED', 'WAITING_FOR_DEPLOY', 'DELAYED', 'EXPIRED', 'TIMED_OUT');
-
-    CREATE TABLE "public"."TaskRun" (
+  const results = await db
+    .exec(
+      `
+    CREATE TABLE IF NOT EXISTS "public"."TaskRun" (
         "id" text NOT NULL,
         "idempotencyKey" text,
         "payload" text NOT NULL,
@@ -74,10 +101,13 @@ export async function client(options?: PGliteOptions) {
         CONSTRAINT "TaskRun_parentTaskRunId_fkey" FOREIGN KEY ("parentTaskRunId") REFERENCES "public"."TaskRun"("id") ON DELETE SET NULL,
         CONSTRAINT "TaskRun_rootTaskRunId_fkey" FOREIGN KEY ("rootTaskRunId") REFERENCES "public"."TaskRun"("id") ON DELETE SET NULL,
         PRIMARY KEY ("id")
-    );
-  `);
-
-  console.log("Created table...", { results });
+      );
+`
+    )
+    .catch((error) => {
+      console.error("Migration failed:", error);
+      throw error;
+    });
 
   return db;
 }
