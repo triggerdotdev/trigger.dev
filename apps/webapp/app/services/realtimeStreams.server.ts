@@ -134,7 +134,7 @@ export class RealtimeStreams {
           if (line.trim()) {
             // Avoid unnecessary parsing; assume 'line' is already a JSON string
             // Add XADD command with MAXLEN option to limit stream size
-            batchCommands.push([streamKey, "MAXLEN", "~", "1000", "*", "data", line]);
+            batchCommands.push([streamKey, "MAXLEN", "~", "2500", "*", "data", line]);
 
             if (batchCommands.length >= batchSize) {
               // Send batch using a pipeline

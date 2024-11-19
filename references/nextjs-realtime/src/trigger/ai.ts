@@ -114,3 +114,33 @@ export const openaiStreaming = schemaTask({
     return { text };
   },
 });
+
+export const openaiO1Model = schemaTask({
+  id: "openai-o1-model",
+  description: "Stream data from OpenAI to get the weather",
+  schema: z.object({
+    model: z.string().default("o1-preview"),
+    prompt: z.string().default("Hello, how are you?"),
+  }),
+  run: async ({ model, prompt }) => {
+    logger.info("Running OpenAI model", { model, prompt });
+
+    const result = await streamText({
+      model: openai(model),
+      prompt,
+      experimental_continueSteps: true,
+    });
+
+    const stream = await metadata.stream("openai", result.textStream);
+
+    let text = "";
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      text += chunk;
+    }
+
+    return { text };
+  },
+});

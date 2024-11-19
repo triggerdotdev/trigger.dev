@@ -10,7 +10,7 @@
     "dev:trigger": "trigger dev"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^0.0.72",
+    "@ai-sdk/openai": "^1.0.1",
     "@fal-ai/serverless-client": "^0.15.0",
     "@radix-ui/react-dialog": "^1.0.3",
     "@radix-ui/react-icons": "^1.3.0",
@@ -19,7 +19,7 @@
     "@trigger.dev/react-hooks": "workspace:^3",
     "@trigger.dev/sdk": "workspace:^3",
     "@uploadthing/react": "^7.0.3",
-    "ai": "^3.4.33",
+    "ai": "^4.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.451.0",
