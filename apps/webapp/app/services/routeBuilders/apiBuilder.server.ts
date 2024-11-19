@@ -515,7 +515,6 @@ export function createActionApiRoute<
       });
       return wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
-      console.error("Error in API route:", error);
       if (error instanceof Response) {
         return wrapResponse(request, error, corsStrategy !== "none");
       }
