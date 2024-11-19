@@ -231,6 +231,9 @@ importers:
       '@depot/sdk-node':
         specifier: ^1.0.0
         version: 1.0.0
+      '@electric-sql/pglite':
+        specifier: ^0.2.13
+        version: 0.2.13
       '@electric-sql/react':
         specifier: ^0.3.5
         version: 0.3.5(react@18.2.0)
@@ -4807,6 +4810,10 @@ packages:
     resolution: {integrity: sha512-/AYkRrEASKIGcjtNp8IVJ3sAUm+IQ2l0NrGgDvvAG/n1+ifOl7kD1E4dRyg1qdY/b+HdKhGNYlNgsPuwMKO2Mg==}
     optionalDependencies:
       '@rollup/rollup-darwin-arm64': 4.21.3
+    dev: false
+
+  /@electric-sql/pglite@0.2.13:
+    resolution: {integrity: sha512-YRY806NnScVqa21/1L1vaysSQ+0/cAva50z7vlwzaGiBOTS9JhdzIRHN0KfgMhobFAphbznZJ7urMso4RtMBIQ==}
     dev: false
 
   /@electric-sql/react@0.3.5(react@18.2.0):
