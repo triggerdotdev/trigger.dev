@@ -4,12 +4,15 @@ import { WorkerClientCommonOptions } from "./client/types.js";
 import { WorkerWebsocketClient } from "./client/websocket.js";
 import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
 import { RunQueueConsumer } from "./queueConsumer.js";
+import { WorkerEventArgs, WorkerEvents } from "./events.js";
+import EventEmitter from "events";
 
 type WorkerSessionOptions = WorkerClientCommonOptions & {
   heartbeatIntervalSeconds?: number;
+  dequeueIntervalMs?: number;
 };
 
-export class WorkerSession {
+export class WorkerSession extends EventEmitter<WorkerEvents> {
   private readonly httpClient: WorkerHttpClient;
   private readonly websocketClient: WorkerWebsocketClient;
   private readonly queueConsumer: RunQueueConsumer;
@@ -17,11 +20,14 @@ export class WorkerSession {
   private readonly heartbeatIntervalSeconds: number;
 
   constructor(private opts: WorkerSessionOptions) {
+    super();
+
     this.httpClient = new WorkerHttpClient(opts);
     this.websocketClient = new WorkerWebsocketClient(opts);
     this.queueConsumer = new RunQueueConsumer({
       client: this.httpClient,
       onDequeue: this.onDequeue.bind(this),
+      intervalMs: opts.dequeueIntervalMs,
     });
 
     // TODO: This should be dynamic and set by (or at least overridden by) the platform
@@ -43,6 +49,9 @@ export class WorkerSession {
         console.error("[WorkerSession] Failed to send heartbeat", { error });
       },
     });
+
+    this.on("requestRunAttemptStart", this.onRequestRunAttemptStart.bind(this));
+    this.on("runAttemptCompleted", this.onRunAttemptCompleted.bind(this));
   }
 
   private async onDequeue(messages: WorkerApiDequeueResponseBody): Promise<void> {
@@ -50,42 +59,55 @@ export class WorkerSession {
     console.debug("[WorkerSession] Dequeued messages with contents", messages);
 
     for (const message of messages) {
-      console.log("[WorkerSession] Processing message", { message });
-
-      const start = await this.httpClient.startRun(message.run.id, message.snapshot.id);
-
-      if (!start.success) {
-        console.error("[WorkerSession] Failed to start run", { error: start.error });
-        continue;
-      }
-
-      console.log("[WorkerSession] Started run", {
-        runId: start.data.run.id,
-        snapshot: start.data.snapshot.id,
-      });
-
-      const complete = await this.httpClient.completeRun(
-        start.data.run.id,
-        start.data.snapshot.id,
-        {
-          completion: {
-            id: start.data.run.friendlyId,
-            ok: true,
-            outputType: "application/json",
-          },
-        }
-      );
-
-      if (!complete.success) {
-        console.error("[WorkerSession] Failed to complete run", { error: complete.error });
-        continue;
-      }
-
-      console.log("[WorkerSession] Completed run", {
-        runId: start.data.run.id,
-        result: complete.data.result,
+      console.log("[WorkerSession] Emitting message", { message });
+      this.emit("runQueueMessage", {
+        time: new Date(),
+        message,
       });
     }
+  }
+
+  private async onRequestRunAttemptStart(
+    ...[{ time, run, snapshot }]: WorkerEventArgs<"requestRunAttemptStart">
+  ): Promise<void> {
+    console.log("[WorkerSession] onRequestRunAttemptStart", { time, run, snapshot });
+
+    const start = await this.httpClient.startRun(run.id, snapshot.id);
+
+    if (!start.success) {
+      console.error("[WorkerSession] Failed to start run", { error: start.error });
+      return;
+    }
+
+    console.log("[WorkerSession] Started run", {
+      runId: start.data.run.id,
+      snapshot: start.data.snapshot.id,
+    });
+
+    this.emit("runAttemptStarted", {
+      time: new Date(),
+      ...start.data,
+    });
+  }
+
+  private async onRunAttemptCompleted(
+    ...[{ time, run, snapshot, completion }]: WorkerEventArgs<"runAttemptCompleted">
+  ): Promise<void> {
+    console.log("[WorkerSession] onRunAttemptCompleted", { time, run, snapshot, completion });
+
+    const complete = await this.httpClient.completeRun(run.id, snapshot.id, {
+      completion: completion,
+    });
+
+    if (!complete.success) {
+      console.error("[WorkerSession] Failed to complete run", { error: complete.error });
+      return;
+    }
+
+    console.log("[WorkerSession] Completed run", {
+      runId: run.id,
+      result: complete.data.result,
+    });
   }
 
   async start() {
