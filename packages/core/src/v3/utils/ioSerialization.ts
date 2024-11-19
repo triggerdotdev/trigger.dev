@@ -271,7 +271,7 @@ export async function createPacketAttributes(
 
       try {
         const parsed = parse(packet.data) as any;
-        const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
+        const jsonified = JSON.parse(JSON.stringify(parsed, makeSafeReplacer()));
 
         const result = {
           ...flattenAttributes(jsonified, dataKey),
@@ -319,7 +319,7 @@ export async function createPacketAttributesAsJson(
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
-      const jsonify = safeJsonParse(JSON.stringify(deserialized, safeReplacer));
+      const jsonify = safeJsonParse(JSON.stringify(deserialized, makeSafeReplacer()));
 
       return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
     case "application/store":
@@ -329,7 +329,11 @@ export async function createPacketAttributesAsJson(
   }
 }
 
-export async function prettyPrintPacket(rawData: any, dataType?: string): Promise<string> {
+export async function prettyPrintPacket(
+  rawData: any,
+  dataType?: string,
+  options?: ReplacerOptions
+): Promise<string> {
   if (rawData === undefined) {
     return "";
   }
@@ -347,42 +351,53 @@ export async function prettyPrintPacket(rawData: any, dataType?: string): Promis
     if (typeof rawData === "string") {
       rawData = safeJsonParse(rawData);
     }
-    return JSON.stringify(rawData, safeReplacer, 2);
+    return JSON.stringify(rawData, makeSafeReplacer(options), 2);
   }
 
   if (typeof rawData === "string") {
     return rawData;
   }
 
-  return JSON.stringify(rawData, safeReplacer, 2);
+  return JSON.stringify(rawData, makeSafeReplacer(options), 2);
 }
 
-function safeReplacer(key: string, value: any) {
-  // If it is a BigInt
-  if (typeof value === "bigint") {
-    return value.toString(); // Convert to string
-  }
+interface ReplacerOptions {
+  filteredKeys?: string[];
+}
 
-  // if it is a Regex
-  if (value instanceof RegExp) {
-    return value.toString(); // Convert to string
-  }
+function makeSafeReplacer(options?: ReplacerOptions) {
+  return function replacer(key: string, value: any) {
+    // Check if the key should be filtered out
+    if (options?.filteredKeys?.includes(key)) {
+      return undefined;
+    }
 
-  // if it is a Set
-  if (value instanceof Set) {
-    return Array.from(value); // Convert to array
-  }
+    // If it is a BigInt
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
 
-  // if it is a Map, convert it to an object
-  if (value instanceof Map) {
-    const obj: Record<string, any> = {};
-    value.forEach((v, k) => {
-      obj[k] = v;
-    });
-    return obj;
-  }
+    // if it is a Regex
+    if (value instanceof RegExp) {
+      return value.toString();
+    }
 
-  return value; // Otherwise return the value as is
+    // if it is a Set
+    if (value instanceof Set) {
+      return Array.from(value);
+    }
+
+    // if it is a Map, convert it to an object
+    if (value instanceof Map) {
+      const obj: Record<string, any> = {};
+      value.forEach((v, k) => {
+        obj[k] = v;
+      });
+      return obj;
+    }
+
+    return value;
+  };
 }
 
 function getPacketExtension(outputType: string): string {

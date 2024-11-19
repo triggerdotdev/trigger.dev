@@ -204,4 +204,92 @@ describe("StandardMetadataManager", () => {
     manager.decrementKey("counter", 3);
     expect(manager.getKey("counter")).toBe(2);
   });
+
+  test("should remove value from array with simple key", () => {
+    // Setup initial array
+    manager.setKey("myList", ["first", "second", "third"]);
+
+    // Remove a value
+    manager.removeFromKey("myList", "second");
+    expect(manager.getKey("myList")).toEqual(["first", "third"]);
+  });
+
+  test("should remove value from array with JSON path", () => {
+    // Setup initial nested array
+    manager.setKey("nested", { items: ["first", "second", "third"] });
+
+    // Remove a value
+    manager.removeFromKey("$.nested.items", "second");
+    expect(manager.current()).toEqual({
+      nested: {
+        items: ["first", "third"],
+      },
+    });
+  });
+
+  test("should handle removing non-existent value", () => {
+    // Setup initial array
+    manager.setKey("myList", ["first", "second"]);
+
+    // Try to remove non-existent value
+    manager.removeFromKey("myList", "third");
+    expect(manager.getKey("myList")).toEqual(["first", "second"]);
+  });
+
+  test("should handle removing from non-array values", () => {
+    // Setup non-array value
+    manager.setKey("value", "string");
+
+    // Try to remove from non-array
+    manager.removeFromKey("value", "something");
+    expect(manager.getKey("value")).toBe("string");
+  });
+
+  test("should remove object from array using deep equality", () => {
+    // Setup array with objects
+    manager.setKey("objects", [
+      { id: 1, name: "first" },
+      { id: 2, name: "second" },
+      { id: 3, name: "third" },
+    ]);
+
+    // Remove object
+    manager.removeFromKey("objects", { id: 2, name: "second" });
+    expect(manager.getKey("objects")).toEqual([
+      { id: 1, name: "first" },
+      { id: 3, name: "third" },
+    ]);
+  });
+
+  test("should trigger server update when removing from array", async () => {
+    // Setup initial array
+    manager.setKey("myList", ["first", "second", "third"]);
+    await manager.flush();
+    expect(metadataUpdates).toHaveLength(1);
+
+    // Remove value
+    manager.removeFromKey("myList", "second");
+    await manager.flush();
+
+    expect(metadataUpdates).toHaveLength(2);
+    expect(metadataUpdates[1]).toEqual({
+      metadata: {
+        myList: ["first", "third"],
+      },
+    });
+  });
+
+  test("should not trigger server update when removing non-existent value", async () => {
+    // Setup initial array
+    manager.setKey("myList", ["first", "second"]);
+    await manager.flush();
+    expect(metadataUpdates).toHaveLength(1);
+
+    // Try to remove non-existent value
+    manager.removeFromKey("myList", "third");
+    await manager.flush();
+
+    // Should not trigger new update since nothing changed
+    expect(metadataUpdates).toHaveLength(1);
+  });
 });

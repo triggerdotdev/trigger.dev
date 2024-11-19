@@ -6,6 +6,9 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   appendKey(key: string, value: DeserializedJson): void {
     throw new Error("Method not implemented.");
   }
+  removeFromKey(key: string, value: DeserializedJson): void {
+    throw new Error("Method not implemented.");
+  }
   incrementKey(key: string, value: number): void {
     throw new Error("Method not implemented.");
   }

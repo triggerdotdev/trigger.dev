@@ -9,6 +9,7 @@ export interface RunMetadataManager {
   setKey(key: string, value: DeserializedJson): void;
   deleteKey(key: string): void;
   appendKey(key: string, value: DeserializedJson): void;
+  removeFromKey(key: string, value: DeserializedJson): void;
   incrementKey(key: string, value: number): void;
   decrementKey(key: string, value: number): void;
   update(metadata: Record<string, DeserializedJson>): void;

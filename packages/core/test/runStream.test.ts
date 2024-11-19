@@ -219,9 +219,7 @@ describe("RunSubscription", () => {
       status: "COMPLETED",
     });
   });
-});
 
-describe("RunSubscription withStreams", () => {
   it("should handle stream data", async () => {
     const streamFactory = new TestStreamSubscriptionFactory();
 
@@ -246,7 +244,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
+          $$streams: ["openai"],
         }),
         metadataType: "application/json",
       },
@@ -312,7 +310,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
+          $$streams: ["openai"],
         }),
         metadataType: "application/json",
       },
@@ -331,7 +329,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
+          $$streams: ["openai"],
         }),
         metadataType: "application/json",
       },
@@ -410,8 +408,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
-          "$$stream.anthropic": "anthropic",
+          $$streams: ["openai", "anthropic"],
         }),
         metadataType: "application/json",
       },
@@ -494,7 +491,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
+          $$streams: ["openai"],
         }),
         metadataType: "application/json",
       },
@@ -513,8 +510,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
-          "$$stream.anthropic": "anthropic",
+          $$streams: ["openai", "anthropic"],
         }),
         metadataType: "application/json",
       },
@@ -534,8 +530,7 @@ describe("RunSubscription withStreams", () => {
         isTest: false,
         runTags: [],
         metadata: JSON.stringify({
-          "$$stream.openai": "openai",
-          "$$stream.anthropic": "anthropic",
+          $$streams: ["openai", "anthropic"],
         }),
         metadataType: "application/json",
       },

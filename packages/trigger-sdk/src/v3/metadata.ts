@@ -27,6 +27,7 @@ export const metadata = {
   flush: flushMetadata,
   stream: stream,
   append: appendMetadataKey,
+  remove: removeMetadataKey,
   increment: incrementMetadataKey,
   decrement: decrementMetadataKey,
 };
@@ -153,6 +154,21 @@ function decrementMetadataKey(key: string, value: number = 1) {
  */
 function appendMetadataKey(key: string, value: DeserializedJson) {
   runMetadata.appendKey(key, value);
+}
+
+/**
+ * Removes a value from an array in the metadata of the current run.
+ *
+ * @param {string} key - The key of the array in metadata.
+ * @param {DeserializedJson} value - The value to remove from the array.
+ *
+ * @example
+ *
+ * metadata.remove("logs", "User logged in");
+ * metadata.remove("events", { type: "click", timestamp: Date.now() });
+ */
+function removeMetadataKey(key: string, value: DeserializedJson) {
+  runMetadata.removeFromKey(key, value);
 }
 
 /**

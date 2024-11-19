@@ -6,6 +6,9 @@ import { RunMetadataManager } from "./types.js";
 import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
 
+const MAXIMUM_ACTIVE_STREAMS = 2;
+const MAXIMUM_TOTAL_STREAMS = 5;
+
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
   private hasChanges: boolean = false;
@@ -122,6 +125,40 @@ export class StandardMetadataManager implements RunMetadataManager {
     this.store = nextStore;
   }
 
+  public removeFromKey(key: string, value: DeserializedJson) {
+    if (!this.runId) {
+      return;
+    }
+
+    let nextStore: Record<string, DeserializedJson> | undefined = this.store
+      ? structuredClone(this.store)
+      : {};
+
+    if (key.startsWith("$.")) {
+      const path = new JSONHeroPath(key);
+      const currentValue = path.first(nextStore);
+
+      if (Array.isArray(currentValue)) {
+        // Remove the value from array using deep equality check
+        const newArray = currentValue.filter((item) => !dequal(item, value));
+        path.set(nextStore, newArray);
+      }
+    } else {
+      const currentValue = nextStore[key];
+
+      if (Array.isArray(currentValue)) {
+        // Remove the value from array using deep equality check
+        nextStore[key] = currentValue.filter((item) => !dequal(item, value));
+      }
+    }
+
+    if (!dequal(this.store, nextStore)) {
+      this.hasChanges = true;
+    }
+
+    this.store = nextStore;
+  }
+
   public incrementKey(key: string, increment: number = 1) {
     if (!this.runId) {
       return;
@@ -173,9 +210,27 @@ export class StandardMetadataManager implements RunMetadataManager {
       return $value;
     }
 
+    // Check to make sure we haven't exceeded the max number of active streams
+    if (this.activeStreams.size >= MAXIMUM_ACTIVE_STREAMS) {
+      console.warn(
+        `Exceeded the maximum number of active streams (${MAXIMUM_ACTIVE_STREAMS}). The "${key}" stream will be ignored.`
+      );
+      return $value;
+    }
+
+    // Check to make sure we haven't exceeded the max number of total streams
+    const streams = (this.store?.$$streams ?? []) as string[];
+
+    if (streams.length >= MAXIMUM_TOTAL_STREAMS) {
+      console.warn(
+        `Exceeded the maximum number of total streams (${MAXIMUM_TOTAL_STREAMS}). The "${key}" stream will be ignored.`
+      );
+      return $value;
+    }
+
     try {
       // Add the key to the special stream metadata object
-      this.setKey(`$$stream.${key}`, key);
+      this.appendKey(`$$streams`, key);
 
       await this.flush();
 

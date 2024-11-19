@@ -234,28 +234,28 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
         });
 
         // Check for stream metadata
-        if (run.metadata) {
-          for (const [key] of Object.entries(run.metadata)) {
-            if (key.startsWith("$$stream.")) {
-              const streamKey = key.replace("$$stream.", "") as keyof TStreams;
+        if (run.metadata && "$$streams" in run.metadata && Array.isArray(run.metadata.$$streams)) {
+          for (const streamKey of run.metadata.$$streams) {
+            if (typeof streamKey !== "string") {
+              continue;
+            }
 
-              if (!activeStreams.has(key)) {
-                activeStreams.add(key);
+            if (!activeStreams.has(streamKey)) {
+              activeStreams.add(streamKey);
 
-                const subscription = this.options.streamFactory.createSubscription(
-                  run.id,
-                  streamKey.toString(),
-                  this.options.client?.baseUrl
-                );
+              const subscription = this.options.streamFactory.createSubscription(
+                run.id,
+                streamKey,
+                this.options.client?.baseUrl
+              );
 
-                await subscription.subscribe(async (chunk) => {
-                  controller.enqueue({
-                    type: streamKey,
-                    chunk: chunk as TStreams[typeof streamKey],
-                    run,
-                  } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
-                });
-              }
+              await subscription.subscribe(async (chunk) => {
+                controller.enqueue({
+                  type: streamKey,
+                  chunk: chunk as TStreams[typeof streamKey],
+                  run,
+                } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
+              });
             }
           }
         }
