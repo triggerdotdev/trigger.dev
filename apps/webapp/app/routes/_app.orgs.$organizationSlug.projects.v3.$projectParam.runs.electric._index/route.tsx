@@ -1,10 +1,12 @@
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
 import { Form, useNavigation } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListChecks, ListX } from "lucide-react";
 import { Suspense, useState } from "react";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
@@ -28,19 +30,56 @@ import {
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
+import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { usePglite } from "~/pglite/usePglite";
+import { useUser } from "~/hooks/useUser";
+import { findProjectBySlug } from "~/models/project.server";
+import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
+import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, v3ProjectPath, v3RunsPath, v3TestPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  ProjectParamSchema,
+  v3ProjectPath,
+  v3RunsPath,
+  v3TestPath,
+} from "~/utils/pathBuilder";
+import { ListPagination } from "../../components/ListPagination";
+import { useEffect } from "react";
+import { PGliteWorker } from "@electric-sql/pglite/worker";
+import { PgProvider } from "~/pglite/provider";
+import { useLiveQuery } from "@electric-sql/pglite-react";
+import type { TaskRun } from "@trigger.dev/database";
 
 export default function Page() {
+  return (
+    <PgProvider>
+      <Content />
+    </PgProvider>
+  );
+}
+
+function Content() {
   const project = useProject();
 
-  const { client, isLoading } = usePglite();
+  const items = useLiveQuery<TaskRun>(`SELECT * FROM "TaskRun";`);
 
-  console.log("PG", { isLoading, client });
+  console.log(items);
+
+  if (!items) return <div>Loading...</div>;
+
+  return (
+    <div className="h-max">
+      {items.rows.map((row) => (
+        <div key={row.id}>
+          {row.id} - {row.taskIdentifier} - {row.status}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <>
@@ -79,45 +118,45 @@ export default function Page() {
                 }
               >
                 {/* <TypedAwait resolve={data}>
-                  {(list) => (
-                    <>
-                      {list.runs.length === 0 && !list.hasFilters ? (
-                        list.possibleTasks.length === 0 ? (
-                          <CreateFirstTaskInstructions />
-                        ) : (
-                          <RunTaskInstructions />
-                        )
-                      ) : (
-                        <div
-                          className={cn(
-                            "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-x-2 p-2">
-                            <RunsFilters
-                              possibleEnvironments={project.environments}
-                              possibleTasks={list.possibleTasks}
-                              bulkActions={list.bulkActions}
-                              hasFilters={list.hasFilters}
-                            />
-                            <div className="flex items-center justify-end gap-x-2">
-                              <ListPagination list={list} />
-                            </div>
-                          </div>
-
-                          <TaskRunsTable
-                            total={list.runs.length}
-                            hasFilters={list.hasFilters}
-                            filters={list.filters}
-                            runs={list.runs}
-                            isLoading={isLoading}
-                            allowSelection
-                          />
-                        </div>
+              {(list) => (
+                <>
+                  {list.runs.length === 0 && !list.hasFilters ? (
+                    list.possibleTasks.length === 0 ? (
+                      <CreateFirstTaskInstructions />
+                    ) : (
+                      <RunTaskInstructions />
+                    )
+                  ) : (
+                    <div
+                      className={cn(
+                        "grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden"
                       )}
-                    </>
+                    >
+                      <div className="flex items-start justify-between gap-x-2 p-2">
+                        <RunsFilters
+                          possibleEnvironments={project.environments}
+                          possibleTasks={list.possibleTasks}
+                          bulkActions={list.bulkActions}
+                          hasFilters={list.hasFilters}
+                        />
+                        <div className="flex items-center justify-end gap-x-2">
+                          <ListPagination list={list} />
+                        </div>
+                      </div>
+
+                      <TaskRunsTable
+                        total={list.runs.length}
+                        hasFilters={list.hasFilters}
+                        filters={list.filters}
+                        runs={list.runs}
+                        isLoading={isLoading}
+                        allowSelection
+                      />
+                    </div>
                   )}
-                </TypedAwait> */}
+                </>
+              )}
+            </TypedAwait> */}
               </Suspense>
               <BulkActionBar />
             </div>
