@@ -59,14 +59,18 @@ export class RealtimeStreams {
             } catch (error) {
               if (signal.aborted) break;
 
-              console.error("Error reading from Redis stream:", error);
+              logger.error("[RealtimeStreams][streamResponse] Error reading from Redis stream:", {
+                error,
+              });
               retryCount++;
               if (retryCount >= maxRetries) throw error;
               await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
             }
           }
         } catch (error) {
-          console.error("Fatal error in stream processing:", error);
+          logger.error("[RealtimeStreams][streamResponse] Fatal error in stream processing:", {
+            error,
+          });
           controller.error(error);
         } finally {
           await cleanup();
@@ -163,7 +167,8 @@ export class RealtimeStreams {
 
       return new Response(null, { status: 200 });
     } catch (error) {
-      console.error("Error in ingestData:", error);
+      logger.error("[RealtimeStreams][ingestData] Error in ingestData:", { error });
+
       return new Response(null, { status: 500 });
     } finally {
       await cleanup();

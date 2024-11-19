@@ -147,6 +147,10 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
   ) {}
 
   createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription {
+    if (!runId || !streamKey) {
+      throw new Error("runId and streamKey are required");
+    }
+
     const url = `${baseUrl ?? this.baseUrl}/realtime/v1/streams/${runId}/${streamKey}`;
     return new SSEStreamSubscription(url, this.options);
   }

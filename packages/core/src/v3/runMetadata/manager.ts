@@ -260,7 +260,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   // Waits for all the streams to finish
-  public async waitForAllStreams(timeout: number = 30_000): Promise<void> {
+  public async waitForAllStreams(timeout: number = 60_000): Promise<void> {
     if (this.activeStreams.size === 0) {
       return;
     }

@@ -503,7 +503,7 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "waitUntil",
       async (span) => {
-        return await waitUntil.blockUntilSettled(30_000);
+        return await waitUntil.blockUntilSettled(60_000);
       },
       {
         attributes: {
