@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
+import { WindowIcon } from "@heroicons/react/24/outline";
 import { useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
@@ -28,6 +29,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
@@ -137,6 +143,8 @@ export default function Page() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [showQuickStart, setShowQuickStart] = useState(false);
+
   return (
     <PageContainer>
       <NavBar>
@@ -168,183 +176,215 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full grid-rows-1")}>
-          {hasTasks ? (
-            <div className="flex flex-col">
-              {!userHasTasks && <UserHasNoTasks />}
-              <div className="max-h-full overflow-hidden">
-                <div className="p-2">
-                  <Input
-                    placeholder="Search tasks"
-                    variant="tertiary"
-                    icon="search"
-                    fullWidth={true}
-                    value={filterText}
-                    onChange={(e) => setFilterText(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-                <Table containerClassName="max-h-full mb-[2.5rem]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Task ID</TableHeaderCell>
-                      <TableHeaderCell>Task</TableHeaderCell>
-                      <TableHeaderCell>Running</TableHeaderCell>
-                      <TableHeaderCell>Queued</TableHeaderCell>
-                      <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                      <TableHeaderCell>Avg. duration</TableHeaderCell>
-                      <TableHeaderCell>Environments</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredItems.length > 0 ? (
-                      filteredItems.map((task) => {
-                        const path = v3RunsPath(organization, project, {
-                          tasks: [task.slug],
-                        });
+        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
+          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
+            <div className={cn("grid h-full grid-rows-1")}>
+              {hasTasks ? (
+                <div className="flex flex-col">
+                  {!userHasTasks && <UserHasNoTasks />}
+                  <div className="max-h-full overflow-hidden">
+                    <div className="flex items-center gap-2 p-2">
+                      <Input
+                        placeholder="Search tasks"
+                        variant="tertiary"
+                        icon="search"
+                        fullWidth={true}
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        autoFocus
+                      />
+                      <Button
+                        variant="minimal/small"
+                        TrailingIcon={WindowIcon}
+                        onClick={() => setShowQuickStart(false)}
+                      >
+                        Quick start
+                      </Button>
+                    </div>
+                    <Table containerClassName="max-h-full mb-[2.5rem]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell>Task ID</TableHeaderCell>
+                          <TableHeaderCell>Task</TableHeaderCell>
+                          <TableHeaderCell>Running</TableHeaderCell>
+                          <TableHeaderCell>Queued</TableHeaderCell>
+                          <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                          <TableHeaderCell>Avg. duration</TableHeaderCell>
+                          <TableHeaderCell>Environments</TableHeaderCell>
+                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredItems.length > 0 ? (
+                          filteredItems.map((task) => {
+                            const path = v3RunsPath(organization, project, {
+                              tasks: [task.slug],
+                            });
 
-                        const devYouEnvironment = task.environments.find(
-                          (e) => e.type === "DEVELOPMENT" && !e.userName
-                        );
-                        const firstDeployedEnvironment = task.environments
-                          .filter((e) => e.type !== "DEVELOPMENT")
-                          .at(0);
-                        const testEnvironment = devYouEnvironment ?? firstDeployedEnvironment;
+                            const devYouEnvironment = task.environments.find(
+                              (e) => e.type === "DEVELOPMENT" && !e.userName
+                            );
+                            const firstDeployedEnvironment = task.environments
+                              .filter((e) => e.type !== "DEVELOPMENT")
+                              .at(0);
+                            const testEnvironment = devYouEnvironment ?? firstDeployedEnvironment;
 
-                        const testPath = testEnvironment
-                          ? v3TestTaskPath(
-                              organization,
-                              project,
-                              { taskIdentifier: task.slug },
-                              testEnvironment.slug
-                            )
-                          : v3TestPath(organization, project);
+                            const testPath = testEnvironment
+                              ? v3TestTaskPath(
+                                  organization,
+                                  project,
+                                  { taskIdentifier: task.slug },
+                                  testEnvironment.slug
+                                )
+                              : v3TestPath(organization, project);
 
-                        return (
-                          <TableRow key={task.slug} className="group">
-                            <TableCell to={path}>
-                              <div className="flex items-center gap-2">
-                                <SimpleTooltip
-                                  button={<TaskTriggerSourceIcon source={task.triggerSource} />}
-                                  content={taskTriggerSourceDescription(task.triggerSource)}
-                                />
-                                <span>{task.slug}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell to={path} className="py-0" actionClassName="py-0">
-                              <TaskFunctionName
-                                functionName={task.exportName}
-                                variant="extra-extra-small"
-                              />
-                            </TableCell>
-                            <TableCell to={path} className="p-0">
-                              <Suspense
-                                fallback={
-                                  <>
-                                    <Spinner color="muted" />
-                                  </>
-                                }
-                              >
-                                <TypedAwait resolve={runningStats}>
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData?.running ?? "0";
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path} className="p-0">
-                              <Suspense fallback={<></>}>
-                                <TypedAwait resolve={runningStats}>
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData?.queued ?? "0";
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path} className="p-0" actionClassName="py-0">
-                              <Suspense fallback={<TaskActivityBlankState />}>
-                                <TypedAwait resolve={activity}>
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return (
-                                      <>
-                                        {taskData !== undefined ? (
-                                          <div className="h-6 w-[5.125rem] rounded-sm">
-                                            <TaskActivityGraph activity={taskData} />
-                                          </div>
-                                        ) : (
-                                          <TaskActivityBlankState />
-                                        )}
-                                      </>
-                                    );
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path} className="p-0">
-                              <Suspense fallback={<></>}>
-                                <TypedAwait resolve={durations}>
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData
-                                      ? formatDurationMilliseconds(taskData * 1000, {
-                                          style: "short",
-                                        })
-                                      : "–";
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path}>
-                              <EnvironmentLabels environments={task.environments} />
-                            </TableCell>
-                            <TableCellMenu
-                              isSticky
-                              popoverContent={
-                                <>
-                                  <PopoverMenuItem
-                                    icon="runs"
-                                    to={path}
-                                    title="View runs"
-                                    leadingIconClassName="text-teal-500"
+                            return (
+                              <TableRow key={task.slug} className="group">
+                                <TableCell to={path}>
+                                  <div className="flex items-center gap-2">
+                                    <SimpleTooltip
+                                      button={<TaskTriggerSourceIcon source={task.triggerSource} />}
+                                      content={taskTriggerSourceDescription(task.triggerSource)}
+                                    />
+                                    <span>{task.slug}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell to={path} className="py-0" actionClassName="py-0">
+                                  <TaskFunctionName
+                                    functionName={task.exportName}
+                                    variant="extra-extra-small"
                                   />
-                                  <PopoverMenuItem icon="beaker" to={testPath} title="Test task" />
-                                </>
-                              }
-                              hiddenButtons={
-                                <LinkButton
-                                  variant="minimal/small"
-                                  LeadingIcon={BeakerIcon}
-                                  leadingIconClassName="text-text-bright"
-                                  to={testPath}
-                                >
-                                  Test
-                                </LinkButton>
-                              }
-                            />
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableBlankRow colSpan={8}>
-                        <Paragraph variant="small" className="flex items-center justify-center">
-                          No tasks match your filters
-                        </Paragraph>
-                      </TableBlankRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                                </TableCell>
+                                <TableCell to={path} className="p-0">
+                                  <Suspense
+                                    fallback={
+                                      <>
+                                        <Spinner color="muted" />
+                                      </>
+                                    }
+                                  >
+                                    <TypedAwait resolve={runningStats}>
+                                      {(data) => {
+                                        const taskData = data[task.slug];
+                                        return taskData?.running ?? "0";
+                                      }}
+                                    </TypedAwait>
+                                  </Suspense>
+                                </TableCell>
+                                <TableCell to={path} className="p-0">
+                                  <Suspense fallback={<></>}>
+                                    <TypedAwait resolve={runningStats}>
+                                      {(data) => {
+                                        const taskData = data[task.slug];
+                                        return taskData?.queued ?? "0";
+                                      }}
+                                    </TypedAwait>
+                                  </Suspense>
+                                </TableCell>
+                                <TableCell to={path} className="p-0" actionClassName="py-0">
+                                  <Suspense fallback={<TaskActivityBlankState />}>
+                                    <TypedAwait resolve={activity}>
+                                      {(data) => {
+                                        const taskData = data[task.slug];
+                                        return (
+                                          <>
+                                            {taskData !== undefined ? (
+                                              <div className="h-6 w-[5.125rem] rounded-sm">
+                                                <TaskActivityGraph activity={taskData} />
+                                              </div>
+                                            ) : (
+                                              <TaskActivityBlankState />
+                                            )}
+                                          </>
+                                        );
+                                      }}
+                                    </TypedAwait>
+                                  </Suspense>
+                                </TableCell>
+                                <TableCell to={path} className="p-0">
+                                  <Suspense fallback={<></>}>
+                                    <TypedAwait resolve={durations}>
+                                      {(data) => {
+                                        const taskData = data[task.slug];
+                                        return taskData
+                                          ? formatDurationMilliseconds(taskData * 1000, {
+                                              style: "short",
+                                            })
+                                          : "–";
+                                      }}
+                                    </TypedAwait>
+                                  </Suspense>
+                                </TableCell>
+                                <TableCell to={path}>
+                                  <EnvironmentLabels environments={task.environments} />
+                                </TableCell>
+                                <TableCellMenu
+                                  isSticky
+                                  popoverContent={
+                                    <>
+                                      <PopoverMenuItem
+                                        icon="runs"
+                                        to={path}
+                                        title="View runs"
+                                        leadingIconClassName="text-teal-500"
+                                      />
+                                      <PopoverMenuItem
+                                        icon="beaker"
+                                        to={testPath}
+                                        title="Test task"
+                                      />
+                                    </>
+                                  }
+                                  hiddenButtons={
+                                    <LinkButton
+                                      variant="minimal/small"
+                                      LeadingIcon={BeakerIcon}
+                                      leadingIconClassName="text-text-bright"
+                                      to={testPath}
+                                    >
+                                      Test
+                                    </LinkButton>
+                                  }
+                                />
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          <TableBlankRow colSpan={8}>
+                            <Paragraph variant="small" className="flex items-center justify-center">
+                              No tasks match your filters
+                            </Paragraph>
+                          </TableBlankRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : (
+                <MainCenteredContainer className="max-w-prose">
+                  <CreateTaskInstructions />
+                </MainCenteredContainer>
+              )}
             </div>
-          ) : (
-            <MainCenteredContainer className="max-w-prose">
-              <CreateTaskInstructions />
-            </MainCenteredContainer>
+          </ResizablePanel>
+
+          {!hasTasks && (
+            <>
+              <ResizableHandle id="tasks-handle" />
+              <ResizablePanel id="tasks-inspector" min="400px" max="700px">
+                <HelpfulInfoNoTasks />
+              </ResizablePanel>
+            </>
           )}
-        </div>
+          {hasTasks && !showQuickStart && (
+            <>
+              <ResizableHandle id="tasks-handle" />
+              <ResizablePanel id="tasks-inspector" min="400px" max="700px">
+                <HelpfulInfoHasTasks />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
   );
@@ -535,3 +575,11 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 
   return null;
 };
+
+function HelpfulInfoNoTasks() {
+  return <div>no tasks</div>;
+}
+
+function HelpfulInfoHasTasks() {
+  return <div>has tasks</div>;
+}
