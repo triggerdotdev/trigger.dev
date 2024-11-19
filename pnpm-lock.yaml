@@ -1148,6 +1148,9 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:3.1.2
         version: link:../core
+      '@trigger.dev/worker':
+        specifier: workspace:3.1.2
+        version: link:../worker
       c12:
         specifier: ^1.11.1
         version: 1.11.1(magicast@0.3.4)

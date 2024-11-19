@@ -1,66 +1,68 @@
-import { intro, outro } from "@clack/prompts";
-import { prepareDeploymentError } from "@trigger.dev/core/v3";
+import { intro, outro, log } from "@clack/prompts";
+import { parseDockerImageReference, prepareDeploymentError } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { CliApiClient } from "../apiClient.js";
-import { buildWorker } from "../build/buildWorker.js";
+import { CliApiClient } from "../../apiClient.js";
+import { buildWorker } from "../../build/buildWorker.js";
 import {
   CommonCommandOptions,
   commonOptions,
   handleTelemetry,
   SkipLoggingError,
   wrapCommandAction,
-} from "../cli/common.js";
-import { loadConfig } from "../config.js";
-import { buildImage } from "../deploy/buildImage.js";
+} from "../../cli/common.js";
+import { loadConfig } from "../../config.js";
+import { buildImage } from "../../deploy/buildImage.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
   printErrors,
   printWarnings,
   saveLogs,
-} from "../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
-import { loadDotEnvVars } from "../utilities/dotEnv.js";
-import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
-import { logger } from "../utilities/logger.js";
-import { getProjectClient } from "../utilities/session.js";
-import { getTmpDir } from "../utilities/tempDirectories.js";
-import { spinner } from "../utilities/windows.js";
-import { login } from "./login.js";
-import { updateTriggerPackages } from "./update.js";
-import { resolveAlwaysExternal } from "../build/externals.js";
+} from "../../deploy/logs.js";
+import { chalkError, cliLink, isLinksSupported, prettyError } from "../../utilities/cliOutput.js";
+import { loadDotEnvVars } from "../../utilities/dotEnv.js";
+import { printStandloneInitialBanner } from "../../utilities/initialBanner.js";
+import { logger } from "../../utilities/logger.js";
+import { getProjectClient } from "../../utilities/session.js";
+import { getTmpDir } from "../../utilities/tempDirectories.js";
+import { spinner } from "../../utilities/windows.js";
+import { login } from "../login.js";
+import { updateTriggerPackages } from "../update.js";
+import { resolveAlwaysExternal } from "../../build/externals.js";
 
-const DeployCommandOptions = CommonCommandOptions.extend({
+const WorkersBuildCommandOptions = CommonCommandOptions.extend({
+  // docker build options
+  load: z.boolean().default(false),
+  platform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
+  network: z.enum(["default", "none", "host"]).optional(),
+  tag: z.string().optional(),
+  push: z.boolean().default(false),
+  noCache: z.boolean().default(false),
+  // trigger options
+  local: z.boolean().default(false), // TODO: default to true when webapp has no remote build support
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
   env: z.enum(["prod", "staging"]),
-  loadImage: z.boolean().default(false),
-  buildPlatform: z.enum(["linux/amd64", "linux/arm64"]).default("linux/amd64"),
-  namespace: z.string().optional(),
-  selfHosted: z.boolean().default(false),
-  registry: z.string().optional(),
-  push: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
-  noCache: z.boolean().default(false),
   envFile: z.string().optional(),
-  network: z.enum(["default", "none", "host"]).optional(),
 });
 
-type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
+type WorkersBuildCommandOptions = z.infer<typeof WorkersBuildCommandOptions>;
 
 type Deployment = InitializeDeploymentResponseBody;
 
-export function configureDeployCommand(program: Command) {
+export function configureWorkersBuildCommand(program: Command) {
   return commonOptions(
     program
-      .command("deploy")
-      .description("Deploy your Trigger.dev v3 project to the cloud.")
+      .command("build")
+      .description("Build a self-hosted worker image")
       .argument("[path]", "The path to the project", ".")
       .option(
         "-e, --env <env>",
@@ -74,10 +76,6 @@ export function configureDeployCommand(program: Command) {
         "The project ref. Required if there is no config file. This will override the project specified in the config file."
       )
       .option(
-        "--dry-run",
-        "Do a dry run of the deployment. This will not actually deploy the project, but will show you what would be deployed."
-      )
-      .option(
         "--skip-sync-env-vars",
         "Skip syncing environment variables when using the syncEnvVars extension."
       )
@@ -88,74 +86,55 @@ export function configureDeployCommand(program: Command) {
   )
     .addOption(
       new CommandOption(
-        "--self-hosted",
-        "Build and load the image using your local Docker. Use the --registry option to specify the registry to push the image to when using --self-hosted, or just use --push to push to the default registry."
+        "--dry-run",
+        "This will only create the build context without actually building the image. This can be useful for debugging."
       ).hideHelp()
     )
     .addOption(
       new CommandOption(
         "--no-cache",
-        "Do not use the cache when building the image. This will slow down the build process but can be useful if you are experiencing issues with the cache."
+        "Do not use any build cache. This will significantly slow down the build process but can be useful to fix caching issues."
       ).hideHelp()
     )
-    .addOption(
-      new CommandOption(
-        "--push",
-        "When using the --self-hosted flag, push the image to the default registry. (defaults to false when not using --registry)"
-      ).hideHelp()
+    .option("--local", "Force building the image locally.")
+    .option("--push", "Push the image to the configured registry.")
+    .option(
+      "-t, --tag <tag>",
+      "Specify the full name of the resulting image with an optional tag. The tag will always be overridden for remote builds."
     )
-    .addOption(
-      new CommandOption(
-        "--registry <registry>",
-        "The registry to push the image to when using --self-hosted"
-      ).hideHelp()
+    .option("--load", "Load the built image into your local docker")
+    .option(
+      "--network <mode>",
+      "The networking mode for RUN instructions when using --local",
+      "host"
     )
-    .addOption(
-      new CommandOption(
-        "--tag <tag>",
-        "(Coming soon) Specify the tag to use when pushing the image to the registry"
-      ).hideHelp()
+    .option(
+      "--platform <platform>",
+      "The platform to build the deployment image for",
+      "linux/amd64"
     )
-    .addOption(
-      new CommandOption(
-        "--namespace <namespace>",
-        "Specify the namespace to use when pushing the image to the registry"
-      ).hideHelp()
-    )
-    .addOption(
-      new CommandOption("--load-image", "Load the built image into your local docker").hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--build-platform <platform>",
-        "The platform to build the deployment image for"
-      )
-        .default("linux/amd64")
-        .hideHelp()
-    )
-    .addOption(
-      new CommandOption(
-        "--save-logs",
-        "If provided, will save logs even for successful builds"
-      ).hideHelp()
-    )
-    .option("--network <mode>", "The networking mode for RUN instructions when using --self-hosted")
+    .option("--save-logs", "If provided, will save logs even for successful builds")
     .action(async (path, options) => {
       await handleTelemetry(async () => {
         await printStandloneInitialBanner(true);
-        await deployCommand(path, options);
+        await workersBuildCommand(path, options);
       });
     });
 }
 
-export async function deployCommand(dir: string, options: unknown) {
-  return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
-    return await _deployCommand(dir, opts);
-  });
+async function workersBuildCommand(dir: string, options: unknown) {
+  return await wrapCommandAction(
+    "workerBuildCommand",
+    WorkersBuildCommandOptions,
+    options,
+    async (opts) => {
+      return await _workerBuildCommand(dir, opts);
+    }
+  );
 }
 
-async function _deployCommand(dir: string, options: DeployCommandOptions) {
-  intro("Deploying project");
+async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOptions) {
+  intro("Building worker image");
 
   if (!options.skipUpdateCheck) {
     await updateTriggerPackages(dir, { ...options }, true, true);
@@ -211,7 +190,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const forcedExternals = await resolveAlwaysExternal(projectClient.client);
 
   const buildManifest = await buildWorker({
-    target: "deploy",
+    target: "unmanaged",
     environment: options.env,
     destination: destination.path,
     resolvedConfig,
@@ -237,12 +216,19 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     return;
   }
 
+  const tagParts = parseDockerImageReference(options.tag ?? "");
+
+  // Account for empty strings to preserve existing behavior
+  const registry = tagParts.registry ? tagParts.registry : undefined;
+  const namespace = tagParts.repo ? tagParts.repo : undefined;
+
   const deploymentResponse = await projectClient.client.initializeDeployment({
     contentHash: buildManifest.contentHash,
     userId: authorization.userId,
-    selfHosted: options.selfHosted,
-    registryHost: options.registry,
-    namespace: options.namespace,
+    selfHosted: options.local,
+    registryHost: registry,
+    namespace: namespace,
+    type: "UNMANAGED",
   });
 
   if (!deploymentResponse.success) {
@@ -251,12 +237,14 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   const deployment = deploymentResponse.data;
 
+  let local = options.local;
+
   // If the deployment doesn't have any externalBuildData, then we can't use the remote image builder
-  // TODO: handle this and allow the user to the build and push the image themselves
-  if (!deployment.externalBuildData && !options.selfHosted) {
-    throw new Error(
-      `Failed to start deployment, as your instance of trigger.dev does not support hosting. To deploy this project, you must use the --self-hosted flag to build and push the image yourself.`
+  if (!deployment.externalBuildData && !options.local) {
+    log.warn(
+      "This webapp instance does not support remote builds, falling back to local build. Please use the `--local` flag to skip this warning."
     );
+    local = true;
   }
 
   if (
@@ -315,25 +303,22 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const $spinner = spinner();
 
   if (isLinksSupported) {
-    $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+    $spinner.start(`Building worker version ${version} ${deploymentLink}`);
   } else {
-    $spinner.start(`Deploying version ${version}`);
+    $spinner.start(`Building worker version ${version}`);
   }
 
-  const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
-  const registryHost = selfHostedRegistryHost ?? "registry.trigger.dev";
-
   const buildResult = await buildImage({
-    selfHosted: options.selfHosted,
-    buildPlatform: options.buildPlatform,
+    selfHosted: local,
+    buildPlatform: options.platform,
     noCache: options.noCache,
     push: options.push,
-    registryHost,
-    registry: options.registry,
+    registryHost: registry,
+    registry: registry,
     deploymentId: deployment.id,
     deploymentVersion: deployment.version,
     imageTag: deployment.imageTag,
-    loadImage: options.loadImage,
+    loadImage: options.load,
     contentHash: deployment.contentHash,
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
@@ -379,6 +364,23 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to build image");
   }
 
+  // Index the deployment
+  // const runtime = new UnmanagedWorkerRuntime({
+  //   name: projectClient.name,
+  //   config: resolvedConfig,
+  //   args: {
+  //     ...options,
+  //     debugOtel: false,
+  //   },
+  //   client: projectClient.client,
+  //   dashboardUrl: authorization.dashboardUrl,
+  // });
+  // await runtime.init();
+
+  // console.log("buildManifest", buildManifest);
+
+  // await runtime.initializeWorker(buildManifest);
+
   const getDeploymentResponse = await projectClient.client.getDeployment(deployment.id);
 
   if (!getDeploymentResponse.success) {
@@ -407,35 +409,24 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to get deployment with worker");
   }
 
-  const imageReference = options.selfHosted
-    ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${buildResult.image}${
-        buildResult.digest ? `@${buildResult.digest}` : ""
-      }`
-    : `${registryHost}/${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
-
-  const finalizeResponse = await projectClient.client.finalizeDeployment(deployment.id, {
-    imageReference,
-    selfHosted: options.selfHosted,
-  });
-
-  if (!finalizeResponse.success) {
-    await failDeploy(
-      projectClient.client,
-      deployment,
-      { name: "FinalizeError", message: finalizeResponse.error },
-      buildResult.logs,
-      $spinner
-    );
-
-    throw new SkipLoggingError("Failed to finalize deployment");
-  }
-
-  $spinner.stop(`Successfully deployed version ${version}`);
+  $spinner.stop(`Successfully built worker version ${version}`);
 
   const taskCount = deploymentWithWorker.worker?.tasks.length ?? 0;
 
+  log.message(`Detected ${taskCount} task${taskCount === 1 ? "" : "s"}`);
+
+  if (taskCount > 0) {
+    logger.table(
+      deploymentWithWorker.worker.tasks.map((task) => ({
+        id: task.slug,
+        export: task.exportName,
+        path: task.filePath,
+      }))
+    );
+  }
+
   outro(
-    `Version ${version} deployed with ${taskCount} detected task${taskCount === 1 ? "" : "s"} ${
+    `Version ${version} built and ready to deploy: ${buildResult.image} ${
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );

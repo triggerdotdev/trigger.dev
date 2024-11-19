@@ -55,6 +55,7 @@
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
       "./v3/dev": "./src/v3/dev/index.ts",
       "./v3/prod": "./src/v3/prod/index.ts",
+      "./v3/unmanaged": "./src/v3/unmanaged/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
       "./v3/schemas": "./src/v3/schemas/index.ts"
     },
@@ -159,6 +160,9 @@
       ],
       "v3/prod": [
         "dist/commonjs/v3/prod/index.d.ts"
+      ],
+      "v3/unmanaged": [
+        "dist/commonjs/v3/unmanaged/index.d.ts"
       ],
       "v3/workers": [
         "dist/commonjs/v3/workers/index.d.ts"
@@ -600,6 +604,17 @@
       "require": {
         "types": "./dist/commonjs/v3/prod/index.d.ts",
         "default": "./dist/commonjs/v3/prod/index.js"
+      }
+    },
+    "./v3/unmanaged": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/unmanaged/index.ts",
+        "types": "./dist/esm/v3/unmanaged/index.d.ts",
+        "default": "./dist/esm/v3/unmanaged/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/unmanaged/index.d.ts",
+        "default": "./dist/commonjs/v3/unmanaged/index.js"
       }
     },
     "./v3/workers": {

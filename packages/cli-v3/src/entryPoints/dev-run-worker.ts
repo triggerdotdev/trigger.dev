@@ -2,44 +2,44 @@ import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
   clock,
+  ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
   logger,
   LogLevel,
+  runMetadata,
   runtime,
   taskCatalog,
   TaskRunErrorCodes,
   TaskRunExecution,
-  WorkerToExecutorMessageCatalog,
+  timeout,
   TriggerConfig,
   WorkerManifest,
-  ExecutorToWorkerMessageCatalog,
-  timeout,
-  runMetadata,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
-import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
+import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
   DevUsageManager,
-  UsageTimeoutManager,
   DurableClock,
   getEnvVar,
+  getNumberEnvVar,
   logLevels,
   OtelTaskLogger,
+  StandardMetadataManager,
   StandardTaskCatalog,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
-  getNumberEnvVar,
-  StandardMetadataManager,
+  UsageTimeoutManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
-import { VERSION } from "../version.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,

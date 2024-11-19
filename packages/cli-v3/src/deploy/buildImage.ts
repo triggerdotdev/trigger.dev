@@ -20,7 +20,7 @@ export interface BuildImageOptions {
   loadImage?: boolean;
 
   // Flattened properties from nested structures
-  registryHost: string;
+  registryHost?: string;
   authAccessToken: string;
   imageTag: string;
   deploymentId: string;
@@ -91,6 +91,12 @@ export async function buildImage({
   if (!externalBuildId || !externalBuildToken || !externalBuildProjectId) {
     throw new Error(
       "Failed to initialize deployment. The deployment does not have any external build data. To deploy this project, you must use the --self-hosted flag to build and push the image yourself."
+    );
+  }
+
+  if (!registryHost) {
+    throw new Error(
+      "Failed to initialize deployment. The deployment does not have a registry host. To deploy this project, you must use the --self-hosted or --local flag to build and push the image yourself."
     );
   }
 
@@ -262,7 +268,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 }
 
 interface SelfHostedBuildImageOptions {
-  registryHost: string;
+  registryHost?: string;
   imageTag: string;
   cwd: string;
   projectId: string;

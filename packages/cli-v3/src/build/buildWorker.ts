@@ -1,8 +1,5 @@
-import { CORE_VERSION } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
-import { resolveFileSources } from "../utilities/sourceFiles.js";
-import { VERSION } from "../version.js";
 import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
 import {
   createBuildContext,
@@ -11,13 +8,6 @@ import {
   resolvePluginsForContext,
 } from "./extensions.js";
 import { createExternalsBuildExtension } from "./externals.js";
-import {
-  deployIndexController,
-  deployIndexWorker,
-  deployRunController,
-  deployRunWorker,
-  telemetryEntryPoint,
-} from "./packageModules.js";
 import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
@@ -88,7 +78,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
-  if (options.target === "deploy") {
+  if (options.target === "deploy" || options.target === "unmanaged") {
     buildManifest = options.rewritePaths
       ? rewriteBuildManifestPaths(buildManifest, options.destination)
       : buildManifest;

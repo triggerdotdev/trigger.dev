@@ -16,7 +16,7 @@ import {
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
-import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
+import { UnmanagedRuntimeManager } from "@trigger.dev/core/v3/unmanaged";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
@@ -391,11 +391,11 @@ const zodIpc = new ZodIpcConnection({
         });
       }
     },
-    TASK_RUN_COMPLETED_NOTIFICATION: async (payload) => {
-      prodRuntimeManager.resumeTask(payload.completion);
+    TASK_RUN_COMPLETED_NOTIFICATION: async () => {
+      await unmanagedWorkerRuntime.completeWaitpoints([]);
     },
     WAIT_COMPLETED_NOTIFICATION: async () => {
-      prodRuntimeManager.resumeAfterDuration();
+      await unmanagedWorkerRuntime.completeWaitpoints([]);
     },
     FLUSH: async ({ timeoutInMs }, sender) => {
       await flushAll(timeoutInMs);
@@ -447,13 +447,11 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   console.log(`Flushed runMetadata in ${duration}ms`);
 }
 
-const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
-  waitThresholdInMs: parseInt(env.TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS ?? "30000", 10),
-});
+const unmanagedWorkerRuntime = new UnmanagedRuntimeManager();
 
-runtime.setGlobalRuntimeManager(prodRuntimeManager);
+runtime.setGlobalRuntimeManager(unmanagedWorkerRuntime);
 
-process.title = "trigger-deploy-worker";
+process.title = "trigger-unmanaged-worker";
 
 const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 

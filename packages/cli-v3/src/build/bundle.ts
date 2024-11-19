@@ -7,13 +7,11 @@ import { createFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
-  deployIndexController,
-  deployIndexWorker,
-  deployRunController,
-  deployRunWorker,
   devEntryPoints,
-  devIndexWorker,
-  devRunWorker,
+  getIndexControllerForTarget,
+  getIndexWorkerForTarget,
+  getRunControllerForTarget,
+  getRunWorkerForTarget,
   isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
@@ -21,12 +19,14 @@ import {
   isRunWorkerForTarget,
   shims,
   telemetryEntryPoint,
+  unmanagedEntryPoints,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
 import { CORE_VERSION } from "@trigger.dev/core/v3";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { copyManifestToDir } from "./manifests.js";
 import { VERSION } from "../version.js";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -233,10 +233,22 @@ async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
     projectEntryPoints.push(config.configFile);
   }
 
-  if (target === "dev") {
-    projectEntryPoints.push(...devEntryPoints);
-  } else {
-    projectEntryPoints.push(...deployEntryPoints);
+  switch (target) {
+    case "dev": {
+      projectEntryPoints.push(...devEntryPoints);
+      break;
+    }
+    case "deploy": {
+      projectEntryPoints.push(...deployEntryPoints);
+      break;
+    }
+    case "unmanaged": {
+      projectEntryPoints.push(...unmanagedEntryPoints);
+      break;
+    }
+    default: {
+      assertExhaustive(target);
+    }
   }
 
   if (config.instrumentedPackageNames?.length ?? 0 > 0) {
@@ -312,13 +324,10 @@ export async function createBuildManifestFromBundle({
     },
     outputPath: destination,
     indexControllerEntryPoint:
-      bundle.indexControllerEntryPoint ?? target === "deploy" ? deployIndexController : undefined,
-    indexWorkerEntryPoint:
-      bundle.indexWorkerEntryPoint ?? target === "deploy" ? deployIndexWorker : devIndexWorker,
-    runControllerEntryPoint:
-      bundle.runControllerEntryPoint ?? target === "deploy" ? deployRunController : undefined,
-    runWorkerEntryPoint:
-      bundle.runWorkerEntryPoint ?? target === "deploy" ? deployRunWorker : devRunWorker,
+      bundle.indexControllerEntryPoint ?? getIndexControllerForTarget(target),
+    indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? getIndexWorkerForTarget(target),
+    runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
+    runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
     loaderEntryPoint: bundle.loaderEntryPoint,
     configPath: bundle.configPath,
     customConditions: resolvedConfig.build.conditions ?? [],
