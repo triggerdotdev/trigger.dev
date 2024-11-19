@@ -4,8 +4,10 @@ import {
   ChatBubbleLeftRightIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  LightBulbIcon,
+  UserPlusIcon,
 } from "@heroicons/react/20/solid";
-import { useRevalidator } from "@remix-run/react";
+import { Link, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
@@ -64,13 +66,14 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
+  inviteTeamMemberPath,
   ProjectParamSchema,
   v3RunsPath,
   v3TasksStreamingPath,
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
-import { AnimatePresence, motion } from "framer-motion";
+import videoThumbFalRealtime from "~/assets/images/video-thumb-fal-realtime.jpg";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -145,7 +148,7 @@ export default function Page() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [showQuickStart, setShowQuickStart] = useState(true);
 
   return (
     <PageContainer>
@@ -577,10 +580,16 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 };
 
 function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
+  const organization = useOrganization();
+  const project = useProject();
+
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed py-2">
-        <Header2>Next steps</Header2>
+        <Header2 className="flex items-center gap-2">
+          <LightBulbIcon className="size-4 text-sun-500" />
+          Helpful next steps
+        </Header2>
         <Button
           onClick={onClose}
           variant="minimal/small"
@@ -589,6 +598,53 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
           shortcutPosition="before-trailing-icon"
           className="pl-[0.375rem]"
         />
+      </div>
+      <div className="overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <StepNumber stepNumber="1" title="Test your task" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            Test your tasks by clicking the "Test" button in the task list, in the side menu or by
+            clicking this button.
+          </Paragraph>
+          <LinkButton
+            to={v3TestPath(organization, project)}
+            variant={"secondary/small"}
+            LeadingIcon={BeakerIcon}
+          >
+            Run a test
+          </LinkButton>
+        </StepContentContainer>
+        <StepNumber stepNumber="2" title="Create a task from examples" />
+        <StepContentContainer>
+          <Link
+            to={docsPath("/guides/examples/fal-ai-realtime")}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:bg-border-bright flex items-center gap-2 rounded-sm border border-grid-dimmed px-2 py-1"
+          >
+            <div className="aspect-video h-10">
+              <img
+                src={videoThumbFalRealtime}
+                alt="Fal.ai with Trigger.dev Realtime"
+                className="size-full"
+              />
+            </div>
+            <Paragraph>Generate an image from a prompt using Fal.ai and Realtime.</Paragraph>
+          </Link>
+        </StepContentContainer>
+        <StepNumber stepNumber="3" title="Invite team members" />
+        <StepContentContainer>
+          <Paragraph spacing>
+            Invite team members to your project to collaborate on buildingtasks.
+          </Paragraph>
+          <LinkButton
+            to={inviteTeamMemberPath(organization)}
+            variant={"secondary/small"}
+            LeadingIcon={UserPlusIcon}
+          >
+            Invite team members
+          </LinkButton>
+        </StepContentContainer>
       </div>
     </div>
   );
