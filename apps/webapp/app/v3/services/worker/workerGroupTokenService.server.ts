@@ -2,13 +2,28 @@ import { customAlphabet } from "nanoid";
 import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
 import { createHash, timingSafeEqual } from "crypto";
 import { logger } from "~/services/logger.server";
-import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/database";
+import {
+  RuntimeEnvironment,
+  WorkerInstanceGroup,
+  WorkerInstanceGroupType,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { HEADER_NAME } from "@trigger.dev/worker";
-import { TaskRunExecutionResult, DequeuedMessage } from "@trigger.dev/core/v3";
+import {
+  TaskRunExecutionResult,
+  DequeuedMessage,
+  CompleteRunAttemptResult,
+  StartRunAttemptResult,
+  ExecutionResult,
+  ProdTaskRunExecutionPayload,
+  MachinePreset,
+} from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
 import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
+import { EnvironmentVariable } from "~/v3/environmentVariables/repository";
+import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -192,6 +207,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         workerGroupId: workerGroup.id,
         workerInstanceId: workerInstance.id,
         masterQueue: workerGroup.masterQueue,
+        environment: null,
       });
     }
 
@@ -229,6 +245,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       environmentId: workerInstance.environmentId,
       deploymentId: workerInstance.deployment.id,
       backgroundWorkerId: workerInstance.deployment.workerId,
+      environment: workerInstance.environment,
     });
   }
 
@@ -253,6 +270,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         },
         include: {
           deployment: true,
+          environment: true,
         },
       });
 
@@ -281,6 +299,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           include: {
             // This will always be empty for shared worker instances, but required for types
             deployment: true,
+            environment: true,
           },
         });
       }
@@ -401,6 +420,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         },
         include: {
           deployment: true,
+          environment: true,
         },
       });
 
@@ -432,6 +452,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   environmentId?: string;
   deploymentId?: string;
   backgroundWorkerId?: string;
+  environment: RuntimeEnvironment | null;
 }>;
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
@@ -439,7 +460,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
   readonly masterQueue: string;
-  readonly environmentId?: string;
+  readonly environment: RuntimeEnvironment | null;
   readonly deploymentId?: string;
   readonly backgroundWorkerId?: string;
 
@@ -453,7 +474,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
-    this.environmentId = opts.environmentId;
+    this.environment = opts.environment;
     this.deploymentId = opts.deploymentId;
     this.backgroundWorkerId = opts.backgroundWorkerId;
   }
@@ -467,7 +488,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       });
     }
 
-    if (!this.environmentId || !this.deploymentId || !this.backgroundWorkerId) {
+    if (!this.environment || !this.deploymentId || !this.backgroundWorkerId) {
       logger.error("[AuthenticatedWorkerInstance] Missing environment or deployment", {
         ...this.toJSON(),
       });
@@ -486,7 +507,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     if (this.isLatestDeployment) {
       return await this._engine.dequeueFromEnvironmentMasterQueue({
         consumerId: this.workerInstanceId,
-        environmentId: this.environmentId,
+        environmentId: this.environment.id,
         maxRunCount,
         backgroundWorkerId: this.backgroundWorkerId,
       });
@@ -510,12 +531,42 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async heartbeatRun({ runId, snapshotId }: { runId: string; snapshotId: string }) {
-    // await this._engine.heartbeatRun({ runId, snapshotId });
+  async heartbeatRun({
+    runId,
+    snapshotId,
+  }: {
+    runId: string;
+    snapshotId: string;
+  }): Promise<ExecutionResult> {
+    return await this._engine.heartbeatRun({ runId, snapshotId });
   }
 
-  async startRunAttempt({ runId, snapshotId }: { runId: string; snapshotId: string }) {
-    return await this._engine.startRunAttempt({ runId, snapshotId });
+  async startRunAttempt({ runId, snapshotId }: { runId: string; snapshotId: string }): Promise<
+    StartRunAttemptResult & {
+      envVars: Record<string, string>;
+    }
+  > {
+    const engineResult = await this._engine.startRunAttempt({ runId, snapshotId });
+
+    const defaultMachinePreset = {
+      name: "small-1x",
+      cpu: 1,
+      memory: 1,
+      centsPerMs: 0,
+    } satisfies MachinePreset;
+
+    const envVars = this.environment
+      ? await this.getEnvVars(
+          this.environment,
+          engineResult.run.id,
+          engineResult.execution.machine ?? defaultMachinePreset
+        )
+      : {};
+
+    return {
+      ...engineResult,
+      envVars,
+    };
   }
 
   async completeRunAttempt({
@@ -526,7 +577,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
-  }) {
+  }): Promise<CompleteRunAttemptResult> {
     return await this._engine.completeRunAttempt({ runId, snapshotId, completion });
   }
 
@@ -545,9 +596,35 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerGroupId: this.workerGroupId,
       workerInstanceId: this.workerInstanceId,
       masterQueue: this.masterQueue,
-      environmentId: this.environmentId!,
+      environmentId: this.environment?.id!,
       deploymentId: this.deploymentId!,
     };
+  }
+
+  private async getEnvVars(
+    environment: RuntimeEnvironment,
+    runId: string,
+    machinePreset: MachinePreset
+  ): Promise<Record<string, string>> {
+    const variables = await resolveVariablesForEnvironment(environment);
+
+    const jwt = await generateJWTTokenForEnvironment(environment, {
+      run_id: runId,
+      machine_preset: machinePreset.name,
+    });
+
+    variables.push(
+      ...[
+        { key: "TRIGGER_JWT", value: jwt },
+        { key: "TRIGGER_RUN_ID", value: runId },
+        { key: "TRIGGER_MACHINE_PRESET", value: machinePreset.name },
+      ]
+    );
+
+    return variables.reduce((acc: Record<string, string>, curr) => {
+      acc[curr.key] = curr.value;
+      return acc;
+    }, {});
   }
 }
 

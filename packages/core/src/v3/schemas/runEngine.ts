@@ -121,9 +121,12 @@ export const DequeuedMessage = z.object({
 export type DequeuedMessage = z.infer<typeof DequeuedMessage>;
 
 /** The response to the Worker when starting an attempt */
-export type StartRunAttemptResult = ExecutionResult & {
-  execution: TaskRunExecution;
-};
+export const StartRunAttemptResult = ExecutionResult.and(
+  z.object({
+    execution: TaskRunExecution,
+  })
+);
+export type StartRunAttemptResult = z.infer<typeof StartRunAttemptResult>;
 
 /** The response to the Worker when completing an attempt */
 const CompleteAttemptStatus = z.enum([
@@ -132,6 +135,7 @@ const CompleteAttemptStatus = z.enum([
   "RETRY_QUEUED",
   "RETRY_IMMEDIATELY",
 ]);
+export type CompleteAttemptStatus = z.infer<typeof CompleteAttemptStatus>;
 
 export const CompleteRunAttemptResult = z
   .object({

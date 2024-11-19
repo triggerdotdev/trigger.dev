@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CompleteRunAttemptResult,
   DequeuedMessage,
+  StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 
@@ -32,11 +33,11 @@ export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;
 
 // Attempt start
-export const WorkerApiRunAttemptStartResponseBody = z.object({
-  run: z.any(),
-  snapshot: z.any(),
-  execution: z.any(),
-});
+export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
+  z.object({
+    envVars: z.record(z.string()),
+  })
+);
 export type WorkerApiRunAttemptStartResponseBody = z.infer<
   typeof WorkerApiRunAttemptStartResponseBody
 >;
