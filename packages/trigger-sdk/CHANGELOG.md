@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 3.2.1
+
+### Patch Changes
+
+- React hooks now all accept accessToken and baseURL options so the use of the Provider is no longer necessary ([#1486](https://github.com/triggerdotdev/trigger.dev/pull/1486))
+- Upgrade zod to latest (3.23.8) ([#1484](https://github.com/triggerdotdev/trigger.dev/pull/1484))
+- Realtime streams ([#1470](https://github.com/triggerdotdev/trigger.dev/pull/1470))
+- Updated dependencies:
+  - `@trigger.dev/core@3.2.1`
+
 ## 3.2.0
 
 ### Patch Changes

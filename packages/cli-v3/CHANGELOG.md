@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 3.2.1
+
+### Patch Changes
+
+- Upgrade zod to latest (3.23.8) ([#1484](https://github.com/triggerdotdev/trigger.dev/pull/1484))
+- feat: exit if docker buildx can't be found for self-hosted builds ([#1475](https://github.com/triggerdotdev/trigger.dev/pull/1475))
+- Realtime streams ([#1470](https://github.com/triggerdotdev/trigger.dev/pull/1470))
+- Updated dependencies:
+  - `@trigger.dev/build@3.2.1`
+  - `@trigger.dev/core@3.2.1`
+
 ## 3.2.0
 
 ### Patch Changes
