@@ -171,12 +171,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div
-          className={cn(
-            "grid max-h-full min-h-full",
-            alertChannels.length === 0 ? "grid-rows-[1fr_auto]" : "grid-rows-[auto_1fr_auto]"
-          )}
-        >
+        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
           <div className="flex h-fit items-end justify-between p-2 pl-3">
             <Header2 className="">Project alerts</Header2>
             {alertChannels.length > 0 && !requiresUpgrade && (
@@ -190,7 +185,7 @@ export default function Page() {
               </LinkButton>
             )}
           </div>
-          <Table containerClassName={cn(alertChannels.length === 0 && "border-t-0")}>
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
