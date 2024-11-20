@@ -17,42 +17,7 @@ const handle = await myTask.trigger(
 );
 ```
 
-Then inside your run function, you can access the metadata like this:
-
-```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
-
-export const myTask = task({
-  id: "my-task",
-  run: async (payload: { message: string }) => {
-    const user = metadata.get("user");
-    console.log(user.name); // "Eric"
-    console.log(user.id); // "user_1234"
-  },
-});
-```
-
-You can also update the metadata during the run:
-
-```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
-
-export const myTask = task({
-  id: "my-task",
-  run: async (payload: { message: string }) => {
-    // Do some work
-    await metadata.set("progress", 0.1);
-
-    // Do some more work
-    await metadata.set("progress", 0.5);
-
-    // Do even more work
-    await metadata.set("progress", 1.0);
-  },
-});
-```
-
-You can get the current metadata at any time by calling `metadata.get()` or `metadata.current()` (again, only inside a run):
+You can get the current metadata at any time by calling `metadata.get()` or `metadata.current()` (only inside a run):
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk/v3";
@@ -71,26 +36,6 @@ export const myTask = task({
 });
 ```
 
-You can update metadata inside a run using `metadata.set()`, `metadata.save()`, or `metadata.del()`:
-
-```ts
-import { task, metadata } from "@trigger.dev/sdk/v3";
-
-export const myTask = task({
-  id: "my-task",
-  run: async (payload: { message: string }) => {
-    // Set a key
-    await metadata.set("progress", 0.5);
-
-    // Update the entire metadata object
-    await metadata.save({ progress: 0.6 });
-
-    // Delete a key
-    await metadata.del("progress");
-  },
-});
-```
-
 Any of these methods can be called anywhere "inside" the run function, or a function called from the run function:
 
 ```ts
@@ -99,12 +44,12 @@ import { task, metadata } from "@trigger.dev/sdk/v3";
 export const myTask = task({
   id: "my-task",
   run: async (payload: { message: string }) => {
-    await doSomeWork();
+    doSomeWork();
   },
 });
 
 async function doSomeWork() {
-  await metadata.set("progress", 0.5);
+  metadata.set("progress", 0.5);
 }
 ```
 
@@ -114,8 +59,8 @@ If you call any of the metadata methods outside of the run function, they will h
 import { metadata } from "@trigger.dev/sdk/v3";
 
 // Somewhere outside of the run function
-async function doSomeWork() {
-  await metadata.set("progress", 0.5); // This will do nothing
+function doSomeWork() {
+  metadata.set("progress", 0.5); // This will do nothing
 }
 ```
 
@@ -139,10 +84,10 @@ export const myTask = task({
     // Your run function work here
   },
   onStart: async () => {
-    await metadata.set("progress", 0.5);
+    metadata.set("progress", 0.5);
   },
   onSuccess: async () => {
-    await metadata.set("progress", 1.0);
+    metadata.set("progress", 1.0);
   },
 });
 ```
@@ -153,12 +98,285 @@ import { defineConfig, metadata } from "@trigger.dev/sdk/v3";
 export default defineConfig({
   project: "proj_1234",
   onStart: async () => {
-    await metadata.set("progress", 0.5);
+    metadata.set("progress", 0.5);
   },
 });
 ```
 
 </CodeGroup>
+
+## Updates API
+
+One of the more powerful features of metadata is the ability to update it as the run progresses. This is useful for tracking the progress of a run, storing intermediate results, or storing any other information that changes over time. (Combining metadata with [Realtime](/realtime) can give you a live view of the progress of your runs.)
+
+All metadata update methods (accept for `flush` and `stream`) are synchronous and will not block the run function. We periodically flush metadata to the database in the background, so you can safely update the metadata inside a run as often as you need to, without worrying about impacting the run's performance.
+
+### set
+
+Set the value of a key in the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Do some more work
+    metadata.set("progress", 0.5);
+
+    // Do even more work
+    metadata.set("progress", 1.0);
+  },
+});
+```
+
+### del
+
+Delete a key from the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Do some more work
+    metadata.set("progress", 0.5);
+
+    // Remove the progress key
+    metadata.del("progress");
+  },
+});
+```
+
+### replace
+
+Replace the entire metadata object with a new object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Replace the metadata object
+    metadata.replace({ user: { name: "Eric", id: "user_1234" } });
+  },
+});
+```
+
+### append
+
+Append a value to an array in the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Append a value to an array
+    metadata.append("logs", "Step 1 complete");
+
+    console.log(metadata.get("logs")); // ["Step 1 complete"]
+  },
+});
+```
+
+### remove
+
+Remove a value from an array in the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Append a value to an array
+    metadata.append("logs", "Step 1 complete");
+
+    // Remove a value from the array
+    metadata.remove("logs", "Step 1 complete");
+
+    console.log(metadata.get("logs")); // []
+  },
+});
+```
+
+### increment
+
+Increment a numeric value in the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Increment a value
+    metadata.increment("progress", 0.4);
+
+    console.log(metadata.get("progress")); // 0.5
+  },
+});
+```
+
+### decrement
+
+Decrement a numeric value in the metadata object:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.5);
+
+    // Decrement a value
+    metadata.decrement("progress", 0.4);
+
+    console.log(metadata.get("progress")); // 0.1
+  },
+});
+```
+
+### stream
+
+Capture a stream of values and make the stream available when using Realtime. See our [Realtime streams](/realtime/streams) documentation for more information.
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    const readableStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue("Step 1 complete");
+        controller.enqueue("Step 2 complete");
+        controller.enqueue("Step 3 complete");
+        controller.close();
+      },
+    });
+
+    // IMPORTANT: you must await the stream method
+    const stream = await metadata.stream("logs", readableStream);
+
+    // You can read from the returned stream locally
+    for await (const value of stream) {
+      console.log(value);
+    }
+  },
+});
+```
+
+`metadata.stream` accepts any `AsyncIterable` or `ReadableStream` object. The stream will be captured and made available in the Realtime API. So for example, you could pass the body of a fetch response to `metadata.stream` to capture the response body and make it available in Realtime:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { url: string }) => {
+    logger.info("Streaming response", { url });
+
+    const response = await fetch(url);
+
+    if (!response.body) {
+      throw new Error("Response body is not readable");
+    }
+
+    const stream = await metadata.stream(
+      "fetch",
+      response.body.pipeThrough(new TextDecoderStream())
+    );
+
+    let text = "";
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      text += chunk;
+    }
+
+    return { text };
+  },
+});
+```
+
+Or the results of a streaming call to the OpenAI SDK:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { prompt: string }) => {
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: payload.prompt }],
+      model: "gpt-3.5-turbo",
+      stream: true,
+    });
+
+    const stream = await metadata.stream("openai", completion);
+
+    let text = "";
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      text += chunk.choices.map((choice) => choice.delta?.content).join("");
+    }
+
+    return { text };
+  },
+});
+```
+
+### flush
+
+Flush the metadata to the database. The SDK will automatically flush the metadata periodically, so you don't need to call this method unless you need to ensure that the metadata is persisted immediately.
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Flush the metadata to the database
+    await metadata.flush();
+  },
+});
+```
 
 ## Metadata propagation
 

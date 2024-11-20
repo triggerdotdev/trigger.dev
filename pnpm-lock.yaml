@@ -1531,8 +1531,8 @@ importers:
         specifier: ^8.5.3
         version: 8.5.4
       ai:
-        specifier: ^3.4.33
-        version: 3.4.33(react@18.3.1)(svelte@4.2.19)(vue@3.4.38)(zod@3.23.8)
+        specifier: ^4.0.1
+        version: 4.0.2(react@18.3.1)(zod@3.23.8)
       encoding:
         specifier: ^0.1.13
         version: 0.1.13
@@ -1961,6 +1961,22 @@ packages:
       zod: 3.23.8
     dev: false
 
+  /@ai-sdk/provider-utils@2.0.1(zod@3.23.8):
+    resolution: {integrity: sha512-TNg7rPhRtETB2Z9F0JpOvpGii9Fs8EWM8nYy1jEkvSXkrPJ6b/9zVnDdaJsmLFDyrMbOsPJlkblYtmYEQou36w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider': 1.0.0
+      eventsource-parser: 3.0.0
+      nanoid: 3.3.7
+      secure-json-parse: 2.7.0
+      zod: 3.23.8
+    dev: true
+
   /@ai-sdk/provider@0.0.22:
     resolution: {integrity: sha512-smZ1/2jL/JSKnbhC6ama/PxI2D/psj+YAe0c0qpd5ComQCNFltg72VFf0rpUSFMmFuj1pCCNoBOCrvyl8HTZHQ==}
     engines: {node: '>=18'}
@@ -1980,7 +1996,6 @@ packages:
     engines: {node: '>=18'}
     dependencies:
       json-schema: 0.4.0
-    dev: false
 
   /@ai-sdk/react@0.0.53(react@19.0.0-rc.0)(zod@3.23.8):
     resolution: {integrity: sha512-sIsmTFoR/QHvUUkltmHwP4bPjwy2vko6j/Nj8ayxLhEHs04Ug+dwXQyfA7MwgimEE3BcDQpWL8ikVj0m3ZILWQ==}
@@ -2040,6 +2055,26 @@ packages:
       throttleit: 2.1.0
       zod: 3.23.8
     dev: false
+
+  /@ai-sdk/react@1.0.1(react@18.3.1)(zod@3.23.8):
+    resolution: {integrity: sha512-vonKc5bcUQDkzWhqP/bBagT1Cam81gHuCAWPy52PHv1372OUrLmO2s9ZJPvfORE9ns8H84zT78MWaCf5pb/yiQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^18 || ^19 || ^19.0.0-rc
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      zod:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider-utils': 2.0.1(zod@3.23.8)
+      '@ai-sdk/ui-utils': 1.0.1(zod@3.23.8)
+      react: 18.3.1
+      swr: 2.2.5(react@18.3.1)
+      throttleit: 2.1.0
+      zod: 3.23.8
+    dev: true
 
   /@ai-sdk/solid@0.0.43(zod@3.23.8):
     resolution: {integrity: sha512-7PlPLaeMAu97oOY2gjywvKZMYHF+GDfUxYNcuJ4AZ3/MRBatzs/U2r4ClT1iH8uMOcMg02RX6UKzP5SgnUBjVw==}
@@ -2153,6 +2188,21 @@ packages:
       zod: 3.23.8
       zod-to-json-schema: 3.23.5(zod@3.23.8)
     dev: false
+
+  /@ai-sdk/ui-utils@1.0.1(zod@3.23.8):
+    resolution: {integrity: sha512-zK7yNixtCve8ng/8+9jUFyLvI+1dPzSHuyIM56p3EeXwJECRt6e8xyk9AZJNskhmDN6jP+qucP2rWlkX3ZQ2gA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider': 1.0.0
+      '@ai-sdk/provider-utils': 2.0.1(zod@3.23.8)
+      zod: 3.23.8
+      zod-to-json-schema: 3.23.5(zod@3.23.8)
+    dev: true
 
   /@ai-sdk/vue@0.0.45(vue@3.4.38)(zod@3.23.8):
     resolution: {integrity: sha512-bqeoWZqk88TQmfoPgnFUKkrvhOIcOcSH5LMPgzZ8XwDqz5tHHrMHzpPfHCj7XyYn4ROTFK/2kKdC/ta6Ko0fMw==}
@@ -16763,6 +16813,29 @@ packages:
       zod-to-json-schema: 3.23.5(zod@3.23.8)
     dev: false
 
+  /ai@4.0.2(react@18.3.1)(zod@3.23.8):
+    resolution: {integrity: sha512-Dj17cVKCM+FgsJIAhYv7zT4YsrK3noFsLUxJOnTCVIHhmiNrl6/M6ebwQUOukLR/P2PbVzUQpHzdTvGck2b05Q==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^18 || ^19 || ^19.0.0-rc
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      zod:
+        optional: true
+    dependencies:
+      '@ai-sdk/provider': 1.0.0
+      '@ai-sdk/provider-utils': 2.0.1(zod@3.23.8)
+      '@ai-sdk/react': 1.0.1(react@18.3.1)(zod@3.23.8)
+      '@ai-sdk/ui-utils': 1.0.1(zod@3.23.8)
+      '@opentelemetry/api': 1.9.0
+      jsondiffpatch: 0.6.0
+      react: 18.3.1
+      zod: 3.23.8
+      zod-to-json-schema: 3.23.5(zod@3.23.8)
+    dev: true
+
   /ajv-formats@2.1.1(ajv@8.12.0):
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
     peerDependencies:
@@ -20638,7 +20711,6 @@ packages:
   /eventsource-parser@3.0.0:
     resolution: {integrity: sha512-T1C0XCUimhxVQzW4zFipdx0SficT651NnkR0ZSH3yQwh+mFMdLfgjABVi4YtMTtaL4s168593DaoaRLMqryavA==}
     engines: {node: '>=18.0.0'}
-    dev: false
 
   /evt@2.4.13:
     resolution: {integrity: sha512-haTVOsmjzk+28zpzvVwan9Zw2rLQF2izgi7BKjAPRzZAfcv+8scL0TpM8MzvGNKFYHiy+Bq3r6FYIIUPl9kt3A==}
