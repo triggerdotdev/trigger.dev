@@ -181,7 +181,7 @@ function utcDateToCalendarDate(date?: Date) {
   return date
     ? new CalendarDateTime(
         date.getUTCFullYear(),
-        date.getUTCMonth(),
+        date.getUTCMonth() + 1,
         date.getUTCDate(),
         date.getUTCHours(),
         date.getUTCMinutes(),
