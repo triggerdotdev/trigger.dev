@@ -74,6 +74,7 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import videoThumbFalRealtime from "~/assets/images/video-thumb-fal-realtime.jpg";
+import testTaskLink from "~/assets/images/test-task-link.png";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -188,7 +189,7 @@ export default function Page() {
                 <div className="flex min-w-0 max-w-full flex-col">
                   {!userHasTasks && <UserHasNoTasks />}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center gap-2 p-2">
+                    <div className="flex items-center p-2">
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
@@ -201,9 +202,9 @@ export default function Page() {
                       {!showQuickStart && (
                         <Button
                           variant="minimal/small"
-                          TrailingIcon={SideMenuRightClosedIcon}
+                          TrailingIcon={LightBulbIcon}
                           onClick={() => setShowQuickStart(true)}
-                          className="px-[0.375rem]"
+                          className="px-2.5"
                         />
                       )}
                     </div>
@@ -379,8 +380,8 @@ export default function Page() {
               <ResizablePanel
                 id="tasks-inspector"
                 min="200px"
-                default="400px"
-                max="700px"
+                default="600px"
+                max="1000px"
                 className="w-full"
               >
                 <HelpfulInfoHasTasks onClose={() => setShowQuickStart(false)} />
@@ -583,7 +584,6 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 
 function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
-  const project = useProject();
 
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -608,36 +608,29 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
             Test your tasks by clicking the "Test" button in the task list, in the side menu or by
             clicking this button.
           </Paragraph>
-          <LinkButton
-            to={v3TestPath(organization, project)}
-            variant={"secondary/small"}
-            LeadingIcon={BeakerIcon}
-          >
-            Run a test
-          </LinkButton>
+          <div className="aspect-video w-full flex-shrink-0 overflow-hidden rounded-sm">
+            <img src={testTaskLink} alt="Test your task" className="size-full object-cover" />
+          </div>
         </StepContentContainer>
-        <StepNumber stepNumber="2" title="Create a task from examples" />
-        <StepContentContainer>
-          <Link
-            to={docsPath("/guides/examples/fal-ai-realtime")}
-            target="_blank"
-            rel="noreferrer"
-            className="hover:bg-border-bright flex items-center gap-2 rounded-sm border border-grid-dimmed px-2 py-1"
-          >
-            <div className="aspect-video h-10">
-              <img
-                src={videoThumbFalRealtime}
-                alt="Fal.ai with Trigger.dev Realtime"
-                className="size-full"
-              />
-            </div>
-            <Paragraph>Generate an image from a prompt using Fal.ai and Realtime.</Paragraph>
-          </Link>
+        <StepNumber stepNumber="2" title="Create a new task from examples" />
+        <StepContentContainer className="flex flex-col gap-3">
+          <ExampleTaskCard
+            slug="fal-ai-realtime"
+            description="Generate an image from a prompt using Fal.ai and Realtime."
+            alt="Fal.ai with Trigger.dev Realtime"
+            src={videoThumbFalRealtime}
+          />
+          <ExampleTaskCard
+            slug="fal-ai-realtime"
+            description="Generate an image from a prompt using Fal.ai and Realtime."
+            alt="Fal.ai with Trigger.dev Realtime"
+            src={videoThumbFalRealtime}
+          />
         </StepContentContainer>
         <StepNumber stepNumber="3" title="Invite team members" />
         <StepContentContainer>
           <Paragraph spacing>
-            Invite team members to your project to collaborate on buildingtasks.
+            Invite team members to your project to collaborate on building tasks.
           </Paragraph>
           <LinkButton
             to={inviteTeamMemberPath(organization)}
@@ -647,7 +640,45 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
             Invite team members
           </LinkButton>
         </StepContentContainer>
+        <StepNumber stepNumber="4" title="Need help getting started?" />
+        <StepContentContainer>
+          <Paragraph spacing>Get in touch with us for help getting started.</Paragraph>
+          <Feedback
+            button={
+              <Button variant="secondary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+                Get in touch
+              </Button>
+            }
+            defaultValue="help"
+          />
+        </StepContentContainer>
       </div>
     </div>
+  );
+}
+
+function ExampleTaskCard({
+  slug,
+  description,
+  alt,
+  src,
+}: {
+  slug: string;
+  description: string;
+  alt: string;
+  src: string;
+}) {
+  return (
+    <Link
+      to={docsPath(`/guides/examples/${slug}`)}
+      target="_blank"
+      rel="noreferrer"
+      className="flex w-fit items-center gap-2 rounded border border-grid-bright py-1 pl-1 pr-3 transition hover:border-charcoal-600"
+    >
+      <div className="aspect-video h-12 max-w-full flex-shrink-0 overflow-hidden rounded-sm">
+        <img src={src} alt={alt} className="size-full object-cover" />
+      </div>
+      <Paragraph>{description}</Paragraph>
+    </Link>
   );
 }
