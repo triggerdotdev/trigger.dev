@@ -3,6 +3,11 @@ import { logger, metadata, runs, schemaTask, task, toolTask, wait } from "@trigg
 import { streamText, type TextStreamPart } from "ai";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
+import OpenAI from "openai";
+
+const openaiSDK = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export type STREAMS = { openai: TextStreamPart<{ getWeather: typeof weatherTask.tool }> };
 
@@ -90,7 +95,7 @@ export const openaiStreaming = schemaTask({
   run: async ({ model, prompt }) => {
     logger.info("Running OpenAI model", { model, prompt });
 
-    const result = await streamText({
+    const result = streamText({
       model: openai(model),
       prompt,
       tools: {
@@ -139,6 +144,68 @@ export const openaiO1Model = schemaTask({
       logger.log("Received chunk", { chunk });
 
       text += chunk;
+    }
+
+    return { text };
+  },
+});
+
+export const fetchStream = schemaTask({
+  id: "fetch-stream",
+  description: "Stream data from fetch",
+  schema: z.object({
+    url: z.string().url(),
+  }),
+  run: async ({ url }) => {
+    logger.info("Streaming response", { url });
+
+    const response = await fetch(url);
+
+    if (!response.body) {
+      throw new Error("Response body is not readable");
+    }
+
+    const stream = await metadata.stream(
+      "fetch",
+      response.body.pipeThrough(new TextDecoderStream())
+    );
+
+    let text = "";
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      text += chunk;
+    }
+
+    return { text };
+  },
+});
+
+export const openaiSDKStreaming = schemaTask({
+  id: "openai-sdk-streaming",
+  description: "Stream data from the OpenAI SDK",
+  schema: z.object({
+    model: z.string().default("gpt-3.5-turbo"),
+    prompt: z.string().default("Hello, how are you?"),
+  }),
+  run: async ({ model, prompt }) => {
+    logger.info("Running OpenAI model", { model, prompt });
+
+    const completion = await openaiSDK.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "gpt-3.5-turbo",
+      stream: true,
+    });
+
+    const stream = await metadata.stream("openai", completion);
+
+    let text = "";
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+
+      text += chunk.choices.map((choice) => choice.delta?.content).join("");
     }
 
     return { text };

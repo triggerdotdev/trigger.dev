@@ -27,7 +27,7 @@ export function useRun<TTask extends AnyTask>(
   isValidating: boolean;
   isError: boolean;
 } {
-  const apiClient = useApiClient();
+  const apiClient = useApiClient(options);
   const {
     data: run,
     error,
