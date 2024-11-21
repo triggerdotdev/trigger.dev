@@ -63,6 +63,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     period: url.searchParams.get("period") ?? undefined,
     bulkId: url.searchParams.get("bulkId") ?? undefined,
     tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    from: url.searchParams.get("from") ?? undefined,
+    to: url.searchParams.get("to") ?? undefined,
   };
   const {
     tasks,

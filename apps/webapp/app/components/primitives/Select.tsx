@@ -440,7 +440,7 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
 }
 
 const selectItemClasses =
-  "group cursor-pointer px-1 pt-1 text-sm text-text-dimmed focus-custom last:pb-1";
+  "group cursor-pointer px-1 pt-1 text-2sm text-text-dimmed focus-custom last:pb-1";
 
 export function SelectItem({
   icon,
@@ -613,7 +613,7 @@ export function SelectPopover({
         "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
         "min-w-[max(180px,calc(var(--popover-anchor-width)+0.5rem))]",
         "max-w-[min(480px,var(--popover-available-width))]",
-        "max-h-[min(520px,var(--popover-available-height))]",
+        "max-h-[min(600px,var(--popover-available-height))]",
         "origin-[var(--popover-transform-origin)]",
         className
       )}

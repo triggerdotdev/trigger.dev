@@ -5,6 +5,7 @@ import {
   CpuChipIcon,
   InboxStackIcon,
   TagIcon,
+  TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
@@ -56,6 +57,8 @@ import { type loader } from "~/routes/resources.projects.$projectParam.runs.tags
 import { useProject } from "~/hooks/useProject";
 import { Spinner } from "~/components/primitives/Spinner";
 import { matchSorter } from "match-sorter";
+import { DateField } from "~/components/primitives/DateField";
+import { Label } from "~/components/primitives/Label";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -114,15 +117,17 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("tasks") ||
     searchParams.has("period") ||
     searchParams.has("bulkId") ||
-    searchParams.has("tags");
+    searchParams.has("tags") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
       <AppliedFilters {...props} />
       {hasFilters && (
-        <Form>
-          <Button variant="minimal/small" LeadingIcon={XMarkIcon}>
+        <Form className="h-6">
+          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
             Clear all
           </Button>
         </Form>
@@ -146,6 +151,7 @@ const filterTypes = [
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
+  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -222,6 +228,7 @@ function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: Ru
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedPeriodFilter />
+      <AppliedCustomDateRangeFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
     </>
   );
@@ -246,7 +253,9 @@ function Menu(props: MenuProps) {
     case "tasks":
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "created":
-      return <CreatedDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "daterange":
+      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
@@ -256,9 +265,10 @@ function Menu(props: MenuProps) {
 
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
-    return filterTypes.filter((item) =>
-      item.title.toLowerCase().includes(searchValue.toLowerCase())
-    );
+    return filterTypes.filter((item) => {
+      if (item.name === "daterange") return false;
+      return item.title.toLowerCase().includes(searchValue.toLowerCase());
+    });
   }, [searchValue]);
 
   return (
@@ -790,20 +800,12 @@ const timePeriods = [
     value: "5m",
   },
   {
-    label: "15 mins ago",
-    value: "15m",
-  },
-  {
     label: "30 mins ago",
     value: "30m",
   },
   {
     label: "1 hour ago",
     value: "1h",
-  },
-  {
-    label: "3 hours ago",
-    value: "3h",
   },
   {
     label: "6 hours ago",
@@ -822,10 +824,6 @@ const timePeriods = [
     value: "7d",
   },
   {
-    label: "10 days ago",
-    value: "10d",
-  },
-  {
     label: "14 days ago",
     value: "14d",
   },
@@ -835,26 +833,54 @@ const timePeriods = [
   },
 ];
 
-function CreatedDropdown({
+function CreatedAtDropdown({
   trigger,
   clearSearchValue,
   searchValue,
   onClose,
+  setFilterType,
+  hideCustomRange,
 }: {
   trigger: ReactNode;
   clearSearchValue: () => void;
   searchValue: string;
   onClose?: () => void;
+  setFilterType?: (type: FilterType | undefined) => void;
+  hideCustomRange?: boolean;
 }) {
   const { value, replace } = useSearchParams();
+
+  const from = value("from");
+  const to = value("to");
+  const period = value("period");
 
   const handleChange = (newValue: string) => {
     clearSearchValue();
     if (newValue === "all") {
-      if (!value) return;
+      if (!period && !from && !to) return;
+
+      replace({
+        period: undefined,
+        from: undefined,
+        to: undefined,
+        cursor: undefined,
+        direction: undefined,
+      });
+      return;
     }
 
-    replace({ period: newValue, cursor: undefined, direction: undefined });
+    if (newValue === "custom") {
+      setFilterType?.("daterange");
+      return;
+    }
+
+    replace({
+      period: newValue,
+      from: undefined,
+      to: undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
   };
 
   const filtered = useMemo(() => {
@@ -864,7 +890,11 @@ function CreatedDropdown({
   }, [searchValue]);
 
   return (
-    <SelectProvider value={value("period")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider
+      value={from || to ? "custom" : period ?? "all"}
+      setValue={handleChange}
+      virtualFocus={true}
+    >
       {trigger}
       <SelectPopover
         hideOnEnter={false}
@@ -884,6 +914,11 @@ function CreatedDropdown({
               {item.label}
             </SelectItem>
           ))}
+          {!hideCustomRange ? (
+            <SelectItem value="custom" hideOnClick={false}>
+              Custom date range
+            </SelectItem>
+          ) : null}
         </SelectList>
       </SelectPopover>
     </SelectProvider>
@@ -900,7 +935,7 @@ function AppliedPeriodFilter() {
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
-        <CreatedDropdown
+        <CreatedAtDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
@@ -914,10 +949,158 @@ function AppliedPeriodFilter() {
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
+          hideCustomRange
         />
       )}
     </FilterMenuProvider>
   );
+}
+
+function CustomDateRangeDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { value, replace } = useSearchParams();
+  const fromSearch = dateFromString(value("from"));
+  const toSearch = dateFromString(value("to"));
+  const [from, setFrom] = useState(fromSearch);
+  const [to, setTo] = useState(toSearch);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      period: undefined,
+      cursor: undefined,
+      direction: undefined,
+      from: from?.getTime().toString(),
+      to: to?.getTime().toString(),
+    });
+
+    //close the dropdown
+  }, [from, to, replace]);
+
+  return (
+    <SelectProvider virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>From (local time)</Label>
+            <DateField
+              label="From time"
+              defaultValue={from}
+              onValueChange={setFrom}
+              granularity="second"
+              showNowButton
+              showClearButton
+              variant="small"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label>To (local time)</Label>
+            <DateField
+              label="To time"
+              defaultValue={to}
+              onValueChange={setTo}
+              granularity="second"
+              showNowButton
+              showClearButton
+              variant="small"
+            />
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => onClose?.()}>
+              Cancel
+            </Button>
+            <Button variant="secondary/small" onClick={() => apply()}>
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedCustomDateRangeFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("from") === undefined && value("to") === undefined) {
+    return null;
+  }
+
+  const fromDate = dateFromString(value("from"));
+  const toDate = dateFromString(value("to"));
+
+  const rangeType = fromDate && toDate ? "range" : fromDate ? "from" : "to";
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <CustomDateRangeDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label={
+                  rangeType === "range"
+                    ? "Created"
+                    : rangeType === "from"
+                    ? "Created after"
+                    : "Created before"
+                }
+                value={
+                  <>
+                    {rangeType === "range" ? (
+                      <span>
+                        <DateTime date={fromDate!} includeTime includeSeconds showTimezone /> –{" "}
+                        <DateTime date={toDate!} includeTime includeSeconds showTimezone />
+                      </span>
+                    ) : rangeType === "from" ? (
+                      <DateTime date={fromDate!} includeTime includeSeconds showTimezone />
+                    ) : (
+                      <DateTime date={toDate!} includeTime includeSeconds showTimezone />
+                    )}
+                  </>
+                }
+                onRemove={() => del(["period", "from", "to", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function dateFromString(value: string | undefined | null): Date | undefined {
+  if (!value) return;
+
+  //is it an int?
+  const int = parseInt(value);
+  if (!isNaN(int)) {
+    return new Date(int);
+  }
+
+  return new Date(value);
 }
 
 function appliedSummary(values: string[], maxValues = 3) {

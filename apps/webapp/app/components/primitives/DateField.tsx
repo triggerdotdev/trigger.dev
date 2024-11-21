@@ -1,4 +1,4 @@
-import { BellAlertIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CalendarDateTime, createCalendar } from "@internationalized/date";
 import { useDateField, useDateSegment } from "@react-aria/datepicker";
 import type { DateFieldState, DateSegment } from "@react-stately/datepicker";
@@ -12,7 +12,7 @@ const variants = {
   small: {
     fieldStyles: "h-5 text-sm rounded-sm px-0.5",
     nowButtonVariant: "tertiary/small" as const,
-    clearButtonVariant: "minimal/small" as const,
+    clearButtonVariant: "tertiary/small" as const,
   },
   medium: {
     fieldStyles: "h-7 text-base rounded px-1",
@@ -134,23 +134,19 @@ export function DateField({
           <Button
             type="button"
             variant={variants[variant].nowButtonVariant}
-            LeadingIcon={BellAlertIcon}
-            leadingIconClassName="text-text-dimmed group-hover:text-text-bright"
             onClick={() => {
               const now = new Date();
               setValue(utcDateToCalendarDate(new Date()));
               onValueChange?.(now);
             }}
           >
-            <span className="text-text-dimmed transition group-hover:text-text-bright">Now</span>
+            Now
           </Button>
         )}
         {showClearButton && (
           <Button
             type="button"
             variant={variants[variant].clearButtonVariant}
-            LeadingIcon={"close"}
-            leadingIconClassName="-mr-2"
             onClick={() => {
               setValue(undefined);
               onValueChange?.(undefined);
