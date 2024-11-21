@@ -9,13 +9,14 @@ import {
 } from "@heroicons/react/20/solid";
 import { Link, useRevalidator } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { SideMenuRightClosedIcon } from "~/assets/icons/SideMenuRightClosed";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { Feedback } from "~/components/Feedback";
 import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -23,6 +24,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { AnimatingArrow } from "~/components/primitives/AnimatingArrow";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
@@ -73,8 +75,6 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
-import videoThumbFalRealtime from "~/assets/images/video-thumb-fal-realtime.jpg";
-import testTaskLink from "~/assets/images/test-task-link.png";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -200,11 +200,18 @@ export default function Page() {
                         autoFocus
                       />
                       {!showQuickStart && (
-                        <Button
-                          variant="minimal/small"
-                          TrailingIcon={LightBulbIcon}
-                          onClick={() => setShowQuickStart(true)}
-                          className="px-2.5"
+                        <SimpleTooltip
+                          button={
+                            <Button
+                              variant="minimal/small"
+                              TrailingIcon={LightBulbIcon}
+                              onClick={() => setShowQuickStart(true)}
+                              className="px-2.5"
+                            />
+                          }
+                          content="Useful links"
+                          side="left"
+                          disableHoverableContent
                         />
                       )}
                     </div>
@@ -380,8 +387,8 @@ export default function Page() {
               <ResizablePanel
                 id="tasks-inspector"
                 min="200px"
-                default="600px"
-                max="1000px"
+                default="400px"
+                max="700px"
                 className="w-full"
               >
                 <HelpfulInfoHasTasks onClose={() => setShowQuickStart(false)} />
@@ -584,101 +591,227 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 
 function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
+  const project = useProject();
 
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed py-2">
-        <Header2 className="flex items-center gap-2">
-          <LightBulbIcon className="size-4 text-sun-500" />
-          Helpful next steps
-        </Header2>
-        <Button
-          onClick={onClose}
-          variant="minimal/small"
-          TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
-          shortcutPosition="before-trailing-icon"
-          className="pl-[0.375rem]"
+      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
+          <Header2 className="flex items-center gap-2">
+            <LightBulbIcon className="size-4 text-sun-500" />
+            Helpful next steps
+          </Header2>
+          <Button
+            onClick={onClose}
+            variant="minimal/small"
+            TrailingIcon={ExitIcon}
+            shortcut={{ key: "esc" }}
+            shortcutPosition="before-trailing-icon"
+            className="pl-[0.375rem]"
+          />
+        </div>
+        <LinkWithIcon
+          to={v3TestPath(organization, project)}
+          description="Test your tasks"
+          icon={<BeakerIcon className="size-5 text-lime-500" />}
         />
-      </div>
-      <div className="overflow-y-scroll p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <StepNumber stepNumber="1" title="Test your task" />
-        <StepContentContainer>
-          <Paragraph spacing>
-            Test your tasks by clicking the "Test" button in the task list, in the side menu or by
-            clicking this button.
-          </Paragraph>
-          <div className="aspect-video w-full flex-shrink-0 overflow-hidden rounded-sm">
-            <img src={testTaskLink} alt="Test your task" className="size-full object-cover" />
-          </div>
-        </StepContentContainer>
-        <StepNumber stepNumber="2" title="Create a new task from examples" />
-        <StepContentContainer className="flex flex-col gap-3">
-          <ExampleTaskCard
-            slug="fal-ai-realtime"
-            description="Generate an image from a prompt using Fal.ai and Realtime."
-            alt="Fal.ai with Trigger.dev Realtime"
-            src={videoThumbFalRealtime}
-          />
-          <ExampleTaskCard
-            slug="fal-ai-realtime"
-            description="Generate an image from a prompt using Fal.ai and Realtime."
-            alt="Fal.ai with Trigger.dev Realtime"
-            src={videoThumbFalRealtime}
-          />
-        </StepContentContainer>
-        <StepNumber stepNumber="3" title="Invite team members" />
-        <StepContentContainer>
-          <Paragraph spacing>
-            Invite team members to your project to collaborate on building tasks.
-          </Paragraph>
-          <LinkButton
-            to={inviteTeamMemberPath(organization)}
-            variant={"secondary/small"}
-            LeadingIcon={UserPlusIcon}
-          >
-            Invite team members
-          </LinkButton>
-        </StepContentContainer>
-        <StepNumber stepNumber="4" title="Need help getting started?" />
-        <StepContentContainer>
-          <Paragraph spacing>Get in touch with us for help getting started.</Paragraph>
-          <Feedback
-            button={
-              <Button variant="secondary/small" LeadingIcon={ChatBubbleLeftRightIcon}>
-                Get in touch
-              </Button>
-            }
-            defaultValue="help"
-          />
-        </StepContentContainer>
+        <LinkWithIcon
+          to={inviteTeamMemberPath(organization)}
+          description="Invite team members"
+          icon={<UserPlusIcon className="size-5 text-amber-500" />}
+        />
+        <LinkWithIcon
+          to="https://trigger.dev/discord"
+          description="Join our Discord for help and support"
+          icon={<DiscordIcon className="size-5" />}
+          isExternal
+        />
+        <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
+          <Header2 className="flex items-center gap-2">
+            <BookOpenIcon className="size-5 text-blue-500" />
+            From the docs
+          </Header2>
+        </div>
+        <LinkWithIcon
+          to={docsPath("/writing-tasks-introduction")}
+          description="How to write a task"
+          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/tasks/scheduled")}
+          description="Scheduled tasks (cron)"
+          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/triggering")}
+          description="How to trigger a task"
+          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/cli-dev")}
+          description="Running the CLI"
+          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/how-it-works")}
+          description="How Trigger.dev works"
+          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
+          isExternal
+        />
+        <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
+          <Header2 className="flex items-center gap-2">
+            <TaskIcon className="size-4 text-blue-500" />
+            Example tasks
+          </Header2>
+        </div>
+        <LinkWithIcon
+          to={docsPath("/examples/dall-e3-generate-image")}
+          description="DALL·E 3 image generation"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/deepgram-transcribe-audio")}
+          description="Deepgram audio transcription"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/fal-ai-image-to-cartoon")}
+          description="Fal.ai image to cartoon"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/fal-ai-realtime")}
+          description="Fal.ai with Realtime"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/ffmpeg-video-processing")}
+          description="FFmpeg video processing"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/firecrawl-url-crawl")}
+          description="Firecrawl URL crawl"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/libreoffice-pdf-conversion")}
+          description="LibreOffice PDF conversion"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/open-ai-with-retrying")}
+          description="OpenAI with retrying"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/pdf-to-image")}
+          description="PDF to image"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/puppeteer")}
+          description="Puppeteer"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/react-pdf")}
+          description="React to PDF"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/resend-email-sequence")}
+          description="Resend email sequence"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/scrape-hacker-news")}
+          description="Scrape Hacker News"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/sentry-error-tracking")}
+          description="Sentry error tracking"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/sharp-image-processing")}
+          description="Sharp image processing"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/supabase-database-operations")}
+          description="Supabase database operations"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/supabase-storage-upload")}
+          description="Supabase Storage upload"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/vercel-ai-sdk")}
+          description="Vercel AI SDK"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
+        <LinkWithIcon
+          to={docsPath("/examples/vercel-sync-env-vars")}
+          description="Vercel sync environment variables"
+          icon={<TaskIcon className="size-4 text-text-dimmed" />}
+          isExternal
+        />
       </div>
     </div>
   );
 }
 
-function ExampleTaskCard({
-  slug,
+function LinkWithIcon({
+  to,
   description,
-  alt,
-  src,
+  icon,
+  isExternal,
 }: {
-  slug: string;
+  to: string;
   description: string;
-  alt: string;
-  src: string;
+  icon: React.ReactNode;
+  isExternal?: boolean;
 }) {
   return (
     <Link
-      to={docsPath(`/guides/examples/${slug}`)}
-      target="_blank"
-      rel="noreferrer"
-      className="flex w-fit items-center gap-2 rounded border border-grid-bright py-1 pl-1 pr-3 transition hover:border-charcoal-600"
+      to={to}
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noreferrer" : undefined}
+      className="group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750"
     >
-      <div className="aspect-video h-12 max-w-full flex-shrink-0 overflow-hidden rounded-sm">
-        <img src={src} alt={alt} className="size-full object-cover" />
+      <div className="flex items-center gap-2">
+        <div className="grid size-10 min-w-10 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650">
+          {icon}
+        </div>
+        <Paragraph variant="base">{description}</Paragraph>
       </div>
-      <Paragraph>{description}</Paragraph>
+      <AnimatingArrow direction={isExternal ? "topRight" : "right"} theme="dimmed" />
     </Link>
   );
 }
