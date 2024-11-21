@@ -130,6 +130,13 @@ export function RunsFilters(props: RunFiltersProps) {
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
+          {searchParams.has("showChildTasks") && (
+            <input
+              type="hidden"
+              name="showChildTasks"
+              value={searchParams.get("showChildTasks") as string}
+            />
+          )}
           <Button variant="minimal/small" LeadingIcon={TrashIcon}>
             Clear all
           </Button>
@@ -942,7 +949,7 @@ function AppliedPeriodFilter() {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Created "
+                label="Created"
                 value={
                   timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")
                 }
