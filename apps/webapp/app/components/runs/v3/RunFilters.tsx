@@ -939,7 +939,7 @@ function AppliedPeriodFilter() {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Created"
+                label="Created "
                 value={
                   timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")
                 }
@@ -967,6 +967,7 @@ function CustomDateRangeDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
+  const [open, setOpen] = useState<boolean | undefined>();
   const { value, replace } = useSearchParams();
   const fromSearch = dateFromString(value("from"));
   const toSearch = dateFromString(value("to"));
@@ -983,11 +984,11 @@ function CustomDateRangeDropdown({
       to: to?.getTime().toString(),
     });
 
-    //close the dropdown
+    setOpen(false);
   }, [from, to, replace]);
 
   return (
-    <SelectProvider virtualFocus={true}>
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
       {trigger}
       <SelectPopover
         hideOnEnter={false}
@@ -1026,7 +1027,7 @@ function CustomDateRangeDropdown({
             />
           </div>
           <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => onClose?.()}>
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button variant="secondary/small" onClick={() => apply()}>
