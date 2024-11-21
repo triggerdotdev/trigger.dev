@@ -201,9 +201,22 @@ export default function Page() {
                       possibleEnvironments={possibleEnvironments}
                       possibleTasks={possibleTasks}
                     />
+                    <div className="flex items-center justify-end gap-x-2">
+                      <PaginationControls
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        showPageNumbers={false}
+                      />
+                    </div>
                   </div>
 
-                  <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                  <div className="h-fit max-h-full overflow-x-auto">
+                    <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
+                    <div className="flex justify-end py-3">
+                      <PaginationControls currentPage={currentPage} totalPages={totalPages} />
+                    </div>
+                  </div>
+
                   <div className="flex w-full items-start justify-between">
                     <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
                       <SimpleTooltip
@@ -359,7 +372,7 @@ function SchedulesTable({
   const { scheduleParam } = useParams();
 
   return (
-    <Table containerClassName="max-h-full h-fit overflow-x-auto border-b border-grid-bright">
+    <Table>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
