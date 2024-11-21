@@ -22,6 +22,7 @@ export type RunListOptions = {
   from?: number;
   to?: number;
   isTest?: boolean;
+  rootOnly?: boolean;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -47,6 +48,7 @@ export class RunListPresenter extends BasePresenter {
     period,
     bulkId,
     isTest,
+    rootOnly,
     from,
     to,
     direction = "forward",
@@ -66,7 +68,8 @@ export class RunListPresenter extends BasePresenter {
       to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
-      typeof isTest === "boolean";
+      typeof isTest === "boolean" ||
+      rootOnly === true;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -248,26 +251,27 @@ WHERE
       from
         ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
         : Prisma.empty
-    } 
+    }
     ${
       to ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty
-    } 
-        ${
-          tags && tags.length > 0
-            ? Prisma.sql`AND (
-              tr.id IN (
-                SELECT 
-                    trtg."A" 
-                FROM 
-                    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg
-                JOIN 
-                    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
-                WHERE 
-                    tag.name IN (${Prisma.join(tags)})
-              )
-            )`
-            : Prisma.empty
-        }
+    }
+    ${
+      tags && tags.length > 0
+        ? Prisma.sql`AND (
+          tr.id IN (
+            SELECT
+                trtg."A"
+            FROM
+                ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg
+            JOIN
+                ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
+            WHERE
+                tag.name IN (${Prisma.join(tags)})
+          )
+        )`
+        : Prisma.empty
+    }
+    ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
     GROUP BY
       tr.id, bw.version
     ORDER BY

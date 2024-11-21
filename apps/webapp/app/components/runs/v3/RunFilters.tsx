@@ -59,6 +59,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { matchSorter } from "match-sorter";
 import { DateField } from "~/components/primitives/DateField";
 import { Label } from "~/components/primitives/Label";
+import { Switch } from "~/components/primitives/Switch";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -89,6 +90,7 @@ export const TaskRunListSearchFilters = z.object({
   bulkId: z.string().optional(),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
+  showChildTasks: z.coerce.boolean().optional(),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -124,6 +126,7 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
+      <ShowChildTasksToggle />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
@@ -1089,6 +1092,25 @@ function AppliedCustomDateRangeFilter() {
         />
       )}
     </FilterMenuProvider>
+  );
+}
+
+function ShowChildTasksToggle() {
+  const { value, replace } = useSearchParams();
+
+  const showChildTasks = value("showChildTasks") === "true";
+
+  return (
+    <Switch
+      variant="small"
+      label="Show child runs"
+      checked={showChildTasks}
+      onCheckedChange={(checked) => {
+        replace({
+          showChildTasks: checked ? "true" : undefined,
+        });
+      }}
+    />
   );
 }
 
