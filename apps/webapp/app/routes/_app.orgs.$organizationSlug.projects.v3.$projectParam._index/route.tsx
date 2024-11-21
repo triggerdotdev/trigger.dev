@@ -7,8 +7,8 @@ import {
   LightBulbIcon,
   UserPlusIcon,
 } from "@heroicons/react/20/solid";
-import { Link, useRevalidator } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Link, useRevalidator, useSubmit } from "@remix-run/react";
+import { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
@@ -51,7 +51,13 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import {
+  Tooltip as TooltipPrimitive,
+  SimpleTooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
@@ -75,6 +81,12 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import {
+  getUsefulLinksPreference,
+  setUsefulLinksPreference,
+  uiPreferencesStorage,
+} from "~/services/preferences/uiPreferences.server";
+import { json } from "@remix-run/node";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -88,12 +100,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectSlug: projectParam,
     });
 
+    const usefulLinksPreference = await getUsefulLinksPreference(request);
+
     return typeddefer({
       tasks,
       userHasTasks,
       activity,
       runningStats,
       durations,
+      usefulLinksPreference,
     });
   } catch (error) {
     console.error(error);
@@ -104,10 +119,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export async function action({ request }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const showUsefulLinks = formData.get("showUsefulLinks") === "true";
+
+  const session = await setUsefulLinksPreference(showUsefulLinks, request);
+
+  return json(
+    { success: true },
+    {
+      headers: {
+        "Set-Cookie": await uiPreferencesStorage.commitSession(session),
+      },
+    }
+  );
+}
+
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
-  const { tasks, userHasTasks, activity, runningStats, durations } =
+  const { tasks, userHasTasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
   const { filterText, setFilterText, filteredItems } = useTextFilter<Task>({
     items: tasks,
@@ -149,7 +180,15 @@ export default function Page() {
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [showQuickStart, setShowQuickStart] = useState(true);
+  const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
+
+  // Create a submit handler to save the preference
+  const submit = useSubmit();
+
+  const handleUsefulLinksToggle = (show: boolean) => {
+    setShowUsefulLinks(show);
+    submit({ showUsefulLinks: show.toString() }, { method: "post" });
+  };
 
   return (
     <PageContainer>
@@ -199,19 +238,12 @@ export default function Page() {
                         onChange={(e) => setFilterText(e.target.value)}
                         autoFocus
                       />
-                      {!showQuickStart && (
-                        <SimpleTooltip
-                          button={
-                            <Button
-                              variant="minimal/small"
-                              TrailingIcon={LightBulbIcon}
-                              onClick={() => setShowQuickStart(true)}
-                              className="px-2.5"
-                            />
-                          }
-                          content="Useful links"
-                          side="left"
-                          disableHoverableContent
+                      {!showUsefulLinks && (
+                        <Button
+                          variant="minimal/small"
+                          TrailingIcon={LightBulbIcon}
+                          onClick={() => handleUsefulLinksToggle(true)}
+                          className="px-2.5"
                         />
                       )}
                     </div>
@@ -381,17 +413,17 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-          {hasTasks && showQuickStart ? (
+          {hasTasks && showUsefulLinks ? (
             <>
               <ResizableHandle id="tasks-handle" />
               <ResizablePanel
                 id="tasks-inspector"
                 min="200px"
                 default="400px"
-                max="700px"
+                max="500px"
                 className="w-full"
               >
-                <HelpfulInfoHasTasks onClose={() => setShowQuickStart(false)} />
+                <HelpfulInfoHasTasks onClose={() => handleUsefulLinksToggle(false)} />
               </ResizablePanel>
             </>
           ) : null}
@@ -806,7 +838,7 @@ function LinkWithIcon({
       className="group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750"
     >
       <div className="flex items-center gap-2">
-        <div className="grid size-10 min-w-10 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650">
+        <div className="grid size-9 min-w-9 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650">
           {icon}
         </div>
         <Paragraph variant="base">{description}</Paragraph>
