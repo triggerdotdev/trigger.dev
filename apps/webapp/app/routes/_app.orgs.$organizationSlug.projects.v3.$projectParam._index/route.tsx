@@ -6,9 +6,11 @@ import {
   ChevronUpIcon,
   LightBulbIcon,
   UserPlusIcon,
+  VideoCameraIcon,
 } from "@heroicons/react/20/solid";
+import { json } from "@remix-run/node";
 import { Link, useRevalidator, useSubmit } from "@remix-run/react";
-import { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { TaskRunStatus } from "@trigger.dev/database";
@@ -28,6 +30,7 @@ import { AnimatingArrow } from "~/components/primitives/AnimatingArrow";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -51,13 +54,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import {
-  Tooltip as TooltipPrimitive,
-  SimpleTooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFunctionName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
@@ -70,6 +67,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTextFilter } from "~/hooks/useTextFilter";
 import { Task, TaskActivity, TaskListPresenter } from "~/presenters/v3/TaskListPresenter.server";
+import {
+  getUsefulLinksPreference,
+  setUsefulLinksPreference,
+  uiPreferencesStorage,
+} from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -81,12 +83,6 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
-import {
-  getUsefulLinksPreference,
-  setUsefulLinksPreference,
-  uiPreferencesStorage,
-} from "~/services/preferences/uiPreferences.server";
-import { json } from "@remix-run/node";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -624,13 +620,14 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
   const project = useProject();
+  const [isVideoDialogOpen, setIsVideoDialogOpen] = useState(false);
 
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
           <Header2 className="flex items-center gap-2">
-            <LightBulbIcon className="size-4 text-sun-500" />
+            <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
             Helpful next steps
           </Header2>
           <Button
@@ -643,16 +640,37 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
           />
         </div>
         <LinkWithIcon
+          variant="withIcon"
           to={v3TestPath(organization, project)}
           description="Test your tasks"
           icon={<BeakerIcon className="size-5 text-lime-500" />}
         />
         <LinkWithIcon
+          variant="withIcon"
           to={inviteTeamMemberPath(organization)}
           description="Invite team members"
           icon={<UserPlusIcon className="size-5 text-amber-500" />}
         />
+        <div
+          role="button"
+          onClick={() => setIsVideoDialogOpen(true)}
+          className={cn(
+            "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
+            variants["withIcon"].container
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <div className={variants["withIcon"].iconContainer}>
+              <VideoCameraIcon className="size-5 text-rose-500" />
+            </div>
+            <Paragraph variant="base" className="transition-colors group-hover:text-text-bright">
+              Watch a 14 min walkthrough video
+            </Paragraph>
+          </div>
+          <AnimatingArrow direction="right" theme="dimmed" />
+        </div>
         <LinkWithIcon
+          variant="withIcon"
           to="https://trigger.dev/discord"
           description="Join our Discord for help and support"
           icon={<DiscordIcon className="size-5" />}
@@ -667,31 +685,18 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
         <LinkWithIcon
           to={docsPath("/writing-tasks-introduction")}
           description="How to write a task"
-          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/tasks/scheduled")}
           description="Scheduled tasks (cron)"
-          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
           isExternal
         />
-        <LinkWithIcon
-          to={docsPath("/triggering")}
-          description="How to trigger a task"
-          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/cli-dev")}
-          description="Running the CLI"
-          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
-          isExternal
-        />
+        <LinkWithIcon to={docsPath("/triggering")} description="How to trigger a task" isExternal />
+        <LinkWithIcon to={docsPath("/cli-dev")} description="Running the CLI" isExternal />
         <LinkWithIcon
           to={docsPath("/how-it-works")}
           description="How Trigger.dev works"
-          icon={<BookOpenIcon className="size-5 text-text-dimmed" />}
           isExternal
         />
         <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
@@ -703,145 +708,157 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
         <LinkWithIcon
           to={docsPath("/examples/dall-e3-generate-image")}
           description="DALL·E 3 image generation"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/deepgram-transcribe-audio")}
           description="Deepgram audio transcription"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/fal-ai-image-to-cartoon")}
           description="Fal.ai image to cartoon"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/fal-ai-realtime")}
           description="Fal.ai with Realtime"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/ffmpeg-video-processing")}
           description="FFmpeg video processing"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/firecrawl-url-crawl")}
           description="Firecrawl URL crawl"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/libreoffice-pdf-conversion")}
           description="LibreOffice PDF conversion"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/open-ai-with-retrying")}
           description="OpenAI with retrying"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/pdf-to-image")}
           description="PDF to image"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
-        <LinkWithIcon
-          to={docsPath("/examples/puppeteer")}
-          description="Puppeteer"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/react-pdf")}
-          description="React to PDF"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
-          isExternal
-        />
+        <LinkWithIcon to={docsPath("/examples/puppeteer")} description="Puppeteer" isExternal />
+        <LinkWithIcon to={docsPath("/examples/react-pdf")} description="React to PDF" isExternal />
         <LinkWithIcon
           to={docsPath("/examples/resend-email-sequence")}
           description="Resend email sequence"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/scrape-hacker-news")}
           description="Scrape Hacker News"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/sentry-error-tracking")}
           description="Sentry error tracking"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/sharp-image-processing")}
           description="Sharp image processing"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/supabase-database-operations")}
           description="Supabase database operations"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/supabase-storage-upload")}
           description="Supabase Storage upload"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/vercel-ai-sdk")}
           description="Vercel AI SDK"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
         <LinkWithIcon
           to={docsPath("/examples/vercel-sync-env-vars")}
           description="Vercel sync environment variables"
-          icon={<TaskIcon className="size-4 text-text-dimmed" />}
           isExternal
         />
       </div>
+      <Dialog open={isVideoDialogOpen} onOpenChange={setIsVideoDialogOpen}>
+        <DialogContent className="sm:max-w-screen-lg">
+          <DialogHeader className="mb-4 pt-1">
+            <DialogTitle>Trigger.dev walkthrough</DialogTitle>
+          </DialogHeader>
+          <div className="aspect-video">
+            <iframe
+              width="100%"
+              height="100%"
+              src="https://www.youtube.com/embed/YH_4c0K7fGM?si=BcX6MAt_V139sRw9"
+              title="Trigger.dev walkthrough"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+const variants = {
+  withIcon: {
+    container: "",
+    iconContainer:
+      "grid size-9 min-w-9 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650",
+  },
+  minimal: {
+    container: "pl-3 py-2",
+    iconContainer: "",
+  },
+} as const;
+
+type LinkWithIconProps = {
+  to: string;
+  description: string;
+  icon?: React.ReactNode;
+  isExternal?: boolean;
+  variant?: keyof typeof variants;
+};
 
 function LinkWithIcon({
   to,
   description,
   icon,
   isExternal,
-}: {
-  to: string;
-  description: string;
-  icon: React.ReactNode;
-  isExternal?: boolean;
-}) {
+  variant = "minimal",
+}: LinkWithIconProps) {
+  const variation = variants[variant];
+
   return (
     <Link
       to={to}
       target={isExternal ? "_blank" : undefined}
       rel={isExternal ? "noreferrer" : undefined}
-      className="group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750"
+      className={cn(
+        "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
+        variation.container
+      )}
     >
       <div className="flex items-center gap-2">
-        <div className="grid size-9 min-w-9 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650">
-          {icon}
-        </div>
-        <Paragraph variant="base">{description}</Paragraph>
+        {variant === "withIcon" && icon && <div className={variation.iconContainer}>{icon}</div>}
+        <Paragraph variant="base" className="transition-colors group-hover:text-text-bright">
+          {description}
+        </Paragraph>
       </div>
       <AnimatingArrow direction={isExternal ? "topRight" : "right"} theme="dimmed" />
     </Link>
