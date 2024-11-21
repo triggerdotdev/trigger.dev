@@ -4,6 +4,7 @@ import { env } from "~/env.server";
 import { tracer } from "./tracer.server";
 import { singleton } from "~/utils/singleton";
 import { eventRepository } from "./eventRepository.server";
+import { createJsonErrorObject } from "@trigger.dev/core/v3";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -49,6 +50,19 @@ function createRunEngine() {
         outputType: run.outputType,
       },
     });
+  });
+
+  engine.eventBus.on("runCancelled", async ({ time, run }) => {
+    const inProgressEvents = await eventRepository.queryIncompleteEvents({
+      runId: run.friendlyId,
+    });
+
+    await Promise.all(
+      inProgressEvents.map((event) => {
+        const error = createJsonErrorObject(run.error);
+        return eventRepository.cancelEvent(event, time, error.message);
+      })
+    );
   });
 
   return engine;
