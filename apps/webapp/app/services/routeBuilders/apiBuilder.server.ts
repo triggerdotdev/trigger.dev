@@ -78,7 +78,7 @@ export function createLoaderApiRoute<
       const authenticationResult = await authenticateApiRequest(request, { allowJWT });
 
       if (!authenticationResult) {
-        return wrapResponse(
+        return await wrapResponse(
           request,
           json({ error: "Invalid or Missing API key" }, { status: 401 }),
           corsStrategy !== "none"
@@ -89,7 +89,7 @@ export function createLoaderApiRoute<
       if (paramsSchema) {
         const parsed = paramsSchema.safeParse(params);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Params Error", details: fromZodError(parsed.error).details },
@@ -106,7 +106,7 @@ export function createLoaderApiRoute<
         const searchParams = Object.fromEntries(new URL(request.url).searchParams);
         const parsed = searchParamsSchema.safeParse(searchParams);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Query Error", details: fromZodError(parsed.error).details },
@@ -123,7 +123,7 @@ export function createLoaderApiRoute<
         const rawHeaders = Object.fromEntries(request.headers);
         const headers = headersSchema.safeParse(rawHeaders);
         if (!headers.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Headers Error", details: fromZodError(headers.error).details },
@@ -154,7 +154,7 @@ export function createLoaderApiRoute<
         );
 
         if (!authorizationResult.authorized) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               {
@@ -177,16 +177,22 @@ export function createLoaderApiRoute<
         authentication: authenticationResult,
         request,
       });
-      return wrapResponse(request, result, corsStrategy !== "none");
+      return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
-      if (error instanceof Response) {
-        return wrapResponse(request, error, corsStrategy !== "none");
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+
+        return json({ error: "Internal Server Error" }, { status: 500 });
       }
-      return wrapResponse(
-        request,
-        json({ error: "Internal Server Error" }, { status: 500 }),
-        corsStrategy !== "none"
-      );
     }
   };
 }
@@ -240,7 +246,7 @@ export function createLoaderPATApiRoute<
       const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
       if (!authenticationResult) {
-        return wrapResponse(
+        return await wrapResponse(
           request,
           json({ error: "Invalid or Missing API key" }, { status: 401 }),
           corsStrategy !== "none"
@@ -251,7 +257,7 @@ export function createLoaderPATApiRoute<
       if (paramsSchema) {
         const parsed = paramsSchema.safeParse(params);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Params Error", details: fromZodError(parsed.error).details },
@@ -268,7 +274,7 @@ export function createLoaderPATApiRoute<
         const searchParams = Object.fromEntries(new URL(request.url).searchParams);
         const parsed = searchParamsSchema.safeParse(searchParams);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Query Error", details: fromZodError(parsed.error).details },
@@ -285,7 +291,7 @@ export function createLoaderPATApiRoute<
         const rawHeaders = Object.fromEntries(request.headers);
         const headers = headersSchema.safeParse(rawHeaders);
         if (!headers.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Headers Error", details: fromZodError(headers.error).details },
@@ -304,17 +310,22 @@ export function createLoaderPATApiRoute<
         authentication: authenticationResult,
         request,
       });
-      return wrapResponse(request, result, corsStrategy !== "none");
+      return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
-      console.error("Error in API route:", error);
-      if (error instanceof Response) {
-        return wrapResponse(request, error, corsStrategy !== "none");
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+
+        return json({ error: "Internal Server Error" }, { status: 500 });
       }
-      return wrapResponse(
-        request,
-        json({ error: "Internal Server Error" }, { status: 500 }),
-        corsStrategy !== "none"
-      );
     }
   };
 }
@@ -388,7 +399,7 @@ export function createActionApiRoute<
       const authenticationResult = await authenticateApiRequest(request, { allowJWT });
 
       if (!authenticationResult) {
-        return wrapResponse(
+        return await wrapResponse(
           request,
           json({ error: "Invalid or Missing API key" }, { status: 401 }),
           corsStrategy !== "none"
@@ -407,7 +418,7 @@ export function createActionApiRoute<
       if (paramsSchema) {
         const parsed = paramsSchema.safeParse(params);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Params Error", details: fromZodError(parsed.error).details },
@@ -424,7 +435,7 @@ export function createActionApiRoute<
         const searchParams = Object.fromEntries(new URL(request.url).searchParams);
         const parsed = searchParamsSchema.safeParse(searchParams);
         if (!parsed.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Query Error", details: fromZodError(parsed.error).details },
@@ -441,7 +452,7 @@ export function createActionApiRoute<
         const rawHeaders = Object.fromEntries(request.headers);
         const headers = headersSchema.safeParse(rawHeaders);
         if (!headers.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json(
               { error: "Headers Error", details: fromZodError(headers.error).details },
@@ -457,7 +468,7 @@ export function createActionApiRoute<
       if (bodySchema) {
         const rawBody = await request.text();
         if (rawBody.length === 0) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json({ error: "Request body is empty" }, { status: 400 }),
             corsStrategy !== "none"
@@ -467,7 +478,7 @@ export function createActionApiRoute<
         const rawParsedJson = safeJsonParse(rawBody);
 
         if (!rawParsedJson) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json({ error: "Invalid JSON" }, { status: 400 }),
             corsStrategy !== "none"
@@ -476,7 +487,7 @@ export function createActionApiRoute<
 
         const body = bodySchema.safeParse(rawParsedJson);
         if (!body.success) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json({ error: fromZodError(body.error).toString() }, { status: 400 }),
             corsStrategy !== "none"
@@ -497,7 +508,7 @@ export function createActionApiRoute<
         });
 
         if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
-          return wrapResponse(
+          return await wrapResponse(
             request,
             json({ error: "Unauthorized" }, { status: 403 }),
             corsStrategy !== "none"
@@ -513,24 +524,36 @@ export function createActionApiRoute<
         authentication: authenticationResult,
         request,
       });
-      return wrapResponse(request, result, corsStrategy !== "none");
+      return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
-      if (error instanceof Response) {
-        return wrapResponse(request, error, corsStrategy !== "none");
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+
+        return json({ error: "Internal Server Error" }, { status: 500 });
       }
-      return wrapResponse(
-        request,
-        json({ error: "Internal Server Error" }, { status: 500 }),
-        corsStrategy !== "none"
-      );
     }
   }
 
   return { loader, action };
 }
 
-function wrapResponse(request: Request, response: Response, useCors: boolean) {
+async function wrapResponse(
+  request: Request,
+  response: Response,
+  useCors: boolean
+): Promise<Response> {
   return useCors
-    ? apiCors(request, response, { exposedHeaders: ["x-trigger-jwt", "x-trigger-jwt-claims"] })
+    ? await apiCors(request, response, {
+        exposedHeaders: ["x-trigger-jwt", "x-trigger-jwt-claims"],
+      })
     : response;
 }
