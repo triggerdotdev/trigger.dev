@@ -131,30 +131,28 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    await $transaction(this._prisma, async (tx) => {
-      await tx.taskRunAttempt.update({
-        where: { id: taskRunAttempt.id },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          output: completion.output,
-          outputType: completion.outputType,
-          usageDurationMs: completion.usage?.durationMs,
-          taskRun: {
-            update: {
-              output: completion.output,
-              outputType: completion.outputType,
-            },
+    await this._prisma.taskRunAttempt.update({
+      where: { id: taskRunAttempt.id },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        output: completion.output,
+        outputType: completion.outputType,
+        usageDurationMs: completion.usage?.durationMs,
+        taskRun: {
+          update: {
+            output: completion.output,
+            outputType: completion.outputType,
           },
         },
-      });
+      },
+    });
 
-      const finalizeService = new FinalizeTaskRunService(tx);
-      await finalizeService.call({
-        id: taskRunAttempt.taskRunId,
-        status: "COMPLETED_SUCCESSFULLY",
-        completedAt: new Date(),
-      });
+    const finalizeService = new FinalizeTaskRunService();
+    await finalizeService.call({
+      id: taskRunAttempt.taskRunId,
+      status: "COMPLETED_SUCCESSFULLY",
+      completedAt: new Date(),
     });
 
     // Now we need to "complete" the task run event/span
