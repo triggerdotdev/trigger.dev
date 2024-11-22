@@ -617,7 +617,7 @@ export class TriggerTaskService extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
         data: filename,
