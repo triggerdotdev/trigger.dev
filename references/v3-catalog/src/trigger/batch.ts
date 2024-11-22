@@ -55,7 +55,7 @@ export const batchChildTask = task({
   retry: {
     maxAttempts: 2,
   },
-  run: async (payload: string, { ctx }) => {
+  run: async (payload: any, { ctx }) => {
     logger.info("Processing child task", { payload });
 
     await wait.for({ seconds: 1 });
