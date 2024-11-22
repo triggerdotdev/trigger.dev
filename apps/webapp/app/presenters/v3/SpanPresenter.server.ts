@@ -84,6 +84,8 @@ export class SpanPresenter extends BasePresenter {
           },
         },
         engine: true,
+        masterQueue: true,
+        secondaryMasterQueue: true,
         //status + duration
         status: true,
         startedAt: true,
@@ -314,6 +316,8 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       engine: run.engine,
+      masterQueue: run.masterQueue,
+      secondaryMasterQueue: run.secondaryMasterQueue,
     };
   }
 
