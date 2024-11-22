@@ -97,7 +97,7 @@ In this example we're using env vars from [Infisical](https://infisical.com).
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
-import { InfisicalClient } from "@infisical/sdk";
+import { InfisicalSDK } from "@infisical/sdk";
 
 export default defineConfig({
   build: {
@@ -107,7 +107,7 @@ export default defineConfig({
 
         await client.auth().universalAuth.login({
           clientId: process.env.INFISICAL_CLIENT_ID!,
-          clientSecret: process.env.INFISICAL_CLIENT!,
+          clientSecret: process.env.INFISICAL_CLIENT_SECRET!,
         });
 
         const { secrets } = await client.secrets().listSecrets({
