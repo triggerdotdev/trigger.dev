@@ -12,7 +12,7 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { uploadToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -34,6 +34,8 @@ export type TriggerTaskServiceOptions = {
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
   customIcon?: string;
+  runId?: string;
+  skipChecks?: boolean;
 };
 
 export class OutOfEntitlementError extends Error {
@@ -78,29 +80,31 @@ export class TriggerTaskService extends BaseService {
         return existingRun;
       }
 
-      if (environment.type !== "DEVELOPMENT") {
+      if (environment.type !== "DEVELOPMENT" && !options.skipChecks) {
         const result = await getEntitlement(environment.organizationId);
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
       }
 
-      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+      if (!options.skipChecks) {
+        const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
 
-      logger.debug("Queue size guard result", {
-        queueSizeGuard,
-        environment: {
-          id: environment.id,
-          type: environment.type,
-          organization: environment.organization,
-          project: environment.project,
-        },
-      });
+        logger.debug("Queue size guard result", {
+          queueSizeGuard,
+          environment: {
+            id: environment.id,
+            type: environment.type,
+            organization: environment.organization,
+            project: environment.project,
+          },
+        });
 
-      if (!queueSizeGuard.isWithinLimits) {
-        throw new ServiceValidationError(
-          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-        );
+        if (!queueSizeGuard.isWithinLimits) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+          );
+        }
       }
 
       if (
@@ -113,7 +117,7 @@ export class TriggerTaskService extends BaseService {
         );
       }
 
-      const runFriendlyId = generateFriendlyId("run");
+      const runFriendlyId = options?.runId ?? generateFriendlyId("run");
 
       const payloadPacket = await this.#handlePayloadPacket(
         body.payload,

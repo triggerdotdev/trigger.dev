@@ -3,26 +3,49 @@ import { logger, task, wait } from "@trigger.dev/sdk/v3";
 export const batchParentTask = task({
   id: "batch-parent-task",
   run: async () => {
-    const response = await batchChildTask.batchTrigger([
-      { payload: "item1" },
-      { payload: "item2" },
-      { payload: "item3" },
-    ]);
+    const items = Array.from({ length: 10 }, (_, i) => ({
+      payload: {
+        id: `item${i}`,
+        name: `Item Name ${i}`,
+        description: `This is a description for item ${i}`,
+        value: i,
+        timestamp: new Date().toISOString(),
+        foo: {
+          id: `item${i}`,
+          name: `Item Name ${i}`,
+          description: `This is a description for item ${i}`,
+          value: i,
+          timestamp: new Date().toISOString(),
+        },
+        bar: {
+          id: `item${i}`,
+          name: `Item Name ${i}`,
+          description: `This is a description for item ${i}`,
+          value: i,
+          timestamp: new Date().toISOString(),
+        },
+      },
+      options: {
+        idempotencyKey: `item${i}`,
+      },
+    }));
 
-    logger.info("Batch task response", { response });
+    return await batchChildTask.batchTrigger(items);
+  },
+});
 
-    await wait.for({ seconds: 5 });
-    await wait.until({ date: new Date(Date.now() + 1000 * 5) }); // 5 seconds
-
-    const waitResponse = await batchChildTask.batchTriggerAndWait([
-      { payload: "item4" },
-      { payload: "item5" },
-      { payload: "item6" },
-    ]);
-
-    logger.info("Batch task wait response", { waitResponse });
-
-    return response.batchId;
+export const triggerWithQueue = task({
+  id: "trigger-with-queue",
+  run: async () => {
+    await batchChildTask.trigger(
+      {},
+      {
+        queue: {
+          name: "batch-queue-foo",
+          concurrencyLimit: 10,
+        },
+      }
+    );
   },
 });
 

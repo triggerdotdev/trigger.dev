@@ -384,18 +384,6 @@ export class DevQueueConsumer {
           backgroundTask.maxDurationInSeconds
         ),
       },
-      include: {
-        attempts: {
-          take: 1,
-          orderBy: { number: "desc" },
-        },
-        tags: true,
-        batchItems: {
-          include: {
-            batchTaskRun: true,
-          },
-        },
-      },
     });
 
     if (!lockedTaskRun) {

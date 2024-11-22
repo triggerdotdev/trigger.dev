@@ -371,15 +371,25 @@ export type RunHandle<TTaskIdentifier extends string, TPayload, TOutput> = Brand
 
 export type AnyRunHandle = RunHandle<string, any, any>;
 
+export type BatchedRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
+  {
+    id: string;
+    taskIdentifier: TTaskIdentifier;
+  },
+  TPayload,
+  TOutput
+>;
+
+export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
+
 /**
  * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
  */
 export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    runs: Array<RunHandle<TTaskIdentifier, TPayload, TOutput>>;
+    runs: Array<BatchedRunHandle<TTaskIdentifier, TPayload, TOutput>>;
     publicAccessToken: string;
-    taskIdentifier: TTaskIdentifier;
   },
   TOutput,
   TPayload
@@ -450,6 +460,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   batchTrigger: (
     items: Array<BatchItem<TInput>>,
+    options?: BatchTaskRunOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
 
@@ -491,7 +502,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
+  batchTriggerAndWait: (
+    items: Array<BatchItem<TInput>>,
+    options?: BatchTaskRunOptions
+  ) => Promise<BatchResult<TOutput>>;
 }
 
 export interface TaskWithSchema<
@@ -660,6 +674,11 @@ export type TaskRunOptions = {
    * Minimum value is 5 seconds
    */
   maxDuration?: number;
+};
+
+export type BatchTaskRunOptions = {
+  idempotencyKey?: IdempotencyKey | string | string[];
+  idempotencyKeyTTL?: string;
 };
 
 export type TaskMetadataWithFunctions = TaskMetadata & {

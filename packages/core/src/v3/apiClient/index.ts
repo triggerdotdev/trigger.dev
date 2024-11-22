@@ -5,6 +5,7 @@ import {
   BatchTaskRunExecutionResult,
   BatchTriggerTaskRequestBody,
   BatchTriggerTaskResponse,
+  BatchTriggerTaskV2RequestBody,
   CanceledRunResponse,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
@@ -67,6 +68,11 @@ export type {
 
 export type TriggerOptions = {
   spanParentAsLink?: boolean;
+};
+
+export type BatchTriggerOptions = TriggerOptions & {
+  idempotencyKey?: string;
+  idempotencyKeyTTL?: string;
 };
 
 export type TriggerRequestOptions = ZodFetchOptions & {
@@ -234,6 +240,45 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ response, data }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:batch:${data.batchId}`].concat(data.runs.map((r) => `read:runs:${r}`)),
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
+  }
+
+  batchTriggerV2(
+    body: BatchTriggerTaskV2RequestBody,
+    options?: BatchTriggerOptions,
+    requestOptions?: TriggerRequestOptions
+  ) {
+    return zodfetch(
+      BatchTriggerTaskResponse,
+      `${this.baseUrl}/api/v1/tasks/batch`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(options?.spanParentAsLink ?? false, {
+          "idempotency-key": options?.idempotencyKey,
+          "idempotency-key-ttl": options?.idempotencyKeyTTL,
+        }),
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
@@ -663,11 +708,21 @@ export class ApiClient {
     );
   }
 
-  #getHeaders(spanParentAsLink: boolean) {
+  #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
+      ...Object.entries(additionalHeaders ?? {}).reduce(
+        (acc, [key, value]) => {
+          if (value !== undefined) {
+            acc[key] = value;
+          }
+
+          return acc;
+        },
+        {} as Record<string, string>
+      ),
     };
 
     // Only inject the context if we are inside a task

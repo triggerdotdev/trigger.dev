@@ -1076,7 +1076,11 @@ class SharedQueueTasks {
             tags: true,
             batchItems: {
               include: {
-                batchTaskRun: true,
+                batchTaskRun: {
+                  select: {
+                    friendlyId: true,
+                  },
+                },
               },
             },
           },

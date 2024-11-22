@@ -42,6 +42,7 @@ import type {
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
+  BatchTaskRunOptions,
   InferRunTypes,
   inferSchemaIn,
   inferToolParameters,
@@ -135,7 +136,7 @@ export function createTask<
         }
       );
     },
-    batchTrigger: async (items) => {
+    batchTrigger: async (items, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTrigger_internal<RunTypes<TIdentifier, TInput, TOutput>>(
@@ -144,6 +145,7 @@ export function createTask<
           : `batchTrigger()`,
         params.id,
         items,
+        options,
         undefined,
         undefined,
         customQueue
@@ -173,7 +175,7 @@ export function createTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items) => {
+    batchTriggerAndWait: async (items, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<TInput, TOutput>(
@@ -182,6 +184,7 @@ export function createTask<
           : `batchTriggerAndWait()`,
         params.id,
         items,
+        options,
         undefined,
         undefined,
         customQueue
@@ -279,7 +282,7 @@ export function createSchemaTask<
         requestOptions
       );
     },
-    batchTrigger: async (items, requestOptions) => {
+    batchTrigger: async (items, options, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTrigger_internal<RunTypes<TIdentifier, inferSchemaIn<TSchema>, TOutput>>(
@@ -288,6 +291,7 @@ export function createSchemaTask<
           : `batchTrigger()`,
         params.id,
         items,
+        options,
         parsePayload,
         requestOptions,
         customQueue
@@ -317,7 +321,7 @@ export function createSchemaTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items) => {
+    batchTriggerAndWait: async (items, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<inferSchemaIn<TSchema>, TOutput>(
@@ -326,6 +330,7 @@ export function createSchemaTask<
           : `batchTriggerAndWait()`,
         params.id,
         items,
+        options,
         parsePayload,
         undefined,
         customQueue
@@ -460,12 +465,14 @@ export function triggerAndWait<TTask extends AnyTask>(
 export async function batchTriggerAndWait<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
+  options?: BatchTaskRunOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<BatchResult<TaskOutput<TTask>>> {
   return await batchTriggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.batchTriggerAndWait()",
     id,
     items,
+    options,
     undefined,
     requestOptions
   );
@@ -500,12 +507,14 @@ export async function triggerAndPoll<TTask extends AnyTask>(
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
+  options?: BatchTaskRunOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
   return await batchTrigger_internal<InferRunTypes<TTask>>(
     "tasks.batchTrigger()",
     id,
     items,
+    options,
     undefined,
     requestOptions
   );
@@ -573,16 +582,16 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
 
 async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
-  id: TRunTypes["taskIdentifier"],
+  taskIdentifier: TRunTypes["taskIdentifier"],
   items: Array<BatchItem<TRunTypes["payload"]>>,
+  options?: BatchTaskRunOptions,
   parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   requestOptions?: TriggerApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  const response = await apiClient.batchTriggerTask(
-    id,
+  const response = await apiClient.batchTriggerV2(
     {
       items: await Promise.all(
         items.map(async (item) => {
@@ -591,6 +600,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           const payloadPacket = await stringifyIO(parsedPayload);
 
           return {
+            task: taskIdentifier,
             payload: payloadPacket.data,
             options: {
               queue: item.options?.queue ?? queue,
@@ -610,7 +620,11 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
         })
       ),
     },
-    { spanParentAsLink: true },
+    {
+      spanParentAsLink: true,
+      idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+      idempotencyKeyTTL: options?.idempotencyKeyTTL,
+    },
     {
       name,
       tracer,
@@ -626,7 +640,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 
   const handle = {
     batchId: response.batchId,
-    runs: response.runs.map((id) => ({ id })),
+    runs: response.runs.map((id) => ({ id, taskIdentifier })),
     publicAccessToken: response.publicAccessToken,
   };
 
@@ -732,6 +746,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
   name: string,
   id: string,
   items: Array<BatchItem<TPayload>>,
+  options?: BatchTaskRunOptions,
   parsePayload?: SchemaParseFn<TPayload>,
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
@@ -747,8 +762,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
   return await tracer.startActiveSpan(
     name,
     async (span) => {
-      const response = await apiClient.batchTriggerTask(
-        id,
+      const response = await apiClient.batchTriggerV2(
         {
           items: await Promise.all(
             items.map(async (item) => {
@@ -757,6 +771,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
               const payloadPacket = await stringifyIO(parsedPayload);
 
               return {
+                task: id,
                 payload: payloadPacket.data,
                 options: {
                   lockToVersion: taskContext.worker?.version,
@@ -777,7 +792,10 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
           ),
           dependentAttempt: ctx.attempt.id,
         },
-        {},
+        {
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+          idempotencyKeyTTL: options?.idempotencyKeyTTL,
+        },
         requestOptions
       );
 
