@@ -7,7 +7,7 @@ import { RemixServer } from "@remix-run/react";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
-import { PassThrough } from "stream";
+import { PassThrough } from "node:stream";
 import * as Worker from "~/services/worker.server";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
