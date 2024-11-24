@@ -1973,6 +1973,18 @@ export class RunEngine {
         const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
         await this.runQueue.acknowledgeMessage(run.project.organizationId, runId);
 
+        // We need to manually emit this as we created the final snapshot as part of the task run update
+        this.eventBus.emit("executionSnapshotCreated", {
+          time: newSnapshot.createdAt,
+          run: {
+            id: newSnapshot.runId,
+          },
+          snapshot: {
+            ...newSnapshot,
+            completedWaitpointIds: newSnapshot.completedWaitpoints.map((wp) => wp.id),
+          },
+        });
+
         if (!run.associatedWaitpoint) {
           throw new ServiceValidationError("No associated waitpoint found", 400);
         }
