@@ -1,7 +1,7 @@
 import type { ActionFunction, LoaderFunction } from "@remix-run/node";
-import { createCookie } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { authenticator } from "~/services/auth.server";
+import { redirectCookie } from "./auth.github.server";
 
 export let loader: LoaderFunction = () => redirect("/login");
 
@@ -27,8 +27,3 @@ export let action: ActionFunction = async ({ request }) => {
     throw error;
   }
 };
-
-export const redirectCookie = createCookie("redirect-to", {
-  maxAge: 60 * 60, // 1 hour
-  httpOnly: true,
-});
