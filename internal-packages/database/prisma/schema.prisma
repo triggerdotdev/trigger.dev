@@ -2601,6 +2601,9 @@ model CheckpointRestoreEvent {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([runId])
+  @@index([checkpointId])
 }
 
 enum CheckpointRestoreEventType {
