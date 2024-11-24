@@ -30,7 +30,7 @@ export class WorkerGroupService extends WithRunEngine {
       data: {
         projectId,
         organizationId,
-        type: projectId ? WorkerInstanceGroupType.UNMANAGED : WorkerInstanceGroupType.SHARED,
+        type: projectId ? WorkerInstanceGroupType.UNMANAGED : WorkerInstanceGroupType.MANAGED,
         masterQueue: this.generateMasterQueueName({ projectId, name }),
         tokenId: token.id,
         description,
@@ -92,7 +92,7 @@ export class WorkerGroupService extends WithRunEngine {
       where: {
         OR: [
           {
-            type: WorkerInstanceGroupType.SHARED,
+            type: WorkerInstanceGroupType.MANAGED,
           },
           {
             projectId,

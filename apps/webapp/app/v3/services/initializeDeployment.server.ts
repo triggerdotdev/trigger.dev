@@ -66,9 +66,9 @@ export class InitializeDeploymentService extends BaseService {
 
       const unmanagedImageTag = unmanagedImageParts.join("/");
 
-      const defaultType = WorkerInstanceGroupType.SHARED;
+      const defaultType = WorkerInstanceGroupType.MANAGED;
       const deploymentType = payload.type ?? defaultType;
-      const isShared = deploymentType === WorkerInstanceGroupType.SHARED;
+      const isShared = deploymentType === WorkerInstanceGroupType.MANAGED;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,

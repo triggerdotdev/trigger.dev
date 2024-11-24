@@ -26,7 +26,7 @@ describe("worker", () => {
   describe("auth", { concurrent: true, timeout: 10000 }, () => {
     containerTest("should fail", async ({ prisma }) => {
       const { workerGroup, token } = await setupWorkerGroup({ prisma });
-      expect(workerGroup.type).toBe(WorkerInstanceGroupType.SHARED);
+      expect(workerGroup.type).toBe(WorkerInstanceGroupType.MANAGED);
 
       const missingToken = new Request("https://example.com", {
         headers: {
@@ -63,7 +63,7 @@ describe("worker", () => {
 
     containerTest("should succeed", async ({ prisma }) => {
       const { workerGroup, token } = await setupWorkerGroup({ prisma });
-      expect(workerGroup.type).toBe(WorkerInstanceGroupType.SHARED);
+      expect(workerGroup.type).toBe(WorkerInstanceGroupType.MANAGED);
 
       const request = new Request("https://example.com", {
         headers: {

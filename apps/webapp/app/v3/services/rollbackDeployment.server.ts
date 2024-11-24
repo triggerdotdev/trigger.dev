@@ -11,7 +11,7 @@ export class RollbackDeploymentService extends BaseService {
       return;
     }
 
-    if (deployment.type !== WorkerInstanceGroupType.SHARED) {
+    if (deployment.type !== WorkerInstanceGroupType.MANAGED) {
       logger.error("Can only roll back shared deployments", {
         id: deployment.id,
         type: deployment.type,

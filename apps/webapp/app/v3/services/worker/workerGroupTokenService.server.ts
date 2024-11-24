@@ -153,7 +153,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
+    if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
       const managedWorkerSecret = request.headers.get(HEADER_NAME.WORKER_MANAGED_SECRET);
 
       if (!managedWorkerSecret) {
@@ -199,11 +199,11 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
+    if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
       return new AuthenticatedWorkerInstance({
         prisma: this._prisma,
         engine: this._engine,
-        type: WorkerInstanceGroupType.SHARED,
+        type: WorkerInstanceGroupType.MANAGED,
         workerGroupId: workerGroup.id,
         workerInstanceId: workerInstance.id,
         masterQueue: workerGroup.masterQueue,
@@ -278,7 +278,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         return workerInstance;
       }
 
-      if (workerGroup.type === WorkerInstanceGroupType.SHARED) {
+      if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
         if (deploymentId) {
           logger.warn(
             "[WorkerGroupTokenService] Shared worker group instances should not authenticate with a deployment ID",
@@ -480,7 +480,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   async dequeue(maxRunCount = 10): Promise<DequeuedMessage[]> {
-    if (this.type === WorkerInstanceGroupType.SHARED) {
+    if (this.type === WorkerInstanceGroupType.MANAGED) {
       return await this._engine.dequeueFromMasterQueue({
         consumerId: this.workerInstanceId,
         masterQueue: this.masterQueue,
@@ -582,9 +582,9 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
-    if (this.type === WorkerInstanceGroupType.SHARED) {
+    if (this.type === WorkerInstanceGroupType.MANAGED) {
       return {
-        type: WorkerInstanceGroupType.SHARED,
+        type: WorkerInstanceGroupType.MANAGED,
         workerGroupId: this.workerGroupId,
         workerInstanceId: this.workerInstanceId,
         masterQueue: this.masterQueue,
@@ -630,7 +630,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
 export type WorkerGroupTokenAuthenticationResponse =
   | {
-      type: typeof WorkerInstanceGroupType.SHARED;
+      type: typeof WorkerInstanceGroupType.MANAGED;
       workerGroupId: string;
       workerInstanceId: string;
       masterQueue: string;
