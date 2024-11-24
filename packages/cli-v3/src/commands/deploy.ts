@@ -212,7 +212,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const forcedExternals = await resolveAlwaysExternal(projectClient.client);
 
   const buildManifest = await buildWorker({
-    target: "deploy",
+    target: resolvedConfig.compatibilityFlags.includes("run_engine_v2") ? "managed" : "deploy",
     environment: options.env,
     destination: destination.path,
     resolvedConfig,
@@ -244,6 +244,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     selfHosted: options.selfHosted,
     registryHost: options.registry,
     namespace: options.namespace,
+    type: "MANAGED",
   });
 
   if (!deploymentResponse.success) {

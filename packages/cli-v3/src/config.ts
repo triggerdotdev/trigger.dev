@@ -178,6 +178,7 @@ async function resolveConfig(
         external: [],
         conditions: [],
       },
+      compatibilityFlags: [],
     }
   ) as ResolvedConfig; // TODO: For some reason, without this, there is a weird type error complaining about tsconfigPath being string | nullish, which can't be assigned to string | undefined
 

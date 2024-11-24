@@ -19,6 +19,7 @@ import {
   isRunWorkerForTarget,
   shims,
   telemetryEntryPoint,
+  managedEntryPoints,
   unmanagedEntryPoints,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
@@ -240,6 +241,10 @@ async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
     }
     case "deploy": {
       projectEntryPoints.push(...deployEntryPoints);
+      break;
+    }
+    case "managed": {
+      projectEntryPoints.push(...managedEntryPoints);
       break;
     }
     case "unmanaged": {

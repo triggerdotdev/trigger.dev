@@ -78,7 +78,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
-  if (options.target === "deploy" || options.target === "unmanaged") {
+  if (options.target !== "dev") {
     buildManifest = options.rewritePaths
       ? rewriteBuildManifestPaths(buildManifest, options.destination)
       : buildManifest;
