@@ -45,7 +45,6 @@
     "@conform-to/react": "^0.6.1",
     "@conform-to/zod": "^0.6.1",
     "@depot/sdk-node": "^1.0.0",
-    "@dotenvx/dotenvx": "^1.24.5",
     "@electric-sql/react": "^0.3.5",
     "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
