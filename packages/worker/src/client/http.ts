@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import {
+  WorkerApiConnectRequestBody,
   WorkerApiConnectResponseBody,
   WorkerApiDequeueResponseBody,
   WorkerApiHeartbeatRequestBody,
@@ -39,14 +40,17 @@ export class WorkerHttpClient {
     }
   }
 
-  async connect() {
+  async connect(body: WorkerApiConnectRequestBody) {
     return wrapZodFetch(
       WorkerApiConnectResponseBody,
       `${this.apiURL}/api/v1/worker-actions/connect`,
       {
+        method: "POST",
         headers: {
           ...this.defaultHeaders,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify(body),
       }
     );
   }

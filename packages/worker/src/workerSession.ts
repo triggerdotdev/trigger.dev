@@ -6,6 +6,7 @@ import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./s
 import { RunQueueConsumer } from "./queueConsumer.js";
 import { WorkerEventArgs, WorkerEvents } from "./events.js";
 import EventEmitter from "events";
+import { VERSION } from "./version.js";
 
 type WorkerSessionOptions = WorkerClientCommonOptions & {
   heartbeatIntervalSeconds?: number;
@@ -111,7 +112,12 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
   }
 
   async start() {
-    const connect = await this.httpClient.connect();
+    const connect = await this.httpClient.connect({
+      metadata: {
+        workerVersion: VERSION,
+      },
+    });
+
     if (!connect.success) {
       console.error("[WorkerSession] Failed to connect via HTTP client", { error: connect.error });
       throw new Error("[WorkerSession] Failed to connect via HTTP client");

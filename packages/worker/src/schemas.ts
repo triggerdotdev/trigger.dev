@@ -24,6 +24,11 @@ export const WorkerApiHeartbeatResponseBody = z.object({
 });
 export type WorkerApiHeartbeatResponseBody = z.infer<typeof WorkerApiHeartbeatResponseBody>;
 
+export const WorkerApiConnectRequestBody = z.object({
+  metadata: z.record(z.any()),
+});
+export type WorkerApiConnectRequestBody = z.infer<typeof WorkerApiConnectRequestBody>;
+
 export const WorkerApiConnectResponseBody = z.object({
   ok: z.literal(true),
 });

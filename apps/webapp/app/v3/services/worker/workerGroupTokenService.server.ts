@@ -479,6 +479,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.backgroundWorkerId = opts.backgroundWorkerId;
   }
 
+  async connect(metadata: Record<string, any>): Promise<void> {
+    await this._prisma.workerInstance.update({
+      where: {
+        id: this.workerInstanceId,
+      },
+      data: {
+        metadata,
+      },
+    });
+  }
+
   async dequeue(maxRunCount = 10): Promise<DequeuedMessage[]> {
     if (this.type === WorkerInstanceGroupType.MANAGED) {
       return await this._engine.dequeueFromMasterQueue({

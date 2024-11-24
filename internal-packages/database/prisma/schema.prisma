@@ -2102,6 +2102,8 @@ model WorkerInstance {
   /// If unmanged, it will be prefixed with the deployment ID e.g. "deploy-123-worker-1"
   resourceIdentifier String
 
+  metadata Json?
+
   workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
   workerGroupId String
 
@@ -2129,7 +2131,7 @@ model WorkerInstance {
 }
 
 enum WorkerInstanceGroupType {
-  MANAGED @map("SHARED")
+  MANAGED   @map("SHARED")
   UNMANAGED
 }
 
