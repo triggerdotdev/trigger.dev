@@ -71,11 +71,14 @@ export async function authenticateApiRequest(
 export async function authenticateApiRequestWithFailure(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
-): Promise<ApiAuthenticationResult | undefined> {
+): Promise<ApiAuthenticationResult> {
   const apiKey = getApiKeyFromRequest(request);
 
   if (!apiKey) {
-    return;
+    return {
+      ok: false,
+      error: "Invalid API Key",
+    };
   }
 
   const authentication = await authenticateApiKeyWithFailure(apiKey, options);
