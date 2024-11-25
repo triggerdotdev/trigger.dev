@@ -19,7 +19,7 @@ export default defineConfig(({ isSsrBuild }) => ({
   build: {
     target: "ES2022",
     sourcemap: true,
-    minify: false,
+    minify: process.env.NODE_ENV === 'production',
     rollupOptions: isSsrBuild
       ? // This includes ./server/app.ts in the Vite build process
         // Any server integrations that need app code should go there
