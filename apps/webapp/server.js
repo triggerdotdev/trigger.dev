@@ -58,6 +58,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
 
     await createViteServer().catch((err) => {
       console.error("Error setting up Vite dev server:", err);
+      process.exit(1);
     });
   } else {
     console.log("Starting production server");
