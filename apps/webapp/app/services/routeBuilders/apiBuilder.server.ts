@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { ApiAuthenticationResult, authenticateApiRequest } from "../apiAuth.server";
+import {
+  ApiAuthenticationResultSuccess,
+  authenticateApiRequestWithFailure,
+} from "../apiAuth.server";
 import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
@@ -48,7 +51,7 @@ type ApiKeyHandlerFunction<
     ? z.infer<TSearchParamsSchema>
     : undefined;
   headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
-  authentication: ApiAuthenticationResult;
+  authentication: ApiAuthenticationResultSuccess;
   request: Request;
 }) => Promise<Response>;
 
@@ -75,12 +78,20 @@ export function createLoaderApiRoute<
     }
 
     try {
-      const authenticationResult = await authenticateApiRequest(request, { allowJWT });
+      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
 
       if (!authenticationResult) {
         return await wrapResponse(
           request,
           json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      if (!authenticationResult.ok) {
+        return await wrapResponse(
+          request,
+          json({ error: authenticationResult.error }, { status: 401 }),
           corsStrategy !== "none"
         );
       }
@@ -352,7 +363,7 @@ type ApiKeyActionHandlerFunction<
     : undefined;
   headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
   body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
-  authentication: ApiAuthenticationResult;
+  authentication: ApiAuthenticationResultSuccess;
   request: Request;
 }) => Promise<Response>;
 
@@ -396,12 +407,20 @@ export function createActionApiRoute<
 
   async function action({ request, params }: ActionFunctionArgs) {
     try {
-      const authenticationResult = await authenticateApiRequest(request, { allowJWT });
+      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
 
       if (!authenticationResult) {
         return await wrapResponse(
           request,
           json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      if (!authenticationResult.ok) {
+        return await wrapResponse(
+          request,
+          json({ error: authenticationResult.error }, { status: 401 }),
           corsStrategy !== "none"
         );
       }
