@@ -169,7 +169,7 @@ export class RunListPresenter extends BasePresenter {
         costInCents: number;
         baseCostInCents: number;
         usageDurationMs: BigInt;
-        tags: string[];
+        tags: null | string[];
         depth: number;
         rootTaskRunId: string | null;
       }[]
@@ -197,15 +197,11 @@ export class RunListPresenter extends BasePresenter {
     tr."usageDurationMs" AS "usageDurationMs",
     tr."depth" AS "depth",
     tr."rootTaskRunId" AS "rootTaskRunId",
-    array_remove(array_agg(tag.name), NULL) AS "tags"
+    tr."runTags" AS "tags"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
 LEFT JOIN
     ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
-LEFT JOIN
-    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg ON tr.id = trtg."A"
-LEFT JOIN
-    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
 WHERE
     -- project
     tr."projectId" = ${project.id}
@@ -257,18 +253,7 @@ WHERE
     }
     ${
       tags && tags.length > 0
-        ? Prisma.sql`AND (
-          tr.id IN (
-            SELECT
-                trtg."A"
-            FROM
-                ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg
-            JOIN
-                ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
-            WHERE
-                tag.name IN (${Prisma.join(tags)})
-          )
-        )`
+        ? Prisma.sql`AND tr."runTags" && ARRAY[${Prisma.join(tags)}]::text[]`
         : Prisma.empty
     }
     ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
@@ -340,7 +325,7 @@ WHERE
           costInCents: run.costInCents,
           baseCostInCents: run.baseCostInCents,
           usageDurationMs: Number(run.usageDurationMs),
-          tags: run.tags.sort((a, b) => a.localeCompare(b)),
+          tags: run.tags ? run.tags.sort((a, b) => a.localeCompare(b)) : [],
           depth: run.depth,
           rootTaskRunId: run.rootTaskRunId,
         };
