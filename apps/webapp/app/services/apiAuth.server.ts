@@ -29,14 +29,46 @@ export type AuthenticatedEnvironment = Optional<
   "orgMember"
 >;
 
-export type ApiAuthenticationResult = {
+export type ApiAuthenticationResult =
+  | ApiAuthenticationResultSuccess
+  | ApiAuthenticationResultFailure;
+
+export type ApiAuthenticationResultSuccess = {
+  ok: true;
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
   scopes?: string[];
 };
 
+export type ApiAuthenticationResultFailure = {
+  ok: false;
+  error: string;
+};
+
+/**
+ * @deprecated Use `authenticateApiRequestWithFailure` instead.
+ */
 export async function authenticateApiRequest(
+  request: Request,
+  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+): Promise<ApiAuthenticationResultSuccess | undefined> {
+  const apiKey = getApiKeyFromRequest(request);
+
+  if (!apiKey) {
+    return;
+  }
+
+  const authentication = await authenticateApiKey(apiKey, options);
+
+  return authentication;
+}
+
+/**
+ * This method is the same as `authenticateApiRequest` but it returns a failure result instead of undefined.
+ * It should be used from now on to ensure that the API key is always validated and provide a failure result.
+ */
+export async function authenticateApiRequestWithFailure(
   request: Request,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
 ): Promise<ApiAuthenticationResult | undefined> {
@@ -46,13 +78,18 @@ export async function authenticateApiRequest(
     return;
   }
 
-  return authenticateApiKey(apiKey, options);
+  const authentication = await authenticateApiKeyWithFailure(apiKey, options);
+
+  return authentication;
 }
 
+/**
+ * @deprecated Use `authenticateApiKeyWithFailure` instead.
+ */
 export async function authenticateApiKey(
   apiKey: string,
   options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
-): Promise<ApiAuthenticationResult | undefined> {
+): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
   if (!result) {
@@ -70,16 +107,24 @@ export async function authenticateApiKey(
   switch (result.type) {
     case "PUBLIC": {
       const environment = await findEnvironmentByPublicApiKey(result.apiKey);
-      if (!environment) return;
+      if (!environment) {
+        return;
+      }
+
       return {
+        ok: true,
         ...result,
         environment,
       };
     }
     case "PRIVATE": {
       const environment = await findEnvironmentByApiKey(result.apiKey);
-      if (!environment) return;
+      if (!environment) {
+        return;
+      }
+
       return {
+        ok: true,
         ...result,
         environment,
       };
@@ -87,13 +132,95 @@ export async function authenticateApiKey(
     case "PUBLIC_JWT": {
       const validationResults = await validatePublicJwtKey(result.apiKey);
 
-      if (!validationResults) {
+      if (!validationResults.ok) {
         return;
       }
 
       const parsedClaims = ClaimsSchema.safeParse(validationResults.claims);
 
       return {
+        ok: true,
+        ...result,
+        environment: validationResults.environment,
+        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
+      };
+    }
+  }
+}
+
+/**
+ * This method is the same as `authenticateApiKey` but it returns a failure result instead of undefined.
+ * It should be used from now on to ensure that the API key is always validated and provide a failure result.
+ */
+export async function authenticateApiKeyWithFailure(
+  apiKey: string,
+  options: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+): Promise<ApiAuthenticationResult> {
+  const result = getApiKeyResult(apiKey);
+
+  if (!result) {
+    return {
+      ok: false,
+      error: "Invalid API Key",
+    };
+  }
+
+  if (!options.allowPublicKey && result.type === "PUBLIC") {
+    return {
+      ok: false,
+      error: "Public API keys are not allowed for this request",
+    };
+  }
+
+  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+    return {
+      ok: false,
+      error: "Public JWT API keys are not allowed for this request",
+    };
+  }
+
+  switch (result.type) {
+    case "PUBLIC": {
+      const environment = await findEnvironmentByPublicApiKey(result.apiKey);
+      if (!environment) {
+        return {
+          ok: false,
+          error: "Invalid API Key",
+        };
+      }
+
+      return {
+        ok: true,
+        ...result,
+        environment,
+      };
+    }
+    case "PRIVATE": {
+      const environment = await findEnvironmentByApiKey(result.apiKey);
+      if (!environment) {
+        return {
+          ok: false,
+          error: "Invalid API Key",
+        };
+      }
+
+      return {
+        ok: true,
+        ...result,
+        environment,
+      };
+    }
+    case "PUBLIC_JWT": {
+      const validationResults = await validatePublicJwtKey(result.apiKey);
+
+      if (!validationResults.ok) {
+        return validationResults;
+      }
+
+      const parsedClaims = ClaimsSchema.safeParse(validationResults.claims);
+
+      return {
+        ok: true,
         ...result,
         environment: validationResults.environment,
         scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
@@ -207,6 +334,10 @@ export async function authenticatedEnvironmentForAuthentication(
 
   switch (auth.type) {
     case "apiKey": {
+      if (!auth.result.ok) {
+        throw json({ error: auth.result.error }, { status: 401 });
+      }
+
       if (auth.result.environment.project.externalRef !== projectRef) {
         throw json(
           {
@@ -331,6 +462,14 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
 
       if (!authenticatedEnv) {
         logger.error("Failed to renew JWT token, missing or invalid Authorization header", {
+          error: error.message,
+        });
+
+        return;
+      }
+
+      if (!authenticatedEnv.ok) {
+        logger.error("Failed to renew JWT token, invalid API key", {
           error: error.message,
         });
 

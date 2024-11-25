@@ -29,7 +29,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
       allowJWT: true,
     });
 
-    if (!authenticatedEnv) {
+    if (!authenticatedEnv || !authenticatedEnv.ok) {
       return;
     }
 
