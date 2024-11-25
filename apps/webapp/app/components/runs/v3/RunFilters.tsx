@@ -802,44 +802,44 @@ function AppliedTagsFilter() {
 
 const timePeriods = [
   {
-    label: "All periods",
-    value: "all",
-  },
-  {
-    label: "5 mins ago",
+    label: "Last 5 mins",
     value: "5m",
   },
   {
-    label: "30 mins ago",
+    label: "Last 30 mins",
     value: "30m",
   },
   {
-    label: "1 hour ago",
+    label: "Last 1 hour",
     value: "1h",
   },
   {
-    label: "6 hours ago",
+    label: "Last 6 hours",
     value: "6h",
   },
   {
-    label: "1 day ago",
+    label: "Last 1 day",
     value: "1d",
   },
   {
-    label: "3 days ago",
+    label: "Last 3 days",
     value: "3d",
   },
   {
-    label: "7 days ago",
+    label: "Last 7 days",
     value: "7d",
   },
   {
-    label: "14 days ago",
+    label: "Last 14 days",
     value: "14d",
   },
   {
-    label: "30 days ago",
+    label: "Last 30 days",
     value: "30d",
+  },
+  {
+    label: "All periods",
+    value: "all",
   },
 ];
 
