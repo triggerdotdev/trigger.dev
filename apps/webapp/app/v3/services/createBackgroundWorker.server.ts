@@ -190,7 +190,6 @@ export async function createBackgroundTasks(
         },
         update: {
           concurrencyLimit,
-          rateLimit: task.queue?.rateLimit,
         },
         create: {
           friendlyId: generateFriendlyId("queue"),
@@ -198,7 +197,6 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
-          rateLimit: task.queue?.rateLimit,
           type: task.queue?.name ? "NAMED" : "VIRTUAL",
         },
       });

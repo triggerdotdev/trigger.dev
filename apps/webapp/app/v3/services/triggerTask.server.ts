@@ -457,7 +457,6 @@ export class TriggerTaskService extends BaseService {
                       data: {
                         concurrencyLimit:
                           typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                        rateLimit: body.options.queue.rateLimit,
                       },
                     });
 
@@ -481,7 +480,6 @@ export class TriggerTaskService extends BaseService {
                       concurrencyLimit,
                       runtimeEnvironmentId: environment.id,
                       projectId: environment.projectId,
-                      rateLimit: body.options.queue.rateLimit,
                       type: "NAMED",
                     },
                   });
