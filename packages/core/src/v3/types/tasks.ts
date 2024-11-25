@@ -375,6 +375,8 @@ export type BatchedRunHandle<TTaskIdentifier extends string, TPayload, TOutput> 
   {
     id: string;
     taskIdentifier: TTaskIdentifier;
+    isCached: boolean;
+    idempotencyKey?: string;
   },
   TPayload,
   TOutput
@@ -388,6 +390,8 @@ export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
 export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
+    isCached: boolean;
+    idempotencyKey?: string;
     runs: Array<BatchedRunHandle<TTaskIdentifier, TPayload, TOutput>>;
     publicAccessToken: string;
   },
@@ -415,11 +419,13 @@ export type TaskRunResult<TOutput = any> =
   | {
       ok: true;
       id: string;
+      taskIdentifier: string;
       output: TOutput;
     }
   | {
       ok: false;
       id: string;
+      taskIdentifier: string;
       error: unknown;
     };
 
@@ -428,7 +434,12 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-export type BatchItem<TInput> = { payload: TInput; options?: TaskRunOptions };
+export type BatchItem<TInput> = { payload: TInput; options?: TriggerOptions };
+
+export type BatchTriggerAndWaitItem<TInput> = {
+  payload: TInput;
+  options?: TriggerAndWaitOptions;
+};
 
 export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**
@@ -447,7 +458,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   trigger: (
     payload: TInput,
-    options?: TaskRunOptions,
+    options?: TriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<RunHandle<TIdentifier, TInput, TOutput>>;
 
@@ -460,7 +471,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   batchTrigger: (
     items: Array<BatchItem<TInput>>,
-    options?: BatchTaskRunOptions,
+    options?: BatchTriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
 
@@ -480,7 +491,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => TaskRunPromise<TOutput>;
+  triggerAndWait: (payload: TInput, options?: TriggerAndWaitOptions) => TaskRunPromise<TOutput>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
@@ -503,8 +514,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * ```
    */
   batchTriggerAndWait: (
-    items: Array<BatchItem<TInput>>,
-    options?: BatchTaskRunOptions
+    items: Array<BatchTriggerAndWaitItem<TInput>>
   ) => Promise<BatchResult<TOutput>>;
 }
 
@@ -567,7 +577,7 @@ export type TriggerJwtOptions = {
   expirationTime?: number | Date | string;
 };
 
-export type TaskRunOptions = {
+export type TriggerOptions = {
   /**
    * A unique key that can be used to ensure that a task is only triggered once per key.
    *
@@ -614,6 +624,13 @@ export type TaskRunOptions = {
    *
    */
   idempotencyKey?: IdempotencyKey | string | string[];
+
+  /**
+   * The time-to-live for the idempotency key. Once the TTL has passed, the key can be used again.
+   *
+   * Specify a duration string like "1h", "10s", "30m", etc.
+   */
+  idempotencyKeyTTL?: string;
   maxAttempts?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
@@ -676,7 +693,9 @@ export type TaskRunOptions = {
   maxDuration?: number;
 };
 
-export type BatchTaskRunOptions = {
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
+
+export type BatchTriggerOptions = {
   idempotencyKey?: IdempotencyKey | string | string[];
   idempotencyKeyTTL?: string;
 };

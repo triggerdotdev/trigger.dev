@@ -36,4 +36,6 @@ export function resolveIdempotencyKeyTTL(ttl: string | undefined | null): Date |
       now.setDate(now.getDate() + parseInt(value, 10));
       break;
   }
+
+  return now;
 }

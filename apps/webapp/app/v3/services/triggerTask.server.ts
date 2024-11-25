@@ -25,9 +25,11 @@ import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
+  idempoencyKeyExpiresAt?: Date;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
@@ -54,7 +56,13 @@ export class TriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
+      // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
+      const idempotencyKeyExpiresAt =
+        options.idempoencyKeyExpiresAt ??
+        resolveIdempotencyKeyTTL(body.options?.idempotencyKeyTTL) ??
+        new Date(Date.now() + 24 * 60 * 60 * 1000);
+
       const delayUntil = await parseDelay(body.options?.delay);
 
       const ttl =
@@ -75,9 +83,25 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       if (existingRun) {
-        span.setAttribute("runId", existingRun.friendlyId);
+        if (
+          existingRun.idempotencyKeyExpiresAt &&
+          existingRun.idempotencyKeyExpiresAt < new Date()
+        ) {
+          logger.debug("[TriggerTaskService][call] Idempotency key has expired", {
+            idempotencyKey: options.idempotencyKey,
+            run: existingRun,
+          });
 
-        return existingRun;
+          // Update the existing batch to remove the idempotency key
+          await this._prisma.taskRun.update({
+            where: { id: existingRun.id },
+            data: { idempotencyKey: null },
+          });
+        } else {
+          span.setAttribute("runId", existingRun.friendlyId);
+
+          return existingRun;
+        }
       }
 
       if (environment.type !== "DEVELOPMENT" && !options.skipChecks) {
@@ -334,6 +358,7 @@ export class TriggerTaskService extends BaseService {
                   runtimeEnvironmentId: environment.id,
                   projectId: environment.projectId,
                   idempotencyKey,
+                  idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
                   taskIdentifier: taskId,
                   payload: payloadPacket.data ?? "",
                   payloadType: payloadPacket.dataType,
@@ -621,7 +646,7 @@ export class TriggerTaskService extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
+      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
         data: filename,

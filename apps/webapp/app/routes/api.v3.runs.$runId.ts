@@ -23,7 +23,10 @@ export const loader = createLoaderApiRoute(
     const result = await presenter.call(params.runId, authentication.environment);
 
     if (!result) {
-      return json({ error: "Run not found" }, { status: 404 });
+      return json(
+        { error: "Run not found" },
+        { status: 404, headers: { "x-should-retry": "true" } }
+      );
     }
 
     return json(result);

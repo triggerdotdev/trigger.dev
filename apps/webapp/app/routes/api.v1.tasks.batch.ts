@@ -13,6 +13,7 @@ import { BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -55,12 +56,25 @@ const { action, loader } = createActionApiRoute(
       tracestate,
     } = headers;
 
+    logger.debug("Batch trigger request", {
+      idempotencyKey,
+      idempotencyKeyTTL,
+      triggerVersion,
+      spanParentAsLink,
+      isFromWorker,
+      triggerClient,
+      traceparent,
+      tracestate,
+    });
+
     const traceContext =
       traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
         ? { traceparent, tracestate }
         : undefined;
 
-    const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
+    // By default, the idempotency key expires in 24 hours
+    const idempotencyKeyExpiresAt =
+      resolveIdempotencyKeyTTL(idempotencyKeyTTL) ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const service = new BatchTriggerV2Service();
 

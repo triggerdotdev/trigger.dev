@@ -6,11 +6,10 @@ import type {
 import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 import type {
+  BatchTaskRunItemStatus as BatchTaskRunItemStatusType,
   TaskRun,
   TaskRunAttempt,
-  TaskRunAttemptStatus as TaskRunAttemptStatusType,
   TaskRunStatus as TaskRunStatusType,
-  BatchTaskRunItemStatus as BatchTaskRunItemStatusType,
 } from "@trigger.dev/database";
 
 import { assertNever } from "assert-never";
@@ -50,6 +49,7 @@ export function executionResultForTaskRun(
     return {
       ok: true,
       id: taskRun.friendlyId,
+      taskIdentifier: taskRun.taskIdentifier,
       output: attempt.output ?? undefined,
       outputType: attempt.outputType,
     } satisfies TaskRunSuccessfulExecutionResult;
@@ -60,6 +60,7 @@ export function executionResultForTaskRun(
       return {
         ok: false,
         id: taskRun.friendlyId,
+        taskIdentifier: taskRun.taskIdentifier,
         error: {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
@@ -92,6 +93,7 @@ export function executionResultForTaskRun(
       return {
         ok: false,
         id: taskRun.friendlyId,
+        taskIdentifier: taskRun.taskIdentifier,
         error: {
           type: "INTERNAL_ERROR",
           code: TaskRunErrorCodes.CONFIGURED_INCORRECTLY,
@@ -102,6 +104,7 @@ export function executionResultForTaskRun(
     return {
       ok: false,
       id: taskRun.friendlyId,
+      taskIdentifier: taskRun.taskIdentifier,
       error: error.data,
     } satisfies TaskRunFailedExecutionResult;
   }

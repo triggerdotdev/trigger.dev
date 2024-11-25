@@ -1,13 +1,15 @@
 import {
-  BatchTriggerTaskResponse,
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
+import { BatchTaskRun } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
+import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -18,9 +20,6 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { BatchTaskRun } from "@trigger.dev/database";
-import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
-import { logger } from "~/services/logger.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 
@@ -156,7 +155,7 @@ export class BatchTriggerV2Service extends BaseService {
         const expiredRunIds = new Set<string>();
         let cachedRunCount = 0;
 
-        const runIds = body.items.map((item) => {
+        const runs = body.items.map((item) => {
           const cachedRun = cachedRuns.find(
             (r) => r.idempotencyKey === item.options?.idempotencyKey
           );
@@ -168,15 +167,30 @@ export class BatchTriggerV2Service extends BaseService {
             ) {
               expiredRunIds.add(cachedRun.friendlyId);
 
-              return generateFriendlyId("run");
+              return {
+                id: generateFriendlyId("run"),
+                isCached: false,
+                idempotencyKey: item.options?.idempotencyKey ?? undefined,
+                taskIdentifier: item.task,
+              };
             }
 
             cachedRunCount++;
 
-            return cachedRun.friendlyId;
+            return {
+              id: cachedRun.friendlyId,
+              isCached: true,
+              idempotencyKey: item.options?.idempotencyKey ?? undefined,
+              taskIdentifier: item.task,
+            };
           }
 
-          return generateFriendlyId("run");
+          return {
+            id: generateFriendlyId("run"),
+            isCached: false,
+            idempotencyKey: item.options?.idempotencyKey ?? undefined,
+            taskIdentifier: item.task,
+          };
         });
 
         // Calculate how many new runs we need to create
@@ -187,9 +201,23 @@ export class BatchTriggerV2Service extends BaseService {
             batchId,
           });
 
+          await this._prisma.batchTaskRun.create({
+            data: {
+              friendlyId: batchId,
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey: options.idempotencyKey,
+              idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+              dependentTaskAttemptId: dependentAttempt?.id,
+              runCount: body.items.length,
+              runIds: runs.map((r) => r.id),
+            },
+          });
+
           return {
-            batchId,
-            runs: runIds,
+            id: batchId,
+            isCached: false,
+            idempotencyKey: options.idempotencyKey ?? undefined,
+            runs,
           };
         }
 
@@ -242,7 +270,7 @@ export class BatchTriggerV2Service extends BaseService {
               idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
               dependentTaskAttemptId: dependentAttempt?.id,
               runCount: body.items.length,
-              runIds,
+              runIds: runs.map((r) => r.id),
               payload: payloadPacket.data,
               payloadType: payloadPacket.dataType,
               options,
@@ -262,6 +290,7 @@ export class BatchTriggerV2Service extends BaseService {
           id: batch.friendlyId,
           isCached: false,
           idempotencyKey: batch.idempotencyKey ?? undefined,
+          runs,
         };
       }
     );
@@ -426,25 +455,6 @@ export class BatchTriggerV2Service extends BaseService {
       runId: task.runId,
       currentIndex,
     });
-
-    // If the item has an idempotency key, it's possible the run already exists and we should check for that
-    if (task.item.options?.idempotencyKey) {
-      const existingRun = await this._prisma.taskRun.findFirst({
-        where: {
-          friendlyId: task.runId,
-        },
-      });
-
-      if (existingRun) {
-        logger.debug("[BatchTriggerV2][processBatchTaskRunItem] Run already exists", {
-          batchId: batch.friendlyId,
-          runId: task.runId,
-          currentIndex,
-        });
-
-        return;
-      }
-    }
 
     const triggerTaskService = new TriggerTaskService();
 

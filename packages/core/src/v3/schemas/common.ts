@@ -251,6 +251,8 @@ export const TaskRunFailedExecutionResult = z.object({
   retry: TaskRunExecutionRetry.optional(),
   skippedRetrying: z.boolean().optional(),
   usage: TaskRunExecutionUsage.optional(),
+  // Optional for now for backwards compatibility
+  taskIdentifier: z.string().optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
@@ -261,6 +263,8 @@ export const TaskRunSuccessfulExecutionResult = z.object({
   output: z.string().optional(),
   outputType: z.string(),
   usage: TaskRunExecutionUsage.optional(),
+  // Optional for now for backwards compatibility
+  taskIdentifier: z.string().optional(),
 });
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;

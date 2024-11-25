@@ -24,7 +24,7 @@ import type {
   TaskOptions,
   TaskOutput,
   TaskPayload,
-  TaskRunOptions,
+  TriggerOptions,
   TaskRunResult,
 } from "./shared.js";
 
@@ -40,7 +40,7 @@ export type {
   TaskOptions,
   TaskOutput,
   TaskPayload,
-  TaskRunOptions,
+  TriggerOptions,
   TaskRunResult,
 };
 

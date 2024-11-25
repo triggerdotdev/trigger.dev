@@ -42,7 +42,7 @@ import type {
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
-  BatchTaskRunOptions,
+  BatchTriggerOptions,
   InferRunTypes,
   inferSchemaIn,
   inferToolParameters,
@@ -60,7 +60,6 @@ import type {
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
-  TaskRunOptions,
   TaskRunResult,
   TaskSchema,
   TaskWithSchema,
@@ -69,8 +68,10 @@ import type {
   ToolTask,
   ToolTaskParameters,
   TriggerApiRequestOptions,
+  TriggerAndWaitOptions,
+  BatchTriggerAndWaitItem,
+  TriggerOptions,
 } from "@trigger.dev/core/v3";
-import { z } from "zod";
 
 export type {
   AnyRunHandle,
@@ -90,7 +91,8 @@ export type {
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
-  TaskRunOptions,
+  TriggerOptions,
+  BatchTriggerOptions,
   TaskRunResult,
 };
 
@@ -175,7 +177,7 @@ export function createTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items, options) => {
+    batchTriggerAndWait: async (items) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<TInput, TOutput>(
@@ -184,7 +186,6 @@ export function createTask<
           : `batchTriggerAndWait()`,
         params.id,
         items,
-        options,
         undefined,
         undefined,
         customQueue
@@ -321,7 +322,7 @@ export function createSchemaTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items, options) => {
+    batchTriggerAndWait: async (items) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<inferSchemaIn<TSchema>, TOutput>(
@@ -330,7 +331,6 @@ export function createSchemaTask<
           : `batchTriggerAndWait()`,
         params.id,
         items,
-        options,
         parsePayload,
         undefined,
         customQueue
@@ -383,7 +383,7 @@ export function createSchemaTask<
 export async function trigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
-  options?: TaskRunOptions,
+  options?: TriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<RunHandleFromTypes<InferRunTypes<TTask>>> {
   return await trigger_internal<InferRunTypes<TTask>>(
@@ -417,7 +417,7 @@ export async function trigger<TTask extends AnyTask>(
 export function triggerAndWait<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
-  options?: TaskRunOptions,
+  options?: TriggerAndWaitOptions,
   requestOptions?: ApiRequestOptions
 ): TaskRunPromise<TaskOutput<TTask>> {
   return new TaskRunPromise<TaskOutput<TTask>>((resolve, reject) => {
@@ -465,14 +465,12 @@ export function triggerAndWait<TTask extends AnyTask>(
 export async function batchTriggerAndWait<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
-  options?: BatchTaskRunOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<BatchResult<TaskOutput<TTask>>> {
   return await batchTriggerAndWait_internal<TaskPayload<TTask>, TaskOutput<TTask>>(
     "tasks.batchTriggerAndWait()",
     id,
     items,
-    options,
     undefined,
     requestOptions
   );
@@ -496,7 +494,7 @@ export async function batchTriggerAndWait<TTask extends AnyTask>(
 export async function triggerAndPoll<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   payload: TaskPayload<TTask>,
-  options?: TaskRunOptions & PollOptions,
+  options?: TriggerOptions & PollOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<RetrieveRunResult<TTask>> {
   const handle = await trigger(id, payload, options, requestOptions);
@@ -507,7 +505,7 @@ export async function triggerAndPoll<TTask extends AnyTask>(
 export async function batchTrigger<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
-  options?: BatchTaskRunOptions,
+  options?: BatchTriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
   return await batchTrigger_internal<InferRunTypes<TTask>>(
@@ -525,7 +523,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   id: TRunTypes["taskIdentifier"],
   payload: TRunTypes["payload"],
   parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
-  options?: TaskRunOptions,
+  options?: TriggerOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<RunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
@@ -544,6 +542,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
         idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+        idempotencyKeyTTL: options?.idempotencyKeyTTL,
         delay: options?.delay,
         ttl: options?.ttl,
         tags: options?.tags,
@@ -584,7 +583,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
   taskIdentifier: TRunTypes["taskIdentifier"],
   items: Array<BatchItem<TRunTypes["payload"]>>,
-  options?: BatchTaskRunOptions,
+  options?: BatchTriggerOptions,
   parsePayload?: SchemaParseFn<TRunTypes["payload"]>,
   requestOptions?: TriggerApiRequestOptions,
   queue?: QueueOptions
@@ -608,6 +607,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
               idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
+              idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
@@ -639,8 +639,10 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
   );
 
   const handle = {
-    batchId: response.batchId,
-    runs: response.runs.map((id) => ({ id, taskIdentifier })),
+    batchId: response.id,
+    isCached: response.isCached,
+    idempotencyKey: response.idempotencyKey,
+    runs: response.runs,
     publicAccessToken: response.publicAccessToken,
   };
 
@@ -652,7 +654,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
   id: string,
   payload: TPayload,
   parsePayload?: SchemaParseFn<TPayload>,
-  options?: TaskRunOptions,
+  options?: TriggerAndWaitOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<TaskRunResult<TOutput>> {
   const ctx = taskContext.ctx;
@@ -681,7 +683,6 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
-            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -696,29 +697,12 @@ async function triggerAndWait_internal<TPayload, TOutput>(
 
       span.setAttribute("messaging.message.id", response.id);
 
-      if (options?.idempotencyKey) {
-        // If an idempotency key is provided, we can check if the result is already available
-        const result = await apiClient.getRunResult(response.id);
-
-        if (result) {
-          logger.log(
-            `Result reused from previous task run with idempotency key '${options.idempotencyKey}'.`,
-            {
-              runId: response.id,
-              idempotencyKey: options.idempotencyKey,
-            }
-          );
-
-          return await handleTaskRunExecutionResult<TOutput>(result);
-        }
-      }
-
       const result = await runtime.waitForTask({
         id: response.id,
         ctx,
       });
 
-      return await handleTaskRunExecutionResult<TOutput>(result);
+      return await handleTaskRunExecutionResult<TOutput>(result, id);
     },
     {
       kind: SpanKind.PRODUCER,
@@ -745,8 +729,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
 async function batchTriggerAndWait_internal<TPayload, TOutput>(
   name: string,
   id: string,
-  items: Array<BatchItem<TPayload>>,
-  options?: BatchTaskRunOptions,
+  items: Array<BatchTriggerAndWaitItem<TPayload>>,
   parsePayload?: SchemaParseFn<TPayload>,
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
@@ -779,7 +762,6 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
-                  idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
                   delay: item.options?.delay,
                   ttl: item.options?.ttl,
                   tags: item.options?.tags,
@@ -792,77 +774,19 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
           ),
           dependentAttempt: ctx.attempt.id,
         },
-        {
-          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
-          idempotencyKeyTTL: options?.idempotencyKeyTTL,
-        },
+        {},
         requestOptions
       );
 
-      span.setAttribute("messaging.message.id", response.batchId);
-
-      const getBatchResults = async (): Promise<BatchTaskRunExecutionResult> => {
-        // We need to check if the results are already available, but only if any of the items options has an idempotency key
-        const hasIdempotencyKey = items.some((item) => item.options?.idempotencyKey);
-
-        if (hasIdempotencyKey) {
-          const results = await apiClient.getBatchResults(response.batchId);
-
-          if (results) {
-            return results;
-          }
-        }
-
-        return {
-          id: response.batchId,
-          items: [],
-        };
-      };
-
-      const existingResults = await getBatchResults();
-
-      const incompleteRuns = response.runs.filter(
-        (runId) => !existingResults.items.some((item) => item.id === runId)
-      );
-
-      if (incompleteRuns.length === 0) {
-        logger.log(
-          `Results reused from previous task runs because of the provided idempotency keys.`
-        );
-
-        // All runs are already completed
-        const runs = await handleBatchTaskRunExecutionResult<TOutput>(existingResults.items);
-
-        return {
-          id: existingResults.id,
-          runs,
-        };
-      }
+      span.setAttribute("messaging.message.id", response.id);
 
       const result = await runtime.waitForBatch({
-        id: response.batchId,
-        runs: incompleteRuns,
+        id: response.id,
+        runs: response.runs.map((run) => run.id),
         ctx,
       });
 
-      // Combine the already completed runs with the newly completed runs, ordered by the original order
-      const combinedItems: BatchTaskRunExecutionResult["items"] = [];
-
-      for (const runId of response.runs) {
-        const existingItem = existingResults.items.find((item) => item.id === runId);
-
-        if (existingItem) {
-          combinedItems.push(existingItem);
-        } else {
-          const newItem = result.items.find((item) => item.id === runId);
-
-          if (newItem) {
-            combinedItems.push(newItem);
-          }
-        }
-      }
-
-      const runs = await handleBatchTaskRunExecutionResult<TOutput>(combinedItems);
+      const runs = await handleBatchTaskRunExecutionResult<TOutput>(result.items, id);
 
       return {
         id: result.id,
@@ -893,7 +817,8 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
 }
 
 async function handleBatchTaskRunExecutionResult<TOutput>(
-  items: Array<TaskRunExecutionResult>
+  items: Array<TaskRunExecutionResult>,
+  taskIdentifier: string
 ): Promise<Array<TaskRunResult<TOutput>>> {
   const someObjectStoreOutputs = items.some(
     (item) => item.ok && item.outputType === "application/store"
@@ -902,7 +827,7 @@ async function handleBatchTaskRunExecutionResult<TOutput>(
   if (!someObjectStoreOutputs) {
     const results = await Promise.all(
       items.map(async (item) => {
-        return await handleTaskRunExecutionResult<TOutput>(item);
+        return await handleTaskRunExecutionResult<TOutput>(item, taskIdentifier);
       })
     );
 
@@ -914,7 +839,7 @@ async function handleBatchTaskRunExecutionResult<TOutput>(
     async (span) => {
       const results = await Promise.all(
         items.map(async (item) => {
-          return await handleTaskRunExecutionResult<TOutput>(item);
+          return await handleTaskRunExecutionResult<TOutput>(item, taskIdentifier);
         })
       );
 
@@ -928,7 +853,8 @@ async function handleBatchTaskRunExecutionResult<TOutput>(
 }
 
 async function handleTaskRunExecutionResult<TOutput>(
-  execution: TaskRunExecutionResult
+  execution: TaskRunExecutionResult,
+  taskIdentifier: string
 ): Promise<TaskRunResult<TOutput>> {
   if (execution.ok) {
     const outputPacket = { data: execution.output, dataType: execution.outputType };
@@ -937,12 +863,14 @@ async function handleTaskRunExecutionResult<TOutput>(
     return {
       ok: true,
       id: execution.id,
+      taskIdentifier: execution.taskIdentifier ?? taskIdentifier,
       output: await parsePacket(importedPacket),
     };
   } else {
     return {
       ok: false,
       id: execution.id,
+      taskIdentifier: execution.taskIdentifier ?? taskIdentifier,
       error: createErrorTaskError(execution.error),
     };
   }
