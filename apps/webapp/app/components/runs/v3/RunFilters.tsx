@@ -1,29 +1,34 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  ArrowPathIcon,
   CalendarIcon,
+  ClockIcon,
   CpuChipIcon,
   FingerPrintIcon,
-  InboxStackIcon,
   Squares2X2Icon,
   TagIcon,
   TrashIcon,
-  XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { ListChecks } from "lucide-react";
 import { Form, useFetcher } from "@remix-run/react";
 import type {
-  RuntimeEnvironment,
-  TaskTriggerSource,
-  TaskRunStatus,
   BulkActionType,
+  RuntimeEnvironment,
+  TaskRunStatus,
+  TaskTriggerSource,
 } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
+import { matchSorter } from "match-sorter";
 import type { ReactNode } from "react";
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { DateField } from "~/components/primitives/DateField";
+import { DateTime } from "~/components/primitives/DateTime";
+import { FormError } from "~/components/primitives/FormError";
+import { Input } from "~/components/primitives/Input";
+import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -36,6 +41,8 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
   TooltipContent,
@@ -43,28 +50,19 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
+import { BulkActionStatusCombo } from "./BulkAction";
 import {
   TaskRunStatusCombo,
   allTaskRunStatuses,
-  filterableTaskRunStatuses,
   descriptionForTaskRunStatus,
+  filterableTaskRunStatuses,
   runStatusTitle,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { DateTime } from "~/components/primitives/DateTime";
-import { BulkActionStatusCombo } from "./BulkAction";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
-import { useProject } from "~/hooks/useProject";
-import { Spinner } from "~/components/primitives/Spinner";
-import { matchSorter } from "match-sorter";
-import { DateField } from "~/components/primitives/DateField";
-import { Label } from "~/components/primitives/Label";
-import { Switch } from "~/components/primitives/Switch";
-import { Input } from "~/components/primitives/Input";
-import { Hint } from "~/components/primitives/Hint";
-import { FormError } from "~/components/primitives/FormError";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -98,6 +96,7 @@ export const TaskRunListSearchFilters = z.object({
   showChildTasks: z.coerce.boolean().optional(),
   batchId: z.string().optional(),
   runId: z.string().optional(),
+  scheduleId: z.string().optional(),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -167,10 +166,11 @@ const filterTypes = [
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
   { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
-  { name: "run", title: "Run id", icon: <FingerPrintIcon className="size-4" /> },
-  { name: "batch", title: "Batch id", icon: <Squares2X2Icon className="size-4" /> },
+  { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
+  { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
+  { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
+  { name: "bulk", title: "Bulk action", icon: <ListChecks className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -242,14 +242,15 @@ function FilterMenuProvider({
 function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
-      <AppliedRunIdFilter />
-      <AppliedBatchIdFilter />
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedPeriodFilter />
       <AppliedCustomDateRangeFilter />
+      <AppliedRunIdFilter />
+      <AppliedBatchIdFilter />
+      <AppliedScheduleIdFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
     </>
   );
@@ -285,6 +286,8 @@ function Menu(props: MenuProps) {
       return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "batch":
       return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "schedule":
+      return <ScheduleIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -1375,6 +1378,124 @@ function AppliedBatchIdFilter() {
                 label="Batch ID"
                 value={batchId}
                 onRemove={() => del(["batchId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function ScheduleIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const scheduleIdValue = value("scheduleId");
+
+  const [scheduleId, setScheduleId] = useState(scheduleIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      scheduleId: scheduleId === "" ? undefined : scheduleId?.toString(),
+    });
+
+    setOpen(false);
+  }, [scheduleId, replace]);
+
+  let error: string | undefined = undefined;
+  if (scheduleId) {
+    if (!scheduleId.startsWith("sched")) {
+      error = "Schedule IDs start with 'sched_'";
+    } else if (scheduleId.length !== 27) {
+      error = "Schedule IDs are 27 characters long";
+    }
+  }
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Batch ID</Label>
+            <Input
+              placeholder="sched_"
+              value={scheduleId ?? ""}
+              onChange={(e) => setScheduleId(e.target.value)}
+              variant="small"
+              className="w-[29ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !scheduleId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedScheduleIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("scheduleId") === undefined) {
+    return null;
+  }
+
+  const scheduleId = value("scheduleId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <ScheduleIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Schedule ID"
+                value={scheduleId}
+                onRemove={() => del(["scheduleId", "cursor", "direction"])}
               />
             </Ariakit.Select>
           }

@@ -161,11 +161,29 @@ export class RunListPresenter extends BasePresenter {
         },
       });
 
-      batchId = batch?.id;
+      if (batch) {
+        batchId = batch?.id;
+      }
+    }
+
+    //scheduleId can be a friendlyId
+    if (scheduleId && scheduleId.startsWith("sched_")) {
+      const schedule = await this._replica.taskSchedule.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: scheduleId,
+        },
+      });
+
+      if (schedule) {
+        scheduleId = schedule?.id;
+      }
     }
 
     //show all runs if we are filtering by batchId or runId
-    if (batchId || runId) {
+    if (batchId || runId || scheduleId) {
       rootOnly = false;
     }
 
