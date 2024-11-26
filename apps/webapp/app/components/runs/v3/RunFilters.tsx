@@ -3,6 +3,7 @@ import {
   ArrowPathIcon,
   CalendarIcon,
   CpuChipIcon,
+  FingerPrintIcon,
   InboxStackIcon,
   TagIcon,
   TrashIcon,
@@ -53,13 +54,16 @@ import {
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { DateTime } from "~/components/primitives/DateTime";
 import { BulkActionStatusCombo } from "./BulkAction";
-import { type loader } from "~/routes/resources.projects.$projectParam.runs.tags";
+import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { useProject } from "~/hooks/useProject";
 import { Spinner } from "~/components/primitives/Spinner";
 import { matchSorter } from "match-sorter";
 import { DateField } from "~/components/primitives/DateField";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
+import { Input } from "~/components/primitives/Input";
+import { Hint } from "~/components/primitives/Hint";
+import { FormError } from "~/components/primitives/FormError";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -91,6 +95,8 @@ export const TaskRunListSearchFilters = z.object({
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   showChildTasks: z.coerce.boolean().optional(),
+  batchId: z.string().optional(),
+  runId: z.string().optional(),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -162,6 +168,7 @@ const filterTypes = [
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
   { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
+  { name: "run", title: "Run id", icon: <FingerPrintIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -233,6 +240,7 @@ function FilterMenuProvider({
 function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
+      <AppliedRunIdFilter />
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
@@ -270,6 +278,8 @@ function Menu(props: MenuProps) {
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "run":
+      return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -705,7 +715,7 @@ function TagsDropdown({
     });
   };
 
-  const fetcher = useFetcher<typeof loader>();
+  const fetcher = useFetcher<typeof tagsLoader>();
 
   useEffect(() => {
     const searchParams = new URLSearchParams();
@@ -1040,7 +1050,15 @@ function CustomDateRangeDropdown({
             <Button variant="tertiary/small" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button variant="secondary/small" onClick={() => apply()}>
+            <Button
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
               Apply
             </Button>
           </div>
@@ -1118,6 +1136,123 @@ function ShowChildTasksToggle() {
         });
       }}
     />
+  );
+}
+
+function RunIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const runIdValue = value("runId");
+
+  const [runId, setRunId] = useState(runIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      runId: runId === "" ? undefined : runId?.toString(),
+    });
+
+    setOpen(false);
+  }, [runId, replace]);
+
+  let error: string | undefined = undefined;
+  if (runId) {
+    if (!runId.startsWith("run_")) {
+      error = "Run IDs start with 'run_'";
+    } else if (runId.length !== 25) {
+      error = "Run IDs are 25 characters long";
+    }
+  }
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Run ID</Label>
+            <Input
+              placeholder="run_"
+              value={runId ?? ""}
+              onChange={(e) => setRunId(e.target.value)}
+              variant="small"
+              className="w-[27ch] font-mono"
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !runId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedRunIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("runId") === undefined) {
+    return null;
+  }
+
+  const runId = value("runId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <RunIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Run ID"
+                value={runId}
+                onRemove={() => del(["runId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
   );
 }
 

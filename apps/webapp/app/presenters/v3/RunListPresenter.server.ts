@@ -23,6 +23,8 @@ export type RunListOptions = {
   to?: number;
   isTest?: boolean;
   rootOnly?: boolean;
+  batchId?: string;
+  runId?: string;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -49,6 +51,8 @@ export class RunListPresenter extends BasePresenter {
     bulkId,
     isTest,
     rootOnly,
+    batchId,
+    runId,
     from,
     to,
     direction = "forward",
@@ -68,6 +72,8 @@ export class RunListPresenter extends BasePresenter {
       to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
+      batchId !== undefined ||
+      runId !== undefined ||
       typeof isTest === "boolean" ||
       rootOnly === true;
 
@@ -172,6 +178,7 @@ export class RunListPresenter extends BasePresenter {
         tags: null | string[];
         depth: number;
         rootTaskRunId: string | null;
+        batchId: string | null;
       }[]
     >`
     SELECT
@@ -214,6 +221,7 @@ WHERE
         : Prisma.empty
     }
     -- filters
+    ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
     ${
       restrictToRunIds
         ? restrictToRunIds.length === 0
@@ -257,6 +265,7 @@ WHERE
         : Prisma.empty
     }
     ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
+    ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     GROUP BY
       tr.id, bw.version
     ORDER BY
