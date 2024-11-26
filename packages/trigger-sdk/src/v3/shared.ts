@@ -9,14 +9,12 @@ import {
   accessoryAttributes,
   apiClientManager,
   ApiRequestOptions,
-  BatchTaskRunExecutionResult,
   conditionallyImportPacket,
   convertToolParametersToSchema,
   createErrorTaskError,
   defaultRetryOptions,
   getSchemaParseFn,
   InitOutput,
-  logger,
   makeIdempotencyKey,
   parsePacket,
   Queue,
@@ -42,6 +40,7 @@ import type {
   BatchResult,
   BatchRunHandle,
   BatchRunHandleFromTypes,
+  BatchTriggerAndWaitItem,
   BatchTriggerOptions,
   InferRunTypes,
   inferSchemaIn,
@@ -67,9 +66,8 @@ import type {
   TaskWithToolOptions,
   ToolTask,
   ToolTaskParameters,
-  TriggerApiRequestOptions,
   TriggerAndWaitOptions,
-  BatchTriggerAndWaitItem,
+  TriggerApiRequestOptions,
   TriggerOptions,
 } from "@trigger.dev/core/v3";
 
@@ -79,6 +77,7 @@ export type {
   BatchItem,
   BatchResult,
   BatchRunHandle,
+  BatchTriggerOptions,
   Queue,
   RunHandle,
   RunHandleOutput,
@@ -91,9 +90,8 @@ export type {
   TaskOutput,
   TaskOutputHandle,
   TaskPayload,
-  TriggerOptions,
-  BatchTriggerOptions,
   TaskRunResult,
+  TriggerOptions,
 };
 
 export { SubtaskUnwrapError, TaskRunPromise };

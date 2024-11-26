@@ -376,6 +376,21 @@ export const batchV2TestTask = task({
     ]);
 
     logger.debug("Response 11", { response11 });
+
+    assert.match(response11.batchId, /^batch_[a-z0-9]{21}$/, "response11: Batch ID is invalid");
+    assert.equal(response11.runs.length, 2, "response11: Items length is invalid");
+    assert.match(response11.runs[0].id, /^run_[a-z0-9]{21}$/, "response11: Run ID is invalid");
+    assert.equal(
+      response11.runs[0].taskIdentifier,
+      "batch-v2-test-child",
+      "response11: runs[0] Task identifier is invalid"
+    );
+    assert.equal(response11.runs[0].isCached, false, "response11: runs[0] Run is cached");
+    assert.equal(
+      response11.runs[0].idempotencyKey,
+      undefined,
+      "response11: runs[0] Idempotent key is invalid"
+    );
   },
 });
 

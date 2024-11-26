@@ -1804,6 +1804,8 @@ model TaskRun {
   @@index([completedAt])
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
+  // Finding runs in a batch
+  @@index([runtimeEnvironmentId, batchId])
 }
 
 enum TaskRunStatus {

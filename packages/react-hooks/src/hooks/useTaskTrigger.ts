@@ -8,7 +8,7 @@ import {
   makeIdempotencyKey,
   RunHandleFromTypes,
   stringifyIO,
-  TaskRunOptions,
+  TriggerOptions,
 } from "@trigger.dev/core/v3";
 import useSWRMutation from "swr/mutation";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -64,7 +64,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
     id: string,
     {
       arg: { payload, options },
-    }: { arg: { payload: TaskPayload<TTask>; options?: TaskRunOptions } }
+    }: { arg: { payload: TaskPayload<TTask>; options?: TriggerOptions } }
   ) {
     const payloadPacket = await stringifyIO(payload);
 
