@@ -369,6 +369,9 @@ export class TriggerTaskService extends BaseService {
                   parentSpanId:
                     options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
+                  taskVersion: lockedToBackgroundWorker?.version,
+                  sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                  cliVersion: lockedToBackgroundWorker?.cliVersion,
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   isTest: body.options?.test ?? false,

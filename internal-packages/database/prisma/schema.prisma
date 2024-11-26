@@ -1692,6 +1692,11 @@ model TaskRun {
   /// Denormized column that holds the raw tags
   runTags String[]
 
+  /// Denormalized version of the background worker task
+  taskVersion String?
+  sdkVersion  String?
+  cliVersion  String?
+
   checkpoints Checkpoint[]
 
   startedAt     DateTime?

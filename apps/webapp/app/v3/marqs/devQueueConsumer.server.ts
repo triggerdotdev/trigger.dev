@@ -378,6 +378,9 @@ export class DevQueueConsumer {
         lockedById: backgroundTask.id,
         status: "EXECUTING",
         lockedToVersionId: backgroundWorker.id,
+        taskVersion: backgroundWorker.version,
+        sdkVersion: backgroundWorker.sdkVersion,
+        cliVersion: backgroundWorker.cliVersion,
         startedAt: existingTaskRun.startedAt ?? new Date(),
         maxDurationInSeconds: getMaxDuration(
           existingTaskRun.maxDurationInSeconds,
