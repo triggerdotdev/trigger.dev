@@ -1135,8 +1135,9 @@ function ShowChildTasksToggle() {
 
   const batchId = value("batchId");
   const runId = value("runId");
+  const scheduleId = value("scheduleId");
 
-  const disabled = !!batchId || !!runId;
+  const disabled = !!batchId || !!runId || !!scheduleId;
 
   return (
     <Switch
