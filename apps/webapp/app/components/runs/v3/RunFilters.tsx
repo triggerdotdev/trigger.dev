@@ -5,6 +5,7 @@ import {
   CpuChipIcon,
   FingerPrintIcon,
   InboxStackIcon,
+  Squares2X2Icon,
   TagIcon,
   TrashIcon,
   XMarkIcon,
@@ -169,6 +170,7 @@ const filterTypes = [
   { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
   { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
   { name: "run", title: "Run id", icon: <FingerPrintIcon className="size-4" /> },
+  { name: "batch", title: "Batch id", icon: <Squares2X2Icon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -241,6 +243,7 @@ function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: Ru
   return (
     <>
       <AppliedRunIdFilter />
+      <AppliedBatchIdFilter />
       <AppliedStatusFilter />
       <AppliedEnvironmentFilter possibleEnvironments={possibleEnvironments} />
       <AppliedTaskFilter possibleTasks={possibleTasks} />
@@ -280,6 +283,8 @@ function Menu(props: MenuProps) {
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "run":
       return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "batch":
+      return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -1125,11 +1130,17 @@ function ShowChildTasksToggle() {
 
   const showChildTasks = value("showChildTasks") === "true";
 
+  const batchId = value("batchId");
+  const runId = value("runId");
+
+  const disabled = !!batchId || !!runId;
+
   return (
     <Switch
+      disabled={disabled}
       variant="small"
       label="Show child runs"
-      checked={showChildTasks}
+      checked={disabled ? true : showChildTasks}
       onCheckedChange={(checked) => {
         replace({
           showChildTasks: checked ? "true" : undefined,
@@ -1200,6 +1211,7 @@ function RunIdDropdown({
               onChange={(e) => setRunId(e.target.value)}
               variant="small"
               className="w-[27ch] font-mono"
+              spellCheck={false}
             />
             {error ? <FormError>{error}</FormError> : null}
           </div>
@@ -1245,6 +1257,124 @@ function AppliedRunIdFilter() {
                 label="Run ID"
                 value={runId}
                 onRemove={() => del(["runId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function BatchIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const batchIdValue = value("batchId");
+
+  const [batchId, setBatchId] = useState(batchIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      batchId: batchId === "" ? undefined : batchId?.toString(),
+    });
+
+    setOpen(false);
+  }, [batchId, replace]);
+
+  let error: string | undefined = undefined;
+  if (batchId) {
+    if (!batchId.startsWith("batch_")) {
+      error = "Batch IDs start with 'batch_'";
+    } else if (batchId.length !== 27) {
+      error = "Batch IDs are 27 characters long";
+    }
+  }
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Batch ID</Label>
+            <Input
+              placeholder="batch_"
+              value={batchId ?? ""}
+              onChange={(e) => setBatchId(e.target.value)}
+              variant="small"
+              className="w-[29ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !batchId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedBatchIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("batchId") === undefined) {
+    return null;
+  }
+
+  const batchId = value("batchId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <BatchIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Batch ID"
+                value={batchId}
+                onRemove={() => del(["batchId", "cursor", "direction"])}
               />
             </Ariakit.Select>
           }

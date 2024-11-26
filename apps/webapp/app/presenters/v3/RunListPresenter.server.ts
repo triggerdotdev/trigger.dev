@@ -150,6 +150,25 @@ export class RunListPresenter extends BasePresenter {
       }
     }
 
+    //batch id is a friendly id
+    if (batchId) {
+      const batch = await this._replica.batchTaskRun.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: batchId,
+        },
+      });
+
+      batchId = batch?.id;
+    }
+
+    //show all runs if we are filtering by batchId or runId
+    if (batchId || runId) {
+      rootOnly = false;
+    }
+
     const periodMs = period ? parse(period) : undefined;
 
     //get the runs
@@ -222,6 +241,7 @@ WHERE
     }
     -- filters
     ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
+    ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     ${
       restrictToRunIds
         ? restrictToRunIds.length === 0
@@ -265,7 +285,6 @@ WHERE
         : Prisma.empty
     }
     ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
-    ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     GROUP BY
       tr.id, bw.version
     ORDER BY
