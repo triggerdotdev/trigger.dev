@@ -190,6 +190,11 @@ const pricingDefinitions = {
     content:
       "A single email address, Slack channel, or webhook URL that you want to send alerts to.",
   },
+  realtime: {
+    title: "Realtime connections",
+    content:
+      "Realtime allows you to send the live status and data from your runs to your frontend. This is the number of simultaneous Realtime connections that can be made.",
+  },
 };
 
 type PricingPlansProps = {
@@ -494,6 +499,7 @@ export function TierFree({
             <LogRetention limits={plan.limits} />
             <SupportLevel limits={plan.limits} />
             <Alerts limits={plan.limits} />
+            <RealtimeConnecurrency limits={plan.limits} />
           </ul>
         </>
       )}
@@ -608,6 +614,7 @@ export function TierHobby({
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
+        <RealtimeConnecurrency limits={plan.limits} />
       </ul>
     </TierContainer>
   );
@@ -678,6 +685,7 @@ export function TierPro({
         <LogRetention limits={plan.limits} />
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
+        <RealtimeConnecurrency limits={plan.limits} />
       </ul>
     </TierContainer>
   );
@@ -946,6 +954,21 @@ function Alerts({ limits }: { limits: Limits }) {
         content={pricingDefinitions.alerts.content}
       >
         alert destinations
+      </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function RealtimeConnecurrency({ limits }: { limits: Limits }) {
+  return (
+    <FeatureItem checked>
+      {limits.realtimeConcurrentConnections.number}
+      {limits.realtimeConcurrentConnections.canExceed ? "+" : ""}{" "}
+      <DefinitionTip
+        title={pricingDefinitions.realtime.title}
+        content={pricingDefinitions.realtime.content}
+      >
+        concurrent Realtime connections
       </DefinitionTip>
     </FeatureItem>
   );
