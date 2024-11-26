@@ -12,6 +12,7 @@ import type {
   AnyRealtimeRun,
   RunSubscription,
   TaskRunShape,
+  AnyBatchedRunHandle,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -153,7 +154,7 @@ function listRunsRequestOptions(
 }
 
 // Extract out the expected type of the id, can be either a string or a RunHandle
-type RunId<TRunId> = TRunId extends AnyRunHandle
+type RunId<TRunId> = TRunId extends AnyRunHandle | AnyBatchedRunHandle
   ? TRunId
   : TRunId extends AnyTask
   ? string
@@ -161,7 +162,7 @@ type RunId<TRunId> = TRunId extends AnyRunHandle
   ? TRunId
   : never;
 
-function retrieveRun<TRunId extends AnyRunHandle | AnyTask | string>(
+function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveRunResult<TRunId>> {

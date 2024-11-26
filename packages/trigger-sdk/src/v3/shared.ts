@@ -1,9 +1,4 @@
 import { SpanKind } from "@opentelemetry/api";
-import {
-  SEMATTRS_MESSAGING_DESTINATION,
-  SEMATTRS_MESSAGING_OPERATION,
-  SEMATTRS_MESSAGING_SYSTEM,
-} from "@opentelemetry/semantic-conventions";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
@@ -28,6 +23,7 @@ import {
   TaskRunContext,
   TaskRunExecutionResult,
   TaskRunPromise,
+  TaskFromIdentifier,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
@@ -36,6 +32,7 @@ import type {
   AnyRunHandle,
   AnyRunTypes,
   AnyTask,
+  BatchAllItem,
   BatchItem,
   BatchResult,
   BatchRunHandle,
@@ -92,6 +89,7 @@ export type {
   TaskPayload,
   TaskRunResult,
   TriggerOptions,
+  TaskFromIdentifier,
 };
 
 export { SubtaskUnwrapError, TaskRunPromise };
@@ -516,6 +514,19 @@ export async function batchTrigger<TTask extends AnyTask>(
   );
 }
 
+export async function triggerAll<TTask extends AnyTask>(
+  items: Array<BatchAllItem<InferRunTypes<TTask>>>,
+  options?: BatchTriggerOptions,
+  requestOptions?: TriggerApiRequestOptions
+): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
+  return await triggerAll_internal<InferRunTypes<TTask>>(
+    "tasks.triggerAll()",
+    items,
+    options,
+    requestOptions
+  );
+}
+
 async function trigger_internal<TRunTypes extends AnyRunTypes>(
   name: string,
   id: TRunTypes["taskIdentifier"],
@@ -813,6 +824,88 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
       },
     }
   );
+}
+
+async function triggerAll_internal<TRunTypes extends AnyRunTypes>(
+  name: string,
+  items: Array<BatchAllItem<TRunTypes>>,
+  options?: BatchTriggerOptions,
+  requestOptions?: TriggerApiRequestOptions,
+  queue?: QueueOptions
+): Promise<BatchRunHandleFromTypes<TRunTypes>> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const response = await apiClient.batchTriggerV2(
+    {
+      items: await Promise.all(
+        items.map(async (item) => {
+          const payloadPacket = await stringifyIO(item.payload);
+
+          return {
+            task: item.task,
+            payload: payloadPacket.data,
+            options: {
+              queue: item.options?.queue ?? queue,
+              concurrencyKey: item.options?.concurrencyKey,
+              test: taskContext.ctx?.run.isTest,
+              payloadType: payloadPacket.dataType,
+              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
+              idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
+              delay: item.options?.delay,
+              ttl: item.options?.ttl,
+              tags: item.options?.tags,
+              maxAttempts: item.options?.maxAttempts,
+              parentAttempt: taskContext.ctx?.attempt.id,
+              metadata: item.options?.metadata,
+              maxDuration: item.options?.maxDuration,
+            },
+          };
+        })
+      ),
+    },
+    {
+      spanParentAsLink: true,
+      idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+      idempotencyKeyTTL: options?.idempotencyKeyTTL,
+    },
+    {
+      name,
+      tracer,
+      icon: "trigger",
+      onResponseBody(body, span) {
+        if (
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "id" in body &&
+          typeof body.id === "string"
+        ) {
+          span.setAttribute("batchId", body.id);
+        }
+
+        if (
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "runs" in body &&
+          Array.isArray(body.runs)
+        ) {
+          span.setAttribute("runCount", body.runs.length);
+        }
+      },
+      ...requestOptions,
+    }
+  );
+
+  const handle = {
+    batchId: response.id,
+    isCached: response.isCached,
+    idempotencyKey: response.idempotencyKey,
+    runs: response.runs,
+    publicAccessToken: response.publicAccessToken,
+  };
+
+  return handle as BatchRunHandleFromTypes<TRunTypes>;
 }
 
 async function handleBatchTaskRunExecutionResult<TOutput>(

@@ -8,6 +8,7 @@ import {
   trigger,
   triggerAndPoll,
   triggerAndWait,
+  triggerAll,
 } from "./shared.js";
 
 export { SubtaskUnwrapError };
@@ -26,6 +27,7 @@ import type {
   TaskPayload,
   TriggerOptions,
   TaskRunResult,
+  TaskFromIdentifier,
 } from "./shared.js";
 
 export type {
@@ -42,6 +44,7 @@ export type {
   TaskPayload,
   TriggerOptions,
   TaskRunResult,
+  TaskFromIdentifier,
 };
 
 /** Creates a task that can be triggered
@@ -74,4 +77,5 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
+  triggerAll,
 };

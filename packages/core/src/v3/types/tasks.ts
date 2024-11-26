@@ -441,6 +441,12 @@ export type BatchTriggerAndWaitItem<TInput> = {
   options?: TriggerAndWaitOptions;
 };
 
+export type BatchAllItem<TRunTypes extends AnyRunTypes> = {
+  task: TRunTypes["taskIdentifier"];
+  payload: TRunTypes["payload"];
+  options?: TriggerOptions;
+};
+
 export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**
    * The id of the task.
@@ -567,6 +573,11 @@ export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
 export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
   ? TIdentifier
   : never;
+
+export type TaskFromIdentifier<
+  TTask extends AnyTask,
+  TIdentifier extends TTask["id"],
+> = TTask extends { id: TIdentifier } ? TTask : never;
 
 export type TriggerJwtOptions = {
   /**
@@ -732,6 +743,8 @@ export type InferRunTypes<T> = T extends RunHandle<
   infer TOutput
 >
   ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+  : T extends BatchedRunHandle<infer TTaskIdentifier, infer TPayload, infer TOutput>
+  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
   : T extends Task<infer TTaskIdentifier, infer TPayload, infer TOutput>
   ? RunTypes<TTaskIdentifier, TPayload, TOutput>
   : AnyRunTypes;
@@ -742,8 +755,6 @@ export type RunHandleFromTypes<TRunTypes extends AnyRunTypes> = RunHandle<
   TRunTypes["output"]
 >;
 
-export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = BatchRunHandle<
-  TRunTypes["taskIdentifier"],
-  TRunTypes["payload"],
-  TRunTypes["output"]
->;
+export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
+  ? BatchRunHandle<TRunTypes["taskIdentifier"], TRunTypes["payload"], TRunTypes["output"]>
+  : never;
