@@ -1,10 +1,11 @@
 import {
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
+  IOPacket,
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
-import { BatchTaskRun } from "@trigger.dev/database";
+import { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
@@ -20,8 +21,26 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
+import { z } from "zod";
 
 const PROCESSING_BATCH_SIZE = 50;
+const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
+
+const BatchProcessingStrategy = z.enum(["sequential", "parallel"]);
+
+type BatchProcessingStrategy = z.infer<typeof BatchProcessingStrategy>;
+
+const CURRENT_STRATEGY: BatchProcessingStrategy = "parallel";
+
+export const BatchProcessingOptions = z.object({
+  batchId: z.string(),
+  processingId: z.string(),
+  range: z.object({ start: z.number().int(), count: z.number().int() }),
+  attemptCount: z.number().int(),
+  strategy: BatchProcessingStrategy,
+});
+
+export type BatchProcessingOptions = z.infer<typeof BatchProcessingOptions>;
 
 export type BatchTriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -261,26 +280,16 @@ export class BatchTriggerV2Service extends BaseService {
           environment
         );
 
-        const batch = await $transaction(this._prisma, async (tx) => {
-          const batch = await tx.batchTaskRun.create({
-            data: {
-              friendlyId: generateFriendlyId("batch"),
-              runtimeEnvironmentId: environment.id,
-              idempotencyKey: options.idempotencyKey,
-              idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-              dependentTaskAttemptId: dependentAttempt?.id,
-              runCount: body.items.length,
-              runIds: runs.map((r) => r.id),
-              payload: payloadPacket.data,
-              payloadType: payloadPacket.dataType,
-              options,
-            },
-          });
-
-          await this.#enqueueBatchTaskRun(batch.id, 0, 0, tx);
-
-          return batch;
-        });
+        const batch = await this.#createAndProcessBatchTaskRun(
+          batchId,
+          runs,
+          payloadPacket,
+          newRunCount,
+          environment,
+          body,
+          options,
+          dependentAttempt ?? undefined
+        );
 
         if (!batch) {
           throw new Error("Failed to create batch");
@@ -294,6 +303,157 @@ export class BatchTriggerV2Service extends BaseService {
         };
       }
     );
+  }
+
+  async #createAndProcessBatchTaskRun(
+    batchId: string,
+    runs: Array<{
+      id: string;
+      isCached: boolean;
+      idempotencyKey: string | undefined;
+      taskIdentifier: string;
+    }>,
+    payloadPacket: IOPacket,
+    newRunCount: number,
+    environment: AuthenticatedEnvironment,
+    body: BatchTriggerTaskV2RequestBody,
+    options: BatchTriggerTaskServiceOptions = {},
+    dependentAttempt?: TaskRunAttempt
+  ) {
+    if (newRunCount <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
+      const batch = await this._prisma.batchTaskRun.create({
+        data: {
+          friendlyId: batchId,
+          runtimeEnvironmentId: environment.id,
+          idempotencyKey: options.idempotencyKey,
+          idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+          dependentTaskAttemptId: dependentAttempt?.id,
+          runCount: body.items.length,
+          runIds: runs.map((r) => r.id),
+          payload: payloadPacket.data,
+          payloadType: payloadPacket.dataType,
+          options,
+        },
+      });
+
+      const result = await this.#processBatchTaskRunItems(
+        batch,
+        environment,
+        0,
+        PROCESSING_BATCH_SIZE,
+        body.items,
+        options
+      );
+
+      switch (result.status) {
+        case "COMPLETE": {
+          logger.debug("[BatchTriggerV2][call] Batch inline processing complete", {
+            batchId: batch.friendlyId,
+            currentIndex: 0,
+          });
+
+          return batch;
+        }
+        case "INCOMPLETE": {
+          logger.debug("[BatchTriggerV2][call] Batch inline processing incomplete", {
+            batchId: batch.friendlyId,
+            currentIndex: result.workingIndex,
+          });
+
+          // If processing inline does not finish for some reason, enqueue processing the rest of the batch
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: "0",
+            range: {
+              start: result.workingIndex,
+              count: PROCESSING_BATCH_SIZE,
+            },
+            attemptCount: 0,
+            strategy: "sequential",
+          });
+
+          return batch;
+        }
+        case "ERROR": {
+          logger.error("[BatchTriggerV2][call] Batch inline processing error", {
+            batchId: batch.friendlyId,
+            currentIndex: result.workingIndex,
+            error: result.error,
+          });
+
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: "0",
+            range: {
+              start: result.workingIndex,
+              count: PROCESSING_BATCH_SIZE,
+            },
+            attemptCount: 0,
+            strategy: "sequential",
+          });
+
+          return batch;
+        }
+      }
+    } else {
+      return await $transaction(this._prisma, async (tx) => {
+        const batch = await tx.batchTaskRun.create({
+          data: {
+            friendlyId: batchId,
+            runtimeEnvironmentId: environment.id,
+            idempotencyKey: options.idempotencyKey,
+            idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+            dependentTaskAttemptId: dependentAttempt?.id,
+            runCount: body.items.length,
+            runIds: runs.map((r) => r.id),
+            payload: payloadPacket.data,
+            payloadType: payloadPacket.dataType,
+            options,
+          },
+        });
+
+        switch (CURRENT_STRATEGY) {
+          case "sequential": {
+            await this.#enqueueBatchTaskRun({
+              batchId: batch.id,
+              processingId: batchId,
+              range: { start: 0, count: PROCESSING_BATCH_SIZE },
+              attemptCount: 0,
+              strategy: CURRENT_STRATEGY,
+            });
+
+            break;
+          }
+          case "parallel": {
+            const ranges = Array.from({
+              length: Math.ceil(newRunCount / PROCESSING_BATCH_SIZE),
+            }).map((_, index) => ({
+              start: index * PROCESSING_BATCH_SIZE,
+              count: PROCESSING_BATCH_SIZE,
+            }));
+
+            await Promise.all(
+              ranges.map((range, index) =>
+                this.#enqueueBatchTaskRun(
+                  {
+                    batchId: batch.id,
+                    processingId: `${index}`,
+                    range,
+                    attemptCount: 0,
+                    strategy: CURRENT_STRATEGY,
+                  },
+                  tx
+                )
+              )
+            );
+
+            break;
+          }
+        }
+
+        return batch;
+      });
+    }
   }
 
   async #respondWithExistingBatch(
@@ -332,17 +492,15 @@ export class BatchTriggerV2Service extends BaseService {
     };
   }
 
-  async processBatchTaskRun(batchId: string, currentIndex: number, attemptCount: number) {
+  async processBatchTaskRun(options: BatchProcessingOptions) {
     logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch", {
-      batchId,
-      currentIndex,
-      attemptCount,
+      options,
     });
 
-    const $attemptCount = attemptCount + 1;
+    const $attemptCount = options.attemptCount + 1;
 
     const batch = await this._prisma.batchTaskRun.findFirst({
-      where: { id: batchId },
+      where: { id: options.batchId },
       include: {
         runtimeEnvironment: {
           include: {
@@ -358,10 +516,10 @@ export class BatchTriggerV2Service extends BaseService {
     }
 
     // Check to make sure the currentIndex is not greater than the runCount
-    if (currentIndex >= batch.runCount) {
+    if (options.range.start >= batch.runCount) {
       logger.debug("[BatchTriggerV2][processBatchTaskRun] currentIndex is greater than runCount", {
+        options,
         batchId: batch.friendlyId,
-        currentIndex,
         runCount: batch.runCount,
         attemptCount: $attemptCount,
       });
@@ -382,8 +540,8 @@ export class BatchTriggerV2Service extends BaseService {
 
     if (!payload) {
       logger.debug("[BatchTriggerV2][processBatchTaskRun] Failed to parse payload", {
+        options,
         batchId: batch.friendlyId,
-        currentIndex,
         attemptCount: $attemptCount,
       });
 
@@ -392,35 +550,126 @@ export class BatchTriggerV2Service extends BaseService {
 
     // Skip zod parsing
     const $payload = payload as BatchTriggerTaskV2RequestBody["items"];
+    const $options = batch.options as BatchTriggerTaskServiceOptions;
 
+    const result = await this.#processBatchTaskRunItems(
+      batch,
+      batch.runtimeEnvironment,
+      options.range.start,
+      options.range.count,
+      $payload,
+      $options
+    );
+
+    switch (result.status) {
+      case "COMPLETE": {
+        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
+          options,
+          batchId: batch.friendlyId,
+          attemptCount: $attemptCount,
+        });
+
+        return;
+      }
+      case "INCOMPLETE": {
+        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing incomplete", {
+          batchId: batch.friendlyId,
+          currentIndex: result.workingIndex,
+          attemptCount: $attemptCount,
+        });
+
+        // Only enqueue the next batch task run if the strategy is sequential
+        // if the strategy is parallel, we will already have enqueued the next batch task run
+        if (options.strategy === "sequential") {
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: options.processingId,
+            range: {
+              start: result.workingIndex,
+              count: options.range.count,
+            },
+            attemptCount: 0,
+            strategy: options.strategy,
+          });
+        }
+
+        return;
+      }
+      case "ERROR": {
+        logger.error("[BatchTriggerV2][processBatchTaskRun] Batch processing error", {
+          batchId: batch.friendlyId,
+          currentIndex: result.workingIndex,
+          error: result.error,
+          attemptCount: $attemptCount,
+        });
+
+        // if the strategy is sequential, we will requeue processing with a count of the PROCESSING_BATCH_SIZE
+        // if the strategy is parallel, we will requeue processing with a range starting at the workingIndex and a count that is the remainder of this "slice" of the batch
+        if (options.strategy === "sequential") {
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: options.processingId,
+            range: {
+              start: result.workingIndex,
+              count: options.range.count, // This will be the same as the original count
+            },
+            attemptCount: $attemptCount,
+            strategy: options.strategy,
+          });
+        } else {
+          await this.#enqueueBatchTaskRun({
+            batchId: batch.id,
+            processingId: options.processingId,
+            range: {
+              start: result.workingIndex,
+              // This will be the remainder of the slice
+              // for example if the original range was 0-50 and the workingIndex is 25, the new range will be 25-25
+              // if the original range was 51-100 and the workingIndex is 75, the new range will be 75-25
+              count: options.range.count - result.workingIndex - options.range.start,
+            },
+            attemptCount: $attemptCount,
+            strategy: options.strategy,
+          });
+        }
+
+        return;
+      }
+    }
+  }
+
+  async #processBatchTaskRunItems(
+    batch: BatchTaskRun,
+    environment: AuthenticatedEnvironment,
+    currentIndex: number,
+    batchSize: number,
+    items: BatchTriggerTaskV2RequestBody["items"],
+    options?: BatchTriggerTaskServiceOptions
+  ): Promise<
+    | { status: "COMPLETE" }
+    | { status: "INCOMPLETE"; workingIndex: number }
+    | { status: "ERROR"; error: string; workingIndex: number }
+  > {
     // Grab the next PROCESSING_BATCH_SIZE runIds
-    const runIds = batch.runIds.slice(currentIndex, currentIndex + PROCESSING_BATCH_SIZE);
+    const runIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
     logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
       currentIndex,
       runIds,
-      attemptCount: $attemptCount,
       runCount: batch.runCount,
     });
 
     // Combine the "window" between currentIndex and currentIndex + PROCESSING_BATCH_SIZE with the runId and the item in the payload which is an array
     const itemsToProcess = runIds.map((runId, index) => ({
       runId,
-      item: $payload[index + currentIndex],
+      item: items[index + currentIndex],
     }));
 
     let workingIndex = currentIndex;
 
     for (const item of itemsToProcess) {
       try {
-        await this.#processBatchTaskRunItem(
-          batch,
-          batch.runtimeEnvironment,
-          item,
-          workingIndex,
-          batch.options as BatchTriggerTaskServiceOptions
-        );
+        await this.#processBatchTaskRunItem(batch, environment, item, workingIndex, options);
 
         workingIndex++;
       } catch (error) {
@@ -430,17 +679,20 @@ export class BatchTriggerV2Service extends BaseService {
           error,
         });
 
-        // Requeue the batch to try again
-        await this.#enqueueBatchTaskRun(batch.id, workingIndex, $attemptCount);
-        return;
+        return {
+          status: "ERROR",
+          error: error instanceof Error ? error.message : String(error),
+          workingIndex,
+        };
       }
     }
 
     // if there are more items to process, requeue the batch
     if (workingIndex < batch.runCount) {
-      await this.#enqueueBatchTaskRun(batch.id, workingIndex, 0);
-      return;
+      return { status: "INCOMPLETE", workingIndex };
     }
+
+    return { status: "COMPLETE" };
   }
 
   async #processBatchTaskRunItem(
@@ -492,21 +744,11 @@ export class BatchTriggerV2Service extends BaseService {
     });
   }
 
-  async #enqueueBatchTaskRun(
-    batchId: string,
-    currentIndex: number = 0,
-    attemptCount: number = 0,
-    tx?: PrismaClientOrTransaction
-  ) {
-    await workerQueue.enqueue(
-      "v3.processBatchTaskRun",
-      {
-        batchId,
-        currentIndex,
-        attemptCount,
-      },
-      { tx, jobKey: `process-batch:${batchId}` }
-    );
+  async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
+    await workerQueue.enqueue("v3.processBatchTaskRun", options, {
+      tx,
+      jobKey: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
+    });
   }
 
   async #handlePayloadPacket(

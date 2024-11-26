@@ -1,6 +1,16 @@
-import { auth, logger, runs, task, tasks, wait } from "@trigger.dev/sdk/v3";
+import {
+  AnyRealtimeRun,
+  auth,
+  logger,
+  RealtimeRun,
+  runs,
+  task,
+  tasks,
+  wait,
+} from "@trigger.dev/sdk/v3";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
+import { setTimeout } from "node:timers/promises";
 
 export const batchParentTask = task({
   id: "batch-parent-task",
@@ -109,7 +119,28 @@ export const taskThatFails = task({
 
 export const batchV2TestTask = task({
   id: "batch-v2-test",
+  retry: {
+    maxAttempts: 1,
+  },
   run: async () => {
+    // First lets try triggering with too many items
+    try {
+      await tasks.batchTrigger<typeof batchV2TestChild>(
+        "batch-v2-test-child",
+        Array.from({ length: 501 }, (_, i) => ({
+          payload: { foo: `bar${i}` },
+        }))
+      );
+
+      assert.fail("Batch trigger should have failed");
+    } catch (error: any) {
+      assert.equal(
+        error.message,
+        '400 "Batch size of 501 is too large. Maximum allowed batch size is 500."',
+        "Batch trigger failed with wrong error"
+      );
+    }
+
     // TODO tests:
     // tasks.batchTrigger
     // tasks.batchTriggerAndWait
@@ -279,6 +310,8 @@ export const batchV2TestTask = task({
     assert.ok(response6.runs[0].idempotencyKey, "response6: runs[0] Idempotent key is invalid");
     assert.ok(response6.runs[1].idempotencyKey, "response6: runs[1] Idempotent key is invalid");
 
+    await setTimeout(1000);
+
     const response7 = await batchV2TestChild.batchTrigger([
       { payload: { foo: "bar" }, options: { idempotencyKey: idempotencyKeyChild1 } },
       { payload: { foo: "baz" }, options: { idempotencyKey: idempotencyKeyChild2 } },
@@ -357,9 +390,9 @@ export const batchV2TestTask = task({
       "response9: runs[1] result is invalid"
     );
 
-    // Now batchTriggerAndWait with 100 items
+    // Now batchTriggerAndWait with 21 items
     const response10 = await batchV2TestChild.batchTriggerAndWait(
-      Array.from({ length: 100 }, (_, i) => ({
+      Array.from({ length: 21 }, (_, i) => ({
         payload: { foo: `bar${i}` },
       }))
     );
@@ -367,7 +400,7 @@ export const batchV2TestTask = task({
     logger.debug("Response 10", { response10 });
 
     assert.match(response10.id, /^batch_[a-z0-9]{21}$/, "response10: Batch ID is invalid");
-    assert.equal(response10.runs.length, 100, "response10: Items length is invalid");
+    assert.equal(response10.runs.length, 21, "response10: Items length is invalid");
 
     // Now repeat the first few tests using `tasks.batchTrigger`:
     const response11 = await tasks.batchTrigger<typeof batchV2TestChild>("batch-v2-test-child", [
@@ -391,11 +424,82 @@ export const batchV2TestTask = task({
       undefined,
       "response11: runs[0] Idempotent key is invalid"
     );
+
+    // Now use tasks.batchTrigger with 100 items
+    const response12 = await tasks.batchTrigger<typeof batchV2TestChild>(
+      "batch-v2-test-child",
+      Array.from({ length: 100 }, (_, i) => ({
+        payload: { foo: `bar${i}` },
+      }))
+    );
+
+    const response12Start = performance.now();
+
+    logger.debug("Response 12", { response12 });
+
+    assert.match(response12.batchId, /^batch_[a-z0-9]{21}$/, "response12: Batch ID is invalid");
+    assert.equal(response12.runs.length, 100, "response12: Items length is invalid");
+
+    const runsById: Map<string, AnyRealtimeRun> = new Map();
+
+    for await (const run of runs.subscribeToBatch(response12.batchId)) {
+      runsById.set(run.id, run);
+
+      // Break if we have received all runs
+      if (runsById.size === response12.runs.length) {
+        break;
+      }
+    }
+
+    const response12End = performance.now();
+
+    logger.debug("Response 12 time", { time: response12End - response12Start });
+
+    logger.debug("All runs", { runsById: Object.fromEntries(runsById) });
+
+    assert.equal(runsById.size, 100, "All runs were not received");
+
+    // Now use tasks.batchTrigger with 100 items
+    const response13 = await tasks.batchTrigger<typeof batchV2TestChild>(
+      "batch-v2-test-child",
+      Array.from({ length: 500 }, (_, i) => ({
+        payload: { foo: `bar${i}` },
+      }))
+    );
+
+    const response13Start = performance.now();
+
+    logger.debug("Response 13", { response13 });
+
+    assert.match(response13.batchId, /^batch_[a-z0-9]{21}$/, "response13: Batch ID is invalid");
+    assert.equal(response13.runs.length, 500, "response13: Items length is invalid");
+
+    runsById.clear();
+
+    for await (const run of runs.subscribeToBatch(response13.batchId)) {
+      runsById.set(run.id, run);
+
+      // Break if we have received all runs
+      if (runsById.size === response13.runs.length) {
+        break;
+      }
+    }
+
+    const response13End = performance.now();
+
+    logger.debug("Response 13 time", { time: response13End - response13Start });
+
+    logger.debug("All runs", { runsById: Object.fromEntries(runsById) });
+
+    assert.equal(runsById.size, 500, "All runs were not received");
   },
 });
 
 export const batchV2TestChild = task({
   id: "batch-v2-test-child",
+  queue: {
+    concurrencyLimit: 10,
+  },
   run: async (payload: any) => {
     return payload;
   },

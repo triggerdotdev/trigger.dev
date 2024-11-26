@@ -95,12 +95,22 @@ const { action, loader } = createActionApiRoute(
 
       return json(batch, { status: 202, headers: $responseHeaders });
     } catch (error) {
+      logger.error("Batch trigger error", {
+        error: {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        },
+      });
+
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });
       } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
+        return json(
+          { error: error.message },
+          { status: 500, headers: { "x-should-retry": "false" } }
+        );
       }
 
       return json({ error: "Something went wrong" }, { status: 500 });

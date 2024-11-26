@@ -557,18 +557,13 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
       name,
       tracer,
       icon: "trigger",
-      attributes: {
-        [SEMATTRS_MESSAGING_OPERATION]: "publish",
-        ["messaging.client_id"]: taskContext.worker?.id,
-        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
-      },
       onResponseBody: (body, span) => {
         body &&
           typeof body === "object" &&
           !Array.isArray(body) &&
           "id" in body &&
           typeof body.id === "string" &&
-          span.setAttribute("messaging.message.id", body.id);
+          span.setAttribute("runId", body.id);
       },
       ...requestOptions,
     }
@@ -627,10 +622,26 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
       name,
       tracer,
       icon: "trigger",
-      attributes: {
-        [SEMATTRS_MESSAGING_OPERATION]: "publish",
-        ["messaging.client_id"]: taskContext.worker?.id,
-        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
+      onResponseBody(body, span) {
+        if (
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "id" in body &&
+          typeof body.id === "string"
+        ) {
+          span.setAttribute("batchId", body.id);
+        }
+
+        if (
+          body &&
+          typeof body === "object" &&
+          !Array.isArray(body) &&
+          "runs" in body &&
+          Array.isArray(body.runs)
+        ) {
+          span.setAttribute("runCount", body.runs.length);
+        }
       },
       ...requestOptions,
     }
@@ -693,7 +704,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
         requestOptions
       );
 
-      span.setAttribute("messaging.message.id", response.id);
+      span.setAttribute("runId", response.id);
 
       const result = await runtime.waitForTask({
         id: response.id,
@@ -705,11 +716,6 @@ async function triggerAndWait_internal<TPayload, TOutput>(
     {
       kind: SpanKind.PRODUCER,
       attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-        [SEMATTRS_MESSAGING_OPERATION]: "publish",
-        ["messaging.client_id"]: taskContext.worker?.id,
-        [SEMATTRS_MESSAGING_DESTINATION]: id,
-        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
         ...accessoryAttributes({
           items: [
             {
@@ -776,7 +782,8 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
         requestOptions
       );
 
-      span.setAttribute("messaging.message.id", response.id);
+      span.setAttribute("batchId", response.id);
+      span.setAttribute("runCount", response.runs.length);
 
       const result = await runtime.waitForBatch({
         id: response.id,
@@ -794,12 +801,6 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
     {
       kind: SpanKind.PRODUCER,
       attributes: {
-        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
-        ["messaging.batch.message_count"]: items.length,
-        [SEMATTRS_MESSAGING_OPERATION]: "publish",
-        ["messaging.client_id"]: taskContext.worker?.id,
-        [SEMATTRS_MESSAGING_DESTINATION]: id,
-        [SEMATTRS_MESSAGING_SYSTEM]: "trigger.dev",
         ...accessoryAttributes({
           items: [
             {

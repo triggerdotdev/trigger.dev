@@ -43,6 +43,7 @@ export type AnyRunShape = RunShape<AnyRunTypes>;
 
 export type TaskRunShape<TTask extends AnyTask> = RunShape<InferRunTypes<TTask>>;
 export type RealtimeRun<TTask extends AnyTask> = TaskRunShape<TTask>;
+export type AnyRealtimeRun = RealtimeRun<AnyTask>;
 
 export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
   run: RunShape<TRunTypes>

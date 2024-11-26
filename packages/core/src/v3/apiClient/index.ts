@@ -43,6 +43,7 @@ import { ApiError } from "./errors.js";
 import {
   AnyRunShape,
   RealtimeRun,
+  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -84,10 +85,10 @@ export type TriggerApiRequestOptions = ApiRequestOptions & {
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   retry: {
-    maxAttempts: 3,
+    maxAttempts: 5,
     minTimeoutInMs: 1000,
     maxTimeoutInMs: 30_000,
-    factor: 2,
+    factor: 1.6,
     randomize: false,
   },
 };
@@ -97,6 +98,7 @@ export type {
   AnyRunShape,
   ApiRequestOptions,
   RealtimeRun,
+  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
