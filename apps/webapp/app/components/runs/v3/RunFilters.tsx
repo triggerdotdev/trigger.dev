@@ -1106,13 +1106,13 @@ function AppliedCustomDateRangeFilter() {
                   <>
                     {rangeType === "range" ? (
                       <span>
-                        <DateTime date={fromDate!} includeTime includeSeconds showTimezone /> –{" "}
-                        <DateTime date={toDate!} includeTime includeSeconds showTimezone />
+                        <DateTime date={fromDate!} includeTime includeSeconds /> –{" "}
+                        <DateTime date={toDate!} includeTime includeSeconds />
                       </span>
                     ) : rangeType === "from" ? (
-                      <DateTime date={fromDate!} includeTime includeSeconds showTimezone />
+                      <DateTime date={fromDate!} includeTime includeSeconds />
                     ) : (
-                      <DateTime date={toDate!} includeTime includeSeconds showTimezone />
+                      <DateTime date={toDate!} includeTime includeSeconds />
                     )}
                   </>
                 }

@@ -35,8 +35,11 @@ type DateFieldProps = {
   showNowButton?: boolean;
   showClearButton?: boolean;
   onValueChange?: (value: Date | undefined) => void;
+  utc?: boolean;
   variant?: Variant;
 };
+
+const deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function DateField({
   label,
@@ -50,10 +53,11 @@ export function DateField({
   showGuide = false,
   showNowButton = false,
   showClearButton = false,
+  utc = false,
   variant = "small",
 }: DateFieldProps) {
   const [value, setValue] = useState<undefined | CalendarDateTime>(
-    dateToCalendarDate(defaultValue)
+    utc ? utcDateToCalendarDate(defaultValue) : dateToCalendarDate(defaultValue)
   );
 
   const state = useDateFieldState({
@@ -61,12 +65,11 @@ export function DateField({
     onChange: (value) => {
       if (value) {
         setValue(value);
-        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        onValueChange?.(value.toDate(timeZone));
+        onValueChange?.(value.toDate(utc ? "utc" : deviceTimezone));
       }
     },
-    minValue: dateToCalendarDate(minValue),
-    maxValue: dateToCalendarDate(maxValue),
+    minValue: utc ? utcDateToCalendarDate(minValue) : dateToCalendarDate(minValue),
+    maxValue: utc ? utcDateToCalendarDate(maxValue) : dateToCalendarDate(maxValue),
     shouldForceLeadingZeros: true,
     granularity,
     locale: "en-US",
@@ -79,7 +82,9 @@ export function DateField({
   useEffect(() => {
     if (state.value === undefined && defaultValue === undefined) return;
 
-    const calendarDate = dateToCalendarDate(defaultValue);
+    const calendarDate = utc
+      ? utcDateToCalendarDate(defaultValue)
+      : dateToCalendarDate(defaultValue);
     //unchanged
     if (state.value?.toDate("utc").getTime() === defaultValue?.getTime()) {
       return;
@@ -137,7 +142,7 @@ export function DateField({
             variant={variants[variant].nowButtonVariant}
             onClick={() => {
               const now = new Date();
-              setValue(dateToCalendarDate(new Date()));
+              setValue(utc ? utcDateToCalendarDate(now) : dateToCalendarDate(now));
               onValueChange?.(now);
             }}
           >
