@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.2.2
+
+### Patch Changes
+
+- Prevent certain log statements from hanging deployed worker processes ([#1501](https://github.com/triggerdotdev/trigger.dev/pull/1501))
+- Updated dependencies:
+  - `@trigger.dev/build@3.2.2`
+  - `@trigger.dev/core@3.2.2`
+
 ## 3.2.1
 
 ### Patch Changes
