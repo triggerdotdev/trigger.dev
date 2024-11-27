@@ -712,3 +712,18 @@ export const SubscribeRunRawShape = z.object({
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
+
+export const BatchStatus = z.enum(["PENDING", "COMPLETED"]);
+
+export type BatchStatus = z.infer<typeof BatchStatus>;
+
+export const RetrieveBatchResponse = z.object({
+  id: z.string(),
+  status: BatchStatus,
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  runCount: z.number(),
+});
+
+export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;

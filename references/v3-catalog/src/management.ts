@@ -261,6 +261,14 @@ async function doBatchTrigger() {
   ]);
 
   console.log("batch trigger response", response);
+
+  const $batch = await batch.retrieve(response.batchId);
+
+  console.log("batch", $batch);
+
+  const $runs = await runs.list({ batch: response.batchId });
+
+  console.log("batch runs", $runs.data);
 }
 
 // doRuns().catch(console.error);

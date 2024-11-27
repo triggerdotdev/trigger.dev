@@ -18,6 +18,7 @@ import {
   ListScheduleOptions,
   ReplayRunResponse,
   RescheduleRunRequestBody,
+  RetrieveBatchResponse,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -670,6 +671,18 @@ export class ApiClient {
     );
   }
 
+  retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveBatchResponse,
+      `${this.baseUrl}/api/v1/batches/${batchId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -792,6 +805,10 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.period) {
       searchParams.append("filter[createdAt][period]", query.period);
+    }
+
+    if (query.batch) {
+      searchParams.append("filter[batch]", query.batch);
     }
   }
 
