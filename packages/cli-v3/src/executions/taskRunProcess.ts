@@ -84,7 +84,7 @@ export class TaskRunProcess {
     try {
       await this.#flush();
     } catch (err) {
-      logger.error("Error flushing task run process", { err });
+      console.error("Error flushing task run process", { err });
     }
 
     await this.kill();
@@ -94,7 +94,7 @@ export class TaskRunProcess {
     try {
       await this.#flush();
     } catch (err) {
-      logger.error("Error flushing task run process", { err });
+      console.error("Error flushing task run process", { err });
     }
 
     if (kill) {
