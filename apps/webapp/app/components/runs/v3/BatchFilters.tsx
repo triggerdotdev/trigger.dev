@@ -773,7 +773,7 @@ function BatchIdDropdown({
 }) {
   const [open, setOpen] = useState<boolean | undefined>();
   const { value, replace } = useSearchParams();
-  const batchIdValue = value("batchId");
+  const batchIdValue = value("id");
 
   const [batchId, setBatchId] = useState(batchIdValue);
 
@@ -782,7 +782,7 @@ function BatchIdDropdown({
     replace({
       cursor: undefined,
       direction: undefined,
-      batchId: batchId === "" ? undefined : batchId?.toString(),
+      id: batchId === "" ? undefined : batchId?.toString(),
     });
 
     setOpen(false);
@@ -851,11 +851,11 @@ function BatchIdDropdown({
 function AppliedBatchIdFilter() {
   const { value, del } = useSearchParams();
 
-  if (value("batchId") === undefined) {
+  if (value("id") === undefined) {
     return null;
   }
 
-  const batchId = value("batchId");
+  const batchId = value("id");
 
   return (
     <FilterMenuProvider>
@@ -866,7 +866,7 @@ function AppliedBatchIdFilter() {
               <AppliedFilter
                 label="Batch ID"
                 value={batchId}
-                onRemove={() => del(["batchId", "cursor", "direction"])}
+                onRemove={() => del(["id", "cursor", "direction"])}
               />
             </Ariakit.Select>
           }

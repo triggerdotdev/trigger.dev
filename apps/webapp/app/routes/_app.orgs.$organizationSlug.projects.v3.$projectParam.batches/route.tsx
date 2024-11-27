@@ -1,40 +1,23 @@
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  ExclamationCircleIcon,
-  RectangleGroupIcon,
-} from "@heroicons/react/20/solid";
-import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { Feedback } from "~/components/Feedback";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header3 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
-  TableCellChevron,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -46,30 +29,14 @@ import {
   BatchStatusCombo,
   descriptionForBatchStatus,
 } from "~/components/runs/v3/BatchStatus";
-import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
-import { ScheduleFilters } from "~/components/runs/v3/ScheduleFilters";
-import {
-  ScheduleTypeCombo,
-  ScheduleTypeIcon,
-  scheduleTypeName,
-} from "~/components/runs/v3/ScheduleType";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
-import { type ScheduleListItem } from "~/presenters/v3/ScheduleListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import {
-  ProjectParamSchema,
-  docsPath,
-  v3BatchRunsPath,
-  v3BillingPath,
-  v3NewSchedulePath,
-  v3SchedulePath,
-} from "~/utils/pathBuilder";
+import { docsPath, ProjectParamSchema, v3BatchRunsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -84,7 +51,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     period: url.searchParams.get("period") ?? undefined,
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
-    id: url.searchParams.get("batchId") ?? undefined,
+    id: url.searchParams.get("id") ?? undefined,
   };
   const filters = BatchListFilters.parse(s);
 
