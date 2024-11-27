@@ -3,43 +3,37 @@ title: "Triggering"
 description: "Tasks need to be triggered in order to run."
 ---
 
+## Trigger functions
+
 Trigger tasks **from your backend**:
 
-| Function                 | This works | What it does                                                                                                                |
-| :----------------------- | :--------- | :-------------------------------------------------------------------------------------------------------------------------- |
-| `tasks.trigger()`        | Anywhere   | Triggers a task and gets a handle you can use to fetch and manage the run. [Read more](#tasks-trigger)                      |
-| `tasks.batchTrigger()`   | Anywhere   | Triggers a task multiple times and gets a handle you can use to fetch and manage the runs. [Read more](#tasks-batchtrigger) |
-| `tasks.triggerAndPoll()` | Anywhere   | Triggers a task and then polls the run until it’s complete. [Read more](#tasks-triggerandpoll)                              |
+| Function                 | What it does                                                                                     |                               |
+| :----------------------- | :----------------------------------------------------------------------------------------------- | ----------------------------- |
+| `tasks.trigger()`        | Triggers a task and returns a handle you can use to fetch and manage the run.                    | [Docs](#tasks-trigger)        |
+| `tasks.batchTrigger()`   | Triggers a single task in a batch and returns a handle you can use to fetch and manage the runs. | [Docs](#tasks-batchtrigger)   |
+| `tasks.triggerAndPoll()` | Triggers a task and then polls the run until it’s complete.                                      | [Docs](#tasks-triggerandpoll) |
+| `batch.trigger()`        | Similar to `tasks.batchTrigger` but allows running multiple different tasks                      | [Docs](#batch-trigger)        |
 
-Trigger tasks **from inside a run**:
+Trigger tasks **from inside a another task**:
 
-| Function                         | This works  | What it does                                                                                                                                                              |
-| :------------------------------- | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `yourTask.trigger()`             | Anywhere    | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result. [Read more](#yourtask-trigger)                                  |
-| `yourTask.batchTrigger()`        | Anywhere    | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results. [Read more](#yourtask-batchtrigger)            |
-| `yourTask.triggerAndWait()`      | Inside task | Triggers a task and then waits until it's complete. You get the result data to continue with. [Read more](#yourtask-triggerandwait)                                           |
-| `yourTask.batchTriggerAndWait()` | Inside task | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. [Read more](#yourtask-batchtriggerandwait) |
-
-Additionally, [scheduled tasks](/tasks/scheduled) get **automatically** triggered on their schedule and webhooks when receiving a webhook.
-
-## Scheduled tasks
-
-You should attach one or more schedules to your `schedules.task()` to trigger it on a recurring schedule. [Read the scheduled tasks docs](/tasks/scheduled).
-
-## Authentication
-
-When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
+| Function                         | What it does                                                                                                                       |                                       |
+| :------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `yourTask.trigger()`             | Triggers a task and gets a handle you can use to monitor and manage the run. It does not wait for the result.                      | [Docs](#yourtask-trigger)             |
+| `yourTask.batchTrigger()`        | Triggers a task multiple times and gets a handle you can use to monitor and manage the runs. It does not wait for the results.     | [Docs](#yourtask-batchtrigger)        |
+| `yourTask.triggerAndWait()`      | Triggers a task and then waits until it's complete. You get the result data to continue with.                                      | [Docs](#yourtask-triggerandwait)      |
+| `yourTask.batchTriggerAndWait()` | Triggers a task multiple times in parallel and then waits until they're all complete. You get the resulting data to continue with. | [Docs](#yourtask-batchtriggerandwait) |
+| `batch.triggerAndWait()`         | Similar to `batch.trigger` but will wait on the triggered tasks to finish and return the results.                                  | [Docs](#batch-triggerandwait)         |
+| `batch.triggerByTask()`          | Similar to `batch.trigger` but allows passing in task instances instead of task IDs.                                               | [Docs](#batch-triggerbytask)          |
+| `batch.triggerByTaskAndWait()`   | Similar to `batch.triggerbyTask` but will wait on the triggered tasks to finish and return the results.                            | [Docs](#batch-triggerbytaskandwait)   |
 
 ## Triggering from your backend
 
-You can trigger any task from your backend code using the `tasks.trigger()` or `tasks.batchTrigger()` SDK functions.
+When you trigger a task from your backend code, you need to set the `TRIGGER_SECRET_KEY` environment variable. You can find the value on the API keys page in the Trigger.dev dashboard. [More info on API keys](/apikeys).
 
 <Note>
-  Do not trigger tasks directly from your frontend. If you do, you will leak your private
-  Trigger.dev API key.
+  If you are using Next.js Server Actions [you'll need to be careful with
+  bundling](/guides/frameworks/nextjs#triggering-your-task-in-next-js).
 </Note>
-
-You can use Next.js Server Actions but [you need to be careful with bundling](/guides/frameworks/nextjs#triggering-your-task-in-next-js).
 
 ### tasks.trigger()
 
@@ -51,9 +45,7 @@ Triggers a single run of a task with the payload you pass in, and any options yo
   application.
 </Note>
 
-<CodeGroup>
-
-```ts Next.js API route
+```ts Your backend
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { emailSequence } from "~/trigger/emails";
 //     👆 **type-only** import
@@ -74,45 +66,37 @@ export async function POST(request: Request) {
 }
 ```
 
-```ts Remix
+You can pass in options to the task using the second argument:
+
+```ts Your backend
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { emailSequence } from "~/trigger/emails";
-//     👆 **type-only** import
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method !== "POST") {
-    throw new Response("Method Not Allowed", { status: 405 });
-  }
-
+//app/email/route.ts
+export async function POST(request: Request) {
   //get the JSON from the request
   const data = await request.json();
 
   // Pass the task type to `trigger()` as a generic argument, giving you full type checking
-  const handle = await tasks.trigger<typeof emailSequence>("email-sequence", {
-    to: data.email,
-    name: data.name,
-  });
+  const handle = await tasks.trigger<typeof emailSequence>(
+    "email-sequence",
+    {
+      to: data.email,
+      name: data.name,
+    },
+    { delay: "1h" } // 👈 Pass in the options here
+  );
 
   //return a success response with the handle
-  return json(handle);
+  return Response.json(handle);
 }
 ```
 
-</CodeGroup>
-
 ### tasks.batchTrigger()
 
-Triggers multiple runs of a task with the payloads you pass in, and any options you specify, without needing to import the task.
+Triggers multiple runs of a single task with the payloads you pass in, and any options you specify, without needing to import the task.
 
-<Note>
-  By using `tasks.batchTrigger()`, you can pass in the task type as a generic argument, giving you
-  full type checking. Make sure you use a `type` import so that your task code is not imported into
-  your application.
-</Note>
-
-<CodeGroup>
-
-```ts Next.js API route
+```ts Your backend
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { emailSequence } from "~/trigger/emails";
 //     👆 **type-only** import
@@ -133,44 +117,62 @@ export async function POST(request: Request) {
 }
 ```
 
-```ts Remix
+You can pass in options to the `batchTrigger` function using the second argument:
+
+```ts Your backend
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { emailSequence } from "~/trigger/emails";
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method !== "POST") {
-    throw new Response("Method Not Allowed", { status: 405 });
-  }
-
+//app/email/route.ts
+export async function POST(request: Request) {
   //get the JSON from the request
   const data = await request.json();
 
   // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
   const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
     "email-sequence",
-    data.users.map((u) => ({ payload: { to: u.email, name: u.name } }))
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name } })),
+    { idempotencyKey: "my-idempotency-key" } // 👈 Pass in the options here
   );
 
   //return a success response with the handle
-  return json(batchHandle);
+  return Response.json(batchHandle);
 }
 ```
 
-</CodeGroup>
+You can also pass in options for each run in the batch:
+
+```ts Your backend
+import { tasks } from "@trigger.dev/sdk/v3";
+import type { emailSequence } from "~/trigger/emails";
+
+//app/email/route.ts
+export async function POST(request: Request) {
+  //get the JSON from the request
+  const data = await request.json();
+
+  // Pass the task type to `batchTrigger()` as a generic argument, giving you full type checking
+  const batchHandle = await tasks.batchTrigger<typeof emailSequence>(
+    "email-sequence",
+    data.users.map((u) => ({ payload: { to: u.email, name: u.name }, options: { delay: "1h" } })) // 👈 Pass in options to each item like so
+  );
+
+  //return a success response with the handle
+  return Response.json(batchHandle);
+}
+```
 
 ### tasks.triggerAndPoll()
 
 Triggers a single run of a task with the payload you pass in, and any options you specify, and then polls the run until it's complete.
 
-<Note>
-  By using `tasks.triggerAndPoll()`, you can pass in the task type as a generic argument, giving you
-  full type checking. Make sure you use a `type` import so that your task code is not imported into
-  your application.
-</Note>
+<Warning>
+  We don't recommend using `triggerAndPoll()`, especially inside a web request, as it will block the
+  request until the run is complete. Please see our [Realtime docs](/realtime) for a better way to
+  handle this.
+</Warning>
 
-<CodeGroup>
-
-```ts Next.js API route
+```ts Your backend
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { emailSequence } from "~/trigger/emails";
 
@@ -194,71 +196,83 @@ export async function POST(request: Request) {
 }
 ```
 
-```ts Remix
-import { tasks } from "@trigger.dev/sdk/v3";
-import type { emailSequence } from "~/trigger/emails";
+### batch.trigger()
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method !== "POST") {
-    throw new Response("Method Not Allowed", { status: 405 });
-  }
+Triggers multiple runs of different tasks with the payloads you pass in, and any options you specify. This is useful when you need to trigger multiple tasks at once.
 
+```ts Your backend
+import { batch } from "@trigger.dev/sdk/v3";
+import type { myTask1, myTask2 } from "~/trigger/myTasks";
+
+export async function POST(request: Request) {
   //get the JSON from the request
   const data = await request.json();
 
-  // Pass the task type to `triggerAndPoll()` as a generic argument, giving you full type checking
-  const result = await tasks.triggerAndPoll<typeof emailSequence>(
-    "email-sequence",
-    {
-      to: data.email,
-      name: data.name,
-    },
-    { pollIntervalMs: 5000 }
-  );
+  // Pass a union of the tasks to `trigger()` as a generic argument, giving you full type checking
+  const result = await batch.trigger<typeof myTask1 | typeof myTask2>([
+    // Because we're using a union, we can pass in multiple tasks by ID
+    { id: "my-task-1", payload: { some: data.some } },
+    { id: "my-task-2", payload: { other: data.other } },
+  ]);
 
   //return a success response with the result
-  return json(result);
+  return Response.json(result);
 }
 ```
 
-</CodeGroup>
+## Triggering from inside another task
 
-<Note>
-  The above code is just a demonstration of the API and is not recommended to use in an API route
-  this way as it will block the request until the task is complete.
-</Note>
+The following functions should only be used when running inside a task, for one of the following reasons:
 
-## Triggering from inside a run
-
-Task instance methods are available on the `Task` object you receive when you define a task. We recommend you use these methods inside another task to trigger subtasks.
+- You need to **wait** for the result of the triggered task.
+- You need to import the task instance. Importing a task instance from your backend code is not recommended, as it can pull in a lot of unnecessary code and dependencies.
 
 ### yourTask.trigger()
 
-Triggers a single run of a task with the payload you pass in, and any options you specify. It does NOT wait for the result.
+Triggers a single run of a task with the payload you pass in, and any options you specify.
 
-If called from within a task, you can use the `AndWait` version to pause execution until the triggered run is complete.
+<Note>
+  If you need to call `trigger()` on a task in a loop, use
+  [`batchTrigger()`](#yourTask-batchtrigger) instead which will trigger up to 500 runs in a single
+  call.
+</Note>
 
-If you need to call `trigger()` on a task in a loop, use [`batchTrigger()`](/triggering#task-batchtrigger) instead which will trigger up to 100 tasks in a single call.
-
-```ts /trigger/my-task.ts
-import { myOtherTask } from "~/trigger/my-other-task";
+```ts ./trigger/my-task.ts
+import { myOtherTask, runs } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
   run: async (payload: string) => {
-    const handle = await myOtherTask.trigger("some data");
+    const handle = await myOtherTask.trigger({ foo: "some data" });
 
-    //...do other stuff
+    const run = await runs.retrieve(handle);
+    // Do something with the run
+  },
+});
+```
+
+To pass options to the triggered task, you can use the second argument:
+
+```ts ./trigger/my-task.ts
+import { myOtherTask, runs } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const handle = await myOtherTask.trigger({ foo: "some data" }, { delay: "1h" });
+
+    const run = await runs.retrieve(handle);
+    // Do something with the run
   },
 });
 ```
 
 ### yourTask.batchTrigger()
 
-Triggers multiple runs of a task with the payloads you pass in, and any options you specify. It does NOT wait for the result.
+Triggers multiple runs of a single task with the payloads you pass in, and any options you specify.
 
 ```ts /trigger/my-task.ts
-import { myOtherTask } from "~/trigger/my-other-task";
+import { myOtherTask, batch } from "~/trigger/my-other-task";
 
 export const myTask = task({
   id: "my-task",
@@ -266,6 +280,43 @@ export const myTask = task({
     const batchHandle = await myOtherTask.batchTrigger([{ payload: "some data" }]);
 
     //...do other stuff
+    const batch = await batch.retrieve(batchHandle.id);
+  },
+});
+```
+
+If you need to pass options to `batchTrigger`, you can use the second argument:
+
+```ts /trigger/my-task.ts
+import { myOtherTask, batch } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const batchHandle = await myOtherTask.batchTrigger([{ payload: "some data" }], {
+      idempotencyKey: "my-task-key",
+    });
+
+    //...do other stuff
+    const batch = await batch.retrieve(batchHandle.id);
+  },
+});
+```
+
+You can also pass in options for each run in the batch:
+
+```ts /trigger/my-task.ts
+import { myOtherTask, batch } from "~/trigger/my-other-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    const batchHandle = await myOtherTask.batchTrigger([
+      { payload: "some data", options: { delay: "1h" } },
+    ]);
+
+    //...do other stuff
+    const batch = await batch.retrieve(batchHandle.id);
   },
 });
 ```
@@ -504,6 +555,152 @@ export const batchParentTask = task({
   error.
 </Warning>
 
+### batch.triggerAndWait()
+
+You can batch trigger multiple different tasks and wait for all the results:
+
+```ts /trigger/batch.ts
+import { batch, task } from "@trigger.dev/sdk/v3";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    //                                         👇 Pass a union of all the tasks you want to trigger
+    const results = await batch.triggerAndWait<typeof childTask1 | typeof childTask2>([
+      { id: "child-task-1", payload: { foo: "World" } }, // 👈 The payload is typed correctly based on the task `id`
+      { id: "child-task-2", payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task `id`
+    ]);
+
+    for (const result of results) {
+      if (result.ok) {
+        // 👇 Narrow the type of the result based on the taskIdentifier
+        switch (result.taskIdentifier) {
+          case "child-task-1":
+            console.log("Child task 1 output", result.output); // 👈 result.output is typed as a string
+            break;
+          case "child-task-2":
+            console.log("Child task 2 output", result.output); // 👈 result.output is typed as a number
+            break;
+        }
+      } else {
+        console.error("Error", result.error); // 👈 result.error is the error that caused the run to fail
+      }
+    }
+  },
+});
+
+export const childTask1 = task({
+  id: "child-task-1",
+  run: async (payload: { foo: string }) => {
+    return `Hello ${payload}`;
+  },
+});
+
+export const childTask2 = task({
+  id: "child-task-2",
+  run: async (payload: { bar: number }) => {
+    return bar + 1;
+  },
+});
+```
+
+### batch.triggerByTask()
+
+You can batch trigger multiple different tasks by passing in the task instances. This function is especially useful when you have a static set of tasks you want to trigger:
+
+```ts /trigger/batch.ts
+import { batch, task, runs } from "@trigger.dev/sdk/v3";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const results = await batch.triggerByTask([
+      { task: childTask1, payload: { foo: "World" } }, // 👈 The payload is typed correctly based on the task instance
+      { task: childTask2, payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task instance
+    ]);
+
+    // 👇 results.runs is a tuple, allowing you to get type safety without needing to narrow
+    const run1 = await runs.retrieve(results.runs[0]); // 👈 run1 is typed as the output of childTask1
+    const run2 = await runs.retrieve(results.runs[1]); // 👈 run2 is typed as the output of childTask2
+  },
+});
+
+export const childTask1 = task({
+  id: "child-task-1",
+  run: async (payload: { foo: string }) => {
+    return `Hello ${payload}`;
+  },
+});
+
+export const childTask2 = task({
+  id: "child-task-2",
+  run: async (payload: { bar: number }) => {
+    return bar + 1;
+  },
+});
+```
+
+### batch.triggerByTaskAndWait()
+
+You can batch trigger multiple different tasks by passing in the task instances, and wait for all the results. This function is especially useful when you have a static set of tasks you want to trigger:
+
+```ts /trigger/batch.ts
+import { batch, task, runs } from "@trigger.dev/sdk/v3";
+
+export const parentTask = task({
+  id: "parent-task",
+  run: async (payload: string) => {
+    const { runs } = await batch.triggerByTaskAndWait([
+      { task: childTask1, payload: { foo: "World" } }, // 👈 The payload is typed correctly based on the task instance
+      { task: childTask2, payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task instance
+    ]);
+
+    if (runs[0].ok) {
+      console.log("Child task 1 output", runs[0].output); // 👈 runs[0].output is typed as the output of childTask1
+    }
+
+    if (runs[1].ok) {
+      console.log("Child task 2 output", runs[1].output); // 👈 runs[1].output is typed as the output of childTask2
+    }
+
+    // 💭 A nice alternative syntax is to destructure the runs array:
+    const {
+      runs: [run1, run2],
+    } = await batch.triggerByTaskAndWait([
+      { task: childTask1, payload: { foo: "World" } }, // 👈 The payload is typed correctly based on the task instance
+      { task: childTask2, payload: { bar: 42 } }, // 👈 The payload is typed correctly based on the task instance
+    ]);
+
+    if (run1.ok) {
+      console.log("Child task 1 output", run1.output); // 👈 run1.output is typed as the output of childTask1
+    }
+
+    if (run2.ok) {
+      console.log("Child task 2 output", run2.output); // 👈 run2.output is typed as the output of childTask2
+    }
+  },
+});
+
+export const childTask1 = task({
+  id: "child-task-1",
+  run: async (payload: { foo: string }) => {
+    return `Hello ${payload}`;
+  },
+});
+
+export const childTask2 = task({
+  id: "child-task-2",
+  run: async (payload: { bar: number }) => {
+    return bar + 1;
+  },
+});
+```
+
+## Triggering from your frontend
+
+If you want to trigger a task directly from a frontend application, you can use our [React
+hooks](/frontend/react-hooks#trigger-hooks).
+
 ## Options
 
 All of the above functions accept an options object:
@@ -623,7 +820,39 @@ export const myTask = task({
     const idempotencyKey = await idempotencyKeys.create("my-task-key");
 
     // childTask will only be triggered once with the same idempotency key
-    await childTask.triggerAndWait(payload, { idempotencyKey });
+    await childTask.trigger(payload, { idempotencyKey });
+
+    // Do something else, that may throw an error and cause the task to be retried
+  },
+});
+```
+
+For more information, see our [Idempotency](/idempotency) documentation.
+
+<Warning>
+  In version 3.3.0 and later, the `idempotencyKey` option is not available when using
+  `triggerAndWait` or `batchTriggerAndWait`, due to a bug that would sometimes cause the parent task
+  to become stuck. We are working on a fix for this issue.
+</Warning>
+
+### `idempotencyKeyTTL`
+
+Idempotency keys automatically expire after 30 days, but you can set a custom TTL for an idempotency key when triggering a task:
+
+```typescript
+import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  retry: {
+    maxAttempts: 4,
+  },
+  run: async (payload: any) => {
+    // By default, idempotency keys generated are unique to the run, to prevent retries from duplicating child tasks
+    const idempotencyKey = await idempotencyKeys.create("my-task-key");
+
+    // childTask will only be triggered once with the same idempotency key
+    await childTask.trigger(payload, { idempotencyKey, idempotencyKeyTTL: "1h" });
 
     // Do something else, that may throw an error and cause the task to be retried
   },
@@ -827,4 +1056,4 @@ export const myTask = task({
 
 ### Batch Triggering
 
-When using `batchTrigger` or `batchTriggerAndWait`, the total size of all payloads cannot exceed 10MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
+When using triggering a batch, the total size of all payloads cannot exceed 1MB. This means if you are doing a batch of 100 runs, each payload should be less than 100KB.
