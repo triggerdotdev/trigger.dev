@@ -2154,11 +2154,12 @@ model BatchTaskRun {
   updatedAt               DateTime           @updatedAt
 
   // new columns
-  runIds      String[] @default([])
-  runCount    Int      @default(0)
-  payload     String?
-  payloadType String   @default("application/json")
-  options     Json?
+  runIds       String[] @default([])
+  runCount     Int      @default(0)
+  payload      String?
+  payloadType  String   @default("application/json")
+  options      Json?
+  batchVersion String   @default("v1")
 
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]

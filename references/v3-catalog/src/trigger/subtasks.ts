@@ -131,8 +131,6 @@ export const triggerAndWaitLoops = task({
 
     const handle = await taskWithNoPayload.trigger();
     await taskWithNoPayload.triggerAndWait();
-    await taskWithNoPayload.batchTrigger([{}]);
-    await taskWithNoPayload.batchTriggerAndWait([{}]);
 
     // Don't do this!
     // await Promise.all(

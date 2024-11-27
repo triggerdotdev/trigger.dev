@@ -1,4 +1,4 @@
-import { configure, envvars, runs, schedules } from "@trigger.dev/sdk/v3";
+import { configure, envvars, runs, schedules, batch } from "@trigger.dev/sdk/v3";
 import dotenv from "dotenv";
 import { unfriendlyIdTask } from "./trigger/other.js";
 import { spamRateLimiter, taskThatErrors } from "./trigger/retries.js";
@@ -255,9 +255,17 @@ async function doTriggerUnfriendlyTaskId() {
   console.log("completed run", completedRun);
 }
 
+async function doBatchTrigger() {
+  const response = await batch.triggerByTask([
+    { task: simpleChildTask, payload: { message: "Hello, World!" } },
+  ]);
+
+  console.log("batch trigger response", response);
+}
+
 // doRuns().catch(console.error);
 // doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
-doSchedules().catch(console.error);
+doBatchTrigger().catch(console.error);
 // doEnvVars().catch(console.error);
 // doTriggerUnfriendlyTaskId().catch(console.error);

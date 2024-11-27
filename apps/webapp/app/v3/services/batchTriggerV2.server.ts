@@ -229,6 +229,8 @@ export class BatchTriggerV2Service extends BaseService {
               dependentTaskAttemptId: dependentAttempt?.id,
               runCount: body.items.length,
               runIds: runs.map((r) => r.id),
+              status: "COMPLETED",
+              batchVersion: "v2",
             },
           });
 
@@ -328,11 +330,12 @@ export class BatchTriggerV2Service extends BaseService {
           idempotencyKey: options.idempotencyKey,
           idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
           dependentTaskAttemptId: dependentAttempt?.id,
-          runCount: body.items.length,
+          runCount: newRunCount,
           runIds: runs.map((r) => r.id),
           payload: payloadPacket.data,
           payloadType: payloadPacket.dataType,
           options,
+          batchVersion: "v2",
         },
       });
 
@@ -409,6 +412,7 @@ export class BatchTriggerV2Service extends BaseService {
             payload: payloadPacket.data,
             payloadType: payloadPacket.dataType,
             options,
+            batchVersion: "v2",
           },
         });
 

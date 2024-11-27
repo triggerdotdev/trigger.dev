@@ -14,6 +14,7 @@ import { BaseService } from "./baseService.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { socketIo } from "../handleSocketIo.server";
+import { ResumeBatchRunService } from "./resumeBatchRun.server";
 
 type BaseInput = {
   id: string;
@@ -81,6 +82,15 @@ export class FinalizeTaskRunService extends BaseService {
       await this.finalizeRunError(run, error);
     }
 
+    try {
+      await this.#finalizeBatch(run);
+    } catch (finalizeBatchError) {
+      logger.error("FinalizeTaskRunService: Failed to finalize batch", {
+        runId: run.id,
+        error: finalizeBatchError,
+      });
+    }
+
     //resume any dependencies
     const resumeService = new ResumeDependentParentsService(this._prisma);
     const result = await resumeService.call({ id: run.id });
@@ -133,6 +143,72 @@ export class FinalizeTaskRunService extends BaseService {
     }
 
     return run as Output<T>;
+  }
+
+  async #finalizeBatch(run: TaskRun) {
+    if (!run.batchId) {
+      return;
+    }
+
+    logger.debug("FinalizeTaskRunService: Finalizing batch", { runId: run.id });
+
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: {
+        id: run.runtimeEnvironmentId,
+      },
+    });
+
+    if (!environment) {
+      return;
+    }
+
+    const batchItems = await this._prisma.batchTaskRunItem.findMany({
+      where: {
+        taskRunId: run.id,
+      },
+      include: {
+        batchTaskRun: {
+          select: {
+            id: true,
+            dependentTaskAttemptId: true,
+          },
+        },
+      },
+    });
+
+    if (batchItems.length === 0) {
+      return;
+    }
+
+    if (batchItems.length > 10) {
+      logger.error("FinalizeTaskRunService: More than 10 batch items", {
+        runId: run.id,
+        batchItems: batchItems.length,
+      });
+
+      return;
+    }
+
+    for (const item of batchItems) {
+      // Don't do anything if this is a batchTriggerAndWait in a deployed task
+      if (environment.type !== "DEVELOPMENT" && item.batchTaskRun.dependentTaskAttemptId) {
+        continue;
+      }
+
+      // Update the item to complete
+      await this._prisma.batchTaskRunItem.update({
+        where: {
+          id: item.id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+      });
+
+      // This won't resume because this batch does not have a dependent task attempt ID
+      // or is in development, but this service will mark the batch as completed
+      await ResumeBatchRunService.enqueue(item.batchTaskRunId, this._prisma);
+    }
   }
 
   async finalizeRunError(run: TaskRun, error: TaskRunError) {

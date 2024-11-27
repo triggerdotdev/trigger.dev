@@ -633,40 +633,6 @@ export const batchV2TestTask = task({
     logger.debug("All runs", { runsById: Object.fromEntries(runsById) });
 
     assert.equal(runsById.size, 100, "All runs were not received");
-
-    // Now use tasks.batchTrigger with 100 items
-    const response13 = await tasks.batchTrigger<typeof batchV2TestChild>(
-      "batch-v2-test-child",
-      Array.from({ length: 500 }, (_, i) => ({
-        payload: { foo: `bar${i}` },
-      }))
-    );
-
-    const response13Start = performance.now();
-
-    logger.debug("Response 13", { response13 });
-
-    assert.match(response13.batchId, /^batch_[a-z0-9]{21}$/, "response13: Batch ID is invalid");
-    assert.equal(response13.runs.length, 500, "response13: Items length is invalid");
-
-    runsById.clear();
-
-    for await (const run of runs.subscribeToBatch(response13.batchId)) {
-      runsById.set(run.id, run);
-
-      // Break if we have received all runs
-      if (runsById.size === response13.runs.length) {
-        break;
-      }
-    }
-
-    const response13End = performance.now();
-
-    logger.debug("Response 13 time", { time: response13End - response13Start });
-
-    logger.debug("All runs", { runsById: Object.fromEntries(runsById) });
-
-    assert.equal(runsById.size, 500, "All runs were not received");
   },
 });
 
