@@ -12,6 +12,7 @@ import {
   RectangleStackIcon,
   ServerStackIcon,
   ShieldCheckIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
@@ -45,6 +46,7 @@ import {
   projectSetupPath,
   projectTriggersPath,
   v3ApiKeysPath,
+  v3BatchesPath,
   v3BillingPath,
   v3ConcurrencyPath,
   v3DeploymentsPath,
@@ -474,6 +476,13 @@ function V3ProjectSideMenu({
         icon="runs"
         activeIconColor="text-teal-500"
         to={v3RunsPath(organization, project)}
+      />
+      <SideMenuItem
+        name="Batches"
+        icon={Squares2X2Icon}
+        activeIconColor="text-blue-500"
+        to={v3BatchesPath(organization, project)}
+        data-action="batches"
       />
       <SideMenuItem
         name="Test"

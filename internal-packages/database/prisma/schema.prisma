@@ -2147,6 +2147,7 @@ model BatchTaskRun {
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
   runtimeEnvironment      RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  status                  BatchTaskRunStatus @default(PENDING)
   runtimeEnvironmentId    String
   runs                    TaskRun[]
   createdAt               DateTime           @default(now())
@@ -2161,7 +2162,6 @@ model BatchTaskRun {
 
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
-  status                 BatchTaskRunStatus      @default(PENDING)
   taskIdentifier         String?
   checkpointEvent        CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId      String?                 @unique

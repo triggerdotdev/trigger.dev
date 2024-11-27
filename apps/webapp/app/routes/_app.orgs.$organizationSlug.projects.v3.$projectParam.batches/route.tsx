@@ -1,0 +1,252 @@
+import { CheckCircleIcon, ClockIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { Feedback } from "~/components/Feedback";
+import { ListPagination } from "~/components/ListPagination";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { InlineCode } from "~/components/code/InlineCode";
+import { EnvironmentLabel, EnvironmentLabels } from "~/components/environments/EnvironmentLabel";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
+import { Header3 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { Spinner } from "~/components/primitives/Spinner";
+import {
+  Table,
+  TableBlankRow,
+  TableBody,
+  TableCell,
+  TableCellChevron,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { BatchFilters, BatchListFilters } from "~/components/runs/v3/BatchFilters";
+import {
+  allBatchStatuses,
+  BatchStatusCombo,
+  descriptionForBatchStatus,
+} from "~/components/runs/v3/BatchStatus";
+import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
+import { LiveTimer } from "~/components/runs/v3/LiveTimer";
+import { ScheduleFilters } from "~/components/runs/v3/ScheduleFilters";
+import {
+  ScheduleTypeCombo,
+  ScheduleTypeIcon,
+  scheduleTypeName,
+} from "~/components/runs/v3/ScheduleType";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useUser } from "~/hooks/useUser";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
+import { type ScheduleListItem } from "~/presenters/v3/ScheduleListPresenter.server";
+import { requireUserId } from "~/services/session.server";
+import {
+  ProjectParamSchema,
+  docsPath,
+  v3BatchRunsPath,
+  v3BillingPath,
+  v3NewSchedulePath,
+  v3SchedulePath,
+} from "~/utils/pathBuilder";
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
+
+  const url = new URL(request.url);
+  const s = {
+    cursor: url.searchParams.get("cursor") ?? undefined,
+    direction: url.searchParams.get("direction") ?? undefined,
+    environments: url.searchParams.getAll("environments"),
+    statuses: url.searchParams.getAll("statuses"),
+    period: url.searchParams.get("period") ?? undefined,
+    from: url.searchParams.get("from") ?? undefined,
+    to: url.searchParams.get("to") ?? undefined,
+    id: url.searchParams.get("batchId") ?? undefined,
+  };
+  const filters = BatchListFilters.parse(s);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+  if (!project) {
+    return redirectWithErrorMessage("/", request, "Project not found");
+  }
+
+  const presenter = new BatchListPresenter();
+  const list = await presenter.call({
+    userId,
+    projectId: project.id,
+    ...filters,
+    friendlyId: filters.id,
+  });
+
+  return typedjson(list);
+};
+
+export default function Page() {
+  const { batches, hasFilters, filters, pagination } = useTypedLoaderData<typeof loader>();
+  const project = useProject();
+
+  return (
+    <PageContainer>
+      <NavBar>
+        <PageTitle title="Batches" />
+        <PageAccessories>
+          <AdminDebugTooltip />
+
+          <LinkButton
+            variant={"docs/small"}
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("/triggering")}
+          >
+            Batches docs
+          </LinkButton>
+        </PageAccessories>
+      </NavBar>
+      <PageBody scrollable={false}>
+        <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
+          <div className="flex items-start justify-between gap-x-2 p-2">
+            <BatchFilters possibleEnvironments={project.environments} hasFilters={hasFilters} />
+            <div className="flex items-center justify-end gap-x-2">
+              <ListPagination list={{ pagination }} />
+            </div>
+          </div>
+
+          <BatchesTable
+            batches={batches}
+            filters={filters}
+            hasFilters={hasFilters}
+            pagination={pagination}
+          />
+        </div>
+      </PageBody>
+    </PageContainer>
+  );
+}
+
+function BatchesTable({ batches, hasFilters, filters }: BatchList) {
+  const navigation = useNavigation();
+  const isLoading = navigation.state !== "idle";
+  const organization = useOrganization();
+  const project = useProject();
+
+  return (
+    <Table className="max-h-full overflow-y-auto">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Batch ID</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex flex-col divide-y divide-grid-dimmed">
+                {allBatchStatuses.map((status) => (
+                  <div
+                    key={status}
+                    className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                  >
+                    <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                      <BatchStatusCombo status={status} />
+                    </div>
+                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                      {descriptionForBatchStatus(status)}
+                    </Paragraph>
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            Status
+          </TableHeaderCell>
+          <TableHeaderCell>Runs</TableHeaderCell>
+          <TableHeaderCell>Duration</TableHeaderCell>
+          <TableHeaderCell>Created</TableHeaderCell>
+          <TableHeaderCell>Finished</TableHeaderCell>
+          <TableHeaderCell>
+            <span className="sr-only">Go to page</span>
+          </TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {batches.length === 0 && !hasFilters ? (
+          <TableBlankRow colSpan={8}>
+            {!isLoading && (
+              <div className="flex items-center justify-center">
+                <Paragraph className="w-auto">No batches</Paragraph>
+              </div>
+            )}
+          </TableBlankRow>
+        ) : batches.length === 0 ? (
+          <TableBlankRow colSpan={8}>
+            <div className="flex items-center justify-center">
+              <Paragraph className="w-auto">No batches match these filters</Paragraph>
+            </div>
+          </TableBlankRow>
+        ) : (
+          batches.map((batch, index) => {
+            const path = v3BatchRunsPath(organization, project, batch);
+            return (
+              <TableRow key={batch.id}>
+                <TableCell to={path}>{batch.friendlyId}</TableCell>
+                <TableCell to={path}>
+                  <EnvironmentLabel
+                    environment={batch.environment}
+                    userName={batch.environment.userName}
+                  />
+                </TableCell>
+                <TableCell to={path}>
+                  <SimpleTooltip
+                    content={descriptionForBatchStatus(batch.status)}
+                    disableHoverableContent
+                    button={<BatchStatusCombo status={batch.status} />}
+                  />
+                </TableCell>
+                <TableCell to={path}>{batch.runCount}</TableCell>
+                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
+                  {batch.finishedAt ? (
+                    formatDuration(new Date(batch.createdAt), new Date(batch.finishedAt), {
+                      style: "short",
+                    })
+                  ) : (
+                    <LiveTimer startTime={new Date(batch.createdAt)} />
+                  )}
+                </TableCell>
+                <TableCell to={path}>
+                  <DateTime date={batch.createdAt} />
+                </TableCell>
+                <TableCell to={path}>
+                  {batch.finishedAt ? <DateTime date={batch.finishedAt} /> : "–"}
+                </TableCell>
+                <TableCellChevron to={path} isSticky />
+              </TableRow>
+            );
+          })
+        )}
+        {isLoading && (
+          <TableBlankRow
+            colSpan={8}
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+          >
+            <Spinner /> <span className="text-text-dimmed">Loading…</span>
+          </TableBlankRow>
+        )}
+      </TableBody>
+    </Table>
+  );
+}
