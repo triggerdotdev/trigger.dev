@@ -441,6 +441,14 @@ export function v3BatchesPath(organization: OrgForPath, project: ProjectForPath)
   return `${v3ProjectPath(organization, project)}/batches`;
 }
 
+export function v3BatchPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  batch: { friendlyId: string }
+) {
+  return `${v3ProjectPath(organization, project)}/batches?batchId=${batch.friendlyId}`;
+}
+
 export function v3BatchRunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
