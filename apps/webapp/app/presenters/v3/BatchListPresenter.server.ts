@@ -81,7 +81,12 @@ export class BatchListPresenter extends BasePresenter {
 
     let environmentIds = project.environments.map((e) => e.id);
     if (environments && environments.length > 0) {
-      environmentIds = environments;
+      //if environments are passed in, we only include them if they're in the project
+      environmentIds = environments.filter((e) => project.environments.some((pe) => pe.id === e));
+    }
+
+    if (environmentIds.length === 0) {
+      throw new Error("No matching environments found for the project");
     }
 
     const periodMs = period ? parse(period) : undefined;
