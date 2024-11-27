@@ -73,7 +73,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
 
   const triggerRequest = useCallback(async () => {
     try {
-      if (!runId) {
+      if (!runId || !apiClient) {
         return;
       }
 
@@ -207,7 +207,7 @@ export function useRealtimeRunWithStreams<
 
   const triggerRequest = useCallback(async () => {
     try {
-      if (!runId) {
+      if (!runId || !apiClient) {
         return;
       }
 
@@ -321,6 +321,10 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
 
   const triggerRequest = useCallback(async () => {
     try {
+      if (!apiClient) {
+        return;
+      }
+
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
@@ -407,6 +411,10 @@ export function useRealtimeBatch<TTask extends AnyTask>(
 
   const triggerRequest = useCallback(async () => {
     try {
+      if (!apiClient) {
+        return;
+      }
+
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 

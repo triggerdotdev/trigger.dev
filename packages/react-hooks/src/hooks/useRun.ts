@@ -33,17 +33,27 @@ export function useRun<TTask extends AnyTask>(
     error,
     isLoading,
     isValidating,
-  } = useSWR<RetrieveRunResult<TTask>>(runId, () => apiClient.retrieveRun(runId), {
-    revalidateOnReconnect: options?.revalidateOnReconnect,
-    refreshInterval: (run) => {
-      if (!run) return options?.refreshInterval ?? 0;
+  } = useSWR<RetrieveRunResult<TTask>>(
+    runId,
+    () => {
+      if (!apiClient) {
+        throw new Error("Could not call useRun: Missing access token");
+      }
 
-      if (run.isCompleted) return 0;
-
-      return options?.refreshInterval ?? 0;
+      return apiClient.retrieveRun(runId);
     },
-    revalidateOnFocus: options?.revalidateOnFocus,
-  });
+    {
+      revalidateOnReconnect: options?.revalidateOnReconnect,
+      refreshInterval: (run) => {
+        if (!run) return options?.refreshInterval ?? 0;
+
+        if (run.isCompleted) return 0;
+
+        return options?.refreshInterval ?? 0;
+      },
+      revalidateOnFocus: options?.revalidateOnFocus,
+    }
+  );
 
   return { run, error, isLoading, isValidating, isError: !!error };
 }

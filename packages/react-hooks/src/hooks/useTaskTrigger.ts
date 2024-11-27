@@ -66,6 +66,10 @@ export function useTaskTrigger<TTask extends AnyTask>(
       arg: { payload, options },
     }: { arg: { payload: TaskPayload<TTask>; options?: TriggerOptions } }
   ) {
+    if (!apiClient) {
+      throw new Error("Could not trigger task in useTaskTrigger: Missing access token");
+    }
+
     const payloadPacket = await stringifyIO(payload);
 
     const handle = await apiClient.triggerTask(id, {
