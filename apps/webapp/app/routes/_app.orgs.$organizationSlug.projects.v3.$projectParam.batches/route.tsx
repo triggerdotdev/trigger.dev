@@ -1,4 +1,9 @@
-import { CheckCircleIcon, ClockIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
+import {
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  RectangleGroupIcon,
+} from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
@@ -208,11 +213,24 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                   />
                 </TableCell>
                 <TableCell to={path}>
-                  <SimpleTooltip
-                    content={descriptionForBatchStatus(batch.status)}
-                    disableHoverableContent
-                    button={<BatchStatusCombo status={batch.status} />}
-                  />
+                  {batch.batchVersion === "v1" ? (
+                    <SimpleTooltip
+                      content="Upgrade to the latest SDK for batch statuses to appear."
+                      disableHoverableContent
+                      button={
+                        <span className="flex items-center gap-1">
+                          <ExclamationCircleIcon className="size-4 text-slate-500" />
+                          <span>Legacy batch</span>
+                        </span>
+                      }
+                    />
+                  ) : (
+                    <SimpleTooltip
+                      content={descriptionForBatchStatus(batch.status)}
+                      disableHoverableContent
+                      button={<BatchStatusCombo status={batch.status} />}
+                    />
+                  )}
                 </TableCell>
                 <TableCell to={path}>{batch.runCount}</TableCell>
                 <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">

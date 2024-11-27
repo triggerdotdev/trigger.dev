@@ -96,6 +96,7 @@ export class BatchListPresenter extends BasePresenter {
         createdAt: Date;
         updatedAt: Date;
         runCount: BigInt;
+        batchVersion: string;
       }[]
     >`
     SELECT
@@ -105,7 +106,8 @@ export class BatchListPresenter extends BasePresenter {
     b.status,
     b."createdAt",
     b."updatedAt",
-    b."runCount"
+    b."runCount",
+    b."batchVersion"
 FROM
     ${sqlDatabaseSchema}."BatchTaskRun" b
 WHERE
@@ -123,7 +125,9 @@ WHERE
     ${friendlyId ? Prisma.sql`AND b."friendlyId" = ${friendlyId}` : Prisma.empty}
     ${
       statuses && statuses.length > 0
-        ? Prisma.sql`AND b.status = ANY(ARRAY[${Prisma.join(statuses)}]::"BatchTaskRunStatus"[])`
+        ? Prisma.sql`AND b.status = ANY(ARRAY[${Prisma.join(
+            statuses
+          )}]::"BatchTaskRunStatus"[]) AND b.version <> 'v1'`
         : Prisma.empty
     }
     ${
@@ -191,6 +195,7 @@ WHERE
           status: batch.status,
           environment: displayableEnvironment(environment, userId),
           runCount: Number(batch.runCount),
+          batchVersion: batch.batchVersion,
         };
       }),
       pagination: {
