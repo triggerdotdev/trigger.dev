@@ -58,7 +58,9 @@ export class Logger {
   };
   info = (...args: unknown[]) => this.doLog("info", args);
   log = (...args: unknown[]) => this.doLog("log", args);
+  /** @deprecated **ONLY USE THIS IN THE CLI** - It will hang the process when used in deployed code (!) */
   warn = (...args: unknown[]) => this.doLog("warn", args);
+  /** @deprecated **ONLY USE THIS IN THE CLI** - It will hang the process when used in deployed code (!) */
   error = (...args: unknown[]) => this.doLog("error", args);
   table<Keys extends string>(data: TableRow<Keys>[], level?: Exclude<LoggerLevel, "none">) {
     const keys: Keys[] = data.length === 0 ? [] : (Object.keys(data[0]!) as Keys[]);
