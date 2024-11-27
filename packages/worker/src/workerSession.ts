@@ -14,13 +14,14 @@ type WorkerSessionOptions = WorkerClientCommonOptions & {
 };
 
 export class WorkerSession extends EventEmitter<WorkerEvents> {
-  private readonly httpClient: WorkerHttpClient;
+  public readonly httpClient: WorkerHttpClient;
+
   private readonly websocketClient: WorkerWebsocketClient;
   private readonly queueConsumer: RunQueueConsumer;
   private readonly heartbeatService: HeartbeatService;
   private readonly heartbeatIntervalSeconds: number;
 
-  constructor(private opts: WorkerSessionOptions) {
+  constructor(opts: WorkerSessionOptions) {
     super();
 
     this.httpClient = new WorkerHttpClient(opts);

@@ -11,23 +11,23 @@ import {
   WorkerApiRunAttemptStartResponseBody,
 } from "../schemas.js";
 import { WorkerClientCommonOptions } from "./types.js";
-import { getDefaultHeaders } from "./util.js";
+import { getDefaultWorkerHeaders } from "./util.js";
 
 type WorkerHttpClientOptions = WorkerClientCommonOptions;
 
 export class WorkerHttpClient {
-  private readonly apiURL: string;
+  private readonly apiUrl: string;
   private readonly workerToken: string;
   private readonly instanceName: string;
   private readonly defaultHeaders: Record<string, string>;
 
   constructor(opts: WorkerHttpClientOptions) {
-    this.apiURL = opts.apiUrl.replace(/\/$/, "");
+    this.apiUrl = opts.apiUrl.replace(/\/$/, "");
     this.workerToken = opts.workerToken;
     this.instanceName = opts.instanceName;
-    this.defaultHeaders = getDefaultHeaders(opts);
+    this.defaultHeaders = getDefaultWorkerHeaders(opts);
 
-    if (!this.apiURL) {
+    if (!this.apiUrl) {
       throw new Error("apiURL is required and needs to be a non-empty string");
     }
 
@@ -43,7 +43,7 @@ export class WorkerHttpClient {
   async connect(body: WorkerApiConnectRequestBody) {
     return wrapZodFetch(
       WorkerApiConnectResponseBody,
-      `${this.apiURL}/api/v1/worker-actions/connect`,
+      `${this.apiUrl}/api/v1/worker-actions/connect`,
       {
         method: "POST",
         headers: {
@@ -58,7 +58,7 @@ export class WorkerHttpClient {
   async heartbeat(body: WorkerApiHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkerApiHeartbeatResponseBody,
-      `${this.apiURL}/api/v1/worker-actions/heartbeat`,
+      `${this.apiUrl}/api/v1/worker-actions/heartbeat`,
       {
         method: "POST",
         headers: {
@@ -73,7 +73,7 @@ export class WorkerHttpClient {
   async dequeue() {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
-      `${this.apiURL}/api/v1/worker-actions/dequeue`,
+      `${this.apiUrl}/api/v1/worker-actions/dequeue`,
       {
         headers: {
           ...this.defaultHeaders,
@@ -85,7 +85,7 @@ export class WorkerHttpClient {
   async startRun(runId: string, snapshotId: string) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
-      `${this.apiURL}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
       {
         method: "POST",
         headers: {
@@ -102,7 +102,7 @@ export class WorkerHttpClient {
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptCompleteResponseBody,
-      `${this.apiURL}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/complete`,
       {
         method: "POST",
         headers: {

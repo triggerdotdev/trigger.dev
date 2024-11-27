@@ -225,7 +225,11 @@ export const TaskRunExecutionBatch = z.object({
 export const TaskRunExecution = z.object({
   task: TaskRunExecutionTask,
   attempt: TaskRunExecutionAttempt,
-  run: TaskRun,
+  run: TaskRun.and(
+    z.object({
+      traceContext: z.record(z.unknown()).optional(),
+    })
+  ),
   queue: TaskRunExecutionQueue,
   environment: TaskRunExecutionEnvironment,
   organization: TaskRunExecutionOrganization,

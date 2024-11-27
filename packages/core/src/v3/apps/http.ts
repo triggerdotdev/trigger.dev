@@ -14,6 +14,34 @@ export const getTextBody = (req: IncomingMessage) =>
     });
   });
 
+export async function getJsonBody(req: IncomingMessage): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      console.log("got body", body);
+      resolve(safeJsonParse(body));
+    });
+  });
+}
+
+function safeJsonParse(text: string) {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Failed to parse JSON", { error, text });
+    return null;
+  }
+}
+
 export class HttpReply {
   constructor(private response: Parameters<RequestListener>[1]) {}
 

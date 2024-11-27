@@ -1,9 +1,9 @@
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { PlatformToWorkerMessages, WorkerToPlatformMessages } from "../messages.js";
-import { WorkerClientCommonOptions } from "./types.js";
-import { getDefaultWorkerHeaders } from "./util.js";
+import { WorkloadClientCommonOptions } from "./types.js";
+import { getDefaultWorkloadHeaders } from "./util.js";
 
-type WorkerWebsocketClientOptions = WorkerClientCommonOptions;
+type WorkerWebsocketClientOptions = WorkloadClientCommonOptions;
 
 export class WorkerWebsocketClient {
   private readonly defaultHeaders: Record<string, string>;
@@ -13,14 +13,14 @@ export class WorkerWebsocketClient {
   >;
 
   constructor(private opts: WorkerWebsocketClientOptions) {
-    this.defaultHeaders = getDefaultWorkerHeaders(opts);
+    this.defaultHeaders = getDefaultWorkloadHeaders(opts);
   }
 
   start() {
-    const websocketPort = this.getPort(this.opts.apiUrl);
+    const websocketPort = this.getPort(this.opts.workerApiUrl);
     this.platformSocket = new ZodSocketConnection({
       namespace: "worker",
-      host: this.getHost(this.opts.apiUrl),
+      host: this.getHost(this.opts.workerApiUrl),
       port: websocketPort,
       secure: websocketPort === 443,
       extraHeaders: this.defaultHeaders,

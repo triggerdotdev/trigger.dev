@@ -25,7 +25,7 @@ const env = Env.parse(stdEnv);
 logger.loggerLevel = "debug";
 logger.debug("Creating unmanaged worker", { env });
 
-class UnmanagedWorker {
+class UnmanagedRunController {
   private readonly session: WorkerSession;
   private taskRunProcess?: TaskRunProcess;
 
@@ -38,12 +38,8 @@ class UnmanagedWorker {
       dequeueIntervalMs: 1000,
     });
 
-    const traceContext = new Map<string, Record<string, unknown>>();
-
     this.session.on("runQueueMessage", async ({ time, message }) => {
-      logger.debug("[UnmanagedWorker] Received runQueueMessage", { time, message });
-
-      traceContext.set(message.run.id, message.run.traceContext);
+      logger.debug("[UnmanagedRunController] Received runQueueMessage", { time, message });
 
       this.session.emit("requestRunAttemptStart", {
         time: new Date(),
@@ -72,8 +68,7 @@ class UnmanagedWorker {
         },
         payload: {
           execution,
-          // TODO: The run engine could return this when the run is started
-          traceContext: traceContext.get(run.id) ?? {},
+          traceContext: execution.run.traceContext ?? {},
         },
         messageId: run.id,
       });
@@ -93,7 +88,7 @@ class UnmanagedWorker {
         try {
           await this.taskRunProcess.cleanup(true);
         } catch (error) {
-          logger.error("Failed to cleanup task run process, submitting completion anyway", {
+          console.error("Failed to cleanup task run process, submitting completion anyway", {
             error,
           });
         }
@@ -109,7 +104,7 @@ class UnmanagedWorker {
           completion,
         });
       } catch (error) {
-        logger.error("Failed to complete lazy attempt", {
+        console.error("Failed to complete lazy attempt", {
           error,
         });
 
@@ -132,25 +127,25 @@ class UnmanagedWorker {
     });
 
     process.on("SIGTERM", async () => {
-      logger.debug("[UnmanagedWorker] Received SIGTERM, stopping worker");
+      logger.debug("[UnmanagedRunController] Received SIGTERM, stopping worker");
       await this.stop();
     });
   }
 
   async start() {
-    logger.debug("[UnmanagedWorker] Starting up");
+    logger.debug("[UnmanagedRunController] Starting up");
     await this.session.start();
   }
 
   async stop() {
-    logger.debug("[UnmanagedWorker] Shutting down");
+    logger.debug("[UnmanagedRunController] Shutting down");
     await this.session.stop();
   }
 }
 
 const workerManifest = await loadWorkerManifest();
 
-const prodWorker = new UnmanagedWorker(workerManifest);
+const prodWorker = new UnmanagedRunController(workerManifest);
 await prodWorker.start();
 
 function gatherProcessEnv(): Record<string, string> {

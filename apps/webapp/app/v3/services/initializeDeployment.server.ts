@@ -7,7 +7,7 @@ import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
-import { WorkerInstanceGroupType } from "@trigger.dev/database";
+import { WorkerDeploymentType } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
@@ -66,18 +66,16 @@ export class InitializeDeploymentService extends BaseService {
 
       const unmanagedImageTag = unmanagedImageParts.join("/");
 
-      const defaultType = WorkerInstanceGroupType.MANAGED;
-      const deploymentType = payload.type ?? defaultType;
-      const isShared = deploymentType === WorkerInstanceGroupType.MANAGED;
+      const isManaged = payload.type === WorkerDeploymentType.MANAGED;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
         projectId: environment.projectId,
         version: nextVersion,
         triggeredById: triggeredBy?.id,
-        type: deploymentType,
-        imageTag: isShared ? sharedImageTag : unmanagedImageTag,
-        imageReference: isShared ? undefined : unmanagedImageTag,
+        type: payload.type,
+        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
+        imageReference: isManaged ? undefined : unmanagedImageTag,
       });
 
       const deployment = await this._prisma.workerDeployment.create({
@@ -91,8 +89,8 @@ export class InitializeDeploymentService extends BaseService {
           projectId: environment.projectId,
           externalBuildData,
           triggeredById: triggeredBy?.id,
-          type: deploymentType,
-          imageReference: isShared ? undefined : unmanagedImageTag,
+          type: payload.type,
+          imageReference: isManaged ? undefined : unmanagedImageTag,
         },
       });
 
@@ -105,7 +103,7 @@ export class InitializeDeploymentService extends BaseService {
 
       return {
         deployment,
-        imageTag: isShared ? sharedImageTag : unmanagedImageTag,
+        imageTag: isManaged ? sharedImageTag : unmanagedImageTag,
       };
     });
   }

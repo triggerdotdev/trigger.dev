@@ -1041,6 +1041,7 @@ export class RunEngine {
             costInCents: run.costInCents,
             /** @deprecated */
             baseCostInCents: run.baseCostInCents,
+            traceContext: run.traceContext as Record<string, string | undefined>,
           },
           queue: {
             id: queue.friendlyId,

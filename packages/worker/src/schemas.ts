@@ -6,6 +6,7 @@ import {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 
+// Worker
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({
     used: z.number(),
@@ -37,7 +38,6 @@ export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectRespon
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;
 
-// Attempt start
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string()),
@@ -47,7 +47,6 @@ export type WorkerApiRunAttemptStartResponseBody = z.infer<
   typeof WorkerApiRunAttemptStartResponseBody
 >;
 
-// Attempt completion
 export const WorkerApiRunAttemptCompleteRequestBody = z.object({
   completion: TaskRunExecutionResult,
 });
@@ -60,4 +59,29 @@ export const WorkerApiRunAttemptCompleteResponseBody = z.object({
 });
 export type WorkerApiRunAttemptCompleteResponseBody = z.infer<
   typeof WorkerApiRunAttemptCompleteResponseBody
+>;
+
+// Workload
+export const WorkloadHeartbeatRequestBody = z.object({
+  cpu: z.number(),
+  memory: z.number(),
+});
+export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatRequestBody>;
+
+export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
+export type WorkloadHeartbeatResponseBody = z.infer<typeof WorkloadHeartbeatResponseBody>;
+
+export const WorkloadRunAttemptCompleteRequestBody = WorkerApiRunAttemptCompleteRequestBody;
+export type WorkloadRunAttemptCompleteRequestBody = z.infer<
+  typeof WorkloadRunAttemptCompleteRequestBody
+>;
+
+export const WorkloadRunAttemptCompleteResponseBody = WorkerApiRunAttemptCompleteResponseBody;
+export type WorkloadRunAttemptCompleteResponseBody = z.infer<
+  typeof WorkloadRunAttemptCompleteResponseBody
+>;
+
+export const WorkloadRunAttemptStartResponseBody = WorkerApiRunAttemptStartResponseBody;
+export type WorkloadRunAttemptStartResponseBody = z.infer<
+  typeof WorkloadRunAttemptStartResponseBody
 >;
