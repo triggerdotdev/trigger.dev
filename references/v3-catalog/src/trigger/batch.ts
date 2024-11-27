@@ -1,4 +1,15 @@
-import { AnyRealtimeRun, auth, batch, logger, runs, task, tasks, wait } from "@trigger.dev/sdk/v3";
+import { Equal, Expect } from "@/utils/types.js";
+import {
+  AnyRealtimeRun,
+  auth,
+  batch,
+  idempotencyKeys,
+  logger,
+  runs,
+  task,
+  tasks,
+  wait,
+} from "@trigger.dev/sdk/v3";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
@@ -107,38 +118,6 @@ export const taskThatFails = task({
     };
   },
 });
-
-export type Expect<T extends true> = T;
-export type ExpectTrue<T extends true> = T;
-export type ExpectFalse<T extends false> = T;
-export type IsTrue<T extends true> = T;
-export type IsFalse<T extends false> = T;
-
-export type Equal<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2
-  ? true
-  : false;
-export type NotEqual<X, Y> = true extends Equal<X, Y> ? false : true;
-
-// https://stackoverflow.com/questions/49927523/disallow-call-with-any/49928360#49928360
-export type IsAny<T> = 0 extends 1 & T ? true : false;
-export type NotAny<T> = true extends IsAny<T> ? false : true;
-
-export type Debug<T> = { [K in keyof T]: T[K] };
-export type MergeInsertions<T> = T extends object ? { [K in keyof T]: MergeInsertions<T[K]> } : T;
-
-export type Alike<X, Y> = Equal<MergeInsertions<X>, MergeInsertions<Y>>;
-
-export type ExpectExtends<VALUE, EXPECTED> = EXPECTED extends VALUE ? true : false;
-export type ExpectValidArgs<
-  FUNC extends (...args: any[]) => any,
-  ARGS extends any[],
-> = ARGS extends Parameters<FUNC> ? true : false;
-
-export type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (
-  k: infer I
-) => void
-  ? I
-  : never;
 
 export const allV2TestTask = task({
   id: "all-v2-test",
@@ -640,6 +619,65 @@ export const batchV2TestChild = task({
   id: "batch-v2-test-child",
   queue: {
     concurrencyLimit: 10,
+  },
+  run: async (payload: any) => {
+    return payload;
+  },
+});
+
+export const batchAutoIdempotencyKeyTask = task({
+  id: "batch-auto-idempotency-key",
+  retry: {
+    maxAttempts: 3,
+  },
+  run: async () => {
+    const idempotencyKey = await idempotencyKeys.create("first-batch-1");
+
+    logger.debug("Idempotency key", { idempotencyKey });
+
+    const response1 = await batchAutoIdempotencyKeyChild.batchTrigger(
+      [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+      {
+        idempotencyKey: idempotencyKey,
+      }
+    );
+
+    logger.debug("Response 1", { response1 });
+
+    const idempotencyKey2 = await idempotencyKeys.create("first-batch-2", { scope: "global" });
+
+    logger.debug("Idempotency key 2", { idempotencyKey2 });
+
+    const response2 = await batchAutoIdempotencyKeyChild.batchTrigger(
+      [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+      {
+        idempotencyKey: idempotencyKey2,
+      }
+    );
+
+    logger.debug("Response 2", { response2 });
+
+    const idempotencyKey3 = await idempotencyKeys.create(randomUUID());
+
+    logger.debug("Idempotency key 3", { idempotencyKey3 });
+
+    const response3 = await batchAutoIdempotencyKeyChild.batchTrigger(
+      [{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }],
+      {
+        idempotencyKey: idempotencyKey3,
+      }
+    );
+
+    logger.debug("Response 3", { response3 });
+
+    throw new Error("Forcing a retry to see if another batch is created");
+  },
+});
+
+export const batchAutoIdempotencyKeyChild = task({
+  id: "batch-auto-idempotency-key-child",
+  retry: {
+    maxAttempts: 3,
   },
   run: async (payload: any) => {
     return payload;

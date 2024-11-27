@@ -571,24 +571,26 @@ export async function batchTriggerById<TTask extends AnyTask>(
       tracer,
       icon: "trigger",
       onResponseBody(body, span) {
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "id" in body &&
-          typeof body.id === "string"
-        ) {
-          span.setAttribute("batchId", body.id);
-        }
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          if ("id" in body && typeof body.id === "string") {
+            span.setAttribute("batchId", body.id);
+          }
 
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "runs" in body &&
-          Array.isArray(body.runs)
-        ) {
-          span.setAttribute("runCount", body.runs.length);
+          if ("runs" in body && Array.isArray(body.runs)) {
+            span.setAttribute("runCount", body.runs.length);
+          }
+
+          if ("isCached" in body && typeof body.isCached === "boolean") {
+            if (body.isCached) {
+              console.warn(`Result is a cached response because the request was idempotent.`);
+            }
+
+            span.setAttribute("isCached", body.isCached);
+          }
+
+          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
+            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          }
         }
       },
       ...requestOptions,
@@ -660,6 +662,15 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
 
       span.setAttribute("batchId", response.id);
       span.setAttribute("runCount", response.runs.length);
+      span.setAttribute("isCached", response.isCached);
+
+      if (response.isCached) {
+        console.warn(`Result is a cached response because the request was idempotent.`);
+      }
+
+      if (response.idempotencyKey) {
+        span.setAttribute("idempotencyKey", response.idempotencyKey);
+      }
 
       const result = await runtime.waitForBatch({
         id: response.id,
@@ -733,24 +744,26 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       tracer,
       icon: "trigger",
       onResponseBody(body, span) {
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "id" in body &&
-          typeof body.id === "string"
-        ) {
-          span.setAttribute("batchId", body.id);
-        }
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          if ("id" in body && typeof body.id === "string") {
+            span.setAttribute("batchId", body.id);
+          }
 
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "runs" in body &&
-          Array.isArray(body.runs)
-        ) {
-          span.setAttribute("runCount", body.runs.length);
+          if ("runs" in body && Array.isArray(body.runs)) {
+            span.setAttribute("runCount", body.runs.length);
+          }
+
+          if ("isCached" in body && typeof body.isCached === "boolean") {
+            if (body.isCached) {
+              console.warn(`Result is a cached response because the request was idempotent.`);
+            }
+
+            span.setAttribute("isCached", body.isCached);
+          }
+
+          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
+            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          }
         }
       },
       ...requestOptions,
@@ -824,6 +837,15 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
 
       span.setAttribute("batchId", response.id);
       span.setAttribute("runCount", response.runs.length);
+      span.setAttribute("isCached", response.isCached);
+
+      if (response.isCached) {
+        console.warn(`Result is a cached response because the request was idempotent.`);
+      }
+
+      if (response.idempotencyKey) {
+        span.setAttribute("idempotencyKey", response.idempotencyKey);
+      }
 
       const result = await runtime.waitForBatch({
         id: response.id,
@@ -886,12 +908,11 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
       tracer,
       icon: "trigger",
       onResponseBody: (body, span) => {
-        body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "id" in body &&
-          typeof body.id === "string" &&
-          span.setAttribute("runId", body.id);
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          if ("id" in body && typeof body.id === "string") {
+            span.setAttribute("runId", body.id);
+          }
+        }
       },
       ...requestOptions,
     }
@@ -951,24 +972,26 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
       tracer,
       icon: "trigger",
       onResponseBody(body, span) {
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "id" in body &&
-          typeof body.id === "string"
-        ) {
-          span.setAttribute("batchId", body.id);
-        }
+        if (body && typeof body === "object" && !Array.isArray(body)) {
+          if ("id" in body && typeof body.id === "string") {
+            span.setAttribute("batchId", body.id);
+          }
 
-        if (
-          body &&
-          typeof body === "object" &&
-          !Array.isArray(body) &&
-          "runs" in body &&
-          Array.isArray(body.runs)
-        ) {
-          span.setAttribute("runCount", body.runs.length);
+          if ("runs" in body && Array.isArray(body.runs)) {
+            span.setAttribute("runCount", body.runs.length);
+          }
+
+          if ("isCached" in body && typeof body.isCached === "boolean") {
+            if (body.isCached) {
+              console.warn(`Result is a cached response because the request was idempotent.`);
+            }
+
+            span.setAttribute("isCached", body.isCached);
+          }
+
+          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
+            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          }
         }
       },
       ...requestOptions,
@@ -1112,6 +1135,15 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
 
       span.setAttribute("batchId", response.id);
       span.setAttribute("runCount", response.runs.length);
+      span.setAttribute("isCached", response.isCached);
+
+      if (response.isCached) {
+        console.warn(`Result is a cached response because the request was idempotent.`);
+      }
+
+      if (response.idempotencyKey) {
+        span.setAttribute("idempotencyKey", response.idempotencyKey);
+      }
 
       const result = await runtime.waitForBatch({
         id: response.id,
