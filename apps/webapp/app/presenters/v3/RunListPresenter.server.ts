@@ -162,7 +162,7 @@ export class RunListPresenter extends BasePresenter {
       });
 
       if (batch) {
-        batchId = batch?.id;
+        batchId = batch.id;
       }
     }
 
