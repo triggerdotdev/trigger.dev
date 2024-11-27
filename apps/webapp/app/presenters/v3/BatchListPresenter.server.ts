@@ -127,7 +127,7 @@ WHERE
       statuses && statuses.length > 0
         ? Prisma.sql`AND b.status = ANY(ARRAY[${Prisma.join(
             statuses
-          )}]::"BatchTaskRunStatus"[]) AND b.version <> 'v1'`
+          )}]::"BatchTaskRunStatus"[]) AND b."batchVersion" <> 'v1'`
         : Prisma.empty
     }
     ${
