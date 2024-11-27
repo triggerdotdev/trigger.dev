@@ -71,7 +71,7 @@ export function batchStatusColor(status: BatchTaskRunStatus): string {
 export function batchStatusTitle(status: BatchTaskRunStatus): string {
   switch (status) {
     case "PENDING":
-      return "Pending";
+      return "In progress";
     case "COMPLETED":
       return "Completed";
     default: {
