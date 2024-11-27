@@ -88,13 +88,6 @@ export function BatchFilters(props: BatchFiltersProps) {
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
-          {searchParams.has("showChildTasks") && (
-            <input
-              type="hidden"
-              name="showChildTasks"
-              value={searchParams.get("showChildTasks") as string}
-            />
-          )}
           <Button variant="minimal/small" LeadingIcon={TrashIcon}>
             Clear all
           </Button>
