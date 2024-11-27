@@ -1,14 +1,4 @@
-import {
-  AnyRealtimeRun,
-  auth,
-  logger,
-  RealtimeRun,
-  runs,
-  task,
-  TaskFromIdentifier,
-  tasks,
-  wait,
-} from "@trigger.dev/sdk/v3";
+import { AnyRealtimeRun, auth, batch, logger, runs, task, tasks, wait } from "@trigger.dev/sdk/v3";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
@@ -156,17 +146,13 @@ export const allV2TestTask = task({
     maxAttempts: 1,
   },
   run: async () => {
-    const response1 = await tasks.triggerAll<typeof allV2ChildTask1 | typeof allV2ChildTask2>([
-      { task: "all-v2-test-child-1", payload: { child1: "foo" } },
-      { task: "all-v2-test-child-2", payload: { child2: "bar" } },
-      { task: "all-v2-test-child-1", payload: { child1: "baz" } },
+    const response1 = await batch.trigger<typeof allV2ChildTask1 | typeof allV2ChildTask2>([
+      { id: "all-v2-test-child-1", payload: { child1: "foo" } },
+      { id: "all-v2-test-child-2", payload: { child2: "bar" } },
+      { id: "all-v2-test-child-1", payload: { child1: "baz" } },
     ]);
 
-    // This would have the type of the first task above
-    const firstRunHandle = response1.runs[0];
-    const run1 = await runs.retrieve(firstRunHandle);
-
-    type Run1Payload = Expect<Equal<typeof run1.payload, { child1: string } | undefined>>;
+    logger.debug("Response 1", { response1 });
 
     for (const run of response1.runs) {
       switch (run.taskIdentifier) {
@@ -187,6 +173,97 @@ export const allV2TestTask = task({
           break;
         }
       }
+    }
+
+    const {
+      runs: [batchRun1, batchRun2, batchRun3],
+    } = await batch.triggerByTask([
+      { task: allV2ChildTask1, payload: { child1: "foo" } },
+      { task: allV2ChildTask2, payload: { child2: "bar" } },
+      { task: allV2ChildTask1, payload: { child1: "baz" } },
+    ]);
+
+    logger.debug("Batch runs", { batchRun1, batchRun2, batchRun3 });
+
+    const taskRun1 = await runs.retrieve(batchRun1);
+
+    type TaskRun1Payload = Expect<Equal<typeof taskRun1.payload, { child1: string } | undefined>>;
+    type TaskRun1Output = Expect<Equal<typeof taskRun1.output, { foo: string } | undefined>>;
+
+    const taskRun2 = await runs.retrieve(batchRun2);
+
+    type TaskRun2Payload = Expect<Equal<typeof taskRun2.payload, { child2: string } | undefined>>;
+    type TaskRun2Output = Expect<Equal<typeof taskRun2.output, { bar: string } | undefined>>;
+
+    const taskRun3 = await runs.retrieve(batchRun3);
+
+    type TaskRun3Payload = Expect<Equal<typeof taskRun3.payload, { child1: string } | undefined>>;
+    type TaskRun3Output = Expect<Equal<typeof taskRun3.output, { foo: string } | undefined>>;
+
+    const response3 = await batch.triggerAndWait<typeof allV2ChildTask1 | typeof allV2ChildTask2>([
+      { id: "all-v2-test-child-1", payload: { child1: "foo" } },
+      { id: "all-v2-test-child-2", payload: { child2: "bar" } },
+      { id: "all-v2-test-child-1", payload: { child1: "baz" } },
+    ]);
+
+    logger.debug("Response 3", { response3 });
+
+    for (const run of response3.runs) {
+      if (run.ok) {
+        switch (run.taskIdentifier) {
+          case "all-v2-test-child-1": {
+            type Run1Output = Expect<Equal<typeof run.output, { foo: string }>>;
+
+            break;
+          }
+          case "all-v2-test-child-2": {
+            type Run2Output = Expect<Equal<typeof run.output, { bar: string }>>;
+
+            break;
+          }
+        }
+      }
+    }
+
+    for (const run of response3.runs) {
+      switch (run.taskIdentifier) {
+        case "all-v2-test-child-1": {
+          if (run.ok) {
+            type Run1Output = Expect<Equal<typeof run.output, { foo: string }>>;
+          }
+
+          break;
+        }
+        case "all-v2-test-child-2": {
+          if (run.ok) {
+            type Run2Output = Expect<Equal<typeof run.output, { bar: string }>>;
+          }
+
+          break;
+        }
+      }
+    }
+
+    const {
+      runs: [batch2Run1, batch2Run2, batch2Run3],
+    } = await batch.triggerByTaskAndWait([
+      { task: allV2ChildTask1, payload: { child1: "foo" } },
+      { task: allV2ChildTask2, payload: { child2: "bar" } },
+      { task: allV2ChildTask1, payload: { child1: "baz" } },
+    ]);
+
+    logger.debug("Batch 2 runs", { batch2Run1, batch2Run2, batch2Run3 });
+
+    if (batch2Run1.ok) {
+      type Batch2Run1Output = Expect<Equal<typeof batch2Run1.output, { foo: string }>>;
+    }
+
+    if (batch2Run2.ok) {
+      type Batch2Run2Output = Expect<Equal<typeof batch2Run2.output, { bar: string }>>;
+    }
+
+    if (batch2Run3.ok) {
+      type Batch2Run3Output = Expect<Equal<typeof batch2Run3.output, { foo: string }>>;
     }
   },
 });

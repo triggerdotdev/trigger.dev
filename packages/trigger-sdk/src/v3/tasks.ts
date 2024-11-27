@@ -8,7 +8,6 @@ import {
   trigger,
   triggerAndPoll,
   triggerAndWait,
-  triggerAll,
 } from "./shared.js";
 
 export { SubtaskUnwrapError };
@@ -77,5 +76,4 @@ export const tasks = {
   batchTrigger,
   triggerAndWait,
   batchTriggerAndWait,
-  triggerAll,
 };

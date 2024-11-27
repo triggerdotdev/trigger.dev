@@ -3,6 +3,7 @@ export * from "./config.js";
 export { retry, type RetryOptions } from "./retry.js";
 export { queue } from "./shared.js";
 export * from "./tasks.js";
+export * from "./batch.js";
 export * from "./wait.js";
 export * from "./waitUntil.js";
 export * from "./usage.js";

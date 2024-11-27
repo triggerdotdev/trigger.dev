@@ -1038,6 +1038,7 @@ class SharedQueueTasks {
         id: attempt.taskRun.friendlyId,
         output: attempt.output ?? undefined,
         outputType: attempt.outputType,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
       };
       return success;
     } else {
@@ -1045,6 +1046,7 @@ class SharedQueueTasks {
         ok,
         id: attempt.taskRun.friendlyId,
         error: attempt.error as TaskRunError,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
       };
       return failure;
     }

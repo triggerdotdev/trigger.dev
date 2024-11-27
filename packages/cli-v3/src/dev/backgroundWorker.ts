@@ -498,6 +498,7 @@ export class BackgroundWorker {
         ok: false,
         retry: undefined,
         error: TaskRunProcess.parseExecuteError(e),
+        taskIdentifier: payload.execution.task.id,
       };
     }
   }
