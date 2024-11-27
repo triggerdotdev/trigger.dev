@@ -151,7 +151,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
     <Table className="max-h-full overflow-y-auto">
       <TableHeader>
         <TableRow>
-          <TableHeaderCell>Batch ID</TableHeaderCell>
+          <TableHeaderCell>ID</TableHeaderCell>
           <TableHeaderCell>Env</TableHeaderCell>
           <TableHeaderCell
             tooltip={
@@ -178,14 +178,11 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
           <TableHeaderCell>Duration</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Finished</TableHeaderCell>
-          <TableHeaderCell>
-            <span className="sr-only">Go to page</span>
-          </TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
         {batches.length === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={8}>
+          <TableBlankRow colSpan={7}>
             {!isLoading && (
               <div className="flex items-center justify-center">
                 <Paragraph className="w-auto">No batches</Paragraph>
@@ -193,7 +190,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
             )}
           </TableBlankRow>
         ) : batches.length === 0 ? (
-          <TableBlankRow colSpan={8}>
+          <TableBlankRow colSpan={7}>
             <div className="flex items-center justify-center">
               <Paragraph className="w-auto">No batches match these filters</Paragraph>
             </div>
@@ -233,14 +230,13 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                 <TableCell to={path}>
                   {batch.finishedAt ? <DateTime date={batch.finishedAt} /> : "–"}
                 </TableCell>
-                <TableCellChevron to={path} isSticky />
               </TableRow>
             );
           })
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={8}
+            colSpan={7}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
