@@ -1,28 +1,11 @@
 import * as Ariakit from "@ariakit/react";
-import {
-  CalendarIcon,
-  ClockIcon,
-  CpuChipIcon,
-  FingerPrintIcon,
-  Squares2X2Icon,
-  TagIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { ListChecks } from "lucide-react";
-import { Form, useFetcher } from "@remix-run/react";
-import type {
-  BatchTaskRunStatus,
-  BulkActionType,
-  RuntimeEnvironment,
-  TaskRunStatus,
-  TaskTriggerSource,
-} from "@trigger.dev/database";
+import { CalendarIcon, CpuChipIcon, Squares2X2Icon, TrashIcon } from "@heroicons/react/20/solid";
+import { Form } from "@remix-run/react";
+import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
-import { matchSorter } from "match-sorter";
 import type { ReactNode } from "react";
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useMemo, useState } from "react";
 import { z } from "zod";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { DateField } from "~/components/primitives/DateField";
@@ -42,8 +25,6 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
-import { Spinner } from "~/components/primitives/Spinner";
-import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
   TooltipContent,
@@ -51,19 +32,8 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
-import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
-import { BulkActionStatusCombo } from "./BulkAction";
-import {
-  TaskRunStatusCombo,
-  allTaskRunStatuses,
-  descriptionForTaskRunStatus,
-  filterableTaskRunStatuses,
-  runStatusTitle,
-} from "./TaskRunStatus";
-import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import {
   allBatchStatuses,
   BatchStatusCombo,
