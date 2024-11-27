@@ -87,6 +87,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
   year: "numeric",
+  timeZone: "utc",
 });
 
 export default function Page() {
