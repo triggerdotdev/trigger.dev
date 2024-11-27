@@ -133,7 +133,10 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("bulkId") ||
     searchParams.has("tags") ||
     searchParams.has("from") ||
-    searchParams.has("to");
+    searchParams.has("to") ||
+    searchParams.has("batchId") ||
+    searchParams.has("runId") ||
+    searchParams.has("scheduleId");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
