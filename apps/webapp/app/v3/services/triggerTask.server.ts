@@ -29,7 +29,7 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
-  idempoencyKeyExpiresAt?: Date;
+  idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
@@ -59,9 +59,9 @@ export class TriggerTaskService extends BaseService {
       // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
       const idempotencyKeyExpiresAt =
-        options.idempoencyKeyExpiresAt ??
+        options.idempotencyKeyExpiresAt ??
         resolveIdempotencyKeyTTL(body.options?.idempotencyKeyTTL) ??
-        new Date(Date.now() + 24 * 60 * 60 * 1000);
+        new Date(Date.now() + 24 * 60 * 60 * 1000 * 30); // 30 days
 
       const delayUntil = await parseDelay(body.options?.delay);
 

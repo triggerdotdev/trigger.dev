@@ -72,9 +72,10 @@ const { action, loader } = createActionApiRoute(
         ? { traceparent, tracestate }
         : undefined;
 
-    // By default, the idempotency key expires in 24 hours
+    // By default, the idempotency key expires in 30 days
     const idempotencyKeyExpiresAt =
-      resolveIdempotencyKeyTTL(idempotencyKeyTTL) ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+      resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
+      new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
     const service = new BatchTriggerV2Service();
 

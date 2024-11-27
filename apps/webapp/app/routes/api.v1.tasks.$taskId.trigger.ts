@@ -74,7 +74,7 @@ const { action, loader } = createActionApiRoute(
 
       const run = await service.call(params.taskId, authentication.environment, body, {
         idempotencyKey: idempotencyKey ?? undefined,
-        idempoencyKeyExpiresAt: idempotencyKeyExpiresAt,
+        idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
