@@ -13,6 +13,14 @@
     @apply bg-background-dimmed text-text-dimmed;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Text selection styles */
+  ::selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
+  ::-moz-selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
   
   /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
   :root {
