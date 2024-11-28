@@ -23,7 +23,6 @@ export async function getJsonBody(req: IncomingMessage): Promise<any> {
     });
 
     req.on("end", () => {
-      console.log("got body", body);
       resolve(safeJsonParse(body));
     });
   });
