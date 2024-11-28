@@ -69,7 +69,7 @@ class ManagedRunController {
 
         console.debug("[ManagedRunController] Sending heartbeat");
 
-        const response = await this.httpClient.heartbeat(this.runId, this.snapshotId, {
+        const response = await this.httpClient.heartbeatRun(this.runId, this.snapshotId, {
           cpu: 0,
           memory: 0,
         });

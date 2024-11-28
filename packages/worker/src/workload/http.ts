@@ -31,7 +31,7 @@ export class WorkloadHttpClient {
     }
   }
 
-  async heartbeat(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {
+  async heartbeatRun(runId: string, snapshotId: string, body: WorkloadHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkloadHeartbeatResponseBody,
       `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
