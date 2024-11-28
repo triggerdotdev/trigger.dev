@@ -39,7 +39,7 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
         console.debug("[WorkerSession] Sending heartbeat");
 
         const body = this.getHeartbeatBody();
-        const response = await this.httpClient.heartbeat(body);
+        const response = await this.httpClient.heartbeatWorker(body);
 
         if (!response.success) {
           console.error("[WorkerSession] Heartbeat failed", { error: response.error });
@@ -74,7 +74,7 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
   ): Promise<void> {
     console.log("[WorkerSession] onRequestRunAttemptStart", { time, run, snapshot });
 
-    const start = await this.httpClient.startRun(run.id, snapshot.id);
+    const start = await this.httpClient.startRunAttempt(run.id, snapshot.id);
 
     if (!start.success) {
       console.error("[WorkerSession] Failed to start run", { error: start.error });
@@ -97,7 +97,7 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
   ): Promise<void> {
     console.log("[WorkerSession] onRunAttemptCompleted", { time, run, snapshot, completion });
 
-    const complete = await this.httpClient.completeRun(run.id, snapshot.id, {
+    const complete = await this.httpClient.completeRunAttempt(run.id, snapshot.id, {
       completion: completion,
     });
 

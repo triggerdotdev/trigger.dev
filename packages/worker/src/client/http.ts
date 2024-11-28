@@ -9,6 +9,8 @@ import {
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptCompleteResponseBody,
   WorkerApiRunAttemptStartResponseBody,
+  WorkerApiRunHeartbeatRequestBody,
+  WorkerApiRunHeartbeatResponseBody,
 } from "../schemas.js";
 import { WorkerClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
@@ -55,7 +57,19 @@ export class WorkerHttpClient {
     );
   }
 
-  async heartbeat(body: WorkerApiHeartbeatRequestBody) {
+  async dequeue() {
+    return wrapZodFetch(
+      WorkerApiDequeueResponseBody,
+      `${this.apiUrl}/api/v1/worker-actions/dequeue`,
+      {
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
+  async heartbeatWorker(body: WorkerApiHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkerApiHeartbeatResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/heartbeat`,
@@ -70,19 +84,22 @@ export class WorkerHttpClient {
     );
   }
 
-  async dequeue() {
+  async heartbeatRun(runId: string, snapshotId: string, body: WorkerApiRunHeartbeatRequestBody) {
     return wrapZodFetch(
-      WorkerApiDequeueResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/dequeue`,
+      WorkerApiRunHeartbeatResponseBody,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
       {
+        method: "POST",
         headers: {
           ...this.defaultHeaders,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify(body),
       }
     );
   }
 
-  async startRun(runId: string, snapshotId: string) {
+  async startRunAttempt(runId: string, snapshotId: string) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
@@ -95,7 +112,7 @@ export class WorkerHttpClient {
     );
   }
 
-  async completeRun(
+  async completeRunAttempt(
     runId: string,
     snapshotId: string,
     body: WorkerApiRunAttemptCompleteRequestBody

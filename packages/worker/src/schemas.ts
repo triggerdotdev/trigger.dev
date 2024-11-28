@@ -38,6 +38,17 @@ export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectRespon
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;
 
+export const WorkerApiRunHeartbeatRequestBody = z.object({
+  cpu: z.number(),
+  memory: z.number(),
+});
+export type WorkerApiRunHeartbeatRequestBody = z.infer<typeof WorkerApiRunHeartbeatRequestBody>;
+
+export const WorkerApiRunHeartbeatResponseBody = z.object({
+  ok: z.literal(true),
+});
+export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeartbeatResponseBody>;
+
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string()),
@@ -62,10 +73,7 @@ export type WorkerApiRunAttemptCompleteResponseBody = z.infer<
 >;
 
 // Workload
-export const WorkloadHeartbeatRequestBody = z.object({
-  cpu: z.number(),
-  memory: z.number(),
-});
+export const WorkloadHeartbeatRequestBody = WorkerApiRunHeartbeatRequestBody;
 export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatRequestBody>;
 
 export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
