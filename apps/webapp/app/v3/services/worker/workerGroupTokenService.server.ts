@@ -15,7 +15,6 @@ import {
   CompleteRunAttemptResult,
   StartRunAttemptResult,
   ExecutionResult,
-  ProdTaskRunExecutionPayload,
   MachinePreset,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
