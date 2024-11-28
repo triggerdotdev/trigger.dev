@@ -87,7 +87,7 @@ export class WorkerHttpClient {
   async heartbeatRun(runId: string, snapshotId: string, body: WorkerApiRunHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkerApiRunHeartbeatResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
       {
         method: "POST",
         headers: {
