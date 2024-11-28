@@ -459,8 +459,6 @@ function V3ProjectSideMenu({
   project: SideMenuProject;
   organization: MatchedOrganization;
 }) {
-  const { alertsEnabled } = useFeatures();
-
   return (
     <>
       <SideMenuHeader title={"Project"} />
@@ -520,15 +518,13 @@ function V3ProjectSideMenu({
         to={v3DeploymentsPath(organization, project)}
         data-action="deployments"
       />
-      {alertsEnabled && (
-        <SideMenuItem
-          name="Alerts"
-          icon={BellAlertIcon}
-          activeIconColor="text-red-500"
-          to={v3ProjectAlertsPath(organization, project)}
-          data-action="alerts"
-        />
-      )}
+      <SideMenuItem
+        name="Alerts"
+        icon={BellAlertIcon}
+        activeIconColor="text-red-500"
+        to={v3ProjectAlertsPath(organization, project)}
+        data-action="alerts"
+      />
       <SideMenuItem
         name="Concurrency limits"
         icon={RectangleStackIcon}
