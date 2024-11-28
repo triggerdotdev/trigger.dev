@@ -243,7 +243,7 @@ export class EventRepository {
       eventId: event.id,
     });
 
-    await this.insert({
+    const completedEvent = {
       ...omit(event, "id"),
       isPartial: false,
       isError: options?.attributes.isError ?? false,
@@ -263,7 +263,11 @@ export class EventRepository {
           : "application/json",
       payload: event.payload as Attributes,
       payloadType: event.payloadType,
-    });
+    } satisfies CreatableEvent;
+
+    await this.insert(completedEvent);
+
+    return completedEvent;
   }
 
   async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {

@@ -17,7 +17,6 @@ export type EventBusEvents = {
       };
     },
   ];
-  //todo eventRepository
   runExpired: [
     {
       time: Date;
@@ -28,7 +27,6 @@ export type EventBusEvents = {
       };
     },
   ];
-  //todo eventRepository
   runSucceeded: [
     {
       time: Date;
@@ -40,7 +38,6 @@ export type EventBusEvents = {
       };
     },
   ];
-  //todo eventRepository
   runFailed: [
     {
       time: Date;
@@ -67,7 +64,6 @@ export type EventBusEvents = {
       retryAt: Date;
     },
   ];
-  //todo eventRepository
   runCancelled: [
     {
       time: Date;
@@ -87,7 +83,6 @@ export type EventBusEvents = {
       };
     },
   ];
-  //todo advanced logging
   executionSnapshotCreated: [
     {
       time: Date;

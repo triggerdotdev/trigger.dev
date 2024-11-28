@@ -46,7 +46,7 @@ function createRunEngine() {
 
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
     try {
-      await eventRepository.completeEvent(run.spanId, {
+      const completedEvent = await eventRepository.completeEvent(run.spanId, {
         endTime: time,
         attributes: {
           isError: false,
@@ -59,10 +59,19 @@ function createRunEngine() {
           outputType: run.outputType,
         },
       });
+
+      if (!completedEvent) {
+        logger.error("[runFailed] Failed to complete event for unknown reason", {
+          runId: run.id,
+          spanId: run.spanId,
+        });
+        return;
+      }
     } catch (error) {
       logger.error("[runSucceeded] Failed to complete event", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
+        spanId: run.spanId,
       });
     }
   });
@@ -72,7 +81,7 @@ function createRunEngine() {
       const sanitizedError = sanitizeError(run.error);
       const exception = createExceptionPropertiesFromError(sanitizedError);
 
-      await eventRepository.completeEvent(run.spanId, {
+      const completedEvent = await eventRepository.completeEvent(run.spanId, {
         endTime: time,
         attributes: {
           isError: true,
@@ -80,17 +89,104 @@ function createRunEngine() {
         events: [
           {
             name: "exception",
-            time: time,
+            time,
             properties: {
               exception,
             },
           },
         ],
       });
+
+      if (!completedEvent) {
+        logger.error("[runFailed] Failed to complete event for unknown reason", {
+          runId: run.id,
+          spanId: run.spanId,
+        });
+        return;
+      }
+
+      const inProgressEvents = await eventRepository.queryIncompleteEvents({
+        runId: completedEvent?.runId,
+      });
+
+      await Promise.all(
+        inProgressEvents.map((event) => {
+          try {
+            const completedEvent = eventRepository.completeEvent(event.spanId, {
+              endTime: time,
+              attributes: {
+                isError: true,
+              },
+              events: [
+                {
+                  name: "exception",
+                  time,
+                  properties: {
+                    exception,
+                  },
+                },
+              ],
+            });
+
+            if (!completedEvent) {
+              logger.error("[runFailed] Failed to complete in-progress event for unknown reason", {
+                runId: run.id,
+                spanId: run.spanId,
+                eventId: event.id,
+              });
+              return;
+            }
+          } catch (error) {
+            logger.error("[runFailed] Failed to complete in-progress event", {
+              error: error instanceof Error ? error.message : error,
+              runId: run.id,
+              spanId: run.spanId,
+              eventId: event.id,
+            });
+          }
+        })
+      );
     } catch (error) {
       logger.error("[runFailed] Failed to complete event", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
+        spanId: run.spanId,
+      });
+    }
+  });
+
+  engine.eventBus.on("runExpired", async ({ time, run }) => {
+    try {
+      const completedEvent = await eventRepository.completeEvent(run.spanId, {
+        endTime: time,
+        attributes: {
+          isError: true,
+        },
+        events: [
+          {
+            name: "exception",
+            time,
+            properties: {
+              exception: {
+                message: `Run expired because the TTL (${run.ttl}) was reached`,
+              },
+            },
+          },
+        ],
+      });
+
+      if (!completedEvent) {
+        logger.error("[runFailed] Failed to complete event for unknown reason", {
+          runId: run.id,
+          spanId: run.spanId,
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error("[runExpired] Failed to complete event", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+        spanId: run.spanId,
       });
     }
   });
@@ -111,6 +207,7 @@ function createRunEngine() {
       logger.error("[runCancelled] Failed to cancel event", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
+        spanId: run.spanId,
       });
     }
   });
