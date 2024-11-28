@@ -1023,7 +1023,7 @@ function ScheduleIdDropdown({
       >
         <div className="flex flex-col gap-4 p-3">
           <div className="flex flex-col gap-1">
-            <Label>Batch ID</Label>
+            <Label>Schedule ID</Label>
             <Input
               placeholder="sched_"
               value={scheduleId ?? ""}
