@@ -45,6 +45,7 @@ import {
   RunStreamCallback,
   RunSubscription,
   TaskRunShape,
+  RealtimeRun,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -88,7 +89,14 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type { ApiRequestOptions };
-export type { RunShape, AnyRunShape, TaskRunShape, RunStreamCallback, RunSubscription };
+export type {
+  RunShape,
+  AnyRunShape,
+  TaskRunShape,
+  RealtimeRun,
+  RunStreamCallback,
+  RunSubscription,
+};
 
 /**
  * Trigger.dev v3 API client
@@ -182,6 +190,15 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ response, data }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -594,14 +611,19 @@ export class ApiClient {
     );
   }
 
-  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string) {
+  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string, options?: { signal?: AbortSignal }) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
       closeOnComplete: true,
       headers: this.#getRealtimeHeaders(),
+      client: this,
+      signal: options?.signal,
     });
   }
 
-  subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(tag: string | string[]) {
+  subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
+    tag: string | string[],
+    options?: { signal?: AbortSignal }
+  ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
     });
@@ -611,14 +633,21 @@ export class ApiClient {
       {
         closeOnComplete: false,
         headers: this.#getRealtimeHeaders(),
+        client: this,
+        signal: options?.signal,
       }
     );
   }
 
-  subscribeToBatch<TRunTypes extends AnyRunTypes>(batchId: string) {
+  subscribeToBatch<TRunTypes extends AnyRunTypes>(
+    batchId: string,
+    options?: { signal?: AbortSignal }
+  ) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
       closeOnComplete: false,
       headers: this.#getRealtimeHeaders(),
+      client: this,
+      signal: options?.signal,
     });
   }
 
@@ -648,6 +677,10 @@ export class ApiClient {
       if (spanParentAsLink) {
         headers["x-trigger-span-parent-as-link"] = "1";
       }
+    }
+
+    if (typeof window !== "undefined" && typeof window.document !== "undefined") {
+      headers["x-trigger-client"] = "browser";
     }
 
     return headers;

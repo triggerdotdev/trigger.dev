@@ -28,7 +28,7 @@ export function PaginationControls({
         disabledClassName="opacity-30 cursor-default"
       >
         <ButtonContent variant="minimal/small" LeadingIcon={ChevronLeftIcon}>
-          Previous
+          Prev
         </ButtonContent>
       </LinkDisabled>
 

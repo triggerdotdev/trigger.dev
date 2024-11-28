@@ -11,11 +11,13 @@ import {
   ApiRequestOptions,
   BatchTaskRunExecutionResult,
   conditionallyImportPacket,
+  convertToolParametersToSchema,
   createErrorTaskError,
   defaultRetryOptions,
   getSchemaParseFn,
   InitOutput,
   logger,
+  makeIdempotencyKey,
   parsePacket,
   Queue,
   QueueOptions,
@@ -29,7 +31,6 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
 } from "@trigger.dev/core/v3";
-import { IdempotencyKey, idempotencyKeys, isIdempotencyKey } from "./idempotencyKeys.js";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
 
@@ -43,6 +44,7 @@ import type {
   BatchRunHandleFromTypes,
   InferRunTypes,
   inferSchemaIn,
+  inferToolParameters,
   RetrieveRunResult,
   RunHandle,
   RunHandleFromTypes,
@@ -60,9 +62,14 @@ import type {
   TaskRunOptions,
   TaskRunResult,
   TaskSchema,
+  TaskWithSchema,
   TaskWithSchemaOptions,
+  TaskWithToolOptions,
+  ToolTask,
+  ToolTaskParameters,
   TriggerApiRequestOptions,
 } from "@trigger.dev/core/v3";
+import { z } from "zod";
 
 export type {
   AnyRunHandle,
@@ -111,6 +118,7 @@ export function createTask<
 
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
+    description: params.description,
     trigger: async (payload, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
@@ -183,6 +191,7 @@ export function createTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
+    description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
@@ -205,6 +214,31 @@ export function createTask<
   return task;
 }
 
+export function createToolTask<
+  TIdentifier extends string,
+  TParameters extends ToolTaskParameters,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+>(
+  params: TaskWithToolOptions<TIdentifier, TParameters, TOutput, TInitOutput>
+): ToolTask<TIdentifier, TParameters, TOutput> {
+  const task = createSchemaTask({
+    ...params,
+    schema: convertToolParametersToSchema(params.parameters),
+  });
+
+  return {
+    ...task,
+    tool: {
+      parameters: params.parameters,
+      description: params.description,
+      execute: async (args: inferToolParameters<TParameters>) => {
+        return task.triggerAndWait(args).unwrap();
+      },
+    },
+  };
+}
+
 export function createSchemaTask<
   TIdentifier extends string,
   TSchema extends TaskSchema | undefined = undefined,
@@ -212,7 +246,7 @@ export function createSchemaTask<
   TInitOutput extends InitOutput = any,
 >(
   params: TaskWithSchemaOptions<TIdentifier, TSchema, TOutput, TInitOutput>
-): Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> {
+): TaskWithSchema<TIdentifier, TSchema, TOutput> {
   const customQueue = params.queue
     ? queue({
         name: params.queue?.name ?? `task/${params.id}`,
@@ -224,8 +258,10 @@ export function createSchemaTask<
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
     : undefined;
 
-  const task: Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> = {
+  const task: TaskWithSchema<TIdentifier, TSchema, TOutput> = {
     id: params.id,
+    description: params.description,
+    schema: params.schema,
     trigger: async (payload, options, requestOptions) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
@@ -299,6 +335,7 @@ export function createSchemaTask<
 
   taskCatalog.registerTaskMetadata({
     id: params.id,
+    description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: params.machine,
@@ -497,7 +534,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
-        idempotencyKey: await makeKey(options?.idempotencyKey),
+        idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         delay: options?.delay,
         ttl: options?.ttl,
         tags: options?.tags,
@@ -560,7 +597,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeKey(item.options?.idempotencyKey),
+              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
@@ -630,7 +667,7 @@ async function triggerAndWait_internal<TPayload, TOutput>(
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
-            idempotencyKey: await makeKey(options?.idempotencyKey),
+            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -727,7 +764,7 @@ async function batchTriggerAndWait_internal<TPayload, TOutput>(
                   concurrencyKey: item.options?.concurrencyKey,
                   test: taskContext.ctx?.run.isTest,
                   payloadType: payloadPacket.dataType,
-                  idempotencyKey: await makeKey(item.options?.idempotencyKey),
+                  idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
                   delay: item.options?.delay,
                   ttl: item.options?.ttl,
                   tags: item.options?.tags,
@@ -891,18 +928,4 @@ async function handleTaskRunExecutionResult<TOutput>(
       error: createErrorTaskError(execution.error),
     };
   }
-}
-
-async function makeKey(
-  idempotencyKey?: IdempotencyKey | string | string[]
-): Promise<IdempotencyKey | undefined> {
-  if (!idempotencyKey) {
-    return;
-  }
-
-  if (isIdempotencyKey(idempotencyKey)) {
-    return idempotencyKey;
-  }
-
-  return await idempotencyKeys.create(idempotencyKey, { scope: "global" });
 }

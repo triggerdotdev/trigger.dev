@@ -676,6 +676,14 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
       key: "OTEL_EXPORTER_OTLP_ENDPOINT",
       value: env.DEV_OTEL_EXPORTER_OTLP_ENDPOINT ?? env.APP_ORIGIN,
     },
+    {
+      key: "TRIGGER_API_URL",
+      value: env.API_ORIGIN ?? env.APP_ORIGIN,
+    },
+    {
+      key: "TRIGGER_STREAM_URL",
+      value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
+    },
   ];
 
   if (env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1") {
@@ -733,6 +741,10 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
     {
       key: "TRIGGER_API_URL",
       value: env.API_ORIGIN ?? env.APP_ORIGIN,
+    },
+    {
+      key: "TRIGGER_STREAM_URL",
+      value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
     {
       key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",

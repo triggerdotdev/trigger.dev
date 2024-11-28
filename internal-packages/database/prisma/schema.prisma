@@ -1628,6 +1628,8 @@ model BackgroundWorkerTask {
   id   String @id @default(cuid())
   slug String
 
+  description String?
+
   friendlyId String @unique
 
   filePath   String

@@ -8,8 +8,8 @@ import type {
   RescheduleRunRequestBody,
   RetrieveRunResult,
   RunShape,
+  RealtimeRun,
   RunSubscription,
-  SubscribeToRunsQueryParams,
   TaskRunShape,
 } from "@trigger.dev/core/v3";
 import {
@@ -29,7 +29,14 @@ import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerializ
 import { AnyRunHandle, AnyTask } from "./shared.js";
 import { tracer } from "./tracer.js";
 
-export type { AnyRetrieveRunResult, AnyRunShape, RetrieveRunResult, RunShape, TaskRunShape };
+export type {
+  AnyRetrieveRunResult,
+  AnyRunShape,
+  RetrieveRunResult,
+  RunShape,
+  TaskRunShape,
+  RealtimeRun,
+};
 
 export const runs = {
   replay: replayRun,

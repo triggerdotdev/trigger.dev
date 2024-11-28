@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),

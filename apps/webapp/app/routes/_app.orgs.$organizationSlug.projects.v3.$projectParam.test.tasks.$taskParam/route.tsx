@@ -226,7 +226,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       <input type="hidden" name="triggerSource" value={"STANDARD"} />
       <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel id="test-task-main" min="100px" default="60%">
-          <div className="h-full bg-charcoal-900">
+          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
             <TabContainer className="px-3 pt-2">
               <TabButton
                 isActive={!tab || tab === "payload"}
@@ -248,7 +248,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                 Metadata
               </TabButton>
             </TabContainer>
-            <div>
+            <div className="flex-1 overflow-hidden">
               <JSONEditor
                 defaultValue={defaultPayloadJson}
                 readOnly={false}
@@ -265,11 +265,9 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                   }
                 }}
                 height="100%"
-                min-height="100%"
-                max-height="100%"
                 autoFocus={!tab || tab === "payload"}
                 placeholder="{ }"
-                className={cn("h-full", tab === "metadata" && "hidden")}
+                className={cn("h-full overflow-auto", tab === "metadata" && "hidden")}
               />
               <JSONEditor
                 defaultValue={defaultMetadataJson}
@@ -287,11 +285,9 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
                   }
                 }}
                 height="100%"
-                min-height="100%"
-                max-height="100%"
                 autoFocus={tab === "metadata"}
                 placeholder=""
-                className={cn("h-full", tab !== "metadata" && "hidden")}
+                className={cn("h-full overflow-auto", tab !== "metadata" && "hidden")}
               />
             </div>
           </div>

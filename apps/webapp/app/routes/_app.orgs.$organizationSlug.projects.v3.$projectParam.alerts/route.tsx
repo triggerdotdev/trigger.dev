@@ -171,15 +171,10 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div
-          className={cn(
-            "grid max-h-full min-h-full",
-            alertChannels.length === 0 ? "grid-rows-[1fr_auto]" : "grid-rows-[auto_1fr_auto]"
-          )}
-        >
-          {alertChannels.length > 0 && !requiresUpgrade && (
-            <div className="flex h-fit items-end justify-between p-2 pl-3">
-              <Header2 className="">Project alerts</Header2>
+        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
+          <div className="flex h-fit items-end justify-between p-2 pl-3">
+            <Header2 className="">Project alerts</Header2>
+            {alertChannels.length > 0 && !requiresUpgrade && (
               <LinkButton
                 to={v3NewProjectAlertPath(organization, project)}
                 variant="primary/small"
@@ -188,9 +183,9 @@ export default function Page() {
               >
                 New alert
               </LinkButton>
-            </div>
-          )}
-          <Table containerClassName={cn(alertChannels.length === 0 && "border-t-0")}>
+            )}
+          </div>
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
@@ -234,18 +229,19 @@ export default function Page() {
                     <TableCellMenu
                       isSticky
                       popoverContent={
-                        alertChannel.enabled ? (
-                          <DisableAlertChannelButton id={alertChannel.id} />
-                        ) : (
-                          <EnableAlertChannelButton id={alertChannel.id} />
-                        )
+                        <>
+                          {alertChannel.enabled ? (
+                            <DisableAlertChannelButton id={alertChannel.id} />
+                          ) : (
+                            <EnableAlertChannelButton id={alertChannel.id} />
+                          )}
+                          <DeleteAlertChannelButton id={alertChannel.id} />
+                        </>
                       }
                       className={
                         alertChannel.enabled ? "" : "group-hover/table-row:bg-charcoal-800/50"
                       }
-                    >
-                      <DeleteAlertChannelButton id={alertChannel.id} />
-                    </TableCellMenu>
+                    />
                   </TableRow>
                 ))
               ) : (
@@ -356,6 +352,7 @@ function DeleteAlertChannelButton(props: { id: string }) {
         name="action"
         value="delete"
         fullWidth
+        textAlignLeft
         type="submit"
         variant="small-menu-item"
         LeadingIcon={TrashIcon}

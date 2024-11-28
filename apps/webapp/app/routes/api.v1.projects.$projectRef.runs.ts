@@ -5,7 +5,7 @@ import {
   ApiRunListPresenter,
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
-import { createLoaderPATApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),

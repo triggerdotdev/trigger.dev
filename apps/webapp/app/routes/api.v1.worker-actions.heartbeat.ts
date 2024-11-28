@@ -3,7 +3,7 @@ import {
   WorkerApiConnectResponseBody,
   WorkerApiHeartbeatRequestBody,
 } from "@trigger.dev/worker/schemas";
-import { createActionWorkerApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(
   {

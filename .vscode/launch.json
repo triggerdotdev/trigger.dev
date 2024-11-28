@@ -14,6 +14,15 @@
       "sourceMaps": true
     },
     {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug realtimeStreams.test.ts",
+      "command": "pnpm run test -t RealtimeStreams",
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}/apps/webapp",
+      "sourceMaps": true
+    },
+    {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",
@@ -34,6 +43,14 @@
       "name": "Debug V3 Dev CLI",
       "command": "pnpm exec trigger dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug Dev Next.js Realtime",
+      "command": "pnpm exec trigger dev",
+      "cwd": "${workspaceFolder}/references/nextjs-realtime",
       "sourceMaps": true
     },
     {

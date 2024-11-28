@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z
@@ -23,6 +23,11 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request }) => {
-    return realtimeClient.streamRuns(request.url, authentication.environment, searchParams);
+    return realtimeClient.streamRuns(
+      request.url,
+      authentication.environment,
+      searchParams,
+      request.headers.get("x-trigger-electric-version") ?? undefined
+    );
   }
 );

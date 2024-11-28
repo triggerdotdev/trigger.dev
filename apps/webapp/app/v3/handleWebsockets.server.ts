@@ -51,7 +51,7 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
 
   const authenticationResult = await authenticateApiKey(apiKey);
 
-  if (!authenticationResult) {
+  if (!authenticationResult || !authenticationResult.ok) {
     ws.close(1008, "Invalid API key");
     return;
   }

@@ -77,7 +77,7 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
     // Generate a unique request ID for each request
     const requestId = nanoid();
 
-    runWithHttpContext({ requestId, path: req.url, host: req.hostname }, next);
+    runWithHttpContext({ requestId, path: req.url, host: req.hostname, method: req.method }, next);
   });
 
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {

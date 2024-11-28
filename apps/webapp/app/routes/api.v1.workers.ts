@@ -7,7 +7,7 @@ import {
 import {
   createActionApiRoute,
   createLoaderApiRoute,
-} from "~/services/routeBuiilders/apiBuilder.server";
+} from "~/services/routeBuilders/apiBuilder.server";
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 
 export const loader = createLoaderApiRoute(

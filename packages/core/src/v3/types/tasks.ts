@@ -1,7 +1,8 @@
+import type { Schema as AISchema } from "ai";
+import { z } from "zod";
 import { SerializableJson } from "../../schemas/json.js";
+import { TriggerApiRequestOptions } from "../apiClient/index.js";
 import { RunTags } from "../schemas/api.js";
-import { QueueOptions } from "../schemas/schemas.js";
-import { IdempotencyKey } from "./idempotencyKeys.js";
 import {
   MachineCpu,
   MachineMemory,
@@ -9,9 +10,11 @@ import {
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
+import { QueueOptions } from "../schemas/schemas.js";
+import { IdempotencyKey } from "./idempotencyKeys.js";
+import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import { Prettify } from "./utils.js";
-import { AnySchemaParseFn, inferSchemaOut, Schema } from "./schemas.js";
-import { TriggerApiRequestOptions } from "../apiClient/index.js";
+import { inferToolParameters, ToolTaskParameters } from "./tools.js";
 
 type RequireOne<T, K extends keyof T> = {
   [X in Exclude<keyof T, K>]?: T[X];
@@ -149,6 +152,8 @@ type CommonTaskOptions<
 > = {
   /** An id for your task. This must be unique inside your project and not change between versions.  */
   id: TIdentifier;
+
+  description?: string;
 
   /** The retry settings when an uncaught error is thrown.
        *
@@ -337,6 +342,15 @@ export type TaskWithSchemaOptions<
   schema?: TSchema;
 };
 
+export type TaskWithToolOptions<
+  TIdentifier extends string,
+  TParameters extends ToolTaskParameters,
+  TOutput = unknown,
+  TInitOutput extends InitOutput = any,
+> = CommonTaskOptions<TIdentifier, inferToolParameters<TParameters>, TOutput, TInitOutput> & {
+  parameters: TParameters;
+};
+
 declare const __output: unique symbol;
 declare const __payload: unique symbol;
 type BrandRun<P, O> = { [__output]: O; [__payload]: P };
@@ -404,15 +418,16 @@ export type BatchResult<TOutput = any> = {
   runs: TaskRunResult<TOutput>[];
 };
 
-export type BatchItem<TInput> = TInput extends void
-  ? { payload?: TInput; options?: TaskRunOptions }
-  : { payload: TInput; options?: TaskRunOptions };
+export type BatchItem<TInput> = { payload: TInput; options?: TaskRunOptions };
 
 export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**
    * The id of the task.
    */
   id: TIdentifier;
+
+  description?: string;
+
   /**
    * Trigger a task with the given payload, and continue without waiting for the result. If you want to wait for the result, use `triggerAndWait`. Returns the id of the triggered task run.
    * @param payload
@@ -477,6 +492,26 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * ```
    */
   batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
+}
+
+export interface TaskWithSchema<
+  TIdentifier extends string,
+  TSchema extends TaskSchema | undefined = undefined,
+  TOutput = any,
+> extends Task<TIdentifier, inferSchemaIn<TSchema>, TOutput> {
+  schema?: TSchema;
+}
+
+export interface ToolTask<
+  TIdentifier extends string,
+  TParameters extends ToolTaskParameters,
+  TOutput = any,
+> extends Task<TIdentifier, inferToolParameters<TParameters>, TOutput> {
+  tool: {
+    parameters: TParameters;
+    description?: string;
+    execute: (args: inferToolParameters<TParameters>) => Promise<TOutput>;
+  };
 }
 
 export type AnyTask = Task<string, any, any>;

@@ -401,20 +401,40 @@ export class TriggerTaskServiceV1 extends BaseService {
                   },
                 });
 
+                const existingConcurrencyLimit =
+                  typeof taskQueue?.concurrencyLimit === "number"
+                    ? taskQueue.concurrencyLimit
+                    : undefined;
+
                 if (taskQueue) {
-                  taskQueue = await tx.taskQueue.update({
-                    where: {
-                      id: taskQueue.id,
-                    },
-                    data: {
-                      concurrencyLimit,
-                      rateLimit: body.options.queue.rateLimit,
-                    },
-                  });
+                  if (existingConcurrencyLimit !== concurrencyLimit) {
+                    taskQueue = await tx.taskQueue.update({
+                      where: {
+                        id: taskQueue.id,
+                      },
+                      data: {
+                        concurrencyLimit:
+                          typeof concurrencyLimit === "number" ? concurrencyLimit : null,
+                        rateLimit: body.options.queue.rateLimit,
+                      },
+                    });
+
+                    if (typeof taskQueue.concurrencyLimit === "number") {
+                      await marqs?.updateQueueConcurrencyLimits(
+                        environment,
+                        taskQueue.name,
+                        taskQueue.concurrencyLimit
+                      );
+                    } else {
+                      await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                    }
+                  }
                 } else {
+                  const queueId = generateFriendlyId("queue");
+
                   taskQueue = await tx.taskQueue.create({
                     data: {
-                      friendlyId: generateFriendlyId("queue"),
+                      friendlyId: queueId,
                       name: queueName,
                       concurrencyLimit,
                       runtimeEnvironmentId: environment.id,
@@ -423,16 +443,14 @@ export class TriggerTaskServiceV1 extends BaseService {
                       type: "NAMED",
                     },
                   });
-                }
 
-                if (typeof taskQueue.concurrencyLimit === "number") {
-                  await marqs?.updateQueueConcurrencyLimits(
-                    environment,
-                    taskQueue.name,
-                    taskQueue.concurrencyLimit
-                  );
-                } else {
-                  await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                  if (typeof taskQueue.concurrencyLimit === "number") {
+                    await marqs?.updateQueueConcurrencyLimits(
+                      environment,
+                      taskQueue.name,
+                      taskQueue.concurrencyLimit
+                    );
+                  }
                 }
               }
 

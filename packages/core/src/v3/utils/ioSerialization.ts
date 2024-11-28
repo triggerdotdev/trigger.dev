@@ -7,6 +7,7 @@ import { apiClientManager } from "../apiClientManager-api.js";
 import { zodfetch } from "../zodfetch.js";
 import { z } from "zod";
 import type { RetryOptions } from "../schemas/index.js";
+import { ApiClient } from "../apiClient/index.js";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -36,8 +37,11 @@ export async function parsePacket(value: IOPacket): Promise<any> {
   }
 }
 
-export async function conditionallyImportAndParsePacket(value: IOPacket): Promise<any> {
-  const importedPacket = await conditionallyImportPacket(value);
+export async function conditionallyImportAndParsePacket(
+  value: IOPacket,
+  client?: ApiClient
+): Promise<any> {
+  const importedPacket = await conditionallyImportPacket(value, undefined, client);
 
   return await parsePacket(importedPacket);
 }
@@ -159,19 +163,20 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
 
 export async function conditionallyImportPacket(
   packet: IOPacket,
-  tracer?: TriggerTracer
+  tracer?: TriggerTracer,
+  client?: ApiClient
 ): Promise<IOPacket> {
   if (packet.dataType !== "application/store") {
     return packet;
   }
 
   if (!tracer) {
-    return await importPacket(packet);
+    return await importPacket(packet, undefined, client);
   } else {
     const result = await tracer.startActiveSpan(
       "store.downloadPayload",
       async (span) => {
-        return await importPacket(packet, span);
+        return await importPacket(packet, span, client);
       },
       {
         attributes: {
@@ -209,16 +214,18 @@ export async function resolvePresignedPacketUrl(
   }
 }
 
-async function importPacket(packet: IOPacket, span?: Span): Promise<IOPacket> {
+async function importPacket(packet: IOPacket, span?: Span, client?: ApiClient): Promise<IOPacket> {
   if (!packet.data) {
     return packet;
   }
 
-  if (!apiClientManager.client) {
+  const $client = client ?? apiClientManager.client;
+
+  if (!$client) {
     return packet;
   }
 
-  const presignedResponse = await apiClientManager.client.getPayloadUrl(packet.data);
+  const presignedResponse = await $client.getPayloadUrl(packet.data);
 
   const response = await zodfetch(z.any(), presignedResponse.presignedUrl, undefined, {
     retry: ioRetryOptions,
@@ -264,7 +271,7 @@ export async function createPacketAttributes(
 
       try {
         const parsed = parse(packet.data) as any;
-        const jsonified = JSON.parse(JSON.stringify(parsed, safeReplacer));
+        const jsonified = JSON.parse(JSON.stringify(parsed, makeSafeReplacer()));
 
         const result = {
           ...flattenAttributes(jsonified, dataKey),
@@ -312,7 +319,7 @@ export async function createPacketAttributesAsJson(
       const { deserialize } = await loadSuperJSON();
 
       const deserialized = deserialize(data) as any;
-      const jsonify = safeJsonParse(JSON.stringify(deserialized, safeReplacer));
+      const jsonify = safeJsonParse(JSON.stringify(deserialized, makeSafeReplacer()));
 
       return imposeAttributeLimits(flattenAttributes(jsonify, undefined));
     case "application/store":
@@ -322,7 +329,11 @@ export async function createPacketAttributesAsJson(
   }
 }
 
-export async function prettyPrintPacket(rawData: any, dataType?: string): Promise<string> {
+export async function prettyPrintPacket(
+  rawData: any,
+  dataType?: string,
+  options?: ReplacerOptions
+): Promise<string> {
   if (rawData === undefined) {
     return "";
   }
@@ -340,42 +351,53 @@ export async function prettyPrintPacket(rawData: any, dataType?: string): Promis
     if (typeof rawData === "string") {
       rawData = safeJsonParse(rawData);
     }
-    return JSON.stringify(rawData, safeReplacer, 2);
+    return JSON.stringify(rawData, makeSafeReplacer(options), 2);
   }
 
   if (typeof rawData === "string") {
     return rawData;
   }
 
-  return JSON.stringify(rawData, safeReplacer, 2);
+  return JSON.stringify(rawData, makeSafeReplacer(options), 2);
 }
 
-function safeReplacer(key: string, value: any) {
-  // If it is a BigInt
-  if (typeof value === "bigint") {
-    return value.toString(); // Convert to string
-  }
+interface ReplacerOptions {
+  filteredKeys?: string[];
+}
 
-  // if it is a Regex
-  if (value instanceof RegExp) {
-    return value.toString(); // Convert to string
-  }
+function makeSafeReplacer(options?: ReplacerOptions) {
+  return function replacer(key: string, value: any) {
+    // Check if the key should be filtered out
+    if (options?.filteredKeys?.includes(key)) {
+      return undefined;
+    }
 
-  // if it is a Set
-  if (value instanceof Set) {
-    return Array.from(value); // Convert to array
-  }
+    // If it is a BigInt
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
 
-  // if it is a Map, convert it to an object
-  if (value instanceof Map) {
-    const obj: Record<string, any> = {};
-    value.forEach((v, k) => {
-      obj[k] = v;
-    });
-    return obj;
-  }
+    // if it is a Regex
+    if (value instanceof RegExp) {
+      return value.toString();
+    }
 
-  return value; // Otherwise return the value as is
+    // if it is a Set
+    if (value instanceof Set) {
+      return Array.from(value);
+    }
+
+    // if it is a Map, convert it to an object
+    if (value instanceof Map) {
+      const obj: Record<string, any> = {};
+      value.forEach((v, k) => {
+        obj[k] = v;
+      });
+      return obj;
+    }
+
+    return value;
+  };
 }
 
 function getPacketExtension(outputType: string): string {
@@ -396,7 +418,7 @@ async function loadSuperJSON() {
 
   superjson.registerCustom<Buffer, number[]>(
     {
-      isApplicable: (v): v is Buffer => v instanceof Buffer,
+      isApplicable: (v): v is Buffer => typeof Buffer === "function" && Buffer.isBuffer(v),
       serialize: (v) => [...v],
       deserialize: (v) => Buffer.from(v),
     },

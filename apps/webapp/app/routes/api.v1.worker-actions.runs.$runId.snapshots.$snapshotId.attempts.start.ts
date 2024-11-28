@@ -1,7 +1,7 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import { WorkerApiRunAttemptStartResponseBody } from "@trigger.dev/worker/schemas";
 import { z } from "zod";
-import { createActionWorkerApiRoute } from "~/services/routeBuiilders/apiBuilder.server";
+import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(
   {

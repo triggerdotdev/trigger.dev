@@ -184,7 +184,7 @@ export default function Page() {
                     autoFocus
                   />
                 </div>
-                <Table containerClassName="max-h-full mb-[2.5rem]">
+                <Table containerClassName="max-h-full pb-[2.5rem]">
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Task ID</TableHeaderCell>
@@ -391,43 +391,45 @@ function UserHasNoTasks() {
   const [open, setOpen] = useState(false);
 
   return (
-    <Callout
-      variant="info"
-      cta={
-        <Button
-          variant="tertiary/small"
-          TrailingIcon={open ? ChevronUpIcon : ChevronDownIcon}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? "Close" : "Setup your dev environment"}
-        </Button>
-      }
-    >
-      {open ? (
-        <div>
-          <Header2 spacing>Get setup in 3 minutes</Header2>
+    <div className="px-2 pt-2">
+      <Callout
+        variant="info"
+        cta={
+          <Button
+            variant="tertiary/small"
+            TrailingIcon={open ? ChevronUpIcon : ChevronDownIcon}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Close" : "Setup your dev environment"}
+          </Button>
+        }
+      >
+        {open ? (
+          <div>
+            <Header2 spacing>Get setup in 3 minutes</Header2>
 
-          <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
-          <StepContentContainer>
-            <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
-          </StepContentContainer>
-          <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
-          <StepContentContainer>
-            <TriggerLoginStepV3 />
-          </StepContentContainer>
-          <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
-          <StepContentContainer>
-            <TriggerDevStepV3 />
-          </StepContentContainer>
-          <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
-          <StepContentContainer>
-            <Paragraph>This page will automatically refresh.</Paragraph>
-          </StepContentContainer>
-        </div>
-      ) : (
-        "Your DEV environment isn't setup yet."
-      )}
-    </Callout>
+            <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
+            <StepContentContainer>
+              <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
+            </StepContentContainer>
+            <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
+            <StepContentContainer>
+              <TriggerLoginStepV3 />
+            </StepContentContainer>
+            <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
+            <StepContentContainer>
+              <TriggerDevStepV3 />
+            </StepContentContainer>
+            <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
+            <StepContentContainer>
+              <Paragraph>This page will automatically refresh.</Paragraph>
+            </StepContentContainer>
+          </div>
+        ) : (
+          "Your DEV environment isn't setup yet."
+        )}
+      </Callout>
+    </div>
   );
 }
 

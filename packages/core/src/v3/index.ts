@@ -12,6 +12,7 @@ export * from "./task-context-api.js";
 export * from "./apiClientManager-api.js";
 export * from "./usage-api.js";
 export * from "./run-metadata-api.js";
+export * from "./wait-until-api.js";
 export * from "./timeout-api.js";
 export * from "./schemas/index.js";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
@@ -19,6 +20,7 @@ export * from "./task-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
+export * from "./idempotencyKeys.js";
 export {
   formatDuration,
   formatDurationInDays,

@@ -37,18 +37,29 @@ export class RealtimeClient {
     this.#registerCommands();
   }
 
-  async streamRun(url: URL | string, environment: RealtimeEnvironment, runId: string) {
-    return this.#streamRunsWhere(url, environment, `id='${runId}'`);
+  async streamRun(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    runId: string,
+    clientVersion?: string
+  ) {
+    return this.#streamRunsWhere(url, environment, `id='${runId}'`, clientVersion);
   }
 
-  async streamBatch(url: URL | string, environment: RealtimeEnvironment, batchId: string) {
-    return this.#streamRunsWhere(url, environment, `"batchId"='${batchId}'`);
+  async streamBatch(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    batchId: string,
+    clientVersion?: string
+  ) {
+    return this.#streamRunsWhere(url, environment, `"batchId"='${batchId}'`, clientVersion);
   }
 
   async streamRuns(
     url: URL | string,
     environment: RealtimeEnvironment,
-    params: RealtimeRunsParams
+    params: RealtimeRunsParams,
+    clientVersion?: string
   ) {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
@@ -58,54 +69,66 @@ export class RealtimeClient {
 
     const whereClause = whereClauses.join(" AND ");
 
-    return this.#streamRunsWhere(url, environment, whereClause);
+    return this.#streamRunsWhere(url, environment, whereClause, clientVersion);
   }
 
-  async #streamRunsWhere(url: URL | string, environment: RealtimeEnvironment, whereClause: string) {
-    const electricUrl = this.#constructElectricUrl(url, whereClause);
+  async #streamRunsWhere(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    whereClause: string,
+    clientVersion?: string
+  ) {
+    const electricUrl = this.#constructElectricUrl(url, whereClause, clientVersion);
 
-    return this.#performElectricRequest(electricUrl, environment);
+    return this.#performElectricRequest(electricUrl, environment, clientVersion);
   }
 
-  #constructElectricUrl(url: URL | string, whereClause: string): URL {
+  #constructElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
     const $url = new URL(url.toString());
 
-    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape/public."TaskRun"`);
+    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
 
     // Copy over all the url search params to the electric url
     $url.searchParams.forEach((value, key) => {
       electricUrl.searchParams.set(key, value);
     });
 
-    // const electricParams = ["shape_id", "live", "offset", "columns", "cursor"];
-
-    // electricParams.forEach((param) => {
-    //   if ($url.searchParams.has(param) && $url.searchParams.get(param)) {
-    //     electricUrl.searchParams.set(param, $url.searchParams.get(param)!);
-    //   }
-    // });
-
     electricUrl.searchParams.set("where", whereClause);
+    electricUrl.searchParams.set("table", 'public."TaskRun"');
+
+    if (!clientVersion) {
+      // If the client version is not provided, that means we're using an older client
+      // This means the client will be sending shape_id instead of handle
+      electricUrl.searchParams.set("handle", electricUrl.searchParams.get("shape_id") ?? "");
+    }
 
     return electricUrl;
   }
 
-  async #performElectricRequest(url: URL, environment: RealtimeEnvironment) {
+  async #performElectricRequest(
+    url: URL,
+    environment: RealtimeEnvironment,
+    clientVersion?: string
+  ) {
     const shapeId = extractShapeId(url);
 
     logger.debug("[realtimeClient] request", {
       url: url.toString(),
     });
 
+    const rewriteResponseHeaders: Record<string, string> = clientVersion
+      ? {}
+      : { "electric-handle": "electric-shape-id", "electric-offset": "electric-chunk-last-offset" };
+
     if (!shapeId) {
       // If the shapeId is not present, we're just getting the initial value
-      return longPollingFetch(url.toString());
+      return longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
     }
 
     const isLive = isLiveRequestUrl(url);
 
     if (!isLive) {
-      return longPollingFetch(url.toString());
+      return longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
     }
 
     const requestId = randomUUID();
@@ -147,7 +170,7 @@ export class RealtimeClient {
 
     try {
       // ... (rest of your existing code for the long polling request)
-      const response = await longPollingFetch(url.toString());
+      const response = await longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
 
       // Decrement the counter after the long polling request is complete
       await this.#decrementConcurrency(environment.id, requestId);
@@ -231,7 +254,7 @@ export class RealtimeClient {
 }
 
 function extractShapeId(url: URL) {
-  return url.searchParams.get("shape_id");
+  return url.searchParams.get("handle");
 }
 
 function isLiveRequestUrl(url: URL) {

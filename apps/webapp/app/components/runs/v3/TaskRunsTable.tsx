@@ -510,7 +510,7 @@ function RunActionsCell({ run, path }: { run: RunListItem; path: string }) {
                   />
                 </Dialog>
               }
-              content="Replay run"
+              content="Replay run…"
               side="left"
               disableHoverableContent
             />

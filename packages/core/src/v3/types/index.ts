@@ -5,6 +5,7 @@ import { Prettify } from "./utils.js";
 export * from "./utils.js";
 export * from "./tasks.js";
 export * from "./idempotencyKeys.js";
+export * from "./tools.js";
 
 type ResolveEnvironmentVariablesOptions = {
   variables: Record<string, string> | Array<{ name: string; value: string }>;

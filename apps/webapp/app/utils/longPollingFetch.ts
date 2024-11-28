@@ -6,7 +6,11 @@
 import { logger } from "~/services/logger.server";
 
 // Similar-ish problem to https://github.com/wintercg/fetch/issues/23
-export async function longPollingFetch(url: string, options?: RequestInit) {
+export async function longPollingFetch(
+  url: string,
+  options?: RequestInit,
+  rewriteResponseHeaders?: Record<string, string>
+) {
   try {
     let response = await fetch(url, options);
 
@@ -14,12 +18,32 @@ export async function longPollingFetch(url: string, options?: RequestInit) {
       const headers = new Headers(response.headers);
       headers.delete("content-encoding");
       headers.delete("content-length");
+
       response = new Response(response.body, {
         headers,
         status: response.status,
         statusText: response.statusText,
       });
     }
+
+    if (rewriteResponseHeaders) {
+      const headers = new Headers(response.headers);
+
+      for (const [fromKey, toKey] of Object.entries(rewriteResponseHeaders)) {
+        const value = headers.get(fromKey);
+        if (value) {
+          headers.set(toKey, value);
+          headers.delete(fromKey);
+        }
+      }
+
+      response = new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+
     return response;
   } catch (error) {
     if (error instanceof TypeError) {

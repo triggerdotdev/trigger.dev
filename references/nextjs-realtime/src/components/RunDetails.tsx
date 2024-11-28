@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { exampleTask } from "@/trigger/example";
-import type { RetrieveRunResult } from "@trigger.dev/sdk/v3";
+import type { TaskRunShape } from "@trigger.dev/sdk/v3";
 import { AlertTriangleIcon, CheckCheckIcon, XIcon } from "lucide-react";
 
 function formatDate(date: Date | undefined) {
@@ -17,7 +17,7 @@ function JsonDisplay({ data }: { data: any }) {
   );
 }
 
-export default function RunDetails({ record }: { record: RetrieveRunResult<typeof exampleTask> }) {
+export default function RunDetails({ record }: { record: TaskRunShape<typeof exampleTask> }) {
   return (
     <Card className="w-full max-w-4xl mx-auto bg-gray-800 border-gray-700 text-gray-200">
       <CardHeader>

@@ -23,6 +23,9 @@ export const exampleTask = schemaTask({
 
     metadata.set("status", { type: "finished", progress: 1.0 });
 
-    return { message: "All good here!" };
+    // Generate a return payload that is more than 128KB
+    const bigPayload = new Array(100000).fill("a".repeat(10)).join("");
+
+    return { message: bigPayload };
   },
 });

@@ -1,7 +1,22 @@
+import { json } from "@remix-run/server-runtime";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
 
-export async function validatePublicJwtKey(token: string) {
+export type ValidatePublicJwtKeySuccess = {
+  ok: true;
+  environment: AuthenticatedEnvironment;
+  claims: Record<string, unknown>;
+};
+
+export type ValidatePublicJwtKeyError = {
+  ok: false;
+  error: string;
+};
+
+export type ValidatePublicJwtKeyResult = ValidatePublicJwtKeySuccess | ValidatePublicJwtKeyError;
+
+export async function validatePublicJwtKey(token: string): Promise<ValidatePublicJwtKeyResult> {
   // Get the sub claim from the token
   // Use the sub claim to find the environment
   // Validate the token against the environment.apiKey
@@ -9,24 +24,46 @@ export async function validatePublicJwtKey(token: string) {
   const sub = extractJWTSub(token);
 
   if (!sub) {
-    return;
+    return { ok: false, error: "Invalid Public Access Token, missing subject." };
   }
 
   const environment = await findEnvironmentById(sub);
 
   if (!environment) {
-    return;
+    return { ok: false, error: "Invalid Public Access Token, environment not found." };
   }
 
-  const claims = await validateJWT(token, environment.apiKey);
+  const result = await validateJWT(token, environment.apiKey);
 
-  if (!claims) {
-    return;
+  if (!result.ok) {
+    switch (result.code) {
+      case "ERR_JWT_EXPIRED": {
+        return {
+          ok: false,
+          error:
+            "Public Access Token has expired. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+        };
+      }
+      case "ERR_JWT_CLAIM_INVALID": {
+        return {
+          ok: false,
+          error: `Public Access Token is invalid: ${result.error}. See https://trigger.dev/docs/frontend/overview#authentication for more information.`,
+        };
+      }
+      default: {
+        return {
+          ok: false,
+          error:
+            "Public Access Token is invalid. See https://trigger.dev/docs/frontend/overview#authentication for more information.",
+        };
+      }
+    }
   }
 
   return {
+    ok: true,
     environment,
-    claims,
+    claims: result.payload,
   };
 }
 

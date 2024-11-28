@@ -12,110 +12,183 @@ describe("checkAuthorization", () => {
   const publicJwtEntityNoPermissions: AuthorizationEntity = { type: "PUBLIC_JWT" };
 
   describe("PRIVATE entity", () => {
-    it("should always return true regardless of action or resource", () => {
-      expect(checkAuthorization(privateEntity, "read", { runs: "run_1234" })).toBe(true);
-      expect(checkAuthorization(privateEntity, "read", { tasks: ["task_1", "task_2"] })).toBe(true);
-      expect(checkAuthorization(privateEntity, "read", { tags: "nonexistent_tag" })).toBe(true);
+    it("should always return authorized regardless of action or resource", () => {
+      const result1 = checkAuthorization(privateEntity, "read", { runs: "run_1234" });
+      expect(result1.authorized).toBe(true);
+      expect(result1).not.toHaveProperty("reason");
+
+      const result2 = checkAuthorization(privateEntity, "read", { tasks: ["task_1", "task_2"] });
+      expect(result2.authorized).toBe(true);
+      expect(result2).not.toHaveProperty("reason");
+
+      const result3 = checkAuthorization(privateEntity, "read", { tags: "nonexistent_tag" });
+      expect(result3.authorized).toBe(true);
+      expect(result3).not.toHaveProperty("reason");
     });
   });
 
   describe("PUBLIC entity", () => {
-    it("should always return false regardless of action or resource", () => {
-      expect(checkAuthorization(publicEntity, "read", { runs: "run_1234" })).toBe(false);
-      expect(checkAuthorization(publicEntity, "read", { tasks: ["task_1", "task_2"] })).toBe(false);
-      expect(checkAuthorization(publicEntity, "read", { tags: "tag_5678" })).toBe(false);
+    it("should always return unauthorized with reason regardless of action or resource", () => {
+      const result1 = checkAuthorization(publicEntity, "read", { runs: "run_1234" });
+      expect(result1.authorized).toBe(false);
+      if (!result1.authorized) {
+        expect(result1.reason).toBe("PUBLIC type is deprecated and has no access");
+      }
+
+      const result2 = checkAuthorization(publicEntity, "read", { tasks: ["task_1", "task_2"] });
+      expect(result2.authorized).toBe(false);
+      if (!result2.authorized) {
+        expect(result2.reason).toBe("PUBLIC type is deprecated and has no access");
+      }
+
+      const result3 = checkAuthorization(publicEntity, "read", { tags: "tag_5678" });
+      expect(result3.authorized).toBe(false);
+      if (!result3.authorized) {
+        expect(result3.reason).toBe("PUBLIC type is deprecated and has no access");
+      }
     });
   });
 
   describe("PUBLIC_JWT entity with scope", () => {
-    it("should return true for specific resource scope", () => {
-      expect(checkAuthorization(publicJwtEntityWithPermissions, "read", { runs: "run_1234" })).toBe(
-        true
-      );
+    it("should return authorized for specific resource scope", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        runs: "run_1234",
+      });
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
 
-    it("should return false for unauthorized specific resources", () => {
-      expect(checkAuthorization(publicJwtEntityWithPermissions, "read", { runs: "run_5678" })).toBe(
-        false
-      );
+    it("should return unauthorized with reason for unauthorized specific resources", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        runs: "run_5678",
+      });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:runs:run_1234', 'read:tasks', 'read:tags:tag_5678'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
 
-    it("should return true for general resource type scope", () => {
-      expect(
-        checkAuthorization(publicJwtEntityWithPermissions, "read", { tasks: "task_1234" })
-      ).toBe(true);
-      expect(
-        checkAuthorization(publicJwtEntityWithPermissions, "read", {
-          tasks: ["task_5678", "task_9012"],
-        })
-      ).toBe(true);
+    it("should return authorized for general resource type scope", () => {
+      const result1 = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        tasks: "task_1234",
+      });
+      expect(result1.authorized).toBe(true);
+      expect(result1).not.toHaveProperty("reason");
+
+      const result2 = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        tasks: ["task_5678", "task_9012"],
+      });
+      expect(result2.authorized).toBe(true);
+      expect(result2).not.toHaveProperty("reason");
     });
 
-    it("should return true if any resource in an array is authorized", () => {
-      expect(
-        checkAuthorization(publicJwtEntityWithPermissions, "read", {
-          tags: ["tag_1234", "tag_5678"],
-        })
-      ).toBe(true);
+    it("should return authorized if any resource in an array is authorized", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        tags: ["tag_1234", "tag_5678"],
+      });
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
 
-    it("should return true for nonexistent resource types", () => {
-      expect(
+    it("should return authorized for nonexistent resource types", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
         // @ts-expect-error
-        checkAuthorization(publicJwtEntityWithPermissions, "read", { nonexistent: "resource" })
-      ).toBe(true);
+        nonexistent: "resource",
+      });
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
   });
 
   describe("PUBLIC_JWT entity without scope", () => {
-    it("should always return false regardless of action or resource", () => {
-      expect(checkAuthorization(publicJwtEntityNoPermissions, "read", { runs: "run_1234" })).toBe(
-        false
-      );
-      expect(
-        checkAuthorization(publicJwtEntityNoPermissions, "read", { tasks: ["task_1", "task_2"] })
-      ).toBe(false);
-      expect(checkAuthorization(publicJwtEntityNoPermissions, "read", { tags: "tag_5678" })).toBe(
-        false
-      );
+    it("should always return unauthorized with reason regardless of action or resource", () => {
+      const result1 = checkAuthorization(publicJwtEntityNoPermissions, "read", {
+        runs: "run_1234",
+      });
+      expect(result1.authorized).toBe(false);
+      if (!result1.authorized) {
+        expect(result1.reason).toBe(
+          "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
+
+      const result2 = checkAuthorization(publicJwtEntityNoPermissions, "read", {
+        tasks: ["task_1", "task_2"],
+      });
+      expect(result2.authorized).toBe(false);
+      if (!result2.authorized) {
+        expect(result2.reason).toBe(
+          "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
+
+      const result3 = checkAuthorization(publicJwtEntityNoPermissions, "read", {
+        tags: "tag_5678",
+      });
+      expect(result3.authorized).toBe(false);
+      if (!result3.authorized) {
+        expect(result3.reason).toBe(
+          "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
   });
 
   describe("Edge cases", () => {
     it("should handle empty resource objects", () => {
-      expect(checkAuthorization(publicJwtEntityWithPermissions, "read", {})).toBe(false);
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {});
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe("Resource object is empty");
+      }
     });
 
     it("should handle undefined scope", () => {
       const entityUndefinedPermissions: AuthorizationEntity = { type: "PUBLIC_JWT" };
-      expect(checkAuthorization(entityUndefinedPermissions, "read", { runs: "run_1234" })).toBe(
-        false
-      );
+      const result = checkAuthorization(entityUndefinedPermissions, "read", { runs: "run_1234" });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
 
     it("should handle empty scope array", () => {
       const entityEmptyPermissions: AuthorizationEntity = { type: "PUBLIC_JWT", scopes: [] };
-      expect(checkAuthorization(entityEmptyPermissions, "read", { runs: "run_1234" })).toBe(false);
+      const result = checkAuthorization(entityEmptyPermissions, "read", { runs: "run_1234" });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token has no permissions. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
 
-    it("should return false if any resource is not authorized", () => {
-      expect(
-        checkAuthorization(publicJwtEntityWithPermissions, "read", {
-          runs: "run_1234", // This is authorized
-          tasks: "task_5678", // This is authorized (general permission)
-          tags: "tag_3456", // This is not authorized
-        })
-      ).toBe(false);
+    it("should return unauthorized if any resource is not authorized", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        runs: "run_1234", // This is authorized
+        tasks: "task_5678", // This is authorized (general permission)
+        tags: "tag_3456", // This is not authorized
+      });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token is missing required permissions. Permissions required for 'read:tags:tag_3456' but token has the following permissions: 'read:runs:run_1234', 'read:tasks', 'read:tags:tag_5678'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
 
-    it("should return true only if all resources are authorized", () => {
-      expect(
-        checkAuthorization(publicJwtEntityWithPermissions, "read", {
-          runs: "run_1234", // This is authorized
-          tasks: "task_5678", // This is authorized (general permission)
-          tags: "tag_5678", // This is authorized
-        })
-      ).toBe(true);
+    it("should return authorized only if all resources are authorized", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        runs: "run_1234", // This is authorized
+        tasks: "task_5678", // This is authorized (general permission)
+        tags: "tag_5678", // This is authorized
+      });
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
   });
 
@@ -131,51 +204,64 @@ describe("checkAuthorization", () => {
     };
 
     it("should grant access with any of the super scope", () => {
-      expect(
-        checkAuthorization(entityWithSuperPermissions, "read", { tasks: "task_1234" }, [
-          "read:all",
-          "admin",
-        ])
-      ).toBe(true);
-      expect(
-        checkAuthorization(entityWithSuperPermissions, "read", { tags: ["tag_1", "tag_2"] }, [
-          "write:all",
-          "admin",
-        ])
-      ).toBe(true);
+      const result1 = checkAuthorization(
+        entityWithSuperPermissions,
+        "read",
+        { tasks: "task_1234" },
+        ["read:all", "admin"]
+      );
+      expect(result1.authorized).toBe(true);
+      expect(result1).not.toHaveProperty("reason");
+
+      const result2 = checkAuthorization(
+        entityWithSuperPermissions,
+        "read",
+        { tags: ["tag_1", "tag_2"] },
+        ["write:all", "admin"]
+      );
+      expect(result2.authorized).toBe(true);
+      expect(result2).not.toHaveProperty("reason");
     });
 
     it("should grant access with one matching super permission", () => {
-      expect(
-        checkAuthorization(entityWithOneSuperPermission, "read", { runs: "run_5678" }, [
-          "read:all",
-          "admin",
-        ])
-      ).toBe(true);
+      const result = checkAuthorization(
+        entityWithOneSuperPermission,
+        "read",
+        { runs: "run_5678" },
+        ["read:all", "admin"]
+      );
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
 
     it("should not grant access when no super scope match", () => {
-      expect(
-        checkAuthorization(entityWithOneSuperPermission, "read", { tasks: "task_1234" }, [
-          "write:all",
-          "admin",
-        ])
-      ).toBe(false);
+      const result = checkAuthorization(
+        entityWithOneSuperPermission,
+        "read",
+        { tasks: "task_1234" },
+        ["write:all", "admin"]
+      );
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token is missing required permissions. Permissions required for 'read:tasks:task_1234' but token has the following permissions: 'read:all'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
 
     it("should grant access to multiple resources with super scope", () => {
-      expect(
-        checkAuthorization(
-          entityWithSuperPermissions,
-          "read",
-          {
-            tasks: "task_1234",
-            tags: ["tag_1", "tag_2"],
-            runs: "run_5678",
-          },
-          ["read:all"]
-        )
-      ).toBe(true);
+      const result = checkAuthorization(
+        entityWithSuperPermissions,
+        "read",
+        {
+          tasks: "task_1234",
+          tags: ["tag_1", "tag_2"],
+          runs: "run_5678",
+        },
+        ["read:all"]
+      );
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
 
     it("should fall back to specific scope when super scope are not provided", () => {
@@ -183,12 +269,21 @@ describe("checkAuthorization", () => {
         type: "PUBLIC_JWT",
         scopes: ["read:tasks", "read:tags"],
       };
-      expect(
-        checkAuthorization(entityWithSpecificPermissions, "read", { tasks: "task_1234" })
-      ).toBe(true);
-      expect(checkAuthorization(entityWithSpecificPermissions, "read", { runs: "run_5678" })).toBe(
-        false
-      );
+      const result1 = checkAuthorization(entityWithSpecificPermissions, "read", {
+        tasks: "task_1234",
+      });
+      expect(result1.authorized).toBe(true);
+      expect(result1).not.toHaveProperty("reason");
+
+      const result2 = checkAuthorization(entityWithSpecificPermissions, "read", {
+        runs: "run_5678",
+      });
+      expect(result2.authorized).toBe(false);
+      if (!result2.authorized) {
+        expect(result2.reason).toBe(
+          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:tasks', 'read:tags'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
   });
 
@@ -199,21 +294,29 @@ describe("checkAuthorization", () => {
     };
 
     it("should still grant access based on specific scope", () => {
-      expect(
-        checkAuthorization(entityWithoutSuperPermissions, "read", { tasks: "task_1234" }, [
-          "read:all",
-          "admin",
-        ])
-      ).toBe(true);
+      const result = checkAuthorization(
+        entityWithoutSuperPermissions,
+        "read",
+        { tasks: "task_1234" },
+        ["read:all", "admin"]
+      );
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
     });
 
     it("should deny access to resources not in scope", () => {
-      expect(
-        checkAuthorization(entityWithoutSuperPermissions, "read", { runs: "run_5678" }, [
-          "read:all",
-          "admin",
-        ])
-      ).toBe(false);
+      const result = checkAuthorization(
+        entityWithoutSuperPermissions,
+        "read",
+        { runs: "run_5678" },
+        ["read:all", "admin"]
+      );
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:tasks'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
+      }
     });
   });
 });

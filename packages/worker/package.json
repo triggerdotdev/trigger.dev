@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/worker",
-  "version": "3.2.0",
+  "version": "3.2.2",
   "description": "trigger.dev worker",
   "license": "MIT",
   "publishConfig": {
@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
-    "zod": "3.22.3"
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",

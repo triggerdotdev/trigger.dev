@@ -4,29 +4,14 @@ sidebarTitle: Overview & Auth
 description: Using the Trigger.dev SDK from your frontend application.
 ---
 
-You can use certain SDK functions in your frontend application to interact with the Trigger.dev API. This guide will show you how to authenticate your requests and use the SDK in your frontend application.
+You can use our [React hooks](/frontend/react-hooks) in your frontend application to interact with the Trigger.dev API. This guide will show you how to generate Public Access Tokens that can be used to authenticate your requests.
 
 ## Authentication
 
-You must authenticate your requests using a "Public Access Token" when using the SDK in your frontend application. To create a Public Access Token, you can use the `auth.createPublicToken` function in your backend code:
+To create a Public Access Token, you can use the `auth.createPublicToken` function in your **backend** code:
 
 ```tsx
 const publicToken = await auth.createPublicToken();
-```
-
-To use a Public Access Token in your frontend application, you can call the `auth.configure` function or the `auth.withAuth` function:
-
-```ts
-import { auth } from "@trigger.dev/sdk/v3";
-
-auth.configure({
-  accessToken: publicToken,
-});
-
-// or
-await auth.withAuth({ accessToken: publicToken }, async () => {
-  // Your code here will use the public token
-});
 ```
 
 ### Scopes
@@ -104,6 +89,22 @@ const publicToken = await auth.createPublicToken({
 });
 ```
 
+### Write scopes
+
+You can also specify write scopes, which is required for triggering tasks from your frontend application:
+
+```ts
+const publicToken = await auth.createPublicToken({
+  scopes: {
+    write: {
+      tasks: ["my-task-1", "my-task-2"],
+    },
+  },
+});
+```
+
+This will allow the token to trigger the specified tasks. `tasks` is the only write scope available at the moment.
+
 ### Expiration
 
 By default, Public Access Token's expire after 15 minutes. You can specify a different expiration time when creating a Public Access Token:
@@ -163,80 +164,6 @@ const handle = await tasks.batchTrigger("my-task", [
 console.log(handle.publicAccessToken);
 ```
 
-## Available SDK functions
+## Usage
 
-Currently the following functions are available in the frontend SDK:
-
-### runs.retrieve
-
-The `runs.retrieve` function allows you to retrieve a run by its ID.
-
-```ts
-import { runs, auth } from "@trigger.dev/sdk/v3";
-
-// Somewhere in your backend code
-const handle = await tasks.trigger("my-task", { some: "data" });
-
-// In your frontend code
-auth.configure({
-  accessToken: handle.publicAccessToken,
-});
-
-const run = await runs.retrieve(handle.id);
-```
-
-Learn more about the `runs.retrieve` function in the [runs.retrieve doc](/management/runs/retrieve).
-
-### runs.subscribeToRun
-
-The `runs.subscribeToRun` function allows you to subscribe to a run by its ID, and receive updates in real-time when the run changes.
-
-```ts
-import { runs, auth } from "@trigger.dev/sdk/v3";
-
-// Somewhere in your backend code
-const handle = await tasks.trigger("my-task", { some: "data" });
-
-// In your frontend code
-auth.configure({
-  accessToken: handle.publicAccessToken,
-});
-
-for await (const run of runs.subscribeToRun(handle.id)) {
-  // This will log the run every time it changes
-  console.log(run);
-}
-```
-
-See the [Realtime doc](/realtime) for more information.
-
-### runs.subscribeToRunsWithTag
-
-The `runs.subscribeToRunsWithTag` function allows you to subscribe to runs with a specific tag, and receive updates in real-time when the runs change.
-
-```ts
-import { runs, auth } from "@trigger.dev/sdk/v3";
-
-// Somewhere in your backend code
-const handle = await tasks.trigger("my-task", { some: "data" }, { tags: ["my-tag"] });
-
-// In your frontend code
-auth.configure({
-  accessToken: handle.publicAccessToken,
-});
-
-for await (const run of runs.subscribeToRunsWithTag("my-tag")) {
-  // This will log the run every time it changes
-  console.log(run);
-}
-```
-
-See the [Realtime doc](/realtime) for more information.
-
-## React hooks
-
-We also provide React hooks to make it easier to use the SDK in your React application. See our [React hooks](/frontend/react-hooks) documentation for more information.
-
-## Triggering tasks
-
-We don't currently support triggering tasks from the frontend SDK. If this is something you need, please let us know by [upvoting the feature](https://feedback.trigger.dev/p/ability-to-trigger-tasks-from-frontend).
+To learn how to use these Public Access Tokens, see our [React hooks](/frontend/react-hooks) guide.
