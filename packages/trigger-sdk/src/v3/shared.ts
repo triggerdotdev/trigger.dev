@@ -817,6 +817,9 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
     },
     {
       kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+      },
     }
   );
 }
@@ -1146,6 +1149,9 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
     },
     {
       kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+      },
     }
   );
 }
@@ -1351,6 +1357,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
     {
       kind: SpanKind.PRODUCER,
       attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
         ...accessoryAttributes({
           items: [
             {
@@ -1445,6 +1452,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
     {
       kind: SpanKind.PRODUCER,
       attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
         ...accessoryAttributes({
           items: [
             {
