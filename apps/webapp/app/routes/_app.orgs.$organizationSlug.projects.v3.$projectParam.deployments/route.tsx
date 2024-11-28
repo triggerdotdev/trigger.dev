@@ -46,6 +46,7 @@ import {
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
@@ -139,8 +140,12 @@ export default function Page() {
                           deployment,
                           currentPage
                         );
+                        const isSelected = deploymentParam === deployment.shortCode;
                         return (
-                          <TableRow key={deployment.id} className="group">
+                          <TableRow
+                            key={deployment.id}
+                            className={cn("group", isSelected ? "bg-grid-dimmed" : undefined)}
+                          >
                             <TableCell to={path}>
                               <div className="flex items-center gap-2">
                                 <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
