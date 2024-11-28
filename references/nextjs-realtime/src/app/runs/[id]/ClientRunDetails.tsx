@@ -4,6 +4,7 @@ import RunDetails from "@/components/RunDetails";
 import { Card, CardContent } from "@/components/ui/card";
 import { TriggerAuthContext, useRealtimeRun } from "@trigger.dev/react-hooks";
 import type { exampleTask } from "@/trigger/example";
+import { useEffect, useState } from "react";
 
 function RunDetailsWrapper({
   runId,
@@ -12,8 +13,20 @@ function RunDetailsWrapper({
   runId: string;
   publicAccessToken: string;
 }) {
+  const [accessToken, setAccessToken] = useState<string | undefined>(undefined);
+
+  // call setAccessToken with publicAccessToken after 2 seconds
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setAccessToken(publicAccessToken);
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [publicAccessToken]);
+
   const { run, error } = useRealtimeRun<typeof exampleTask>(runId, {
-    accessToken: publicAccessToken,
+    accessToken,
+    enabled: accessToken !== undefined,
   });
 
   if (error) {

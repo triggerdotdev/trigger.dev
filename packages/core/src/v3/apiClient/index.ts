@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { VERSION } from "../../version.js";
+import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
-  BatchTriggerTaskRequestBody,
-  BatchTriggerTaskResponse,
+  BatchTriggerTaskV2RequestBody,
+  BatchTriggerTaskV2Response,
   CanceledRunResponse,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
@@ -17,6 +18,7 @@ import {
   ListScheduleOptions,
   ReplayRunResponse,
   RescheduleRunRequestBody,
+  RetrieveBatchResponse,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -28,6 +30,7 @@ import {
   UpdateScheduleOptions,
 } from "../schemas/index.js";
 import { taskContext } from "../task-context-api.js";
+import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 import {
   ApiRequestOptions,
   CursorPagePromise,
@@ -39,13 +42,14 @@ import {
 } from "./core.js";
 import { ApiError } from "./errors.js";
 import {
-  RunShape,
   AnyRunShape,
-  runShapeStream,
+  RealtimeRun,
+  AnyRealtimeRun,
+  RunShape,
   RunStreamCallback,
   RunSubscription,
   TaskRunShape,
-  RealtimeRun,
+  runShapeStream,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -55,18 +59,21 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
-import { generateJWT } from "../jwt.js";
-import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 
 export type {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
-  UpdateEnvironmentVariableParams,
   SubscribeToRunsQueryParams,
+  UpdateEnvironmentVariableParams,
 };
 
-export type TriggerOptions = {
+export type ClientTriggerOptions = {
   spanParentAsLink?: boolean;
+};
+
+export type ClientBatchTriggerOptions = ClientTriggerOptions & {
+  idempotencyKey?: string;
+  idempotencyKeyTTL?: string;
 };
 
 export type TriggerRequestOptions = ZodFetchOptions & {
@@ -79,23 +86,24 @@ export type TriggerApiRequestOptions = ApiRequestOptions & {
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   retry: {
-    maxAttempts: 3,
+    maxAttempts: 5,
     minTimeoutInMs: 1000,
     maxTimeoutInMs: 30_000,
-    factor: 2,
+    factor: 1.6,
     randomize: false,
   },
 };
 
 export { isRequestOptions };
-export type { ApiRequestOptions };
 export type {
-  RunShape,
   AnyRunShape,
-  TaskRunShape,
+  ApiRequestOptions,
   RealtimeRun,
+  AnyRealtimeRun,
+  RunShape,
   RunStreamCallback,
   RunSubscription,
+  TaskRunShape,
 };
 
 /**
@@ -173,7 +181,7 @@ export class ApiClient {
   triggerTask(
     taskId: string,
     body: TriggerTaskRequestBody,
-    options?: TriggerOptions,
+    clientOptions?: ClientTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
     const encodedTaskId = encodeURIComponent(taskId);
@@ -183,7 +191,7 @@ export class ApiClient {
       `${this.baseUrl}/api/v1/tasks/${encodedTaskId}/trigger`,
       {
         method: "POST",
-        headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+        headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false),
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
@@ -220,20 +228,20 @@ export class ApiClient {
       });
   }
 
-  batchTriggerTask(
-    taskId: string,
-    body: BatchTriggerTaskRequestBody,
-    options?: TriggerOptions,
+  batchTriggerV2(
+    body: BatchTriggerTaskV2RequestBody,
+    clientOptions?: ClientBatchTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
-    const encodedTaskId = encodeURIComponent(taskId);
-
     return zodfetch(
-      BatchTriggerTaskResponse,
-      `${this.baseUrl}/api/v1/tasks/${encodedTaskId}/batch`,
+      BatchTriggerTaskV2Response,
+      `${this.baseUrl}/api/v1/tasks/batch`,
       {
         method: "POST",
-        headers: this.#getHeaders(options?.spanParentAsLink ?? false),
+        headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false, {
+          "idempotency-key": clientOptions?.idempotencyKey,
+          "idempotency-key-ttl": clientOptions?.idempotencyKeyTTL,
+        }),
         body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
@@ -247,7 +255,7 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            scopes: [`read:batch:${data.batchId}`].concat(data.runs.map((r) => `read:runs:${r}`)),
+            scopes: [`read:batch:${data.id}`].concat(data.runs.map((r) => `read:runs:${r.id}`)),
           },
           expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
         });
@@ -663,11 +671,33 @@ export class ApiClient {
     );
   }
 
-  #getHeaders(spanParentAsLink: boolean) {
+  retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveBatchResponse,
+      `${this.baseUrl}/api/v1/batches/${batchId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${this.accessToken}`,
       "trigger-version": VERSION,
+      ...Object.entries(additionalHeaders ?? {}).reduce(
+        (acc, [key, value]) => {
+          if (value !== undefined) {
+            acc[key] = value;
+          }
+
+          return acc;
+        },
+        {} as Record<string, string>
+      ),
     };
 
     // Only inject the context if we are inside a task
@@ -775,6 +805,10 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 
     if (query.period) {
       searchParams.append("filter[createdAt][period]", query.period);
+    }
+
+    if (query.batch) {
+      searchParams.append("filter[batch]", query.batch);
     }
   }
 

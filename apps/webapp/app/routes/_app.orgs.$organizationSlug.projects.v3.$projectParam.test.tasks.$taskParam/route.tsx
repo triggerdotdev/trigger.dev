@@ -412,6 +412,7 @@ function ScheduledTaskForm({
                   granularity="second"
                   showNowButton
                   variant="medium"
+                  utc
                 />
                 <Hint>
                   This is the timestamp of the CRON, it will come through to your run in the
@@ -436,6 +437,7 @@ function ScheduledTaskForm({
                   showNowButton
                   showClearButton
                   variant="medium"
+                  utc
                 />
                 <Hint>
                   This is the timestamp of the previous run. You can use this in your code to find

@@ -63,6 +63,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     period: url.searchParams.get("period") ?? undefined,
     bulkId: url.searchParams.get("bulkId") ?? undefined,
     tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    from: url.searchParams.get("from") ?? undefined,
+    to: url.searchParams.get("to") ?? undefined,
+    showChildTasks: url.searchParams.get("showChildTasks") === "true",
+    runId: url.searchParams.get("runId") ?? undefined,
+    batchId: url.searchParams.get("batchId") ?? undefined,
+    scheduleId: url.searchParams.get("scheduleId") ?? undefined,
   };
   const {
     tasks,
@@ -76,6 +82,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     to,
     cursor,
     direction,
+    showChildTasks,
+    runId,
+    batchId,
+    scheduleId,
   } = TaskRunListSearchFilters.parse(s);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -97,6 +107,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     bulkId,
     from,
     to,
+    batchId,
+    runId,
+    scheduleId,
+    rootOnly: !showChildTasks,
     direction: direction,
     cursor: cursor,
   });

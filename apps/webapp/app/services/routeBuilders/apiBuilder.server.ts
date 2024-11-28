@@ -346,7 +346,24 @@ type ApiKeyActionRouteBuilderOptions<
   TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
   THeadersSchema extends z.AnyZodObject | undefined = undefined,
   TBodySchema extends z.AnyZodObject | undefined = undefined
-> = ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+  allowJWT?: boolean;
+  corsStrategy?: "all" | "none";
+  authorization?: {
+    action: AuthorizationAction;
+    resource: (
+      params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
+      searchParams: TSearchParamsSchema extends z.AnyZodObject
+        ? z.infer<TSearchParamsSchema>
+        : undefined,
+      headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined,
+      body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined
+    ) => AuthorizationResources;
+    superScopes?: string[];
+  };
   maxContentLength?: number;
   body?: TBodySchema;
 };
@@ -517,7 +534,7 @@ export function createActionApiRoute<
 
       if (authorization) {
         const { action, resource, superScopes } = authorization;
-        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
+        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders, parsedBody);
 
         logger.debug("Checking authorization", {
           action,

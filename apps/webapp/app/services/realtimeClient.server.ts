@@ -52,7 +52,14 @@ export class RealtimeClient {
     batchId: string,
     clientVersion?: string
   ) {
-    return this.#streamRunsWhere(url, environment, `"batchId"='${batchId}'`, clientVersion);
+    const whereClauses: string[] = [
+      `"runtimeEnvironmentId"='${environment.id}'`,
+      `"batchId"='${batchId}'`,
+    ];
+
+    const whereClause = whereClauses.join(" AND ");
+
+    return this.#streamRunsWhere(url, environment, whereClause, clientVersion);
   }
 
   async streamRuns(

@@ -12,7 +12,7 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { uploadToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -25,15 +25,19 @@ import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/apps";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
   customIcon?: string;
+  runId?: string;
+  skipChecks?: boolean;
 };
 
 export class OutOfEntitlementError extends Error {
@@ -52,7 +56,13 @@ export class TriggerTaskService extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
+      // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
+      const idempotencyKeyExpiresAt =
+        options.idempotencyKeyExpiresAt ??
+        resolveIdempotencyKeyTTL(body.options?.idempotencyKeyTTL) ??
+        new Date(Date.now() + 24 * 60 * 60 * 1000 * 30); // 30 days
+
       const delayUntil = await parseDelay(body.options?.delay);
 
       const ttl =
@@ -73,34 +83,52 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       if (existingRun) {
-        span.setAttribute("runId", existingRun.friendlyId);
+        if (
+          existingRun.idempotencyKeyExpiresAt &&
+          existingRun.idempotencyKeyExpiresAt < new Date()
+        ) {
+          logger.debug("[TriggerTaskService][call] Idempotency key has expired", {
+            idempotencyKey: options.idempotencyKey,
+            run: existingRun,
+          });
 
-        return existingRun;
+          // Update the existing batch to remove the idempotency key
+          await this._prisma.taskRun.update({
+            where: { id: existingRun.id },
+            data: { idempotencyKey: null },
+          });
+        } else {
+          span.setAttribute("runId", existingRun.friendlyId);
+
+          return existingRun;
+        }
       }
 
-      if (environment.type !== "DEVELOPMENT") {
+      if (environment.type !== "DEVELOPMENT" && !options.skipChecks) {
         const result = await getEntitlement(environment.organizationId);
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
       }
 
-      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+      if (!options.skipChecks) {
+        const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
 
-      logger.debug("Queue size guard result", {
-        queueSizeGuard,
-        environment: {
-          id: environment.id,
-          type: environment.type,
-          organization: environment.organization,
-          project: environment.project,
-        },
-      });
+        logger.debug("Queue size guard result", {
+          queueSizeGuard,
+          environment: {
+            id: environment.id,
+            type: environment.type,
+            organization: environment.organization,
+            project: environment.project,
+          },
+        });
 
-      if (!queueSizeGuard.isWithinLimits) {
-        throw new ServiceValidationError(
-          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-        );
+        if (!queueSizeGuard.isWithinLimits) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+          );
+        }
       }
 
       if (
@@ -113,7 +141,7 @@ export class TriggerTaskService extends BaseService {
         );
       }
 
-      const runFriendlyId = generateFriendlyId("run");
+      const runFriendlyId = options?.runId ?? generateFriendlyId("run");
 
       const payloadPacket = await this.#handlePayloadPacket(
         body.payload,
@@ -330,6 +358,7 @@ export class TriggerTaskService extends BaseService {
                   runtimeEnvironmentId: environment.id,
                   projectId: environment.projectId,
                   idempotencyKey,
+                  idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
                   taskIdentifier: taskId,
                   payload: payloadPacket.data ?? "",
                   payloadType: payloadPacket.dataType,
@@ -340,6 +369,9 @@ export class TriggerTaskService extends BaseService {
                   parentSpanId:
                     options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                   lockedToVersionId: lockedToBackgroundWorker?.id,
+                  taskVersion: lockedToBackgroundWorker?.version,
+                  sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                  cliVersion: lockedToBackgroundWorker?.cliVersion,
                   concurrencyKey: body.options?.concurrencyKey,
                   queue: queueName,
                   isTest: body.options?.test ?? false,
@@ -428,7 +460,6 @@ export class TriggerTaskService extends BaseService {
                       data: {
                         concurrencyLimit:
                           typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                        rateLimit: body.options.queue.rateLimit,
                       },
                     });
 
@@ -452,7 +483,6 @@ export class TriggerTaskService extends BaseService {
                       concurrencyLimit,
                       runtimeEnvironmentId: environment.id,
                       projectId: environment.projectId,
-                      rateLimit: body.options.queue.rateLimit,
                       type: "NAMED",
                     },
                   });
@@ -617,7 +647,7 @@ export class TriggerTaskService extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
+      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
         data: filename,

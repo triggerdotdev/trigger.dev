@@ -1,30 +1,34 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  ArrowPathIcon,
   CalendarIcon,
+  ClockIcon,
   CpuChipIcon,
-  InboxStackIcon,
+  FingerPrintIcon,
+  Squares2X2Icon,
   TagIcon,
-  XMarkIcon,
+  TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import type {
-  RuntimeEnvironment,
-  TaskTriggerSource,
-  TaskRunStatus,
   BulkActionType,
+  RuntimeEnvironment,
+  TaskRunStatus,
+  TaskTriggerSource,
 } from "@trigger.dev/database";
-import { ListFilterIcon } from "lucide-react";
+import { ListChecks, ListFilterIcon } from "lucide-react";
+import { matchSorter } from "match-sorter";
 import type { ReactNode } from "react";
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { EnvironmentLabel, environmentTitle } from "~/components/environments/EnvironmentLabel";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { DateTime } from "~/components/primitives/DateTime";
+import { FormError } from "~/components/primitives/FormError";
+import { Input } from "~/components/primitives/Input";
+import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
-  ComboboxProvider,
   SelectButtonItem,
   SelectItem,
   SelectList,
@@ -33,6 +37,8 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
   TooltipContent,
@@ -40,22 +46,29 @@ import {
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as tagsLoader } from "~/routes/resources.projects.$projectParam.runs.tags";
 import { Button } from "../../primitives/Buttons";
+import { BulkActionStatusCombo } from "./BulkAction";
 import {
-  TaskRunStatusCombo,
+  AppliedCustomDateRangeFilter,
+  AppliedEnvironmentFilter,
+  AppliedPeriodFilter,
+  appliedSummary,
+  CreatedAtDropdown,
+  CustomDateRangeDropdown,
+  EnvironmentsDropdown,
+  FilterMenuProvider,
+} from "./SharedFilters";
+import {
   allTaskRunStatuses,
-  filterableTaskRunStatuses,
   descriptionForTaskRunStatus,
+  filterableTaskRunStatuses,
   runStatusTitle,
+  TaskRunStatusCombo,
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
-import { DateTime } from "~/components/primitives/DateTime";
-import { BulkActionStatusCombo } from "./BulkAction";
-import { type loader } from "~/routes/resources.projects.$projectParam.runs.tags";
-import { useProject } from "~/hooks/useProject";
-import { Spinner } from "~/components/primitives/Spinner";
-import { matchSorter } from "match-sorter";
 
 export const TaskAttemptStatus = z.enum(allTaskRunStatuses);
 
@@ -86,6 +99,10 @@ export const TaskRunListSearchFilters = z.object({
   bulkId: z.string().optional(),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
+  showChildTasks: z.coerce.boolean().optional(),
+  batchId: z.string().optional(),
+  runId: z.string().optional(),
+  scheduleId: z.string().optional(),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -114,15 +131,28 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("tasks") ||
     searchParams.has("period") ||
     searchParams.has("bulkId") ||
-    searchParams.has("tags");
+    searchParams.has("tags") ||
+    searchParams.has("from") ||
+    searchParams.has("to") ||
+    searchParams.has("batchId") ||
+    searchParams.has("runId") ||
+    searchParams.has("scheduleId");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
+      <ShowChildTasksToggle />
       <AppliedFilters {...props} />
       {hasFilters && (
-        <Form>
-          <Button variant="minimal/small" LeadingIcon={XMarkIcon}>
+        <Form className="h-6">
+          {searchParams.has("showChildTasks") && (
+            <input
+              type="hidden"
+              name="showChildTasks"
+              value={searchParams.get("showChildTasks") as string}
+            />
+          )}
+          <Button variant="minimal/small" LeadingIcon={TrashIcon}>
             Clear all
           </Button>
         </Form>
@@ -145,7 +175,11 @@ const filterTypes = [
   { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "created", title: "Created", icon: <CalendarIcon className="size-4" /> },
-  { name: "bulk", title: "Bulk action", icon: <InboxStackIcon className="size-4" /> },
+  { name: "daterange", title: "Custom date range", icon: <CalendarIcon className="size-4" /> },
+  { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
+  { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
+  { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
+  { name: "bulk", title: "Bulk action", icon: <ListChecks className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -186,34 +220,6 @@ function FilterMenu(props: RunFiltersProps) {
   );
 }
 
-function FilterMenuProvider({
-  children,
-  onClose,
-}: {
-  children: (search: string, setSearch: (value: string) => void) => React.ReactNode;
-  onClose?: () => void;
-}) {
-  const [searchValue, setSearchValue] = useState("");
-
-  return (
-    <ComboboxProvider
-      resetValueOnHide
-      setValue={(value) => {
-        startTransition(() => {
-          setSearchValue(value);
-        });
-      }}
-      setOpen={(open) => {
-        if (!open && onClose) {
-          onClose();
-        }
-      }}
-    >
-      {children(searchValue, setSearchValue)}
-    </ComboboxProvider>
-  );
-}
-
 function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: RunFiltersProps) {
   return (
     <>
@@ -222,6 +228,10 @@ function AppliedFilters({ possibleEnvironments, possibleTasks, bulkActions }: Ru
       <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedPeriodFilter />
+      <AppliedCustomDateRangeFilter />
+      <AppliedRunIdFilter />
+      <AppliedBatchIdFilter />
+      <AppliedScheduleIdFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
     </>
   );
@@ -246,19 +256,28 @@ function Menu(props: MenuProps) {
     case "tasks":
       return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "created":
-      return <CreatedDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+      return <CreatedAtDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "daterange":
+      return <CustomDateRangeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "run":
+      return <RunIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "batch":
+      return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "schedule":
+      return <ScheduleIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
   const filtered = useMemo(() => {
-    return filterTypes.filter((item) =>
-      item.title.toLowerCase().includes(searchValue.toLowerCase())
-    );
+    return filterTypes.filter((item) => {
+      if (item.name === "daterange") return false;
+      return item.title.toLowerCase().includes(searchValue.toLowerCase());
+    });
   }, [searchValue]);
 
   return (
@@ -384,100 +403,6 @@ function AppliedStatusFilter() {
   );
 }
 
-function EnvironmentsDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-  possibleEnvironments,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-  possibleEnvironments: DisplayableEnvironment[];
-}) {
-  const { values, replace } = useSearchParams();
-
-  const handleChange = (values: string[]) => {
-    clearSearchValue();
-    replace({ environments: values, cursor: undefined, direction: undefined });
-  };
-
-  const filtered = useMemo(() => {
-    return possibleEnvironments.filter((item) => {
-      const title = environmentTitle(item, item.userName);
-      return title.toLowerCase().includes(searchValue.toLowerCase());
-    });
-  }, [searchValue, possibleEnvironments]);
-
-  return (
-    <SelectProvider value={values("environments")} setValue={handleChange} virtualFocus={true}>
-      {trigger}
-      <SelectPopover
-        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-      >
-        <ComboBox placeholder={"Filter by environment..."} value={searchValue} />
-        <SelectList>
-          {filtered.map((item, index) => (
-            <SelectItem
-              key={item.id}
-              value={item.id}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
-            >
-              <EnvironmentLabel environment={item} userName={item.userName} />
-            </SelectItem>
-          ))}
-        </SelectList>
-      </SelectPopover>
-    </SelectProvider>
-  );
-}
-
-function AppliedEnvironmentFilter({
-  possibleEnvironments,
-}: Pick<RunFiltersProps, "possibleEnvironments">) {
-  const { values, del } = useSearchParams();
-
-  if (values("environments").length === 0) {
-    return null;
-  }
-
-  return (
-    <FilterMenuProvider>
-      {(search, setSearch) => (
-        <EnvironmentsDropdown
-          trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Environment"
-                value={appliedSummary(
-                  values("environments").map((v) => {
-                    const environment = possibleEnvironments.find((env) => env.id === v);
-                    return environment ? environmentTitle(environment, environment.userName) : v;
-                  })
-                )}
-                onRemove={() => del(["environments", "cursor", "direction"])}
-              />
-            </Ariakit.Select>
-          }
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          possibleEnvironments={possibleEnvironments}
-        />
-      )}
-    </FilterMenuProvider>
-  );
-}
-
 function TasksDropdown({
   trigger,
   clearSearchValue,
@@ -524,7 +449,9 @@ function TasksDropdown({
             <SelectItem
               key={item.slug}
               value={item.slug}
-              icon={<TaskTriggerSourceIcon source={item.triggerSource} className="size-4" />}
+              icon={
+                <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
+              }
             >
               {item.slug}
             </SelectItem>
@@ -685,7 +612,7 @@ function TagsDropdown({
     });
   };
 
-  const fetcher = useFetcher<typeof loader>();
+  const fetcher = useFetcher<typeof tagsLoader>();
 
   useEffect(() => {
     const searchParams = new URLSearchParams();
@@ -780,62 +707,33 @@ function AppliedTagsFilter() {
   );
 }
 
-const timePeriods = [
-  {
-    label: "All periods",
-    value: "all",
-  },
-  {
-    label: "5 mins ago",
-    value: "5m",
-  },
-  {
-    label: "15 mins ago",
-    value: "15m",
-  },
-  {
-    label: "30 mins ago",
-    value: "30m",
-  },
-  {
-    label: "1 hour ago",
-    value: "1h",
-  },
-  {
-    label: "3 hours ago",
-    value: "3h",
-  },
-  {
-    label: "6 hours ago",
-    value: "6h",
-  },
-  {
-    label: "1 day ago",
-    value: "1d",
-  },
-  {
-    label: "3 days ago",
-    value: "3d",
-  },
-  {
-    label: "7 days ago",
-    value: "7d",
-  },
-  {
-    label: "10 days ago",
-    value: "10d",
-  },
-  {
-    label: "14 days ago",
-    value: "14d",
-  },
-  {
-    label: "30 days ago",
-    value: "30d",
-  },
-];
+function ShowChildTasksToggle() {
+  const { value, replace } = useSearchParams();
 
-function CreatedDropdown({
+  const showChildTasks = value("showChildTasks") === "true";
+
+  const batchId = value("batchId");
+  const runId = value("runId");
+  const scheduleId = value("scheduleId");
+
+  const disabled = !!batchId || !!runId || !!scheduleId;
+
+  return (
+    <Switch
+      disabled={disabled}
+      variant="small"
+      label="Show child runs"
+      checked={disabled ? true : showChildTasks}
+      onCheckedChange={(checked) => {
+        replace({
+          showChildTasks: checked ? "true" : undefined,
+        });
+      }}
+    />
+  );
+}
+
+function RunIdDropdown({
   trigger,
   clearSearchValue,
   searchValue,
@@ -846,25 +744,34 @@ function CreatedDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
+  const [open, setOpen] = useState<boolean | undefined>();
   const { value, replace } = useSearchParams();
+  const runIdValue = value("runId");
 
-  const handleChange = (newValue: string) => {
+  const [runId, setRunId] = useState(runIdValue);
+
+  const apply = useCallback(() => {
     clearSearchValue();
-    if (newValue === "all") {
-      if (!value) return;
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      runId: runId === "" ? undefined : runId?.toString(),
+    });
+
+    setOpen(false);
+  }, [runId, replace]);
+
+  let error: string | undefined = undefined;
+  if (runId) {
+    if (!runId.startsWith("run_")) {
+      error = "Run IDs start with 'run_'";
+    } else if (runId.length !== 25) {
+      error = "Run IDs are 25 characters long";
     }
-
-    replace({ period: newValue, cursor: undefined, direction: undefined });
-  };
-
-  const filtered = useMemo(() => {
-    return timePeriods.filter((item) =>
-      item.label.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [searchValue]);
+  }
 
   return (
-    <SelectProvider value={value("period")} setValue={handleChange} virtualFocus={true}>
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
       {trigger}
       <SelectPopover
         hideOnEnter={false}
@@ -876,39 +783,63 @@ function CreatedDropdown({
 
           return true;
         }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
       >
-        <ComboBox placeholder={"Filter by period..."} value={searchValue} />
-        <SelectList>
-          {filtered.map((item) => (
-            <SelectItem key={item.value} value={item.value} hideOnClick={false}>
-              {item.label}
-            </SelectItem>
-          ))}
-        </SelectList>
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Run ID</Label>
+            <Input
+              placeholder="run_"
+              value={runId ?? ""}
+              onChange={(e) => setRunId(e.target.value)}
+              variant="small"
+              className="w-[27ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !runId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
       </SelectPopover>
     </SelectProvider>
   );
 }
 
-function AppliedPeriodFilter() {
+function AppliedRunIdFilter() {
   const { value, del } = useSearchParams();
 
-  if (value("period") === undefined || value("period") === "all") {
+  if (value("runId") === undefined) {
     return null;
   }
+
+  const runId = value("runId");
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
-        <CreatedDropdown
+        <RunIdDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Created"
-                value={
-                  timePeriods.find((t) => t.value === value("period"))?.label ?? value("period")
-                }
-                onRemove={() => del(["period", "cursor", "direction"])}
+                label="Run ID"
+                value={runId}
+                onRemove={() => del(["runId", "cursor", "direction"])}
               />
             </Ariakit.Select>
           }
@@ -920,14 +851,238 @@ function AppliedPeriodFilter() {
   );
 }
 
-function appliedSummary(values: string[], maxValues = 3) {
-  if (values.length === 0) {
+function BatchIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const batchIdValue = value("batchId");
+
+  const [batchId, setBatchId] = useState(batchIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      batchId: batchId === "" ? undefined : batchId?.toString(),
+    });
+
+    setOpen(false);
+  }, [batchId, replace]);
+
+  let error: string | undefined = undefined;
+  if (batchId) {
+    if (!batchId.startsWith("batch_")) {
+      error = "Batch IDs start with 'batch_'";
+    } else if (batchId.length !== 27) {
+      error = "Batch IDs are 27 characters long";
+    }
+  }
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Batch ID</Label>
+            <Input
+              placeholder="batch_"
+              value={batchId ?? ""}
+              onChange={(e) => setBatchId(e.target.value)}
+              variant="small"
+              className="w-[29ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !batchId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedBatchIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("batchId") === undefined) {
     return null;
   }
 
-  if (values.length > maxValues) {
-    return `${values.slice(0, maxValues).join(", ")} + ${values.length - maxValues} more`;
+  const batchId = value("batchId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <BatchIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Batch ID"
+                value={batchId}
+                onRemove={() => del(["batchId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function ScheduleIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const scheduleIdValue = value("scheduleId");
+
+  const [scheduleId, setScheduleId] = useState(scheduleIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      scheduleId: scheduleId === "" ? undefined : scheduleId?.toString(),
+    });
+
+    setOpen(false);
+  }, [scheduleId, replace]);
+
+  let error: string | undefined = undefined;
+  if (scheduleId) {
+    if (!scheduleId.startsWith("sched")) {
+      error = "Schedule IDs start with 'sched_'";
+    } else if (scheduleId.length !== 27) {
+      error = "Schedule IDs are 27 characters long";
+    }
   }
 
-  return values.join(", ");
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Batch ID</Label>
+            <Input
+              placeholder="sched_"
+              value={scheduleId ?? ""}
+              onChange={(e) => setScheduleId(e.target.value)}
+              variant="small"
+              className="w-[29ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !scheduleId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["meta"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedScheduleIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("scheduleId") === undefined) {
+    return null;
+  }
+
+  const scheduleId = value("scheduleId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <ScheduleIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Schedule ID"
+                value={scheduleId}
+                onRemove={() => del(["scheduleId", "cursor", "direction"])}
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
 }

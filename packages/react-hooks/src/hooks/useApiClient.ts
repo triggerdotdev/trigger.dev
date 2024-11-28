@@ -13,6 +13,13 @@ export type UseApiClientOptions = {
   baseURL?: string;
   /** Optional additional request configuration */
   requestOptions?: ApiRequestOptions;
+
+  /**
+   * Enable or disable the API client instance.
+   *
+   * Set enabled to false if you don't have an accessToken and don't want to throw an error.
+   */
+  enabled?: boolean;
 };
 
 /**
@@ -35,13 +42,17 @@ export type UseApiClientOptions = {
  * });
  * ```
  */
-export function useApiClient(options?: UseApiClientOptions): ApiClient {
+export function useApiClient(options?: UseApiClientOptions): ApiClient | undefined {
   const auth = useTriggerAuthContextOptional();
 
   const baseUrl = options?.baseURL ?? auth?.baseURL ?? "https://api.trigger.dev";
   const accessToken = options?.accessToken ?? auth?.accessToken;
 
   if (!accessToken) {
+    if (options?.enabled === false) {
+      return undefined;
+    }
+
     throw new Error("Missing accessToken in TriggerAuthContext or useApiClient options");
   }
 

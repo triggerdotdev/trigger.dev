@@ -6,6 +6,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -15,6 +16,7 @@ const ParamsSchema = z.object({
 
 export const HeadersSchema = z.object({
   "idempotency-key": z.string().nullish(),
+  "idempotency-key-ttl": z.string().nullish(),
   "trigger-version": z.string().nullish(),
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
   "x-trigger-worker": z.string().nullish(),
@@ -40,6 +42,7 @@ const { action, loader } = createActionApiRoute(
   async ({ body, headers, params, authentication }) => {
     const {
       "idempotency-key": idempotencyKey,
+      "idempotency-key-ttl": idempotencyKeyTTL,
       "trigger-version": triggerVersion,
       "x-trigger-span-parent-as-link": spanParentAsLink,
       traceparent,
@@ -59,6 +62,7 @@ const { action, loader } = createActionApiRoute(
       logger.debug("Triggering task", {
         taskId: params.taskId,
         idempotencyKey,
+        idempotencyKeyTTL,
         triggerVersion,
         headers,
         options: body.options,
@@ -66,8 +70,11 @@ const { action, loader } = createActionApiRoute(
         traceContext,
       });
 
+      const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
+
       const run = await service.call(params.taskId, authentication.environment, body, {
         idempotencyKey: idempotencyKey ?? undefined,
+        idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,

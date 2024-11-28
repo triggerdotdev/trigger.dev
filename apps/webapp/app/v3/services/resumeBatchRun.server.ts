@@ -13,26 +13,26 @@ export class ResumeBatchRunService extends BaseService {
         id: batchRunId,
       },
       include: {
-        dependentTaskAttempt: {
+        runtimeEnvironment: {
           include: {
-            runtimeEnvironment: {
-              include: {
-                project: true,
-                organization: true,
-              },
-            },
-            taskRun: true,
+            project: true,
+            organization: true,
           },
         },
-        items: true,
+        items: {
+          select: {
+            status: true,
+            taskRunAttemptId: true,
+          },
+        },
       },
     });
 
-    if (!batchRun || !batchRun.dependentTaskAttempt) {
+    if (!batchRun) {
       logger.error(
         "ResumeBatchRunService: Batch run doesn't exist or doesn't have a dependent attempt",
         {
-          batchRun,
+          batchRunId,
         }
       );
       return;
@@ -40,23 +40,28 @@ export class ResumeBatchRunService extends BaseService {
 
     if (batchRun.status === "COMPLETED") {
       logger.debug("ResumeBatchRunService: Batch run is already completed", {
-        batchRun: batchRun,
+        batchRunId: batchRun.id,
+        batchRun: {
+          id: batchRun.id,
+          status: batchRun.status,
+        },
       });
       return;
     }
 
     if (batchRun.items.some((item) => !finishedBatchRunStatuses.includes(item.status))) {
       logger.debug("ResumeBatchRunService: All items aren't yet completed", {
-        batchRun: batchRun,
+        batchRunId: batchRun.id,
+        batchRun: {
+          id: batchRun.id,
+          status: batchRun.status,
+        },
       });
       return;
     }
 
-    // This batch has a dependent attempt and just finalized, we should resume that attempt
-    const environment = batchRun.dependentTaskAttempt.runtimeEnvironment;
-
-    // If we are in development, we don't need to resume the dependent task (that will happen automatically)
-    if (environment.type === "DEVELOPMENT") {
+    // If we are in development, or there is no dependent attempt, we can just mark the batch as completed and return
+    if (batchRun.runtimeEnvironment.type === "DEVELOPMENT" || !batchRun.dependentTaskAttemptId) {
       // We need to update the batchRun status so we don't resume it again
       await this._prisma.batchTaskRun.update({
         where: {
@@ -69,12 +74,42 @@ export class ResumeBatchRunService extends BaseService {
       return;
     }
 
-    const dependentRun = batchRun.dependentTaskAttempt.taskRun;
+    const dependentTaskAttempt = await this._prisma.taskRunAttempt.findFirst({
+      where: {
+        id: batchRun.dependentTaskAttemptId,
+      },
+      select: {
+        status: true,
+        id: true,
+        taskRun: {
+          select: {
+            id: true,
+            queue: true,
+            taskIdentifier: true,
+            concurrencyKey: true,
+          },
+        },
+      },
+    });
 
-    if (batchRun.dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
+    if (!dependentTaskAttempt) {
+      logger.error("ResumeBatchRunService: Dependent attempt not found", {
+        batchRunId: batchRun.id,
+        dependentTaskAttemptId: batchRun.dependentTaskAttemptId,
+      });
+
+      return;
+    }
+
+    // This batch has a dependent attempt and just finalized, we should resume that attempt
+    const environment = batchRun.runtimeEnvironment;
+
+    const dependentRun = dependentTaskAttempt.taskRun;
+
+    if (dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
       logger.debug("ResumeBatchRunService: Attempt is paused and has a checkpoint event", {
         batchRunId: batchRun.id,
-        dependentTaskAttempt: batchRun.dependentTaskAttempt,
+        dependentTaskAttempt: dependentTaskAttempt,
         checkpointEventId: batchRun.checkpointEventId,
       });
 
@@ -83,7 +118,7 @@ export class ResumeBatchRunService extends BaseService {
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run with checkpoint", {
           batchRunId: batchRun.id,
-          dependentTaskAttemptId: batchRun.dependentTaskAttempt.id,
+          dependentTaskAttemptId: dependentTaskAttempt.id,
         });
         await marqs?.enqueueMessage(
           environment,
@@ -92,19 +127,19 @@ export class ResumeBatchRunService extends BaseService {
           {
             type: "RESUME",
             completedAttemptIds: [],
-            resumableAttemptId: batchRun.dependentTaskAttempt.id,
+            resumableAttemptId: dependentTaskAttempt.id,
             checkpointEventId: batchRun.checkpointEventId,
-            taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
-            projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
-            environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
-            environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
+            taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+            environmentType: environment.type,
           },
           dependentRun.concurrencyKey ?? undefined
         );
       } else {
         logger.debug("ResumeBatchRunService: with checkpoint was already completed", {
           batchRunId: batchRun.id,
-          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          dependentTaskAttempt: dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
@@ -112,17 +147,17 @@ export class ResumeBatchRunService extends BaseService {
     } else {
       logger.debug("ResumeBatchRunService: attempt is not paused or there's no checkpoint event", {
         batchRunId: batchRun.id,
-        dependentTaskAttempt: batchRun.dependentTaskAttempt,
+        dependentTaskAttempt: dependentTaskAttempt,
         checkpointEventId: batchRun.checkpointEventId,
         hasCheckpointEvent: !!batchRun.checkpointEventId,
       });
 
-      if (batchRun.dependentTaskAttempt.status === "PAUSED" && !batchRun.checkpointEventId) {
+      if (dependentTaskAttempt.status === "PAUSED" && !batchRun.checkpointEventId) {
         // In case of race conditions the status can be PAUSED without a checkpoint event
         // When the checkpoint is created, it will continue the run
         logger.error("ResumeBatchRunService: attempt is paused but there's no checkpoint event", {
           batchRunId: batchRun.id,
-          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          dependentTaskAttempt: dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
@@ -134,24 +169,24 @@ export class ResumeBatchRunService extends BaseService {
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run without checkpoint", {
           batchRunId: batchRun.id,
-          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          dependentTaskAttempt: dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
         await marqs?.replaceMessage(dependentRun.id, {
           type: "RESUME",
           completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
-          resumableAttemptId: batchRun.dependentTaskAttempt.id,
+          resumableAttemptId: dependentTaskAttempt.id,
           checkpointEventId: batchRun.checkpointEventId ?? undefined,
-          taskIdentifier: batchRun.dependentTaskAttempt.taskRun.taskIdentifier,
-          projectId: batchRun.dependentTaskAttempt.runtimeEnvironment.projectId,
-          environmentId: batchRun.dependentTaskAttempt.runtimeEnvironment.id,
-          environmentType: batchRun.dependentTaskAttempt.runtimeEnvironment.type,
+          taskIdentifier: dependentTaskAttempt.taskRun.taskIdentifier,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+          environmentType: environment.type,
         });
       } else {
         logger.debug("ResumeBatchRunService: without checkpoint was already completed", {
           batchRunId: batchRun.id,
-          dependentTaskAttempt: batchRun.dependentTaskAttempt,
+          dependentTaskAttempt: dependentTaskAttempt,
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });

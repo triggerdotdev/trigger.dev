@@ -8,7 +8,7 @@ import {
   makeIdempotencyKey,
   RunHandleFromTypes,
   stringifyIO,
-  TaskRunOptions,
+  TriggerOptions,
 } from "@trigger.dev/core/v3";
 import useSWRMutation from "swr/mutation";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -64,8 +64,12 @@ export function useTaskTrigger<TTask extends AnyTask>(
     id: string,
     {
       arg: { payload, options },
-    }: { arg: { payload: TaskPayload<TTask>; options?: TaskRunOptions } }
+    }: { arg: { payload: TaskPayload<TTask>; options?: TriggerOptions } }
   ) {
+    if (!apiClient) {
+      throw new Error("Could not trigger task in useTaskTrigger: Missing access token");
+    }
+
     const payloadPacket = await stringifyIO(payload);
 
     const handle = await apiClient.triggerTask(id, {

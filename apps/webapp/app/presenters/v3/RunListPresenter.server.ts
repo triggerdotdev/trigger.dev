@@ -22,6 +22,9 @@ export type RunListOptions = {
   from?: number;
   to?: number;
   isTest?: boolean;
+  rootOnly?: boolean;
+  batchId?: string;
+  runId?: string;
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -47,6 +50,9 @@ export class RunListPresenter extends BasePresenter {
     period,
     bulkId,
     isTest,
+    rootOnly,
+    batchId,
+    runId,
     from,
     to,
     direction = "forward",
@@ -66,7 +72,10 @@ export class RunListPresenter extends BasePresenter {
       to !== undefined ||
       (scheduleId !== undefined && scheduleId !== "") ||
       (tags !== undefined && tags.length > 0) ||
-      typeof isTest === "boolean";
+      batchId !== undefined ||
+      runId !== undefined ||
+      typeof isTest === "boolean" ||
+      rootOnly === true;
 
     // Find the project scoped to the organization
     const project = await this._replica.project.findFirstOrThrow({
@@ -141,6 +150,43 @@ export class RunListPresenter extends BasePresenter {
       }
     }
 
+    //batch id is a friendly id
+    if (batchId) {
+      const batch = await this._replica.batchTaskRun.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: batchId,
+        },
+      });
+
+      if (batch) {
+        batchId = batch.id;
+      }
+    }
+
+    //scheduleId can be a friendlyId
+    if (scheduleId && scheduleId.startsWith("sched_")) {
+      const schedule = await this._replica.taskSchedule.findFirst({
+        select: {
+          id: true,
+        },
+        where: {
+          friendlyId: scheduleId,
+        },
+      });
+
+      if (schedule) {
+        scheduleId = schedule?.id;
+      }
+    }
+
+    //show all runs if we are filtering by batchId or runId
+    if (batchId || runId || scheduleId) {
+      rootOnly = false;
+    }
+
     const periodMs = period ? parse(period) : undefined;
 
     //get the runs
@@ -166,9 +212,10 @@ export class RunListPresenter extends BasePresenter {
         costInCents: number;
         baseCostInCents: number;
         usageDurationMs: BigInt;
-        tags: string[];
+        tags: null | string[];
         depth: number;
         rootTaskRunId: string | null;
+        batchId: string | null;
       }[]
     >`
     SELECT
@@ -194,15 +241,11 @@ export class RunListPresenter extends BasePresenter {
     tr."usageDurationMs" AS "usageDurationMs",
     tr."depth" AS "depth",
     tr."rootTaskRunId" AS "rootTaskRunId",
-    array_remove(array_agg(tag.name), NULL) AS "tags"
+    tr."runTags" AS "tags"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
 LEFT JOIN
     ${sqlDatabaseSchema}."BackgroundWorker" bw ON tr."lockedToVersionId" = bw.id
-LEFT JOIN
-    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg ON tr.id = trtg."A"
-LEFT JOIN
-    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
 WHERE
     -- project
     tr."projectId" = ${project.id}
@@ -215,6 +258,8 @@ WHERE
         : Prisma.empty
     }
     -- filters
+    ${runId ? Prisma.sql`AND tr."friendlyId" = ${runId}` : Prisma.empty}
+    ${batchId ? Prisma.sql`AND tr."batchId" = ${batchId}` : Prisma.empty}
     ${
       restrictToRunIds
         ? restrictToRunIds.length === 0
@@ -248,26 +293,16 @@ WHERE
       from
         ? Prisma.sql`AND tr."createdAt" >= ${new Date(from).toISOString()}::timestamp`
         : Prisma.empty
-    } 
+    }
     ${
       to ? Prisma.sql`AND tr."createdAt" <= ${new Date(to).toISOString()}::timestamp` : Prisma.empty
-    } 
-        ${
-          tags && tags.length > 0
-            ? Prisma.sql`AND (
-              tr.id IN (
-                SELECT 
-                    trtg."A" 
-                FROM 
-                    ${sqlDatabaseSchema}."_TaskRunToTaskRunTag" trtg
-                JOIN 
-                    ${sqlDatabaseSchema}."TaskRunTag" tag ON trtg."B" = tag.id
-                WHERE 
-                    tag.name IN (${Prisma.join(tags)})
-              )
-            )`
-            : Prisma.empty
-        }
+    }
+    ${
+      tags && tags.length > 0
+        ? Prisma.sql`AND tr."runTags" && ARRAY[${Prisma.join(tags)}]::text[]`
+        : Prisma.empty
+    }
+    ${rootOnly === true ? Prisma.sql`AND tr."rootTaskRunId" IS NULL` : Prisma.empty}
     GROUP BY
       tr.id, bw.version
     ORDER BY
@@ -336,7 +371,7 @@ WHERE
           costInCents: run.costInCents,
           baseCostInCents: run.baseCostInCents,
           usageDurationMs: Number(run.usageDurationMs),
-          tags: run.tags.sort((a, b) => a.localeCompare(b)),
+          tags: run.tags ? run.tags.sort((a, b) => a.localeCompare(b)) : [],
           depth: run.depth,
           rootTaskRunId: run.rootTaskRunId,
         };

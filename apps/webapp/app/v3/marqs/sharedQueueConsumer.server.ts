@@ -407,6 +407,9 @@ export class SharedQueueConsumer {
             lockedAt: new Date(),
             lockedById: backgroundTask.id,
             lockedToVersionId: deployment.worker.id,
+            taskVersion: deployment.worker.version,
+            sdkVersion: deployment.worker.sdkVersion,
+            cliVersion: deployment.worker.cliVersion,
             startedAt: existingTaskRun.startedAt ?? new Date(),
             baseCostInCents: env.CENTS_PER_RUN,
             machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
@@ -1035,6 +1038,7 @@ class SharedQueueTasks {
         id: attempt.taskRun.friendlyId,
         output: attempt.output ?? undefined,
         outputType: attempt.outputType,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
       };
       return success;
     } else {
@@ -1042,6 +1046,7 @@ class SharedQueueTasks {
         ok,
         id: attempt.taskRun.friendlyId,
         error: attempt.error as TaskRunError,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
       };
       return failure;
     }
@@ -1076,7 +1081,11 @@ class SharedQueueTasks {
             tags: true,
             batchItems: {
               include: {
-                batchTaskRun: true,
+                batchTaskRun: {
+                  select: {
+                    friendlyId: true,
+                  },
+                },
               },
             },
           },

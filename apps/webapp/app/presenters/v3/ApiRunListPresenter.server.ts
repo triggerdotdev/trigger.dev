@@ -119,6 +119,7 @@ export const ApiRunListSearchParams = z.object({
   "filter[createdAt][from]": CoercedDate,
   "filter[createdAt][to]": CoercedDate,
   "filter[createdAt][period]": z.string().optional(),
+  "filter[batch]": z.string().optional(),
 });
 
 type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
@@ -207,6 +208,10 @@ export class ApiRunListPresenter extends BasePresenter {
 
       if (typeof searchParams["filter[isTest]"] === "boolean") {
         options.isTest = searchParams["filter[isTest]"];
+      }
+
+      if (searchParams["filter[batch]"]) {
+        options.batchId = searchParams["filter[batch]"];
       }
 
       const presenter = new RunListPresenter();

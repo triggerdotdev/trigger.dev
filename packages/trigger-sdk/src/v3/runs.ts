@@ -9,8 +9,10 @@ import type {
   RetrieveRunResult,
   RunShape,
   RealtimeRun,
+  AnyRealtimeRun,
   RunSubscription,
   TaskRunShape,
+  AnyBatchedRunHandle,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -36,6 +38,7 @@ export type {
   RunShape,
   TaskRunShape,
   RealtimeRun,
+  AnyRealtimeRun,
 };
 
 export const runs = {
@@ -47,6 +50,7 @@ export const runs = {
   poll,
   subscribeToRun,
   subscribeToRunsWithTag,
+  subscribeToBatch: subscribeToRunsInBatch,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -150,7 +154,7 @@ function listRunsRequestOptions(
 }
 
 // Extract out the expected type of the id, can be either a string or a RunHandle
-type RunId<TRunId> = TRunId extends AnyRunHandle
+type RunId<TRunId> = TRunId extends AnyRunHandle | AnyBatchedRunHandle
   ? TRunId
   : TRunId extends AnyTask
   ? string
@@ -158,7 +162,7 @@ type RunId<TRunId> = TRunId extends AnyRunHandle
   ? TRunId
   : never;
 
-function retrieveRun<TRunId extends AnyRunHandle | AnyTask | string>(
+function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveRunResult<TRunId>> {
@@ -331,6 +335,35 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   );
 }
 
+/**
+ * Subscribes to real-time updates for a specific run.
+ *
+ * This function allows you to receive real-time updates whenever a run changes, including:
+ * - Status changes in the run lifecycle
+ * - Tag additions or removals
+ * - Metadata updates
+ *
+ * @template TRunId - The type parameter extending AnyRunHandle, AnyTask, or string
+ * @param {RunId<TRunId>} runId - The ID of the run to subscribe to. Can be a string ID, RunHandle, or Task
+ * @returns {RunSubscription<InferRunTypes<TRunId>>} An async iterator that yields updated run objects
+ *
+ * @example
+ * ```ts
+ * // Subscribe using a run handle
+ * const handle = await tasks.trigger("my-task", { some: "data" });
+ * for await (const run of runs.subscribeToRun(handle.id)) {
+ *   console.log("Run updated:", run);
+ * }
+ *
+ * // Subscribe with type safety
+ * for await (const run of runs.subscribeToRun<typeof myTask>(runId)) {
+ *   console.log("Payload:", run.payload.some);
+ *   if (run.output) {
+ *     console.log("Output:", run.output);
+ *   }
+ * }
+ * ```
+ */
 function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   runId: RunId<TRunId>
 ): RunSubscription<InferRunTypes<TRunId>> {
@@ -341,10 +374,77 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   return apiClient.subscribeToRun($runId);
 }
 
+/**
+ * Subscribes to real-time updates for all runs that have specific tags.
+ *
+ * This function allows you to monitor multiple runs simultaneously by filtering on tags.
+ * You'll receive updates whenever any run with the specified tag(s) changes.
+ *
+ * @template TTasks - The type parameter extending AnyTask for type-safe payload and output
+ * @param {string | string[]} tag - A single tag or array of tags to filter runs
+ * @returns {RunSubscription<InferRunTypes<TTasks>>} An async iterator that yields updated run objects
+ *
+ * @example
+ * ```ts
+ * // Subscribe to runs with a single tag
+ * for await (const run of runs.subscribeToRunsWithTag("user:1234")) {
+ *   console.log("Run updated:", run);
+ * }
+ *
+ * // Subscribe with multiple tags and type safety
+ * for await (const run of runs.subscribeToRunsWithTag<typeof myTask | typeof otherTask>(["tag1", "tag2"])) {
+ *   switch (run.taskIdentifier) {
+ *     case "my-task":
+ *       console.log("MyTask output:", run.output.foo);
+ *       break;
+ *     case "other-task":
+ *       console.log("OtherTask output:", run.output.bar);
+ *       break;
+ *   }
+ * }
+ * ```
+ */
 function subscribeToRunsWithTag<TTasks extends AnyTask>(
   tag: string | string[]
 ): RunSubscription<InferRunTypes<TTasks>> {
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.subscribeToRunsWithTag<InferRunTypes<TTasks>>(tag);
+}
+
+/**
+ * Subscribes to real-time updates for all runs within a specific batch.
+ *
+ * Use this function when you've triggered multiple runs using `batchTrigger` and want
+ * to monitor all runs in that batch. You'll receive updates whenever any run in the batch changes.
+ *
+ * @template TTasks - The type parameter extending AnyTask for type-safe payload and output
+ * @param {string} batchId - The ID of the batch to subscribe to
+ * @returns {RunSubscription<InferRunTypes<TTasks>>} An async iterator that yields updated run objects
+ *
+ * @example
+ * ```ts
+ * // Subscribe to all runs in a batch
+ * for await (const run of runs.subscribeToRunsInBatch("batch-123")) {
+ *   console.log("Batch run updated:", run);
+ * }
+ *
+ * // Subscribe with type safety
+ * for await (const run of runs.subscribeToRunsInBatch<typeof myTask>("batch-123")) {
+ *   console.log("Run payload:", run.payload);
+ *   if (run.output) {
+ *     console.log("Run output:", run.output);
+ *   }
+ * }
+ * ```
+ *
+ * @note The run objects received will include standard fields like id, status, payload, output,
+ * createdAt, updatedAt, tags, and more. See the Run object documentation for full details.
+ */
+function subscribeToRunsInBatch<TTasks extends AnyTask>(
+  batchId: string
+): RunSubscription<InferRunTypes<TTasks>> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return apiClient.subscribeToBatch<InferRunTypes<TTasks>>(batchId);
 }

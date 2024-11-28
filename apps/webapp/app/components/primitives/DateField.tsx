@@ -1,4 +1,4 @@
-import { BellAlertIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CalendarDateTime, createCalendar } from "@internationalized/date";
 import { useDateField, useDateSegment } from "@react-aria/datepicker";
 import type { DateFieldState, DateSegment } from "@react-stately/datepicker";
@@ -12,7 +12,7 @@ const variants = {
   small: {
     fieldStyles: "h-5 text-sm rounded-sm px-0.5",
     nowButtonVariant: "tertiary/small" as const,
-    clearButtonVariant: "minimal/small" as const,
+    clearButtonVariant: "tertiary/small" as const,
   },
   medium: {
     fieldStyles: "h-7 text-base rounded px-1",
@@ -35,8 +35,11 @@ type DateFieldProps = {
   showNowButton?: boolean;
   showClearButton?: boolean;
   onValueChange?: (value: Date | undefined) => void;
+  utc?: boolean;
   variant?: Variant;
 };
+
+const deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function DateField({
   label,
@@ -50,10 +53,11 @@ export function DateField({
   showGuide = false,
   showNowButton = false,
   showClearButton = false,
+  utc = false,
   variant = "small",
 }: DateFieldProps) {
   const [value, setValue] = useState<undefined | CalendarDateTime>(
-    utcDateToCalendarDate(defaultValue)
+    utc ? utcDateToCalendarDate(defaultValue) : dateToCalendarDate(defaultValue)
   );
 
   const state = useDateFieldState({
@@ -61,11 +65,11 @@ export function DateField({
     onChange: (value) => {
       if (value) {
         setValue(value);
-        onValueChange?.(value.toDate("utc"));
+        onValueChange?.(value.toDate(utc ? "utc" : deviceTimezone));
       }
     },
-    minValue: utcDateToCalendarDate(minValue),
-    maxValue: utcDateToCalendarDate(maxValue),
+    minValue: utc ? utcDateToCalendarDate(minValue) : dateToCalendarDate(minValue),
+    maxValue: utc ? utcDateToCalendarDate(maxValue) : dateToCalendarDate(maxValue),
     shouldForceLeadingZeros: true,
     granularity,
     locale: "en-US",
@@ -78,7 +82,9 @@ export function DateField({
   useEffect(() => {
     if (state.value === undefined && defaultValue === undefined) return;
 
-    const calendarDate = utcDateToCalendarDate(defaultValue);
+    const calendarDate = utc
+      ? utcDateToCalendarDate(defaultValue)
+      : dateToCalendarDate(defaultValue);
     //unchanged
     if (state.value?.toDate("utc").getTime() === defaultValue?.getTime()) {
       return;
@@ -134,23 +140,19 @@ export function DateField({
           <Button
             type="button"
             variant={variants[variant].nowButtonVariant}
-            LeadingIcon={BellAlertIcon}
-            leadingIconClassName="text-text-dimmed group-hover:text-text-bright"
             onClick={() => {
               const now = new Date();
-              setValue(utcDateToCalendarDate(new Date()));
+              setValue(utc ? utcDateToCalendarDate(now) : dateToCalendarDate(now));
               onValueChange?.(now);
             }}
           >
-            <span className="text-text-dimmed transition group-hover:text-text-bright">Now</span>
+            Now
           </Button>
         )}
         {showClearButton && (
           <Button
             type="button"
             variant={variants[variant].clearButtonVariant}
-            LeadingIcon={"close"}
-            leadingIconClassName="-mr-2"
             onClick={() => {
               setValue(undefined);
               onValueChange?.(undefined);
@@ -181,11 +183,24 @@ function utcDateToCalendarDate(date?: Date) {
   return date
     ? new CalendarDateTime(
         date.getUTCFullYear(),
-        date.getUTCMonth(),
+        date.getUTCMonth() + 1,
         date.getUTCDate(),
         date.getUTCHours(),
         date.getUTCMinutes(),
         date.getUTCSeconds()
+      )
+    : undefined;
+}
+
+function dateToCalendarDate(date?: Date) {
+  return date
+    ? new CalendarDateTime(
+        date.getFullYear(),
+        date.getMonth() + 1,
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds()
       )
     : undefined;
 }

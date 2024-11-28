@@ -149,6 +149,11 @@ export class SpanPresenter extends BasePresenter {
             spanId: true,
           },
         },
+        batch: {
+          select: {
+            friendlyId: true,
+          },
+        },
       },
       where: {
         spanId,
@@ -312,6 +317,7 @@ export class SpanPresenter extends BasePresenter {
       context: JSON.stringify(context, null, 2),
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
+      batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
     };
   }
 

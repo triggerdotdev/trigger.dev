@@ -4,6 +4,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { startActiveSpan } from "./tracer.server";
+import { IOPacket } from "@trigger.dev/core/v3";
 
 export const r2 = singleton("r2", initializeR2);
 
@@ -18,13 +19,13 @@ function initializeR2() {
   });
 }
 
-export async function uploadToObjectStore(
+export async function uploadPacketToObjectStore(
   filename: string,
-  data: string,
+  data: ReadableStream | string,
   contentType: string,
   environment: AuthenticatedEnvironment
 ): Promise<string> {
-  return await startActiveSpan("uploadToObjectStore()", async (span) => {
+  return await startActiveSpan("uploadPacketToObjectStore()", async (span) => {
     if (!r2) {
       throw new Error("Object store credentials are not set");
     }
@@ -54,6 +55,92 @@ export async function uploadToObjectStore(
 
     if (!response.ok) {
       throw new Error(`Failed to upload output to ${url}: ${response.statusText}`);
+    }
+
+    return url.href;
+  });
+}
+
+export async function downloadPacketFromObjectStore(
+  packet: IOPacket,
+  environment: AuthenticatedEnvironment
+): Promise<IOPacket> {
+  if (packet.dataType !== "application/store") {
+    return packet;
+  }
+
+  return await startActiveSpan("downloadPacketFromObjectStore()", async (span) => {
+    if (!r2) {
+      throw new Error("Object store credentials are not set");
+    }
+
+    if (!env.OBJECT_STORE_BASE_URL) {
+      throw new Error("Object store base URL is not set");
+    }
+
+    span.setAttributes({
+      projectRef: environment.project.externalRef,
+      environmentSlug: environment.slug,
+      filename: packet.data,
+    });
+
+    const url = new URL(env.OBJECT_STORE_BASE_URL);
+    url.pathname = `/packets/${environment.project.externalRef}/${environment.slug}/${packet.data}`;
+
+    logger.debug("Downloading from object store", { url: url.href });
+
+    const response = await r2.fetch(url.toString());
+
+    if (!response.ok) {
+      throw new Error(`Failed to download input from ${url}: ${response.statusText}`);
+    }
+
+    const data = await response.text();
+
+    const rawPacket = {
+      data,
+      dataType: "application/json",
+    };
+
+    return rawPacket;
+  });
+}
+
+export async function uploadDataToObjectStore(
+  filename: string,
+  data: string,
+  contentType: string,
+  prefix?: string
+): Promise<string> {
+  return await startActiveSpan("uploadDataToObjectStore()", async (span) => {
+    if (!r2) {
+      throw new Error("Object store credentials are not set");
+    }
+
+    if (!env.OBJECT_STORE_BASE_URL) {
+      throw new Error("Object store base URL is not set");
+    }
+
+    span.setAttributes({
+      prefix,
+      filename,
+    });
+
+    const url = new URL(env.OBJECT_STORE_BASE_URL);
+    url.pathname = `${prefix}/${filename}`;
+
+    logger.debug("Uploading to object store", { url: url.href });
+
+    const response = await r2.fetch(url.toString(), {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload data to ${url}: ${response.statusText}`);
     }
 
     return url.href;
