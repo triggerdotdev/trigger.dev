@@ -520,6 +520,59 @@ export async function batchTrigger<TTask extends AnyTask>(
   );
 }
 
+/**
+ * Triggers multiple runs of different tasks with specified payloads and options.
+ *
+ * @template TTask - The type of task(s) to be triggered, extends AnyTask
+ *
+ * @param {Array<BatchByIdItem<InferRunTypes<TTask>>>} items - Array of task items to trigger
+ * @param {BatchTriggerOptions} [options] - Optional batch-level trigger options
+ * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
+ *
+ * @returns {Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>>} A promise that resolves with the batch run handle
+ * containing batch ID, cached status, idempotency info, runs, and public access token
+ *
+ * @example
+ * ```ts
+ * import { batch } from "@trigger.dev/sdk/v3";
+ * import type { myTask1, myTask2 } from "~/trigger/myTasks";
+ *
+ * // Trigger multiple tasks with different payloads
+ * const result = await batch.trigger<typeof myTask1 | typeof myTask2>([
+ *   {
+ *     id: "my-task-1",
+ *     payload: { some: "data" },
+ *     options: {
+ *       queue: "default",
+ *       concurrencyKey: "key",
+ *       idempotencyKey: "unique-key",
+ *       delay: "5m",
+ *       tags: ["tag1", "tag2"]
+ *     }
+ *   },
+ *   {
+ *     id: "my-task-2",
+ *     payload: { other: "data" }
+ *   }
+ * ]);
+ * ```
+ *
+ * @description
+ * Each task item in the array can include:
+ * - `id`: The unique identifier of the task
+ * - `payload`: The data to pass to the task
+ * - `options`: Optional task-specific settings including:
+ *   - `queue`: Specify a queue for the task
+ *   - `concurrencyKey`: Control concurrent execution
+ *   - `idempotencyKey`: Prevent duplicate runs
+ *   - `idempotencyKeyTTL`: Time-to-live for idempotency key
+ *   - `delay`: Delay before task execution
+ *   - `ttl`: Time-to-live for the task
+ *   - `tags`: Array of tags for the task
+ *   - `maxAttempts`: Maximum retry attempts
+ *   - `metadata`: Additional metadata
+ *   - `maxDuration`: Maximum execution duration
+ */
 export async function batchTriggerById<TTask extends AnyTask>(
   items: Array<BatchByIdItem<InferRunTypes<TTask>>>,
   options?: BatchTriggerOptions,
@@ -608,6 +661,83 @@ export async function batchTriggerById<TTask extends AnyTask>(
   return handle as BatchRunHandleFromTypes<InferRunTypes<TTask>>;
 }
 
+/**
+ * Triggers multiple tasks and waits for all of them to complete before returning their results.
+ * This function must be called from within a task.run() context.
+ *
+ * @template TTask - Union type of tasks to be triggered, extends AnyTask
+ *
+ * @param {Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>} items - Array of task items to trigger
+ * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
+ *
+ * @returns {Promise<BatchByIdResult<TTask>>} A promise that resolves with the batch results, including
+ * success/failure status and strongly-typed outputs for each task
+ *
+ * @throws {Error} If called outside of a task.run() context
+ * @throws {Error} If no API client is configured
+ *
+ * @example
+ * ```ts
+ * import { batch, task } from "@trigger.dev/sdk/v3";
+ *
+ * export const parentTask = task({
+ *   id: "parent-task",
+ *   run: async (payload: string) => {
+ *     const results = await batch.triggerAndWait<typeof childTask1 | typeof childTask2>([
+ *       {
+ *         id: "child-task-1",
+ *         payload: { foo: "World" },
+ *         options: {
+ *           queue: "default",
+ *           delay: "5m",
+ *           tags: ["batch", "child1"]
+ *         }
+ *       },
+ *       {
+ *         id: "child-task-2",
+ *         payload: { bar: 42 }
+ *       }
+ *     ]);
+ *
+ *     // Type-safe result handling
+ *     for (const result of results) {
+ *       if (result.ok) {
+ *         switch (result.taskIdentifier) {
+ *           case "child-task-1":
+ *             console.log("Child task 1 output:", result.output); // string type
+ *             break;
+ *           case "child-task-2":
+ *             console.log("Child task 2 output:", result.output); // number type
+ *             break;
+ *         }
+ *       } else {
+ *         console.error("Task failed:", result.error);
+ *       }
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * @description
+ * Each task item in the array can include:
+ * - `id`: The task identifier (must match one of the tasks in the union type)
+ * - `payload`: Strongly-typed payload matching the task's input type
+ * - `options`: Optional task-specific settings including:
+ *   - `queue`: Specify a queue for the task
+ *   - `concurrencyKey`: Control concurrent execution
+ *   - `delay`: Delay before task execution
+ *   - `ttl`: Time-to-live for the task
+ *   - `tags`: Array of tags for the task
+ *   - `maxAttempts`: Maximum retry attempts
+ *   - `metadata`: Additional metadata
+ *   - `maxDuration`: Maximum execution duration
+ *
+ * The function provides full type safety for:
+ * - Task IDs
+ * - Payload types
+ * - Return value types
+ * - Error handling
+ */
 export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
   items: Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>,
   requestOptions?: TriggerApiRequestOptions
@@ -691,6 +821,83 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
   );
 }
 
+/**
+ * Triggers multiple tasks and waits for all of them to complete before returning their results.
+ * This function must be called from within a task.run() context.
+ *
+ * @template TTask - Union type of tasks to be triggered, extends AnyTask
+ *
+ * @param {Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>} items - Array of task items to trigger
+ * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
+ *
+ * @returns {Promise<BatchByIdResult<TTask>>} A promise that resolves with the batch results, including
+ * success/failure status and strongly-typed outputs for each task
+ *
+ * @throws {Error} If called outside of a task.run() context
+ * @throws {Error} If no API client is configured
+ *
+ * @example
+ * ```ts
+ * import { batch, task } from "@trigger.dev/sdk/v3";
+ *
+ * export const parentTask = task({
+ *   id: "parent-task",
+ *   run: async (payload: string) => {
+ *     const results = await batch.triggerAndWait<typeof childTask1 | typeof childTask2>([
+ *       {
+ *         id: "child-task-1",
+ *         payload: { foo: "World" },
+ *         options: {
+ *           queue: "default",
+ *           delay: "5m",
+ *           tags: ["batch", "child1"]
+ *         }
+ *       },
+ *       {
+ *         id: "child-task-2",
+ *         payload: { bar: 42 }
+ *       }
+ *     ]);
+ *
+ *     // Type-safe result handling
+ *     for (const result of results) {
+ *       if (result.ok) {
+ *         switch (result.taskIdentifier) {
+ *           case "child-task-1":
+ *             console.log("Child task 1 output:", result.output); // string type
+ *             break;
+ *           case "child-task-2":
+ *             console.log("Child task 2 output:", result.output); // number type
+ *             break;
+ *         }
+ *       } else {
+ *         console.error("Task failed:", result.error);
+ *       }
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * @description
+ * Each task item in the array can include:
+ * - `id`: The task identifier (must match one of the tasks in the union type)
+ * - `payload`: Strongly-typed payload matching the task's input type
+ * - `options`: Optional task-specific settings including:
+ *   - `queue`: Specify a queue for the task
+ *   - `concurrencyKey`: Control concurrent execution
+ *   - `delay`: Delay before task execution
+ *   - `ttl`: Time-to-live for the task
+ *   - `tags`: Array of tags for the task
+ *   - `maxAttempts`: Maximum retry attempts
+ *   - `metadata`: Additional metadata
+ *   - `maxDuration`: Maximum execution duration
+ *
+ * The function provides full type safety for:
+ * - Task IDs
+ * - Payload types
+ * - Return value types
+ * - Error handling
+ */
 export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
   items: {
     [K in keyof TTasks]: BatchByTaskItem<TTasks[K]>;
@@ -781,6 +988,83 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
   return handle as unknown as BatchTasksRunHandleFromTypes<TTasks>;
 }
 
+/**
+ * Triggers multiple tasks and waits for all of them to complete before returning their results.
+ * This function must be called from within a task.run() context.
+ *
+ * @template TTask - Union type of tasks to be triggered, extends AnyTask
+ *
+ * @param {Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>} items - Array of task items to trigger
+ * @param {TriggerApiRequestOptions} [requestOptions] - Optional API request configuration
+ *
+ * @returns {Promise<BatchByIdResult<TTask>>} A promise that resolves with the batch results, including
+ * success/failure status and strongly-typed outputs for each task
+ *
+ * @throws {Error} If called outside of a task.run() context
+ * @throws {Error} If no API client is configured
+ *
+ * @example
+ * ```ts
+ * import { batch, task } from "@trigger.dev/sdk/v3";
+ *
+ * export const parentTask = task({
+ *   id: "parent-task",
+ *   run: async (payload: string) => {
+ *     const results = await batch.triggerAndWait<typeof childTask1 | typeof childTask2>([
+ *       {
+ *         id: "child-task-1",
+ *         payload: { foo: "World" },
+ *         options: {
+ *           queue: "default",
+ *           delay: "5m",
+ *           tags: ["batch", "child1"]
+ *         }
+ *       },
+ *       {
+ *         id: "child-task-2",
+ *         payload: { bar: 42 }
+ *       }
+ *     ]);
+ *
+ *     // Type-safe result handling
+ *     for (const result of results) {
+ *       if (result.ok) {
+ *         switch (result.taskIdentifier) {
+ *           case "child-task-1":
+ *             console.log("Child task 1 output:", result.output); // string type
+ *             break;
+ *           case "child-task-2":
+ *             console.log("Child task 2 output:", result.output); // number type
+ *             break;
+ *         }
+ *       } else {
+ *         console.error("Task failed:", result.error);
+ *       }
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * @description
+ * Each task item in the array can include:
+ * - `id`: The task identifier (must match one of the tasks in the union type)
+ * - `payload`: Strongly-typed payload matching the task's input type
+ * - `options`: Optional task-specific settings including:
+ *   - `queue`: Specify a queue for the task
+ *   - `concurrencyKey`: Control concurrent execution
+ *   - `delay`: Delay before task execution
+ *   - `ttl`: Time-to-live for the task
+ *   - `tags`: Array of tags for the task
+ *   - `maxAttempts`: Maximum retry attempts
+ *   - `metadata`: Additional metadata
+ *   - `maxDuration`: Maximum execution duration
+ *
+ * The function provides full type safety for:
+ * - Task IDs
+ * - Payload types
+ * - Return value types
+ * - Error handling
+ */
 export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]>(
   items: {
     [K in keyof TTasks]: BatchByTaskAndWaitItem<TTasks[K]>;

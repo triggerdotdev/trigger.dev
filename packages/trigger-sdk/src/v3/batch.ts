@@ -22,6 +22,23 @@ export const batch = {
   retrieve: retrieveBatch,
 };
 
+/**
+ * Retrieves details about a specific batch by its ID.
+ *
+ * @param {string} batchId - The unique identifier of the batch to retrieve
+ * @param {ApiRequestOptions} [requestOptions] - Optional API request configuration options
+ * @returns {ApiPromise<RetrieveBatchResponse>} A promise that resolves with the batch details
+ *
+ * @example
+ * // First trigger a batch
+ * const response = await batch.trigger([
+ *   { id: "simple-task", payload: { message: "Hello, World!" } }
+ * ]);
+ *
+ * // Then retrieve the batch details
+ * const batchDetails = await batch.retrieve(response.batchId);
+ * console.log("batch", batchDetails);
+ */
 function retrieveBatch(
   batchId: string,
   requestOptions?: ApiRequestOptions
