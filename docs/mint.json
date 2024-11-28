@@ -217,7 +217,8 @@
         "realtime/streams",
         "realtime/react-hooks",
         "realtime/subscribe-to-run",
-        "realtime/subscribe-to-runs-with-tag"
+        "realtime/subscribe-to-runs-with-tag",
+        "realtime/subscribe-to-batch"
       ]
     },
     {

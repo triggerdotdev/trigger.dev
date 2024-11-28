@@ -753,7 +753,7 @@ paths:
             import { runs, configure } from "@trigger.dev/sdk/v3";
 
             configure({
-              secretKey: "tr_pat_1234" // always use an environment variable for this
+              accessToken: "tr_pat_1234" // always use an environment variable for this
             });
 
             // Get the first page of runs
@@ -781,7 +781,7 @@ paths:
             import { runs, configure } from "@trigger.dev/sdk/v3";
 
             configure({
-              secretKey: "tr_pat_1234" // always use an environment variable for this
+              accessToken: "tr_pat_1234" // always use an environment variable for this
             });
 
             const response = await runs.list("proj_1234", {
@@ -1503,7 +1503,7 @@ components:
         ```typescript
         import { configure } from "@trigger.dev/sdk/v3";
 
-        configure({ secretKey: "tr_dev_1234" });
+        configure({ accessToken: "tr_dev_1234" });
         ```
 
     personalAccessToken:
@@ -1517,7 +1517,7 @@ components:
         ```typescript
         import { configure } from "@trigger.dev/sdk/v3";
 
-        configure({ secretKey: "tr_pat_1234" });
+        configure({ accessToken: "tr_pat_1234" });
         ```
   schemas:
     TriggerTaskResponse:
