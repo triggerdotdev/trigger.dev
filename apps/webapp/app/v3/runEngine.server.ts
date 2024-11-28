@@ -3,9 +3,11 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { tracer } from "./tracer.server";
 import { singleton } from "~/utils/singleton";
-import { eventRepository } from "./eventRepository.server";
-import { createJsonErrorObject } from "@trigger.dev/core/v3";
+import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
+import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
+import { safeJsonParse } from "~/utils/json";
+import type { Attributes } from "@opentelemetry/api";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -48,12 +50,45 @@ function createRunEngine() {
         endTime: time,
         attributes: {
           isError: false,
-          output: run.output,
+          output:
+            run.outputType === "application/store" || run.outputType === "text/plain"
+              ? run.output
+              : run.output
+              ? (safeJsonParse(run.output) as Attributes)
+              : undefined,
           outputType: run.outputType,
         },
       });
     } catch (error) {
       logger.error("[runSucceeded] Failed to complete event", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+      });
+    }
+  });
+
+  engine.eventBus.on("runFailed", async ({ time, run }) => {
+    try {
+      const sanitizedError = sanitizeError(run.error);
+      const exception = createExceptionPropertiesFromError(sanitizedError);
+
+      await eventRepository.completeEvent(run.spanId, {
+        endTime: time,
+        attributes: {
+          isError: true,
+        },
+        events: [
+          {
+            name: "exception",
+            time: time,
+            properties: {
+              exception,
+            },
+          },
+        ],
+      });
+    } catch (error) {
+      logger.error("[runFailed] Failed to complete event", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
       });
