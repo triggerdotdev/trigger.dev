@@ -99,7 +99,7 @@ export const TaskRunListSearchFilters = z.object({
   bulkId: z.string().optional(),
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
-  showChildTasks: z.coerce.boolean().optional(),
+  rootOnly: z.coerce.boolean().optional(),
   batchId: z.string().optional(),
   runId: z.string().optional(),
   scheduleId: z.string().optional(),
@@ -119,6 +119,7 @@ type RunFiltersProps = {
     type: BulkActionType;
     createdAt: Date;
   }[];
+  rootOnlyDefault: boolean;
   hasFilters: boolean;
 };
 
@@ -141,16 +142,12 @@ export function RunsFilters(props: RunFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
       <FilterMenu {...props} />
-      <ShowChildTasksToggle />
+      <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <AppliedFilters {...props} />
       {hasFilters && (
         <Form className="h-6">
-          {searchParams.has("showChildTasks") && (
-            <input
-              type="hidden"
-              name="showChildTasks"
-              value={searchParams.get("showChildTasks") as string}
-            />
+          {searchParams.has("rootOnly") && (
+            <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
           )}
           <Button variant="minimal/small" LeadingIcon={TrashIcon}>
             Clear all
@@ -707,26 +704,27 @@ function AppliedTagsFilter() {
   );
 }
 
-function ShowChildTasksToggle() {
-  const { value, replace } = useSearchParams();
-
-  const showChildTasks = value("showChildTasks") === "true";
+function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
+  const { value, values, replace } = useSearchParams();
+  const searchValue = value("rootOnly");
+  const rootOnly = searchValue !== undefined ? searchValue === "true" : defaultValue;
 
   const batchId = value("batchId");
   const runId = value("runId");
   const scheduleId = value("scheduleId");
+  const tasks = values("tasks");
 
-  const disabled = !!batchId || !!runId || !!scheduleId;
+  const disabled = !!batchId || !!runId || !!scheduleId || tasks.length > 0;
 
   return (
     <Switch
       disabled={disabled}
       variant="small"
-      label="Show child runs"
-      checked={disabled ? true : showChildTasks}
+      label="Root only"
+      checked={disabled ? false : rootOnly}
       onCheckedChange={(checked) => {
         replace({
-          showChildTasks: checked ? "true" : undefined,
+          rootOnly: checked ? "true" : "false",
         });
       }}
     />
