@@ -1,4 +1,3 @@
-import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
@@ -13,24 +12,21 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: (params, auth) => {
+      return $replica.batchTaskRun.findFirst({
+        where: {
+          friendlyId: params.batchId,
+          runtimeEnvironmentId: auth.environment.id,
+        },
+      });
+    },
     authorization: {
       action: "read",
-      resource: (params) => ({ batch: params.batchId }),
+      resource: (batch) => ({ batch: batch.friendlyId }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ params, authentication, request }) => {
-    const batchRun = await $replica.batchTaskRun.findFirst({
-      where: {
-        friendlyId: params.batchId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
-    });
-
-    if (!batchRun) {
-      return json({ error: "Batch not found" }, { status: 404 });
-    }
-
+  async ({ authentication, request, resource: batchRun }) => {
     return realtimeClient.streamBatch(
       request.url,
       authentication.environment,

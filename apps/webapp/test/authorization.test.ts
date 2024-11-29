@@ -65,7 +65,7 @@ describe("checkAuthorization", () => {
       expect(result.authorized).toBe(false);
       if (!result.authorized) {
         expect(result.reason).toBe(
-          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:runs:run_1234', 'read:tasks', 'read:tags:tag_5678'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+          "Public Access Token is missing required permissions. Token has the following permissions: 'read:runs:run_1234', 'read:tasks', 'read:tags:tag_5678'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
         );
       }
     });
@@ -97,8 +97,8 @@ describe("checkAuthorization", () => {
         // @ts-expect-error
         nonexistent: "resource",
       });
-      expect(result.authorized).toBe(true);
-      expect(result).not.toHaveProperty("reason");
+      expect(result.authorized).toBe(false);
+      expect(result).toHaveProperty("reason");
     });
   });
 
@@ -167,28 +167,25 @@ describe("checkAuthorization", () => {
       }
     });
 
-    it("should return unauthorized if any resource is not authorized", () => {
+    it("should return authorized if any resource is authorized", () => {
       const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
         runs: "run_1234", // This is authorized
         tasks: "task_5678", // This is authorized (general permission)
         tags: "tag_3456", // This is not authorized
       });
-      expect(result.authorized).toBe(false);
-      if (!result.authorized) {
-        expect(result.reason).toBe(
-          "Public Access Token is missing required permissions. Permissions required for 'read:tags:tag_3456' but token has the following permissions: 'read:runs:run_1234', 'read:tasks', 'read:tags:tag_5678'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
-        );
-      }
-    });
-
-    it("should return authorized only if all resources are authorized", () => {
-      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
-        runs: "run_1234", // This is authorized
-        tasks: "task_5678", // This is authorized (general permission)
-        tags: "tag_5678", // This is authorized
-      });
       expect(result.authorized).toBe(true);
       expect(result).not.toHaveProperty("reason");
+    });
+
+    it("should return unauthorized only if no resources are authorized", () => {
+      const result = checkAuthorization(publicJwtEntityWithPermissions, "read", {
+        runs: "run_5678", // Not authorized
+        tags: "tag_3456", // Not authorized
+      });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toContain("Public Access Token is missing required permissions");
+      }
     });
   });
 
@@ -244,7 +241,7 @@ describe("checkAuthorization", () => {
       expect(result.authorized).toBe(false);
       if (!result.authorized) {
         expect(result.reason).toBe(
-          "Public Access Token is missing required permissions. Permissions required for 'read:tasks:task_1234' but token has the following permissions: 'read:all'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+          "Public Access Token is missing required permissions. Token has the following permissions: 'read:all'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
         );
       }
     });
@@ -281,7 +278,7 @@ describe("checkAuthorization", () => {
       expect(result2.authorized).toBe(false);
       if (!result2.authorized) {
         expect(result2.reason).toBe(
-          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:tasks', 'read:tags'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+          "Public Access Token is missing required permissions. Token has the following permissions: 'read:tasks', 'read:tags'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
         );
       }
     });
@@ -314,7 +311,7 @@ describe("checkAuthorization", () => {
       expect(result.authorized).toBe(false);
       if (!result.authorized) {
         expect(result.reason).toBe(
-          "Public Access Token is missing required permissions. Permissions required for 'read:runs:run_5678' but token has the following permissions: 'read:tasks'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+          "Public Access Token is missing required permissions. Token has the following permissions: 'read:tasks'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
         );
       }
     });

@@ -26,7 +26,7 @@ import {
  */
 export interface TriggerInstance<TTask extends AnyTask> {
   /** Function to submit the task with a payload */
-  submit: (payload: TaskPayload<TTask>) => void;
+  submit: (payload: TaskPayload<TTask>, options?: TriggerOptions) => void;
   /** Whether the task is currently being submitted */
   isLoading: boolean;
   /** The handle returned after successful task submission */
@@ -94,9 +94,9 @@ export function useTaskTrigger<TTask extends AnyTask>(
   const mutation = useSWRMutation(id as string, triggerTask);
 
   return {
-    submit: (payload) => {
+    submit: (payload, options) => {
       // trigger the task with the given payload
-      mutation.trigger({ payload });
+      mutation.trigger({ payload, options });
     },
     isLoading: mutation.isMutating,
     handle: mutation.data as RunHandleFromTypes<InferRunTypes<TTask>>,

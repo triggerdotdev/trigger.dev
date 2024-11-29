@@ -15,7 +15,7 @@ import assertNever from "assert-never";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generatePresignedUrl } from "~/v3/r2.server";
 import { BasePresenter } from "./basePresenter.server";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 
 // Build 'select' object
 const commonRunSelect = {
@@ -59,48 +59,46 @@ type CommonRelatedRun = Prisma.Result<
   "findFirstOrThrow"
 >;
 
+type FoundRun = NonNullable<Awaited<ReturnType<typeof ApiRetrieveRunPresenter.findRun>>>;
+
 export class ApiRetrieveRunPresenter extends BasePresenter {
+  public static async findRun(friendlyId: string, env: AuthenticatedEnvironment) {
+    return $replica.taskRun.findFirst({
+      where: {
+        friendlyId,
+        runtimeEnvironmentId: env.id,
+      },
+      include: {
+        attempts: true,
+        lockedToVersion: true,
+        schedule: true,
+        tags: true,
+        batch: {
+          select: {
+            id: true,
+            friendlyId: true,
+          },
+        },
+        parentTaskRun: {
+          select: commonRunSelect,
+        },
+        rootTaskRun: {
+          select: commonRunSelect,
+        },
+        childRuns: {
+          select: {
+            ...commonRunSelect,
+          },
+        },
+      },
+    });
+  }
+
   public async call(
-    friendlyId: string,
+    taskRun: FoundRun,
     env: AuthenticatedEnvironment
   ): Promise<RetrieveRunResponse | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const taskRun = await this._replica.taskRun.findFirst({
-        where: {
-          friendlyId,
-          runtimeEnvironmentId: env.id,
-        },
-        include: {
-          attempts: true,
-          lockedToVersion: true,
-          schedule: true,
-          tags: true,
-          batch: {
-            select: {
-              id: true,
-              friendlyId: true,
-            },
-          },
-          parentTaskRun: {
-            select: commonRunSelect,
-          },
-          rootTaskRun: {
-            select: commonRunSelect,
-          },
-          childRuns: {
-            select: {
-              ...commonRunSelect,
-            },
-          },
-        },
-      });
-
-      if (!taskRun) {
-        logger.debug("Task run not found", { friendlyId, envId: env.id });
-
-        return undefined;
-      }
-
       let $payload: any;
       let $payloadPresignedUrl: string | undefined;
       let $output: any;

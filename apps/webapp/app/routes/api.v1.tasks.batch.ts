@@ -133,7 +133,7 @@ async function responseHeaders(
     const claims = {
       sub: environment.id,
       pub: true,
-      scopes: [`read:batch:${batch.id}`].concat(batch.runs.map((r) => `read:runs:${r.id}`)),
+      scopes: [`read:batch:${batch.id}`],
     };
 
     const jwt = await generateJWT({

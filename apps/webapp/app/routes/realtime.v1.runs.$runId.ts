@@ -13,24 +13,32 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: async (params, authentication) => {
+      return $replica.taskRun.findFirst({
+        where: {
+          friendlyId: params.runId,
+          runtimeEnvironmentId: authentication.environment.id,
+        },
+        include: {
+          batch: {
+            select: {
+              friendlyId: true,
+            },
+          },
+        },
+      });
+    },
     authorization: {
       action: "read",
-      resource: (params) => ({ runs: params.runId }),
+      resource: (run) => ({
+        runs: run.friendlyId,
+        tags: run.runTags,
+        batch: run.batch?.friendlyId,
+      }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ params, authentication, request }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
-    });
-
-    if (!run) {
-      return json({ error: "Run not found" }, { status: 404 });
-    }
-
+  async ({ authentication, request, resource: run }) => {
     return realtimeClient.streamRun(
       request.url,
       authentication.environment,

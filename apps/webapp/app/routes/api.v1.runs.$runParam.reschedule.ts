@@ -61,8 +61,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "An unknown error occurred" }, { status: 500 });
     }
 
+    const run = await ApiRetrieveRunPresenter.findRun(
+      updatedRun.friendlyId,
+      authenticationResult.environment
+    );
+
+    if (!run) {
+      return json({ error: "Run not found" }, { status: 404 });
+    }
+
     const presenter = new ApiRetrieveRunPresenter();
-    const result = await presenter.call(updatedRun.friendlyId, authenticationResult.environment);
+    const result = await presenter.call(run, authenticationResult.environment);
 
     if (!result) {
       return json({ error: "Run not found" }, { status: 404 });

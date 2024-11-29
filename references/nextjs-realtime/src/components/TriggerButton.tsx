@@ -25,11 +25,16 @@ export default function TriggerButton({ accessToken }: { accessToken: string }) 
       disabled={isLoading}
       className="p-0 bg-transparent hover:bg-transparent hover:text-gray-200 text-gray-400"
       onClick={() => {
-        submit({
-          model: "gpt-4o-mini",
-          prompt:
-            "Based on the temperature, will I need to wear extra clothes today in San Fransico? Please be detailed.",
-        });
+        submit(
+          {
+            model: "gpt-4o-mini",
+            prompt:
+              "Based on the temperature, will I need to wear extra clothes today in San Fransico? Please be detailed.",
+          },
+          {
+            tags: ["user:1234"],
+          }
+        );
       }}
     >
       {isLoading ? "Triggering..." : "Trigger Task"}
