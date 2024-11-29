@@ -118,26 +118,21 @@ export function unflattenAttributes(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
-    const parts = key
-    .split(/(?<!\\)\./) // Split by unescaped dots
-    .map(unescapeKey)   // Unescape keys
-    .reduce((acc, part) => {
-        if (part.startsWith("[") && part.endsWith("]")) {
-          // Handle array indices more precisely
-          const match = part.match(/^\[(\d+)\]$/);
-          if (match && match[1]) {
-            acc.push(parseInt(match[1]));
-          } else {
-            // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
-          }
-        } else {
-          acc.push(part);
-        }
-        return acc;
-      },
-      [] as (string | number)[]
-    );
+  const parts = key
+    .split('.') // Split by all dots
+    .reduce((acc, part, i, arr) => {
+      // If the previous part ends with an odd number of backslashes,
+      // the dot is escaped and should be part of the last segment.
+      if (i > 0 && arr[i - 1].match(/\\+$/)?.[0]?.length % 2 === 1) {
+        acc[acc.length - 1] += '.' + part;
+      } else {
+        acc.push(part);
+      }
+      return acc;
+    }, [] as (string | number)[])
+    .map(unescapeKey); // Unescape keys
+   }
+   );
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
