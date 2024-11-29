@@ -11,18 +11,18 @@ You can use our [React hooks](/frontend/react-hooks) in your frontend applicatio
 To create a Public Access Token, you can use the `auth.createPublicToken` function in your **backend** code:
 
 ```tsx
-const publicToken = await auth.createPublicToken();
+const publicToken = await auth.createPublicToken(); // 👈 this public access token has no permissions, so is pretty useless!
 ```
 
 ### Scopes
 
-By default a Public Access Token has limited permissions. You can specify the scopes you need when creating a Public Access Token:
+By default a Public Access Token has no permissions. You must specify the scopes you need when creating a Public Access Token:
 
 ```ts
 const publicToken = await auth.createPublicToken({
   scopes: {
     read: {
-      runs: true,
+      runs: true, // ❌ this token can read all runs, possibly useful for debugging/testing
     },
   },
 });
@@ -34,7 +34,7 @@ This will allow the token to read all runs, which is probably not what you want.
 const publicToken = await auth.createPublicToken({
   scopes: {
     read: {
-      runs: ["run_1234", "run_5678"],
+      runs: ["run_1234", "run_5678"], // ✅ this token can read only these runs
     },
   },
 });
@@ -46,7 +46,7 @@ You can scope the token to only read certain tasks:
 const publicToken = await auth.createPublicToken({
   scopes: {
     read: {
-      tasks: ["my-task-1", "my-task-2"],
+      tasks: ["my-task-1", "my-task-2"], // 👈 this token can read all runs of these tasks
     },
   },
 });
@@ -58,7 +58,7 @@ Or tags:
 const publicToken = await auth.createPublicToken({
   scopes: {
     read: {
-      tags: ["my-tag-1", "my-tag-2"],
+      tags: ["my-tag-1", "my-tag-2"], // 👈 this token can read all runs with these tags
     },
   },
 });
@@ -70,13 +70,13 @@ Or a specific batch of runs:
 const publicToken = await auth.createPublicToken({
   scopes: {
     read: {
-      batch: "batch_1234",
+      batch: "batch_1234", // 👈 this token can read all runs in this batch
     },
   },
 });
 ```
 
-You can also combine scopes. For example, to read only certain tasks and tags:
+You can also combine scopes. For example, to read runs with specific tags and for specific tasks:
 
 ```ts
 const publicToken = await auth.createPublicToken({
@@ -104,6 +104,19 @@ const publicToken = await auth.createPublicToken({
 ```
 
 This will allow the token to trigger the specified tasks. `tasks` is the only write scope available at the moment.
+
+We **strongly** recommend creating short-lived tokens for write scopes, as they can be used to trigger tasks from your frontend application:
+
+```ts
+const publicToken = await auth.createPublicToken({
+  scopes: {
+    write: {
+      tasks: ["my-task-1"], // ✅ this token can trigger this task
+    },
+  },
+  expirationTime: "1m", // ✅ this token will expire after 1 minute
+});
+```
 
 ### Expiration
 
@@ -133,7 +146,7 @@ const handle = await tasks.trigger("my-task", { some: "data" });
 console.log(handle.publicAccessToken);
 ```
 
-By default, tokens returned from the `trigger` function expire after 15 minutes and have a read scope for that specific run, and any tags associated with it. You can customize the expiration of the auto-generated tokens by passing a `publicTokenOptions` object to the `trigger` function:
+By default, tokens returned from the `trigger` function expire after 15 minutes and have a read scope for that specific run. You can customize the expiration of the auto-generated tokens by passing a `publicTokenOptions` object to the `trigger` function:
 
 ```ts
 const handle = await tasks.trigger(

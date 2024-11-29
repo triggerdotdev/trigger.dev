@@ -214,9 +214,7 @@ export class ApiClient {
           secretKey: this.accessToken,
           payload: {
             ...claims,
-            scopes: [`read:runs:${data.id}`].concat(
-              body.options?.tags ? Array.from(body.options?.tags).map((t) => `read:tags:${t}`) : []
-            ),
+            scopes: [`read:runs:${data.id}`],
           },
           expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
         });

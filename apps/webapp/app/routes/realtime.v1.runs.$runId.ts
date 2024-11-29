@@ -34,6 +34,7 @@ export const loader = createLoaderApiRoute(
         runs: run.friendlyId,
         tags: run.runTags,
         batch: run.batch?.friendlyId,
+        tasks: run.taskIdentifier,
       }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
