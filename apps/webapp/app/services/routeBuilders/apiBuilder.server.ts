@@ -570,10 +570,25 @@ export function createActionApiRoute<
           scopes: authenticationResult.scopes,
         });
 
-        if (!checkAuthorization(authenticationResult, action, $resource, superScopes)) {
+        const authorizationResult = checkAuthorization(
+          authenticationResult,
+          action,
+          $resource,
+          superScopes
+        );
+
+        if (!authorizationResult.authorized) {
           return await wrapResponse(
             request,
-            json({ error: "Unauthorized" }, { status: 403 }),
+            json(
+              {
+                error: `Unauthorized: ${authorizationResult.reason}`,
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
             corsStrategy !== "none"
           );
         }

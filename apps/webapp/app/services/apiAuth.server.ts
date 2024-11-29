@@ -20,6 +20,8 @@ import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
+  // One-time use token
+  otu: z.boolean().optional(),
 });
 
 type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
@@ -39,6 +41,7 @@ export type ApiAuthenticationResultSuccess = {
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
   scopes?: string[];
+  oneTimeUse?: boolean;
 };
 
 export type ApiAuthenticationResultFailure = {
@@ -146,6 +149,7 @@ export async function authenticateApiKey(
         ...result,
         environment: validationResults.environment,
         scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
+        oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
       };
     }
   }
@@ -227,6 +231,7 @@ export async function authenticateApiKeyWithFailure(
         ...result,
         environment: validationResults.environment,
         scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
+        oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
       };
     }
   }
@@ -530,4 +535,21 @@ function calculateJWTExpiration() {
   }
 
   return (Date.now() + DEFAULT_JWT_EXPIRATION_IN_MS) / 1000;
+}
+
+export async function getOneTimeUseToken(
+  auth: ApiAuthenticationResultSuccess
+): Promise<string | undefined> {
+  if (auth.type !== "PUBLIC_JWT") {
+    return;
+  }
+
+  if (!auth.oneTimeUse) {
+    return;
+  }
+
+  // Hash the API key to make it unique
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(auth.apiKey));
+
+  return Buffer.from(hash).toString("hex");
 }

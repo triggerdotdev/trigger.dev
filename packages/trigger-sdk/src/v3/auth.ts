@@ -25,10 +25,13 @@ export function configure(options: ApiClientConfiguration) {
 export const auth = {
   configure,
   createPublicToken,
+  createTriggerPublicToken,
+  createBatchTriggerPublicToken,
   withAuth,
+  withPublicToken,
+  withTriggerPublicToken,
+  withBatchTriggerPublicToken,
 };
-
-type PublicTokenPermissionAction = "read" | "write"; // Add more actions as needed
 
 type PublicTokenPermissionProperties = {
   /**
@@ -53,7 +56,26 @@ type PublicTokenPermissionProperties = {
 };
 
 export type PublicTokenPermissions = {
-  [key in PublicTokenPermissionAction]?: PublicTokenPermissionProperties;
+  read?: PublicTokenPermissionProperties;
+
+  /**
+   * @deprecated use trigger instead
+   */
+  write?: PublicTokenPermissionProperties;
+
+  /**
+   * Use auth.createTriggerPublicToken
+   */
+  trigger?: {
+    tasks: string | string[];
+  };
+
+  /**
+   * Use auth.createBatchTriggerPublicToken
+   */
+  batchTrigger?: {
+    tasks: string | string[];
+  };
 };
 
 export type CreatePublicTokenOptions = {
@@ -118,6 +140,180 @@ async function createPublicToken(options?: CreatePublicTokenOptions): Promise<st
     },
     expirationTime: options?.expirationTime,
   });
+}
+
+/**
+ * Executes a function with a public token, providing temporary access permissions.
+ *
+ * @param options - Options for creating the public token.
+ * @param fn - The asynchronous function to be executed with the public token.
+ */
+async function withPublicToken(options: CreatePublicTokenOptions, fn: () => Promise<void>) {
+  const token = await createPublicToken(options);
+
+  await withAuth({ accessToken: token }, fn);
+}
+
+export type CreateTriggerTokenOptions = {
+  /**
+   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   *
+   * @example
+   *
+   * ```typescript
+   * expirationTime: "1h"
+   * ```
+   */
+  expirationTime?: number | Date | string;
+
+  /**
+   * Whether the token can be used multiple times. By default trigger tokens are one-time use.
+   * @default false
+   */
+  multipleUse?: boolean;
+};
+
+/**
+ * Creates a one-time use token to trigger a specific task.
+ *
+ * @param task - The task ID or an array of task IDs that the token should allow triggering.
+ * @param options - Options for creating the one-time use token.
+ * @returns A promise that resolves to a string representing the generated one-time use token.
+ *
+ * @example
+ * Create a one-time use public token that allows triggering a specific task:
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createTriggerPublicToken("my-task");
+ * ```
+ *
+ * @example You can also create a one-time use token that allows triggering multiple tasks:
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createTriggerPublicToken(["task1", "task2"]);
+ * ```
+ *
+ * @example You can also create a one-time use token that allows triggering a task with a specific expiration time:
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createTriggerPublicToken("my-task", { expirationTime: "1h" });
+ * ```
+ */
+async function createTriggerPublicToken(
+  task: string | string[],
+  options?: CreateTriggerTokenOptions
+): Promise<string> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const claims = await apiClient.generateJWTClaims();
+
+  return await internal_generateJWT({
+    secretKey: apiClient.accessToken,
+    payload: {
+      ...claims,
+      otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      scopes: flattenScopes({
+        trigger: {
+          tasks: task,
+        },
+      }),
+    },
+    expirationTime: options?.expirationTime,
+  });
+}
+
+/**
+ * Executes a function with a one-time use token that allows triggering a specific task.
+ *
+ * @param task - The task ID or an array of task IDs that the token should allow triggering.
+ * @param options - Options for creating the one-time use token.
+ * @param fn - The asynchronous function to be executed with the one-time use token.
+ */
+async function withTriggerPublicToken(
+  task: string | string[],
+  options: CreateTriggerTokenOptions = {},
+  fn: () => Promise<void>
+) {
+  const token = await createTriggerPublicToken(task, options);
+
+  await withAuth({ accessToken: token }, fn);
+}
+
+/**
+ * Creates a one-time use token to batch trigger a specific task or tasks.
+ *
+ * @param task - The task ID or an array of task IDs that the token should allow triggering.
+ * @param options - Options for creating the one-time use token.
+ * @returns A promise that resolves to a string representing the generated one-time use token.
+ *
+ * @example
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createBatchTriggerPublicToken("my-task");
+ * ```
+ *
+ * @example You can also create a one-time use token that allows batch triggering multiple tasks:
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createBatchTriggerPublicToken(["task1", "task2"]);
+ * ```
+ *
+ * @example You can also create a one-time use token that allows batch triggering a task with a specific expiration time:
+ *
+ * ```ts
+ * import { auth } from "@trigger.dev/sdk/v3";
+ *
+ * const token = await auth.createBatchTriggerPublicToken("my-task", { expirationTime: "1h" });
+ * ```
+ */
+async function createBatchTriggerPublicToken(
+  task: string | string[],
+  options?: CreateTriggerTokenOptions
+): Promise<string> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const claims = await apiClient.generateJWTClaims();
+
+  return await internal_generateJWT({
+    secretKey: apiClient.accessToken,
+    payload: {
+      ...claims,
+      otu: typeof options?.multipleUse === "boolean" ? !options.multipleUse : true,
+      scopes: flattenScopes({
+        batchTrigger: {
+          tasks: task,
+        },
+      }),
+    },
+    expirationTime: options?.expirationTime,
+  });
+}
+
+/**
+ * Executes a function with a one-time use token that allows triggering a specific task.
+ *
+ * @param task - The task ID or an array of task IDs that the token should allow triggering.
+ * @param options - Options for creating the one-time use token.
+ * @param fn - The asynchronous function to be executed with the one-time use token.
+ */
+async function withBatchTriggerPublicToken(
+  task: string | string[],
+  options: CreateTriggerTokenOptions = {},
+  fn: () => Promise<void>
+) {
+  const token = await createBatchTriggerPublicToken(task, options);
+
+  await withAuth({ accessToken: token }, fn);
 }
 
 /**
