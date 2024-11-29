@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {

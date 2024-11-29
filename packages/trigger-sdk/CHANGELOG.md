@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 3.3.1
+
+### Patch Changes
+
+- Fixed the missing icons in trigger spans ([#1506](https://github.com/triggerdotdev/trigger.dev/pull/1506))
+- Public access token scopes with just tags or just a batch can now access runs that have those tags or are in the batch. Previously, the only way to access a run was to have a specific scope for that exact run. ([#1511](https://github.com/triggerdotdev/trigger.dev/pull/1511))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.1`
+
 ## 3.3.0
 
 ### Minor Changes

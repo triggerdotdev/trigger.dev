@@ -1,5 +1,13 @@
 # @trigger.dev/react-hooks
 
+## 3.3.1
+
+### Patch Changes
+
+- Public access token scopes with just tags or just a batch can now access runs that have those tags or are in the batch. Previously, the only way to access a run was to have a specific scope for that exact run. ([#1511](https://github.com/triggerdotdev/trigger.dev/pull/1511))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.1`
+
 ## 3.3.0
 
 ### Minor Changes
