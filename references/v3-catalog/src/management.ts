@@ -1,4 +1,4 @@
-import { configure, envvars, runs, schedules, batch } from "@trigger.dev/sdk/v3";
+import { configure, envvars, runs, schedules, batch, auth } from "@trigger.dev/sdk/v3";
 import dotenv from "dotenv";
 import { unfriendlyIdTask } from "./trigger/other.js";
 import { spamRateLimiter, taskThatErrors } from "./trigger/retries.js";
@@ -287,10 +287,138 @@ async function doRescheduleRun() {
   console.log("rescheduled run", rescheduledRun);
 }
 
+async function doOneTimeUseTrigger() {
+  console.log("Testing with one-time use token");
+
+  try {
+    await auth.withTriggerPublicToken(simpleChildTask.id, {}, async () => {
+      const run1 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+      console.log("run1", run1);
+
+      const run2 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+      console.log("run2", run2);
+    });
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing with deprecated public token");
+
+  try {
+    await auth.withPublicToken(
+      {
+        scopes: {
+          write: {
+            tasks: simpleChildTask.id,
+          },
+        },
+      },
+      async () => {
+        const run1 = await simpleChildTask.trigger({ message: "Hello, World!" });
+      }
+    );
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing with trigger public token");
+
+  try {
+    await auth.withPublicToken(
+      {
+        scopes: {
+          trigger: {
+            tasks: simpleChildTask.id,
+          },
+        },
+      },
+      async () => {
+        const run1 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+        console.log("run1", run1);
+
+        const run2 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+        console.log("run2", run2);
+      }
+    );
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing with a one-time use token for the wrong task");
+
+  try {
+    await auth.withTriggerPublicToken("wrong-task-id", {}, async () => {
+      const run1 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+      console.log("run1", run1);
+    });
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing with a public token for the wrong task");
+
+  try {
+    await auth.withPublicToken(
+      {
+        scopes: {
+          write: {
+            tasks: "wrong-task-id",
+          },
+        },
+      },
+      async () => {
+        const run1 = await simpleChildTask.trigger({ message: "Hello, World!" });
+
+        console.log("run1", run1);
+      }
+    );
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing batch trigger with one-time use token");
+
+  try {
+    await auth.withBatchTriggerPublicToken(simpleChildTask.id, {}, async () => {
+      const batch1 = await batch.triggerByTask([
+        { task: simpleChildTask, payload: { message: "Hello, World!" } },
+      ]);
+
+      console.log("batch1", batch1);
+
+      const batch2 = await batch.triggerByTask([
+        { task: simpleChildTask, payload: { message: "Hello, World!" } },
+      ]);
+    });
+  } catch (error) {
+    console.error(error);
+  }
+
+  console.log("Testing batch trigger with a trigger token");
+
+  try {
+    await auth.withTriggerPublicToken(simpleChildTask.id, {}, async () => {
+      const batch1 = await batch.triggerByTask([
+        { task: simpleChildTask, payload: { message: "Hello, World!" } },
+      ]);
+
+      console.log("batch1", batch1);
+    });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 // doRuns().catch(console.error);
 // doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
 // doBatchTrigger().catch(console.error);
 // doEnvVars().catch(console.error);
 // doTriggerUnfriendlyTaskId().catch(console.error);
-doRescheduleRun().catch(console.error);
+// doRescheduleRun().catch(console.error);
+doOneTimeUseTrigger().catch(console.error);

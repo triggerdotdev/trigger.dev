@@ -10,6 +10,10 @@ describe("checkAuthorization", () => {
     scopes: ["read:runs:run_1234", "read:tasks", "read:tags:tag_5678"],
   };
   const publicJwtEntityNoPermissions: AuthorizationEntity = { type: "PUBLIC_JWT" };
+  const publicJwtEntityWithTaskWritePermissions: AuthorizationEntity = {
+    type: "PUBLIC_JWT",
+    scopes: ["write:tasks:task-1"],
+  };
 
   describe("PRIVATE entity", () => {
     it("should always return authorized regardless of action or resource", () => {
@@ -45,6 +49,28 @@ describe("checkAuthorization", () => {
       expect(result3.authorized).toBe(false);
       if (!result3.authorized) {
         expect(result3.reason).toBe("PUBLIC type is deprecated and has no access");
+      }
+    });
+  });
+
+  describe("PUBLIC_JWT entity with task write scope", () => {
+    it("should return authorized for specific resource scope", () => {
+      const result = checkAuthorization(publicJwtEntityWithTaskWritePermissions, "write", {
+        tasks: "task-1",
+      });
+      expect(result.authorized).toBe(true);
+      expect(result).not.toHaveProperty("reason");
+    });
+
+    it("should return unauthorized with reason for unauthorized specific resources", () => {
+      const result = checkAuthorization(publicJwtEntityWithTaskWritePermissions, "write", {
+        tasks: "task-2",
+      });
+      expect(result.authorized).toBe(false);
+      if (!result.authorized) {
+        expect(result.reason).toBe(
+          "Public Access Token is missing required permissions. Token has the following permissions: 'write:tasks:task-1'. See https://trigger.dev/docs/frontend/overview#authentication for more information."
+        );
       }
     });
   });

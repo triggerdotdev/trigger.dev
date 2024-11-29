@@ -12,7 +12,7 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const { action, loader } = createActionApiRoute(
@@ -22,7 +22,7 @@ const { action, loader } = createActionApiRoute(
     allowJWT: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
-      action: "write",
+      action: "batchTrigger",
       resource: (_, __, ___, body) => ({
         tasks: Array.from(new Set(body.items.map((i) => i.task))),
       }),
@@ -56,6 +56,8 @@ const { action, loader } = createActionApiRoute(
       tracestate,
     } = headers;
 
+    const oneTimeUseToken = await getOneTimeUseToken(authentication);
+
     logger.debug("Batch trigger request", {
       idempotencyKey,
       idempotencyKeyTTL,
@@ -86,6 +88,7 @@ const { action, loader } = createActionApiRoute(
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
+        oneTimeUseToken,
       });
 
       const $responseHeaders = await responseHeaders(

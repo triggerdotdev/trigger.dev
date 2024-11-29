@@ -3,7 +3,7 @@ import { generateJWT as internal_generateJWT, TriggerTaskRequestBody } from "@tr
 import { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -33,7 +33,7 @@ const { action, loader } = createActionApiRoute(
     allowJWT: true,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
-      action: "write",
+      action: "trigger",
       resource: (params) => ({ tasks: params.taskId }),
       superScopes: ["write:tasks", "admin"],
     },
@@ -59,6 +59,8 @@ const { action, loader } = createActionApiRoute(
           ? { traceparent, tracestate }
           : undefined;
 
+      const oneTimeUseToken = await getOneTimeUseToken(authentication);
+
       logger.debug("Triggering task", {
         taskId: params.taskId,
         idempotencyKey,
@@ -78,6 +80,7 @@ const { action, loader } = createActionApiRoute(
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
+        oneTimeUseToken,
       });
 
       if (!run) {
