@@ -183,7 +183,7 @@ export class RunListPresenter extends BasePresenter {
     }
 
     //show all runs if we are filtering by batchId or runId
-    if (batchId || runId || scheduleId) {
+    if (batchId || runId || scheduleId || tasks?.length) {
       rootOnly = false;
     }
 

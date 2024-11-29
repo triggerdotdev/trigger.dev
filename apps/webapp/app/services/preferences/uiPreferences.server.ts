@@ -27,3 +27,18 @@ export async function setUsefulLinksPreference(show: boolean, request: Request) 
   session.set("showUsefulLinks", show);
   return session;
 }
+
+export async function getRootOnlyFilterPreference(request: Request): Promise<boolean> {
+  const session = await getUiPreferencesSession(request);
+  const rootOnly = session.get("rootOnly");
+  if (rootOnly === undefined) {
+    return false;
+  }
+  return rootOnly;
+}
+
+export async function setRootOnlyFilterPreference(rootOnly: boolean, request: Request) {
+  const session = await getUiPreferencesSession(request);
+  session.set("rootOnly", rootOnly);
+  return session;
+}
