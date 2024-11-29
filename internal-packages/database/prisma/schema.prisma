@@ -1723,7 +1723,6 @@ model TaskRun {
   maxAttempts Int?
 
   /// optional token that can be used to authenticate the task run
-  /// TODO: add a unique constraint on the token
   oneTimeUseToken String?
 
   batchItems             BatchTaskRunItem[]
@@ -1791,8 +1790,7 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
-  // TODO: uncomment this
-  // @@unique([oneTimeUseToken])
+  @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
@@ -2168,7 +2166,6 @@ model BatchTaskRun {
   batchVersion String   @default("v1")
 
   /// optional token that can be used to authenticate the task run
-  /// TODO: add a unique constraint on the token
   oneTimeUseToken String?
 
   ///all the below properties are engine v1 only
@@ -2180,8 +2177,7 @@ model BatchTaskRun {
   dependentTaskAttemptId String?
   runDependencies        TaskRunDependency[]     @relation("dependentBatchRun")
 
-  // TODO: uncomment this
-  // @@unique([oneTimeUseToken])
+  @@unique([oneTimeUseToken])
   ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
