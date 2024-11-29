@@ -132,7 +132,7 @@ export function unflattenAttributes(
     }, [] as (string | number)[])
     .map(unescapeKey); // Unescape keys
    }
-   );
+   
 
     let current: any = result;
     for (let i = 0; i < parts.length - 1; i++) {
