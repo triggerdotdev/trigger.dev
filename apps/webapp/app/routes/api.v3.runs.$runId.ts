@@ -12,15 +12,23 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: (params, auth) => {
+      return ApiRetrieveRunPresenter.findRun(params.runId, auth.environment);
+    },
     authorization: {
       action: "read",
-      resource: (params) => ({ runs: params.runId }),
+      resource: (run) => ({
+        runs: run.friendlyId,
+        tags: run.runTags,
+        batch: run.batch?.friendlyId,
+        tasks: run.taskIdentifier,
+      }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ params, authentication }) => {
+  async ({ authentication, resource }) => {
     const presenter = new ApiRetrieveRunPresenter();
-    const result = await presenter.call(params.runId, authentication.environment);
+    const result = await presenter.call(resource, authentication.environment);
 
     if (!result) {
       return json(

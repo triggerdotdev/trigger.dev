@@ -12,7 +12,7 @@
     "queues": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/queues.ts",
     "build:client": "tsup-node ./src/clientUsage.ts --format esm,cjs",
     "client": "tsx -r dotenv/config ./src/clientUsage.ts",
-    "triggerWithLargePayload": "ts-node -r dotenv/config -r tsconfig-paths/register ./src/triggerWithLargePayload.ts",
+    "triggerWithLargePayload": "tsx -r dotenv/config ./src/triggerWithLargePayload.ts",
     "generate:prisma": "prisma generate --sql"
   },
   "dependencies": {

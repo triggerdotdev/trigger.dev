@@ -45,6 +45,7 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ params, authentication }) => {
     const filename = params["*"];

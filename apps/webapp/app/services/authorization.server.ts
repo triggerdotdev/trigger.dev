@@ -88,34 +88,26 @@ export function checkAuthorization(
   for (const [resourceType, resourceValue] of Object.entries(filteredResource)) {
     const resourceValues = Array.isArray(resourceValue) ? resourceValue : [resourceValue];
 
-    let resourceAuthorized = false;
     for (const value of resourceValues) {
       // Check for specific resource permission
       const specificPermission = `${action}:${resourceType}:${value}`;
       // Check for general resource type permission
       const generalPermission = `${action}:${resourceType}`;
 
+      // If any permission matches, return authorized
       if (entity.scopes.includes(specificPermission) || entity.scopes.includes(generalPermission)) {
-        resourceAuthorized = true;
-        break;
+        return { authorized: true };
       }
-    }
-
-    // If any resource is not authorized, return false
-    if (!resourceAuthorized) {
-      return {
-        authorized: false,
-        reason: `Public Access Token is missing required permissions. Permissions required for ${resourceValues
-          .map((v) => `'${action}:${resourceType}:${v}'`)
-          .join(", ")} but token has the following permissions: ${entity.scopes
-          .map((s) => `'${s}'`)
-          .join(
-            ", "
-          )}. See https://trigger.dev/docs/frontend/overview#authentication for more information.`,
-      };
     }
   }
 
-  // All resources are authorized
-  return { authorized: true };
+  // No matching permissions found
+  return {
+    authorized: false,
+    reason: `Public Access Token is missing required permissions. Token has the following permissions: ${entity.scopes
+      .map((s) => `'${s}'`)
+      .join(
+        ", "
+      )}. See https://trigger.dev/docs/frontend/overview#authentication for more information.`,
+  };
 }

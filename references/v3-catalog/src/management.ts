@@ -271,9 +271,26 @@ async function doBatchTrigger() {
   console.log("batch runs", $runs.data);
 }
 
+async function doRescheduleRun() {
+  const run = await simpleChildTask.trigger({ message: "Hello, World!" }, { delay: "1h" });
+
+  console.log("run", run);
+
+  const reschedule = await runs.reschedule(run.id, {
+    delay: "1s",
+  });
+
+  console.log("reschedule", reschedule);
+
+  const rescheduledRun = await waitForRunToComplete(reschedule.id);
+
+  console.log("rescheduled run", rescheduledRun);
+}
+
 // doRuns().catch(console.error);
 // doListRuns().catch(console.error);
 // doScheduleLists().catch(console.error);
-doBatchTrigger().catch(console.error);
+// doBatchTrigger().catch(console.error);
 // doEnvVars().catch(console.error);
 // doTriggerUnfriendlyTaskId().catch(console.error);
+doRescheduleRun().catch(console.error);

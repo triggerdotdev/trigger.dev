@@ -21,16 +21,22 @@ import { safeJsonParse } from "~/utils/json";
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
   TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TResource = never
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
+  findResource: (
+    params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
+    authentication: ApiAuthenticationResultSuccess
+  ) => Promise<TResource | undefined>;
   authorization?: {
     action: AuthorizationAction;
     resource: (
+      resource: NonNullable<TResource>,
       params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
       searchParams: TSearchParamsSchema extends z.AnyZodObject
         ? z.infer<TSearchParamsSchema>
@@ -44,7 +50,8 @@ type ApiKeyRouteBuilderOptions<
 type ApiKeyHandlerFunction<
   TParamsSchema extends z.AnyZodObject | undefined,
   TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TResource = never
 > = (args: {
   params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
   searchParams: TSearchParamsSchema extends z.AnyZodObject
@@ -53,15 +60,17 @@ type ApiKeyHandlerFunction<
   headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
+  resource: NonNullable<TResource>;
 }) => Promise<Response>;
 
 export function createLoaderApiRoute<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
   TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TResource = never
 >(
-  options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
-  handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
+  options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
+  handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>
 ) {
   return async function loader({ request, params }: LoaderFunctionArgs) {
     const {
@@ -71,6 +80,7 @@ export function createLoaderApiRoute<
       allowJWT = false,
       corsStrategy = "none",
       authorization,
+      findResource,
     } = options;
 
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
@@ -146,13 +156,29 @@ export function createLoaderApiRoute<
         parsedHeaders = headers.data;
       }
 
+      // Find the resource
+      const resource = await findResource(parsedParams, authenticationResult);
+
+      if (!resource) {
+        return await wrapResponse(
+          request,
+          json({ error: "Not found" }, { status: 404 }),
+          corsStrategy !== "none"
+        );
+      }
+
       if (authorization) {
-        const { action, resource, superScopes } = authorization;
-        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders);
+        const { action, resource: authResource, superScopes } = authorization;
+        const $authResource = authResource(
+          resource,
+          parsedParams,
+          parsedSearchParams,
+          parsedHeaders
+        );
 
         logger.debug("Checking authorization", {
           action,
-          resource: $resource,
+          resource: $authResource,
           superScopes,
           scopes: authenticationResult.scopes,
         });
@@ -160,7 +186,7 @@ export function createLoaderApiRoute<
         const authorizationResult = checkAuthorization(
           authenticationResult,
           action,
-          $resource,
+          $authResource,
           superScopes
         );
 
@@ -187,6 +213,7 @@ export function createLoaderApiRoute<
         headers: parsedHeaders,
         authentication: authenticationResult,
         request,
+        resource,
       });
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {

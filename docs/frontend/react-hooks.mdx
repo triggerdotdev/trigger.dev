@@ -144,7 +144,7 @@ export async function startRun() {
   const handle = await tasks.trigger<typeof exampleTask>("example", { foo: "bar" });
 
   // Set the auto-generated publicAccessToken in a cookie
-  cookies().set("publicAccessToken", handle.publicAccessToken);
+  cookies().set("publicAccessToken", handle.publicAccessToken); // ✅ this token only has access to read this run
 
   redirect(`/runs/${handle.id}`);
 }

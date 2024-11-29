@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { ApiRetrieveBatchPresenter } from "~/presenters/v3/ApiRetrieveBatchPresenter.server";
+import { $replica } from "~/db.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
@@ -12,20 +12,28 @@ export const loader = createLoaderApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: (params, auth) => {
+      return $replica.batchTaskRun.findFirst({
+        where: {
+          friendlyId: params.batchId,
+          runtimeEnvironmentId: auth.environment.id,
+        },
+      });
+    },
     authorization: {
       action: "read",
-      resource: (params) => ({ batch: params.batchId }),
+      resource: (batch) => ({ batch: batch.friendlyId }),
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },
-  async ({ params, authentication }) => {
-    const presenter = new ApiRetrieveBatchPresenter();
-    const result = await presenter.call(params.batchId, authentication.environment);
-
-    if (!result) {
-      return json({ error: "Batch not found" }, { status: 404 });
-    }
-
-    return json(result);
+  async ({ resource: batch }) => {
+    return json({
+      id: batch.friendlyId,
+      status: batch.status,
+      idempotencyKey: batch.idempotencyKey ?? undefined,
+      createdAt: batch.createdAt,
+      updatedAt: batch.updatedAt,
+      runCount: batch.runCount,
+    });
   }
 );
