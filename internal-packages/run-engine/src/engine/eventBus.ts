@@ -49,12 +49,12 @@ export type EventBusEvents = {
       };
     },
   ];
-  //todo eventRepository
   runRetryScheduled: [
     {
       time: Date;
       run: {
         id: string;
+        friendlyId: string;
         attemptNumber: number;
         queue: string;
         traceContext: Record<string, string | undefined>;

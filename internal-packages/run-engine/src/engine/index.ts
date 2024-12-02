@@ -2104,6 +2104,7 @@ export class RunEngine {
             time: failedAt,
             run: {
               id: run.id,
+              friendlyId: run.friendlyId,
               attemptNumber: nextAttemptNumber,
               queue: run.queue,
               taskIdentifier: run.taskIdentifier,

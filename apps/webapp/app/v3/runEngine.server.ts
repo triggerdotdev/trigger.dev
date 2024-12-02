@@ -212,6 +212,38 @@ function createRunEngine() {
     }
   });
 
+  engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt }) => {
+    try {
+      await eventRepository.recordEvent(`Retry #${run.attemptNumber} delay`, {
+        taskSlug: run.taskIdentifier,
+        environment,
+        attributes: {
+          // TODO: We'll need the execution data for this
+          // metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+          properties: {
+            retryAt: retryAt.toISOString(),
+          },
+          runId: run.friendlyId,
+          style: {
+            icon: "schedule-attempt",
+          },
+          // TODO: This doesn't exist, decide if we need it
+          // queueId: run.queueId,
+          queueName: run.queue,
+        },
+        context: run.traceContext as Record<string, string | undefined>,
+        spanIdSeed: `retry-${run.attemptNumber + 1}`,
+        endTime: retryAt,
+      });
+    } catch (error) {
+      logger.error("[runRetryScheduled] Failed to record retry event", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+        spanId: run.spanId,
+      });
+    }
+  });
+
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
     try {
       const foundRun = await prisma.taskRun.findUnique({
