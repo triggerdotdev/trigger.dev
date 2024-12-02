@@ -259,6 +259,7 @@ export type TaskRunContext = z.infer<typeof TaskRunContext>;
 
 export const TaskRunExecutionRetry = z.object({
   timestamp: z.number(),
+  /** Retry delay in milliseconds */
   delay: z.number(),
   error: z.unknown().optional(),
 });

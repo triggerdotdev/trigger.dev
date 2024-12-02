@@ -210,25 +210,25 @@ export class WorkerGroupTokenService extends WithRunEngine {
       });
     }
 
-    if (!workerInstance.environmentId) {
+    if (!workerInstance.environment) {
       logger.error(
-        "[WorkerGroupTokenService] Non-shared worker instance not linked to environment",
+        "[WorkerGroupTokenService] Unmanaged worker instance not linked to environment",
         { workerGroup, workerInstance }
       );
       return;
     }
 
     if (!workerInstance.deployment) {
-      logger.error(
-        "[WorkerGroupTokenService] Non-shared worker instance not linked to deployment",
-        { workerGroup, workerInstance }
-      );
+      logger.error("[WorkerGroupTokenService] Unmanaged worker instance not linked to deployment", {
+        workerGroup,
+        workerInstance,
+      });
       return;
     }
 
     if (!workerInstance.deployment.workerId) {
       logger.error(
-        "[WorkerGroupTokenService] Non-shared worker instance deployment not linked to background worker",
+        "[WorkerGroupTokenService] Unmanaged worker instance deployment not linked to background worker",
         { workerGroup, workerInstance }
       );
       return;
@@ -241,7 +241,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       workerGroupId: workerGroup.id,
       workerInstanceId: workerInstance.id,
       masterQueue: workerGroup.masterQueue,
-      environmentId: workerInstance.environmentId,
+      environmentId: workerInstance.environment.id,
       deploymentId: workerInstance.deployment.id,
       backgroundWorkerId: workerInstance.deployment.workerId,
       environment: workerInstance.environment,
@@ -305,7 +305,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
       if (!workerGroup.projectId || !workerGroup.organizationId) {
         logger.error(
-          "[WorkerGroupTokenService] Non-shared worker group missing project or organization",
+          "[WorkerGroupTokenService] Unmanaged worker group missing project or organization",
           {
             workerGroup,
             workerInstance,
@@ -316,7 +316,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       }
 
       if (!deploymentId) {
-        logger.error("[WorkerGroupTokenService] Non-shared worker group required deployment ID", {
+        logger.error("[WorkerGroupTokenService] Unmanaged worker group required deployment ID", {
           workerGroup,
           workerInstance,
         });
@@ -565,9 +565,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       centsPerMs: 0,
     } satisfies MachinePreset;
 
-    const envVars = this.environment
+    const environment =
+      this.environment ??
+      (await this._prisma.runtimeEnvironment.findUnique({
+        where: {
+          id: engineResult.execution.environment.id,
+        },
+      }));
+
+    const envVars = environment
       ? await this.getEnvVars(
-          this.environment,
+          environment,
           engineResult.run.id,
           engineResult.execution.machine ?? defaultMachinePreset
         )

@@ -6,7 +6,9 @@ import { CLOUD_API_URL } from "../consts.js";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import { HeartbeatService, WorkerManifest } from "@trigger.dev/core/v3";
-import { WorkloadHttpClient } from "@trigger.dev/worker";
+import { WorkloadHttpClient, type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/worker";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
+import { setTimeout as wait } from "timers/promises";
 
 const Env = z.object({
   TRIGGER_API_URL: z.string().url().default(CLOUD_API_URL),
@@ -91,18 +93,7 @@ class ManagedRunController {
     });
   }
 
-  async start() {
-    logger.debug("[ManagedRunController] Starting up");
-
-    // TODO: remove this after testing
-    setTimeout(() => {
-      // exit after 5 minutes
-      console.error("[ManagedRunController] Exiting after 5 minutes");
-      process.exit(1);
-    }, 60 * 5000);
-
-    this.heartbeatService.start();
-
+  private async startAndExecuteRunAttempt() {
     if (!this.runId || !this.snapshotId) {
       logger.debug("[ManagedRunController] Missing run ID or snapshot ID", {
         runId: this.runId,
@@ -130,53 +121,8 @@ class ManagedRunController {
       ...envVars,
     };
 
-    this.taskRunProcess = new TaskRunProcess({
-      workerManifest: this.workerManifest,
-      env: taskRunEnv,
-      serverWorker: {
-        id: "unmanaged",
-        contentHash: env.TRIGGER_CONTENT_HASH,
-        version: env.TRIGGER_DEPLOYMENT_VERSION,
-      },
-      payload: {
-        execution,
-        traceContext: execution.run.traceContext ?? {},
-      },
-      messageId: run.id,
-    });
-
     try {
-      await this.taskRunProcess.initialize();
-
-      logger.log("executing task run process", {
-        attemptId: execution.attempt.id,
-        runId: execution.run.id,
-      });
-
-      const completion = await this.taskRunProcess.execute();
-
-      logger.log("Completed run", completion);
-
-      try {
-        await this.taskRunProcess.cleanup(true);
-      } catch (error) {
-        console.error("Failed to cleanup task run process, submitting completion anyway", {
-          error,
-        });
-      }
-
-      const completionResult = await this.httpClient.completeRunAttempt(run.id, snapshot.id, {
-        completion,
-      });
-
-      if (!completionResult.success) {
-        console.error("Failed to submit completion", {
-          error: completionResult.error,
-        });
-        process.exit(1);
-      }
-
-      logger.log("Completion submitted", completionResult.data.result);
+      return await this.executeRun({ run, snapshot, envVars: taskRunEnv, execution });
     } catch (error) {
       console.error("Error while executing attempt", {
         error,
@@ -200,6 +146,111 @@ class ManagedRunController {
 
       logger.log("completed run", completionResult.data.result);
     }
+  }
+
+  async start() {
+    logger.debug("[ManagedRunController] Starting up");
+
+    // TODO: remove this after testing
+    setTimeout(() => {
+      // exit after 5 minutes
+      console.error("[ManagedRunController] Exiting after 5 minutes");
+      process.exit(1);
+    }, 60 * 5000);
+
+    this.heartbeatService.start();
+
+    this.startAndExecuteRunAttempt();
+  }
+
+  private async executeRun({
+    run,
+    snapshot,
+    envVars,
+    execution,
+  }: WorkloadRunAttemptStartResponseBody) {
+    this.taskRunProcess = new TaskRunProcess({
+      workerManifest: this.workerManifest,
+      env: envVars,
+      serverWorker: {
+        id: "unmanaged",
+        contentHash: env.TRIGGER_CONTENT_HASH,
+        version: env.TRIGGER_DEPLOYMENT_VERSION,
+      },
+      payload: {
+        execution,
+        traceContext: execution.run.traceContext ?? {},
+      },
+      messageId: run.id,
+    });
+
+    await this.taskRunProcess.initialize();
+
+    logger.log("executing task run process", {
+      attemptId: execution.attempt.id,
+      runId: execution.run.id,
+    });
+
+    const completion = await this.taskRunProcess.execute();
+
+    logger.log("Completed run", completion);
+
+    try {
+      await this.taskRunProcess.cleanup(true);
+    } catch (error) {
+      console.error("Failed to cleanup task run process, submitting completion anyway", {
+        error,
+      });
+    }
+
+    const completionResult = await this.httpClient.completeRunAttempt(run.id, snapshot.id, {
+      completion,
+    });
+
+    if (!completionResult.success) {
+      console.error("Failed to submit completion", {
+        error: completionResult.error,
+      });
+      process.exit(1);
+    }
+
+    logger.log("Completion submitted", completionResult.data.result);
+
+    const { attemptStatus } = completionResult.data.result;
+
+    this.snapshotId = completionResult.data.result.snapshot.id;
+
+    if (attemptStatus === "RUN_FINISHED") {
+      logger.debug("Run finished, shutting down");
+      process.exit(0);
+    }
+
+    if (attemptStatus === "RUN_PENDING_CANCEL") {
+      logger.debug("Run pending cancel, shutting down");
+      process.exit(0);
+    }
+
+    if (attemptStatus === "RETRY_QUEUED") {
+      logger.debug("Retry queued, shutting down");
+      process.exit(0);
+    }
+
+    if (attemptStatus === "RETRY_IMMEDIATELY") {
+      if (completion.ok) {
+        throw new Error("Should retry but completion OK.");
+      }
+
+      if (!completion.retry) {
+        throw new Error("Should retry but missing retry params.");
+      }
+
+      await wait(completion.retry.delay);
+
+      this.startAndExecuteRunAttempt();
+      return;
+    }
+
+    assertExhaustive(attemptStatus);
   }
 
   async stop() {
