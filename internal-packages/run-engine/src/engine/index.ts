@@ -355,7 +355,6 @@ export class RunEngine {
                 },
                 data: {
                   concurrencyLimit,
-                  rateLimit: queue.rateLimit,
                 },
               });
             } else {
@@ -366,7 +365,6 @@ export class RunEngine {
                   concurrencyLimit,
                   runtimeEnvironmentId: environment.id,
                   projectId: environment.project.id,
-                  rateLimit: queue.rateLimit,
                   type: "NAMED",
                 },
               });
