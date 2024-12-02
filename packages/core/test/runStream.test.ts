@@ -9,17 +9,23 @@ import {
 import type { SubscribeRunRawShape } from "../src/v3/schemas/api.js";
 
 // Test implementations
+// Update TestStreamSubscription to return a ReadableStream
 class TestStreamSubscription implements StreamSubscription {
   constructor(private chunks: unknown[]) {}
 
-  async subscribe(onChunk: (chunk: unknown) => Promise<void>): Promise<() => void> {
-    for (const chunk of this.chunks) {
-      await onChunk(chunk);
-    }
-    return () => {};
+  async subscribe(): Promise<ReadableStream<unknown>> {
+    return new ReadableStream({
+      start: async (controller) => {
+        for (const chunk of this.chunks) {
+          controller.enqueue(chunk);
+        }
+        controller.close();
+      },
+    });
   }
 }
 
+// TestStreamSubscriptionFactory can remain the same
 class TestStreamSubscriptionFactory implements StreamSubscriptionFactory {
   private streams = new Map<string, unknown[]>();
 
