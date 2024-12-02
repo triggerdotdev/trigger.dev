@@ -145,7 +145,7 @@ const EnvironmentSchema = z.object({
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
     .int()
-    .default(60 * 1000 * 3), // 3 minutes
+    .default(60 * 1000 * 8), // 8 minutes
   OBJECT_STORE_BASE_URL: z.string().optional(),
   OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
