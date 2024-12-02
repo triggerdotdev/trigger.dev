@@ -787,12 +787,13 @@ function RunBody({
               </div>
               <RunTimeline run={run} />
 
+              {run.error && <RunError error={run.error} />}
+
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.error !== undefined ? (
-                <RunError error={run.error} />
-              ) : run.output !== undefined ? (
+
+              {run.error === undefined && run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
             </div>
