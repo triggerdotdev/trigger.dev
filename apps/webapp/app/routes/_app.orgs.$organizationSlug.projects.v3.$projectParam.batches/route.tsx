@@ -1,4 +1,8 @@
-import { ArrowPathRoundedSquareIcon, ArrowRightIcon, CheckIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowPathRoundedSquareIcon,
+  ArrowRightIcon,
+  ExclamationCircleIcon,
+} from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { useLocation, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -247,9 +251,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
 function BatchActionsCell({ batch, path }: { batch: BatchListItem; path: string }) {
   const location = useLocation();
 
-  const isPending = batch.status === "PENDING";
-
-  if (!isPending) return <TableCell to={path}>{""}</TableCell>;
+  if (batch.hasFinished) return <TableCell to={path}>{""}</TableCell>;
 
   return (
     <TableCellMenu
@@ -262,7 +264,7 @@ function BatchActionsCell({ batch, path }: { batch: BatchListItem; path: string 
             leadingIconClassName="text-blue-500"
             title="View batch"
           />
-          {isPending && (
+          {!batch.hasFinished && (
             <Dialog>
               <DialogTrigger
                 asChild
