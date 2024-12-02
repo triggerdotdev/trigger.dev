@@ -186,6 +186,9 @@ export class TaskRunProcess {
         WAIT_FOR_DURATION: async (message) => {
           this.onWaitForDuration.post(message);
         },
+        UNCAUGHT_EXCEPTION: async (message) => {
+          logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
+        },
       },
     });
 

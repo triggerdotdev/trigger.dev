@@ -53,6 +53,7 @@ sourceMapSupport.install({
 });
 
 process.on("uncaughtException", function (error, origin) {
+  console.error("Uncaught exception", { error, origin });
   if (error instanceof Error) {
     process.send &&
       process.send({
