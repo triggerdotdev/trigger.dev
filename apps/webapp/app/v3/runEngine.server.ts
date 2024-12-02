@@ -218,8 +218,6 @@ function createRunEngine() {
         taskSlug: run.taskIdentifier,
         environment,
         attributes: {
-          // TODO: We'll need the execution data for this
-          // metadata: this.#generateMetadataAttributesForNextAttempt(execution),
           properties: {
             retryAt: retryAt.toISOString(),
           },
@@ -227,8 +225,6 @@ function createRunEngine() {
           style: {
             icon: "schedule-attempt",
           },
-          // TODO: This doesn't exist, decide if we need it
-          // queueId: run.queueId,
           queueName: run.queue,
         },
         context: run.traceContext as Record<string, string | undefined>,
