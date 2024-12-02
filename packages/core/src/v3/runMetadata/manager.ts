@@ -250,7 +250,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       return streamInstance;
     } catch (error) {
       // Clean up metadata key if stream creation fails
-      this.deleteKey(`$$stream.${key}`);
+      this.removeFromKey(`$$streams`, key);
       throw error;
     }
   }
@@ -265,7 +265,7 @@ export class StandardMetadataManager implements RunMetadataManager {
       return;
     }
 
-    const promises = Array.from(this.activeStreams.values());
+    const promises = Array.from(this.activeStreams.values()).map((stream) => stream.wait());
 
     try {
       await Promise.race([
