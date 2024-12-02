@@ -86,6 +86,9 @@ export class SpanPresenter extends BasePresenter {
         engine: true,
         masterQueue: true,
         secondaryMasterQueue: true,
+        error: true,
+        output: true,
+        outputType: true,
         //status + duration
         status: true,
         startedAt: true,
@@ -186,13 +189,33 @@ export class SpanPresenter extends BasePresenter {
         })
       : null;
 
+    const finishedData =
+      run.engine === "V2"
+        ? run
+        : isFinished
+        ? await this._replica.taskRunAttempt.findFirst({
+            select: {
+              output: true,
+              outputType: true,
+              error: true,
+            },
+            where: {
+              status: { in: FINAL_ATTEMPT_STATUSES },
+              taskRunId: run.id,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          })
+        : null;
+
     const output =
-      finishedAttempt === null
+      finishedData === null
         ? undefined
-        : finishedAttempt.outputType === "application/store"
-        ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
-        : typeof finishedAttempt.output !== "undefined" && finishedAttempt.output !== null
-        ? await prettyPrintPacket(finishedAttempt.output, finishedAttempt.outputType ?? undefined)
+        : finishedData.outputType === "application/store"
+        ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedData.output}`
+        : typeof finishedData.output !== "undefined" && finishedData.output !== null
+        ? await prettyPrintPacket(finishedData.output, finishedData.outputType ?? undefined)
         : undefined;
 
     const payload =
@@ -203,14 +226,14 @@ export class SpanPresenter extends BasePresenter {
         : undefined;
 
     let error: TaskRunError | undefined = undefined;
-    if (finishedAttempt?.error) {
-      const result = TaskRunError.safeParse(finishedAttempt.error);
+    if (finishedData?.error) {
+      const result = TaskRunError.safeParse(finishedData.error);
       if (result.success) {
         error = result.data;
       } else {
         error = {
           type: "CUSTOM_ERROR",
-          raw: JSON.stringify(finishedAttempt.error),
+          raw: JSON.stringify(finishedData.error),
         };
       }
     }
