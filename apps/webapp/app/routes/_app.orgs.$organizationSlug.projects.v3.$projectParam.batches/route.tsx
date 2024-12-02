@@ -1,6 +1,6 @@
-import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import { ArrowPathRoundedSquareIcon, ArrowRightIcon, CheckIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { useNavigation } from "@remix-run/react";
+import { useLocation, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -8,16 +8,19 @@ import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBlankRow,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
@@ -29,12 +32,17 @@ import {
   BatchStatusCombo,
   descriptionForBatchStatus,
 } from "~/components/runs/v3/BatchStatus";
+import { CheckBatchCompletionDialog } from "~/components/runs/v3/CheckBatchCompletionDialog";
 import { LiveTimer } from "~/components/runs/v3/LiveTimer";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
+import {
+  BatchList,
+  BatchListItem,
+  BatchListPresenter,
+} from "~/presenters/v3/BatchListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, ProjectParamSchema, v3BatchRunsPath } from "~/utils/pathBuilder";
 
@@ -150,11 +158,14 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
           <TableHeaderCell>Duration</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Finished</TableHeaderCell>
+          <TableHeaderCell>
+            <span className="sr-only">Go to batch</span>
+          </TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
         {batches.length === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={7}>
+          <TableBlankRow colSpan={8}>
             {!isLoading && (
               <div className="flex items-center justify-center">
                 <Paragraph className="w-auto">No batches</Paragraph>
@@ -162,7 +173,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
             )}
           </TableBlankRow>
         ) : batches.length === 0 ? (
-          <TableBlankRow colSpan={7}>
+          <TableBlankRow colSpan={8}>
             <div className="flex items-center justify-center">
               <Paragraph className="w-auto">No batches match these filters</Paragraph>
             </div>
@@ -215,13 +226,14 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                 <TableCell to={path}>
                   {batch.finishedAt ? <DateTime date={batch.finishedAt} /> : "–"}
                 </TableCell>
+                <BatchActionsCell batch={batch} path={path} />
               </TableRow>
             );
           })
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={7}
+            colSpan={8}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -229,5 +241,52 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function BatchActionsCell({ batch, path }: { batch: BatchListItem; path: string }) {
+  const location = useLocation();
+
+  const isPending = batch.status === "PENDING";
+
+  if (!isPending) return <TableCell to={path}>{""}</TableCell>;
+
+  return (
+    <TableCellMenu
+      isSticky
+      popoverContent={
+        <>
+          <PopoverMenuItem
+            to={path}
+            icon={ArrowRightIcon}
+            leadingIconClassName="text-blue-500"
+            title="View batch"
+          />
+          {isPending && (
+            <Dialog>
+              <DialogTrigger
+                asChild
+                className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+              >
+                <Button
+                  variant="small-menu-item"
+                  LeadingIcon={ArrowPathRoundedSquareIcon}
+                  leadingIconClassName="text-success"
+                  fullWidth
+                  textAlignLeft
+                  className="w-full px-1.5 py-[0.9rem]"
+                >
+                  Try and resume
+                </Button>
+              </DialogTrigger>
+              <CheckBatchCompletionDialog
+                batchId={batch.id}
+                redirectPath={`${location.pathname}${location.search}`}
+              />
+            </Dialog>
+          )}
+        </>
+      }
+    />
   );
 }
