@@ -8,6 +8,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
+import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
 import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
 import { EventSourceParserStream } from "eventsource-parser/stream";
@@ -119,6 +120,15 @@ export class SSEStreamSubscription implements StreamSubscription {
       },
       signal: this.options.signal,
     }).then((response) => {
+      if (!response.ok) {
+        throw ApiError.generate(
+          response.status,
+          {},
+          "Could not subscribe to stream",
+          Object.fromEntries(response.headers)
+        );
+      }
+
       if (!response.body) {
         throw new Error("No response body");
       }
