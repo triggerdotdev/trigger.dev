@@ -96,6 +96,7 @@ export const TriggerTaskRequestBody = z.object({
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
       idempotencyKey: z.string().optional(),
+      idempotencyKeyTTL: z.string().optional(),
       test: z.boolean().optional(),
       payloadType: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
@@ -123,6 +124,56 @@ export const BatchTriggerTaskRequestBody = z.object({
 });
 
 export type BatchTriggerTaskRequestBody = z.infer<typeof BatchTriggerTaskRequestBody>;
+
+export const BatchTriggerTaskItem = z.object({
+  task: z.string(),
+  payload: z.any(),
+  context: z.any(),
+  options: z
+    .object({
+      lockToVersion: z.string().optional(),
+      queue: QueueOptions.optional(),
+      concurrencyKey: z.string().optional(),
+      idempotencyKey: z.string().optional(),
+      idempotencyKeyTTL: z.string().optional(),
+      test: z.boolean().optional(),
+      payloadType: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      tags: RunTags.optional(),
+      maxAttempts: z.number().int().optional(),
+      metadata: z.any(),
+      metadataType: z.string().optional(),
+      maxDuration: z.number().optional(),
+      parentAttempt: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type BatchTriggerTaskItem = z.infer<typeof BatchTriggerTaskItem>;
+
+export const BatchTriggerTaskV2RequestBody = z.object({
+  items: BatchTriggerTaskItem.array(),
+  dependentAttempt: z.string().optional(),
+});
+
+export type BatchTriggerTaskV2RequestBody = z.infer<typeof BatchTriggerTaskV2RequestBody>;
+
+export const BatchTriggerTaskV2Response = z.object({
+  id: z.string(),
+  isCached: z.boolean(),
+  idempotencyKey: z.string().optional(),
+  runs: z.array(
+    z.object({
+      id: z.string(),
+      taskIdentifier: z.string(),
+      isCached: z.boolean(),
+      idempotencyKey: z.string().optional(),
+    })
+  ),
+});
+
+export type BatchTriggerTaskV2Response = z.infer<typeof BatchTriggerTaskV2Response>;
 
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
@@ -717,3 +768,18 @@ export const SubscribeRunRawShape = z.object({
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
+
+export const BatchStatus = z.enum(["PENDING", "COMPLETED"]);
+
+export type BatchStatus = z.infer<typeof BatchStatus>;
+
+export const RetrieveBatchResponse = z.object({
+  id: z.string(),
+  status: BatchStatus,
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  runCount: z.number(),
+});
+
+export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;

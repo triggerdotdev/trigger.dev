@@ -8,7 +8,16 @@ import LocalDevelopment from "/snippets/local-development-extensions.mdx";
 import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
 
 <div className="w-full h-full aspect-video">
-<iframe width="100%" height="100%" src="https://www.youtube.com/embed/6azvzrZITKY?si=muKtsBiS9TJGGKWg" title="YouTube video player" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen/>
+  <iframe
+    width="100%"
+    height="100%"
+    src="https://www.youtube.com/embed/6azvzrZITKY?si=muKtsBiS9TJGGKWg"
+    title="YouTube video player"
+    frameborder="0"
+    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen
+  />
 </div>
 
 ## Overview
@@ -125,12 +134,9 @@ export const summarizeHackerNews = schedules.task({
       .batchTriggerAndWait(
         articles.map((article) => ({
           payload: { title: article.title!, link: article.link! },
-          idempotencyKey: article.link,
         }))
       )
-      .then((batch) =>
-        batch.runs.filter((run) => run.ok).map((run) => run.output)
-      );
+      .then((batch) => batch.runs.filter((run) => run.ok).map((run) => run.output));
 
     // Send email using Resend
     await resend.emails.send({
@@ -165,11 +171,7 @@ export const scrapeAndSummarizeArticle = task({
     // Prevent all assets from loading, images, stylesheets etc
     await page.setRequestInterception(true);
     page.on("request", (request) => {
-      if (
-        ["script", "stylesheet", "image", "media", "font"].includes(
-          request.resourceType()
-        )
-      ) {
+      if (["script", "stylesheet", "image", "media", "font"].includes(request.resourceType())) {
         request.abort();
       } else {
         request.continue();
@@ -218,16 +220,7 @@ To prevent the main example from becoming too cluttered, we'll create a separate
 Notice how this file is imported into the main task code and passed to Resend to send the email.
 
 ```tsx summarize-hn-email.tsx
-import {
-  Html,
-  Head,
-  Body,
-  Container,
-  Section,
-  Heading,
-  Text,
-  Link,
-} from "@react-email/components";
+import { Html, Head, Body, Container, Section, Heading, Text, Link } from "@react-email/components";
 
 interface Article {
   title: string;
@@ -235,9 +228,7 @@ interface Article {
   summary: string | null;
 }
 
-export const HNSummaryEmail: React.FC<{ articles: Article[] }> = ({
-  articles,
-}) => (
+export const HNSummaryEmail: React.FC<{ articles: Article[] }> = ({ articles }) => (
   <Html>
     <Head />
     <Body style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>

@@ -24,8 +24,9 @@ import type {
   TaskOptions,
   TaskOutput,
   TaskPayload,
-  TaskRunOptions,
+  TriggerOptions,
   TaskRunResult,
+  TaskFromIdentifier,
 } from "./shared.js";
 
 export type {
@@ -40,8 +41,9 @@ export type {
   TaskOptions,
   TaskOutput,
   TaskPayload,
-  TaskRunOptions,
+  TriggerOptions,
   TaskRunResult,
+  TaskFromIdentifier,
 };
 
 /** Creates a task that can be triggered

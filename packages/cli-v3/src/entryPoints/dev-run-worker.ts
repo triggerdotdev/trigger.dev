@@ -194,6 +194,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
+            taskIdentifier: execution.task.id,
           },
         });
 
@@ -222,6 +223,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
+            taskIdentifier: execution.task.id,
           },
         });
 
@@ -247,6 +249,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
+            taskIdentifier: execution.task.id,
           },
         });
 
@@ -273,6 +276,7 @@ const zodIpc = new ZodIpcConnection({
             usage: {
               durationMs: 0,
             },
+            taskIdentifier: execution.task.id,
           },
         });
 
@@ -324,6 +328,7 @@ const zodIpc = new ZodIpcConnection({
                 usage: {
                   durationMs: usageSample.cpuTime,
                 },
+                taskIdentifier: execution.task.id,
               },
             });
           }
@@ -347,6 +352,7 @@ const zodIpc = new ZodIpcConnection({
               usage: {
                 durationMs: usageSample.cpuTime,
               },
+              taskIdentifier: execution.task.id,
             },
           });
         }

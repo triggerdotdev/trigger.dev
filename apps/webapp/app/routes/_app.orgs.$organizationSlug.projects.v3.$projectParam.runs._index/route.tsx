@@ -35,9 +35,13 @@ import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useUser } from "~/hooks/useUser";
 import { findProjectBySlug } from "~/models/project.server";
 import { RunListPresenter } from "~/presenters/v3/RunListPresenter.server";
+import {
+  getRootOnlyFilterPreference,
+  setRootOnlyFilterPreference,
+  uiPreferencesStorage,
+} from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -54,6 +58,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug } = ProjectParamSchema.parse(params);
 
   const url = new URL(request.url);
+
+  let rootOnlyValue = false;
+  if (url.searchParams.has("rootOnly")) {
+    rootOnlyValue = url.searchParams.get("rootOnly") === "true";
+  } else {
+    rootOnlyValue = await getRootOnlyFilterPreference(request);
+  }
+
   const s = {
     cursor: url.searchParams.get("cursor") ?? undefined,
     direction: url.searchParams.get("direction") ?? undefined,
@@ -63,6 +75,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     period: url.searchParams.get("period") ?? undefined,
     bulkId: url.searchParams.get("bulkId") ?? undefined,
     tags: url.searchParams.getAll("tags").map((t) => decodeURIComponent(t)),
+    from: url.searchParams.get("from") ?? undefined,
+    to: url.searchParams.get("to") ?? undefined,
+    rootOnly: rootOnlyValue,
+    runId: url.searchParams.get("runId") ?? undefined,
+    batchId: url.searchParams.get("batchId") ?? undefined,
+    scheduleId: url.searchParams.get("scheduleId") ?? undefined,
   };
   const {
     tasks,
@@ -76,6 +94,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     to,
     cursor,
     direction,
+    rootOnly,
+    runId,
+    batchId,
+    scheduleId,
   } = TaskRunListSearchFilters.parse(s);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -97,21 +119,35 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     bulkId,
     from,
     to,
+    batchId,
+    runId,
+    scheduleId,
+    rootOnly,
     direction: direction,
     cursor: cursor,
   });
 
-  return typeddefer({
-    data: list,
-  });
+  const session = await setRootOnlyFilterPreference(rootOnlyValue, request);
+  const cookieValue = await uiPreferencesStorage.commitSession(session);
+
+  return typeddefer(
+    {
+      data: list,
+      rootOnlyDefault: rootOnlyValue,
+    },
+    {
+      headers: {
+        "Set-Cookie": cookieValue,
+      },
+    }
+  );
 };
 
 export default function Page() {
-  const { data } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault } = useTypedLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const project = useProject();
-  const user = useUser();
 
   return (
     <>
@@ -170,6 +206,7 @@ export default function Page() {
                               possibleTasks={list.possibleTasks}
                               bulkActions={list.bulkActions}
                               hasFilters={list.hasFilters}
+                              rootOnlyDefault={rootOnlyDefault}
                             />
                             <div className="flex items-center justify-end gap-x-2">
                               <ListPagination list={list} />

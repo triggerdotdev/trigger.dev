@@ -10,7 +10,8 @@ export type QueueSizeGuardResult = {
 
 export async function guardQueueSizeLimitsForEnv(
   environment: AuthenticatedEnvironment,
-  marqs?: MarQS
+  marqs?: MarQS,
+  itemsToAdd: number = 1
 ): Promise<QueueSizeGuardResult> {
   const maximumSize = getMaximumSizeForEnvironment(environment);
 
@@ -23,9 +24,10 @@ export async function guardQueueSizeLimitsForEnv(
   }
 
   const queueSize = await marqs.lengthOfEnvQueue(environment);
+  const projectedSize = queueSize + itemsToAdd;
 
   return {
-    isWithinLimits: queueSize < maximumSize,
+    isWithinLimits: projectedSize <= maximumSize,
     maximumSize,
     queueSize,
   };

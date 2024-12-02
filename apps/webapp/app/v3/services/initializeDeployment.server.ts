@@ -98,7 +98,7 @@ export class InitializeDeploymentService extends BaseService {
         deployment.id,
         "BUILDING",
         "Building timed out",
-        new Date(Date.now() + 180_000) // 3 minutes
+        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
 
       return {

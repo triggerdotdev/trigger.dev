@@ -5,11 +5,17 @@ description: "An API call or operation is “idempotent” if it has the same re
 
 We currently support idempotency at the task level, meaning that if you trigger a task with the same `idempotencyKey` twice, the second request will not create a new task run.
 
+<Warning>
+  In version 3.3.0 and later, the `idempotencyKey` option is not available when using
+  `triggerAndWait` or `batchTriggerAndWait`, due to a bug that would sometimes cause the parent task
+  to become stuck. We are working on a fix for this issue.
+</Warning>
+
 ## `idempotencyKey` option
 
 You can provide an `idempotencyKey` to ensure that a task is only triggered once with the same key. This is useful if you are triggering a task within another task that might be retried:
 
-```typescript
+```ts
 import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
 
 export const myTask = task({
@@ -18,13 +24,14 @@ export const myTask = task({
     maxAttempts: 4,
   },
   run: async (payload: any) => {
-    // By default, idempotency keys generated are unique to the run, to prevent retries from duplicating child tasks
+    // This idempotency key will be unique to this task run, meaning the childTask will only be triggered once across all retries
     const idempotencyKey = await idempotencyKeys.create("my-task-key");
 
     // childTask will only be triggered once with the same idempotency key
-    await childTask.triggerAndWait(payload, { idempotencyKey });
+    await childTask.trigger({ foo: "bar" }, { idempotencyKey });
 
     // Do something else, that may throw an error and cause the task to be retried
+    throw new Error("Something went wrong");
   },
 });
 ```
@@ -33,7 +40,7 @@ You can use the `idempotencyKeys.create` SDK function to create an idempotency k
 
 We automatically inject the run ID when generating the idempotency key when running inside a task by default. You can turn it off by passing the `scope` option to `idempotencyKeys.create`:
 
-```typescript
+```ts
 import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
 
 export const myTask = task({
@@ -42,21 +49,18 @@ export const myTask = task({
     maxAttempts: 4,
   },
   run: async (payload: any) => {
-    // This idempotency key will be the same for all runs of this task
+    // This idempotency key will be globally unique, meaning only a single task run will be triggered with this key
     const idempotencyKey = await idempotencyKeys.create("my-task-key", { scope: "global" });
 
     // childTask will only be triggered once with the same idempotency key
-    await childTask.triggerAndWait(payload, { idempotencyKey });
-
-    // This is the same as the above
-    await childTask.triggerAndWait(payload, { idempotencyKey: "my-task-key" });
+    await childTask.trigger({ foo: "bar" }, { idempotencyKey });
   },
 });
 ```
 
 If you are triggering a task from your backend code, you can use the `idempotencyKeys.create` SDK function to create an idempotency key.
 
-```typescript
+```ts
 import { idempotencyKeys, tasks } from "@trigger.dev/sdk/v3";
 
 // You can also pass an array of strings to create a idempotency key
@@ -66,7 +70,7 @@ await tasks.trigger("my-task", { some: "data" }, { idempotencyKey });
 
 You can also pass a string to the `idempotencyKey` option, without first creating it with `idempotencyKeys.create`.
 
-```typescript
+```ts
 import { myTask } from "./trigger/myTasks";
 
 // You can also pass an array of strings to create a idempotency key
@@ -77,7 +81,7 @@ await myTask.trigger({ some: "data" }, { idempotencyKey: myUser.id });
 
 You can pass the `idempotencyKey` when calling `batchTrigger` as well:
 
-```typescript
+```ts
 import { tasks } from "@trigger.dev/sdk/v3";
 
 await tasks.batchTrigger("my-task", [
@@ -88,11 +92,47 @@ await tasks.batchTrigger("my-task", [
 ]);
 ```
 
+## `idempotencyKeyTTL` option
+
+By default idempotency keys are stored for 30 days. You can change this by passing the `idempotencyKeyTTL` option when triggering a task:
+
+```ts
+import { idempotencyKeys, task, wait } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  retry: {
+    maxAttempts: 4,
+  },
+  run: async (payload: any) => {
+    const idempotencyKey = await idempotencyKeys.create("my-task-key");
+
+    // The idempotency key will expire after 60 seconds
+    await childTask.trigger({ foo: "bar" }, { idempotencyKey, idempotencyKeyTTL: "60s" });
+
+    await wait.for({ seconds: 61 });
+
+    // The idempotency key will have expired, so the childTask will be triggered again
+    await childTask.trigger({ foo: "bar" }, { idempotencyKey });
+
+    // Do something else, that may throw an error and cause the task to be retried
+    throw new Error("Something went wrong");
+  },
+});
+```
+
+You can use the following units for the `idempotencyKeyTTL` option:
+
+- `s` for seconds (e.g. `60s`)
+- `m` for minutes (e.g. `5m`)
+- `h` for hours (e.g. `2h`)
+- `d` for days (e.g. `3d`)
+
 ## Payload-based idempotency
 
 We don't currently support payload-based idempotency, but you can implement it yourself by hashing the payload and using the hash as the idempotency key.
 
-```typescript
+```ts
 import { idempotencyKeys, task } from "@trigger.dev/sdk/v3";
 import { createHash } from "node:crypto";
 

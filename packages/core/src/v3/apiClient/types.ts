@@ -31,6 +31,7 @@ export interface ListRunsQueryParams extends CursorPageParams {
   tag?: Array<string> | string;
   schedule?: string;
   isTest?: boolean;
+  batch?: string;
 }
 
 export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {

@@ -16,9 +16,10 @@ export const loader = createLoaderApiRoute(
     searchParams: SearchParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
+    findResource: async () => 1, // This is a dummy value, it's not used
     authorization: {
       action: "read",
-      resource: (_, searchParams) => searchParams,
+      resource: (_, __, searchParams) => searchParams,
       superScopes: ["read:runs", "read:all", "admin"],
     },
   },

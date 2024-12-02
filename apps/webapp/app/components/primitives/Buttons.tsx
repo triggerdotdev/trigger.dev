@@ -174,6 +174,7 @@ export type ButtonContentPropsType = {
   className?: string;
   shortcut?: ShortcutDefinition;
   variant: keyof typeof variant;
+  shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -237,6 +238,14 @@ export function ButtonContent(props: ButtonContentPropsType) {
             <>{text}</>
           ))}
 
+        {shortcut && props.shortcutPosition === "before-trailing-icon" && (
+          <ShortcutKey
+            className={cn(shortcutClassName)}
+            shortcut={shortcut}
+            variant={variation.shortcutVariant ?? "medium"}
+          />
+        )}
+
         {TrailingIcon &&
           (typeof TrailingIcon === "string" ? (
             <NamedIcon
@@ -258,13 +267,15 @@ export function ButtonContent(props: ButtonContentPropsType) {
               )}
             />
           ))}
-        {shortcut && (
-          <ShortcutKey
-            className={cn(shortcutClassName)}
-            shortcut={shortcut}
-            variant={variation.shortcutVariant ?? "medium"}
-          />
-        )}
+
+        {shortcut &&
+          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") && (
+            <ShortcutKey
+              className={cn(shortcutClassName)}
+              shortcut={shortcut}
+              variant={variation.shortcutVariant ?? "medium"}
+            />
+          )}
       </div>
     </div>
   );

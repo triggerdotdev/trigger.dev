@@ -57,6 +57,8 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
+  v3BatchPath,
+  v3BatchRunsPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
@@ -585,6 +587,21 @@ function RunBody({
                     </>
                   )
                 ) : null}
+                {run.batch && (
+                  <Property.Item>
+                    <Property.Label>Batch</Property.Label>
+                    <Property.Value>
+                      <SimpleTooltip
+                        button={
+                          <TextLink to={v3BatchPath(organization, project, run.batch)}>
+                            {run.batch.friendlyId}
+                          </TextLink>
+                        }
+                        content={`Jump to ${run.batch.friendlyId}`}
+                      />
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>

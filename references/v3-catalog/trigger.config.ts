@@ -20,7 +20,7 @@ export default defineConfig({
   // Set the maxDuration to 300s for all tasks. See https://trigger.dev/docs/runs/max-duration
   // maxDuration: 300,
   retries: {
-    enabledInDev: false,
+    enabledInDev: true,
     default: {
       maxAttempts: 10,
       minTimeoutInMs: 5_000,

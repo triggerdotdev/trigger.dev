@@ -12,7 +12,7 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { uploadToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -25,10 +25,11 @@ import { parseNaturalLanguageDuration, stringifyDuration } from "@trigger.dev/co
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { Prisma } from "@trigger.dev/database";
 import { parseDelay } from "~/utils/delays";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
 
-/** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV1 extends BaseService {
   public async call(
     taskId: string,
@@ -39,7 +40,13 @@ export class TriggerTaskServiceV1 extends BaseService {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
+      // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
+      const idempotencyKeyExpiresAt =
+        options.idempotencyKeyExpiresAt ??
+        resolveIdempotencyKeyTTL(body.options?.idempotencyKeyTTL) ??
+        new Date(Date.now() + 24 * 60 * 60 * 1000 * 30); // 30 days
+
       const delayUntil = await parseDelay(body.options?.delay);
 
       const ttl =
@@ -60,34 +67,52 @@ export class TriggerTaskServiceV1 extends BaseService {
         : undefined;
 
       if (existingRun) {
-        span.setAttribute("runId", existingRun.friendlyId);
+        if (
+          existingRun.idempotencyKeyExpiresAt &&
+          existingRun.idempotencyKeyExpiresAt < new Date()
+        ) {
+          logger.debug("[TriggerTaskService][call] Idempotency key has expired", {
+            idempotencyKey: options.idempotencyKey,
+            run: existingRun,
+          });
 
-        return existingRun;
+          // Update the existing batch to remove the idempotency key
+          await this._prisma.taskRun.update({
+            where: { id: existingRun.id },
+            data: { idempotencyKey: null },
+          });
+        } else {
+          span.setAttribute("runId", existingRun.friendlyId);
+
+          return existingRun;
+        }
       }
 
-      if (environment.type !== "DEVELOPMENT") {
+      if (environment.type !== "DEVELOPMENT" && !options.skipChecks) {
         const result = await getEntitlement(environment.organizationId);
         if (result && result.hasAccess === false) {
           throw new OutOfEntitlementError();
         }
       }
 
-      const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
+      if (!options.skipChecks) {
+        const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs);
 
-      logger.debug("Queue size guard result", {
-        queueSizeGuard,
-        environment: {
-          id: environment.id,
-          type: environment.type,
-          organization: environment.organization,
-          project: environment.project,
-        },
-      });
+        logger.debug("Queue size guard result", {
+          queueSizeGuard,
+          environment: {
+            id: environment.id,
+            type: environment.type,
+            organization: environment.organization,
+            project: environment.project,
+          },
+        });
 
-      if (!queueSizeGuard.isWithinLimits) {
-        throw new ServiceValidationError(
-          `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-        );
+        if (!queueSizeGuard.isWithinLimits) {
+          throw new ServiceValidationError(
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+          );
+        }
       }
 
       if (
@@ -100,7 +125,7 @@ export class TriggerTaskServiceV1 extends BaseService {
         );
       }
 
-      const runFriendlyId = generateFriendlyId("run");
+      const runFriendlyId = options?.runId ?? generateFriendlyId("run");
 
       const payloadPacket = await this.#handlePayloadPacket(
         body.payload,
@@ -234,188 +259,217 @@ export class TriggerTaskServiceV1 extends BaseService {
           })
         : undefined;
 
-      return await eventRepository.traceEvent(
-        taskId,
-        {
-          context: options.traceContext,
-          spanParentAsLink: options.spanParentAsLink,
-          parentAsLinkType: options.parentAsLinkType,
-          kind: "SERVER",
-          environment,
-          taskSlug: taskId,
-          attributes: {
-            properties: {
-              [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+      try {
+        return await eventRepository.traceEvent(
+          taskId,
+          {
+            context: options.traceContext,
+            spanParentAsLink: options.spanParentAsLink,
+            parentAsLinkType: options.parentAsLinkType,
+            kind: "SERVER",
+            environment,
+            taskSlug: taskId,
+            attributes: {
+              properties: {
+                [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+              },
+              style: {
+                icon: options.customIcon ?? "task",
+              },
+              runIsTest: body.options?.test ?? false,
+              batchId: options.batchId,
+              idempotencyKey,
             },
-            style: {
-              icon: options.customIcon ?? "task",
-            },
-            runIsTest: body.options?.test ?? false,
-            batchId: options.batchId,
-            idempotencyKey,
+            incomplete: true,
+            immediate: true,
           },
-          incomplete: true,
-          immediate: true,
-        },
-        async (event, traceContext, traceparent) => {
-          const run = await autoIncrementCounter.incrementInTransaction(
-            `v3-run:${environment.id}:${taskId}`,
-            async (num, tx) => {
-              const lockedToBackgroundWorker = body.options?.lockToVersion
-                ? await tx.backgroundWorker.findUnique({
-                    where: {
-                      projectId_runtimeEnvironmentId_version: {
-                        projectId: environment.projectId,
-                        runtimeEnvironmentId: environment.id,
-                        version: body.options?.lockToVersion,
+          async (event, traceContext, traceparent) => {
+            const run = await autoIncrementCounter.incrementInTransaction(
+              `v3-run:${environment.id}:${taskId}`,
+              async (num, tx) => {
+                const lockedToBackgroundWorker = body.options?.lockToVersion
+                  ? await tx.backgroundWorker.findUnique({
+                      where: {
+                        projectId_runtimeEnvironmentId_version: {
+                          projectId: environment.projectId,
+                          runtimeEnvironmentId: environment.id,
+                          version: body.options?.lockToVersion,
+                        },
                       },
-                    },
-                  })
-                : undefined;
+                    })
+                  : undefined;
 
-              let queueName = sanitizeQueueName(
-                await this.#getQueueName(taskId, environment, body.options?.queue?.name)
-              );
+                let queueName = sanitizeQueueName(
+                  await this.#getQueueName(taskId, environment, body.options?.queue?.name)
+                );
 
-              // Check that the queuename is not an empty string
-              if (!queueName) {
-                queueName = sanitizeQueueName(`task/${taskId}`);
-              }
+                // Check that the queuename is not an empty string
+                if (!queueName) {
+                  queueName = sanitizeQueueName(`task/${taskId}`);
+                }
 
-              event.setAttribute("queueName", queueName);
-              span.setAttribute("queueName", queueName);
+                event.setAttribute("queueName", queueName);
+                span.setAttribute("queueName", queueName);
 
-              //upsert tags
-              let tagIds: string[] = [];
-              const bodyTags =
-                typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
-              if (bodyTags && bodyTags.length > 0) {
-                for (const tag of bodyTags) {
-                  const tagRecord = await createTag({
-                    tag,
-                    projectId: environment.projectId,
-                  });
-                  if (tagRecord) {
-                    tagIds.push(tagRecord.id);
+                //upsert tags
+                let tagIds: string[] = [];
+                const bodyTags =
+                  typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
+                if (bodyTags && bodyTags.length > 0) {
+                  for (const tag of bodyTags) {
+                    const tagRecord = await createTag({
+                      tag,
+                      projectId: environment.projectId,
+                    });
+                    if (tagRecord) {
+                      tagIds.push(tagRecord.id);
+                    }
                   }
                 }
-              }
 
-              const depth = dependentAttempt
-                ? dependentAttempt.taskRun.depth + 1
-                : parentAttempt
-                ? parentAttempt.taskRun.depth + 1
-                : dependentBatchRun?.dependentTaskAttempt
-                ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
-                : 0;
+                const depth = dependentAttempt
+                  ? dependentAttempt.taskRun.depth + 1
+                  : parentAttempt
+                  ? parentAttempt.taskRun.depth + 1
+                  : dependentBatchRun?.dependentTaskAttempt
+                  ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
+                  : 0;
 
-              const taskRun = await tx.taskRun.create({
-                data: {
-                  status: delayUntil ? "DELAYED" : "PENDING",
-                  number: num,
-                  friendlyId: runFriendlyId,
-                  runtimeEnvironmentId: environment.id,
-                  projectId: environment.projectId,
-                  idempotencyKey,
-                  taskIdentifier: taskId,
-                  payload: payloadPacket.data ?? "",
-                  payloadType: payloadPacket.dataType,
-                  context: body.context,
-                  traceContext: traceContext,
-                  traceId: event.traceId,
-                  spanId: event.spanId,
-                  parentSpanId:
-                    options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
-                  lockedToVersionId: lockedToBackgroundWorker?.id,
-                  concurrencyKey: body.options?.concurrencyKey,
-                  queue: queueName,
-                  isTest: body.options?.test ?? false,
-                  delayUntil,
-                  queuedAt: delayUntil ? undefined : new Date(),
-                  maxAttempts: body.options?.maxAttempts,
-                  ttl,
-                  tags:
-                    tagIds.length === 0
-                      ? undefined
-                      : {
-                          connect: tagIds.map((id) => ({ id })),
-                        },
-                  parentTaskRunId:
-                    dependentAttempt?.taskRun.id ??
-                    parentAttempt?.taskRun.id ??
-                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
-                  parentTaskRunAttemptId:
-                    dependentAttempt?.id ??
-                    parentAttempt?.id ??
-                    dependentBatchRun?.dependentTaskAttempt?.id,
-                  rootTaskRunId:
-                    dependentAttempt?.taskRun.rootTaskRunId ??
-                    dependentAttempt?.taskRun.id ??
-                    parentAttempt?.taskRun.rootTaskRunId ??
-                    parentAttempt?.taskRun.id ??
-                    dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
-                    dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
-                  batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
-                  resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
-                  depth,
-                  metadata: metadataPacket?.data,
-                  metadataType: metadataPacket?.dataType,
-                  seedMetadata: metadataPacket?.data,
-                  seedMetadataType: metadataPacket?.dataType,
-                  maxDurationInSeconds: body.options?.maxDuration
-                    ? clampMaxDuration(body.options.maxDuration)
-                    : undefined,
-                  runTags: bodyTags,
-                },
-              });
-
-              event.setAttribute("runId", taskRun.friendlyId);
-              span.setAttribute("runId", taskRun.friendlyId);
-
-              if (dependentAttempt) {
-                await tx.taskRunDependency.create({
+                const taskRun = await tx.taskRun.create({
                   data: {
-                    taskRunId: taskRun.id,
-                    dependentAttemptId: dependentAttempt.id,
-                  },
-                });
-              } else if (dependentBatchRun) {
-                await tx.taskRunDependency.create({
-                  data: {
-                    taskRunId: taskRun.id,
-                    dependentBatchRunId: dependentBatchRun.id,
-                  },
-                });
-              }
-
-              if (body.options?.queue) {
-                const concurrencyLimit =
-                  typeof body.options.queue.concurrencyLimit === "number"
-                    ? Math.max(0, body.options.queue.concurrencyLimit)
-                    : undefined;
-
-                let taskQueue = await tx.taskQueue.findFirst({
-                  where: {
+                    status: delayUntil ? "DELAYED" : "PENDING",
+                    number: num,
+                    friendlyId: runFriendlyId,
                     runtimeEnvironmentId: environment.id,
-                    name: queueName,
+                    projectId: environment.projectId,
+                    idempotencyKey,
+                    idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
+                    taskIdentifier: taskId,
+                    payload: payloadPacket.data ?? "",
+                    payloadType: payloadPacket.dataType,
+                    context: body.context,
+                    traceContext: traceContext,
+                    traceId: event.traceId,
+                    spanId: event.spanId,
+                    parentSpanId:
+                      options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
+                    lockedToVersionId: lockedToBackgroundWorker?.id,
+                    taskVersion: lockedToBackgroundWorker?.version,
+                    sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                    cliVersion: lockedToBackgroundWorker?.cliVersion,
+                    concurrencyKey: body.options?.concurrencyKey,
+                    queue: queueName,
+                    isTest: body.options?.test ?? false,
+                    delayUntil,
+                    queuedAt: delayUntil ? undefined : new Date(),
+                    maxAttempts: body.options?.maxAttempts,
+                    ttl,
+                    tags:
+                      tagIds.length === 0
+                        ? undefined
+                        : {
+                            connect: tagIds.map((id) => ({ id })),
+                          },
+                    parentTaskRunId:
+                      dependentAttempt?.taskRun.id ??
+                      parentAttempt?.taskRun.id ??
+                      dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                    parentTaskRunAttemptId:
+                      dependentAttempt?.id ??
+                      parentAttempt?.id ??
+                      dependentBatchRun?.dependentTaskAttempt?.id,
+                    rootTaskRunId:
+                      dependentAttempt?.taskRun.rootTaskRunId ??
+                      dependentAttempt?.taskRun.id ??
+                      parentAttempt?.taskRun.rootTaskRunId ??
+                      parentAttempt?.taskRun.id ??
+                      dependentBatchRun?.dependentTaskAttempt?.taskRun.rootTaskRunId ??
+                      dependentBatchRun?.dependentTaskAttempt?.taskRun.id,
+                    batchId: dependentBatchRun?.id ?? parentBatchRun?.id,
+                    resumeParentOnCompletion: !!(dependentAttempt ?? dependentBatchRun),
+                    depth,
+                    metadata: metadataPacket?.data,
+                    metadataType: metadataPacket?.dataType,
+                    seedMetadata: metadataPacket?.data,
+                    seedMetadataType: metadataPacket?.dataType,
+                    maxDurationInSeconds: body.options?.maxDuration
+                      ? clampMaxDuration(body.options.maxDuration)
+                      : undefined,
+                    runTags: bodyTags,
+                    oneTimeUseToken: options.oneTimeUseToken,
                   },
                 });
 
-                const existingConcurrencyLimit =
-                  typeof taskQueue?.concurrencyLimit === "number"
-                    ? taskQueue.concurrencyLimit
-                    : undefined;
+                event.setAttribute("runId", taskRun.friendlyId);
+                span.setAttribute("runId", taskRun.friendlyId);
 
-                if (taskQueue) {
-                  if (existingConcurrencyLimit !== concurrencyLimit) {
-                    taskQueue = await tx.taskQueue.update({
-                      where: {
-                        id: taskQueue.id,
-                      },
+                if (dependentAttempt) {
+                  await tx.taskRunDependency.create({
+                    data: {
+                      taskRunId: taskRun.id,
+                      dependentAttemptId: dependentAttempt.id,
+                    },
+                  });
+                } else if (dependentBatchRun) {
+                  await tx.taskRunDependency.create({
+                    data: {
+                      taskRunId: taskRun.id,
+                      dependentBatchRunId: dependentBatchRun.id,
+                    },
+                  });
+                }
+
+                if (body.options?.queue) {
+                  const concurrencyLimit =
+                    typeof body.options.queue.concurrencyLimit === "number"
+                      ? Math.max(0, body.options.queue.concurrencyLimit)
+                      : undefined;
+
+                  let taskQueue = await tx.taskQueue.findFirst({
+                    where: {
+                      runtimeEnvironmentId: environment.id,
+                      name: queueName,
+                    },
+                  });
+
+                  const existingConcurrencyLimit =
+                    typeof taskQueue?.concurrencyLimit === "number"
+                      ? taskQueue.concurrencyLimit
+                      : undefined;
+
+                  if (taskQueue) {
+                    if (existingConcurrencyLimit !== concurrencyLimit) {
+                      taskQueue = await tx.taskQueue.update({
+                        where: {
+                          id: taskQueue.id,
+                        },
+                        data: {
+                          concurrencyLimit:
+                            typeof concurrencyLimit === "number" ? concurrencyLimit : null,
+                        },
+                      });
+
+                      if (typeof taskQueue.concurrencyLimit === "number") {
+                        await marqs?.updateQueueConcurrencyLimits(
+                          environment,
+                          taskQueue.name,
+                          taskQueue.concurrencyLimit
+                        );
+                      } else {
+                        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                      }
+                    }
+                  } else {
+                    const queueId = generateFriendlyId("queue");
+
+                    taskQueue = await tx.taskQueue.create({
                       data: {
-                        concurrencyLimit:
-                          typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                        rateLimit: body.options.queue.rateLimit,
+                        friendlyId: queueId,
+                        name: queueName,
+                        concurrencyLimit,
+                        runtimeEnvironmentId: environment.id,
+                        projectId: environment.projectId,
+                        type: "NAMED",
                       },
                     });
 
@@ -425,107 +479,113 @@ export class TriggerTaskServiceV1 extends BaseService {
                         taskQueue.name,
                         taskQueue.concurrencyLimit
                       );
-                    } else {
-                      await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
                     }
                   }
-                } else {
-                  const queueId = generateFriendlyId("queue");
+                }
 
-                  taskQueue = await tx.taskQueue.create({
-                    data: {
-                      friendlyId: queueId,
-                      name: queueName,
-                      concurrencyLimit,
-                      runtimeEnvironmentId: environment.id,
-                      projectId: environment.projectId,
-                      rateLimit: body.options.queue.rateLimit,
-                      type: "NAMED",
-                    },
-                  });
+                if (taskRun.delayUntil) {
+                  await workerQueue.enqueue(
+                    "v3.enqueueDelayedRun",
+                    { runId: taskRun.id },
+                    { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
+                  );
+                }
 
-                  if (typeof taskQueue.concurrencyLimit === "number") {
-                    await marqs?.updateQueueConcurrencyLimits(
-                      environment,
-                      taskQueue.name,
-                      taskQueue.concurrencyLimit
-                    );
+                if (!taskRun.delayUntil && taskRun.ttl) {
+                  const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
+
+                  if (expireAt) {
+                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
                   }
                 }
-              }
 
-              if (taskRun.delayUntil) {
-                await workerQueue.enqueue(
-                  "v3.enqueueDelayedRun",
-                  { runId: taskRun.id },
-                  { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-                );
-              }
-
-              if (!taskRun.delayUntil && taskRun.ttl) {
-                const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
-
-                if (expireAt) {
-                  await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
-                }
-              }
-
-              return taskRun;
-            },
-            async (_, tx) => {
-              const counter = await tx.taskRunNumberCounter.findUnique({
-                where: {
-                  taskIdentifier_environmentId: {
-                    taskIdentifier: taskId,
-                    environmentId: environment.id,
-                  },
-                },
-                select: { lastNumber: true },
-              });
-
-              return counter?.lastNumber;
-            },
-            this._prisma
-          );
-
-          //release the concurrency for the env and org, if part of a (batch)triggerAndWait
-          if (dependentAttempt) {
-            const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
-            await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
-          }
-          if (dependentBatchRun?.dependentTaskAttempt) {
-            const isSameTask =
-              dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
-            await marqs?.releaseConcurrency(
-              dependentBatchRun.dependentTaskAttempt.taskRun.id,
-              isSameTask
-            );
-          }
-
-          if (!run) {
-            return;
-          }
-
-          // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
-          if (run.status === "PENDING") {
-            await marqs?.enqueueMessage(
-              environment,
-              run.queue,
-              run.id,
-              {
-                type: "EXECUTE",
-                taskIdentifier: taskId,
-                projectId: environment.projectId,
-                environmentId: environment.id,
-                environmentType: environment.type,
+                return taskRun;
               },
-              body.options?.concurrencyKey
-            );
-          }
+              async (_, tx) => {
+                const counter = await tx.taskRunNumberCounter.findUnique({
+                  where: {
+                    taskIdentifier_environmentId: {
+                      taskIdentifier: taskId,
+                      environmentId: environment.id,
+                    },
+                  },
+                  select: { lastNumber: true },
+                });
 
-          return run;
+                return counter?.lastNumber;
+              },
+              this._prisma
+            );
+
+            //release the concurrency for the env and org, if part of a (batch)triggerAndWait
+            if (dependentAttempt) {
+              const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
+              await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
+            }
+            if (dependentBatchRun?.dependentTaskAttempt) {
+              const isSameTask =
+                dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
+              await marqs?.releaseConcurrency(
+                dependentBatchRun.dependentTaskAttempt.taskRun.id,
+                isSameTask
+              );
+            }
+
+            if (!run) {
+              return;
+            }
+
+            // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+            if (run.status === "PENDING") {
+              await marqs?.enqueueMessage(
+                environment,
+                run.queue,
+                run.id,
+                {
+                  type: "EXECUTE",
+                  taskIdentifier: taskId,
+                  projectId: environment.projectId,
+                  environmentId: environment.id,
+                  environmentType: environment.type,
+                },
+                body.options?.concurrencyKey
+              );
+            }
+
+            return run;
+          }
+        );
+      } catch (error) {
+        // Detect a prisma transaction Unique constraint violation
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          logger.debug("TriggerTask: Prisma transaction error", {
+            code: error.code,
+            message: error.message,
+            meta: error.meta,
+          });
+
+          if (error.code === "P2002") {
+            const target = error.meta?.target;
+
+            if (
+              Array.isArray(target) &&
+              target.length > 0 &&
+              typeof target[0] === "string" &&
+              target[0].includes("oneTimeUseToken")
+            ) {
+              throw new ServiceValidationError(
+                `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
+              );
+            } else {
+              throw new ServiceValidationError(
+                `Cannot trigger ${taskId} as it has already been triggered with the same idempotency key.`
+              );
+            }
+          }
         }
-      );
+
+        throw error;
+      }
     });
   }
 
@@ -604,7 +664,7 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadToObjectStore(filename, packet.data, packet.dataType, environment);
+      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
         data: filename,

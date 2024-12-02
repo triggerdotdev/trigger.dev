@@ -7,12 +7,16 @@ import { TriggerTaskServiceV2 } from "./triggerTaskV2.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
   customIcon?: string;
+  runId?: string;
+  skipChecks?: boolean;
+  oneTimeUseToken?: string;
 };
 
 export class OutOfEntitlementError extends Error {

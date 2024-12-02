@@ -1681,8 +1681,9 @@ model TaskRun {
 
   status TaskRunStatus @default(PENDING)
 
-  idempotencyKey String?
-  taskIdentifier String
+  idempotencyKey          String?
+  idempotencyKeyExpiresAt DateTime?
+  taskIdentifier          String
 
   isTest Boolean @default(false)
 
@@ -1719,6 +1720,11 @@ model TaskRun {
   /// Denormized column that holds the raw tags
   runTags String[]
 
+  /// Denormalized version of the background worker task
+  taskVersion String?
+  sdkVersion  String?
+  cliVersion  String?
+
   checkpoints Checkpoint[]
 
   startedAt     DateTime?
@@ -1747,6 +1753,10 @@ model TaskRun {
   ttl         String?
   expiredAt   DateTime?
   maxAttempts Int?
+
+  /// optional token that can be used to authenticate the task run
+  /// TODO: add a unique constraint on the token
+  oneTimeUseToken String?
 
   ///When this run is finished, the waitpoint will be marked as completed
   associatedWaitpoint Waitpoint?
@@ -1820,6 +1830,8 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
+  // TODO: uncomment this
+  // @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
@@ -1829,6 +1841,7 @@ model TaskRun {
   @@index([projectId, createdAt, taskIdentifier])
   //Runs list
   @@index([projectId])
+  @@index([projectId, id(sort: Desc)])
   @@index([projectId, taskIdentifier])
   @@index([projectId, status])
   @@index([projectId, taskIdentifier, status])
@@ -1842,6 +1855,8 @@ model TaskRun {
   @@index([completedAt])
   // Schedule list page
   @@index([scheduleId, createdAt(sort: Desc)])
+  // Finding runs in a batch
+  @@index([runtimeEnvironmentId, batchId])
 }
 
 enum TaskRunStatus {
@@ -2456,18 +2471,31 @@ enum TaskQueueType {
 }
 
 model BatchTaskRun {
-  id                   String             @id @default(cuid())
-  friendlyId           String             @unique
-  idempotencyKey       String?
-  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  runtimeEnvironmentId String
-  runs                 TaskRun[]
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  id                      String             @id @default(cuid())
+  friendlyId              String             @unique
+  idempotencyKey          String?
+  idempotencyKeyExpiresAt DateTime?
+  runtimeEnvironment      RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  status                  BatchTaskRunStatus @default(PENDING)
+  runtimeEnvironmentId    String
+  runs                    TaskRun[]
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  // new columns
+  runIds       String[] @default([])
+  runCount     Int      @default(0)
+  payload      String?
+  payloadType  String   @default("application/json")
+  options      Json?
+  batchVersion String   @default("v1")
+
+  /// optional token that can be used to authenticate the task run
+  /// TODO: add a unique constraint on the token
+  oneTimeUseToken String?
 
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
-  status                 BatchTaskRunStatus      @default(PENDING)
   taskIdentifier         String?
   checkpointEvent        CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId      String?                 @unique
@@ -2475,6 +2503,8 @@ model BatchTaskRun {
   dependentTaskAttemptId String?
   runDependencies        TaskRunDependency[]     @relation("dependentBatchRun")
 
+  // TODO: uncomment this
+  // @@unique([oneTimeUseToken])
   ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }

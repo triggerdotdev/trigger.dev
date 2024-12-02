@@ -3,15 +3,15 @@ title: "Limits"
 description: "There are some hard and soft limits that you might hit."
 ---
 
-import RateLimitHitUseBatchTrigger from '/snippets/rate-limit-hit-use-batchtrigger.mdx';
+import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigger.mdx";
 
 ## Concurrency limits
 
-| Pricing tier     | Limit                |
-|:---------------- |:-------------------- |
-| Free             | 5 concurrent runs    |
-| Hobby            | 25 concurrent runs   |
-| Pro              | 100+ concurrent runs |
+| Pricing tier | Limit                |
+| :----------- | :------------------- |
+| Free         | 5 concurrent runs    |
+| Hobby        | 25 concurrent runs   |
+| Pro          | 100+ concurrent runs |
 
 If you need more than 100 concurrent runs on the Pro tier, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
 
@@ -20,28 +20,28 @@ If you need more than 100 concurrent runs on the Pro tier, you can request more 
 Generally speaking each SDK call is an API call.
 
 | Limit | Details                   |
-|:----- |:------------------------- |
+| :---- | :------------------------ |
 | API   | 1,500 requests per minute |
 
-<RateLimitHitUseBatchTrigger/>
+<RateLimitHitUseBatchTrigger />
 
 ## Queued tasks
 
 The number of queued tasks by environment.
 
 | Limit   | Details            |
-|:------- |:------------------ |
+| :------ | :----------------- |
 | Dev     | At most 500        |
 | Staging | At most 10 million |
 | Prod    | At most 10 million |
 
 ## Schedules
 
-| Pricing tier     | Limit                |
-|:---------------- |:-------------------- |
-| Free             | 5 per project        |
-| Hobby            | 100 per project      |
-| Pro              | 1,000+ per project   |
+| Pricing tier | Limit              |
+| :----------- | :----------------- |
+| Free         | 5 per project      |
+| Hobby        | 100 per project    |
+| Pro          | 1,000+ per project |
 
 When attaching schedules to tasks we strongly recommend you add them [in our dashboard](/tasks/scheduled#attaching-schedules-in-the-dashboard) if they're "static". That way you can control them easily per environment.
 
@@ -49,15 +49,29 @@ If you add them [dynamically using code](/management/schedules/create) make sure
 
 If you're creating schedules for your user you will definitely need to request more schedules from us.
 
+## Task payloads and outputs
+
+| Limit                  | Details                                       |
+| :--------------------- | :-------------------------------------------- |
+| Single trigger payload | Must not exceed 3MB                           |
+| Batch trigger payload  | The total of all payloads must not exceed 1MB |
+| Task outputs           | Must not exceed 10MB                          |
+
+Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
+
+## Batch size
+
+A single batch can have a maximum of 500 items.
+
 <SoftLimit />
 
 ## Log retention
 
-| Pricing tier     | Limit     |
-|:---------------- |:--------- |
-| Free             | 1 day     |
-| Hobby            | 7 days    |
-| Pro              | 30 days   |
+| Pricing tier | Limit   |
+| :----------- | :------ |
+| Free         | 1 day   |
+| Hobby        | 7 days  |
+| Pro          | 30 days |
 
 ## Log size
 
@@ -66,25 +80,30 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 <Expandable title="log limits">
 
 #### Attribute Limits
+
 - Span Attribute Count Limit: 256
 - Log Attribute Count Limit: 256
 - Span Attribute Value Length Limit: 1028 characters
 - Log Attribute Value Length Limit: 1028 characters
 
 #### Event and Link Limits
+
 - Span Event Count Limit: 10
 - Link Count Limit: 2
 - Attributes per Link Limit: 10
 - Attributes per Event Limit: 10
 
 #### I/O Packet Length Limit
+
 128 KB (131,072 bytes)
 
 #### Attribute Clipping Behavior
+
 - Attributes exceeding the value length limit (1028 characters) are discarded.
 - If the total number of attributes exceeds 256, additional attributes are not included.
 
 #### Attribute Value Size Calculation
+
 - Strings: Actual length of the string
 - Numbers: 8 bytes
 - Booleans: 4 bytes
@@ -93,25 +112,15 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 
 </Expandable>
 
-## Task payloads and outputs
-
-| Limit | Details |
-|:--- |:--- |
-| Single trigger payload | Must not exceed 10MB |
-| Batch trigger payload | The total of all payloads must not exceed 10MB |
-| Task outputs | Must not exceed 10MB |
-
-Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
-
 ## Alerts
 
 An alert destination is a single email address, Slack channel, or webhook URL that you want to send alerts to. If you're on the Pro and need more than 100 alert destinations, you can request more by contacting us via [email](https://trigger.dev/contact) or [Discord](https://trigger.dev/discord).
 
-| Pricing tier     | Limit                   |
-|:---------------- |:----------------------- |
-| Free             | 1 alert destination     |
-| Hobby            | 3 alert destinations    |
-| Pro              | 100+ alert destinations |
+| Pricing tier | Limit                   |
+| :----------- | :---------------------- |
+| Free         | 1 alert destination     |
+| Hobby        | 3 alert destinations    |
+| Pro          | 100+ alert destinations |
 
 ## Machines
 
@@ -121,8 +130,8 @@ See the [machine configurations](/machines#machine-configurations) for more deta
 
 ## Team members
 
-| Pricing tier     | Limit             |
-|:---------------- |:----------------- |
-| Free             | 5 team members    |
-| Hobby            | 5 team members    |
-| Pro              | 25+ team members  |
+| Pricing tier | Limit            |
+| :----------- | :--------------- |
+| Free         | 5 team members   |
+| Hobby        | 5 team members   |
+| Pro          | 25+ team members |

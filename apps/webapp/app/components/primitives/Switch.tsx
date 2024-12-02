@@ -13,10 +13,10 @@ const variations = {
   },
   small: {
     container:
-      "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 transition focus-custom",
+      "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary disabled:hover:bg-transparent pr-1 py-[0.1rem] pl-1.5 transition focus-custom disabled:hover:text-charcoal-400 disabled:opacity-50 text-charcoal-400 hover:text-charcoal-200 disabled:hover:cursor-not-allowed hover:cursor-pointer",
     root: "h-3 w-6",
     thumb: "h-2.5 w-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
-    text: "text-xs text-charcoal-400 group-hover:text-charcoal-200 hover:cursor-pointer transition",
+    text: "text-xs",
   },
 };
 

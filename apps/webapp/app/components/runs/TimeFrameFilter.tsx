@@ -214,6 +214,7 @@ export function AbsoluteTimeFrame({
             granularity="second"
             showNowButton
             showClearButton
+            utc
           />
         </div>
         <div className="space-y-1">
@@ -227,6 +228,7 @@ export function AbsoluteTimeFrame({
             granularity="second"
             showNowButton
             showClearButton
+            utc
           />
         </div>
       </div>

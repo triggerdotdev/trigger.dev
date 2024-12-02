@@ -72,7 +72,11 @@ export class CreateTaskRunAttemptService extends BaseService {
           },
           batchItems: {
             include: {
-              batchTaskRun: true,
+              batchTaskRun: {
+                select: {
+                  friendlyId: true,
+                },
+              },
             },
           },
         },

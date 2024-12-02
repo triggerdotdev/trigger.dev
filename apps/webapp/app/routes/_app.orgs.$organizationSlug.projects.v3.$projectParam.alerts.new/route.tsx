@@ -23,6 +23,7 @@ import { Label } from "~/components/primitives/Label";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -150,9 +151,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const option = url.searchParams.get("option");
 
+  const emailAlertsEnabled =
+    env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined;
+
   return typedjson({
     ...results,
     option: option === "slack" ? ("SLACK" as const) : undefined,
+    emailAlertsEnabled,
   });
 }
 
@@ -200,7 +205,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
-  const { slack, option } = useTypedLoaderData<typeof loader>();
+  const { slack, option, emailAlertsEnabled } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -271,16 +276,23 @@ export default function Page() {
             </InputGroup>
 
             {currentAlertChannel === "EMAIL" ? (
-              <InputGroup fullWidth>
-                <Label>Email</Label>
-                <Input
-                  {...conform.input(channelValue)}
-                  placeholder="email@youremail.com"
-                  type="email"
-                  autoFocus
-                />
-                <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
-              </InputGroup>
+              emailAlertsEnabled ? (
+                <InputGroup fullWidth>
+                  <Label>Email</Label>
+                  <Input
+                    {...conform.input(channelValue)}
+                    placeholder="email@youremail.com"
+                    type="email"
+                    autoFocus
+                  />
+                  <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                </InputGroup>
+              ) : (
+                <Callout variant="warning">
+                  Email integration is not available. Please contact your organization
+                  administrator.
+                </Callout>
+              )
             ) : currentAlertChannel === "SLACK" ? (
               <InputGroup fullWidth>
                 {slack.status === "READY" ? (

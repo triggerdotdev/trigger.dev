@@ -49,18 +49,24 @@ export class SubtaskUnwrapError extends Error {
   }
 }
 
-export class TaskRunPromise<T> extends Promise<TaskRunResult<T>> {
+export class TaskRunPromise<TIdentifier extends string, TOutput> extends Promise<
+  TaskRunResult<TIdentifier, TOutput>
+> {
   constructor(
     executor: (
-      resolve: (value: TaskRunResult<T> | PromiseLike<TaskRunResult<T>>) => void,
+      resolve: (
+        value:
+          | TaskRunResult<TIdentifier, TOutput>
+          | PromiseLike<TaskRunResult<TIdentifier, TOutput>>
+      ) => void,
       reject: (reason?: any) => void
     ) => void,
-    private readonly taskId: string
+    private readonly taskId: TIdentifier
   ) {
     super(executor);
   }
 
-  unwrap(): Promise<T> {
+  unwrap(): Promise<TOutput> {
     return this.then((result) => {
       if (result.ok) {
         return result.output;
@@ -371,15 +377,29 @@ export type RunHandle<TTaskIdentifier extends string, TPayload, TOutput> = Brand
 
 export type AnyRunHandle = RunHandle<string, any, any>;
 
+export type BatchedRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
+  {
+    id: string;
+    taskIdentifier: TTaskIdentifier;
+    isCached: boolean;
+    idempotencyKey?: string;
+  },
+  TPayload,
+  TOutput
+>;
+
+export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
+
 /**
  * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
  */
 export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    runs: Array<RunHandle<TTaskIdentifier, TPayload, TOutput>>;
+    isCached: boolean;
+    idempotencyKey?: string;
+    runs: Array<BatchedRunHandle<TTaskIdentifier, TPayload, TOutput>>;
     publicAccessToken: string;
-    taskIdentifier: TTaskIdentifier;
   },
   TOutput,
   TPayload
@@ -401,24 +421,100 @@ export type RunHandleTaskIdentifier<TRunHandle> = TRunHandle extends RunHandle<
   ? TTaskIdentifier
   : never;
 
-export type TaskRunResult<TOutput = any> =
+export type TaskRunResult<TIdentifier extends string, TOutput = any> =
   | {
       ok: true;
       id: string;
+      taskIdentifier: TIdentifier;
       output: TOutput;
     }
   | {
       ok: false;
       id: string;
+      taskIdentifier: TIdentifier;
       error: unknown;
     };
 
-export type BatchResult<TOutput = any> = {
+export type AnyTaskRunResult = TaskRunResult<string, any>;
+
+export type TaskRunResultFromTask<TTask extends AnyTask> = TTask extends Task<
+  infer TIdentifier,
+  any,
+  infer TOutput
+>
+  ? TaskRunResult<TIdentifier, TOutput>
+  : never;
+
+export type BatchResult<TIdentifier extends string, TOutput = any> = {
   id: string;
-  runs: TaskRunResult<TOutput>[];
+  runs: TaskRunResult<TIdentifier, TOutput>[];
 };
 
-export type BatchItem<TInput> = { payload: TInput; options?: TaskRunOptions };
+export type BatchByIdResult<TTask extends AnyTask> = {
+  id: string;
+  runs: Array<TaskRunResultFromTask<TTask>>;
+};
+
+export type BatchByTaskResult<TTasks extends readonly AnyTask[]> = {
+  id: string;
+  runs: {
+    [K in keyof TTasks]: TaskRunResultFromTask<TTasks[K]>;
+  };
+};
+
+/**
+ * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
+ */
+// export type BatchTasksRunHandle<TTasks extends readonly AnyTask[]> = BrandedRun<
+//   {
+//     batchId: string;
+//     isCached: boolean;
+//     idempotencyKey?: string;
+//     runs: {
+//       [K in keyof TTasks]: BatchedRunHandle<
+//         TaskIdentifier<TTasks[K]>,
+//         TaskPayload<TTasks[K]>,
+//         TaskOutput<TTasks[K]>
+//       >;
+//     };
+//     publicAccessToken: string;
+//   },
+//   any,
+//   any
+// >;
+
+export type BatchTasksResult<TTasks extends readonly AnyTask[]> = BatchTasksRunHandle<TTasks>;
+
+export type BatchItem<TInput> = { payload: TInput; options?: TriggerOptions };
+
+export type BatchTriggerAndWaitItem<TInput> = {
+  payload: TInput;
+  options?: TriggerAndWaitOptions;
+};
+
+export type BatchByIdItem<TRunTypes extends AnyRunTypes> = {
+  id: TRunTypes["taskIdentifier"];
+  payload: TRunTypes["payload"];
+  options?: TriggerOptions;
+};
+
+export type BatchByIdAndWaitItem<TRunTypes extends AnyRunTypes> = {
+  id: TRunTypes["taskIdentifier"];
+  payload: TRunTypes["payload"];
+  options?: TriggerAndWaitOptions;
+};
+
+export type BatchByTaskItem<TTask extends AnyTask> = {
+  task: TTask;
+  payload: TaskPayload<TTask>;
+  options?: TriggerOptions;
+};
+
+export type BatchByTaskAndWaitItem<TTask extends AnyTask> = {
+  task: TTask;
+  payload: TaskPayload<TTask>;
+  options?: TriggerAndWaitOptions;
+};
 
 export interface Task<TIdentifier extends string, TInput = void, TOutput = any> {
   /**
@@ -437,7 +533,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   trigger: (
     payload: TInput,
-    options?: TaskRunOptions,
+    options?: TriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<RunHandle<TIdentifier, TInput, TOutput>>;
 
@@ -450,6 +546,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   batchTrigger: (
     items: Array<BatchItem<TInput>>,
+    options?: BatchTriggerOptions,
     requestOptions?: TriggerApiRequestOptions
   ) => Promise<BatchRunHandle<TIdentifier, TInput, TOutput>>;
 
@@ -469,7 +566,10 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  triggerAndWait: (payload: TInput, options?: TaskRunOptions) => TaskRunPromise<TOutput>;
+  triggerAndWait: (
+    payload: TInput,
+    options?: TriggerAndWaitOptions
+  ) => TaskRunPromise<TIdentifier, TOutput>;
 
   /**
    * Batch trigger multiple task runs with the given payloads, and wait for the results. Returns the results of the task runs.
@@ -491,7 +591,9 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * }
    * ```
    */
-  batchTriggerAndWait: (items: Array<BatchItem<TInput>>) => Promise<BatchResult<TOutput>>;
+  batchTriggerAndWait: (
+    items: Array<BatchTriggerAndWaitItem<TInput>>
+  ) => Promise<BatchResult<TIdentifier, TOutput>>;
 }
 
 export interface TaskWithSchema<
@@ -544,6 +646,11 @@ export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TId
   ? TIdentifier
   : never;
 
+export type TaskFromIdentifier<
+  TTask extends AnyTask,
+  TIdentifier extends TTask["id"],
+> = TTask extends { id: TIdentifier } ? TTask : never;
+
 export type TriggerJwtOptions = {
   /**
    * The expiration time of the JWT. This can be a string like "1h" or a Date object.
@@ -553,7 +660,7 @@ export type TriggerJwtOptions = {
   expirationTime?: number | Date | string;
 };
 
-export type TaskRunOptions = {
+export type TriggerOptions = {
   /**
    * A unique key that can be used to ensure that a task is only triggered once per key.
    *
@@ -600,6 +707,13 @@ export type TaskRunOptions = {
    *
    */
   idempotencyKey?: IdempotencyKey | string | string[];
+
+  /**
+   * The time-to-live for the idempotency key. Once the TTL has passed, the key can be used again.
+   *
+   * Specify a duration string like "1h", "10s", "30m", etc.
+   */
+  idempotencyKeyTTL?: string;
   maxAttempts?: number;
   queue?: TaskRunConcurrencyOptions;
   concurrencyKey?: string;
@@ -662,6 +776,13 @@ export type TaskRunOptions = {
   maxDuration?: number;
 };
 
+export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
+
+export type BatchTriggerOptions = {
+  idempotencyKey?: IdempotencyKey | string | string[];
+  idempotencyKeyTTL?: string;
+};
+
 export type TaskMetadataWithFunctions = TaskMetadata & {
   fns: {
     run: (payload: any, params: RunFnParams<any>) => Promise<any>;
@@ -694,6 +815,8 @@ export type InferRunTypes<T> = T extends RunHandle<
   infer TOutput
 >
   ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+  : T extends BatchedRunHandle<infer TTaskIdentifier, infer TPayload, infer TOutput>
+  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
   : T extends Task<infer TTaskIdentifier, infer TPayload, infer TOutput>
   ? RunTypes<TTaskIdentifier, TPayload, TOutput>
   : AnyRunTypes;
@@ -704,8 +827,30 @@ export type RunHandleFromTypes<TRunTypes extends AnyRunTypes> = RunHandle<
   TRunTypes["output"]
 >;
 
-export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = BatchRunHandle<
-  TRunTypes["taskIdentifier"],
-  TRunTypes["payload"],
-  TRunTypes["output"]
+export type BatchRunHandleFromTypes<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
+  ? BatchRunHandle<TRunTypes["taskIdentifier"], TRunTypes["payload"], TRunTypes["output"]>
+  : never;
+
+/**
+ * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
+ */
+export type BatchTasksRunHandle<TTasks extends readonly AnyTask[]> = BrandedRun<
+  {
+    batchId: string;
+    isCached: boolean;
+    idempotencyKey?: string;
+    runs: {
+      [K in keyof TTasks]: BatchedRunHandle<
+        TaskIdentifier<TTasks[K]>,
+        TaskPayload<TTasks[K]>,
+        TaskOutput<TTasks[K]>
+      >;
+    };
+    publicAccessToken: string;
+  },
+  any,
+  any
 >;
+
+export type BatchTasksRunHandleFromTypes<TTasks extends readonly AnyTask[]> =
+  BatchTasksRunHandle<TTasks>;

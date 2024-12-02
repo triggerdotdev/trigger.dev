@@ -1,5 +1,114 @@
 # internal-platform
 
+## 3.3.1
+
+## 3.3.0
+
+### Minor Changes
+
+- Improved Batch Triggering: ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
+
+  - The new Batch Trigger endpoint is now asynchronous and supports up to 500 runs per request.
+  - The new endpoint also supports triggering multiple different tasks in a single batch request (support in the SDK coming soon).
+  - The existing `batchTrigger` method now supports the new endpoint, and shouldn't require any changes to your code.
+
+  - Idempotency keys now expire after 24 hours, and you can customize the expiration time when creating a new key by using the `idempotencyKeyTTL` parameter:
+
+  ```ts
+  await myTask.batchTrigger([{ payload: { foo: "bar" } }], {
+    idempotencyKey: "my-key",
+    idempotencyKeyTTL: "60s",
+  });
+  // Works for individual items as well:
+  await myTask.batchTrigger([
+    { payload: { foo: "bar" }, options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" } },
+  ]);
+  // And `trigger`:
+  await myTask.trigger({ foo: "bar" }, { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" });
+  ```
+
+  ### Breaking Changes
+
+  - We've removed the `idempotencyKey` option from `triggerAndWait` and `batchTriggerAndWait`, because it can lead to permanently frozen runs in deployed tasks. We're working on upgrading our entire system to support idempotency keys on these methods, and we'll re-add the option once that's complete.
+
+### Patch Changes
+
+- Added new batch.trigger and batch.triggerByTask methods that allows triggering multiple different tasks in a single batch: ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
+
+  ```ts
+  import { batch } from "@trigger.dev/sdk/v3";
+  import type { myTask1, myTask2 } from "./trigger/tasks";
+
+  // Somewhere in your backend code
+  const response = await batch.trigger<typeof myTask1 | typeof myTask2>([
+    { id: "task1", payload: { foo: "bar" } },
+    { id: "task2", payload: { baz: "qux" } },
+  ]);
+
+  for (const run of response.runs) {
+    if (run.ok) {
+      console.log(run.output);
+    } else {
+      console.error(run.error);
+    }
+  }
+  ```
+
+  Or if you are inside of a task, you can use `triggerByTask`:
+
+  ```ts
+  import { batch, task, runs } from "@trigger.dev/sdk/v3";
+
+  export const myParentTask = task({
+    id: "myParentTask",
+    run: async () => {
+      const response = await batch.triggerByTask([
+        { task: myTask1, payload: { foo: "bar" } },
+        { task: myTask2, payload: { baz: "qux" } },
+      ]);
+
+      const run1 = await runs.retrieve(response.runs[0]);
+      console.log(run1.output); // typed as { foo: string }
+
+      const run2 = await runs.retrieve(response.runs[1]);
+      console.log(run2.output); // typed as { baz: string }
+
+      const response2 = await batch.triggerByTaskAndWait([
+        { task: myTask1, payload: { foo: "bar" } },
+        { task: myTask2, payload: { baz: "qux" } },
+      ]);
+
+      if (response2.runs[0].ok) {
+        console.log(response2.runs[0].output); // typed as { foo: string }
+      }
+
+      if (response2.runs[1].ok) {
+        console.log(response2.runs[1].output); // typed as { baz: string }
+      }
+    },
+  });
+
+  export const myTask1 = task({
+    id: "myTask1",
+    run: async () => {
+      return {
+        foo: "bar",
+      };
+    },
+  });
+
+  export const myTask2 = task({
+    id: "myTask2",
+    run: async () => {
+      return {
+        baz: "qux",
+      };
+    },
+  });
+  ```
+
+- Added ability to subscribe to a batch of runs using runs.subscribeToBatch ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
+
 ## 3.2.2
 
 ## 3.2.1

@@ -136,8 +136,6 @@ export const QueueOptions = z.object({
    *
    * If this property is omitted, the task can potentially use up the full concurrency of an environment. */
   concurrencyLimit: z.number().int().min(0).max(1000).optional(),
-  /** @deprecated This feature is coming soon */
-  rateLimit: RateLimitOptions.optional(),
 });
 
 export type QueueOptions = z.infer<typeof QueueOptions>;
