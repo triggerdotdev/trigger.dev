@@ -251,7 +251,9 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
 function BatchActionsCell({ batch, path }: { batch: BatchListItem; path: string }) {
   const location = useLocation();
 
-  if (batch.hasFinished) return <TableCell to={path}>{""}</TableCell>;
+  if (batch.hasFinished || batch.environment.type === "DEVELOPMENT") {
+    return <TableCell to={path}>{""}</TableCell>;
+  }
 
   return (
     <TableCellMenu
