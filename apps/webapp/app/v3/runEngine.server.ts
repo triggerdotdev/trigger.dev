@@ -8,6 +8,7 @@ import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import type { Attributes } from "@opentelemetry/api";
+import { reportInvocationUsage } from "~/services/platform.v3.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -236,6 +237,20 @@ function createRunEngine() {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
         spanId: run.spanId,
+      });
+    }
+  });
+
+  engine.eventBus.on("runRetryScheduled", async ({ time, run, organization }) => {
+    try {
+      if (run.attemptNumber === 1 && run.baseCostInCents > 0) {
+        await reportInvocationUsage(organization.id, run.baseCostInCents, { runId: run.id });
+      }
+    } catch (error) {
+      logger.error("[runRetryScheduled] Failed to report invocation usage", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+        orgId: organization.id,
       });
     }
   });

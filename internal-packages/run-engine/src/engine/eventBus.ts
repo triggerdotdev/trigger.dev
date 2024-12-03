@@ -3,7 +3,6 @@ import { AuthenticatedEnvironment } from "../shared";
 import { TaskRunError } from "@trigger.dev/core/v3";
 
 export type EventBusEvents = {
-  //todo reportInvocationUsage()
   runAttemptStarted: [
     {
       time: Date;
