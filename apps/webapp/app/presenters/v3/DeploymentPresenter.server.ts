@@ -108,6 +108,7 @@ export class DeploymentPresenter {
               },
             },
             sdkVersion: true,
+            cliVersion: true,
           },
         },
         triggeredBy: {
@@ -145,6 +146,7 @@ export class DeploymentPresenter {
         },
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
+        cliVersion: deployment.worker?.cliVersion,
         imageReference: deployment.imageReference,
         externalBuildData:
           externalBuildData && externalBuildData.success ? externalBuildData.data : undefined,

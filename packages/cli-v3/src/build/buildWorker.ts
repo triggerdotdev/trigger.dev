@@ -27,6 +27,7 @@ import { writeJSONFile } from "../utilities/fileSystem.js";
 import { isWindows } from "std-env";
 import { pathToFileURL } from "node:url";
 import { logger } from "../utilities/logger.js";
+import { SdkVersionExtractor } from "./plugins.js";
 
 export type BuildWorkerEventListener = {
   onBundleStart?: () => void;
@@ -61,6 +62,8 @@ export async function buildWorker(options: BuildWorkerOptions) {
   await notifyExtensionOnBuildStart(buildContext);
   const pluginsFromExtensions = resolvePluginsForContext(buildContext);
 
+  const sdkVersionExtractor = new SdkVersionExtractor();
+
   options.listener?.onBundleStart?.();
 
   const bundleResult = await bundleWorker({
@@ -69,7 +72,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     destination: options.destination,
     watch: false,
     resolvedConfig,
-    plugins: [...pluginsFromExtensions],
+    plugins: [sdkVersionExtractor.plugin, ...pluginsFromExtensions],
     jsxFactory: resolvedConfig.build.jsx.factory,
     jsxFragment: resolvedConfig.build.jsx.fragment,
     jsxAutomatic: resolvedConfig.build.jsx.automatic,
@@ -81,7 +84,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     contentHash: bundleResult.contentHash,
     runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
     environment: options.environment,
-    packageVersion: CORE_VERSION,
+    packageVersion: sdkVersionExtractor.sdkVersion ?? CORE_VERSION,
     cliPackageVersion: VERSION,
     target: "deploy",
     files: bundleResult.files,
