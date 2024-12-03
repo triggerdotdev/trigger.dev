@@ -152,6 +152,10 @@ export default function Page() {
               <Property.Value>{deployment.sdkVersion ? deployment.sdkVersion : "–"}</Property.Value>
             </Property.Item>
             <Property.Item>
+              <Property.Label>CLI Version</Property.Label>
+              <Property.Value>{deployment.cliVersion ? deployment.cliVersion : "–"}</Property.Value>
+            </Property.Item>
+            <Property.Item>
               <Property.Label>Started at</Property.Label>
               <Property.Value>
                 <DateTimeAccurate date={deployment.createdAt} /> UTC
