@@ -1152,7 +1152,7 @@ importers:
         specifier: workspace:3.3.4
         version: link:../core
       '@trigger.dev/worker':
-        specifier: workspace:3.3.2
+        specifier: workspace:3.3.4
         version: link:../worker
       c12:
         specifier: ^1.11.1
