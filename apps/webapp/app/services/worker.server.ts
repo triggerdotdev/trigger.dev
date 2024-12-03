@@ -563,7 +563,7 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new ResumeBatchRunService();
 
-          return await service.call(payload.batchRunId);
+          await service.call(payload.batchRunId);
         },
       },
       "v3.resumeTaskDependency": {
