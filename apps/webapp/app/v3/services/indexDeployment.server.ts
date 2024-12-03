@@ -50,7 +50,7 @@ export class IndexDeploymentService extends BaseService {
         deployment.id,
         "DEPLOYING",
         "Could not index deployment in time",
-        new Date(Date.now() + 180_000)
+        new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
 
       const responses = await socketIo.providerNamespace.timeout(30_000).emitWithAck("INDEX", {

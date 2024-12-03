@@ -5,7 +5,7 @@ import {
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
-import { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { BatchTaskRun, Prisma, TaskRunAttempt } from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
@@ -48,6 +48,7 @@ export type BatchTriggerTaskServiceOptions = {
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
+  oneTimeUseToken?: string;
 };
 
 export class BatchTriggerV2Service extends BaseService {
@@ -56,255 +57,288 @@ export class BatchTriggerV2Service extends BaseService {
     body: BatchTriggerTaskV2RequestBody,
     options: BatchTriggerTaskServiceOptions = {}
   ): Promise<BatchTriggerTaskV2Response> {
-    return await this.traceWithEnv<BatchTriggerTaskV2Response>(
-      "call()",
-      environment,
-      async (span) => {
-        const existingBatch = options.idempotencyKey
-          ? await this._prisma.batchTaskRun.findUnique({
-              where: {
-                runtimeEnvironmentId_idempotencyKey: {
-                  runtimeEnvironmentId: environment.id,
-                  idempotencyKey: options.idempotencyKey,
-                },
-              },
-            })
-          : undefined;
-
-        if (existingBatch) {
-          if (
-            existingBatch.idempotencyKeyExpiresAt &&
-            existingBatch.idempotencyKeyExpiresAt < new Date()
-          ) {
-            logger.debug("[BatchTriggerV2][call] Idempotency key has expired", {
-              idempotencyKey: options.idempotencyKey,
-              batch: {
-                id: existingBatch.id,
-                friendlyId: existingBatch.friendlyId,
-                runCount: existingBatch.runCount,
-                idempotencyKeyExpiresAt: existingBatch.idempotencyKeyExpiresAt,
-                idempotencyKey: existingBatch.idempotencyKey,
-              },
-            });
-
-            // Update the existing batch to remove the idempotency key
-            await this._prisma.batchTaskRun.update({
-              where: { id: existingBatch.id },
-              data: { idempotencyKey: null },
-            });
-
-            // Don't return, just continue with the batch trigger
-          } else {
-            span.setAttribute("batchId", existingBatch.friendlyId);
-
-            return this.#respondWithExistingBatch(existingBatch, environment);
-          }
-        }
-
-        const batchId = generateFriendlyId("batch");
-
-        span.setAttribute("batchId", batchId);
-
-        const dependentAttempt = body?.dependentAttempt
-          ? await this._prisma.taskRunAttempt.findUnique({
-              where: { friendlyId: body.dependentAttempt },
-              include: {
-                taskRun: {
-                  select: {
-                    id: true,
-                    status: true,
-                  },
-                },
-              },
-            })
-          : undefined;
-
-        if (
-          dependentAttempt &&
-          (isFinalAttemptStatus(dependentAttempt.status) ||
-            isFinalRunStatus(dependentAttempt.taskRun.status))
-        ) {
-          logger.debug("[BatchTriggerV2][call] Dependent attempt or run is in a terminal state", {
-            dependentAttempt: dependentAttempt,
-            batchId,
-          });
-
-          throw new ServiceValidationError(
-            "Cannot process batch as the parent run is already in a terminal state"
-          );
-        }
-
-        if (environment.type !== "DEVELOPMENT") {
-          const result = await getEntitlement(environment.organizationId);
-          if (result && result.hasAccess === false) {
-            throw new OutOfEntitlementError();
-          }
-        }
-
-        const idempotencyKeys = body.items.map((i) => i.options?.idempotencyKey).filter(Boolean);
-
-        const cachedRuns =
-          idempotencyKeys.length > 0
-            ? await this._prisma.taskRun.findMany({
+    try {
+      return await this.traceWithEnv<BatchTriggerTaskV2Response>(
+        "call()",
+        environment,
+        async (span) => {
+          const existingBatch = options.idempotencyKey
+            ? await this._prisma.batchTaskRun.findUnique({
                 where: {
-                  runtimeEnvironmentId: environment.id,
-                  idempotencyKey: {
-                    in: body.items.map((i) => i.options?.idempotencyKey).filter(Boolean),
+                  runtimeEnvironmentId_idempotencyKey: {
+                    runtimeEnvironmentId: environment.id,
+                    idempotencyKey: options.idempotencyKey,
                   },
-                },
-                select: {
-                  friendlyId: true,
-                  idempotencyKey: true,
-                  idempotencyKeyExpiresAt: true,
                 },
               })
-            : [];
+            : undefined;
 
-        if (cachedRuns.length) {
-          logger.debug("[BatchTriggerV2][call] Found cached runs", {
-            cachedRuns,
-            batchId,
-          });
-        }
-
-        // Now we need to create an array of all the run IDs, in order
-        // If we have a cached run, that isn't expired, we should use that run ID
-        // If we have a cached run, that is expired, we should generate a new run ID and save that cached run ID to a set of expired run IDs
-        // If we don't have a cached run, we should generate a new run ID
-        const expiredRunIds = new Set<string>();
-        let cachedRunCount = 0;
-
-        const runs = body.items.map((item) => {
-          const cachedRun = cachedRuns.find(
-            (r) => r.idempotencyKey === item.options?.idempotencyKey
-          );
-
-          if (cachedRun) {
+          if (existingBatch) {
             if (
-              cachedRun.idempotencyKeyExpiresAt &&
-              cachedRun.idempotencyKeyExpiresAt < new Date()
+              existingBatch.idempotencyKeyExpiresAt &&
+              existingBatch.idempotencyKeyExpiresAt < new Date()
             ) {
-              expiredRunIds.add(cachedRun.friendlyId);
+              logger.debug("[BatchTriggerV2][call] Idempotency key has expired", {
+                idempotencyKey: options.idempotencyKey,
+                batch: {
+                  id: existingBatch.id,
+                  friendlyId: existingBatch.friendlyId,
+                  runCount: existingBatch.runCount,
+                  idempotencyKeyExpiresAt: existingBatch.idempotencyKeyExpiresAt,
+                  idempotencyKey: existingBatch.idempotencyKey,
+                },
+              });
+
+              // Update the existing batch to remove the idempotency key
+              await this._prisma.batchTaskRun.update({
+                where: { id: existingBatch.id },
+                data: { idempotencyKey: null },
+              });
+
+              // Don't return, just continue with the batch trigger
+            } else {
+              span.setAttribute("batchId", existingBatch.friendlyId);
+
+              return this.#respondWithExistingBatch(existingBatch, environment);
+            }
+          }
+
+          const batchId = generateFriendlyId("batch");
+
+          span.setAttribute("batchId", batchId);
+
+          const dependentAttempt = body?.dependentAttempt
+            ? await this._prisma.taskRunAttempt.findUnique({
+                where: { friendlyId: body.dependentAttempt },
+                include: {
+                  taskRun: {
+                    select: {
+                      id: true,
+                      status: true,
+                    },
+                  },
+                },
+              })
+            : undefined;
+
+          if (
+            dependentAttempt &&
+            (isFinalAttemptStatus(dependentAttempt.status) ||
+              isFinalRunStatus(dependentAttempt.taskRun.status))
+          ) {
+            logger.debug("[BatchTriggerV2][call] Dependent attempt or run is in a terminal state", {
+              dependentAttempt: dependentAttempt,
+              batchId,
+            });
+
+            throw new ServiceValidationError(
+              "Cannot process batch as the parent run is already in a terminal state"
+            );
+          }
+
+          if (environment.type !== "DEVELOPMENT") {
+            const result = await getEntitlement(environment.organizationId);
+            if (result && result.hasAccess === false) {
+              throw new OutOfEntitlementError();
+            }
+          }
+
+          const idempotencyKeys = body.items.map((i) => i.options?.idempotencyKey).filter(Boolean);
+
+          const cachedRuns =
+            idempotencyKeys.length > 0
+              ? await this._prisma.taskRun.findMany({
+                  where: {
+                    runtimeEnvironmentId: environment.id,
+                    idempotencyKey: {
+                      in: body.items.map((i) => i.options?.idempotencyKey).filter(Boolean),
+                    },
+                  },
+                  select: {
+                    friendlyId: true,
+                    idempotencyKey: true,
+                    idempotencyKeyExpiresAt: true,
+                  },
+                })
+              : [];
+
+          if (cachedRuns.length) {
+            logger.debug("[BatchTriggerV2][call] Found cached runs", {
+              cachedRuns,
+              batchId,
+            });
+          }
+
+          // Now we need to create an array of all the run IDs, in order
+          // If we have a cached run, that isn't expired, we should use that run ID
+          // If we have a cached run, that is expired, we should generate a new run ID and save that cached run ID to a set of expired run IDs
+          // If we don't have a cached run, we should generate a new run ID
+          const expiredRunIds = new Set<string>();
+          let cachedRunCount = 0;
+
+          const runs = body.items.map((item) => {
+            const cachedRun = cachedRuns.find(
+              (r) => r.idempotencyKey === item.options?.idempotencyKey
+            );
+
+            if (cachedRun) {
+              if (
+                cachedRun.idempotencyKeyExpiresAt &&
+                cachedRun.idempotencyKeyExpiresAt < new Date()
+              ) {
+                expiredRunIds.add(cachedRun.friendlyId);
+
+                return {
+                  id: generateFriendlyId("run"),
+                  isCached: false,
+                  idempotencyKey: item.options?.idempotencyKey ?? undefined,
+                  taskIdentifier: item.task,
+                };
+              }
+
+              cachedRunCount++;
 
               return {
-                id: generateFriendlyId("run"),
-                isCached: false,
+                id: cachedRun.friendlyId,
+                isCached: true,
                 idempotencyKey: item.options?.idempotencyKey ?? undefined,
                 taskIdentifier: item.task,
               };
             }
 
-            cachedRunCount++;
-
             return {
-              id: cachedRun.friendlyId,
-              isCached: true,
+              id: generateFriendlyId("run"),
+              isCached: false,
               idempotencyKey: item.options?.idempotencyKey ?? undefined,
               taskIdentifier: item.task,
             };
-          }
-
-          return {
-            id: generateFriendlyId("run"),
-            isCached: false,
-            idempotencyKey: item.options?.idempotencyKey ?? undefined,
-            taskIdentifier: item.task,
-          };
-        });
-
-        // Calculate how many new runs we need to create
-        const newRunCount = body.items.length - cachedRunCount;
-
-        if (newRunCount === 0) {
-          logger.debug("[BatchTriggerV2][call] All runs are cached", {
-            batchId,
           });
 
-          await this._prisma.batchTaskRun.create({
-            data: {
-              friendlyId: batchId,
-              runtimeEnvironmentId: environment.id,
-              idempotencyKey: options.idempotencyKey,
-              idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-              dependentTaskAttemptId: dependentAttempt?.id,
-              runCount: body.items.length,
-              runIds: runs.map((r) => r.id),
-              status: "COMPLETED",
-              batchVersion: "v2",
+          // Calculate how many new runs we need to create
+          const newRunCount = body.items.length - cachedRunCount;
+
+          if (newRunCount === 0) {
+            logger.debug("[BatchTriggerV2][call] All runs are cached", {
+              batchId,
+            });
+
+            await this._prisma.batchTaskRun.create({
+              data: {
+                friendlyId: batchId,
+                runtimeEnvironmentId: environment.id,
+                idempotencyKey: options.idempotencyKey,
+                idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+                dependentTaskAttemptId: dependentAttempt?.id,
+                runCount: body.items.length,
+                runIds: runs.map((r) => r.id),
+                status: "COMPLETED",
+                batchVersion: "v2",
+                oneTimeUseToken: options.oneTimeUseToken,
+              },
+            });
+
+            return {
+              id: batchId,
+              isCached: false,
+              idempotencyKey: options.idempotencyKey ?? undefined,
+              runs,
+            };
+          }
+
+          const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs, newRunCount);
+
+          logger.debug("Queue size guard result", {
+            newRunCount,
+            queueSizeGuard,
+            environment: {
+              id: environment.id,
+              type: environment.type,
+              organization: environment.organization,
+              project: environment.project,
             },
           });
 
+          if (!queueSizeGuard.isWithinLimits) {
+            throw new ServiceValidationError(
+              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            );
+          }
+
+          // Expire the cached runs that are no longer valid
+          if (expiredRunIds.size) {
+            logger.debug("Expiring cached runs", {
+              expiredRunIds: Array.from(expiredRunIds),
+              batchId,
+            });
+
+            // TODO: is there a limit to the number of items we can update in a single query?
+            await this._prisma.taskRun.updateMany({
+              where: { friendlyId: { in: Array.from(expiredRunIds) } },
+              data: { idempotencyKey: null },
+            });
+          }
+
+          // Upload to object store
+          const payloadPacket = await this.#handlePayloadPacket(
+            body.items,
+            `batch/${batchId}`,
+            environment
+          );
+
+          const batch = await this.#createAndProcessBatchTaskRun(
+            batchId,
+            runs,
+            payloadPacket,
+            newRunCount,
+            environment,
+            body,
+            options,
+            dependentAttempt ?? undefined
+          );
+
+          if (!batch) {
+            throw new Error("Failed to create batch");
+          }
+
           return {
-            id: batchId,
+            id: batch.friendlyId,
             isCached: false,
-            idempotencyKey: options.idempotencyKey ?? undefined,
+            idempotencyKey: batch.idempotencyKey ?? undefined,
             runs,
           };
         }
-
-        const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs, newRunCount);
-
-        logger.debug("Queue size guard result", {
-          newRunCount,
-          queueSizeGuard,
-          environment: {
-            id: environment.id,
-            type: environment.type,
-            organization: environment.organization,
-            project: environment.project,
-          },
+      );
+    } catch (error) {
+      // Detect a prisma transaction Unique constraint violation
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        logger.debug("BatchTriggerV2: Prisma transaction error", {
+          code: error.code,
+          message: error.message,
+          meta: error.meta,
         });
 
-        if (!queueSizeGuard.isWithinLimits) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-          );
+        if (error.code === "P2002") {
+          const target = error.meta?.target;
+
+          if (
+            Array.isArray(target) &&
+            target.length > 0 &&
+            typeof target[0] === "string" &&
+            target[0].includes("oneTimeUseToken")
+          ) {
+            throw new ServiceValidationError(
+              "Cannot batch trigger with a one-time use token as it has already been used."
+            );
+          } else {
+            throw new ServiceValidationError(
+              "Cannot batch trigger as it has already been triggered with the same idempotency key."
+            );
+          }
         }
-
-        // Expire the cached runs that are no longer valid
-        if (expiredRunIds.size) {
-          logger.debug("Expiring cached runs", {
-            expiredRunIds: Array.from(expiredRunIds),
-            batchId,
-          });
-
-          // TODO: is there a limit to the number of items we can update in a single query?
-          await this._prisma.taskRun.updateMany({
-            where: { friendlyId: { in: Array.from(expiredRunIds) } },
-            data: { idempotencyKey: null },
-          });
-        }
-
-        // Upload to object store
-        const payloadPacket = await this.#handlePayloadPacket(
-          body.items,
-          `batch/${batchId}`,
-          environment
-        );
-
-        const batch = await this.#createAndProcessBatchTaskRun(
-          batchId,
-          runs,
-          payloadPacket,
-          newRunCount,
-          environment,
-          body,
-          options,
-          dependentAttempt ?? undefined
-        );
-
-        if (!batch) {
-          throw new Error("Failed to create batch");
-        }
-
-        return {
-          id: batch.friendlyId,
-          isCached: false,
-          idempotencyKey: batch.idempotencyKey ?? undefined,
-          runs,
-        };
       }
-    );
+
+      throw error;
+    }
   }
 
   async #createAndProcessBatchTaskRun(
@@ -336,6 +370,7 @@ export class BatchTriggerV2Service extends BaseService {
           payloadType: payloadPacket.dataType,
           options,
           batchVersion: "v2",
+          oneTimeUseToken: options.oneTimeUseToken,
         },
       });
 
@@ -413,6 +448,7 @@ export class BatchTriggerV2Service extends BaseService {
             payloadType: payloadPacket.dataType,
             options,
             batchVersion: "v2",
+            oneTimeUseToken: options.oneTimeUseToken,
           },
         });
 

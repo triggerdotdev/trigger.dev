@@ -1,5 +1,21 @@
 # @trigger.dev/sdk
 
+## 3.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.3`
+
+## 3.3.2
+
+### Patch Changes
+
+- Add one-time use public tokens to trigger and batch trigger ([#1515](https://github.com/triggerdotdev/trigger.dev/pull/1515))
+- Fix for waiting for realtime streams to finish ([#1520](https://github.com/triggerdotdev/trigger.dev/pull/1520))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.2`
+
 ## 3.3.1
 
 ### Patch Changes

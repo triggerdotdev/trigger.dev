@@ -1722,6 +1722,9 @@ model TaskRun {
   expiredAt   DateTime?
   maxAttempts Int?
 
+  /// optional token that can be used to authenticate the task run
+  oneTimeUseToken String?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
@@ -1787,6 +1790,7 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
+  @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
@@ -2161,6 +2165,9 @@ model BatchTaskRun {
   options      Json?
   batchVersion String   @default("v1")
 
+  /// optional token that can be used to authenticate the task run
+  oneTimeUseToken String?
+
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
   taskIdentifier         String?
@@ -2170,6 +2177,7 @@ model BatchTaskRun {
   dependentTaskAttemptId String?
   runDependencies        TaskRunDependency[]     @relation("dependentBatchRun")
 
+  @@unique([oneTimeUseToken])
   ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
 }
