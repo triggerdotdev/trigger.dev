@@ -89,35 +89,6 @@ const publicToken = await auth.createPublicToken({
 });
 ```
 
-### Write scopes
-
-You can also specify write scopes, which is required for triggering tasks from your frontend application:
-
-```ts
-const publicToken = await auth.createPublicToken({
-  scopes: {
-    write: {
-      tasks: ["my-task-1", "my-task-2"],
-    },
-  },
-});
-```
-
-This will allow the token to trigger the specified tasks. `tasks` is the only write scope available at the moment.
-
-We **strongly** recommend creating short-lived tokens for write scopes, as they can be used to trigger tasks from your frontend application:
-
-```ts
-const publicToken = await auth.createPublicToken({
-  scopes: {
-    write: {
-      tasks: ["my-task-1"], // ✅ this token can trigger this task
-    },
-  },
-  expirationTime: "1m", // ✅ this token will expire after 1 minute
-});
-```
-
 ### Expiration
 
 By default, Public Access Token's expire after 15 minutes. You can specify a different expiration time when creating a Public Access Token:
