@@ -64,9 +64,13 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
+    // I moved the error update here for two reasons:
+    // - A single update is more efficient than two
+    // - If the status updates to a final status, realtime will receive that status and then shut down the stream
+    //   before the error is updated, which would cause the error to be lost
     const run = await this._prisma.taskRun.update({
       where: { id },
-      data: { status, expiredAt, completedAt },
+      data: { status, expiredAt, completedAt, error: error ? sanitizeError(error) : undefined },
       ...(include ? { include } : {}),
     });
 
@@ -76,10 +80,6 @@ export class FinalizeTaskRunService extends BaseService {
 
     if (attemptStatus || error) {
       await this.finalizeAttempt({ attemptStatus, error, run });
-    }
-
-    if (error) {
-      await this.finalizeRunError(run, error);
     }
 
     try {
@@ -209,15 +209,6 @@ export class FinalizeTaskRunService extends BaseService {
       // or is in development, but this service will mark the batch as completed
       await ResumeBatchRunService.enqueue(item.batchTaskRunId, this._prisma);
     }
-  }
-
-  async finalizeRunError(run: TaskRun, error: TaskRunError) {
-    await this._prisma.taskRun.update({
-      where: { id: run.id },
-      data: {
-        error: sanitizeError(error),
-      },
-    });
   }
 
   async finalizeAttempt({

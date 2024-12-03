@@ -8,7 +8,7 @@ import {
   makeIdempotencyKey,
   RunHandleFromTypes,
   stringifyIO,
-  TriggerOptions,
+  type TriggerOptions,
 } from "@trigger.dev/core/v3";
 import useSWRMutation from "swr/mutation";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
@@ -118,7 +118,7 @@ export type RealtimeTriggerInstanceWithStreams<
   TTask extends AnyTask,
   TStreams extends Record<string, any> = Record<string, any>,
 > = UseRealtimeRunWithStreamsInstance<TTask, TStreams> & {
-  submit: (payload: TaskPayload<TTask>) => void;
+  submit: (payload: TaskPayload<TTask>, options?: TriggerOptions) => void;
   isLoading: boolean;
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
 };
@@ -166,7 +166,7 @@ export function useRealtimeTaskTriggerWithStreams<
 }
 
 export type RealtimeTriggerInstance<TTask extends AnyTask> = UseRealtimeRunInstance<TTask> & {
-  submit: (payload: TaskPayload<TTask>) => void;
+  submit: (payload: TaskPayload<TTask>, options?: TriggerOptions) => void;
   isLoading: boolean;
   handle?: RunHandleFromTypes<InferRunTypes<TTask>>;
 };

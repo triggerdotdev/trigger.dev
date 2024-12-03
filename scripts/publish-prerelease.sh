@@ -36,9 +36,17 @@ else
 fi
 
 # Run your commands
-
+# Run changeset version command and capture its output
 echo "Running: pnpm exec changeset version --snapshot $version"
-pnpm exec changeset version --snapshot $version
+if output=$(pnpm exec changeset version --snapshot $version 2>&1); then
+    if echo "$output" | grep -q "No unreleased changesets found"; then
+        echo "No unreleased changesets found. Exiting."
+        exit 0
+    fi
+else
+    echo "Error running changeset version command"
+    exit 1
+fi
 
 echo "Running: pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\""
 pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"

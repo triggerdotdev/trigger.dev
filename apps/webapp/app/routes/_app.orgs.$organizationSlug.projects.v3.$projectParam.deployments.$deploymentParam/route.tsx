@@ -153,6 +153,10 @@ export default function Page() {
               <Property.Value>{deployment.sdkVersion ? deployment.sdkVersion : "–"}</Property.Value>
             </Property.Item>
             <Property.Item>
+              <Property.Label>CLI Version</Property.Label>
+              <Property.Value>{deployment.cliVersion ? deployment.cliVersion : "–"}</Property.Value>
+            </Property.Item>
+            <Property.Item>
               <Property.Label>Worker type</Property.Label>
               <Property.Value>{capitalizeWord(deployment.type)}</Property.Value>
             </Property.Item>

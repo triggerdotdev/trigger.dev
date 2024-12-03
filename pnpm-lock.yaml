@@ -1067,7 +1067,7 @@ importers:
   packages/build:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:3.3.2
+        specifier: workspace:3.3.4
         version: link:../core
       pkg-types:
         specifier: ^1.1.3
@@ -1146,10 +1146,10 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/build':
-        specifier: workspace:3.3.2
+        specifier: workspace:3.3.4
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:3.3.2
+        specifier: workspace:3.3.4
         version: link:../core
       '@trigger.dev/worker':
         specifier: workspace:3.3.2
@@ -1448,7 +1448,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^3.3.2
+        specifier: workspace:^3.3.4
         version: link:../core
       react:
         specifier: '>=18 || >=19.0.0-beta'
@@ -1488,7 +1488,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^3.3.2
+        specifier: workspace:^3.3.4
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1504,7 +1504,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^3.3.2
+        specifier: workspace:^3.3.4
         version: link:../build
       '@types/node':
         specifier: ^20.14.14
@@ -1540,7 +1540,7 @@ importers:
         specifier: 1.25.1
         version: 1.25.1
       '@trigger.dev/core':
-        specifier: workspace:3.3.2
+        specifier: workspace:3.3.4
         version: link:../core
       chalk:
         specifier: ^5.2.0

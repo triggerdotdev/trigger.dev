@@ -1,5 +1,22 @@
 # trigger.dev
 
+## 3.3.4
+
+### Patch Changes
+
+- Fix SDK version in build manifest for out-of-sync detection ([#1530](https://github.com/triggerdotdev/trigger.dev/pull/1530))
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.4`
+  - `@trigger.dev/core@3.3.4`
+
+## 3.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.3`
+  - `@trigger.dev/build@3.3.3`
+
 ## 3.3.2
 
 ### Patch Changes

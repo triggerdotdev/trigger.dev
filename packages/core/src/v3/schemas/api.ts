@@ -1,6 +1,6 @@
 import { coerce, date, z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import { SerializedError } from "./common.js";
+import { SerializedError, TaskRunError } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
 
@@ -764,7 +764,7 @@ export const SubscribeRunRawShape = z.object({
   output: z.string().nullish(),
   outputType: z.string().nullish(),
   runTags: z.array(z.string()).nullish().default([]),
-  error: SerializedError.nullish(),
+  error: TaskRunError.nullish(),
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;

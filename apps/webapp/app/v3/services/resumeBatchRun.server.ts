@@ -35,7 +35,8 @@ export class ResumeBatchRunService extends BaseService {
           batchRunId,
         }
       );
-      return;
+
+      return "ERROR";
     }
 
     if (batchRun.status === "COMPLETED") {
@@ -46,7 +47,8 @@ export class ResumeBatchRunService extends BaseService {
           status: batchRun.status,
         },
       });
-      return;
+
+      return "ERROR";
     }
 
     if (batchRun.items.some((item) => !finishedBatchRunStatuses.includes(item.status))) {
@@ -57,7 +59,8 @@ export class ResumeBatchRunService extends BaseService {
           status: batchRun.status,
         },
       });
-      return;
+
+      return "PENDING";
     }
 
     // If we are in development, or there is no dependent attempt, we can just mark the batch as completed and return
@@ -71,7 +74,8 @@ export class ResumeBatchRunService extends BaseService {
           status: "COMPLETED",
         },
       });
-      return;
+
+      return "COMPLETED";
     }
 
     const dependentTaskAttempt = await this._prisma.taskRunAttempt.findFirst({
@@ -98,12 +102,11 @@ export class ResumeBatchRunService extends BaseService {
         dependentTaskAttemptId: batchRun.dependentTaskAttemptId,
       });
 
-      return;
+      return "ERROR";
     }
 
     // This batch has a dependent attempt and just finalized, we should resume that attempt
     const environment = batchRun.runtimeEnvironment;
-
     const dependentRun = dependentTaskAttempt.taskRun;
 
     if (dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
@@ -115,11 +118,13 @@ export class ResumeBatchRunService extends BaseService {
 
       // We need to update the batchRun status so we don't resume it again
       const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run with checkpoint", {
           batchRunId: batchRun.id,
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
+
         await marqs?.enqueueMessage(
           environment,
           dependentRun.queue,
@@ -136,6 +141,8 @@ export class ResumeBatchRunService extends BaseService {
           },
           dependentRun.concurrencyKey ?? undefined
         );
+
+        return "COMPLETED";
       } else {
         logger.debug("ResumeBatchRunService: with checkpoint was already completed", {
           batchRunId: batchRun.id,
@@ -143,6 +150,8 @@ export class ResumeBatchRunService extends BaseService {
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
+
+        return "ALREADY_COMPLETED";
       }
     } else {
       logger.debug("ResumeBatchRunService: attempt is not paused or there's no checkpoint event", {
@@ -161,11 +170,13 @@ export class ResumeBatchRunService extends BaseService {
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
-        return;
+
+        return "ERROR";
       }
 
       // We need to update the batchRun status so we don't resume it again
       const wasUpdated = await this.#setBatchToCompletedOnce(batchRun.id);
+
       if (wasUpdated) {
         logger.debug("ResumeBatchRunService: Resuming dependent run without checkpoint", {
           batchRunId: batchRun.id,
@@ -173,6 +184,7 @@ export class ResumeBatchRunService extends BaseService {
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
+
         await marqs?.replaceMessage(dependentRun.id, {
           type: "RESUME",
           completedAttemptIds: batchRun.items.map((item) => item.taskRunAttemptId).filter(Boolean),
@@ -183,6 +195,8 @@ export class ResumeBatchRunService extends BaseService {
           environmentId: environment.id,
           environmentType: environment.type,
         });
+
+        return "COMPLETED";
       } else {
         logger.debug("ResumeBatchRunService: without checkpoint was already completed", {
           batchRunId: batchRun.id,
@@ -190,6 +204,8 @@ export class ResumeBatchRunService extends BaseService {
           checkpointEventId: batchRun.checkpointEventId,
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
+
+        return "ALREADY_COMPLETED";
       }
     }
   }

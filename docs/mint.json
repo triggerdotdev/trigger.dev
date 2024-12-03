@@ -110,6 +110,10 @@
     {
       "source": "/runs-and-attempts",
       "destination": "/runs"
+    },
+    {
+      "source": "/frontend/react-hooks",
+      "destination": "/frontend/react-hooks/overview"
     }
   ],
   "anchors": [
@@ -207,7 +211,14 @@
       "group": "Frontend usage",
       "pages": [
         "frontend/overview",
-        "frontend/react-hooks"
+        {
+          "group": "React hooks",
+          "pages": [
+            "frontend/react-hooks/overview",
+            "frontend/react-hooks/realtime",
+            "frontend/react-hooks/triggering"
+          ]
+        }
       ]
     },
     {

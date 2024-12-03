@@ -304,6 +304,7 @@ export async function createBuildManifestFromBundle({
   environment,
   target,
   envVars,
+  sdkVersion,
 }: {
   bundle: BundleResult;
   destination: string;
@@ -312,12 +313,13 @@ export async function createBuildManifestFromBundle({
   environment: string;
   target: BuildTarget;
   envVars?: Record<string, string>;
+  sdkVersion?: string;
 }): Promise<BuildManifest> {
   const buildManifest: BuildManifest = {
     contentHash: bundle.contentHash,
     runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
     environment: environment,
-    packageVersion: CORE_VERSION,
+    packageVersion: sdkVersion ?? CORE_VERSION,
     cliPackageVersion: VERSION,
     target: target,
     files: bundle.files,

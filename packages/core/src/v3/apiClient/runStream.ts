@@ -1,4 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
+import { createJsonErrorObject } from "../errors.js";
 import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
 import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
@@ -8,6 +9,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
+import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
 import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
 import { EventSourceParserStream } from "eventsource-parser/stream";
@@ -97,7 +99,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
 
 // First, define interfaces for the stream handling
 export interface StreamSubscription {
-  subscribe(onChunk: (chunk: unknown) => Promise<void>): Promise<() => void>;
+  subscribe(): Promise<ReadableStream<unknown>>;
 }
 
 export interface StreamSubscriptionFactory {
@@ -111,33 +113,38 @@ export class SSEStreamSubscription implements StreamSubscription {
     private options: { headers?: Record<string, string>; signal?: AbortSignal }
   ) {}
 
-  async subscribe(onChunk: (chunk: unknown) => Promise<void>): Promise<() => void> {
-    const response = await fetch(this.url, {
+  async subscribe(): Promise<ReadableStream<unknown>> {
+    return fetch(this.url, {
       headers: {
         Accept: "text/event-stream",
         ...this.options.headers,
       },
       signal: this.options.signal,
+    }).then((response) => {
+      if (!response.ok) {
+        throw ApiError.generate(
+          response.status,
+          {},
+          "Could not subscribe to stream",
+          Object.fromEntries(response.headers)
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      return response.body
+        .pipeThrough(new TextDecoderStream())
+        .pipeThrough(new EventSourceParserStream())
+        .pipeThrough(
+          new TransformStream({
+            transform(chunk, controller) {
+              controller.enqueue(safeParseJSON(chunk.data));
+            },
+          })
+        );
     });
-
-    if (!response.body) {
-      throw new Error("No response body");
-    }
-
-    const reader = response.body
-      .pipeThrough(new TextDecoderStream())
-      .pipeThrough(new EventSourceParserStream())
-      .getReader();
-
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) break;
-
-      await onChunk(safeParseJSON(value.data));
-    }
-
-    return () => reader.cancel();
   }
 }
 
@@ -254,13 +261,31 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                 this.options.client?.baseUrl
               );
 
-              await subscription.subscribe(async (chunk) => {
-                controller.enqueue({
-                  type: streamKey,
-                  chunk: chunk as TStreams[typeof streamKey],
-                  run,
-                } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
-              });
+              const stream = await subscription.subscribe();
+
+              // Create the pipeline and start it
+              stream
+                .pipeThrough(
+                  new TransformStream({
+                    transform(chunk, controller) {
+                      controller.enqueue({
+                        type: streamKey,
+                        chunk: chunk as TStreams[typeof streamKey],
+                        run,
+                      } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
+                    },
+                  })
+                )
+                .pipeTo(
+                  new WritableStream({
+                    write(chunk) {
+                      controller.enqueue(chunk);
+                    },
+                  })
+                )
+                .catch((error) => {
+                  console.error(`Error in stream ${streamKey}:`, error);
+                });
             }
           }
         }
@@ -323,7 +348,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       startedAt: row.startedAt ?? undefined,
       delayedUntil: row.delayUntil ?? undefined,
       queuedAt: row.queuedAt ?? undefined,
-      error: row.error ?? undefined,
+      error: row.error ? createJsonErrorObject(row.error) : undefined,
       isTest: row.isTest,
       metadata,
     } as RunShape<TRunTypes>;
