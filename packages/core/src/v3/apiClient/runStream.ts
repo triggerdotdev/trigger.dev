@@ -1,4 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
+import { createJsonErrorObject } from "../errors.js";
 import { RunStatus, SubscribeRunRawShape } from "../schemas/api.js";
 import { SerializedError } from "../schemas/common.js";
 import { AnyRunTypes, AnyTask, InferRunTypes } from "../types/tasks.js";
@@ -347,7 +348,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
       startedAt: row.startedAt ?? undefined,
       delayedUntil: row.delayUntil ?? undefined,
       queuedAt: row.queuedAt ?? undefined,
-      error: row.error ?? undefined,
+      error: row.error ? createJsonErrorObject(row.error) : undefined,
       isTest: row.isTest,
       metadata,
     } as RunShape<TRunTypes>;
