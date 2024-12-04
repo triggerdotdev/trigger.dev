@@ -440,8 +440,8 @@ export type GenerateContainerfileOptions = {
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.1.24-22-slim@sha256:9cfb7cd87529261c482fe17d8894c0986263f3a5ccf84ad65c00ec0e1ed539c6",
-  node: "node:21.7.3-bookworm-slim@sha256:99afef5df7400a8d118e0504576d32ca700de5034c4f9271d2ff7c91cc12d170",
+  bun: "imbios/bun-node:1.1.24-22-slim@sha256:eec3c2937e30c579258a92c60847e5515488513337b23ec13996228f6a146ff5",
+  node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
     "node:22.12.0-bookworm-slim@sha256:a4b757cd491c7f0b57f57951f35f4e85b7e1ad54dbffca4cf9af0725e1650cd8",
 };
