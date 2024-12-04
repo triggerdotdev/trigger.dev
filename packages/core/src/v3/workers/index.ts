@@ -16,3 +16,5 @@ export { ProdUsageManager, type ProdUsageManagerOptions } from "../usage/prodUsa
 export { UsageTimeoutManager } from "../timeout/usageTimeoutManager.js";
 export { StandardMetadataManager } from "../runMetadata/manager.js";
 export { StandardWaitUntilManager } from "../waitUntil/manager.js";
+export { ManagedRuntimeManager } from "../runtime/managedRuntimeManager.js";
+export { UnmanagedRuntimeManager } from "../runtime/unmanagedRuntimeManager.js";

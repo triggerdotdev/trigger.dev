@@ -8,7 +8,7 @@ import { unboundedTimeout } from "../utils/timers.js";
 
 type Waitpoint = any;
 
-export class UnmanagedRuntimeManager implements RuntimeManager {
+export class ManagedRuntimeManager implements RuntimeManager {
   private readonly waitpoints: Map<string, Waitpoint> = new Map();
 
   _taskWaits: Map<string, { resolve: (value: TaskRunExecutionResult) => void }> = new Map();

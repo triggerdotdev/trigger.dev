@@ -18,7 +18,6 @@ import {
   waitUntil,
   apiClientManager,
 } from "@trigger.dev/core/v3";
-import { UnmanagedRuntimeManager } from "@trigger.dev/core/v3/unmanaged";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
@@ -37,6 +36,7 @@ import {
   UsageTimeoutManager,
   StandardMetadataManager,
   StandardWaitUntilManager,
+  ManagedRuntimeManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -461,7 +461,7 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   console.log(`Flushed runMetadata in ${duration}ms`);
 }
 
-const managedWorkerRuntime = new UnmanagedRuntimeManager();
+const managedWorkerRuntime = new ManagedRuntimeManager();
 
 runtime.setGlobalRuntimeManager(managedWorkerRuntime);
 

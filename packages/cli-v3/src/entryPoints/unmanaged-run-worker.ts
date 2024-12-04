@@ -18,7 +18,6 @@ import {
   waitUntil,
   apiClientManager,
 } from "@trigger.dev/core/v3";
-import { UnmanagedRuntimeManager } from "@trigger.dev/core/v3/unmanaged";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
@@ -37,6 +36,7 @@ import {
   UsageTimeoutManager,
   StandardMetadataManager,
   StandardWaitUntilManager,
+  UnmanagedRuntimeManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
