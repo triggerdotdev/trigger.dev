@@ -733,7 +733,7 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new BatchTriggerV2Service();
+          const service = new BatchTriggerV2Service(payload.strategy);
 
           await service.processBatchTaskRun(payload);
         },

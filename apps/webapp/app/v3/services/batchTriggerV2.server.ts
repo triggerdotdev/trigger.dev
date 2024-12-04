@@ -6,7 +6,7 @@ import {
   parsePacket,
 } from "@trigger.dev/core/v3";
 import { BatchTaskRun, Prisma, TaskRunAttempt } from "@trigger.dev/database";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -26,11 +26,8 @@ import { z } from "zod";
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
 
-const BatchProcessingStrategy = z.enum(["sequential", "parallel"]);
-
-type BatchProcessingStrategy = z.infer<typeof BatchProcessingStrategy>;
-
-const CURRENT_STRATEGY: BatchProcessingStrategy = "parallel";
+export const BatchProcessingStrategy = z.enum(["sequential", "parallel"]);
+export type BatchProcessingStrategy = z.infer<typeof BatchProcessingStrategy>;
 
 export const BatchProcessingOptions = z.object({
   batchId: z.string(),
@@ -52,6 +49,17 @@ export type BatchTriggerTaskServiceOptions = {
 };
 
 export class BatchTriggerV2Service extends BaseService {
+  private _batchProcessingStrategy: BatchProcessingStrategy;
+
+  constructor(
+    batchProcessingStrategy?: BatchProcessingStrategy,
+    protected readonly _prisma: PrismaClientOrTransaction = prisma
+  ) {
+    super(_prisma);
+
+    this._batchProcessingStrategy = batchProcessingStrategy ?? "parallel";
+  }
+
   public async call(
     environment: AuthenticatedEnvironment,
     body: BatchTriggerTaskV2RequestBody,
@@ -452,14 +460,14 @@ export class BatchTriggerV2Service extends BaseService {
           },
         });
 
-        switch (CURRENT_STRATEGY) {
+        switch (this._batchProcessingStrategy) {
           case "sequential": {
             await this.#enqueueBatchTaskRun({
               batchId: batch.id,
               processingId: batchId,
               range: { start: 0, count: PROCESSING_BATCH_SIZE },
               attemptCount: 0,
-              strategy: CURRENT_STRATEGY,
+              strategy: this._batchProcessingStrategy,
             });
 
             break;
@@ -480,7 +488,7 @@ export class BatchTriggerV2Service extends BaseService {
                     processingId: `${index}`,
                     range,
                     attemptCount: 0,
-                    strategy: CURRENT_STRATEGY,
+                    strategy: this._batchProcessingStrategy,
                   },
                   tx
                 )
