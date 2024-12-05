@@ -74,6 +74,7 @@ import type {
   TriggerApiRequestOptions,
   TriggerOptions,
   AnyTaskRunResult,
+  BatchTriggerAndWaitOptions,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -181,7 +182,7 @@ export function createTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items) => {
+    batchTriggerAndWait: async (items, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<TIdentifier, TInput, TOutput>(
@@ -191,6 +192,7 @@ export function createTask<
         params.id,
         items,
         undefined,
+        options,
         undefined,
         customQueue
       );
@@ -326,7 +328,7 @@ export function createSchemaTask<
           });
       }, params.id);
     },
-    batchTriggerAndWait: async (items) => {
+    batchTriggerAndWait: async (items, options) => {
       const taskMetadata = taskCatalog.getTaskManifest(params.id);
 
       return await batchTriggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
@@ -336,6 +338,7 @@ export function createSchemaTask<
         params.id,
         items,
         parsePayload,
+        options,
         undefined,
         customQueue
       );
@@ -469,13 +472,14 @@ export function triggerAndWait<TTask extends AnyTask>(
 export async function batchTriggerAndWait<TTask extends AnyTask>(
   id: TaskIdentifier<TTask>,
   items: Array<BatchItem<TaskPayload<TTask>>>,
+  options?: BatchTriggerAndWaitOptions,
   requestOptions?: ApiRequestOptions
 ): Promise<BatchResult<TaskIdentifier<TTask>, TaskOutput<TTask>>> {
   return await batchTriggerAndWait_internal<
     TaskIdentifier<TTask>,
     TaskPayload<TTask>,
     TaskOutput<TTask>
-  >("tasks.batchTriggerAndWait()", id, items, undefined, requestOptions);
+  >("tasks.batchTriggerAndWait()", id, items, undefined, options, requestOptions);
 }
 
 /**
@@ -618,6 +622,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
       spanParentAsLink: true,
       idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
       idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
       name: "batch.trigger()",
@@ -740,6 +745,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
  */
 export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
   items: Array<BatchByIdAndWaitItem<InferRunTypes<TTask>>>,
+  options?: BatchTriggerAndWaitOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchByIdResult<TTask>> {
   const ctx = taskContext.ctx;
@@ -786,7 +792,9 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ),
           dependentAttempt: ctx.attempt.id,
         },
-        {},
+        {
+          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+        },
         requestOptions
       );
 
@@ -948,6 +956,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
       spanParentAsLink: true,
       idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
       idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
       name: "batch.triggerByTask()",
@@ -1072,6 +1081,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   items: {
     [K in keyof TTasks]: BatchByTaskAndWaitItem<TTasks[K]>;
   },
+  options?: BatchTriggerAndWaitOptions,
   requestOptions?: TriggerApiRequestOptions
 ): Promise<BatchByTaskResult<TTasks>> {
   const ctx = taskContext.ctx;
@@ -1118,7 +1128,9 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ),
           dependentAttempt: ctx.attempt.id,
         },
-        {},
+        {
+          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+        },
         requestOptions
       );
 
@@ -1256,6 +1268,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
       spanParentAsLink: true,
       idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
       idempotencyKeyTTL: options?.idempotencyKeyTTL,
+      processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
       name,
@@ -1377,6 +1390,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
   id: TIdentifier,
   items: Array<BatchTriggerAndWaitItem<TPayload>>,
   parsePayload?: SchemaParseFn<TPayload>,
+  options?: BatchTriggerAndWaitOptions,
   requestOptions?: ApiRequestOptions,
   queue?: QueueOptions
 ): Promise<BatchResult<TIdentifier, TOutput>> {
@@ -1420,7 +1434,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           ),
           dependentAttempt: ctx.attempt.id,
         },
-        {},
+        {
+          processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
+        },
         requestOptions
       );
 

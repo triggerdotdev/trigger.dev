@@ -15,6 +15,7 @@ export const loader = createLoaderApiRoute(
     findResource: (params, auth) => {
       return ApiRetrieveRunPresenter.findRun(params.runId, auth.environment);
     },
+    shouldRetryNotFound: true,
     authorization: {
       action: "read",
       resource: (run) => ({

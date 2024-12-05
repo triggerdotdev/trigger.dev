@@ -592,7 +592,8 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    * ```
    */
   batchTriggerAndWait: (
-    items: Array<BatchTriggerAndWaitItem<TInput>>
+    items: Array<BatchTriggerAndWaitItem<TInput>>,
+    options?: BatchTriggerAndWaitOptions
   ) => Promise<BatchResult<TIdentifier, TOutput>>;
 }
 
@@ -781,6 +782,32 @@ export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "ide
 export type BatchTriggerOptions = {
   idempotencyKey?: IdempotencyKey | string | string[];
   idempotencyKeyTTL?: string;
+
+  /**
+   * When true, triggers tasks sequentially in batch order. This ensures ordering but may be slower,
+   * especially for large batches.
+   *
+   * When false (default), triggers tasks in parallel for better performance, but order is not guaranteed.
+   *
+   * Note: This only affects the order of run creation, not the actual task execution.
+   *
+   * @default false
+   */
+  triggerSequentially?: boolean;
+};
+
+export type BatchTriggerAndWaitOptions = {
+  /**
+   * When true, triggers tasks sequentially in batch order. This ensures ordering but may be slower,
+   * especially for large batches.
+   *
+   * When false (default), triggers tasks in parallel for better performance, but order is not guaranteed.
+   *
+   * Note: This only affects the order of run creation, not the actual task execution.
+   *
+   * @default false
+   */
+  triggerSequentially?: boolean;
 };
 
 export type TaskMetadataWithFunctions = TaskMetadata & {

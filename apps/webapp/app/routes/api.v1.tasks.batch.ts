@@ -9,15 +9,21 @@ import { env } from "~/env.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
-import { BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
+import {
+  BatchProcessingStrategy,
+  BatchTriggerV2Service,
+} from "~/v3/services/batchTriggerV2.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { z } from "zod";
 
 const { action, loader } = createActionApiRoute(
   {
-    headers: HeadersSchema,
+    headers: HeadersSchema.extend({
+      "batch-processing-strategy": BatchProcessingStrategy.nullish(),
+    }),
     body: BatchTriggerTaskV2RequestBody,
     allowJWT: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
@@ -52,6 +58,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
+      "batch-processing-strategy": batchProcessingStrategy,
       traceparent,
       tracestate,
     } = headers;
@@ -67,6 +74,7 @@ const { action, loader } = createActionApiRoute(
       triggerClient,
       traceparent,
       tracestate,
+      batchProcessingStrategy,
     });
 
     const traceContext =
@@ -79,7 +87,7 @@ const { action, loader } = createActionApiRoute(
       resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
-    const service = new BatchTriggerV2Service();
+    const service = new BatchTriggerV2Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
