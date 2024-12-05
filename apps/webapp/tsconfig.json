@@ -1,8 +1,8 @@
 {
   "exclude": ["./cypress", "./cypress.config.ts"],
-  "include": ["remix.env.d.ts", "global.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["global.d.ts", "**/*.ts", "**/*.tsx"],
   "compilerOptions": {
-    "types": ["vitest/globals"],
+    "types": ["@remix-run/node", "vite/client", "vitest/globals"],
     "lib": ["DOM", "DOM.Iterable", "ES2019"],
     "isolatedModules": true,
     "esModuleInterop": true,
