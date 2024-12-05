@@ -25,6 +25,7 @@ import { z } from "zod";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
+const MAX_ATTEMPTS = 10;
 
 export const BatchProcessingStrategy = z.enum(["sequential", "parallel"]);
 export type BatchProcessingStrategy = z.infer<typeof BatchProcessingStrategy>;
@@ -546,6 +547,16 @@ export class BatchTriggerV2Service extends BaseService {
     });
 
     const $attemptCount = options.attemptCount + 1;
+
+    // Add early return if max attempts reached
+    if ($attemptCount > MAX_ATTEMPTS) {
+      logger.error("[BatchTriggerV2][processBatchTaskRun] Max attempts reached", {
+        options,
+        attemptCount: $attemptCount,
+      });
+      // You might want to update the batch status to failed here
+      return;
+    }
 
     const batch = await this._prisma.batchTaskRun.findFirst({
       where: { id: options.batchId },
