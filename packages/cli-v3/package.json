@@ -89,7 +89,7 @@
     "@opentelemetry/semantic-conventions": "1.25.1",
     "@trigger.dev/build": "workspace:3.3.5",
     "@trigger.dev/core": "workspace:3.3.5",
-    "@trigger.dev/worker": "workspace:3.3.4",
+    "@trigger.dev/worker": "workspace:3.3.5",
     "c12": "^1.11.1",
     "chalk": "^5.2.0",
     "cli-table3": "^0.6.3",
