@@ -74,6 +74,7 @@ export type ClientTriggerOptions = {
 export type ClientBatchTriggerOptions = ClientTriggerOptions & {
   idempotencyKey?: string;
   idempotencyKeyTTL?: string;
+  processingStrategy?: "parallel" | "sequential";
 };
 
 export type TriggerRequestOptions = ZodFetchOptions & {
@@ -239,6 +240,7 @@ export class ApiClient {
         headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false, {
           "idempotency-key": clientOptions?.idempotencyKey,
           "idempotency-key-ttl": clientOptions?.idempotencyKeyTTL,
+          "batch-processing-strategy": clientOptions?.processingStrategy,
         }),
         body: JSON.stringify(body),
       },

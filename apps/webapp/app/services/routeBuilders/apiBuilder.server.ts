@@ -37,6 +37,7 @@ type ApiKeyRouteBuilderOptions<
     params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
     authentication: ApiAuthenticationResultSuccess
   ) => Promise<TResource | undefined>;
+  shouldRetryNotFound?: boolean;
   authorization?: {
     action: AuthorizationAction;
     resource: (
@@ -85,6 +86,7 @@ export function createLoaderApiRoute<
       corsStrategy = "none",
       authorization,
       findResource,
+      shouldRetryNotFound,
     } = options;
 
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
@@ -166,7 +168,10 @@ export function createLoaderApiRoute<
       if (!resource) {
         return await wrapResponse(
           request,
-          json({ error: "Not found" }, { status: 404 }),
+          json(
+            { error: "Not found" },
+            { status: 404, headers: { "x-should-retry": shouldRetryNotFound ? "true" : "false" } }
+          ),
           corsStrategy !== "none"
         );
       }
