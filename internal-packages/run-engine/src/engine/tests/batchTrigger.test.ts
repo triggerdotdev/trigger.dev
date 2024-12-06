@@ -7,6 +7,7 @@ import { trace } from "@opentelemetry/api";
 import { generateFriendlyId } from "@trigger.dev/core/v3/apps";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { setTimeout } from "node:timers/promises";
 
 describe("RunEngine batchTrigger", () => {
   containerTest(
@@ -115,6 +116,63 @@ describe("RunEngine batchTrigger", () => {
         //check the queue length
         const queueLength = await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment);
         expect(queueLength).toBe(2);
+
+        //dequeue
+        const [d1, d2] = await engine.dequeueFromMasterQueue({
+          consumerId: "test_12345",
+          masterQueue: run1.masterQueue,
+          maxRunCount: 10,
+        });
+
+        //attempts
+        const attempt1 = await engine.startRunAttempt({
+          runId: d1.run.id,
+          snapshotId: d1.snapshot.id,
+        });
+        const attempt2 = await engine.startRunAttempt({
+          runId: d2.run.id,
+          snapshotId: d2.snapshot.id,
+        });
+
+        //complete the runs
+        const result1 = await engine.completeRunAttempt({
+          runId: attempt1.run.id,
+          snapshotId: attempt1.snapshot.id,
+          completion: {
+            ok: true,
+            id: attempt1.run.id,
+            output: `{"foo":"bar"}`,
+            outputType: "application/json",
+          },
+        });
+        const result2 = await engine.completeRunAttempt({
+          runId: attempt2.run.id,
+          snapshotId: attempt2.snapshot.id,
+          completion: {
+            ok: true,
+            id: attempt2.run.id,
+            output: `{"baz":"qux"}`,
+            outputType: "application/json",
+          },
+        });
+
+        //the batch won't complete immediately
+        const batchAfter1 = await prisma.batchTaskRun.findUnique({
+          where: {
+            id: batch.id,
+          },
+        });
+        expect(batchAfter1?.status).toBe("PENDING");
+
+        await setTimeout(3_000);
+
+        //the batch should complete
+        const batchAfter2 = await prisma.batchTaskRun.findUnique({
+          where: {
+            id: batch.id,
+          },
+        });
+        expect(batchAfter2?.status).toBe("COMPLETED");
       } finally {
         engine.quit();
       }

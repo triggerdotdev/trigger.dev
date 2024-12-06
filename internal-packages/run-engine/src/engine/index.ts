@@ -49,15 +49,15 @@ import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { runStatusFromError } from "./errors";
 import { EventBusEvents } from "./eventBus";
-import { RunLocker } from "./locking";
-import { machinePresetFromConfig } from "./machinePresets";
-import { isDequeueableExecutionStatus, isExecuting } from "./statuses";
-import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
 import {
   executionResultFromSnapshot,
   getExecutionSnapshotCompletedWaitpoints,
   getLatestExecutionSnapshot,
 } from "./executionSnapshots";
+import { RunLocker } from "./locking";
+import { machinePresetFromConfig } from "./machinePresets";
+import { isDequeueableExecutionStatus, isExecuting, isFinalRunStatus } from "./statuses";
+import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
 
 const workerCatalog = {
   finishWaitpoint: {
@@ -93,6 +93,12 @@ const workerCatalog = {
       backgroundWorkerId: z.string(),
     }),
     visibilityTimeoutMs: 5000,
+  },
+  tryCompleteBatch: {
+    schema: z.object({
+      batchId: z.string(),
+    }),
+    visibilityTimeoutMs: 10_000,
   },
 };
 
@@ -161,6 +167,9 @@ export class RunEngine {
         },
         queueRunsWaitingForWorker: async ({ payload }) => {
           await this.#queueRunsWaitingForWorker({ backgroundWorkerId: payload.backgroundWorkerId });
+        },
+        tryCompleteBatch: async ({ payload }) => {
+          await this.#tryCompleteBatch({ batchId: payload.batchId });
         },
       },
     });
@@ -1305,6 +1314,8 @@ export class RunEngine {
           }
         }
 
+        await this.#finalizeRun(run);
+
         return executionResultFromSnapshot(newSnapshot);
       });
     });
@@ -1967,6 +1978,7 @@ export class RunEngine {
                 organizationId: true,
               },
             },
+            batchId: true,
           },
         });
         const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -2004,6 +2016,8 @@ export class RunEngine {
             outputType: completion.outputType,
           },
         });
+
+        await this.#finalizeRun(run);
 
         return {
           attemptStatus: "RUN_FINISHED",
@@ -2208,6 +2222,8 @@ export class RunEngine {
             error,
           },
         });
+
+        await this.#finalizeRun(run);
 
         return {
           attemptStatus: "RUN_FINISHED",
@@ -2815,6 +2831,81 @@ export class RunEngine {
    */
   async #sendNotificationToWorker({ runId }: { runId: string }) {
     this.eventBus.emit("workerNotification", { time: new Date(), run: { id: runId } });
+  }
+
+  /*
+   * Whether the run succeeds, fails, is cancelled… we need to run these operations
+   */
+  async #finalizeRun({ id, batchId }: { id: string; batchId: string | null }) {
+    if (batchId) {
+      await this.worker.enqueue({
+        //this will debounce the call
+        id: `tryCompleteBatch:${batchId}`,
+        job: "tryCompleteBatch",
+        payload: { batchId: batchId },
+        //2s in the future
+        availableAt: new Date(Date.now() + 2_000),
+      });
+    }
+  }
+
+  /**
+   * Checks to see if all runs for a BatchTaskRun are completed, if they are then update the status.
+   * This isn't used operationally, but it's used for the Batches dashboard page.
+   */
+  async #tryCompleteBatch({ batchId }: { batchId: string }) {
+    return this.#trace(
+      "#tryCompleteBatch",
+      {
+        batchId,
+      },
+      async (span) => {
+        const batch = await this.prisma.batchTaskRun.findUnique({
+          select: {
+            status: true,
+            runtimeEnvironmentId: true,
+          },
+          where: {
+            id: batchId,
+          },
+        });
+
+        if (!batch) {
+          this.logger.error("#tryCompleteBatch batch doesn't exist", { batchId });
+          return;
+        }
+
+        if (batch.status === "COMPLETED") {
+          this.logger.debug("#tryCompleteBatch: Batch already completed", { batchId });
+          return;
+        }
+
+        const runs = await this.prisma.taskRun.findMany({
+          select: {
+            id: true,
+            status: true,
+          },
+          where: {
+            batchId,
+            runtimeEnvironmentId: batch.runtimeEnvironmentId,
+          },
+        });
+
+        if (runs.every((r) => isFinalRunStatus(r.status))) {
+          this.logger.debug("#tryCompleteBatch: All runs are completed", { batchId });
+          await this.prisma.batchTaskRun.update({
+            where: {
+              id: batchId,
+            },
+            data: {
+              status: "COMPLETED",
+            },
+          });
+        } else {
+          this.logger.debug("#tryCompleteBatch: Not all runs are completed", { batchId });
+        }
+      }
+    );
   }
 
   async #getAuthenticatedEnvironmentFromRun(runId: string, tx?: PrismaClientOrTransaction) {
