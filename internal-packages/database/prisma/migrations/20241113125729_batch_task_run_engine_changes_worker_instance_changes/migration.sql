@@ -2,7 +2,6 @@
   Warnings:
 
   - You are about to drop the `WorkerGroup` table. If the table is not empty, all the data it contains will be lost.
-  - A unique constraint covering the columns `[runtimeEnvironmentId,idempotencyKey]` on the table `BatchTaskRun` will be added. If there are existing duplicate values, this will fail.
   - A unique constraint covering the columns `[workerGroupId,resourceIdentifier]` on the table `WorkerInstance` will be added. If there are existing duplicate values, this will fail.
   - Added the required column `resourceIdentifier` to the `WorkerInstance` table without a default value. This is not possible if the table is not empty.
 
@@ -26,13 +25,7 @@ ALTER TABLE "WorkerGroup" DROP CONSTRAINT "WorkerGroup_tokenId_fkey";
 ALTER TABLE "WorkerInstance" DROP CONSTRAINT "WorkerInstance_workerGroupId_fkey";
 
 -- DropIndex
-DROP INDEX "BatchTaskRun_runtimeEnvironmentId_taskIdentifier_idempotenc_key";
-
--- DropIndex
 DROP INDEX "WorkerInstance_workerGroupId_name_key";
-
--- AlterTable
-ALTER TABLE "BatchTaskRun" ALTER COLUMN "taskIdentifier" DROP NOT NULL;
 
 -- AlterTable
 ALTER TABLE "Project" ADD COLUMN     "engine" "RunEngineVersion" NOT NULL DEFAULT 'V1';
@@ -68,9 +61,6 @@ CREATE UNIQUE INDEX "WorkerInstanceGroup_masterQueue_key" ON "WorkerInstanceGrou
 
 -- CreateIndex
 CREATE UNIQUE INDEX "WorkerInstanceGroup_tokenId_key" ON "WorkerInstanceGroup"("tokenId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "BatchTaskRun_runtimeEnvironmentId_idempotencyKey_key" ON "BatchTaskRun"("runtimeEnvironmentId", "idempotencyKey");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "WorkerInstance_workerGroupId_resourceIdentifier_key" ON "WorkerInstance"("workerGroupId", "resourceIdentifier");
