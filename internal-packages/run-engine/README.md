@@ -9,6 +9,17 @@ It is responsible for:
 - Heartbeats which detects stalled runs and attempts to automatically recover them.
 - Registering checkpoints which enable pausing/resuming of runs.
 
+## Glossary
+
+- **Platform**: The main Trigger.dev API, dashboard, database. The Run Engine is part of the platform.
+- **Worker group**: A group of workers that all pull from the same queue, e.g. "us-east-1", "my-self-hosted-workers".
+  - **Worker**: A worker is a 'server' that connects to the platform and receives runs.
+    - **Supervisor**: Pulls new runs from the queue, communicates with the platform, spins up new Deploy executors.
+    - **Checkpointer**: Responsible for checkpointing runs.
+    - **Deploy executor**: Container that comes from a specific deploy from a user's project.
+      - **Run controller**: The code that manages running the task.
+      - **Run executor**: The actual task running.
+
 ## Run locking
 
 Many operations on the run are "atomic" in the sense that only a single operation can mutate them at a time. We use RedLock to create a distributed lock to ensure this. Postgres locking is not enough on its own because we have multiple API instances and Redis is used for the queue.
