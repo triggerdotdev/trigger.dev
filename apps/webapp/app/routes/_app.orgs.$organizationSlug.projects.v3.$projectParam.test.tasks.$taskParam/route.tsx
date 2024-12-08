@@ -204,7 +204,7 @@ function StandardTaskForm({ task, runs }: { task: TestTask["task"]; runs: Standa
       );
       e.preventDefault();
     },
-    [currentPayloadJson, currentMetadataJson]
+    [currentPayloadJson, currentMetadataJson, task]
   );
 
   const [form, { environmentId, payload }] = useForm({
