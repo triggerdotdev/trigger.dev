@@ -127,13 +127,20 @@ export class EmailClient {
 
   async #sendEmail({ to, subject, react }: { to: string; subject: string; react: ReactElement }) {
     if (this.#client) {
-      await this.#client.emails.send({
+      const result = await this.#client.emails.send({
         from: this.#from,
         to,
         reply_to: this.#replyTo,
         subject,
         react,
       });
+
+      if (result.error) {
+        console.error(
+          `Failed to send email to ${to}, ${subject}. Error ${result.error.name}: ${result.error.message}`
+        );
+        throw new EmailError(result.error);
+      }
 
       return;
     }
@@ -145,5 +152,13 @@ ${render(react, {
   plainText: true,
 })}
     `);
+  }
+}
+
+//EmailError type where you can set the name and message
+export class EmailError extends Error {
+  constructor({ name, message }: { name: string; message: string }) {
+    super(message);
+    this.name = name;
   }
 }
