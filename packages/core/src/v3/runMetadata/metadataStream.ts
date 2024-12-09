@@ -3,7 +3,9 @@ export type MetadataOptions<T> = {
   runId: string;
   key: string;
   iterator: AsyncIterator<T>;
+  headers?: Record<string, string>;
   signal?: AbortSignal;
+  version?: "v1" | "v2";
 };
 
 export class MetadataStream<T> {
@@ -62,10 +64,12 @@ export class MetadataStream<T> {
     });
 
     return fetch(
-      `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${this.options.key}`,
+      `${this.options.baseUrl}/realtime/${this.options.version ?? "v1"}/streams/${
+        this.options.runId
+      }/${this.options.key}`,
       {
         method: "POST",
-        headers: {},
+        headers: this.options.headers ?? {},
         body: serverStream,
         // @ts-expect-error
         duplex: "half",

@@ -684,6 +684,10 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
       key: "TRIGGER_STREAM_URL",
       value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
+    {
+      key: "TRIGGER_REALTIME_STREAM_VERSION",
+      value: env.REALTIME_STREAM_VERSION,
+    },
   ];
 
   if (env.DEV_OTEL_BATCH_PROCESSING_ENABLED === "1") {
@@ -753,6 +757,10 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
     {
       key: "TRIGGER_ORG_ID",
       value: runtimeEnvironment.organizationId,
+    },
+    {
+      key: "TRIGGER_REALTIME_STREAM_VERSION",
+      value: env.REALTIME_STREAM_VERSION,
     },
   ];
 
