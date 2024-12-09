@@ -1,3 +1,4 @@
+import { EventSourceParserStream } from "eventsource-parser/stream";
 import { DeserializedJson } from "../../schemas/json.js";
 import { createJsonErrorObject } from "../errors.js";
 import {
@@ -15,13 +16,7 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import {
-  AsyncIterableStream,
-  createAsyncIterableReadable,
-  createAsyncIterableStream,
-  zodShapeStream,
-} from "./stream.js";
-import { EventSourceParserStream } from "eventsource-parser/stream";
+import { AsyncIterableStream, createAsyncIterableReadable, zodShapeStream } from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {

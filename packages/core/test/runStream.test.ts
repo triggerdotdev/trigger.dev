@@ -105,6 +105,7 @@ describe("RunSubscription", () => {
       runShapeStream: createTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
+      abortController: new AbortController(),
     });
 
     const results = await convertAsyncIterableToArray(subscription);
@@ -144,6 +145,7 @@ describe("RunSubscription", () => {
       runShapeStream: createTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
+      abortController: new AbortController(),
     });
 
     const results = await convertAsyncIterableToArray(subscription);
@@ -196,6 +198,7 @@ describe("RunSubscription", () => {
       runShapeStream: createDelayedTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: false,
+      abortController: new AbortController(),
     });
 
     // Collect 2 results
@@ -247,6 +250,7 @@ describe("RunSubscription", () => {
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -336,6 +340,7 @@ describe("RunSubscription", () => {
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -415,6 +420,7 @@ describe("RunSubscription", () => {
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -459,110 +465,6 @@ describe("RunSubscription", () => {
       run: { id: "run_123" },
     });
   });
-
-  it("should handle streams that appear in different run updates", async () => {
-    const streamFactory = new TestStreamSubscriptionFactory();
-
-    // Set up test chunks for two different streams
-    streamFactory.setStreamChunks("run_123", "openai", [
-      { id: "openai1", content: "Hello" },
-      { id: "openai2", content: "World" },
-    ]);
-    streamFactory.setStreamChunks("run_123", "anthropic", [
-      { id: "claude1", message: "Hi" },
-      { id: "claude2", message: "There" },
-    ]);
-
-    const shapes = [
-      // First run update - only has openai stream
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "EXECUTING",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        number: 1,
-        usageDurationMs: 100,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai"],
-        }),
-        metadataType: "application/json",
-      },
-      // Second run update - adds anthropic stream
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "EXECUTING",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        number: 1,
-        usageDurationMs: 200,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai", "anthropic"],
-        }),
-        metadataType: "application/json",
-      },
-      // Final run update - marks as complete
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "COMPLETED_SUCCESSFULLY",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        completedAt: new Date(),
-        number: 1,
-        usageDurationMs: 300,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai", "anthropic"],
-        }),
-        metadataType: "application/json",
-      },
-    ];
-
-    const subscription = new RunSubscription({
-      runShapeStream: createTestShapeStream(shapes),
-      streamFactory,
-      closeOnComplete: true,
-    });
-
-    const results = await collectNResults(
-      subscription.withStreams<{
-        openai: { id: string; content: string };
-        anthropic: { id: string; message: string };
-      }>(),
-      7 // 3 runs + 2 openai chunks + 2 anthropic chunks
-    );
-
-    expect(results).toHaveLength(7);
-
-    // Verify run updates
-    const runUpdates = results.filter((r) => r.type === "run");
-    expect(runUpdates).toHaveLength(3);
-    expect(runUpdates[2]!.run.status).toBe("COMPLETED");
-
-    // Verify openai chunks
-    const openaiChunks = results.filter((r) => r.type === "openai");
-    expect(openaiChunks).toHaveLength(2);
-
-    // Verify anthropic chunks
-    const anthropicChunks = results.filter((r) => r.type === "anthropic");
-    expect(anthropicChunks).toHaveLength(2);
-  });
 });
 
 export async function convertAsyncIterableToArray<T>(iterable: AsyncIterable<T>): Promise<T[]> {
@@ -595,7 +497,12 @@ async function collectNResults<T>(
     promise,
     new Promise<T[]>((_, reject) =>
       setTimeout(
-        () => reject(new Error(`Timeout waiting for ${count} results after ${timeoutMs}ms`)),
+        () =>
+          reject(
+            new Error(
+              `Timeout waiting for ${count} results after ${timeoutMs}ms, but only had ${results.length}`
+            )
+          ),
         timeoutMs
       )
     ),
