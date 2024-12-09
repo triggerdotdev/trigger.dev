@@ -70,6 +70,36 @@ export function createAsyncIterableStream<S, T>(
   return transformedStream;
 }
 
+export function createAsyncIterableReadable<S, T>(
+  source: ReadableStream<S>,
+  transformer: Transformer<S, T>,
+  signal: AbortSignal
+): AsyncIterableStream<T> {
+  return new ReadableStream<T>({
+    async start(controller) {
+      const transformedStream = source.pipeThrough(new TransformStream(transformer));
+      const reader = transformedStream.getReader();
+
+      signal.addEventListener("abort", () => {
+        queueMicrotask(() => {
+          reader.cancel();
+          controller.close();
+        });
+      });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          break;
+        }
+
+        controller.enqueue(value);
+      }
+    },
+  }) as AsyncIterableStream<T>;
+}
+
 class ReadableShapeStream<T extends Row<unknown> = Row> {
   readonly #stream: ShapeStreamInterface<T>;
   readonly #currentState: Map<string, T> = new Map();

@@ -15,7 +15,12 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { AsyncIterableStream, createAsyncIterableStream, zodShapeStream } from "./stream.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+  createAsyncIterableStream,
+  zodShapeStream,
+} from "./stream.js";
 import { EventSourceParserStream } from "eventsource-parser/stream";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
@@ -82,11 +87,13 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
   url: string,
   options?: RunShapeStreamOptions
 ): RunSubscription<TRunTypes> {
+  const abortController = new AbortController();
+
   const version1 = new SSEStreamSubscriptionFactory(
     getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
     {
       headers: options?.headers,
-      signal: options?.signal,
+      signal: abortController.signal,
     }
   );
 
@@ -94,13 +101,28 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
     getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
     {
       headers: options?.headers,
-      signal: options?.signal,
+      signal: abortController.signal,
     }
   );
 
+  // If the user supplied AbortSignal is aborted, we should abort the internal controller
+  options?.signal?.addEventListener(
+    "abort",
+    () => {
+      if (!abortController.signal.aborted) {
+        abortController.abort();
+      }
+    },
+    { once: true }
+  );
+
   const $options: RunSubscriptionOptions = {
-    runShapeStream: zodShapeStream(SubscribeRunRawShape, url, options),
+    runShapeStream: zodShapeStream(SubscribeRunRawShape, url, {
+      ...options,
+      signal: abortController.signal,
+    }),
     streamFactory: new VersionedStreamSubscriptionFactory(version1, version2),
+    abortController,
     ...options,
   };
 
@@ -218,11 +240,10 @@ export class ElectricStreamSubscriptionFactory implements StreamSubscriptionFact
       throw new Error("runId and streamKey are required");
     }
 
-    const url = `${baseUrl ?? this.baseUrl}/realtime/v2/streams/${runId}/${streamKey}`;
-
-    console.log("Creating ElectricStreamSubscription with URL:", url);
-
-    return new ElectricStreamSubscription(url, this.options);
+    return new ElectricStreamSubscription(
+      `${baseUrl ?? this.baseUrl}/realtime/v2/streams/${runId}/${streamKey}`,
+      this.options
+    );
   }
 }
 
@@ -264,10 +285,10 @@ export interface RunShapeProvider {
 export type RunSubscriptionOptions = RunShapeStreamOptions & {
   runShapeStream: ReadableStream<SubscribeRunRawShape>;
   streamFactory: StreamSubscriptionFactory;
+  abortController: AbortController;
 };
 
 export class RunSubscription<TRunTypes extends AnyRunTypes> {
-  private abortController: AbortController;
   private unsubscribeShape?: () => void;
   private stream: AsyncIterableStream<RunShape<TRunTypes>>;
   private packetCache = new Map<string, any>();
@@ -275,28 +296,37 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
   private _isRunComplete = false;
 
   constructor(private options: RunSubscriptionOptions) {
-    this.abortController = new AbortController();
     this._closeOnComplete =
       typeof options.closeOnComplete === "undefined" ? true : options.closeOnComplete;
 
-    this.stream = createAsyncIterableStream(this.options.runShapeStream, {
-      transform: async (chunk, controller) => {
-        const run = await this.transformRunShape(chunk);
+    this.stream = createAsyncIterableReadable(
+      this.options.runShapeStream,
+      {
+        transform: async (chunk, controller) => {
+          const run = await this.transformRunShape(chunk);
 
-        controller.enqueue(run);
+          controller.enqueue(run);
 
-        this._isRunComplete = !!run.finishedAt;
+          this._isRunComplete = !!run.finishedAt;
 
-        if (this._closeOnComplete && this._isRunComplete && !this.abortController.signal.aborted) {
-          this.abortController.abort();
-        }
+          if (
+            this._closeOnComplete &&
+            this._isRunComplete &&
+            !this.options.abortController.signal.aborted
+          ) {
+            console.log("Closing stream because run is complete");
+
+            this.options.abortController.abort();
+          }
+        },
       },
-    });
+      this.options.abortController.signal
+    );
   }
 
   unsubscribe(): void {
-    if (!this.abortController.signal.aborted) {
-      this.abortController.abort();
+    if (!this.options.abortController.signal.aborted) {
+      this.options.abortController.abort();
     }
     this.unsubscribeShape?.();
   }
@@ -315,60 +345,68 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
     // Keep track of which streams we've already subscribed to
     const activeStreams = new Set<string>();
 
-    return createAsyncIterableStream(this.stream, {
-      transform: async (run, controller) => {
-        controller.enqueue({
-          type: "run",
-          run,
-        });
+    return createAsyncIterableReadable(
+      this.stream,
+      {
+        transform: async (run, controller) => {
+          controller.enqueue({
+            type: "run",
+            run,
+          });
 
-        // Check for stream metadata
-        if (run.metadata && "$$streams" in run.metadata && Array.isArray(run.metadata.$$streams)) {
-          for (const streamKey of run.metadata.$$streams) {
-            if (typeof streamKey !== "string") {
-              continue;
-            }
+          // Check for stream metadata
+          if (
+            run.metadata &&
+            "$$streams" in run.metadata &&
+            Array.isArray(run.metadata.$$streams)
+          ) {
+            for (const streamKey of run.metadata.$$streams) {
+              if (typeof streamKey !== "string") {
+                continue;
+              }
 
-            if (!activeStreams.has(streamKey)) {
-              activeStreams.add(streamKey);
+              if (!activeStreams.has(streamKey)) {
+                activeStreams.add(streamKey);
 
-              const subscription = this.options.streamFactory.createSubscription(
-                run.metadata,
-                run.id,
-                streamKey,
-                this.options.client?.baseUrl
-              );
+                const subscription = this.options.streamFactory.createSubscription(
+                  run.metadata,
+                  run.id,
+                  streamKey,
+                  this.options.client?.baseUrl
+                );
 
-              const stream = await subscription.subscribe();
+                const stream = await subscription.subscribe();
 
-              // Create the pipeline and start it
-              stream
-                .pipeThrough(
-                  new TransformStream({
-                    transform(chunk, controller) {
-                      controller.enqueue({
-                        type: streamKey,
-                        chunk: chunk as TStreams[typeof streamKey],
-                        run,
-                      } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
-                    },
-                  })
-                )
-                .pipeTo(
-                  new WritableStream({
-                    write(chunk) {
-                      controller.enqueue(chunk);
-                    },
-                  })
-                )
-                .catch((error) => {
-                  console.error(`Error in stream ${streamKey}:`, error);
-                });
+                // Create the pipeline and start it
+                stream
+                  .pipeThrough(
+                    new TransformStream({
+                      transform(chunk, controller) {
+                        controller.enqueue({
+                          type: streamKey,
+                          chunk: chunk as TStreams[typeof streamKey],
+                          run,
+                        } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
+                      },
+                    })
+                  )
+                  .pipeTo(
+                    new WritableStream({
+                      write(chunk) {
+                        controller.enqueue(chunk);
+                      },
+                    })
+                  )
+                  .catch((error) => {
+                    console.error(`Error in stream ${streamKey}:`, error);
+                  });
+              }
             }
           }
-        }
+        },
       },
-    });
+      this.options.abortController.signal
+    );
   }
 
   private async transformRunShape(row: SubscribeRunRawShape): Promise<RunShape<TRunTypes>> {

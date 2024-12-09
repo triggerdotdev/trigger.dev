@@ -9,12 +9,16 @@ export default function RealtimeComparison({ accessToken }: { accessToken: strin
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
   });
-  const { streams } = useRealtimeRunWithStreams<typeof openaiStreaming, STREAMS>(
+
+  const { streams, stop, run } = useRealtimeRunWithStreams<typeof openaiStreaming, STREAMS>(
     trigger.handle?.id,
     {
       accessToken: trigger.handle?.publicAccessToken,
       enabled: !!trigger.handle,
       baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
+      onComplete: (...args) => {
+        console.log("Run completed!", args);
+      },
     }
   );
 
@@ -33,6 +37,17 @@ export default function RealtimeComparison({ accessToken }: { accessToken: strin
         >
           Debug LLM Streaming
         </Button>
+
+        {run && (
+          <Button
+            className="bg-gray-100 text-gray-900 hover:bg-gray-200 font-semibold text-xs ml-8"
+            onClick={() => {
+              stop();
+            }}
+          >
+            Stop Streaming
+          </Button>
+        )}
       </div>
       <div className="flex-grow flex overflow-hidden">
         <div className="w-1/2 border-r border-gray-700 overflow-auto">

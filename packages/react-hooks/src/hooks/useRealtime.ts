@@ -12,6 +12,16 @@ export type UseRealtimeRunOptions = UseApiClientOptions & {
   experimental_throttleInMs?: number;
 };
 
+export type UseRealtimeSingleRunOptions<TTask extends AnyTask = AnyTask> = UseRealtimeRunOptions & {
+  /**
+   * Callback this is called when the run completes, an error occurs, or the subscription is stopped.
+   *
+   * @param {RealtimeRun<TTask>} run - The run object
+   * @param {Error} [err] - The error that occurred
+   */
+  onComplete?: (run: RealtimeRun<TTask>, err?: Error) => void;
+};
+
 export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
   run: RealtimeRun<TTask> | undefined;
 
@@ -28,7 +38,7 @@ export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
  *
  * @template TTask - The type of the task
  * @param {string} [runId] - The unique identifier of the run to subscribe to
- * @param {UseRealtimeRunOptions} [options] - Configuration options for the subscription
+ * @param {UseRealtimeSingleRunOptions} [options] - Configuration options for the subscription
  * @returns {UseRealtimeRunInstance<TTask>} An object containing the current state of the run, error handling, and control methods
  *
  * @example
@@ -40,7 +50,7 @@ export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
 
 export function useRealtimeRun<TTask extends AnyTask>(
   runId?: string,
-  options?: UseRealtimeRunOptions
+  options?: UseRealtimeSingleRunOptions<TTask>
 ): UseRealtimeRunInstance<TTask> {
   const hookId = useId();
   const idKey = options?.id ?? hookId;
@@ -48,14 +58,14 @@ export function useRealtimeRun<TTask extends AnyTask>(
   // Store the streams state in SWR, using the idKey as the key to share states.
   const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
 
-  // Keep the latest streams in a ref.
-  const runRef = useRef<RealtimeRun<TTask> | undefined>();
-  useEffect(() => {
-    runRef.current = run;
-  }, [run]);
-
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
+    null
+  );
+
+  // Add state to track when the subscription is complete
+  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+    [idKey, "complete"],
     null
   );
 
@@ -93,8 +103,18 @@ export function useRealtimeRun<TTask extends AnyTask>(
       if (abortControllerRef.current) {
         abortControllerRef.current = null;
       }
+
+      // Mark the subscription as complete
+      setIsComplete(true);
     }
   }, [runId, mutateRun, abortControllerRef, apiClient, setError]);
+
+  // Effect to handle onComplete callback
+  useEffect(() => {
+    if (isComplete && options?.onComplete && run) {
+      options.onComplete(run, error);
+    }
+  }, [isComplete, run, error, options?.onComplete]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
@@ -157,7 +177,7 @@ export function useRealtimeRunWithStreams<
   TStreams extends Record<string, any> = Record<string, any>,
 >(
   runId?: string,
-  options?: UseRealtimeRunOptions
+  options?: UseRealtimeSingleRunOptions<TTask>
 ): UseRealtimeRunWithStreamsInstance<TTask, TStreams> {
   const hookId = useId();
   const idKey = options?.id ?? hookId;
@@ -182,11 +202,11 @@ export function useRealtimeRunWithStreams<
   // Store the streams state in SWR, using the idKey as the key to share states.
   const { data: run, mutate: mutateRun } = useSWR<RealtimeRun<TTask>>([idKey, "run"], null);
 
-  // Keep the latest streams in a ref.
-  const runRef = useRef<RealtimeRun<TTask> | undefined>();
-  useEffect(() => {
-    runRef.current = run;
-  }, [run]);
+  // Add state to track when the subscription is complete
+  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+    [idKey, "complete"],
+    null
+  );
 
   const { data: error = undefined, mutate: setError } = useSWR<undefined | Error>(
     [idKey, "error"],
@@ -235,8 +255,18 @@ export function useRealtimeRunWithStreams<
       if (abortControllerRef.current) {
         abortControllerRef.current = null;
       }
+
+      // Mark the subscription as complete
+      setIsComplete(true);
     }
   }, [runId, mutateRun, mutateStreams, streamsRef, abortControllerRef, apiClient, setError]);
+
+  // Effect to handle onComplete callback
+  useEffect(() => {
+    if (isComplete && options?.onComplete && run) {
+      options.onComplete(run, error);
+    }
+  }, [isComplete, run, error, options?.onComplete]);
 
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
