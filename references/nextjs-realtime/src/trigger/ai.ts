@@ -9,7 +9,10 @@ const openaiSDK = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export type STREAMS = { openai: TextStreamPart<{ getWeather: typeof weatherTask.tool }> };
+export type STREAMS = {
+  openai: TextStreamPart<{ getWeather: typeof weatherTask.tool }>;
+  openaiText: string;
+};
 
 export const openaiConsumer = schemaTask({
   id: "openai-consumer",
@@ -105,18 +108,7 @@ export const openaiStreaming = schemaTask({
     });
 
     const stream = await metadata.stream("openai", result.fullStream);
-
-    let text = "";
-
-    for await (const chunk of stream) {
-      logger.log("Received chunk", { chunk });
-
-      if (chunk.type === "text-delta") {
-        text += chunk.textDelta;
-      }
-    }
-
-    return { text };
+    await metadata.stream("openaiText", result.textStream);
   },
 });
 

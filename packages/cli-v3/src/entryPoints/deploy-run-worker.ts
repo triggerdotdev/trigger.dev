@@ -105,7 +105,8 @@ const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
 const runMetadataManager = new StandardMetadataManager(
   apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_REALTIME_STREAM_VERSION") ?? "v1") as "v1" | "v2"
 );
 runMetadata.setGlobalManager(runMetadataManager);
 const waitUntilManager = new StandardWaitUntilManager();

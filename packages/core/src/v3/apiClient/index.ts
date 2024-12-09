@@ -139,6 +139,10 @@ export class ApiClient {
     return fetchClient;
   }
 
+  getHeaders() {
+    return this.#getHeaders(false);
+  }
+
   async getRunResult(
     runId: string,
     requestOptions?: ZodFetchOptions

@@ -1,23 +1,48 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
+import { v2RealtimeStreams } from "~/services/realtime/v2StreamsGlobal.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   streamId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const $params = ParamsSchema.parse(params);
+const { action } = createActionApiRoute(
+  {
+    params: ParamsSchema,
+  },
+  async ({ request, params, authentication }) => {
+    if (!request.body) {
+      return new Response("No body provided", { status: 400 });
+    }
 
-  if (!request.body) {
-    return new Response("No body provided", { status: 400 });
+    const run = await $replica.taskRun.findFirst({
+      where: {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      },
+      include: {
+        batch: {
+          select: {
+            friendlyId: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      return new Response("Run not found", { status: 404 });
+    }
+
+    return v2RealtimeStreams.ingestData(request.body, run.id, params.streamId);
   }
+);
 
-  return v1RealtimeStreams.ingestData(request.body, $params.runId, $params.streamId);
-}
+export { action };
 
 export const loader = createLoaderApiRoute(
   {
@@ -51,9 +76,9 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, resource: run, authentication }) => {
-    return v1RealtimeStreams.streamResponse(
+    return v2RealtimeStreams.streamResponse(
       request,
-      run.friendlyId,
+      run.id,
       params.streamId,
       authentication.environment,
       request.signal

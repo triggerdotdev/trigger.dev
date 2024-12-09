@@ -62,6 +62,31 @@ export function MyComponent({
 }
 ```
 
+You can supply an `onComplete` callback to the `useRealtimeRun` hook to be called when the run is completed or errored. This is useful if you want to perform some action when the run is completed, like navigating to a different page or showing a notification.
+
+```tsx
+import { useRealtimeRun } from "@trigger.dev/react-hooks";
+
+export function MyComponent({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { run, error } = useRealtimeRun(runId, {
+    accessToken: publicAccessToken,
+    onComplete: (run, error) => {
+      console.log("Run completed", run);
+    },
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+
+  return <div>Run: {run.id}</div>;
+}
+```
+
 See our [Realtime documentation](/realtime) for more information about the type of the run object and more.
 
 ### useRealtimeRunsWithTag

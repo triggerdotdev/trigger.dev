@@ -1,9 +1,9 @@
-import { containerWithElectricTest } from "@internal/testcontainers";
+import { containerWithElectricAndRedisTest } from "@internal/testcontainers";
 import { expect, describe } from "vitest";
 import { RealtimeClient } from "../app/services/realtimeClient.server.js";
 
 describe("RealtimeClient", () => {
-  containerWithElectricTest(
+  containerWithElectricAndRedisTest(
     "Should only track concurrency for live requests",
     { timeout: 30_000 },
     async ({ redis, electricOrigin, prisma }) => {
@@ -139,7 +139,7 @@ describe("RealtimeClient", () => {
     }
   );
 
-  containerWithElectricTest(
+  containerWithElectricAndRedisTest(
     "Should support subscribing to a run tag",
     { timeout: 30_000 },
     async ({ redis, electricOrigin, prisma }) => {
@@ -218,7 +218,7 @@ describe("RealtimeClient", () => {
     }
   );
 
-  containerWithElectricTest(
+  containerWithElectricAndRedisTest(
     "Should adapt for older client versions",
     { timeout: 30_000 },
     async ({ redis, electricOrigin, prisma }) => {

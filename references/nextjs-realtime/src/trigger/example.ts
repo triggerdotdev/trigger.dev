@@ -15,12 +15,7 @@ export const exampleTask = schemaTask({
 
     metadata.set("status", { type: "started", progress: 0.1 });
 
-    if (Math.random() < 0.9) {
-      // Simulate a failure
-      throw new Error("Random failure");
-    }
-
-    await setTimeout(20000);
+    await setTimeout(2000);
 
     metadata.set("status", { type: "processing", progress: 0.5 });
 

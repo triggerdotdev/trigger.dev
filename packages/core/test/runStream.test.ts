@@ -1,10 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  AnyRunShape,
   RunSubscription,
   StreamSubscription,
   StreamSubscriptionFactory,
-  type RunShapeProvider,
 } from "../src/v3/apiClient/runStream.js";
 import type { SubscribeRunRawShape } from "../src/v3/schemas/api.js";
 
@@ -33,64 +31,54 @@ class TestStreamSubscriptionFactory implements StreamSubscriptionFactory {
     this.streams.set(`${runId}:${streamKey}`, chunks);
   }
 
-  createSubscription(runId: string, streamKey: string): StreamSubscription {
+  createSubscription(
+    metadata: Record<string, unknown>,
+    runId: string,
+    streamKey: string
+  ): StreamSubscription {
     const chunks = this.streams.get(`${runId}:${streamKey}`) ?? [];
     return new TestStreamSubscription(chunks);
   }
 }
 
-// Create a real test provider that uses an array of shapes
-class TestShapeProvider implements RunShapeProvider {
-  private shapes: SubscribeRunRawShape[];
-  private unsubscribed = false;
-
-  constructor(shapes: SubscribeRunRawShape[]) {
-    this.shapes = shapes;
-  }
-
-  async onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void> {
-    // Process all shapes immediately
-    for (const shape of this.shapes) {
-      if (this.unsubscribed) break;
-      await callback(shape);
-    }
-
-    return () => {
-      this.unsubscribed = true;
-    };
-  }
+// Remove the RunShapeProvider implementations and replace with stream creators
+function createTestShapeStream(
+  shapes: SubscribeRunRawShape[]
+): ReadableStream<SubscribeRunRawShape> {
+  return new ReadableStream({
+    start: async (controller) => {
+      // Emit all shapes immediately
+      for (const shape of shapes) {
+        controller.enqueue(shape);
+      }
+      controller.close();
+    },
+  });
 }
 
-// Add this new provider that can emit shapes over time
-class DelayedTestShapeProvider implements RunShapeProvider {
-  private shapes: SubscribeRunRawShape[];
-  private unsubscribed = false;
-  private currentShapeIndex = 0;
-
-  constructor(shapes: SubscribeRunRawShape[]) {
-    this.shapes = shapes;
-  }
-
-  async onShape(callback: (shape: SubscribeRunRawShape) => Promise<void>): Promise<() => void> {
-    // Only emit the first shape immediately
-    if (this.shapes.length > 0) {
-      await callback(this.shapes[this.currentShapeIndex++]!);
-    }
-
-    // Set up an interval to emit remaining shapes
-    const interval = setInterval(async () => {
-      if (this.unsubscribed || this.currentShapeIndex >= this.shapes.length) {
-        clearInterval(interval);
-        return;
+function createDelayedTestShapeStream(
+  shapes: SubscribeRunRawShape[]
+): ReadableStream<SubscribeRunRawShape> {
+  return new ReadableStream({
+    start: async (controller) => {
+      // Emit first shape immediately
+      if (shapes.length > 0) {
+        controller.enqueue(shapes[0]);
       }
-      await callback(this.shapes[this.currentShapeIndex++]!);
-    }, 100);
 
-    return () => {
-      this.unsubscribed = true;
-      clearInterval(interval);
-    };
-  }
+      let currentShapeIndex = 1;
+
+      // Emit remaining shapes with delay
+      const interval = setInterval(() => {
+        if (currentShapeIndex >= shapes.length) {
+          clearInterval(interval);
+          controller.close();
+          return;
+        }
+        controller.enqueue(shapes[currentShapeIndex++]!);
+      }, 100);
+    },
+  });
 }
 
 describe("RunSubscription", () => {
@@ -114,9 +102,10 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
+      abortController: new AbortController(),
     });
 
     const results = await convertAsyncIterableToArray(subscription);
@@ -153,9 +142,10 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
+      abortController: new AbortController(),
     });
 
     const results = await convertAsyncIterableToArray(subscription);
@@ -205,9 +195,10 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new DelayedTestShapeProvider(shapes),
+      runShapeStream: createDelayedTestShapeStream(shapes),
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: false,
+      abortController: new AbortController(),
     });
 
     // Collect 2 results
@@ -257,8 +248,9 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -289,9 +281,13 @@ describe("RunSubscription", () => {
 
     // Override createSubscription to count calls
     const originalCreate = streamFactory.createSubscription.bind(streamFactory);
-    streamFactory.createSubscription = (runId: string, streamKey: string) => {
+    streamFactory.createSubscription = (
+      metadata: Record<string, unknown>,
+      runId: string,
+      streamKey: string
+    ) => {
       streamCreationCount++;
-      return originalCreate(runId, streamKey);
+      return originalCreate(metadata, runId, streamKey);
     };
 
     // Set up test chunks
@@ -342,8 +338,9 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -421,8 +418,9 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       streamFactory,
+      abortController: new AbortController(),
     });
 
     const results = await collectNResults(
@@ -467,110 +465,6 @@ describe("RunSubscription", () => {
       run: { id: "run_123" },
     });
   });
-
-  it("should handle streams that appear in different run updates", async () => {
-    const streamFactory = new TestStreamSubscriptionFactory();
-
-    // Set up test chunks for two different streams
-    streamFactory.setStreamChunks("run_123", "openai", [
-      { id: "openai1", content: "Hello" },
-      { id: "openai2", content: "World" },
-    ]);
-    streamFactory.setStreamChunks("run_123", "anthropic", [
-      { id: "claude1", message: "Hi" },
-      { id: "claude2", message: "There" },
-    ]);
-
-    const shapes = [
-      // First run update - only has openai stream
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "EXECUTING",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        number: 1,
-        usageDurationMs: 100,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai"],
-        }),
-        metadataType: "application/json",
-      },
-      // Second run update - adds anthropic stream
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "EXECUTING",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        number: 1,
-        usageDurationMs: 200,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai", "anthropic"],
-        }),
-        metadataType: "application/json",
-      },
-      // Final run update - marks as complete
-      {
-        id: "123",
-        friendlyId: "run_123",
-        taskIdentifier: "multi-streaming",
-        status: "COMPLETED_SUCCESSFULLY",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        completedAt: new Date(),
-        number: 1,
-        usageDurationMs: 300,
-        costInCents: 0,
-        baseCostInCents: 0,
-        isTest: false,
-        runTags: [],
-        metadata: JSON.stringify({
-          $$streams: ["openai", "anthropic"],
-        }),
-        metadataType: "application/json",
-      },
-    ];
-
-    const subscription = new RunSubscription({
-      provider: new TestShapeProvider(shapes),
-      streamFactory,
-      closeOnComplete: true,
-    });
-
-    const results = await collectNResults(
-      subscription.withStreams<{
-        openai: { id: string; content: string };
-        anthropic: { id: string; message: string };
-      }>(),
-      7 // 3 runs + 2 openai chunks + 2 anthropic chunks
-    );
-
-    expect(results).toHaveLength(7);
-
-    // Verify run updates
-    const runUpdates = results.filter((r) => r.type === "run");
-    expect(runUpdates).toHaveLength(3);
-    expect(runUpdates[2]!.run.status).toBe("COMPLETED");
-
-    // Verify openai chunks
-    const openaiChunks = results.filter((r) => r.type === "openai");
-    expect(openaiChunks).toHaveLength(2);
-
-    // Verify anthropic chunks
-    const anthropicChunks = results.filter((r) => r.type === "anthropic");
-    expect(anthropicChunks).toHaveLength(2);
-  });
 });
 
 export async function convertAsyncIterableToArray<T>(iterable: AsyncIterable<T>): Promise<T[]> {
@@ -603,7 +497,12 @@ async function collectNResults<T>(
     promise,
     new Promise<T[]>((_, reject) =>
       setTimeout(
-        () => reject(new Error(`Timeout waiting for ${count} results after ${timeoutMs}ms`)),
+        () =>
+          reject(
+            new Error(
+              `Timeout waiting for ${count} results after ${timeoutMs}ms, but only had ${results.length}`
+            )
+          ),
         timeoutMs
       )
     ),

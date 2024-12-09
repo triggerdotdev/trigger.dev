@@ -13,7 +13,9 @@ networks:
 services:
   database:
     container_name: database
-    image: postgres:14
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     restart: always
     volumes:
       - ${DB_VOLUME:-database-data}:/var/lib/postgresql/data/
@@ -30,6 +32,8 @@ services:
       - listen_addresses=*
       - -c
       - wal_level=logical
+      - -c
+      - shared_preload_libraries=pg_partman_bgw
 
   pgadmin:
     container_name: pgadmin
