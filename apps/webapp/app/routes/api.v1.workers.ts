@@ -13,6 +13,7 @@ import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.serv
 export const loader = createLoaderApiRoute(
   {
     corsStrategy: "all",
+    findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ authentication }): Promise<TypedResponse<WorkersListResponseBody>> => {
     const service = new WorkerGroupService();

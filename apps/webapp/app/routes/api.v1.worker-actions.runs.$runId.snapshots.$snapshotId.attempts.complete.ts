@@ -2,7 +2,7 @@ import { json, TypedResponse } from "@remix-run/server-runtime";
 import {
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptCompleteResponseBody,
-} from "@trigger.dev/worker/schemas";
+} from "@trigger.dev/worker";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
