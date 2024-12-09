@@ -188,7 +188,65 @@ export async function conditionallyImportPacket(
     return result ?? packet;
   }
 }
+// Add Blob support in the stringifyIO function
+export async function stringifyIO(value: any): Promise<IOPacket> {
+  if (value === undefined) {
+    return { dataType: "application/json" };
+  }
 
+  if (typeof value === "string") {
+    return { data: value, dataType: "text/plain" };
+  }
+
+  if (value instanceof Blob) {
+    const reader = new FileReader();
+    return new Promise((resolve, reject) => {
+      reader.onloadend = () => {
+        resolve({ data: reader.result as string, dataType: "application/blob" });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(value);
+    });
+  }
+
+  try {
+    const { stringify } = await loadSuperJSON();
+    const data = stringify(value);
+    return { data, dataType: "application/super+json" };
+  } catch {
+    return { data: value, dataType: "application/json" };
+  }
+}
+
+// Add Blob support in the parsePacket function
+export async function parsePacket(value: IOPacket): Promise<any> {
+  if (!value.data) {
+    return undefined;
+  }
+
+  switch (value.dataType) {
+    case "application/json":
+      return JSON.parse(value.data);
+    case "application/super+json":
+      const { parse } = await loadSuperJSON();
+      return parse(value.data);
+    case "text/plain":
+      return value.data;
+    case "application/blob":
+      const byteString = atob(value.data.split(',')[1]);
+      const mimeString = value.data.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeString });
+    case "application/store":
+      throw new Error(`Cannot parse an application/store packet (${value.data}). Needs to be imported first.`);
+    default:
+      return value.data;
+  }
+}
 export async function resolvePresignedPacketUrl(
   url: string,
   tracer?: TriggerTracer
