@@ -43,6 +43,7 @@ export type TriggerParams = {
   number: number;
   environment: MinimalAuthenticatedEnvironment;
   idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
   taskIdentifier: string;
   payload: string;
   payloadType: string;
@@ -52,6 +53,9 @@ export type TriggerParams = {
   spanId: string;
   parentSpanId?: string;
   lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
   concurrencyKey?: string;
   masterQueue: string;
   queueName: string;
@@ -62,7 +66,7 @@ export type TriggerParams = {
   maxAttempts?: number;
   priorityMs?: number;
   ttl?: string;
-  tags: string[];
+  tags: { id: string; name: string }[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
   batchId?: string;
@@ -72,4 +76,6 @@ export type TriggerParams = {
   metadataType?: string;
   seedMetadata?: string;
   seedMetadataType?: string;
+  oneTimeUseToken?: string;
+  maxDurationInSeconds?: number;
 };

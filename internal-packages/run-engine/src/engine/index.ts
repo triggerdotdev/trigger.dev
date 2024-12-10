@@ -197,6 +197,7 @@ export class RunEngine {
       number,
       environment,
       idempotencyKey,
+      idempotencyKeyExpiresAt,
       taskIdentifier,
       payload,
       payloadType,
@@ -206,6 +207,9 @@ export class RunEngine {
       spanId,
       parentSpanId,
       lockedToVersionId,
+      taskVersion,
+      sdkVersion,
+      cliVersion,
       concurrencyKey,
       masterQueue,
       queueName,
@@ -226,6 +230,8 @@ export class RunEngine {
       metadataType,
       seedMetadata,
       seedMetadataType,
+      oneTimeUseToken,
+      maxDurationInSeconds,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -257,6 +263,7 @@ export class RunEngine {
             runtimeEnvironmentId: environment.id,
             projectId: environment.project.id,
             idempotencyKey,
+            idempotencyKeyExpiresAt,
             taskIdentifier,
             payload,
             payloadType,
@@ -266,6 +273,9 @@ export class RunEngine {
             spanId,
             parentSpanId,
             lockedToVersionId,
+            taskVersion,
+            sdkVersion,
+            cliVersion,
             concurrencyKey,
             queue: queueName,
             masterQueue,
@@ -280,8 +290,10 @@ export class RunEngine {
               tags.length === 0
                 ? undefined
                 : {
-                    connect: tags.map((id) => ({ id })),
+                    connect: tags,
                   },
+            runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
+            oneTimeUseToken,
             parentTaskRunId,
             rootTaskRunId,
             batchId,
@@ -291,6 +303,7 @@ export class RunEngine {
             metadataType,
             seedMetadata,
             seedMetadataType,
+            maxDurationInSeconds,
             executionSnapshots: {
               create: {
                 engine: "V2",
@@ -642,6 +655,9 @@ export class RunEngine {
                 startedAt: result.run.startedAt ?? new Date(),
                 baseCostInCents: this.options.machines.baseCostInCents,
                 machinePreset: machinePreset.name,
+                taskVersion: result.worker.version,
+                sdkVersion: result.worker.sdkVersion,
+                cliVersion: result.worker.cliVersion,
                 maxDurationInSeconds: getMaxDuration(
                   result.run.maxDurationInSeconds,
                   result.task.maxDurationInSeconds

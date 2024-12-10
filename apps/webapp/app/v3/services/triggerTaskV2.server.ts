@@ -285,10 +285,9 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     parentSpanId:
                       options.parentAsLinkType === "replay" ? undefined : traceparent?.spanId,
                     lockedToVersionId: lockedToBackgroundWorker?.id,
-                    // TODO
-                    // taskVersion: lockedToBackgroundWorker?.version,
-                    // sdkVersion: lockedToBackgroundWorker?.sdkVersion,
-                    // cliVersion: lockedToBackgroundWorker?.cliVersion,
+                    taskVersion: lockedToBackgroundWorker?.version,
+                    sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                    cliVersion: lockedToBackgroundWorker?.cliVersion,
                     concurrencyKey: body.options?.concurrencyKey,
                     queueName,
                     queue: body.options?.queue,
