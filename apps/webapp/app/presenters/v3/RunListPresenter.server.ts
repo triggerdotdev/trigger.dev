@@ -216,6 +216,8 @@ export class RunListPresenter extends BasePresenter {
         depth: number;
         rootTaskRunId: string | null;
         batchId: string | null;
+        metadata: string | null;
+        metadataType: string;
       }[]
     >`
     SELECT
@@ -241,7 +243,9 @@ export class RunListPresenter extends BasePresenter {
     tr."usageDurationMs" AS "usageDurationMs",
     tr."depth" AS "depth",
     tr."rootTaskRunId" AS "rootTaskRunId",
-    tr."runTags" AS "tags"
+    tr."runTags" AS "tags",
+    tr."metadata" AS "metadata",
+    tr."metadataType" AS "metadataType"
 FROM
     ${sqlDatabaseSchema}."TaskRun" tr
 LEFT JOIN
@@ -374,6 +378,8 @@ WHERE
           tags: run.tags ? run.tags.sort((a, b) => a.localeCompare(b)) : [],
           depth: run.depth,
           rootTaskRunId: run.rootTaskRunId,
+          metadata: run.metadata,
+          metadataType: run.metadataType,
         };
       }),
       pagination: {
