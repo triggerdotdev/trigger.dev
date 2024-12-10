@@ -26,6 +26,7 @@ import { stringifyDuration } from "@trigger.dev/core/v3/apps";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
 import { Prisma } from "@trigger.dev/database";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { clampMaxDuration } from "../utils/maxDuration";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV2 extends WithRunEngine {
@@ -231,7 +232,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 span.setAttribute("queueName", queueName);
 
                 //upsert tags
-                let tagIds: string[] = [];
+                let tags: { id: string; name: string }[] = [];
                 const bodyTags =
                   typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
                 if (bodyTags && bodyTags.length > 0) {
@@ -241,7 +242,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                       projectId: environment.projectId,
                     });
                     if (tagRecord) {
-                      tagIds.push(tagRecord.id);
+                      tags.push(tagRecord);
                     }
                   }
                 }
@@ -273,8 +274,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     friendlyId: runFriendlyId,
                     environment: environment,
                     idempotencyKey,
-                    // TODO
-                    // idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
+                    idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
                     taskIdentifier: taskId,
                     payload: payloadPacket.data ?? "",
                     payloadType: payloadPacket.dataType,
@@ -297,9 +297,8 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     queuedAt: delayUntil ? undefined : new Date(),
                     maxAttempts: body.options?.maxAttempts,
                     ttl,
-                    tags: tagIds,
-                    // TODO
-                    // oneTimeUseToken: options.oneTimeUseToken,
+                    tags,
+                    oneTimeUseToken: options.oneTimeUseToken,
                     parentTaskRunId: parentRun?.id,
                     rootTaskRunId: parentRun?.rootTaskRunId ?? undefined,
                     batchId: body.options?.parentBatch ?? undefined,
@@ -309,12 +308,9 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     metadataType: metadataPacket?.dataType,
                     seedMetadata: metadataPacket?.data,
                     seedMetadataType: metadataPacket?.dataType,
-                    // TODO
-                    // maxDurationInSeconds: body.options?.maxDuration
-                    //   ? clampMaxDuration(body.options.maxDuration)
-                    //   : undefined,
-                    // runTags: bodyTags,
-                    // oneTimeUseToken: options.oneTimeUseToken,
+                    maxDurationInSeconds: body.options?.maxDuration
+                      ? clampMaxDuration(body.options.maxDuration)
+                      : undefined,
                   },
                   this._prisma
                 );
