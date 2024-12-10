@@ -208,6 +208,15 @@ export async function createBackgroundTasks(
           taskQueue.concurrencyLimit
         );
       } else {
+        logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
+          workerId: worker.id,
+          taskQueue,
+          orgId: environment.organizationId,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+          concurrencyLimit,
+          taskidentifier: task.id,
+        });
         await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {

@@ -474,6 +474,16 @@ export class TriggerTaskService extends BaseService {
                           taskQueue.concurrencyLimit
                         );
                       } else {
+                        logger.debug("TriggerTaskService: removing concurrency limit", {
+                          runId: taskRun.id,
+                          friendlyId: taskRun.friendlyId,
+                          taskQueue,
+                          orgId: environment.organizationId,
+                          projectId: environment.projectId,
+                          existingConcurrencyLimit,
+                          concurrencyLimit,
+                          queueOptions: body.options?.queue,
+                        });
                         await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
                       }
                     }
