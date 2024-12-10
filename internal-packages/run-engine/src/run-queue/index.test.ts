@@ -596,7 +596,10 @@ describe("RunQueue", () => {
       );
       expect(taskConcurrency).toBe(1);
 
-      await queue.nackMessage(messages[0].message.orgId, messages[0].messageId);
+      await queue.nackMessage({
+        orgId: messages[0].message.orgId,
+        messageId: messages[0].messageId,
+      });
 
       //we need to wait because the default wait is 1 second
       await setTimeout(300);
@@ -755,7 +758,10 @@ describe("RunQueue", () => {
       expect(exists).toBe(1);
 
       //nack (we only have attempts set to 1)
-      await queue.nackMessage(messages[0].message.orgId, messages[0].messageId);
+      await queue.nackMessage({
+        orgId: messages[0].message.orgId,
+        messageId: messages[0].messageId,
+      });
 
       //dequeue
       const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);

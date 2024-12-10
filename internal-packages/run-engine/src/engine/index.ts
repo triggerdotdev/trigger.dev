@@ -470,6 +470,12 @@ export class RunEngine {
         return [];
       }
 
+      //we can't send more than the max resources
+      const consumedResources: MachineResources = {
+        cpu: 0,
+        memory: 0,
+      };
+
       const dequeuedRuns: DequeuedMessage[] = [];
 
       for (const message of messages) {
@@ -559,7 +565,7 @@ export class RunEngine {
                   );
 
                   //worker mismatch so put it back in the queue
-                  await this.runQueue.nackMessage(orgId, runId);
+                  await this.runQueue.nackMessage({ orgId, messageId: runId });
 
                   return null;
                 }
@@ -593,6 +599,36 @@ export class RunEngine {
               defaultMachine: this.options.machines.defaultMachine,
               config: result.task.machineConfig ?? {},
             });
+
+            //increment the consumed resources
+            consumedResources.cpu += machinePreset.cpu;
+            consumedResources.memory += machinePreset.memory;
+
+            //are we under the limit?
+            if (maxResources) {
+              if (
+                consumedResources.cpu > maxResources.cpu ||
+                consumedResources.memory > maxResources.memory
+              ) {
+                this.logger.debug(
+                  "RunEngine.dequeueFromMasterQueue(): Consumed resources over limit, nacking",
+                  {
+                    runId,
+                    consumedResources,
+                    maxResources,
+                  }
+                );
+
+                //put it back in the queue where it was
+                await this.runQueue.nackMessage({
+                  orgId,
+                  messageId: runId,
+                  incrementAttemptCount: false,
+                  retryAt: result.run.createdAt.getTime() - result.run.priorityMs,
+                });
+                return null;
+              }
+            }
 
             //update the run
             const lockedTaskRun = await prisma.taskRun.update({
@@ -655,7 +691,7 @@ export class RunEngine {
               );
 
               //will auto-retry
-              const gotRequeued = await this.runQueue.nackMessage(orgId, runId);
+              const gotRequeued = await this.runQueue.nackMessage({ orgId, messageId: runId });
               if (!gotRequeued) {
                 await this.#systemFailure({
                   runId,
@@ -746,7 +782,7 @@ export class RunEngine {
                 orgId,
               }
             );
-            await this.runQueue.nackMessage(orgId, runId);
+            await this.runQueue.nackMessage({ orgId, messageId: runId });
             continue;
           }
 
@@ -2300,7 +2336,11 @@ export class RunEngine {
 
     return await this.runLock.lock([run.id], 5000, async (signal) => {
       //we nack the message, this allows another work to pick up the run
-      const gotRequeued = await this.runQueue.nackMessage(orgId, run.id, timestamp);
+      const gotRequeued = await this.runQueue.nackMessage({
+        orgId,
+        messageId: run.id,
+        retryAt: timestamp,
+      });
 
       if (!gotRequeued) {
         const result = await this.#systemFailure({

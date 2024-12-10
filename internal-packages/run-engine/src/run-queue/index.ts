@@ -407,7 +407,17 @@ export class RunQueue {
    * Negative acknowledge a message, which will requeue the message (with an optional future date).
     If you pass no date it will get reattempted with exponential backoff.
    */
-  public async nackMessage(orgId: string, messageId: string, retryAt?: number) {
+  public async nackMessage({
+    orgId,
+    messageId,
+    retryAt,
+    incrementAttemptCount = true,
+  }: {
+    orgId: string;
+    messageId: string;
+    retryAt?: number;
+    incrementAttemptCount?: boolean;
+  }) {
     return this.#trace(
       "nackMessage",
       async (span) => {
@@ -445,21 +455,23 @@ export class RunQueue {
         );
         const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
 
-        message.attempt = message.attempt + 1;
-        if (message.attempt >= maxAttempts) {
-          await this.redis.moveToDeadLetterQueue(
-            messageKey,
-            messageQueue,
-            concurrencyKey,
-            envConcurrencyKey,
-            projectConcurrencyKey,
-            envQueueKey,
-            taskConcurrencyKey,
-            "dlq",
-            messageId,
-            JSON.stringify(message.masterQueues)
-          );
-          return false;
+        if (incrementAttemptCount) {
+          message.attempt = message.attempt + 1;
+          if (message.attempt >= maxAttempts) {
+            await this.redis.moveToDeadLetterQueue(
+              messageKey,
+              messageQueue,
+              concurrencyKey,
+              envConcurrencyKey,
+              projectConcurrencyKey,
+              envQueueKey,
+              taskConcurrencyKey,
+              "dlq",
+              messageId,
+              JSON.stringify(message.masterQueues)
+            );
+            return false;
+          }
         }
 
         const nextRetryDelay = calculateNextRetryDelay(this.retryOptions, message.attempt);

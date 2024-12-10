@@ -30,7 +30,12 @@ type Use<T> = (value: T) => Promise<void>;
 
 const network = async ({}, use: Use<StartedNetwork>) => {
   const network = await new Network().start();
-  await use(network);
+  try {
+    await use(network);
+  } finally {
+    // Make sure to stop the network after use
+    await network.stop();
+  }
 };
 
 const postgresContainer = async (
@@ -38,8 +43,11 @@ const postgresContainer = async (
   use: Use<StartedPostgreSqlContainer>
 ) => {
   const { container } = await createPostgresContainer(network);
-  await use(container);
-  await container.stop();
+  try {
+    await use(container);
+  } finally {
+    await container.stop();
+  }
 };
 
 const prisma = async (
@@ -53,16 +61,22 @@ const prisma = async (
       },
     },
   });
-  await use(prisma);
-  await prisma.$disconnect();
+  try {
+    await use(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
 };
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
 const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
   const { container } = await createRedisContainer();
-  await use(container);
-  await container.stop();
+  try {
+    await use(container);
+  } finally {
+    await container.stop();
+  }
 };
 
 const redis = async (
@@ -74,8 +88,11 @@ const redis = async (
     port: redisContainer.getPort(),
     password: redisContainer.getPassword(),
   });
-  await use(redis);
-  await redis.quit();
+  try {
+    await use(redis);
+  } finally {
+    await redis.quit();
+  }
 };
 
 export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
@@ -88,8 +105,11 @@ const electricOrigin = async (
   use: Use<string>
 ) => {
   const { origin, container } = await createElectricContainer(postgresContainer, network);
-  await use(origin);
-  await container.stop();
+  try {
+    await use(origin);
+  } finally {
+    await container.stop();
+  }
 };
 
 export const containerTest = test.extend<ContainerContext>({

@@ -3,6 +3,7 @@ import {
   generateFriendlyId,
   sanitizeQueueName,
 } from "@trigger.dev/core/v3/apps";
+import { MachineConfig } from "@trigger.dev/core/v3/schemas";
 import {
   BackgroundWorkerTask,
   Prisma,
@@ -63,7 +64,8 @@ export async function setupAuthenticatedEnvironment(
 export async function setupBackgroundWorker(
   prisma: PrismaClient,
   environment: AuthenticatedEnvironment,
-  taskIdentifier: string | string[]
+  taskIdentifier: string | string[],
+  machineConfig?: MachineConfig
 ) {
   const worker = await prisma.backgroundWorker.create({
     data: {
@@ -90,6 +92,7 @@ export async function setupBackgroundWorker(
         workerId: worker.id,
         runtimeEnvironmentId: environment.id,
         projectId: environment.project.id,
+        machineConfig,
       },
     });
 
