@@ -70,16 +70,18 @@ type TableRowProps = {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
+  isSelected?: boolean;
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, children }, ref) => {
+  ({ className, disabled, isSelected, children }, ref) => {
     return (
       <tr
         ref={ref}
         className={cn(
-          disabled && "opacity-50",
           "group/table-row relative w-full after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          disabled && "opacity-50",
+          isSelected && isSelectedStyle,
           className
         )}
       >
@@ -146,6 +148,7 @@ type TableCellProps = TableCellBasicProps & {
   isSticky?: boolean;
   actionClassName?: string;
   rowHoverStyle?: keyof typeof rowHoverStyles;
+  isSelected?: boolean;
 };
 
 const rowHoverStyles = {
@@ -160,6 +163,8 @@ const rowHoverStyles = {
 const stickyStyles =
   "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 w-[--sticky-width] [&:has(.group-hover\\/table-row\\:block)]:w-auto";
 
+const isSelectedStyle = "bg-charcoal-750 group-hover:bg-charcoal-750";
+
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
     {
@@ -173,6 +178,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       hasAction = false,
       isSticky = false,
       rowHoverStyle = "default",
+      isSelected,
     },
     ref
   ) => {
@@ -203,7 +209,8 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
-          rowHoverStyles[rowHoverStyle],
+          isSelected && isSelectedStyle,
+          !isSelected && rowHoverStyles[rowHoverStyle],
           className
         )}
         colSpan={colSpan}
@@ -259,10 +266,20 @@ export const TableCellMenu = forwardRef<
     hiddenButtons?: ReactNode;
     popoverContent?: ReactNode;
     children?: ReactNode;
+    isSelected?: boolean;
   }
 >(
   (
-    { className, isSticky, onClick, visibleButtons, hiddenButtons, popoverContent, children },
+    {
+      className,
+      isSticky,
+      onClick,
+      visibleButtons,
+      hiddenButtons,
+      popoverContent,
+      children,
+      isSelected,
+    },
     ref
   ) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -275,9 +292,17 @@ export const TableCellMenu = forwardRef<
         ref={ref}
         alignment="right"
         hasAction={true}
+        isSelected={isSelected}
       >
-        <div className="relative p-1">
-          <div className="absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 bg-background-dimmed p-0.5 group-hover/table-row:rounded-[0.25rem] group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright">
+        <div className="relative h-full p-1">
+          <div
+            className={cn(
+              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright",
+              isSelected && isSelectedStyle,
+              isSelected &&
+                "group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/50"
+            )}
+          >
             {/* Hidden buttons that show on hover */}
             {hiddenButtons && (
               <div className="hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r group-hover/table-row:border-grid-dimmed">
