@@ -45,7 +45,6 @@ export class MetadataStream<T> {
   private initializeServerStream(): Promise<void | Response> {
     const serverIterator = this.serverIterator;
 
-    // TODO: Why is this only sending stuff to the server at the end of the run?
     const serverStream = new ReadableStream({
       async pull(controller) {
         try {
