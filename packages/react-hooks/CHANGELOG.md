@@ -1,5 +1,13 @@
 # @trigger.dev/react-hooks
 
+## 3.3.6
+
+### Patch Changes
+
+- Realtime streams now powered by electric. Also, this change fixes a realtime bug that was causing too many re-renders, even on records that didn't change ([#1541](https://github.com/triggerdotdev/trigger.dev/pull/1541))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.6`
+
 ## 3.3.5
 
 ### Patch Changes
