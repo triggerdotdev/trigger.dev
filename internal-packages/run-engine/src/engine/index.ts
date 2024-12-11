@@ -1530,6 +1530,7 @@ export class RunEngine {
     waitpointId,
     projectId,
     failAfter,
+    checkWaitpointIsPending = false,
     tx,
   }: {
     runId: string;
@@ -1537,19 +1538,13 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     failAfter?: Date;
+    /** If the waitpoint could be completed, i.e. not inside a run lock and not new */
+    checkWaitpointIsPending?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([runId], 5000, async (signal) => {
-      const taskWaitpoint = await prisma.taskRunWaitpoint.create({
-        data: {
-          taskRunId: runId,
-          waitpointId: waitpointId,
-          projectId: projectId,
-        },
-      });
-
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
@@ -1559,6 +1554,29 @@ export class RunEngine {
       ) {
         newStatus = "EXECUTING_WITH_WAITPOINTS";
       }
+
+      if (checkWaitpointIsPending) {
+        const waitpoint = await prisma.waitpoint.findUnique({
+          where: { id: waitpointId },
+        });
+
+        if (!waitpoint) {
+          throw new ServiceValidationError("Waitpoint not found", 404);
+        }
+
+        //the waitpoint has been completed since it was retrieved
+        if (waitpoint.status !== "PENDING") {
+          return snapshot;
+        }
+      }
+
+      const taskWaitpoint = await prisma.taskRunWaitpoint.create({
+        data: {
+          taskRunId: runId,
+          waitpointId: waitpointId,
+          projectId: projectId,
+        },
+      });
 
       //if the state has changed, create a new snapshot
       if (newStatus !== snapshot.executionStatus) {

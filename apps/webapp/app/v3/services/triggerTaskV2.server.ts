@@ -44,7 +44,6 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
       const idempotencyKeyExpiresAt =
         options.idempotencyKeyExpiresAt ??
@@ -74,39 +73,39 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       if (existingRun) {
         span.setAttribute("runId", existingRun.friendlyId);
 
-        // TODO
-        // if (
-        //   existingRun.idempotencyKeyExpiresAt &&
-        //   existingRun.idempotencyKeyExpiresAt < new Date()
-        // ) {
-        //   logger.debug("[TriggerTaskService][call] Idempotency key has expired", {
-        //     idempotencyKey: options.idempotencyKey,
-        //     run: existingRun,
-        //   });
-
-        //   // Update the existing batch to remove the idempotency key
-        //   await this._prisma.taskRun.update({
-        //     where: { id: existingRun.id },
-        //     data: { idempotencyKey: null },
-        //   });
-        // }
-
-        //We're using `andWait` so we need to block the parent run with a waitpoint
         if (
-          existingRun.associatedWaitpoint?.status === "PENDING" &&
-          body.options?.resumeParentOnCompletion &&
-          body.options?.parentRunId
+          existingRun.idempotencyKeyExpiresAt &&
+          existingRun.idempotencyKeyExpiresAt < new Date()
         ) {
-          await this._engine.blockRunWithWaitpoint({
-            runId: body.options.parentRunId,
-            waitpointId: existingRun.associatedWaitpoint.id,
-            environmentId: environment.id,
-            projectId: environment.projectId,
-            tx: this._prisma,
+          logger.debug("[TriggerTaskService][call] Idempotency key has expired", {
+            idempotencyKey: options.idempotencyKey,
+            run: existingRun,
           });
-        }
 
-        return existingRun;
+          // Update the existing run to remove the idempotency key
+          await this._prisma.taskRun.update({
+            where: { id: existingRun.id },
+            data: { idempotencyKey: null },
+          });
+        } else {
+          //We're using `andWait` so we need to block the parent run with a waitpoint
+          if (
+            existingRun.associatedWaitpoint?.status === "PENDING" &&
+            body.options?.resumeParentOnCompletion &&
+            body.options?.parentRunId
+          ) {
+            await this._engine.blockRunWithWaitpoint({
+              runId: body.options.parentRunId,
+              waitpointId: existingRun.associatedWaitpoint.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              checkWaitpointIsPending: true,
+              tx: this._prisma,
+            });
+          }
+
+          return existingRun;
+        }
       }
 
       if (environment.type !== "DEVELOPMENT") {
