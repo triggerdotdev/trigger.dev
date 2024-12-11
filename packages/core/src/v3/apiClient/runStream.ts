@@ -16,7 +16,12 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { AsyncIterableStream, createAsyncIterableReadable, zodShapeStream } from "./stream.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+  LineTransformStream,
+  zodShapeStream,
+} from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -209,13 +214,28 @@ export class ElectricStreamSubscription implements StreamSubscription {
   ) {}
 
   async subscribe(): Promise<ReadableStream<unknown>> {
-    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options).pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(safeParseJSON(chunk.value));
-        },
-      })
-    );
+    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options)
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            console.log("ElectricStreamSubscription chunk.value", chunk.value);
+
+            controller.enqueue(chunk.value);
+          },
+        })
+      )
+      .pipeThrough(new LineTransformStream(this.url))
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            for (const line of chunk) {
+              console.log("ElectricStreamSubscription line", line);
+
+              controller.enqueue(safeParseJSON(line));
+            }
+          },
+        })
+      );
   }
 }
 
