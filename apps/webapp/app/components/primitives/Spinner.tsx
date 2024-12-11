@@ -26,8 +26,8 @@ export function Spinner({
       foreground: "#3C4B62",
     },
     dark: {
-      background: "#15171A",
-      foreground: "#272A2E",
+      background: "rgba(18, 19, 23, 0.35)",
+      foreground: "#1A1B1F",
     },
   };
 

@@ -5,7 +5,7 @@ import {
   ShieldCheckIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { ArrowDownCircleIcon } from "@heroicons/react/24/outline";
+import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
@@ -633,6 +633,11 @@ export function TierPro({
   const navigation = useNavigation();
   const formAction = `/resources/orgs/${organizationSlug}/select-plan`;
   const isLoading = navigation.formAction === formAction;
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setIsDialogOpen(false);
+  }, [subscription]);
 
   return (
     <TierContainer>
@@ -645,27 +650,67 @@ export function TierPro({
           <input type="hidden" name="type" value="paid" />
           <input type="hidden" name="planCode" value={plan.code} />
           <input type="hidden" name="callerPath" value={location.pathname} />
-          <Button
-            variant="tertiary/large"
-            fullWidth
-            form="subscribe-pro"
-            className="text-md font-medium"
-            disabled={
-              isLoading ||
-              (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
-            }
-            LeadingIcon={
-              isLoading && navigation.formData?.get("planCode") === plan.code ? Spinner : undefined
-            }
-          >
-            {subscription?.plan === undefined
-              ? "Select plan"
-              : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-              ? `Upgrade to ${plan.title}`
-              : subscription.plan.code === plan.code
-              ? "Current plan"
-              : `Upgrade to ${plan.title}`}
-          </Button>
+          {subscription?.plan !== undefined &&
+          subscription?.plan?.type === "paid" &&
+          subscription?.plan?.code !== plan.code &&
+          subscription.canceledAt === undefined ? (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="upgrade">
+              <DialogTrigger asChild>
+                <Button variant="tertiary/large" fullWidth className="text-md font-medium">
+                  {`Upgrade to ${plan.title}`}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>Upgrade plan?</DialogHeader>
+                <div className="mb-2 mt-4 flex items-start gap-3">
+                  <span>
+                    <ArrowUpCircleIcon className="size-12 text-primary" />
+                  </span>
+                  <Paragraph variant="base/bright" className="text-text-bright">
+                    Are you sure you want to upgrade to the Pro plan? You will be charged the new
+                    plan price for the remainder of this month on a pro rata basis.
+                  </Paragraph>
+                </div>
+                <DialogFooter>
+                  <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary/medium"
+                    disabled={isLoading}
+                    LeadingIcon={isLoading ? () => <Spinner color="dark" /> : undefined}
+                    form="subscribe-pro"
+                  >
+                    {`Upgrade to ${plan.title}`}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Button
+              variant="tertiary/large"
+              fullWidth
+              form="subscribe-pro"
+              className="text-md font-medium"
+              disabled={
+                isLoading ||
+                (subscription?.plan?.code === plan.code && subscription.canceledAt === undefined)
+              }
+              LeadingIcon={
+                isLoading && navigation.formData?.get("planCode") === plan.code
+                  ? Spinner
+                  : undefined
+              }
+            >
+              {subscription?.plan === undefined
+                ? "Select plan"
+                : subscription.plan.type === "free" || subscription.canceledAt !== undefined
+                ? `Upgrade to ${plan.title}`
+                : subscription.plan.code === plan.code
+                ? "Current plan"
+                : `Upgrade to ${plan.title}`}
+            </Button>
+          )}
         </div>
       </Form>
       <ul className="flex flex-col gap-2.5">
