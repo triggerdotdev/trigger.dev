@@ -356,7 +356,7 @@ function StatusDropdown({
                   <TooltipTrigger className="group flex w-full flex-col py-0">
                     <TaskRunStatusCombo status={item.value} iconClassName="animate-none" />
                   </TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={9}>
+                  <TooltipContent side="right" sideOffset={50}>
                     <Paragraph variant="extra-small">
                       {descriptionForTaskRunStatus(item.value)}
                     </Paragraph>

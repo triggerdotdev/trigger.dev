@@ -8,13 +8,12 @@ import {
   NoSymbolIcon,
   PauseCircleIcon,
   RectangleStackIcon,
-  StopIcon,
   TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { SnowflakeIcon } from "lucide-react";
+import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
@@ -41,9 +40,9 @@ export const filterableTaskRunStatuses = [
   "WAITING_FOR_DEPLOY",
   "DELAYED",
   "PENDING",
+  "WAITING_TO_RESUME",
   "EXECUTING",
   "RETRYING_AFTER_FAILURE",
-  "WAITING_TO_RESUME",
   "COMPLETED_SUCCESSFULLY",
   "CANCELED",
   "COMPLETED_WITH_ERRORS",
@@ -55,21 +54,21 @@ export const filterableTaskRunStatuses = [
 ] as const satisfies Readonly<Array<TaskRunStatus>>;
 
 const taskRunStatusDescriptions: Record<TaskRunStatus, string> = {
-  DELAYED: "Task has been delayed and is waiting to be executed",
-  PENDING: "Task is waiting to be executed",
-  WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing",
-  EXECUTING: "Task is currently being executed",
-  RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure",
-  WAITING_TO_RESUME: "Task has been frozen and is waiting to be resumed",
-  COMPLETED_SUCCESSFULLY: "Task has been successfully completed",
-  CANCELED: "Task has been canceled",
-  COMPLETED_WITH_ERRORS: "Task has failed with errors",
-  INTERRUPTED: "Task has failed because it was interrupted",
-  SYSTEM_FAILURE: "Task has failed due to a system failure",
-  PAUSED: "Task has been paused by the user",
-  CRASHED: "Task has crashed and won't be retried",
-  EXPIRED: "Task has surpassed its ttl and won't be executed",
-  TIMED_OUT: "Task has failed because it exceeded its maxDuration",
+  DELAYED: "Task has been delayed and is waiting to be executed.",
+  PENDING: "Task is waiting to be executed.",
+  WAITING_FOR_DEPLOY: "Task needs to be deployed first to start executing.",
+  EXECUTING: "Task is currently being executed.",
+  RETRYING_AFTER_FAILURE: "Task is being reattempted after a failure.",
+  WAITING_TO_RESUME: `You have used a "wait" function. When the wait is complete, the task will resume execution.`,
+  COMPLETED_SUCCESSFULLY: "Task has been successfully completed.",
+  CANCELED: "Task has been canceled.",
+  COMPLETED_WITH_ERRORS: "Task has failed with errors.",
+  INTERRUPTED: "Task has failed because it was interrupted.",
+  SYSTEM_FAILURE: "Task has failed due to a system failure.",
+  PAUSED: "Task has been paused by the user.",
+  CRASHED: "Task has crashed and won't be retried.",
+  EXPIRED: "Task has surpassed its ttl and won't be executed.",
+  TIMED_OUT: "Task has failed because it exceeded its maxDuration.",
 };
 
 export const QUEUED_STATUSES = [
@@ -126,7 +125,7 @@ export function TaskRunStatusIcon({
     case "EXECUTING":
       return <Spinner className={cn(runStatusClassNameColor(status), className)} />;
     case "WAITING_TO_RESUME":
-      return <SnowflakeIcon className={cn(runStatusClassNameColor(status), className)} />;
+      return <HourglassIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "RETRYING_AFTER_FAILURE":
       return <ArrowPathIcon className={cn(runStatusClassNameColor(status), className)} />;
     case "PAUSED":
@@ -165,7 +164,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "RETRYING_AFTER_FAILURE":
       return "text-pending";
     case "WAITING_TO_RESUME":
-      return "text-sky-300";
+      return "text-charcoal-500";
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
@@ -200,7 +199,7 @@ export function runStatusTitle(status: TaskRunStatus): string {
     case "EXECUTING":
       return "Executing";
     case "WAITING_TO_RESUME":
-      return "Frozen";
+      return "Waiting";
     case "RETRYING_AFTER_FAILURE":
       return "Reattempting";
     case "PAUSED":

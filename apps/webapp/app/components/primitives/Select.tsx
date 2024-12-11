@@ -482,7 +482,11 @@ export function SelectItem({
         <div className="grow truncate">{props.children || props.value}</div>
         {checkIcon}
         {shortcut && (
-          <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+          <ShortcutKey
+            className={cn("size-4 flex-none transition duration-0 group-hover:border-charcoal-600")}
+            shortcut={shortcut}
+            variant={"small"}
+          />
         )}
       </div>
     </Ariakit.SelectItem>
