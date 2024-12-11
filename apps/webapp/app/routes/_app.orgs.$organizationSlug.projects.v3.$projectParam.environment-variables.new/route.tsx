@@ -38,7 +38,6 @@ import { cn } from "~/utils/cn";
 import { ProjectParamSchema, v3BillingPath, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
-import dotenv from "dotenv";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
@@ -47,6 +46,49 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+
+// https://github.com/motdotla/dotenv/blob/master/lib/main.js
+// dotenv imports a bunch of stuff from node which gives annoying warnings when vite externalizes them
+// Not a real concern but if this function is all you're using, we can inline it
+function parseEnv(src: string) {
+  const LINE =
+    /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/gm;
+  const obj = {};
+
+  // Convert buffer to string
+  let lines = src.toString();
+
+  // Convert line breaks to same format
+  lines = lines.replace(/\r\n?/gm, "\n");
+
+  let match;
+  while ((match = LINE.exec(lines)) != null) {
+    const key = match[1];
+
+    // Default undefined or null to empty string
+    let value = match[2] || "";
+
+    // Remove whitespace
+    value = value.trim();
+
+    // Check if double quoted
+    const maybeQuote = value[0];
+
+    // Remove surrounding quotes
+    value = value.replace(/^(['"`])([\s\S]*)\1$/gm, "$2");
+
+    // Expand newlines if double quoted
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, "\n");
+      value = value.replace(/\\r/g, "\r");
+    }
+
+    // @ts-ignore
+    obj[key] = value;
+  }
+
+  return obj;
+}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -364,7 +406,7 @@ function VariableFields({
     let text = clipboardData.getData("text");
     if (!text) return;
 
-    const variables = dotenv.parse(text);
+    const variables = parseEnv(text);
     const keyValuePairs = Object.entries(variables).map(([key, value]) => ({ key, value }));
 
     //do the default paste

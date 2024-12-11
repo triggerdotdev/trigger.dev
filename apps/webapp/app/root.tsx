@@ -5,7 +5,7 @@ import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-type
 import { ExternalScripts } from "remix-utils/external-scripts";
 import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
-import tailwindStylesheetUrl from "~/tailwind.css";
+import tailwindStylesheetUrl from "~/tailwind.css?url";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
 import { HighlightInit } from "./components/HighlightInit";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
