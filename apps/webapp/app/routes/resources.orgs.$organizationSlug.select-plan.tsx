@@ -651,7 +651,8 @@ export function TierPro({
           <input type="hidden" name="planCode" value={plan.code} />
           <input type="hidden" name="callerPath" value={location.pathname} />
           {subscription?.plan !== undefined &&
-          subscription?.plan?.title === "Hobby" &&
+          subscription?.plan?.type === "paid" &&
+          subscription?.plan?.code !== plan.code &&
           subscription.canceledAt === undefined ? (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} key="upgrade">
               <DialogTrigger asChild>
