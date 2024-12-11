@@ -233,13 +233,14 @@ export class StandardMetadataManager implements RunMetadataManager {
       // Add the key to the special stream metadata object
       this.appendKey(`$$streams`, key);
       this.setKey("$$streamsVersion", this.streamsVersion);
+      this.setKey("$$streamsBaseUrl", this.streamsBaseUrl);
 
       await this.flush();
 
       const streamInstance = new MetadataStream({
         key,
         runId: this.runId,
-        iterator: $value[Symbol.asyncIterator](),
+        source: $value,
         baseUrl: this.streamsBaseUrl,
         headers: this.apiClient.getHeaders(),
         signal,

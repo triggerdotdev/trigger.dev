@@ -23,7 +23,6 @@ export default function TriggerButton({ accessToken }: { accessToken: string }) 
   >("openai-streaming", {
     accessToken,
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-    experimental_throttleInMs: 100,
   });
 
   const openWeatherReport = useCallback(() => {
