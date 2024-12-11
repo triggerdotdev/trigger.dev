@@ -209,6 +209,7 @@ export default function Page() {
             title="Unlock more team members"
             to={v3BillingPath(organization)}
             buttonLabel="Upgrade"
+            panelClassName="mt-4 max-w-sm"
           >
             <Paragraph variant="small">
               You've used all {limits.limit} of your available team members. Upgrade your plan to
