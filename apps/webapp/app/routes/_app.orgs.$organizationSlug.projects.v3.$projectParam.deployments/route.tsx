@@ -35,7 +35,11 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
-import { DeploymentStatus } from "~/components/runs/v3/DeploymentStatus";
+import {
+  DeploymentStatus,
+  deploymentStatuses,
+  deploymentStatusDescription,
+} from "~/components/runs/v3/DeploymentStatus";
 import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -120,7 +124,30 @@ export default function Page() {
                       <TableHeaderCell>Deploy</TableHeaderCell>
                       <TableHeaderCell>Env</TableHeaderCell>
                       <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell>Status</TableHeaderCell>
+                      <TableHeaderCell
+                        tooltip={
+                          <div className="flex flex-col divide-y divide-grid-dimmed">
+                            {deploymentStatuses.map((status) => (
+                              <div
+                                key={status}
+                                className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                              >
+                                <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                                  <DeploymentStatus status={status} isBuilt={false} />
+                                </div>
+                                <Paragraph
+                                  variant="extra-small"
+                                  className="!text-wrap text-text-dimmed"
+                                >
+                                  {deploymentStatusDescription(status)}
+                                </Paragraph>
+                              </div>
+                            ))}
+                          </div>
+                        }
+                      >
+                        Status
+                      </TableHeaderCell>
                       <TableHeaderCell>Tasks</TableHeaderCell>
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>

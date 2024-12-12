@@ -118,3 +118,34 @@ export function deploymentStatusTitle(status: WorkerDeploymentStatus, isBuilt: b
     }
   }
 }
+
+// PENDING and CANCELED are not used so are ommited from the UI
+export const deploymentStatuses: WorkerDeploymentStatus[] = [
+  "BUILDING",
+  "DEPLOYING",
+  "DEPLOYED",
+  "FAILED",
+  "TIMED_OUT",
+];
+
+export function deploymentStatusDescription(status: WorkerDeploymentStatus): string {
+  switch (status) {
+    case "PENDING":
+      return "The deployment is queued and waiting to be processed.";
+    case "BUILDING":
+      return "The code is being built and prepared for deployment.";
+    case "DEPLOYING":
+      return "The deployment is in progress and tasks are being indexed.";
+    case "DEPLOYED":
+      return "The deployment has completed successfully.";
+    case "CANCELED":
+      return "The deployment was manually canceled.";
+    case "FAILED":
+      return "The deployment encountered an error and could not complete.";
+    case "TIMED_OUT":
+      return "The deployment exceeded the maximum allowed time and was stopped.";
+    default: {
+      assertNever(status);
+    }
+  }
+}
