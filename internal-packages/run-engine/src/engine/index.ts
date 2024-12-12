@@ -56,7 +56,12 @@ import {
 } from "./executionSnapshots";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
-import { isDequeueableExecutionStatus, isExecuting, isFinalRunStatus } from "./statuses";
+import {
+  isCheckpointable,
+  isDequeueableExecutionStatus,
+  isExecuting,
+  isFinalRunStatus,
+} from "./statuses";
 import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
 
 const workerCatalog = {
@@ -1739,6 +1744,17 @@ export class RunEngine {
       }
 
       //todo check the status is checkpointable
+      if (!isCheckpointable(snapshot.executionStatus)) {
+        this.logger.error("Tried to createCheckpoint on a run in an invalid state", {
+          snapshot,
+        });
+
+        //check if the server should already be shutting down, if so return a result saying it can shutdown but that there's no checkpoint
+
+        //otherwise return a result saying it can't checkpoint with an error and execution status
+
+        return;
+      }
 
       //create a new execution snapshot, with the checkpoint
 

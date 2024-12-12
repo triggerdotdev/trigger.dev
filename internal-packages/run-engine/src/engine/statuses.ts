@@ -13,6 +13,18 @@ export function isExecuting(status: TaskRunExecutionStatus): boolean {
   return executingExecutionStatuses.includes(status);
 }
 
+export function isCheckpointable(status: TaskRunExecutionStatus): boolean {
+  const checkpointableStatuses: TaskRunExecutionStatus[] = [
+    //will allow checkpoint starts
+    "RUN_CREATED",
+    "QUEUED",
+    //executing
+    "EXECUTING",
+    "EXECUTING_WITH_WAITPOINTS",
+  ];
+  return checkpointableStatuses.includes(status);
+}
+
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
   const finalStatuses: TaskRunStatus[] = [
     "CANCELED",
