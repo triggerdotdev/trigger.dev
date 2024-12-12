@@ -230,13 +230,6 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
 
     try {
-      // Add the key to the special stream metadata object
-      this.appendKey(`$$streams`, key);
-      this.setKey("$$streamsVersion", this.streamsVersion);
-      this.setKey("$$streamsBaseUrl", this.streamsBaseUrl);
-
-      await this.flush();
-
       const streamInstance = new MetadataStream({
         key,
         runId: this.runId,
@@ -251,6 +244,13 @@ export class StandardMetadataManager implements RunMetadataManager {
 
       // Clean up when stream completes
       streamInstance.wait().finally(() => this.activeStreams.delete(key));
+
+      // Add the key to the special stream metadata object
+      this.appendKey(`$$streams`, key);
+      this.setKey("$$streamsVersion", this.streamsVersion);
+      this.setKey("$$streamsBaseUrl", this.streamsBaseUrl);
+
+      await this.flush();
 
       return streamInstance;
     } catch (error) {

@@ -8,7 +8,6 @@ import {
   type Message,
   type Row,
   type ShapeStreamInterface,
-  // @ts-ignore it's safe to import types from the client
 } from "@electric-sql/client";
 
 export type ZodShapeStreamOptions = {
@@ -26,7 +25,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
     url,
     headers: {
       ...options?.headers,
-      "x-trigger-electric-version": "0.8.1",
+      "x-trigger-electric-version": "1.0.0-beta.1",
     },
     fetchClient: options?.fetchClient,
     signal: options?.signal,
@@ -207,7 +206,7 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
 export class LineTransformStream extends TransformStream<string, string[]> {
   private buffer = "";
 
-  constructor(streamId: string) {
+  constructor() {
     super({
       transform: (chunk, controller) => {
         // Append the chunk to the buffer
@@ -221,14 +220,6 @@ export class LineTransformStream extends TransformStream<string, string[]> {
 
         // Filter out empty or whitespace-only lines
         const fullLines = lines.filter((line) => line.trim().length > 0);
-
-        console.log("LineTransformStream", {
-          chunk,
-          lines,
-          fullLines,
-          buffer: this.buffer,
-          streamId,
-        });
 
         // If we got any complete lines, emit them as an array
         if (fullLines.length > 0) {
