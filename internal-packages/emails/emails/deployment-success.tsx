@@ -8,6 +8,7 @@ export const AlertDeploymentSuccessEmailSchema = z.object({
   email: z.literal("alert-deployment-success"),
   version: z.string(),
   environment: z.string(),
+  organization: z.string(),
   shortCode: z.string(),
   deployedAt: z.date(),
   taskCount: z.number(),
@@ -17,6 +18,7 @@ export const AlertDeploymentSuccessEmailSchema = z.object({
 const previewDefaults = {
   version: "v1",
   environment: "production",
+  organization: "My Organization",
   shortCode: "abc123",
   deployedAt: new Date().toISOString(),
   taskCount: 3,
@@ -24,7 +26,7 @@ const previewDefaults = {
 };
 
 export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailSchema>) {
-  const { version, environment, shortCode, deployedAt, taskCount, deploymentLink } = {
+  const { version, environment, organization, shortCode, deployedAt, taskCount, deploymentLink } = {
     ...previewDefaults,
     ...props,
   };
@@ -32,7 +34,7 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
   return (
     <Html>
       <Head />
-      <Preview>{`Deployment ${version} [${environment}] succeeded`}</Preview>
+      <Preview>{`[${organization}] Deployment ${version} [${environment}] succeeded`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Text

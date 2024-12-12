@@ -27,6 +27,7 @@ export const AlertAttemptEmailSchema = z.object({
     stackTrace: z.string().optional(),
   }),
   attemptLink: z.string().url(),
+  organization: z.string(),
 });
 
 const previewDefaults = {
@@ -44,7 +45,16 @@ const previewDefaults = {
 };
 
 export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
-  const { taskIdentifier, fileName, exportName, version, environment, error, attemptLink } = {
+  const {
+    taskIdentifier,
+    fileName,
+    exportName,
+    version,
+    environment,
+    error,
+    attemptLink,
+    organization,
+  } = {
     ...previewDefaults,
     ...props,
   };
@@ -52,7 +62,7 @@ export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
   return (
     <Html>
       <Head />
-      <Preview>{`[${version}.${environment} ${taskIdentifier}] ${error.message}`}</Preview>
+      <Preview>{`${organization}: [${version}.${environment} ${taskIdentifier}] ${error.message}`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Text style={h1}>There's been an error on `{taskIdentifier}`</Text>
@@ -61,6 +71,7 @@ export default function Email(props: z.infer<typeof AlertAttemptEmailSchema>) {
           <Text style={paragraphTight}>Function: {exportName}()</Text>
           <Text style={paragraphTight}>Version: {version}</Text>
           <Text style={paragraphTight}>Environment: {environment}</Text>
+          <Text style={paragraphTight}>Organization: {organization}</Text>
 
           <Text style={paragraphLight}>{error.message}</Text>
           {error.stackTrace && (
