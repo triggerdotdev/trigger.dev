@@ -216,7 +216,7 @@ export class SpanPresenter extends BasePresenter {
 
     const metadata = run.metadata
       ? await prettyPrintPacket(run.metadata, run.metadataType, {
-          filteredKeys: ["$$streams", "$$streamsVersion"],
+          filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
         })
       : undefined;
 
