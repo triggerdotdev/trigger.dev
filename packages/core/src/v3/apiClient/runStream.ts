@@ -218,19 +218,15 @@ export class ElectricStreamSubscription implements StreamSubscription {
       .pipeThrough(
         new TransformStream({
           transform(chunk, controller) {
-            console.log("ElectricStreamSubscription chunk.value", chunk.value);
-
             controller.enqueue(chunk.value);
           },
         })
       )
-      .pipeThrough(new LineTransformStream(this.url))
+      .pipeThrough(new LineTransformStream())
       .pipeThrough(
         new TransformStream({
           transform(chunk, controller) {
             for (const line of chunk) {
-              console.log("ElectricStreamSubscription line", line);
-
               controller.enqueue(safeParseJSON(line));
             }
           },
@@ -281,12 +277,15 @@ export class VersionedStreamSubscriptionFactory implements StreamSubscriptionFac
     const version =
       typeof metadata.$$streamsVersion === "string" ? metadata.$$streamsVersion : "v1";
 
+    const $baseUrl =
+      typeof metadata.$$streamsBaseUrl === "string" ? metadata.$$streamsBaseUrl : baseUrl;
+
     if (version === "v1") {
-      return this.version1.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version1.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     if (version === "v2") {
-      return this.version2.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version2.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     throw new Error(`Unknown stream version: ${version}`);
