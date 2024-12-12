@@ -27,7 +27,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
   private waitForBufferInterval: number;
 
   constructor(private options: RelayRealtimeStreamsOptions) {
-    this.waitForBufferTimeout = options.waitForBufferTimeout ?? 5000;
+    this.waitForBufferTimeout = options.waitForBufferTimeout ?? 1200;
     this.waitForBufferInterval = options.waitForBufferInterval ?? 50;
 
     // Periodic cleanup
@@ -106,6 +106,7 @@ export class RelayRealtimeStreams implements StreamIngestor, StreamResponder {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "x-relay-realtime-streams": "true",
       },
     });
   }
