@@ -30,6 +30,7 @@ export const AlertRunEmailSchema = z.object({
     stackTrace: z.string().optional(),
   }),
   runLink: z.string().url(),
+  organization: z.string(),
 });
 
 type AlertRunEmailProps = z.infer<typeof AlertRunEmailSchema>;
@@ -49,6 +50,7 @@ const previewDefaults: AlertRunEmailProps = {
     stackTrace: "Error stack trace",
   },
   runLink: "https://trigger.dev",
+  organization: "my-organization",
 };
 
 export default function Email(props: AlertRunEmailProps) {
@@ -62,6 +64,7 @@ export default function Email(props: AlertRunEmailProps) {
     environment,
     error,
     runLink,
+    organization,
   } = {
     ...previewDefaults,
     ...props,
@@ -70,10 +73,11 @@ export default function Email(props: AlertRunEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>{`[${version}.${environment} ${taskIdentifier}] ${error.message}`}</Preview>
+      <Preview>{`${organization}: [${version}.${environment} ${taskIdentifier}] ${error.message}`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Text style={h1}>Run `{runId}` failed</Text>
+          <Text style={paragraphTight}>Organization: {organization}</Text>
           <Text style={paragraphTight}>Project: {project}</Text>
           <Text style={paragraphTight}>Task ID: {taskIdentifier}</Text>
           <Text style={paragraphTight}>Filename: {fileName}</Text>

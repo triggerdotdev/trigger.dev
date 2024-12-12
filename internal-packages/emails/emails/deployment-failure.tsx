@@ -18,6 +18,7 @@ export const AlertDeploymentFailureEmailSchema = z.object({
   email: z.literal("alert-deployment-failure"),
   version: z.string(),
   environment: z.string(),
+  organization: z.string(),
   shortCode: z.string(),
   failedAt: z.date(),
   error: z.object({
@@ -31,6 +32,7 @@ export const AlertDeploymentFailureEmailSchema = z.object({
 const previewDefaults = {
   version: "v1",
   environment: "production",
+  organization: "My Organization",
   shortCode: "abc123",
   failedAt: new Date().toISOString(),
   error: {
@@ -41,7 +43,7 @@ const previewDefaults = {
 };
 
 export default function Email(props: z.infer<typeof AlertDeploymentFailureEmailSchema>) {
-  const { version, environment, shortCode, failedAt, error, deploymentLink } = {
+  const { version, environment, organization, shortCode, failedAt, error, deploymentLink } = {
     ...previewDefaults,
     ...props,
   };
@@ -49,7 +51,7 @@ export default function Email(props: z.infer<typeof AlertDeploymentFailureEmailS
   return (
     <Html>
       <Head />
-      <Preview>{`Deployment ${version} [${environment}] failed: ${error.name}`}</Preview>
+      <Preview>{`[${organization}] Deployment ${version} [${environment}] failed: ${error.name}`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Text style={h1}>{`An error occurred deploying ${version} in ${environment}`}</Text>
