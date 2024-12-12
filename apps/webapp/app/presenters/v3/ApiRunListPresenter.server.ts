@@ -224,10 +224,15 @@ export class ApiRunListPresenter extends BasePresenter {
 
       const data: ListRunResponseItem[] = await Promise.all(
         results.runs.map(async (run) => {
-          const metadata = await parsePacket({
-            data: run.metadata ?? undefined,
-            dataType: run.metadataType,
-          });
+          const metadata = await parsePacket(
+            {
+              data: run.metadata ?? undefined,
+              dataType: run.metadataType,
+            },
+            {
+              filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
+            }
+          );
 
           return {
             id: run.friendlyId,

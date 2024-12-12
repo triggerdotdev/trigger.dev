@@ -1,6 +1,7 @@
 import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
 import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -16,7 +17,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return new Response("No body provided", { status: 400 });
   }
 
-  return v1RealtimeStreams.ingestData(request.body, $params.runId, $params.streamId);
+  return relayRealtimeStreams.ingestData(request.body, $params.runId, $params.streamId);
 }
 
 export const loader = createLoaderApiRoute(
@@ -51,7 +52,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, resource: run, authentication }) => {
-    return v1RealtimeStreams.streamResponse(
+    return relayRealtimeStreams.streamResponse(
       request,
       run.friendlyId,
       params.streamId,

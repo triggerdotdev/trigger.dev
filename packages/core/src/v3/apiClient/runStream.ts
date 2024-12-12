@@ -16,7 +16,12 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { AsyncIterableStream, createAsyncIterableReadable, zodShapeStream } from "./stream.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+  LineTransformStream,
+  zodShapeStream,
+} from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -209,13 +214,24 @@ export class ElectricStreamSubscription implements StreamSubscription {
   ) {}
 
   async subscribe(): Promise<ReadableStream<unknown>> {
-    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options).pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(safeParseJSON(chunk.value));
-        },
-      })
-    );
+    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options)
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            controller.enqueue(chunk.value);
+          },
+        })
+      )
+      .pipeThrough(new LineTransformStream())
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            for (const line of chunk) {
+              controller.enqueue(safeParseJSON(line));
+            }
+          },
+        })
+      );
   }
 }
 
@@ -261,12 +277,15 @@ export class VersionedStreamSubscriptionFactory implements StreamSubscriptionFac
     const version =
       typeof metadata.$$streamsVersion === "string" ? metadata.$$streamsVersion : "v1";
 
+    const $baseUrl =
+      typeof metadata.$$streamsBaseUrl === "string" ? metadata.$$streamsBaseUrl : baseUrl;
+
     if (version === "v1") {
-      return this.version1.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version1.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     if (version === "v2") {
-      return this.version2.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version2.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     throw new Error(`Unknown stream version: ${version}`);

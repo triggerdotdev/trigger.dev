@@ -81,6 +81,19 @@ if (process.env.HTTP_SERVER_DISABLED !== "true") {
   });
 
   if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
+    if (process.env.ALLOW_ONLY_REALTIME_API === "true") {
+      // Block all requests that do not start with /realtime
+      app.use((req, res, next) => {
+        // Make sure /healthcheck is still accessible
+        if (!req.url.startsWith("/realtime") && req.url !== "/healthcheck") {
+          res.status(404).send("Not Found");
+          return;
+        }
+
+        next();
+      });
+    }
+
     app.use(apiRateLimiter);
 
     app.all(

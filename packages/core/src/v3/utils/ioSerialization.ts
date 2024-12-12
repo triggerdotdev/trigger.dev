@@ -14,14 +14,18 @@ export type IOPacket = {
   dataType: string;
 };
 
-export async function parsePacket(value: IOPacket): Promise<any> {
+export type ParsePacketOptions = {
+  filteredKeys?: string[];
+};
+
+export async function parsePacket(value: IOPacket, options?: ParsePacketOptions): Promise<any> {
   if (!value.data) {
     return undefined;
   }
 
   switch (value.dataType) {
     case "application/json":
-      return JSON.parse(value.data);
+      return JSON.parse(value.data, makeSafeReviver(options));
     case "application/super+json":
       const { parse } = await loadSuperJSON();
 
@@ -394,6 +398,21 @@ function makeSafeReplacer(options?: ReplacerOptions) {
         obj[k] = v;
       });
       return obj;
+    }
+
+    return value;
+  };
+}
+
+function makeSafeReviver(options?: ReplacerOptions) {
+  if (!options) {
+    return undefined;
+  }
+
+  return function reviver(key: string, value: any) {
+    // Check if the key should be filtered out
+    if (options?.filteredKeys?.includes(key)) {
+      return undefined;
     }
 
     return value;

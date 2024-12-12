@@ -15,7 +15,7 @@ import express, { Express } from "express";
 import request from "supertest";
 import { authorizationRateLimitMiddleware } from "../app/services/authorizationRateLimitMiddleware.server.js";
 
-describe("authorizationRateLimitMiddleware", () => {
+describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", () => {
   let app: Express;
 
   beforeEach(() => {

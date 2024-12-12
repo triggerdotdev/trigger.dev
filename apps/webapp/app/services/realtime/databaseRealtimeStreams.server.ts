@@ -37,13 +37,14 @@ export class DatabaseRealtimeStreams implements StreamIngestor, StreamResponder 
   ): Promise<Response> {
     try {
       const textStream = stream.pipeThrough(new TextDecoderStream());
+
       const reader = textStream.getReader();
       let sequence = 0;
 
       while (true) {
         const { done, value } = await reader.read();
 
-        if (done) {
+        if (done || !value) {
           break;
         }
 
@@ -53,25 +54,13 @@ export class DatabaseRealtimeStreams implements StreamIngestor, StreamResponder 
           value,
         });
 
-        const chunks = value
-          .split("\n")
-          .filter((chunk) => chunk) // Remove empty lines
-          .map((line) => {
-            return {
-              sequence: sequence++,
-              value: line,
-            };
-          });
-
-        await this.options.prisma.realtimeStreamChunk.createMany({
-          data: chunks.map((chunk) => {
-            return {
-              runId,
-              key: streamId,
-              sequence: chunk.sequence,
-              value: chunk.value,
-            };
-          }),
+        await this.options.prisma.realtimeStreamChunk.create({
+          data: {
+            runId,
+            key: streamId,
+            sequence: sequence++,
+            value,
+          },
         });
       }
 
