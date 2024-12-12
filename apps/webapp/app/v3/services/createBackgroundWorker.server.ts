@@ -202,6 +202,15 @@ export async function createBackgroundTasks(
       });
 
       if (typeof taskQueue.concurrencyLimit === "number") {
+        logger.debug("CreateBackgroundWorkerService: updating concurrency limit", {
+          workerId: worker.id,
+          taskQueue,
+          orgId: environment.organizationId,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+          concurrencyLimit,
+          taskidentifier: task.id,
+        });
         await marqs?.updateQueueConcurrencyLimits(
           environment,
           taskQueue.name,

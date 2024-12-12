@@ -439,9 +439,16 @@ export class TriggerTaskService extends BaseService {
 
                 if (body.options?.queue) {
                   const concurrencyLimit =
-                    typeof body.options.queue.concurrencyLimit === "number"
-                      ? Math.max(0, body.options.queue.concurrencyLimit)
-                      : undefined;
+                    typeof body.options.queue?.concurrencyLimit === "number"
+                      ? Math.max(
+                          Math.min(
+                            body.options.queue.concurrencyLimit,
+                            environment.maximumConcurrencyLimit,
+                            environment.organization.maximumConcurrencyLimit
+                          ),
+                          0
+                        )
+                      : null;
 
                   let taskQueue = await tx.taskQueue.findFirst({
                     where: {
@@ -468,6 +475,16 @@ export class TriggerTaskService extends BaseService {
                       });
 
                       if (typeof taskQueue.concurrencyLimit === "number") {
+                        logger.debug("TriggerTaskService: updating concurrency limit", {
+                          runId: taskRun.id,
+                          friendlyId: taskRun.friendlyId,
+                          taskQueue,
+                          orgId: environment.organizationId,
+                          projectId: environment.projectId,
+                          existingConcurrencyLimit,
+                          concurrencyLimit,
+                          queueOptions: body.options?.queue,
+                        });
                         await marqs?.updateQueueConcurrencyLimits(
                           environment,
                           taskQueue.name,
