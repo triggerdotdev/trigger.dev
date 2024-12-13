@@ -1224,6 +1224,9 @@ export class RunEngine {
       if (waitpoint.status === "COMPLETED") {
         return {
           waitUntil: waitpoint.completedAt ?? new Date(),
+          waitpoint: {
+            id: waitpoint.id,
+          },
           ...executionResultFromSnapshot(snapshot),
         };
       }
@@ -1246,6 +1249,9 @@ export class RunEngine {
 
       return {
         waitUntil: date,
+        waitpoint: {
+          id: waitpoint.id,
+        },
         ...executionResultFromSnapshot(blockResult),
       };
     });

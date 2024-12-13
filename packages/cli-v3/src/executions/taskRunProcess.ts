@@ -1,4 +1,5 @@
 import {
+  CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
   ServerBackgroundWorker,
   TaskRunErrorCodes,
@@ -40,6 +41,7 @@ export type OnWaitForBatchMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
   "WAIT_FOR_BATCH"
 >;
+export type OnWaitMessage = InferSocketMessageSchema<typeof ExecutorToWorkerMessageCatalog, "WAIT">;
 
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
@@ -75,6 +77,7 @@ export class TaskRunProcess {
   public onWaitForDuration: Evt<OnWaitForDurationMessage> = new Evt();
   public onWaitForTask: Evt<OnWaitForTaskMessage> = new Evt();
   public onWaitForBatch: Evt<OnWaitForBatchMessage> = new Evt();
+  public onWait: Evt<OnWaitMessage> = new Evt();
 
   constructor(public readonly options: TaskRunProcessOptions) {}
 
@@ -189,6 +192,9 @@ export class TaskRunProcess {
         UNCAUGHT_EXCEPTION: async (message) => {
           logger.debug(`[${this.runId}] uncaught exception in task run process`, { ...message });
         },
+        WAIT: async (message) => {
+          this.onWait.post(message);
+        },
       },
     });
 
@@ -275,6 +281,37 @@ export class TaskRunProcess {
     }
 
     this._ipc?.send("WAIT_COMPLETED_NOTIFICATION", {});
+  }
+
+  waitpointCreated(waitId: string, waitpointId: string) {
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send waitpoint created notification"
+      );
+      return;
+    }
+
+    this._ipc?.send("WAITPOINT_CREATED", {
+      wait: {
+        id: waitId,
+      },
+      waitpoint: {
+        id: waitpointId,
+      },
+    });
+  }
+
+  waitpointCompleted(waitpoint: CompletedWaitpoint) {
+    if (!this._child?.connected || this._isBeingKilled || this._child.killed) {
+      console.error(
+        "Child process not connected or being killed, can't send waitpoint completed notification"
+      );
+      return;
+    }
+
+    this._ipc?.send("WAITPOINT_COMPLETED", {
+      waitpoint,
+    });
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {

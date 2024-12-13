@@ -47,7 +47,7 @@ export const WaitpointType = {
 
 export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 
-const CompletedWaitpoint = z.object({
+export const CompletedWaitpoint = z.object({
   id: z.string(),
   type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
   completedAt: z.coerce.date(),
@@ -60,6 +60,8 @@ const CompletedWaitpoint = z.object({
   outputType: z.string().optional(),
   outputIsError: z.boolean(),
 });
+
+export type CompletedWaitpoint = z.infer<typeof CompletedWaitpoint>;
 
 const ExecutionSnapshot = z.object({
   id: z.string(),
@@ -169,6 +171,9 @@ export const WaitForDurationResult = z
         Use this date to determine when to continue.
     */
     waitUntil: z.coerce.date(),
+    waitpoint: z.object({
+      id: z.string(),
+    }),
   })
   .and(ExecutionResult);
 export type WaitForDurationResult = z.infer<typeof WaitForDurationResult>;

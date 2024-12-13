@@ -414,6 +414,12 @@ const zodIpc = new ZodIpcConnection({
     FLUSH: async ({ timeoutInMs }, sender) => {
       await flushAll(timeoutInMs);
     },
+    WAITPOINT_CREATED: async ({ wait, waitpoint }) => {
+      managedWorkerRuntime.associateWaitWithWaitpoint(wait.id, waitpoint.id);
+    },
+    WAITPOINT_COMPLETED: async ({ waitpoint }) => {
+      managedWorkerRuntime.completeWaitpoints([waitpoint]);
+    },
   },
 });
 
@@ -461,7 +467,7 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   console.log(`Flushed runMetadata in ${duration}ms`);
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager();
+const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc);
 
 runtime.setGlobalRuntimeManager(managedWorkerRuntime);
 

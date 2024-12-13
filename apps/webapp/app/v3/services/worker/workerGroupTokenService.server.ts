@@ -16,6 +16,7 @@ import {
   StartRunAttemptResult,
   ExecutionResult,
   MachinePreset,
+  WaitForDurationResult,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
@@ -597,6 +598,22 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     completion: TaskRunExecutionResult;
   }): Promise<CompleteRunAttemptResult> {
     return await this._engine.completeRunAttempt({ runId, snapshotId, completion });
+  }
+
+  async waitForDuration({
+    runId,
+    snapshotId,
+    date,
+  }: {
+    runId: string;
+    snapshotId: string;
+    date: Date;
+  }): Promise<WaitForDurationResult> {
+    return await this._engine.waitForDuration({ runId, snapshotId, date });
+  }
+
+  async getLatestSnapshot({ runId }: { runId: string }) {
+    return await this._engine.getRunExecutionData({ runId });
   }
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
