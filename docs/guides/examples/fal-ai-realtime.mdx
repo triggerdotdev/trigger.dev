@@ -28,7 +28,6 @@ This video walks through the process of creating this task in a Next.js project.
 - [Trigger.dev Realtime](/realtime/overview) to stream updates to the frontend
 - [Trigger.dev](https://cloud.trigger.dev) for task processing
 - [Fal.ai](https://fal.ai/) for AI image generation
-- [Cloudflare R2](https://r2.cloudflarestorage.com/) for storing the generated image
 
 <Note>You will need all of these services to run this project.</Note>
 
@@ -46,7 +45,7 @@ Check out and fork the full code in our [nextjs-realtime-fal-demo repo
 
 ## Task code
 
-This task converts an image to a cartoon using fal AI, and uploads the result to Cloudflare R2.
+This task converts an image to a cartoon using fal AI.
 
 ```ts trigger/fal-ai-image-from-prompt-realtime.ts
 import * as fal from "@fal-ai/serverless-client";
