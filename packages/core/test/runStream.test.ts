@@ -103,6 +103,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
       abortController: new AbortController(),
@@ -143,6 +144,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: true,
       abortController: new AbortController(),
@@ -196,6 +198,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createDelayedTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory: new TestStreamSubscriptionFactory(),
       closeOnComplete: false,
       abortController: new AbortController(),
@@ -249,6 +252,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),
     });
@@ -339,6 +343,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),
     });
@@ -419,6 +424,7 @@ describe("RunSubscription", () => {
 
     const subscription = new RunSubscription({
       runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),
     });

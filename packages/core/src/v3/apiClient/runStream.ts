@@ -16,7 +16,12 @@ import {
 } from "../utils/ioSerialization.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
-import { AsyncIterableStream, createAsyncIterableReadable, zodShapeStream } from "./stream.js";
+import {
+  AsyncIterableStream,
+  createAsyncIterableReadable,
+  LineTransformStream,
+  zodShapeStream,
+} from "./stream.js";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -111,11 +116,14 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
     { once: true }
   );
 
+  const runStreamInstance = zodShapeStream(SubscribeRunRawShape, url, {
+    ...options,
+    signal: abortController.signal,
+  });
+
   const $options: RunSubscriptionOptions = {
-    runShapeStream: zodShapeStream(SubscribeRunRawShape, url, {
-      ...options,
-      signal: abortController.signal,
-    }),
+    runShapeStream: runStreamInstance.stream,
+    stopRunShapeStream: runStreamInstance.stop,
     streamFactory: new VersionedStreamSubscriptionFactory(version1, version2),
     abortController,
     ...options,
@@ -209,13 +217,24 @@ export class ElectricStreamSubscription implements StreamSubscription {
   ) {}
 
   async subscribe(): Promise<ReadableStream<unknown>> {
-    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options).pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(safeParseJSON(chunk.value));
-        },
-      })
-    );
+    return zodShapeStream(SubscribeRealtimeStreamChunkRawShape, this.url, this.options)
+      .stream.pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            controller.enqueue(chunk.value);
+          },
+        })
+      )
+      .pipeThrough(new LineTransformStream())
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            for (const line of chunk) {
+              controller.enqueue(safeParseJSON(line));
+            }
+          },
+        })
+      );
   }
 }
 
@@ -261,12 +280,15 @@ export class VersionedStreamSubscriptionFactory implements StreamSubscriptionFac
     const version =
       typeof metadata.$$streamsVersion === "string" ? metadata.$$streamsVersion : "v1";
 
+    const $baseUrl =
+      typeof metadata.$$streamsBaseUrl === "string" ? metadata.$$streamsBaseUrl : baseUrl;
+
     if (version === "v1") {
-      return this.version1.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version1.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     if (version === "v2") {
-      return this.version2.createSubscription(metadata, runId, streamKey, baseUrl);
+      return this.version2.createSubscription(metadata, runId, streamKey, $baseUrl);
     }
 
     throw new Error(`Unknown stream version: ${version}`);
@@ -279,12 +301,12 @@ export interface RunShapeProvider {
 
 export type RunSubscriptionOptions = RunShapeStreamOptions & {
   runShapeStream: ReadableStream<SubscribeRunRawShape>;
+  stopRunShapeStream: () => void;
   streamFactory: StreamSubscriptionFactory;
   abortController: AbortController;
 };
 
 export class RunSubscription<TRunTypes extends AnyRunTypes> {
-  private unsubscribeShape?: () => void;
   private stream: AsyncIterableStream<RunShape<TRunTypes>>;
   private packetCache = new Map<string, any>();
   private _closeOnComplete: boolean;
@@ -309,9 +331,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
             this._isRunComplete &&
             !this.options.abortController.signal.aborted
           ) {
-            console.log("Closing stream because run is complete");
-
-            this.options.abortController.abort();
+            this.options.stopRunShapeStream();
           }
         },
       },
@@ -323,7 +343,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
     if (!this.options.abortController.signal.aborted) {
       this.options.abortController.abort();
     }
-    this.unsubscribeShape?.();
+    this.options.stopRunShapeStream();
   }
 
   [Symbol.asyncIterator](): AsyncIterator<RunShape<TRunTypes>> {

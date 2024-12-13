@@ -108,7 +108,6 @@ export const openaiStreaming = schemaTask({
     });
 
     const stream = await metadata.stream("openai", result.fullStream);
-    await metadata.stream("openaiText", result.textStream);
   },
 });
 
