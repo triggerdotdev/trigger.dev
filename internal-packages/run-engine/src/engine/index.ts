@@ -363,8 +363,8 @@ export class RunEngine {
           if (queue) {
             const concurrencyLimit =
               typeof queue.concurrencyLimit === "number"
-                ? Math.max(0, queue.concurrencyLimit)
-                : undefined;
+                ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
+                : null;
 
             let taskQueue = await prisma.taskQueue.findFirst({
               where: {
@@ -373,15 +373,33 @@ export class RunEngine {
               },
             });
 
+            const existingConcurrencyLimit =
+              typeof taskQueue?.concurrencyLimit === "number"
+                ? taskQueue.concurrencyLimit
+                : undefined;
+
             if (taskQueue) {
+              if (existingConcurrencyLimit !== concurrencyLimit) {
                 taskQueue = await prisma.taskQueue.update({
                   where: {
                     id: taskQueue.id,
                   },
                   data: {
-                    concurrencyLimit,
+                    concurrencyLimit:
+                      typeof concurrencyLimit === "number" ? concurrencyLimit : null,
                   },
                 });
+
+                if (typeof taskQueue.concurrencyLimit === "number") {
+                  await this.runQueue.updateQueueConcurrencyLimits(
+                    environment,
+                    taskQueue.name,
+                    taskQueue.concurrencyLimit
+                  );
+                } else {
+                  await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                }
+              }
             } else {
               taskQueue = await prisma.taskQueue.create({
                 data: {
@@ -393,16 +411,14 @@ export class RunEngine {
                   type: "NAMED",
                 },
               });
-            }
 
-            if (typeof taskQueue.concurrencyLimit === "number") {
-              await this.runQueue.updateQueueConcurrencyLimits(
-                environment,
-                taskQueue.name,
-                taskQueue.concurrencyLimit
-              );
-            } else {
-              await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
+              if (typeof taskQueue.concurrencyLimit === "number") {
+                await this.runQueue.updateQueueConcurrencyLimits(
+                  environment,
+                  taskQueue.name,
+                  taskQueue.concurrencyLimit
+                );
+              }
             }
           }
 
