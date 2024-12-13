@@ -16,25 +16,40 @@ export type ZodShapeStreamOptions = {
   signal?: AbortSignal;
 };
 
+export type ZodShapeStreamInstance<TShapeSchema extends z.ZodTypeAny> = {
+  stream: AsyncIterableStream<z.output<TShapeSchema>>;
+  stop: () => void;
+};
+
 export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   schema: TShapeSchema,
   url: string,
   options?: ZodShapeStreamOptions
-) {
-  const stream = new ShapeStream<z.input<TShapeSchema>>({
+): ZodShapeStreamInstance<TShapeSchema> {
+  const abortController = new AbortController();
+
+  options?.signal?.addEventListener(
+    "abort",
+    () => {
+      abortController.abort();
+    },
+    { once: true }
+  );
+
+  const shapeStream = new ShapeStream({
     url,
     headers: {
       ...options?.headers,
       "x-trigger-electric-version": "1.0.0-beta.1",
     },
     fetchClient: options?.fetchClient,
-    signal: options?.signal,
+    signal: abortController.signal,
   });
 
-  const readableShape = new ReadableShapeStream(stream);
+  const readableShape = new ReadableShapeStream(shapeStream);
 
-  return readableShape.stream.pipeThrough(
-    new TransformStream({
+  const stream = readableShape.stream.pipeThrough(
+    new TransformStream<unknown, z.output<TShapeSchema>>({
       async transform(chunk, controller) {
         const result = schema.safeParse(chunk);
 
@@ -46,6 +61,14 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
       },
     })
   );
+
+  return {
+    stream: stream as AsyncIterableStream<z.output<TShapeSchema>>,
+    stop: () => {
+      console.log("Stopping zodShapeStream with abortController.abort()");
+      abortController.abort();
+    },
+  };
 }
 
 export type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
@@ -104,6 +127,11 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
   readonly #currentState: Map<string, T> = new Map();
   readonly #changeStream: AsyncIterableStream<T>;
   #error: FetchError | false = false;
+  #unsubscribe?: () => void;
+
+  stop() {
+    this.#unsubscribe?.();
+  }
 
   constructor(stream: ShapeStreamInterface<T>) {
     this.#stream = stream;
@@ -111,7 +139,7 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     // Create the source stream that will receive messages
     const source = new ReadableStream<Message<T>[]>({
       start: (controller) => {
-        this.#stream.subscribe(
+        this.#unsubscribe = this.#stream.subscribe(
           (messages) => controller.enqueue(messages),
           this.#handleError.bind(this)
         );
@@ -121,41 +149,44 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     // Create the transformed stream that processes messages and emits complete rows
     this.#changeStream = createAsyncIterableStream(source, {
       transform: (messages, controller) => {
-        messages.forEach((message) => {
+        const updatedKeys = new Set<string>();
+
+        for (const message of messages) {
           if (isChangeMessage(message)) {
+            const key = message.key;
             switch (message.headers.operation) {
               case "insert": {
-                this.#currentState.set(message.key, message.value);
-                controller.enqueue(message.value);
+                // New row entirely
+                this.#currentState.set(key, message.value);
+                updatedKeys.add(key);
                 break;
               }
               case "update": {
-                const existingRow = this.#currentState.get(message.key);
-                if (existingRow) {
-                  const updatedRow = {
-                    ...existingRow,
-                    ...message.value,
-                  };
-                  this.#currentState.set(message.key, updatedRow);
-                  controller.enqueue(updatedRow);
-                } else {
-                  this.#currentState.set(message.key, message.value);
-                  controller.enqueue(message.value);
-                }
+                // Merge updates into existing row if any, otherwise treat as new
+                const existingRow = this.#currentState.get(key);
+                const updatedRow = existingRow
+                  ? { ...existingRow, ...message.value }
+                  : message.value;
+                this.#currentState.set(key, updatedRow);
+                updatedKeys.add(key);
                 break;
               }
             }
-          }
-
-          if (isControlMessage(message)) {
-            switch (message.headers.control) {
-              case "must-refetch":
-                this.#currentState.clear();
-                this.#error = false;
-                break;
+          } else if (isControlMessage(message)) {
+            if (message.headers.control === "must-refetch") {
+              this.#currentState.clear();
+              this.#error = false;
             }
           }
-        });
+        }
+
+        // Now enqueue only one updated row per key, after all messages have been processed.
+        for (const key of updatedKeys) {
+          const finalRow = this.#currentState.get(key);
+          if (finalRow) {
+            controller.enqueue(finalRow);
+          }
+        }
       },
     });
   }

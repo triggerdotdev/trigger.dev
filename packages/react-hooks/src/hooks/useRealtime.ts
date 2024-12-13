@@ -109,10 +109,13 @@ export function useRealtimeRun<TTask extends AnyTask>(
     }
   }, [runId, mutateRun, abortControllerRef, apiClient, setError]);
 
+  const hasCalledOnCompleteRef = useRef(false);
+
   // Effect to handle onComplete callback
   useEffect(() => {
-    if (isComplete && options?.onComplete && run) {
+    if (isComplete && run && options?.onComplete && !hasCalledOnCompleteRef.current) {
       options.onComplete(run, error);
+      hasCalledOnCompleteRef.current = true;
     }
   }, [isComplete, run, error, options?.onComplete]);
 
@@ -261,10 +264,13 @@ export function useRealtimeRunWithStreams<
     }
   }, [runId, mutateRun, mutateStreams, streamsRef, abortControllerRef, apiClient, setError]);
 
+  const hasCalledOnCompleteRef = useRef(false);
+
   // Effect to handle onComplete callback
   useEffect(() => {
-    if (isComplete && options?.onComplete && run) {
+    if (isComplete && run && options?.onComplete && !hasCalledOnCompleteRef.current) {
       options.onComplete(run, error);
+      hasCalledOnCompleteRef.current = true;
     }
   }, [isComplete, run, error, options?.onComplete]);
 
@@ -593,7 +599,7 @@ async function processRealtimeRunWithStreams<
       nextStreamData[type] = [...(existingDataRef.current[type] || []), ...chunks];
     }
 
-    await mutateStreamData(nextStreamData);
+    mutateStreamData(nextStreamData);
   }, throttleInMs);
 
   for await (const part of subscription.withStreams<TStreams>()) {
