@@ -33,7 +33,11 @@ export class RuntimeAPI {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date));
   }
 
-  public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
+  public waitForTask(params: {
+    id: string;
+    internalId: string;
+    ctx: TaskRunContext;
+  }): Promise<TaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
   }
 

@@ -92,6 +92,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
           if (
             existingRun.associatedWaitpoint?.status === "PENDING" &&
             body.options?.resumeParentOnCompletion &&
+            // FIXME: This is currently the friendly ID
             body.options?.parentRunId
           ) {
             await this._engine.blockRunWithWaitpoint({
@@ -164,7 +165,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       //todo we will pass in the `parentRun` and `resumeParentOnCompletion`
       const parentRun = body.options?.parentRunId
         ? await this._prisma.taskRun.findFirst({
-            where: { id: body.options.parentRunId },
+            where: { friendlyId: body.options.parentRunId },
           })
         : undefined;
 

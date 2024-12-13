@@ -1086,6 +1086,7 @@ export class RunEngine {
           },
           run: {
             id: run.friendlyId,
+            internalId: run.id,
             payload: run.payload,
             payloadType: run.payloadType,
             createdAt: run.createdAt,

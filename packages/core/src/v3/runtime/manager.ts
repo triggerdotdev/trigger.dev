@@ -8,7 +8,11 @@ export interface RuntimeManager {
   disable(): void;
   waitUntil(date: Date): Promise<void>;
   waitForDuration(ms: number): Promise<void>;
-  waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult>;
+  waitForTask(params: {
+    id: string;
+    internalId?: string;
+    ctx: TaskRunContext;
+  }): Promise<TaskRunExecutionResult>;
   waitForBatch(params: {
     id: string;
     runs: string[];
