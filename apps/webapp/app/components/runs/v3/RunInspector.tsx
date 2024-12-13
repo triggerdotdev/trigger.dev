@@ -121,7 +121,7 @@ export function RunInspector({
           />
         )}
       </div>
-      <div className="px-3">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <TabContainer>
           <TabButton
             isActive={!tab || tab === "overview"}
