@@ -1220,7 +1220,8 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
     }
   );
 
-  return handle as any as RunHandleFromTypes<TRunTypes>;
+  // @ts-expect-error
+  return handle as RunHandleFromTypes<TRunTypes>;
 }
 
 async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(

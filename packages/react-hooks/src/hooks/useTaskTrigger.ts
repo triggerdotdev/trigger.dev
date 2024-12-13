@@ -99,8 +99,8 @@ export function useTaskTrigger<TTask extends AnyTask>(
       mutation.trigger({ payload, options });
     },
     isLoading: mutation.isMutating,
-    // FIXME: This is a temporary workaround to avoid type errors
-    handle: mutation.data as any as RunHandleFromTypes<InferRunTypes<TTask>>,
+    // @ts-expect-error
+    handle: mutation.data as RunHandleFromTypes<InferRunTypes<TTask>>,
     error: mutation.error,
   };
 }
