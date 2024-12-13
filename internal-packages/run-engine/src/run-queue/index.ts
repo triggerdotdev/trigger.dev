@@ -38,7 +38,6 @@ export type RunQueueOptions = {
   windowSize?: number;
   queuePriorityStrategy: RunQueuePriorityStrategy;
   envQueuePriorityStrategy: RunQueuePriorityStrategy;
-  enableRebalancing?: boolean;
   verbose?: boolean;
   logger: Logger;
   retryOptions?: RetryOptions;
