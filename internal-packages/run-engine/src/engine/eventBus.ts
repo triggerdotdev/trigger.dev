@@ -54,10 +54,15 @@ export type EventBusEvents = {
       run: {
         id: string;
         friendlyId: string;
+        spanId: string;
         attemptNumber: number;
         queue: string;
         traceContext: Record<string, string | undefined>;
         taskIdentifier: string;
+        baseCostInCents: number;
+      };
+      organization: {
+        id: string;
       };
       environment: AuthenticatedEnvironment;
       retryAt: Date;
@@ -68,12 +73,12 @@ export type EventBusEvents = {
       time: Date;
       run: {
         id: string;
+        friendlyId: string;
         spanId: string;
         error: TaskRunError;
       };
     },
   ];
-  //todo send socket message to the worker
   workerNotification: [
     {
       time: Date;

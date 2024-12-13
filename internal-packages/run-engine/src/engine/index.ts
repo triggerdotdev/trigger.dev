@@ -1360,6 +1360,7 @@ export class RunEngine {
           time: new Date(),
           run: {
             id: run.id,
+            friendlyId: run.friendlyId,
             spanId: run.spanId,
             error,
           },
@@ -2216,6 +2217,11 @@ export class RunEngine {
               queue: run.queue,
               taskIdentifier: run.taskIdentifier,
               traceContext: run.traceContext as Record<string, string | undefined>,
+              baseCostInCents: run.baseCostInCents,
+              spanId: run.spanId,
+            },
+            organization: {
+              id: run.runtimeEnvironment.organizationId,
             },
             environment: run.runtimeEnvironment,
             retryAt,
