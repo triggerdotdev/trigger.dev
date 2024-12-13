@@ -12,3 +12,25 @@ export async function updateEnvConcurrencyLimits(environment: AuthenticatedEnvir
   ]);
 }
 
+/** Updates MARQS and the RunQueue limits for a queue */
+export async function updateQueueConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  concurrency: number
+) {
+  await Promise.allSettled([
+    marqs?.updateQueueConcurrencyLimits(environment, queueName, concurrency),
+    engine.runQueue.updateQueueConcurrencyLimits(environment, queueName, concurrency),
+  ]);
+}
+
+/** Removes MARQS and the RunQueue limits for a queue */
+export async function removeQueueConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string
+) {
+  await Promise.allSettled([
+    marqs?.removeQueueConcurrencyLimits(environment, queueName),
+    engine.runQueue.removeQueueConcurrencyLimits(environment, queueName),
+  ]);
+}

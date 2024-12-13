@@ -16,7 +16,11 @@ import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskSched
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { clampMaxDuration } from "../utils/maxDuration";
-import { updateEnvConcurrencyLimits } from "../runQueue.server";
+import {
+  removeQueueConcurrencyLimits,
+  updateEnvConcurrencyLimits,
+  updateQueueConcurrencyLimits,
+} from "../runQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -203,13 +207,9 @@ export async function createBackgroundTasks(
       });
 
       if (typeof taskQueue.concurrencyLimit === "number") {
-        await marqs?.updateQueueConcurrencyLimits(
-          environment,
-          taskQueue.name,
-          taskQueue.concurrencyLimit
-        );
+        await updateQueueConcurrencyLimits(environment, taskQueue.name, taskQueue.concurrencyLimit);
       } else {
-        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+        await removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
