@@ -1,7 +1,7 @@
 ---
 title: "Generate an image from a prompt using Fal.ai and Trigger.dev Realtime"
 sidebarTitle: "Fal.ai with Realtime"
-description: "This example task generates an image from a prompt using Fal.ai and shows the progress of the task on the frontend using Trigger.dev Realtime."
+description: "This example project generates an image from a prompt using Fal.ai and shows the progress of the task on the frontend using Trigger.dev Realtime."
 ---
 
 ## Walkthrough
@@ -9,14 +9,40 @@ description: "This example task generates an image from a prompt using Fal.ai an
 This video walks through the process of creating this task in a Next.js project.
 
 <div className="w-full h-full aspect-video mb-3">
-  <iframe width="100%" height="100%" src="https://www.youtube.com/embed/BWZqYfUaigg?si=XpqVUEIf1j4bsYZ4" title="Trigger.dev walkthrough" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen/>
+  <iframe
+    width="100%"
+    height="100%"
+    src="https://www.youtube.com/embed/BWZqYfUaigg?si=XpqVUEIf1j4bsYZ4"
+    title="Trigger.dev walkthrough"
+    frameborder="0"
+    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen
+  />
 </div>
 
-## Prerequisites
+## Tech stack
 
-- An existing project
-- A [Trigger.dev account](https://cloud.trigger.dev) with Trigger.dev [initialized in your project](/quick-start)
-- A [Fal.ai](https://fal.ai/) account
+- Next.js using the App Router for the frontend
+- Trigger tasks from the frontend using our [React hooks](/frontend/react-hooks)
+- [Trigger.dev Realtime](/realtime/overview) to stream updates to the frontend
+- [Trigger.dev](https://cloud.trigger.dev) for task processing
+- [Fal.ai](https://fal.ai/) for AI image generation
+- [Cloudflare R2](https://r2.cloudflarestorage.com/) for storing the generated image
+
+<Note>You will need all of these services to run this project.</Note>
+
+## GitHub Repo
+
+Check out and fork the full code in our [nextjs-realtime-fal-demo repo
+](https://github.com/triggerdotdev/nextjs-realtime-fal-demo).
+
+<Note>
+  To run the project and tasks locally, add your API keys to an `.env` file, and update the project
+  ID in the `trigger.config.ts` file to your project ID. To run the project in production, set the
+  `TRIGGER_API_KEY` environment variable to your project API key, and update the environment
+  variables in the Trigger.dev dashboard.
+</Note>
 
 ## Task code
 
