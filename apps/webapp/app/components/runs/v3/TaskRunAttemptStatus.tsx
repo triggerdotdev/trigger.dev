@@ -2,15 +2,14 @@ import {
   CheckCircleIcon,
   ClockIcon,
   NoSymbolIcon,
-  PauseCircleIcon,
   RectangleStackIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
-import { TaskRunAttemptStatus } from "~/database-types";
 import assertNever from "assert-never";
-import { SnowflakeIcon } from "lucide-react";
+import { HourglassIcon, SnowflakeIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
 
 export const allTaskRunAttemptStatuses = Object.values(
@@ -65,7 +64,7 @@ export function TaskRunAttemptStatusIcon({
     case "EXECUTING":
       return <Spinner className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "PAUSED":
-      return <SnowflakeIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
+      return <HourglassIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "FAILED":
       return <XCircleIcon className={cn(runAttemptStatusClassNameColor(status), className)} />;
     case "CANCELED":
@@ -91,7 +90,7 @@ export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus
     case "EXECUTING":
       return "text-pending";
     case "PAUSED":
-      return "text-sky-300";
+      return "text-charcoal-500";
     case "FAILED":
       return "text-error";
     case "CANCELED":
@@ -117,7 +116,7 @@ export function runAttemptStatusTitle(status: ExtendedTaskAttemptStatus | null):
     case "EXECUTING":
       return "Executing";
     case "PAUSED":
-      return "Frozen";
+      return "Waiting";
     case "FAILED":
       return "Failed";
     case "CANCELED":
