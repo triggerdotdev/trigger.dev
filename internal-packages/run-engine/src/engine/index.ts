@@ -131,7 +131,6 @@ export class RunEngine {
       queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
       envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      enableRebalancing: false,
       logger: new Logger("RunQueue", "warn"),
       redis: options.redis,
       retryOptions: options.queue?.retryOptions,

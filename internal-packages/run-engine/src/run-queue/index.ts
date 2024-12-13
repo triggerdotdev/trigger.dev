@@ -5,12 +5,14 @@ import {
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
 import { Logger } from "@trigger.dev/core/logger";
-import { flattenAttributes } from "@trigger.dev/core/v3";
+import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
+import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
 import {
   attributesFromAuthenticatedEnv,
   MinimalAuthenticatedEnvironment,
 } from "../shared/index.js";
+import { RunQueueShortKeyProducer } from "./keyProducer.js";
 import {
   InputPayload,
   OutputPayload,
@@ -19,7 +21,6 @@ import {
   RunQueueKeyProducer,
   RunQueuePriorityStrategy,
 } from "./types.js";
-import { RunQueueShortKeyProducer } from "./keyProducer.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
@@ -49,13 +50,6 @@ type DequeuedMessage = {
   message: OutputPayload;
 };
 
-/**
- * RunQueue – the queue that's used to process runs
- */
-
-import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
-import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
-
 const defaultRetrySettings = {
   maxAttempts: 12,
   factor: 2,
@@ -64,6 +58,9 @@ const defaultRetrySettings = {
   randomize: true,
 };
 
+/**
+ * RunQueue – the queue that's used to process runs
+ */
 export class RunQueue {
   private retryOptions: RetryOptions;
   private subscriber: Redis;
