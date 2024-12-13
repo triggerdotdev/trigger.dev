@@ -169,11 +169,8 @@ export default function Page() {
                         );
                         const isSelected = deploymentParam === deployment.shortCode;
                         return (
-                          <TableRow
-                            key={deployment.id}
-                            className={cn("group", isSelected ? "bg-grid-dimmed" : undefined)}
-                          >
-                            <TableCell to={path}>
+                          <TableRow key={deployment.id} className="group" isSelected={isSelected}>
+                            <TableCell to={path} isSelected={isSelected}>
                               <div className="flex items-center gap-2">
                                 <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (
@@ -181,30 +178,32 @@ export default function Page() {
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} isSelected={isSelected}>
                               <EnvironmentLabel
                                 environment={deployment.environment}
                                 userName={usernameForEnv}
                               />
                             </TableCell>
-                            <TableCell to={path}>{deployment.version}</TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} isSelected={isSelected}>
+                              {deployment.version}
+                            </TableCell>
+                            <TableCell to={path} isSelected={isSelected}>
                               <DeploymentStatus
                                 status={deployment.status}
                                 isBuilt={deployment.isBuilt}
                               />
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} isSelected={isSelected}>
                               {deployment.tasksCount !== null ? deployment.tasksCount : "–"}
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} isSelected={isSelected}>
                               {deployment.deployedAt ? (
                                 <DateTime date={deployment.deployedAt} />
                               ) : (
                                 "–"
                               )}
                             </TableCell>
-                            <TableCell to={path}>
+                            <TableCell to={path} isSelected={isSelected}>
                               {deployment.deployedBy ? (
                                 <div className="flex items-center gap-1">
                                   <UserAvatar
@@ -224,7 +223,11 @@ export default function Page() {
                                 "–"
                               )}
                             </TableCell>
-                            <DeploymentActionsCell deployment={deployment} path={path} />
+                            <DeploymentActionsCell
+                              deployment={deployment}
+                              path={path}
+                              isSelected={isSelected}
+                            />
                           </TableRow>
                         );
                       })
@@ -309,9 +312,11 @@ function CreateDeploymentInstructions() {
 function DeploymentActionsCell({
   deployment,
   path,
+  isSelected,
 }: {
   deployment: DeploymentListItem;
   path: string;
+  isSelected: boolean;
 }) {
   const location = useLocation();
   const project = useProject();
@@ -320,12 +325,17 @@ function DeploymentActionsCell({
   const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
 
   if (!canRollback && !canRetryIndexing) {
-    return <TableCell to={path}>{""}</TableCell>;
+    return (
+      <TableCell to={path} isSelected={isSelected}>
+        {""}
+      </TableCell>
+    );
   }
 
   return (
     <TableCellMenu
       isSticky
+      isSelected={isSelected}
       popoverContent={
         <>
           {canRollback && (

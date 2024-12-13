@@ -6,6 +6,7 @@ import { useTypedLoaderData } from "remix-typedjson";
 import { loader } from "~/root";
 import { useEffect } from "react";
 import { Paragraph } from "./Paragraph";
+import { cn } from "~/utils/cn";
 
 const defaultToastDuration = 5000;
 const permanentToastDuration = 60 * 60 * 24 * 1000;
@@ -39,23 +40,27 @@ export function ToastUI({
 }) {
   return (
     <div
-      className={`self-end rounded-md border border-grid-bright bg-background-dimmed`}
+      className={cn(
+        "self-end rounded-md border border-grid-bright bg-background-dimmed",
+        variant === "success" && "border-success",
+        variant === "error" && "border-error"
+      )}
       style={{
         width: toastWidth,
       }}
     >
       <div className="flex w-full items-start gap-2 rounded-lg p-3">
         {variant === "success" ? (
-          <CheckCircleIcon className="mt-1 h-6 min-h-[1.5rem] w-6 min-w-[1.5rem] text-green-600" />
+          <CheckCircleIcon className="mt-1 size-6 min-w-6 text-success" />
         ) : (
-          <ExclamationCircleIcon className="mt-1 h-6 w-6 min-w-[1.5rem] text-rose-600" />
+          <ExclamationCircleIcon className="mt-1 size-6 min-w-6 text-error" />
         )}
-        <Paragraph className="py-1 text-text-dimmed">{message}</Paragraph>
+        <Paragraph className="py-1 text-text-bright">{message}</Paragraph>
         <button
           className="hover:bg-midnight-800 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
           onClick={() => toast.dismiss(t)}
         >
-          <XMarkIcon className="h-4 w-4" />
+          <XMarkIcon className="size-4" />
         </button>
       </div>
     </div>

@@ -9,6 +9,10 @@ import { LinkButton } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
+import { TldrawLogo } from "~/assets/logos/TldrawLogo";
+import { UnkeyLogo } from "~/assets/logos/UnkeyLogo";
+import { LyftLogo } from "~/assets/logos/LyftLogo";
+import { MiddayLogo } from "~/assets/logos/MiddayLogo";
 
 interface QuoteType {
   quote: string;
@@ -72,11 +76,12 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col items-center gap-4 px-8">
           <Paragraph>Trusted by developers at</Paragraph>
           <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-charcoal-500 xl:justify-between xl:gap-0">
-            <VerizonLogo />
-            <ShopifyLogo />
-            <ATAndTLogo />
+            <LyftLogo className="w-11" />
+            <UnkeyLogo />
+            <MiddayLogo />
             <AppsmithLogo />
             <CalComLogo />
+            <TldrawLogo />
           </div>
         </div>
       </div>
