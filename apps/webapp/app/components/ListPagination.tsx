@@ -34,6 +34,9 @@ function NextButton({ cursor }: { cursor?: string }) {
           "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
       )}
       onClick={(e) => !path && e.preventDefault()}
+      shortcut={{ key: "k" }}
+      showTooltip
+      tooltipDescription="Next"
     >
       Next
     </LinkButton>
@@ -55,6 +58,9 @@ function PreviousButton({ cursor }: { cursor?: string }) {
           "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
       )}
       onClick={(e) => !path && e.preventDefault()}
+      shortcut={{ key: "j" }}
+      showTooltip
+      tooltipDescription="Previous"
     >
       Prev
     </LinkButton>

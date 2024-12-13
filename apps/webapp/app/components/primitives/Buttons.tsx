@@ -4,6 +4,7 @@ import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
 const sizes = {
   small: {
@@ -173,8 +174,10 @@ export type ButtonContentPropsType = {
   textAlignLeft?: boolean;
   className?: string;
   shortcut?: ShortcutDefinition;
+  showTooltip?: boolean;
   variant: keyof typeof variant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
+  tooltipDescription?: string;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -188,17 +191,27 @@ export function ButtonContent(props: ButtonContentPropsType) {
     fullWidth,
     textAlignLeft,
     className,
+    showTooltip,
+    tooltipDescription,
   } = props;
   const variation = allVariants.variant[props.variant];
 
-  // Based on the size prop, we'll use the corresponding variant classnames
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
   const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
   const textColorClassName = variation.textColor;
 
-  return (
+  const renderShortcutKey = () =>
+    shortcut && (
+      <ShortcutKey
+        className={cn(shortcutClassName)}
+        shortcut={shortcut}
+        variant={variation.shortcutVariant ?? "medium"}
+      />
+    );
+
+  const buttonContent = (
     <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
       <div
         className={cn(
@@ -238,13 +251,10 @@ export function ButtonContent(props: ButtonContentPropsType) {
             <>{text}</>
           ))}
 
-        {shortcut && props.shortcutPosition === "before-trailing-icon" && (
-          <ShortcutKey
-            className={cn(shortcutClassName)}
-            shortcut={shortcut}
-            variant={variation.shortcutVariant ?? "medium"}
-          />
-        )}
+        {shortcut &&
+          !showTooltip &&
+          props.shortcutPosition === "before-trailing-icon" &&
+          renderShortcutKey()}
 
         {TrailingIcon &&
           (typeof TrailingIcon === "string" ? (
@@ -269,16 +279,27 @@ export function ButtonContent(props: ButtonContentPropsType) {
           ))}
 
         {shortcut &&
-          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") && (
-            <ShortcutKey
-              className={cn(shortcutClassName)}
-              shortcut={shortcut}
-              variant={variation.shortcutVariant ?? "medium"}
-            />
-          )}
+          !showTooltip &&
+          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") &&
+          renderShortcutKey()}
       </div>
     </div>
   );
+
+  if (shortcut && showTooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+          <TooltipContent className="flex items-center gap-3 text-xs">
+            {tooltipDescription} {renderShortcutKey()}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return buttonContent;
 }
 
 type ButtonPropsType = Pick<
