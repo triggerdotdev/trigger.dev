@@ -244,6 +244,11 @@ const EnvironmentSchema = z.object({
   MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+
+  // Run Engine 2.0
+  RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
+  RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

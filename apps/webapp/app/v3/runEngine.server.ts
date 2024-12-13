@@ -3,6 +3,8 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { tracer } from "./tracer.server";
 import { singleton } from "~/utils/singleton";
+import { defaultMachine, machines } from "@trigger.dev/platform/v3";
+import { allMachines } from "./machinePresets.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
 
@@ -20,21 +22,14 @@ function createRunEngine() {
       ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
     worker: {
-      workers: 1,
-      tasksPerWorker: env.WORKER_CONCURRENCY,
+      workers: env.RUN_ENGINE_WORKER_COUNT,
+      tasksPerWorker: env.RUN_ENGINE_TASKS_PER_WORKER,
       pollIntervalMs: env.WORKER_POLL_INTERVAL,
     },
     machines: {
-      defaultMachine: "small-1x",
-      machines: {
-        "small-1x": {
-          name: "small-1x" as const,
-          cpu: 0.5,
-          memory: 0.5,
-          centsPerMs: 0.0001,
-        },
-      },
-      baseCostInCents: 0.0001,
+      defaultMachine: defaultMachine,
+      machines: allMachines(),
+      baseCostInCents: env.CENTS_PER_RUN,
     },
     tracer,
   });
