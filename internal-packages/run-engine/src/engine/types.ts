@@ -18,6 +18,7 @@ export type RunEngineOptions = {
   };
   queue?: {
     retryOptions?: RetryOptions;
+    defaultEnvConcurrency?: number;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

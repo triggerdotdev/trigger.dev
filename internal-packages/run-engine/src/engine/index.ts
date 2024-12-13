@@ -130,8 +130,7 @@ export class RunEngine {
       tracer: trace.getTracer("rq"),
       queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
       envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
-      workers: 1,
-      defaultEnvConcurrency: 10,
+      defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       enableRebalancing: false,
       logger: new Logger("RunQueue", "warn"),
       redis: options.redis,
@@ -376,14 +375,14 @@ export class RunEngine {
             });
 
             if (taskQueue) {
-              taskQueue = await prisma.taskQueue.update({
-                where: {
-                  id: taskQueue.id,
-                },
-                data: {
-                  concurrencyLimit,
-                },
-              });
+                taskQueue = await prisma.taskQueue.update({
+                  where: {
+                    id: taskQueue.id,
+                  },
+                  data: {
+                    concurrencyLimit,
+                  },
+                });
             } else {
               taskQueue = await prisma.taskQueue.create({
                 data: {

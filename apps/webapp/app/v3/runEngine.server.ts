@@ -31,6 +31,9 @@ function createRunEngine() {
       machines: allMachines(),
       baseCostInCents: env.CENTS_PER_RUN,
     },
+    queue: {
+      defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+    },
     tracer,
   });
 

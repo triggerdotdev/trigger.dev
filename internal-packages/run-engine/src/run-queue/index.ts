@@ -7,7 +7,6 @@ import {
 import { Logger } from "@trigger.dev/core/logger";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { Redis, type Callback, type RedisOptions, type Result } from "ioredis";
-import { AsyncWorker } from "../shared/asyncWorker.js";
 import {
   attributesFromAuthenticatedEnv,
   MinimalAuthenticatedEnvironment,
@@ -37,7 +36,6 @@ export type RunQueueOptions = {
   redis: RedisOptions;
   defaultEnvConcurrency: number;
   windowSize?: number;
-  workers: number;
   queuePriorityStrategy: RunQueuePriorityStrategy;
   envQueuePriorityStrategy: RunQueuePriorityStrategy;
   enableRebalancing?: boolean;
@@ -74,7 +72,6 @@ export class RunQueue {
   private redis: Redis;
   public keys: RunQueueKeyProducer;
   private queuePriorityStrategy: RunQueuePriorityStrategy;
-  #rebalanceWorkers: Array<AsyncWorker> = [];
 
   constructor(private readonly options: RunQueueOptions) {
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
@@ -653,7 +650,6 @@ export class RunQueue {
   }
 
   async quit() {
-    await Promise.all(this.#rebalanceWorkers.map((worker) => worker.stop()));
     await this.subscriber.unsubscribe();
     await this.subscriber.quit();
     await this.redis.quit();
