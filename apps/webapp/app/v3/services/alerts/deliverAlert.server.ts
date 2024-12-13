@@ -219,6 +219,7 @@ export class DeliverAlertService extends BaseService {
             environment: alert.environment.slug,
             error: createJsonErrorObject(taskRunError),
             attemptLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRunAttempt.taskRun.friendlyId}`,
+            organization: alert.project.organization.title,
           });
         } else {
           logger.error("[DeliverAlert] Task run attempt not found", {
@@ -244,6 +245,7 @@ export class DeliverAlertService extends BaseService {
             environment: alert.environment.slug,
             error: createJsonErrorObject(taskRunError),
             runLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/runs/${alert.taskRun.friendlyId}`,
+            organization: alert.project.organization.title,
           });
         } else {
           logger.error("[DeliverAlert] Task run not found", {
@@ -276,6 +278,7 @@ export class DeliverAlertService extends BaseService {
             failedAt: alert.workerDeployment.failedAt ?? new Date(),
             error: preparedError,
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
+            organization: alert.project.organization.title,
           });
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
@@ -296,6 +299,7 @@ export class DeliverAlertService extends BaseService {
             deployedAt: alert.workerDeployment.deployedAt ?? new Date(),
             deploymentLink: `${env.APP_ORIGIN}/projects/v3/${alert.project.externalRef}/deployments/${alert.workerDeployment.shortCode}`,
             taskCount: alert.workerDeployment.worker?.tasks.length ?? 0,
+            organization: alert.project.organization.title,
           });
         } else {
           logger.error("[DeliverAlert] Worker deployment not found", {
