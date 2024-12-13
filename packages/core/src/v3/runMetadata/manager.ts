@@ -6,8 +6,8 @@ import { RunMetadataManager } from "./types.js";
 import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
 
-const MAXIMUM_ACTIVE_STREAMS = 2;
-const MAXIMUM_TOTAL_STREAMS = 5;
+const MAXIMUM_ACTIVE_STREAMS = 5;
+const MAXIMUM_TOTAL_STREAMS = 10;
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
