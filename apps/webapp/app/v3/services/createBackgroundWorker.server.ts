@@ -16,6 +16,7 @@ import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskSched
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { updateEnvConcurrencyLimits } from "../runQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -109,7 +110,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           }
         );
 
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error(
           "Error publishing WORKER_CREATED event or updating global concurrency limits",

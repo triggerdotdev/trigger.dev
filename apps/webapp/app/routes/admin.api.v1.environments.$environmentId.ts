@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
@@ -60,7 +61,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
   });
 
-  await marqs?.updateEnvConcurrencyLimits(environment);
+  await updateEnvConcurrencyLimits(environment);
 
   return json({ success: true });
 }
