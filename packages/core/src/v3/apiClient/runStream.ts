@@ -331,8 +331,6 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
             this._isRunComplete &&
             !this.options.abortController.signal.aborted
           ) {
-            console.log("Closing stream because run is complete");
-
             this.options.stopRunShapeStream();
           }
         },

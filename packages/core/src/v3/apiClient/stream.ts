@@ -65,7 +65,6 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   return {
     stream: stream as AsyncIterableStream<z.output<TShapeSchema>>,
     stop: () => {
-      console.log("Stopping zodShapeStream with abortController.abort()");
       abortController.abort();
     },
   };
