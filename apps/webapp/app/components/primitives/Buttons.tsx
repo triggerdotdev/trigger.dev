@@ -66,8 +66,7 @@ const theme = {
     icon: "text-text-bright",
   },
   minimal: {
-    textColor:
-      "text-text-dimmed group-hover/button:text-text-bright transition group-disabled/button:text-text-dimmed/80",
+    textColor: "text-text-dimmed group-disabled/button:text-text-dimmed transition",
     button:
       "bg-transparent group-hover/button:bg-tertiary disabled:opacity-50 group-disabled/button:bg-transparent group-disabled/button:pointer-events-none",
     shortcut:

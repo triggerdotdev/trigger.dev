@@ -30,8 +30,7 @@ function NextButton({ cursor }: { cursor?: string }) {
       trailingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
-        !path &&
-          "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
+        !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
       )}
       onClick={(e) => !path && e.preventDefault()}
       shortcut={{ key: "k" }}
@@ -54,8 +53,7 @@ function PreviousButton({ cursor }: { cursor?: string }) {
       leadingIconClassName="text-text-dimmed"
       className={cn(
         "flex items-center",
-        !path &&
-          "cursor-not-allowed opacity-50 group-hover:bg-transparent group-hover:text-text-dimmed"
+        !path && "cursor-not-allowed opacity-50 group-hover/button:bg-transparent"
       )}
       onClick={(e) => !path && e.preventDefault()}
       shortcut={{ key: "j" }}
