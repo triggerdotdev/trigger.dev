@@ -7,6 +7,7 @@ import {
 import { trace } from "@opentelemetry/api";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
+import { setTimeout } from "node:timers/promises";
 
 describe("RunEngine triggerAndWait", () => {
   containerTest("triggerAndWait", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
@@ -175,6 +176,8 @@ describe("RunEngine triggerAndWait", () => {
         },
       });
       expect(runWaitpointAfter).toBeNull();
+
+      await setTimeout(500);
 
       //parent snapshot
       const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun.id });
@@ -420,6 +423,8 @@ describe("RunEngine triggerAndWait", () => {
           },
         });
         expect(parent2RunWaitpointAfter).toBeNull();
+
+        await setTimeout(500);
 
         //parent snapshot
         const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun1.id });

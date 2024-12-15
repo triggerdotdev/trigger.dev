@@ -105,6 +105,13 @@ const workerCatalog = {
     }),
     visibilityTimeoutMs: 10_000,
   },
+  tryContinueRunForCompletedWaitpoint: {
+    schema: z.object({
+      runId: z.string(),
+      waitpointId: z.string(),
+    }),
+    visibilityTimeoutMs: 10_000,
+  },
 };
 
 type EngineWorker = Worker<typeof workerCatalog>;
@@ -173,6 +180,12 @@ export class RunEngine {
         },
         tryCompleteBatch: async ({ payload }) => {
           await this.#tryCompleteBatch({ batchId: payload.batchId });
+        },
+        tryContinueRunForCompletedWaitpoint: async ({ payload }) => {
+          await this.#tryContinueRunForCompletedWaitpoint({
+            runId: payload.runId,
+            waitpointId: payload.waitpointId,
+          });
         },
       },
     });
@@ -1654,10 +1667,10 @@ export class RunEngine {
       throw new Error(`Waitpoint ${id} not found`);
     }
 
-    const updatedWaitpoint = await $transaction(
+    const result = await $transaction(
       this.prisma,
       async (tx) => {
-        // 1. Find the TaskRuns associated with this waitpoint
+        // 1. Find the TaskRuns blocked by this waitpoint
         const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
           where: { waitpointId: id },
           select: { taskRunId: true },
@@ -1686,60 +1699,31 @@ export class RunEngine {
           },
         });
 
-        // 4. Add the completed waitpoints to the snapshots
-        for (const run of affectedTaskRuns) {
-          await this.runLock.lock([run.taskRunId], 5_000, async (signal) => {
-            const latestSnapshot = await getLatestExecutionSnapshot(tx, run.taskRunId);
-
-            await tx.taskRunExecutionSnapshot.update({
-              where: { id: latestSnapshot.id },
-              data: {
-                completedWaitpoints: {
-                  connect: { id },
-                },
-              },
-            });
-          });
-        }
-
-        // 5. Check which of the affected TaskRuns now have no waitpoints
-        const taskRunsToResume = await tx.taskRun.findMany({
-          where: {
-            id: { in: affectedTaskRuns.map((run) => run.taskRunId) },
-            blockedByWaitpoints: { none: {} },
-          },
-          include: {
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                maximumConcurrencyLimit: true,
-                project: { select: { id: true } },
-                organization: { select: { id: true } },
-              },
-            },
-          },
-        });
-
-        // 5. Continue the runs that have no more waitpoints
-        for (const run of taskRunsToResume) {
-          await this.#continueRun(run, run.runtimeEnvironment, tx);
-        }
-
-        return updatedWaitpoint;
+        return { updatedWaitpoint, affectedTaskRuns };
       },
       (error) => {
         this.logger.error(`Error completing waitpoint ${id}, retrying`, { error });
         throw error;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+      }
     );
 
-    if (!updatedWaitpoint) {
+    if (!result) {
       throw new Error(`Waitpoint couldn't be updated`);
     }
 
-    return updatedWaitpoint;
+    //schedule trying to continue the runs
+    for (const run of result.affectedTaskRuns) {
+      await this.worker.enqueue({
+        //this will debounce the call
+        id: `tryContinueRunForCompletedWaitpoint:${run.taskRunId}`,
+        job: "tryContinueRunForCompletedWaitpoint",
+        payload: { runId: run.taskRunId, waitpointId: id },
+        //50ms in the future
+        availableAt: new Date(Date.now() + 50),
+      });
+    }
+
+    return result.updatedWaitpoint;
   }
 
   async createCheckpoint({
@@ -2452,6 +2436,56 @@ export class RunEngine {
     });
   }
 
+  async #tryContinueRunForCompletedWaitpoint({
+    runId,
+    waitpointId,
+  }: {
+    runId: string;
+    waitpointId: string;
+  }) {
+    // 1. Add the completed waitpoint to the latest snapshot
+    // We need a runLock to prevent a new snapshot being created (without the completedWaitpoints)
+    await this.runLock.lock([runId], 5_000, async (signal) => {
+      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+
+      await this.prisma.taskRunExecutionSnapshot.update({
+        where: { id: latestSnapshot.id },
+        data: {
+          completedWaitpoints: {
+            connect: { id: waitpointId },
+          },
+        },
+      });
+    });
+
+    // 2. Check which of the affected TaskRuns now have no waitpoints
+    const run = await this.prisma.taskRun.findFirst({
+      where: {
+        id: runId,
+        blockedByWaitpoints: { none: {} },
+      },
+      include: {
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            type: true,
+            maximumConcurrencyLimit: true,
+            project: { select: { id: true } },
+            organization: { select: { id: true } },
+          },
+        },
+      },
+    });
+
+    // 3. Run isn't totally unblocked
+    if (!run) {
+      return;
+    }
+
+    // 4. Continue the runs that have no more waitpoints
+    await this.#continueRun(run, run.runtimeEnvironment, this.prisma);
+  }
+
   async #continueRun(
     run: TaskRun,
     env: MinimalAuthenticatedEnvironment,
@@ -2470,7 +2504,7 @@ export class RunEngine {
       //run is still executing, send a message to the worker
       if (isExecuting(snapshot.executionStatus)) {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-          run: run,
+          run,
           snapshot: {
             executionStatus: "EXECUTING",
             description: "Run was continued, whilst still executing.",
@@ -2481,11 +2515,10 @@ export class RunEngine {
         //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
         await this.runQueue.reacquireConcurrency(env.organization.id, run.id);
 
-        //todo publish a notification in Redis that the Workers listen to
-        //this will cause the Worker to check for new execution snapshots for its runs
+        await this.#sendNotificationToWorker({ runId: run.id });
       } else {
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-          run: run,
+          run,
           snapshot: {
             executionStatus: "QUEUED",
             description: "Run is QUEUED, because all waitpoints are completed.",
