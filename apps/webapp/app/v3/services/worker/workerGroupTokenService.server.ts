@@ -3,6 +3,7 @@ import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
 import { createHash, timingSafeEqual } from "crypto";
 import { logger } from "~/services/logger.server";
 import {
+  Prisma,
   RuntimeEnvironment,
   WorkerInstanceGroup,
   WorkerInstanceGroupType,
@@ -21,7 +22,6 @@ import {
 import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
 import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
-import { EnvironmentVariable } from "~/v3/environmentVariables/repository";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 
@@ -290,18 +290,50 @@ export class WorkerGroupTokenService extends WithRunEngine {
           );
         }
 
-        return tx.workerInstance.create({
-          data: {
-            workerGroupId: workerGroup.id,
-            name: instanceName,
-            resourceIdentifier,
-          },
-          include: {
-            // This will always be empty for shared worker instances, but required for types
-            deployment: true,
-            environment: true,
-          },
-        });
+        try {
+          const newWorkerInstance = await tx.workerInstance.create({
+            data: {
+              workerGroupId: workerGroup.id,
+              name: instanceName,
+              resourceIdentifier,
+            },
+            include: {
+              // This will always be empty for shared worker instances, but required for types
+              deployment: true,
+              environment: true,
+            },
+          });
+          return newWorkerInstance;
+        } catch (error) {
+          // Gracefully handle race conditions when connecting for the first time
+          if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // Unique constraint violation
+            if (error.code === "P2002") {
+              try {
+                const existingWorkerInstance = await tx.workerInstance.findUnique({
+                  where: {
+                    workerGroupId_resourceIdentifier: {
+                      workerGroupId: workerGroup.id,
+                      resourceIdentifier,
+                    },
+                  },
+                  include: {
+                    deployment: true,
+                    environment: true,
+                  },
+                });
+                return existingWorkerInstance;
+              } catch (error) {
+                logger.error("[WorkerGroupTokenService] Failed to find worker instance", {
+                  workerGroup,
+                  workerInstance,
+                  deploymentId,
+                });
+                return;
+              }
+            }
+          }
+        }
       }
 
       if (!workerGroup.projectId || !workerGroup.organizationId) {
@@ -531,6 +563,46 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
+  /** Allows managed workers to dequeue from a specific version */
+  async dequeueFromVersion(
+    backgroundWorkerId: string,
+    maxRunCount = 1
+  ): Promise<DequeuedMessage[]> {
+    if (this.type !== WorkerInstanceGroupType.MANAGED) {
+      logger.error("[AuthenticatedWorkerInstance] Worker instance is not managed", {
+        ...this.toJSON(),
+      });
+      return [];
+    }
+
+    return await this._engine.dequeueFromBackgroundWorkerMasterQueue({
+      consumerId: this.workerInstanceId,
+      backgroundWorkerId,
+      maxRunCount,
+    });
+  }
+
+  /** Allows managed workers to dequeue from a specific environment */
+  async dequeueFromEnvironment(
+    backgroundWorkerId: string,
+    environmentId: string,
+    maxRunCount = 1
+  ): Promise<DequeuedMessage[]> {
+    if (this.type !== WorkerInstanceGroupType.MANAGED) {
+      logger.error("[AuthenticatedWorkerInstance] Worker instance is not managed", {
+        ...this.toJSON(),
+      });
+      return [];
+    }
+
+    return await this._engine.dequeueFromEnvironmentMasterQueue({
+      consumerId: this.workerInstanceId,
+      backgroundWorkerId,
+      environmentId,
+      maxRunCount,
+    });
+  }
+
   async heartbeatWorkerInstance() {
     await this._prisma.workerInstance.update({
       where: {
@@ -552,12 +624,20 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return await this._engine.heartbeatRun({ runId, snapshotId });
   }
 
-  async startRunAttempt({ runId, snapshotId }: { runId: string; snapshotId: string }): Promise<
+  async startRunAttempt({
+    runId,
+    snapshotId,
+    isWarmStart,
+  }: {
+    runId: string;
+    snapshotId: string;
+    isWarmStart?: boolean;
+  }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
     }
   > {
-    const engineResult = await this._engine.startRunAttempt({ runId, snapshotId });
+    const engineResult = await this._engine.startRunAttempt({ runId, snapshotId, isWarmStart });
 
     const defaultMachinePreset = {
       name: "small-1x",

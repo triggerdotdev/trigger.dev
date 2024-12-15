@@ -8,22 +8,26 @@ import {
   WorkerApiHeartbeatResponseBody,
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptCompleteResponseBody,
+  WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunHeartbeatRequestBody,
   WorkerApiRunHeartbeatResponseBody,
-} from "../schemas.js";
-import { WorkerClientCommonOptions } from "./types.js";
+  WorkerApiRunLatestSnapshotResponseBody,
+  WorkerApiWaitForDurationRequestBody,
+  WorkerApiWaitForDurationResponseBody,
+} from "./schemas.js";
+import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 
-type WorkerHttpClientOptions = WorkerClientCommonOptions;
+type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 
-export class WorkerHttpClient {
+export class SupervisorHttpClient {
   private readonly apiUrl: string;
   private readonly workerToken: string;
   private readonly instanceName: string;
   private readonly defaultHeaders: Record<string, string>;
 
-  constructor(opts: WorkerHttpClientOptions) {
+  constructor(opts: SupervisorHttpClientOptions) {
     this.apiUrl = opts.apiUrl.replace(/\/$/, "");
     this.workerToken = opts.workerToken;
     this.instanceName = opts.instanceName;
@@ -69,6 +73,18 @@ export class WorkerHttpClient {
     );
   }
 
+  async dequeueFromVersion(deploymentId: string) {
+    return wrapZodFetch(
+      WorkerApiDequeueResponseBody,
+      `${this.apiUrl}/api/v1/worker-actions/deployments/${deploymentId}/dequeue`,
+      {
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
   async heartbeatWorker(body: WorkerApiHeartbeatRequestBody) {
     return wrapZodFetch(
       WorkerApiHeartbeatResponseBody,
@@ -99,7 +115,11 @@ export class WorkerHttpClient {
     );
   }
 
-  async startRunAttempt(runId: string, snapshotId: string) {
+  async startRunAttempt(
+    runId: string,
+    snapshotId: string,
+    body: WorkerApiRunAttemptStartRequestBody
+  ) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
@@ -108,6 +128,7 @@ export class WorkerHttpClient {
         headers: {
           ...this.defaultHeaders,
         },
+        body: JSON.stringify(body),
       }
     );
   }
@@ -124,6 +145,38 @@ export class WorkerHttpClient {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getLatestSnapshot(runId: string) {
+    return wrapZodFetch(
+      WorkerApiRunLatestSnapshotResponseBody,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/latest`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
+  async waitForDuration(
+    runId: string,
+    snapshotId: string,
+    body: WorkerApiWaitForDurationRequestBody
+  ) {
+    return wrapZodFetch(
+      WorkerApiWaitForDurationResponseBody,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
       }

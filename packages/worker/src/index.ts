@@ -1,7 +1,8 @@
 export { VERSION as WORKER_VERSION } from "./version.js";
 export * from "./consts.js";
-export * from "./client/http.js";
-export * from "./workerSession.js";
-export * from "./events.js";
+export * from "./supervisor/http.js";
+export * from "./supervisor/schemas.js";
+export * from "./supervisor/session.js";
 export * from "./workload/http.js";
-export * from "./schemas.js";
+export * from "./workload/schemas.js";
+export * from "./types.js";

@@ -6,7 +6,7 @@ import { CLOUD_API_URL } from "../consts.js";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import { WorkerManifest } from "@trigger.dev/core/v3";
-import { WorkerSession } from "@trigger.dev/worker";
+import { SupervisorSession } from "@trigger.dev/worker";
 
 const Env = z.object({
   TRIGGER_API_URL: z.string().default(CLOUD_API_URL),
@@ -26,11 +26,11 @@ logger.loggerLevel = "debug";
 logger.debug("Creating unmanaged worker", { env });
 
 class UnmanagedRunController {
-  private readonly session: WorkerSession;
+  private readonly session: SupervisorSession;
   private taskRunProcess?: TaskRunProcess;
 
   constructor(private workerManifest: WorkerManifest) {
-    this.session = new WorkerSession({
+    this.session = new SupervisorSession({
       workerToken: env.TRIGGER_WORKER_TOKEN,
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,

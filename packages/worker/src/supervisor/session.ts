@@ -1,31 +1,33 @@
 import { HeartbeatService } from "@trigger.dev/core/v3";
-import { WorkerHttpClient } from "./client/http.js";
-import { WorkerClientCommonOptions } from "./client/types.js";
-import { WorkerWebsocketClient } from "./client/websocket.js";
+import { SupervisorHttpClient } from "./http.js";
+import { SupervisorClientCommonOptions } from "./types.js";
 import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
 import { RunQueueConsumer } from "./queueConsumer.js";
-import { WorkerEventArgs, WorkerEvents } from "./events.js";
+import { WorkerEvents } from "./events.js";
 import EventEmitter from "events";
-import { VERSION } from "./version.js";
+import { VERSION } from "../version.js";
+import { io, Socket } from "socket.io-client";
+import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
+import { getDefaultWorkerHeaders } from "./util.js";
 
-type WorkerSessionOptions = WorkerClientCommonOptions & {
+type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   heartbeatIntervalSeconds?: number;
   dequeueIntervalMs?: number;
 };
 
-export class WorkerSession extends EventEmitter<WorkerEvents> {
-  public readonly httpClient: WorkerHttpClient;
+export class SupervisorSession extends EventEmitter<WorkerEvents> {
+  public readonly httpClient: SupervisorHttpClient;
 
-  private readonly websocketClient: WorkerWebsocketClient;
+  private socket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+
   private readonly queueConsumer: RunQueueConsumer;
   private readonly heartbeatService: HeartbeatService;
   private readonly heartbeatIntervalSeconds: number;
 
-  constructor(opts: WorkerSessionOptions) {
+  constructor(private opts: SupervisorSessionOptions) {
     super();
 
-    this.httpClient = new WorkerHttpClient(opts);
-    this.websocketClient = new WorkerWebsocketClient(opts);
+    this.httpClient = new SupervisorHttpClient(opts);
     this.queueConsumer = new RunQueueConsumer({
       client: this.httpClient,
       onDequeue: this.onDequeue.bind(this),
@@ -51,14 +53,12 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
         console.error("[WorkerSession] Failed to send heartbeat", { error });
       },
     });
-
-    this.on("requestRunAttemptStart", this.onRequestRunAttemptStart.bind(this));
-    this.on("runAttemptCompleted", this.onRunAttemptCompleted.bind(this));
   }
 
   private async onDequeue(messages: WorkerApiDequeueResponseBody): Promise<void> {
-    console.log("[WorkerSession] Dequeued messages", { count: messages.length });
-    console.debug("[WorkerSession] Dequeued messages with contents", messages);
+    // Incredibly verbose logging for debugging purposes
+    // console.log("[WorkerSession] Dequeued messages", { count: messages.length });
+    // console.debug("[WorkerSession] Dequeued messages with contents", messages);
 
     for (const message of messages) {
       console.log("[WorkerSession] Emitting message", { message });
@@ -69,46 +69,48 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
     }
   }
 
-  private async onRequestRunAttemptStart(
-    ...[{ time, run, snapshot }]: WorkerEventArgs<"requestRunAttemptStart">
-  ): Promise<void> {
-    console.log("[WorkerSession] onRequestRunAttemptStart", { time, run, snapshot });
+  subscribeToRunNotifications(runIds: string[]) {
+    console.log("[WorkerSession] Subscribing to run notifications", { runIds });
 
-    const start = await this.httpClient.startRunAttempt(run.id, snapshot.id);
-
-    if (!start.success) {
-      console.error("[WorkerSession] Failed to start run", { error: start.error });
+    if (!this.socket) {
+      console.error("[WorkerSession] Socket not connected");
       return;
     }
 
-    console.log("[WorkerSession] Started run", {
-      runId: start.data.run.id,
-      snapshot: start.data.snapshot.id,
-    });
-
-    this.emit("runAttemptStarted", {
-      time: new Date(),
-      ...start.data,
-    });
+    this.socket.emit("run:subscribe", { version: "1", runIds });
   }
 
-  private async onRunAttemptCompleted(
-    ...[{ time, run, snapshot, completion }]: WorkerEventArgs<"runAttemptCompleted">
-  ): Promise<void> {
-    console.log("[WorkerSession] onRunAttemptCompleted", { time, run, snapshot, completion });
+  unsubscribeFromRunNotifications(runIds: string[]) {
+    console.log("[WorkerSession] Unsubscribing from run notifications", { runIds });
 
-    const complete = await this.httpClient.completeRunAttempt(run.id, snapshot.id, {
-      completion: completion,
-    });
-
-    if (!complete.success) {
-      console.error("[WorkerSession] Failed to complete run", { error: complete.error });
+    if (!this.socket) {
+      console.error("[WorkerSession] Socket not connected");
       return;
     }
 
-    console.log("[WorkerSession] Completed run", {
-      runId: run.id,
-      result: complete.data.result,
+    this.socket.emit("run:unsubscribe", { version: "1", runIds });
+  }
+
+  private createSocket() {
+    const wsUrl = new URL(this.opts.apiUrl);
+    wsUrl.pathname = "/worker";
+
+    this.socket = io(wsUrl.href, {
+      transports: ["websocket"],
+      extraHeaders: getDefaultWorkerHeaders(this.opts),
+    });
+    this.socket.on("run:notify", ({ version, run }) => {
+      console.log("[WorkerSession] Received run notification", { version, run });
+      this.emit("runNotification", { time: new Date(), run });
+    });
+    this.socket.on("connect", () => {
+      console.log("[WorkerSession] Connected to platform");
+    });
+    this.socket.on("connect_error", (error) => {
+      console.error("[WorkerSession] Connection error", { error });
+    });
+    this.socket.on("disconnect", (reason, description) => {
+      console.log("[WorkerSession] Disconnected from platform", { reason, description });
     });
   }
 
@@ -126,12 +128,12 @@ export class WorkerSession extends EventEmitter<WorkerEvents> {
 
     this.queueConsumer.start();
     this.heartbeatService.start();
-    this.websocketClient.start();
+    this.createSocket();
   }
 
   async stop() {
     this.heartbeatService.stop();
-    this.websocketClient.stop();
+    this.socket?.disconnect();
   }
 
   private getHeartbeatBody(): WorkerApiHeartbeatRequestBody {

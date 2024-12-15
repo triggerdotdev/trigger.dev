@@ -8,7 +8,7 @@ import {
   SharedQueueToClientMessages,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Server, Socket } from "socket.io";
+import { Namespace, Server, Socket } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
@@ -26,6 +26,7 @@ import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
+import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "@trigger.dev/worker";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -382,55 +383,139 @@ function headersFromHandshake(handshake: Socket["handshake"]) {
 }
 
 function createWorkerNamespace(io: Server) {
-  const provider = new ZodNamespace({
-    // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
-    io,
-    name: "worker",
-    clientMessages: ProviderToPlatformMessages,
-    serverMessages: PlatformToProviderMessages,
-    preAuth: async (socket, next, logger) => {
+  const worker: Namespace<WorkerClientToServerEvents, WorkerServerToClientEvents> =
+    io.of("/worker");
+
+  worker.use(async (socket, next) => {
+    try {
+      const headers = headersFromHandshake(socket.handshake);
+
+      logger.debug("Worker authentication", {
+        socketId: socket.id,
+        headers: Object.fromEntries(headers),
+      });
+
       const request = new Request("https://example.com", {
-        headers: headersFromHandshake(socket.handshake),
+        headers,
       });
 
       const tokenService = new WorkerGroupTokenService();
       const authenticatedInstance = await tokenService.authenticate(request);
 
       if (!authenticatedInstance) {
-        logger.error("authentication failed", { handshake: socket.handshake });
-        next(new Error("unauthorized"));
-        return;
+        throw new Error("unauthorized");
       }
 
-      logger.debug("authentication succeeded", { authenticatedInstance });
-
       next();
-    },
-    handlers: {
-      WORKER_CRASHED: async (message) => {
-        try {
-          if (message.overrideCompletion) {
-            const updateErrorService = new UpdateFatalRunErrorService();
-            await updateErrorService.call(message.runId, { ...message });
-          } else {
-            const crashRunService = new CrashTaskRunService();
-            await crashRunService.call(message.runId, { ...message });
-          }
-        } catch (error) {
-          logger.error("Error while handling crashed worker", { error });
-        }
-      },
-      INDEXING_FAILED: async (message) => {
-        try {
-          const service = new DeploymentIndexFailed();
+    } catch (error) {
+      logger.error("Worker authentication failed", {
+        error: error instanceof Error ? error.message : error,
+      });
 
-          await service.call(message.deploymentId, message.error, message.overrideCompletion);
-        } catch (e) {
-          logger.error("Error while indexing", { error: e });
-        }
-      },
-    },
+      socket.disconnect(true);
+    }
   });
 
-  return provider.namespace;
+  worker.on("connection", async (socket) => {
+    logger.debug("worker connected", { socketId: socket.id });
+
+    const rooms = new Set<string>();
+
+    const interval = setInterval(() => {
+      logger.debug("Rooms for socket", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    }, 5000);
+
+    socket.on("disconnect", (reason, description) => {
+      logger.debug("worker disconnected", {
+        socketId: socket.id,
+        reason,
+        description,
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("disconnecting", (reason, description) => {
+      logger.debug("worker disconnecting", {
+        socketId: socket.id,
+        reason,
+        description,
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("error", (error) => {
+      logger.error("worker error", {
+        socketId: socket.id,
+        error: JSON.parse(JSON.stringify(error)),
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("run:subscribe", async ({ version, runIds }) => {
+      logger.debug("run:subscribe", { version, runIds });
+
+      const settledResult = await Promise.allSettled(
+        runIds.map((runId) => {
+          const room = roomFromRunId(runId);
+
+          logger.debug("Joining room", { room });
+
+          socket.join(room);
+          rooms.add(room);
+        })
+      );
+
+      for (const result of settledResult) {
+        if (result.status === "rejected") {
+          logger.error("Error joining room", {
+            runIds,
+            error: result.reason instanceof Error ? result.reason.message : result.reason,
+          });
+        }
+      }
+
+      logger.debug("Rooms for socket after subscribe", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    });
+
+    socket.on("run:unsubscribe", async ({ version, runIds }) => {
+      logger.debug("run:unsubscribe", { version, runIds });
+
+      const settledResult = await Promise.allSettled(
+        runIds.map((runId) => {
+          const room = roomFromRunId(runId);
+
+          logger.debug("Leaving room", { room });
+
+          socket.leave(room);
+          rooms.delete(room);
+        })
+      );
+
+      for (const result of settledResult) {
+        if (result.status === "rejected") {
+          logger.error("Error leaving room", {
+            runIds,
+            error: result.reason instanceof Error ? result.reason.message : result.reason,
+          });
+        }
+      }
+
+      logger.debug("Rooms for socket after unsubscribe", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    });
+  });
+
+  return worker;
+}
+
+function roomFromRunId(runId: string) {
+  return `run:${runId}`;
 }

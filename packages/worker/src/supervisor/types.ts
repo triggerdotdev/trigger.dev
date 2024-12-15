@@ -1,4 +1,4 @@
-export type WorkerClientCommonOptions = {
+export type SupervisorClientCommonOptions = {
   apiUrl: string;
   workerToken: string;
   instanceName: string;

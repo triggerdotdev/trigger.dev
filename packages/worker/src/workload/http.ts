@@ -6,7 +6,12 @@ import {
   WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
-} from "../schemas.js";
+  WorkloadRunLatestSnapshotResponseBody,
+  WorkloadDequeueFromVersionResponseBody,
+  WorkloadRunAttemptStartRequestBody,
+  WorkloadWaitForDurationRequestBody,
+  WorkloadWaitForDurationResponseBody,
+} from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
 
@@ -46,7 +51,11 @@ export class WorkloadHttpClient {
     );
   }
 
-  async startRunAttempt(runId: string, snapshotId: string) {
+  async startRunAttempt(
+    runId: string,
+    snapshotId: string,
+    body: WorkloadRunAttemptStartRequestBody
+  ) {
     return wrapZodFetch(
       WorkloadRunAttemptStartResponseBody,
       `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/attempts/start`,
@@ -55,6 +64,7 @@ export class WorkloadHttpClient {
         headers: {
           ...this.defaultHeaders,
         },
+        body: JSON.stringify(body),
       }
     );
   }
@@ -73,6 +83,51 @@ export class WorkloadHttpClient {
           ...this.defaultHeaders,
         },
         body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getRunExecutionData(runId: string) {
+    return wrapZodFetch(
+      WorkloadRunLatestSnapshotResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/latest`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
+  async waitForDuration(
+    runId: string,
+    snapshotId: string,
+    body: WorkloadWaitForDurationRequestBody
+  ) {
+    return wrapZodFetch(
+      WorkloadWaitForDurationResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async dequeue() {
+    return wrapZodFetch(
+      WorkloadDequeueFromVersionResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/deployments/${this.deploymentId}/dequeue`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
       }
     );
   }

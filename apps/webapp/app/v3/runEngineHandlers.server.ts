@@ -285,8 +285,7 @@ export function registerRunEngineEventBusHandlers() {
     logger.debug("[workerNotification] Notifying worker", { time, runId: run.id });
 
     try {
-      // TODO: re-enable this
-      // socketIo.workerNamespace.to(`run:${run.id}`).emit("run:notify", { version: "1", run });
+      socketIo.workerNamespace.to(`run:${run.id}`).emit("run:notify", { version: "1", run });
     } catch (error) {
       logger.error("[workerNotification] Failed to notify worker", {
         error: error instanceof Error ? error.message : error,

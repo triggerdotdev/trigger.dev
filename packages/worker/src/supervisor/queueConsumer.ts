@@ -1,14 +1,14 @@
-import { WorkerHttpClient } from "./client/http.js";
+import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody } from "./schemas.js";
 
 type RunQueueConsumerOptions = {
-  client: WorkerHttpClient;
+  client: SupervisorHttpClient;
   intervalMs?: number;
   onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 };
 
 export class RunQueueConsumer {
-  private readonly client: WorkerHttpClient;
+  private readonly client: SupervisorHttpClient;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 
   private intervalMs: number;
@@ -39,7 +39,8 @@ export class RunQueueConsumer {
   }
 
   private async dequeue() {
-    console.debug("[RunQueueConsumer] dequeue()", { enabled: this.isEnabled });
+    // Incredibly verbose logging for debugging purposes
+    // console.debug("[RunQueueConsumer] dequeue()", { enabled: this.isEnabled });
 
     if (!this.isEnabled) {
       return;
@@ -65,7 +66,6 @@ export class RunQueueConsumer {
   }
 
   scheduleNextDequeue(delay: number = this.intervalMs) {
-    console.debug("[RunQueueConsumer] Scheduling next dequeue", { delay });
     setTimeout(this.dequeue.bind(this), delay);
   }
 }

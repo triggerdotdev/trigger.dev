@@ -2,11 +2,12 @@ import { z } from "zod";
 import {
   CompleteRunAttemptResult,
   DequeuedMessage,
+  RunExecutionData,
   StartRunAttemptResult,
   TaskRunExecutionResult,
+  WaitForDurationResult,
 } from "@trigger.dev/core/v3";
 
-// Worker
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({
     used: z.number(),
@@ -49,6 +50,13 @@ export const WorkerApiRunHeartbeatResponseBody = z.object({
 });
 export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeartbeatResponseBody>;
 
+export const WorkerApiRunAttemptStartRequestBody = z.object({
+  isWarmStart: z.boolean().optional(),
+});
+export type WorkerApiRunAttemptStartRequestBody = z.infer<
+  typeof WorkerApiRunAttemptStartRequestBody
+>;
+
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
     envVars: z.record(z.string()),
@@ -72,24 +80,26 @@ export type WorkerApiRunAttemptCompleteResponseBody = z.infer<
   typeof WorkerApiRunAttemptCompleteResponseBody
 >;
 
-// Workload
-export const WorkloadHeartbeatRequestBody = WorkerApiRunHeartbeatRequestBody;
-export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatRequestBody>;
-
-export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
-export type WorkloadHeartbeatResponseBody = z.infer<typeof WorkloadHeartbeatResponseBody>;
-
-export const WorkloadRunAttemptCompleteRequestBody = WorkerApiRunAttemptCompleteRequestBody;
-export type WorkloadRunAttemptCompleteRequestBody = z.infer<
-  typeof WorkloadRunAttemptCompleteRequestBody
+export const WorkerApiRunLatestSnapshotResponseBody = z.object({
+  execution: RunExecutionData,
+});
+export type WorkerApiRunLatestSnapshotResponseBody = z.infer<
+  typeof WorkerApiRunLatestSnapshotResponseBody
 >;
 
-export const WorkloadRunAttemptCompleteResponseBody = WorkerApiRunAttemptCompleteResponseBody;
-export type WorkloadRunAttemptCompleteResponseBody = z.infer<
-  typeof WorkloadRunAttemptCompleteResponseBody
+export const WorkerApiDequeueFromVersionResponseBody = DequeuedMessage.array();
+export type WorkerApiDequeueFromVersionResponseBody = z.infer<
+  typeof WorkerApiDequeueFromVersionResponseBody
 >;
 
-export const WorkloadRunAttemptStartResponseBody = WorkerApiRunAttemptStartResponseBody;
-export type WorkloadRunAttemptStartResponseBody = z.infer<
-  typeof WorkloadRunAttemptStartResponseBody
+export const WorkerApiWaitForDurationRequestBody = z.object({
+  date: z.coerce.date(),
+});
+export type WorkerApiWaitForDurationRequestBody = z.infer<
+  typeof WorkerApiWaitForDurationRequestBody
+>;
+
+export const WorkerApiWaitForDurationResponseBody = WaitForDurationResult;
+export type WorkerApiWaitForDurationResponseBody = z.infer<
+  typeof WorkerApiWaitForDurationResponseBody
 >;

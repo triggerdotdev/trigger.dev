@@ -41,6 +41,14 @@ export type WorkerEvents = {
       completion: TaskRunExecutionResult;
     },
   ];
+  runNotification: [
+    {
+      time: Date;
+      run: {
+        id: string;
+      };
+    },
+  ];
 };
 
 export type WorkerEventArgs<T extends keyof WorkerEvents> = WorkerEvents[T];

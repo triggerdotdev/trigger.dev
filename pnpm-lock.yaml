@@ -1618,6 +1618,12 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../core
+      socket.io:
+        specifier: 4.7.4
+        version: 4.7.4
+      socket.io-client:
+        specifier: 4.7.5
+        version: 4.7.5
       zod:
         specifier: 3.23.8
         version: 3.23.8
@@ -28049,7 +28055,7 @@ packages:
     engines: {node: '>=10.0.0'}
     dependencies:
       '@socket.io/component-emitter': 3.1.0
-      debug: 4.3.4
+      debug: 4.3.7
       engine.io-client: 6.5.3
       socket.io-parser: 4.2.4
     transitivePeerDependencies:
@@ -28091,7 +28097,7 @@ packages:
       accepts: 1.3.8
       base64id: 2.0.0
       cors: 2.8.5
-      debug: 4.3.4
+      debug: 4.3.7
       engine.io: 6.5.4
       socket.io-adapter: 2.5.4
       socket.io-parser: 4.2.4

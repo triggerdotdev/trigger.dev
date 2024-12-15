@@ -1,14 +1,14 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import {
-  WorkerApiRunAttemptStartRequestBody,
-  WorkerApiRunAttemptStartResponseBody,
+  WorkerApiWaitForDurationRequestBody,
+  WorkerApiWaitForDurationResponseBody,
 } from "@trigger.dev/worker";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(
   {
-    body: WorkerApiRunAttemptStartRequestBody,
+    body: WorkerApiWaitForDurationRequestBody,
     params: z.object({
       runId: z.string(),
       snapshotId: z.string(),
@@ -18,15 +18,15 @@ export const action = createActionWorkerApiRoute(
     authenticatedWorker,
     body,
     params,
-  }): Promise<TypedResponse<WorkerApiRunAttemptStartResponseBody>> => {
+  }): Promise<TypedResponse<WorkerApiWaitForDurationResponseBody>> => {
     const { runId, snapshotId } = params;
 
-    const runExecutionData = await authenticatedWorker.startRunAttempt({
+    const waitResult = await authenticatedWorker.waitForDuration({
       runId,
       snapshotId,
-      isWarmStart: body.isWarmStart,
+      date: body.date,
     });
 
-    return json(runExecutionData);
+    return json(waitResult);
   }
 );

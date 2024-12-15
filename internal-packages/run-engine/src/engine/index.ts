@@ -783,6 +783,10 @@ export class RunEngine {
                 id: result.worker.id,
                 version: result.worker.version,
               },
+              deployment: {
+                id: result.deployment?.id,
+                friendlyId: result.deployment?.friendlyId,
+              },
               run: {
                 id: lockedTaskRun.id,
                 friendlyId: lockedTaskRun.friendlyId,
@@ -802,7 +806,7 @@ export class RunEngine {
               project: {
                 id: lockedTaskRun.projectId,
               },
-            };
+            } satisfies DequeuedMessage;
           });
 
           if (dequeuedRun !== null) {
@@ -903,10 +907,12 @@ export class RunEngine {
   async startRunAttempt({
     runId,
     snapshotId,
+    isWarmStart,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    isWarmStart?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     const prisma = tx ?? this.prisma;
@@ -1044,7 +1050,9 @@ export class RunEngine {
               run,
               snapshot: {
                 executionStatus: "EXECUTING",
-                description: "Attempt created, starting execution",
+                description: `Attempt created, starting execution${
+                  isWarmStart ? " (warm start)" : ""
+                }`,
               },
             });
 
