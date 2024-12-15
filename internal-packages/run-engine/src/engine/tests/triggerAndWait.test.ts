@@ -167,6 +167,8 @@ describe("RunEngine triggerAndWait", () => {
       expect(waitpointAfter?.status).toBe("COMPLETED");
       expect(waitpointAfter?.output).toBe('{"foo":"bar"}');
 
+      await setTimeout(500);
+
       const runWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
         where: {
           taskRunId: parentRun.id,
@@ -176,8 +178,6 @@ describe("RunEngine triggerAndWait", () => {
         },
       });
       expect(runWaitpointAfter).toBeNull();
-
-      await setTimeout(500);
 
       //parent snapshot
       const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun.id });
@@ -404,12 +404,11 @@ describe("RunEngine triggerAndWait", () => {
         expect(waitpointAfter?.status).toBe("COMPLETED");
         expect(waitpointAfter?.output).toBe('{"foo":"bar"}');
 
+        await setTimeout(500);
+
         const parent1RunWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
           where: {
             taskRunId: parentRun1.id,
-          },
-          include: {
-            waitpoint: true,
           },
         });
         expect(parent1RunWaitpointAfter).toBeNull();
@@ -418,13 +417,8 @@ describe("RunEngine triggerAndWait", () => {
           where: {
             taskRunId: parentRun2.id,
           },
-          include: {
-            waitpoint: true,
-          },
         });
         expect(parent2RunWaitpointAfter).toBeNull();
-
-        await setTimeout(500);
 
         //parent snapshot
         const parentExecutionDataAfter = await engine.getRunExecutionData({ runId: parentRun1.id });
