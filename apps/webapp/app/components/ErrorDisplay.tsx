@@ -49,7 +49,7 @@ export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
         {message && <Paragraph>{message}</Paragraph>}
         <LinkButton
           to={button ? button.to : "/"}
-          shortcut={{ modifiers: ["meta"], key: "g" }}
+          shortcut={{ modifiers: ["mod"], key: "g" }}
           variant="primary/medium"
           LeadingIcon={HomeIcon}
         >

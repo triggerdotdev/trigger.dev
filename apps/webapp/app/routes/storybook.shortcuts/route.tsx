@@ -7,10 +7,10 @@ import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 const shortcuts: ShortcutDefinition[] = [
   { key: "esc" },
   { key: "f" },
-  { key: "f", modifiers: ["meta"] },
-  { key: "k", modifiers: ["meta"] },
+  { key: "f", modifiers: ["mod"] },
+  { key: "k", modifiers: ["mod"] },
   { key: "del", modifiers: ["ctrl", "alt"] },
-  { key: "enter", modifiers: ["meta"] },
+  { key: "enter", modifiers: ["mod"] },
   { key: "enter", modifiers: ["mod"] },
 ];
 
