@@ -24,7 +24,7 @@ function createRunEngine() {
     worker: {
       workers: env.RUN_ENGINE_WORKER_COUNT,
       tasksPerWorker: env.RUN_ENGINE_TASKS_PER_WORKER,
-      pollIntervalMs: env.WORKER_POLL_INTERVAL,
+      pollIntervalMs: env.RUN_ENGINE_WORKER_POLL_INTERVAL,
     },
     machines: {
       defaultMachine: defaultMachine,
