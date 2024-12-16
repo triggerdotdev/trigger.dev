@@ -39,10 +39,24 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   }
 
   get parent(): RunMetadataUpdater {
-    throw new Error("Method not implemented.");
+    return {
+      appendKey: () => {},
+      setKey: () => {},
+      deleteKey: () => {},
+      incrementKey: () => {},
+      decrementKey: () => {},
+      removeFromKey: () => {},
+    };
   }
 
   get root(): RunMetadataUpdater {
-    throw new Error("Method not implemented.");
+    return {
+      appendKey: () => {},
+      setKey: () => {},
+      deleteKey: () => {},
+      incrementKey: () => {},
+      decrementKey: () => {},
+      removeFromKey: () => {},
+    };
   }
 }
