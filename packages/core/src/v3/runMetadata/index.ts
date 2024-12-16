@@ -2,7 +2,7 @@ import { DeserializedJson } from "../../schemas/json.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { NoopRunMetadataManager } from "./noopManager.js";
-import { RunMetadataManager } from "./types.js";
+import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 const API_NAME = "run-metadata";
 
@@ -79,5 +79,13 @@ export class RunMetadataAPI implements RunMetadataManager {
 
   flush(requestOptions?: ApiRequestOptions): Promise<void> {
     return this.#getManager().flush(requestOptions);
+  }
+
+  get parent(): RunMetadataUpdater {
+    return this.#getManager().parent;
+  }
+
+  get root(): RunMetadataUpdater {
+    return this.#getManager().root;
   }
 }

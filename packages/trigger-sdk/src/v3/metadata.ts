@@ -1,11 +1,14 @@
 import { DeserializedJson } from "@trigger.dev/core";
 import {
   ApiRequestOptions,
-  flattenAttributes,
   mergeRequestOptions,
   runMetadata,
+  type RunMetadataUpdater,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+
+const parentMetadataUpdater: RunMetadataUpdater = runMetadata.parent;
+const rootMetadataUpdater: RunMetadataUpdater = runMetadata.root;
 
 /**
  * Provides access to run metadata operations.
@@ -30,6 +33,8 @@ export const metadata = {
   remove: removeMetadataKey,
   increment: incrementMetadataKey,
   decrement: decrementMetadataKey,
+  parent: parentMetadataUpdater,
+  root: rootMetadataUpdater,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;

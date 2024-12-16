@@ -669,9 +669,69 @@ export const EnvironmentVariables = z.array(EnvironmentVariable);
 
 export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;
 
+export const RunMetadataSetKeyOperation = z.object({
+  type: z.literal("set"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataSetKeyOperation = z.infer<typeof RunMetadataSetKeyOperation>;
+
+export const RunMetadataDeleteKeyOperation = z.object({
+  type: z.literal("delete"),
+  key: z.string(),
+});
+
+export type RunMetadataDeleteKeyOperation = z.infer<typeof RunMetadataDeleteKeyOperation>;
+
+export const RunMetadataAppendKeyOperation = z.object({
+  type: z.literal("append"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataAppendKeyOperation = z.infer<typeof RunMetadataAppendKeyOperation>;
+
+export const RunMetadataRemoveFromKeyOperation = z.object({
+  type: z.literal("remove"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataRemoveFromKeyOperation = z.infer<typeof RunMetadataRemoveFromKeyOperation>;
+
+export const RunMetadataIncrementKeyOperation = z.object({
+  type: z.literal("increment"),
+  key: z.string(),
+  value: z.number(),
+});
+
+export type RunMetadataIncrementKeyOperation = z.infer<typeof RunMetadataIncrementKeyOperation>;
+
+export const RunMetadataDecrementKeyOperation = z.object({
+  type: z.literal("decrement"),
+  key: z.string(),
+  value: z.number(),
+});
+
+export type RunMetadataDecrementKeyOperation = z.infer<typeof RunMetadataDecrementKeyOperation>;
+
+export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
+  RunMetadataSetKeyOperation,
+  RunMetadataDeleteKeyOperation,
+  RunMetadataAppendKeyOperation,
+  RunMetadataRemoveFromKeyOperation,
+  RunMetadataIncrementKeyOperation,
+  RunMetadataDecrementKeyOperation,
+]);
+
+export type RunMetadataChangeOperation = z.infer<typeof RunMetadataChangeOperation>;
+
 export const UpdateMetadataRequestBody = z.object({
   metadata: z.record(DeserializedJsonSchema),
   metadataType: z.string().optional(),
+  parentOperations: z.array(RunMetadataChangeOperation).optional(),
+  rootOperations: z.array(RunMetadataChangeOperation).optional(),
 });
 
 export type UpdateMetadataRequestBody = z.infer<typeof UpdateMetadataRequestBody>;
