@@ -2,9 +2,10 @@ import { JSONHeroPath } from "@jsonhero/path";
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiRequestOptions } from "../zodfetch.js";
-import { RunMetadataManager } from "./types.js";
+import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
+import { RunMetadataChangeOperation } from "../schemas/api.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -16,6 +17,9 @@ export class StandardMetadataManager implements RunMetadataManager {
   // Add a Map to track active streams
   private activeStreams = new Map<string, MetadataStream<any>>();
 
+  private queuedParentOperations: Set<RunMetadataChangeOperation> = new Set();
+  private queuedRootOperations: Set<RunMetadataChangeOperation> = new Set();
+
   public runId: string | undefined;
 
   constructor(
@@ -23,6 +27,52 @@ export class StandardMetadataManager implements RunMetadataManager {
     private streamsBaseUrl: string,
     private streamsVersion: "v1" | "v2" = "v1"
   ) {}
+
+  get parent(): RunMetadataUpdater {
+    return {
+      setKey: (key, value) => {
+        this.queuedParentOperations.add({ type: "set", key, value });
+      },
+      deleteKey: (key) => {
+        this.queuedParentOperations.add({ type: "delete", key });
+      },
+      appendKey: (key, value) => {
+        this.queuedParentOperations.add({ type: "append", key, value });
+      },
+      removeFromKey: (key, value) => {
+        this.queuedParentOperations.add({ type: "remove", key, value });
+      },
+      incrementKey: (key, value) => {
+        this.queuedParentOperations.add({ type: "increment", key, value });
+      },
+      decrementKey: (key, value) => {
+        this.queuedParentOperations.add({ type: "decrement", key, value });
+      },
+    };
+  }
+
+  get root(): RunMetadataUpdater {
+    return {
+      setKey: (key, value) => {
+        this.queuedRootOperations.add({ type: "set", key, value });
+      },
+      deleteKey: (key) => {
+        this.queuedRootOperations.add({ type: "delete", key });
+      },
+      appendKey: (key, value) => {
+        this.queuedRootOperations.add({ type: "append", key, value });
+      },
+      removeFromKey: (key, value) => {
+        this.queuedRootOperations.add({ type: "remove", key, value });
+      },
+      incrementKey: (key, value) => {
+        this.queuedRootOperations.add({ type: "increment", key, value });
+      },
+      decrementKey: (key, value) => {
+        this.queuedRootOperations.add({ type: "decrement", key, value });
+      },
+    };
+  }
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
     this.store = metadata ?? {};
@@ -294,17 +344,24 @@ export class StandardMetadataManager implements RunMetadataManager {
       return;
     }
 
-    if (!this.store) {
-      return;
-    }
-
-    if (!this.hasChanges) {
+    if (!this.#needsFlush()) {
       return;
     }
 
     try {
       this.hasChanges = false;
-      await this.apiClient.updateRunMetadata(this.runId, { metadata: this.store }, requestOptions);
+
+      const parentOperations = Array.from(this.queuedParentOperations);
+      this.queuedParentOperations.clear();
+
+      const rootOperations = Array.from(this.queuedRootOperations);
+      this.queuedRootOperations.clear();
+
+      await this.apiClient.updateRunMetadata(
+        this.runId,
+        { metadata: this.store ?? {}, parentOperations, rootOperations },
+        requestOptions
+      );
     } catch (error) {
       this.hasChanges = true;
       throw error;
@@ -335,5 +392,11 @@ export class StandardMetadataManager implements RunMetadataManager {
       clearTimeout(this.flushTimeoutId);
       this.flushTimeoutId = null;
     }
+  }
+
+  #needsFlush(): boolean {
+    return (
+      this.hasChanges || this.queuedParentOperations.size > 0 || this.queuedRootOperations.size > 0
+    );
   }
 }

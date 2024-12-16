@@ -1,6 +1,6 @@
 import { DeserializedJson } from "../../schemas/json.js";
 import { ApiRequestOptions } from "../zodfetch.js";
-import type { RunMetadataManager } from "./types.js";
+import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class NoopRunMetadataManager implements RunMetadataManager {
   appendKey(key: string, value: DeserializedJson): void {
@@ -35,6 +35,14 @@ export class NoopRunMetadataManager implements RunMetadataManager {
     throw new Error("Method not implemented.");
   }
   update(metadata: Record<string, DeserializedJson>): void {
+    throw new Error("Method not implemented.");
+  }
+
+  get parent(): RunMetadataUpdater {
+    throw new Error("Method not implemented.");
+  }
+
+  get root(): RunMetadataUpdater {
     throw new Error("Method not implemented.");
   }
 }

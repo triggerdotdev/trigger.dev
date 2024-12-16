@@ -384,6 +384,7 @@ type ApiKeyActionRouteBuilderOptions<
   headers?: THeadersSchema;
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
+  method?: "POST" | "PUT" | "DELETE" | "PATCH";
   authorization?: {
     action: AuthorizationAction;
     resource: (
@@ -455,6 +456,19 @@ export function createActionApiRoute<
   }
 
   async function action({ request, params }: ActionFunctionArgs) {
+    if (options.method) {
+      if (request.method.toUpperCase() !== options.method) {
+        return await wrapResponse(
+          request,
+          json(
+            { error: "Method not allowed" },
+            { status: 405, headers: { Allow: options.method } }
+          ),
+          corsStrategy !== "none"
+        );
+      }
+    }
+
     try {
       const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
 
