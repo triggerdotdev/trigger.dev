@@ -271,6 +271,7 @@ export function registerRunEngineEventBusHandlers() {
             },
           },
           duration: 0,
+          startTime: BigInt(time.getTime() * 1_000_000),
         }
       );
     } catch (error) {
