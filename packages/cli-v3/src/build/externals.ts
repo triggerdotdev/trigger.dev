@@ -49,14 +49,21 @@ async function linkExternal(external: CollectedExternal, resolveDir: string, log
   if (external.name.startsWith("@")) {
     // Get the scope part (e.g., '@huggingface')
     const scopeDir = external.name.split("/")[0];
-    const scopePath = join(destinationPath, scopeDir);
 
-    logger.debug("[externals] Ensure scope directory exists", {
-      scopeDir,
-      scopePath,
-    });
+    if (scopeDir) {
+      const scopePath = join(destinationPath, scopeDir);
 
-    await mkdir(scopePath, { recursive: true });
+      logger.debug("[externals] Ensure scope directory exists", {
+        scopeDir,
+        scopePath,
+      });
+
+      await mkdir(scopePath, { recursive: true });
+    } else {
+      logger.debug("[externals] Unable to get the scope directory", {
+        external,
+      });
+    }
   }
 
   const symbolicLinkPath = join(destinationPath, external.name);
