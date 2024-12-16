@@ -37,6 +37,13 @@ export function Shortcuts() {
               <Shortcut name="Filter">
                 <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
               </Shortcut>
+              <Shortcut name="Select filter">
+                <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
+                <Paragraph variant="small" className="ml-1">
+                  to
+                </Paragraph>
+                <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
+              </Shortcut>
               <Shortcut name="Previous page">
                 <ShortcutKey shortcut={{ key: "j" }} variant="medium/bright" />
               </Shortcut>
