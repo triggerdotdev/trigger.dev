@@ -1,4 +1,5 @@
 import { Keyboard } from "lucide-react";
+import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import {
   Sheet,
@@ -8,7 +9,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "./primitives/SheetV3";
-import { Header3 } from "./primitives/Headers";
 import { ShortcutKey } from "./primitives/ShortcutKey";
 
 export function Shortcuts() {
@@ -83,6 +83,25 @@ export function Shortcuts() {
               <Shortcut name="Metadata">
                 <ShortcutKey shortcut={{ key: "m" }} variant="medium/bright" />
               </Shortcut>
+              <Shortcut name="Navigate">
+                <ShortcutKey shortcut={{ key: "arrowup" }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "arrowdown" }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "arrowleft" }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium/bright" />
+              </Shortcut>
+              <Shortcut name="Expand all">
+                <ShortcutKey shortcut={{ key: "e" }} variant="medium/bright" />
+              </Shortcut>
+              <Shortcut name="Collapse all">
+                <ShortcutKey shortcut={{ key: "w" }} variant="medium/bright" />
+              </Shortcut>
+              <Shortcut name="Toggle level">
+                <ShortcutKey shortcut={{ key: "0" }} variant="medium/bright" />
+                <Paragraph variant="small" className="ml-1">
+                  to
+                </Paragraph>
+                <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
+              </Shortcut>
             </div>
             <div className="space-y-3">
               <Header3>Alerts page</Header3>
@@ -100,7 +119,7 @@ export function Shortcuts() {
 function Shortcut({ children, name }: { children: React.ReactNode; name: string }) {
   return (
     <div className="flex items-center justify-between gap-x-2">
-      <Paragraph variant="small">{name}</Paragraph>
+      <span className="text-sm text-text-dimmed">{name}</span>
       <span className="flex items-center gap-x-0.5">{children}</span>
     </div>
   );
