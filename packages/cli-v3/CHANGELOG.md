@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.3.8
+
+### Patch Changes
+
+- Fix externals from monorepo packages with scoped package names #1552 ([#1569](https://github.com/triggerdotdev/trigger.dev/pull/1569))
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.8`
+  - `@trigger.dev/core@3.3.8`
+
 ## 3.3.7
 
 ### Patch Changes
