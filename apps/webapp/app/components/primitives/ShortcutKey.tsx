@@ -9,11 +9,14 @@ import {
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
 
+const medium =
+  "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
+
 export const variants = {
   small:
     "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
-  medium:
-    "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
+  medium,
+  "medium/bright": cn(medium, "bg-charcoal-750 text-text-bright border-charcoal-650"),
 };
 
 export type ShortcutKeyVariant = keyof typeof variants;
@@ -41,10 +44,10 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   );
 }
 
-function keyString(key: String, isMac: boolean, size: "small" | "medium") {
+function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "medium/bright") {
   key = key.toLowerCase();
 
-  const className = size === "small" ? "w-2.5 h-4" : "w-3 h-5";
+  const className = variant === "small" ? "w-2.5 h-4" : "w-3 h-5";
 
   switch (key) {
     case "enter":

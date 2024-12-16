@@ -31,6 +31,7 @@ function Collection({ platform }: { platform: "mac" | "windows" }) {
         <div key={index} className="flex items-center gap-x-2">
           <ShortcutKey shortcut={shortcut} variant="small" />
           <ShortcutKey shortcut={shortcut} variant="medium" />
+          <ShortcutKey shortcut={shortcut} variant="medium/bright" />
           <Button variant="primary/small" shortcut={shortcut}>
             Primary small
           </Button>
