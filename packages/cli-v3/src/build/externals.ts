@@ -45,6 +45,20 @@ async function linkExternal(external: CollectedExternal, resolveDir: string, log
     external,
   });
 
+  // For scoped packages, we need to ensure the scope directory exists
+  if (external.name.startsWith("@")) {
+    // Get the scope part (e.g., '@huggingface')
+    const scopeDir = external.name.split("/")[0];
+    const scopePath = join(destinationPath, scopeDir);
+
+    logger.debug("[externals] Ensure scope directory exists", {
+      scopeDir,
+      scopePath,
+    });
+
+    await mkdir(scopePath, { recursive: true });
+  }
+
   const symbolicLinkPath = join(destinationPath, external.name);
 
   // Make sure the symbolic link does not exist
