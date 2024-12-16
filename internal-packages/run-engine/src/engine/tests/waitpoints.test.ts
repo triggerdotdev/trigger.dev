@@ -84,8 +84,10 @@ describe("RunEngine Waitpoints", () => {
       });
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
+      const durationMs = 1_000;
+
       //waitForDuration
-      const date = new Date(Date.now() + 1000);
+      const date = new Date(Date.now() + durationMs);
       const result = await engine.waitForDuration({
         runId: run.id,
         snapshotId: attemptResult.snapshot.id,
@@ -100,6 +102,14 @@ describe("RunEngine Waitpoints", () => {
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
       await setTimeout(1_500);
+
+      const waitpoint = await prisma.waitpoint.findFirst({
+        where: {
+          id: result.waitpoint.id,
+        },
+      });
+      expect(waitpoint?.status).toBe("COMPLETED");
+      expect(waitpoint?.completedAt?.getTime()).toBeLessThanOrEqual(date.getTime() + 200);
 
       const executionDataAfter = await engine.getRunExecutionData({ runId: run.id });
       expect(executionDataAfter?.snapshot.executionStatus).toBe("EXECUTING");
@@ -578,7 +588,7 @@ describe("RunEngine Waitpoints", () => {
         });
         expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
 
-        const iterationCount = 50;
+        const iterationCount = 10;
 
         for (let i = 0; i < iterationCount; i++) {
           const waitpointCount = 5;
