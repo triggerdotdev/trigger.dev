@@ -12,6 +12,10 @@ import type { BuildRuntime, RetryOptions } from "./index.js";
 
 export type CompatibilityFlag = "run_engine_v2";
 
+export type CompatibilityFlagFeatures = {
+  [key in CompatibilityFlag]: boolean;
+};
+
 export type TriggerConfig = {
   /**
    * @default "node"
