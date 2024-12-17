@@ -10,13 +10,23 @@ import {
   SheetTrigger,
 } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
+import { Button } from "./primitives/Buttons";
 
 export function Shortcuts() {
   return (
     <Sheet>
-      <SheetTrigger className="flex h-[1.8rem] items-center gap-x-1.5 rounded-sm bg-transparent px-[0.4rem] text-2sm text-text-bright group-hover/button:bg-charcoal-750 hover:bg-charcoal-750 focus-visible:focus-custom">
-        <Keyboard className="size-4 text-indigo-500" />
-        Shortcuts
+      <SheetTrigger asChild>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={Keyboard}
+          leadingIconClassName="text-blue-500"
+          data-action="shortcuts"
+          fullWidth
+          textAlignLeft
+          shortcut={{ modifiers: ["shift"], key: "?" }}
+        >
+          Shortcuts
+        </Button>
       </SheetTrigger>
       <SheetContent>
         <SheetHeader>
@@ -101,6 +111,12 @@ export function Shortcuts() {
                   to
                 </Paragraph>
                 <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
+              </Shortcut>
+            </div>
+            <div className="space-y-3">
+              <Header3>Schedules page</Header3>
+              <Shortcut name="New schedule">
+                <ShortcutKey shortcut={{ key: "n" }} variant="medium/bright" />
               </Shortcut>
             </div>
             <div className="space-y-3">
