@@ -8,15 +8,15 @@ const variations = {
   large: {
     container: "flex items-center gap-x-2 rounded-md hover:bg-tertiary p-2 transition focus-custom",
     root: "h-6 w-11",
-    thumb: "h-5 w-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
-    text: "text-sm text-charcoal-400 group-hover:text-charcoal-200 transition",
+    thumb: "size-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0",
+    text: "text-sm text-text-dimmed",
   },
   small: {
     container:
       "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary disabled:hover:bg-transparent pr-1 py-[0.1rem] pl-1.5 transition focus-custom disabled:hover:text-charcoal-400 disabled:opacity-50 text-charcoal-400 hover:text-charcoal-200 disabled:hover:cursor-not-allowed hover:cursor-pointer",
     root: "h-3 w-6",
-    thumb: "h-2.5 w-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
-    text: "text-xs",
+    thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
+    text: "text-xs text-text-dimmed",
   },
 };
 
@@ -38,7 +38,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         ) : null}
         <div
           className={cn(
-            "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-text-link group-data-[state=unchecked]:bg-charcoal-700",
+            "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50",
             root
           )}
         >
