@@ -1,5 +1,5 @@
 import type { Prettify } from "@trigger.dev/core";
-import { BackgroundWorker } from "@trigger.dev/database";
+import { BackgroundWorker, WorkerDeployment } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL, CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
 import { Prisma, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -39,6 +39,25 @@ export async function findCurrentWorkerDeployment(
           },
         },
       },
+    },
+  });
+
+  return promotion?.deployment;
+}
+
+export async function findCurrentWorkerDeploymentWithoutTasks(
+  environmentId: string,
+  label = CURRENT_DEPLOYMENT_LABEL
+): Promise<WorkerDeployment | undefined> {
+  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+    where: {
+      environmentId_label: {
+        environmentId,
+        label,
+      },
+    },
+    include: {
+      deployment: true,
     },
   });
 
