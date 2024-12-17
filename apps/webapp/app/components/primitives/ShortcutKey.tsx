@@ -1,16 +1,11 @@
-import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-} from "@heroicons/react/20/solid";
+import { KeyboardDownIcon } from "~/assets/icons/KeyboardDownIcon";
+import { KeyboardLeftIcon } from "~/assets/icons/KeyboardLeftIcon";
+import { KeyboardRightIcon } from "~/assets/icons/KeyboardRightIcon";
+import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
+import { KeyboardWindowsIcon } from "~/assets/icons/KeyboardWindowsIcon";
 import { Modifier, Shortcut } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
-import { KeyboardRightIcon } from "~/assets/icons/KeyboardRightIcon";
-import { KeyboardLeftIcon } from "~/assets/icons/KeyboardLeftIcon";
-import { KeyboardDownIcon } from "~/assets/icons/KeyboardDownIcon";
-import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 
 const medium =
   "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
@@ -49,7 +44,9 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   return (
     <span className={cn(variants[variant], className)}>
       {modifiers.map((k) => (
-        <span key={k}>{modifierString(k, isMac)}</span>
+        <span key={k}>
+          <span>{modifierString(k, isMac)}</span>
+        </span>
       ))}
       {character && <span>{character}</span>}
     </span>
@@ -79,17 +76,17 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
   }
 }
 
-function modifierString(modifier: Modifier, isMac: boolean) {
+function modifierString(modifier: Modifier, isMac: boolean): string | JSX.Element {
   switch (modifier) {
     case "alt":
-      return isMac ? "⌥" : "Alt +";
+      return isMac ? "⌥" : "Alt+";
     case "ctrl":
-      return isMac ? "⌃" : "Ctrl +";
+      return isMac ? "⌃" : "Ctrl+";
     case "meta":
-      return isMac ? "⌘" : "⊞ +";
+      return isMac ? "⌘" : <KeyboardWindowsIcon />;
     case "shift":
-      return isMac ? "⇧" : "Shift +";
+      return isMac ? "⇧" : "Shift+";
     case "mod":
-      return isMac ? "⌘" : "Ctrl +";
+      return isMac ? "⌘" : "Ctrl+";
   }
 }

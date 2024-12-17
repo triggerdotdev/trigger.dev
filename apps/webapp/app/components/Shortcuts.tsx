@@ -40,14 +40,20 @@ export function Shortcuts() {
               </span>
             </div>
           </SheetTitle>
-          <div className="space-y-6 px-4 py-2">
+          <div className="space-y-6 px-4 pb-4 pt-2">
             <div className="space-y-3">
               <Header3>General</Header3>
+              <Shortcut name="Close">
+                <ShortcutKey
+                  shortcut={{ modifiers: ["alt", "ctrl", "meta", "shift", "mod"], key: "w" }}
+                  variant="medium/bright"
+                />
+              </Shortcut>
               <Shortcut name="Close">
                 <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
               </Shortcut>
               <Shortcut name="Confirm">
-                <ShortcutKey shortcut={{ key: "", modifiers: ["mod"] }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
                 <ShortcutKey shortcut={{ key: "enter" }} variant="medium/bright" />
               </Shortcut>
               <Shortcut name="Filter">
@@ -55,7 +61,7 @@ export function Shortcuts() {
               </Shortcut>
               <Shortcut name="Select filter">
                 <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
-                <Paragraph variant="small" className="ml-1">
+                <Paragraph variant="small" className="ml-1.5">
                   to
                 </Paragraph>
                 <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
@@ -113,7 +119,7 @@ export function Shortcuts() {
               </Shortcut>
               <Shortcut name="Toggle level">
                 <ShortcutKey shortcut={{ key: "0" }} variant="medium/bright" />
-                <Paragraph variant="small" className="ml-1">
+                <Paragraph variant="small" className="ml-1.5">
                   to
                 </Paragraph>
                 <ShortcutKey shortcut={{ key: "9" }} variant="medium/bright" />
