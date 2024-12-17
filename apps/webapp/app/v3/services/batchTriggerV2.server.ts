@@ -49,6 +49,9 @@ export type BatchTriggerTaskServiceOptions = {
   oneTimeUseToken?: string;
 };
 
+/**
+ * Larger batches, used in Run Engine v1
+ */
 export class BatchTriggerV2Service extends BaseService {
   private _batchProcessingStrategy: BatchProcessingStrategy;
 
