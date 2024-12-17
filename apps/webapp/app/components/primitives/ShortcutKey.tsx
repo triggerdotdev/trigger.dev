@@ -4,9 +4,13 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
-import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { Modifier, Shortcut } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { useOperatingSystem } from "./OperatingSystemProvider";
+import { KeyboardRightIcon } from "~/assets/icons/KeyboardRightIcon";
+import { KeyboardLeftIcon } from "~/assets/icons/KeyboardLeftIcon";
+import { KeyboardDownIcon } from "~/assets/icons/KeyboardDownIcon";
+import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 
 const medium =
   "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
@@ -20,8 +24,17 @@ export const variants = {
 
 export type ShortcutKeyVariant = keyof typeof variants;
 
+type ShortcutKey = Partial<Shortcut>;
+
+type ShortcutKeyDefinition =
+  | {
+      windows: ShortcutKey;
+      mac: ShortcutKey;
+    }
+  | ShortcutKey;
+
 type ShortcutKeyProps = {
-  shortcut: ShortcutDefinition;
+  shortcut: ShortcutKeyDefinition;
   variant: ShortcutKeyVariant;
   className?: string;
 };
@@ -31,14 +44,14 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   const isMac = platform === "mac";
   let relevantShortcut = "mac" in shortcut ? (isMac ? shortcut.mac : shortcut.windows) : shortcut;
   const modifiers = relevantShortcut.modifiers ?? [];
-  const character = keyString(relevantShortcut.key, isMac, variant);
+  const character = relevantShortcut.key ? keyString(relevantShortcut.key, isMac, variant) : null;
 
   return (
     <span className={cn(variants[variant], className)}>
       {modifiers.map((k) => (
         <span key={k}>{modifierString(k, isMac)}</span>
       ))}
-      <span>{character}</span>
+      {character && <span>{character}</span>}
     </span>
   );
 }
@@ -51,14 +64,16 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
   switch (key) {
     case "enter":
       return isMac ? "↵" : key;
+    case "esc":
+      return <span className="capitalize">Esc</span>;
     case "arrowdown":
-      return <ChevronDownIcon className={className} />;
+      return <KeyboardDownIcon className={className} />;
     case "arrowup":
-      return <ChevronUpIcon className={className} />;
+      return <KeyboardUpIcon className={className} />;
     case "arrowleft":
-      return <ChevronLeftIcon className={className} />;
+      return <KeyboardLeftIcon className={className} />;
     case "arrowright":
-      return <ChevronRightIcon className={className} />;
+      return <KeyboardRightIcon className={className} />;
     default:
       return key;
   }
@@ -67,14 +82,14 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
 function modifierString(modifier: Modifier, isMac: boolean) {
   switch (modifier) {
     case "alt":
-      return isMac ? "⌥" : "Alt+";
+      return isMac ? "⌥" : "Alt +";
     case "ctrl":
-      return isMac ? "⌃" : "Ctrl+";
+      return isMac ? "⌃" : "Ctrl +";
     case "meta":
-      return isMac ? "⌘" : "⊞+";
+      return isMac ? "⌘" : "⊞ +";
     case "shift":
-      return isMac ? "⇧" : "Shift+";
+      return isMac ? "⇧" : "Shift +";
     case "mod":
-      return isMac ? "⌘" : "Ctrl+";
+      return isMac ? "⌘" : "Ctrl +";
   }
 }
