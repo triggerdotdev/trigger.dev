@@ -1152,7 +1152,7 @@ importers:
         specifier: workspace:3.3.7
         version: link:../core
       '@trigger.dev/worker':
-        specifier: workspace:3.3.5
+        specifier: workspace:3.3.7
         version: link:../worker
       c12:
         specifier: ^1.11.1
@@ -10450,7 +10450,7 @@ packages:
       react: ^16.8 || ^17.0 || ^18.0
       react-dom: ^16.8 || ^17.0 || ^18.0
     dependencies:
-      '@babel/runtime': 7.20.7
+      '@babel/runtime': 7.24.5
       '@radix-ui/primitive': 1.0.0
       '@radix-ui/react-context': 1.0.0(react@18.2.0)
       '@radix-ui/react-direction': 1.0.0(react@18.2.0)
