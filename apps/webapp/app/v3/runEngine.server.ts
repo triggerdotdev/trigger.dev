@@ -14,12 +14,12 @@ function createRunEngine() {
   const engine = new RunEngine({
     prisma,
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
+      port: env.VALKEY_PORT ?? undefined,
+      host: env.VALKEY_HOST ?? undefined,
+      username: env.VALKEY_USERNAME ?? undefined,
+      password: env.VALKEY_PASSWORD ?? undefined,
       enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      ...(env.VALKEY_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
     worker: {
       workers: env.RUN_ENGINE_WORKER_COUNT,

@@ -84,6 +84,33 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_TLS_DISABLED: z.string().optional(),
 
+  // Valkey options (used in Run Engine 2.0+)
+  VALKEY_HOST: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_HOST ?? null),
+  VALKEY_READER_HOST: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_READER_HOST ?? null),
+  VALKEY_READER_PORT: z.coerce
+    .number()
+    .nullish()
+    .default(process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : null),
+  VALKEY_PORT: z.coerce
+    .number()
+    .nullish()
+    .default(process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : null),
+  VALKEY_USERNAME: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_USERNAME ?? null),
+  VALKEY_PASSWORD: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_PASSWORD ?? null),
+  VALKEY_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
