@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { xdgAppPaths } from "../imports/xdg-app-paths.js";
@@ -12,6 +12,9 @@ function getGlobalConfigFolderPath() {
 }
 
 export const DEFFAULT_PROFILE = "default";
+
+const CONFIG_FILE = "config.json";
+const OLD_CONFIG_FILE = "default.json";
 
 const CliConfigProfileSettings = z.object({
   accessToken: z.string().optional(),
@@ -29,44 +32,60 @@ const CliConfigFile = z.object({
 });
 type CliConfigFile = z.infer<typeof CliConfigFile>;
 
+function getOldAuthConfigFilePath() {
+  return path.join(getGlobalConfigFolderPath(), OLD_CONFIG_FILE);
+}
+
 function getAuthConfigFilePath() {
-  return path.join(getGlobalConfigFolderPath(), "default.json");
+  return path.join(getGlobalConfigFolderPath(), CONFIG_FILE);
 }
 
 function getAuthConfigFileBackupPath() {
   // Multiple calls won't overwrite old backups
-  return path.join(getGlobalConfigFolderPath(), `default.json.bak-${Date.now()}`);
+  return path.join(getGlobalConfigFolderPath(), `${CONFIG_FILE}.bak-${Date.now()}`);
+}
+
+function getBlankConfig(): CliConfigFile {
+  return {
+    version: 2,
+    currentProfile: DEFFAULT_PROFILE,
+    profiles: {},
+  };
+}
+
+function getConfig() {
+  return readAuthConfigFile() ?? getBlankConfig();
 }
 
 export function writeAuthConfigCurrentProfileName(profile: string) {
-  const existingConfig = readAuthConfigFile();
+  const config = getConfig();
 
-  existingConfig.currentProfile = profile;
+  config.currentProfile = profile;
 
-  writeAuthConfigFile(existingConfig);
+  writeAuthConfigFile(config);
 }
 
 export function readAuthConfigCurrentProfileName(): string {
-  const existingConfig = readAuthConfigFile();
-  return existingConfig.currentProfile;
+  const config = getConfig();
+  return config.currentProfile;
 }
 
 export function writeAuthConfigProfile(
   settings: CliConfigProfileSettings,
   profile: string = DEFFAULT_PROFILE
 ) {
-  const existingConfig = readAuthConfigFile();
+  const config = getConfig();
 
-  existingConfig.profiles[profile] = settings;
+  config.profiles[profile] = settings;
 
-  writeAuthConfigFile(existingConfig);
+  writeAuthConfigFile(config);
 }
 
 export function readAuthConfigProfile(
   profile: string = DEFFAULT_PROFILE
 ): CliConfigProfileSettings | undefined {
   try {
-    const config = readAuthConfigFile();
+    const config = getConfig();
     return config.profiles[profile];
   } catch (error) {
     logger.debug(`Error reading auth config file: ${error}`);
@@ -75,20 +94,25 @@ export function readAuthConfigProfile(
 }
 
 export function deleteAuthConfigProfile(profile: string = DEFFAULT_PROFILE) {
-  const existingConfig = readAuthConfigFile();
+  const config = getConfig();
 
-  delete existingConfig.profiles[profile];
+  delete config.profiles[profile];
 
-  writeAuthConfigFile(existingConfig);
+  if (config.currentProfile === profile) {
+    config.currentProfile = DEFFAULT_PROFILE;
+  }
+
+  writeAuthConfigFile(config);
 }
 
-export function readAuthConfigFile(): CliConfigFile {
+export function readAuthConfigFile(): CliConfigFile | null {
   try {
-    const authConfigFilePath = getAuthConfigFilePath();
+    const configFilePath = getAuthConfigFilePath();
+    const configFileExists = existsSync(configFilePath);
 
-    logger.debug(`Reading auth config file`, { authConfigFilePath });
+    logger.debug(`Reading auth config file`, { configFilePath, configFileExists });
 
-    const json = readJSONFileSync(authConfigFilePath);
+    const json = readJSONFileSync(configFileExists ? configFilePath : getOldAuthConfigFilePath());
 
     if ("currentProfile" in json) {
       // This is the new format
@@ -105,31 +129,18 @@ export function readAuthConfigFile(): CliConfigFile {
       profiles: oldConfigFormat,
     } satisfies CliConfigFile;
 
-    // Save a backup
-    backupOldConfigFile(oldConfigFormat);
-
-    // Then overwrite the old config with the new format
+    // Save to new config file location, the old file will remain untouched
     writeAuthConfigFile(newConfigFormat);
 
     return newConfigFormat;
   } catch (error) {
     logger.debug(`Error reading auth config file: ${error}`);
-    throw new Error(`Error reading auth config file: ${error}`);
+    return null;
   }
 }
 
 export function writeAuthConfigFile(config: CliConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
-  mkdirSync(path.dirname(authConfigFilePath), {
-    recursive: true,
-  });
-  writeFileSync(path.join(authConfigFilePath), JSON.stringify(config, undefined, 2), {
-    encoding: "utf-8",
-  });
-}
-
-export function backupOldConfigFile(config: OldCliConfigFile) {
-  const authConfigFilePath = getAuthConfigFileBackupPath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,
   });
