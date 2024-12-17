@@ -60,9 +60,11 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
 
   switch (key) {
     case "enter":
-      return isMac ? "↵" : key;
+      return isMac ? "↵" : <span className="capitalize">Enter</span>;
     case "esc":
       return <span className="capitalize">Esc</span>;
+    case "del":
+      return <span className="capitalize">Del</span>;
     case "arrowdown":
       return <KeyboardDownIcon className={className} />;
     case "arrowup":
@@ -79,14 +81,14 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
 function modifierString(modifier: Modifier, isMac: boolean): string | JSX.Element {
   switch (modifier) {
     case "alt":
-      return isMac ? "⌥" : "Alt+";
+      return isMac ? "⌥" : <span className="capitalize">Alt</span>;
     case "ctrl":
-      return isMac ? "⌃" : "Ctrl+";
+      return isMac ? "⌃" : <span className="capitalize">Ctrl</span>;
     case "meta":
       return isMac ? "⌘" : <KeyboardWindowsIcon />;
     case "shift":
-      return isMac ? "⇧" : "Shift+";
+      return "⇧";
     case "mod":
-      return isMac ? "⌘" : "Ctrl+";
+      return isMac ? "⌘" : <span className="capitalize">Ctrl</span>;
   }
 }
