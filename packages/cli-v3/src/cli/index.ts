@@ -30,7 +30,7 @@ configureLogoutCommand(program);
 configureListProfilesCommand(program);
 configureSwitchProfilesCommand(program);
 configureUpdateCommand(program);
-configureWorkersCommand(program);
-configureTriggerTaskCommand(program);
+// configureWorkersCommand(program);
+// configureTriggerTaskCommand(program);
 
 installExitHandler();
