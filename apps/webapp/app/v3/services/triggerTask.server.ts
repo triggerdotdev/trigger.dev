@@ -4,6 +4,7 @@ import { WithRunEngine } from "./baseService.server";
 import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { TriggerTaskServiceV2 } from "./triggerTaskV2.server";
+import { determineEngineVersion } from "../engineVersion.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -35,44 +36,16 @@ export class TriggerTaskService extends WithRunEngine {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      //todo we need to determine the version using the BackgroundWorker
-      //- triggerAndWait we can lookup the BackgroundWorker easily, and get the engine.
-      //- No locked version: lookup the BackgroundWorker via the Deployment/latest dev BW
-      // const workerWithTasks = workerId
-      //   ? await getWorkerDeploymentFromWorker(prisma, workerId)
-      //   : run.runtimeEnvironment.type === "DEVELOPMENT"
-      //   ? await getMostRecentWorker(prisma, run.runtimeEnvironmentId)
-      //   : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+      const version = await determineEngineVersion({ environment });
 
-      if (environment.project.engine === RunEngineVersion.V1) {
-        return await this.callV1(taskId, environment, body, options);
+      switch (version) {
+        case "V1": {
+          return await this.callV1(taskId, environment, body, options);
+        }
+        case "V2": {
+          return await this.callV2(taskId, environment, body, options);
+        }
       }
-
-      if (environment.type === RuntimeEnvironmentType.DEVELOPMENT) {
-        return await this.callV1(taskId, environment, body, options);
-      }
-
-      //todo Additional checks
-      /*
-      - If the `triggerVersion` is 3.2 or higher AND the project has engine V2, we will use the run engine.
-      - Add an `engine` column to `Project` in the database.
-
-      Add `engine` to the trigger.config file. It would default to "V1" for now, but you can set it to V2.
-
-      You run `npx trigger.dev@latest deploy` with config v2.
-      - Create BackgroundWorker with `engine`: `v2`.
-      - Set the `project` `engine` column to `v2`.
-
-      You run `npx trigger.dev@latest dev`  with config v2
-      - Create BackgroundWorker with `engine`: `v2`.
-      - Set the `project` `engine` column to `v2`.
-
-      When triggering
-      - triggerAndWait we can lookup the BackgroundWorker easily, and get the engine.
-      - No locked version: lookup the BackgroundWorker via the Deployment/latest dev BW
-      */
-
-      return await this.callV2(taskId, environment, body, options);
     });
   }
 
