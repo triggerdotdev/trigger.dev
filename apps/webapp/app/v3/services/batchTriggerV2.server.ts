@@ -709,18 +709,18 @@ export class BatchTriggerV2Service extends BaseService {
     | { status: "ERROR"; error: string; workingIndex: number }
   > {
     // Grab the next PROCESSING_BATCH_SIZE runIds
-    const runIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
+    const runFriendlyIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
     logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
       currentIndex,
-      runIds,
+      runIds: runFriendlyIds,
       runCount: batch.runCount,
     });
 
     // Combine the "window" between currentIndex and currentIndex + PROCESSING_BATCH_SIZE with the runId and the item in the payload which is an array
-    const itemsToProcess = runIds.map((runId, index) => ({
-      runId,
+    const itemsToProcess = runFriendlyIds.map((runFriendlyId, index) => ({
+      runFriendlyId,
       item: items[index + currentIndex],
     }));
 
@@ -757,13 +757,13 @@ export class BatchTriggerV2Service extends BaseService {
   async #processBatchTaskRunItem(
     batch: BatchTaskRun,
     environment: AuthenticatedEnvironment,
-    task: { runId: string; item: BatchTriggerTaskV2RequestBody["items"][number] },
+    task: { runFriendlyId: string; item: BatchTriggerTaskV2RequestBody["items"][number] },
     currentIndex: number,
     options?: BatchTriggerTaskServiceOptions
   ) {
     logger.debug("[BatchTriggerV2][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
-      runId: task.runId,
+      runId: task.runFriendlyId,
       currentIndex,
     });
 
@@ -786,12 +786,12 @@ export class BatchTriggerV2Service extends BaseService {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.friendlyId,
         skipChecks: true,
-        runId: task.runId,
+        runFriendlyId: task.runFriendlyId,
       }
     );
 
     if (!run) {
-      throw new Error(`Failed to trigger run ${task.runId} for batch ${batch.friendlyId}`);
+      throw new Error(`Failed to trigger run ${task.runFriendlyId} for batch ${batch.friendlyId}`);
     }
 
     await this._prisma.batchTaskRunItem.create({

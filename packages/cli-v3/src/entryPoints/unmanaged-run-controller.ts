@@ -44,10 +44,10 @@ class UnmanagedRunController {
       this.session.emit("requestRunAttemptStart", {
         time: new Date(),
         run: {
-          id: message.run.id,
+          friendlyId: message.run.id,
         },
         snapshot: {
-          id: message.snapshot.id,
+          friendlyId: message.snapshot.id,
         },
       });
     });
@@ -96,10 +96,10 @@ class UnmanagedRunController {
         this.session.emit("runAttemptCompleted", {
           time: new Date(),
           run: {
-            id: run.id,
+            friendlyId: run.id,
           },
           snapshot: {
-            id: snapshot.id,
+            friendlyId: snapshot.id,
           },
           completion,
         });
@@ -111,10 +111,10 @@ class UnmanagedRunController {
         this.session.emit("runAttemptCompleted", {
           time: new Date(),
           run: {
-            id: run.id,
+            friendlyId: run.id,
           },
           snapshot: {
-            id: snapshot.id,
+            friendlyId: snapshot.id,
           },
           completion: {
             id: execution.run.id,

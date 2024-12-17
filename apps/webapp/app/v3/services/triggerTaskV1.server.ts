@@ -31,6 +31,7 @@ import { parseDelay } from "~/utils/delays";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 
+/** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV1 extends BaseService {
   public async call(
     taskId: string,
@@ -126,7 +127,7 @@ export class TriggerTaskServiceV1 extends BaseService {
         );
       }
 
-      const runFriendlyId = options?.runId ?? generateFriendlyId("run");
+      const runFriendlyId = options?.runFriendlyId ?? generateFriendlyId("run");
 
       const payloadPacket = await this.#handlePayloadPacket(
         body.payload,

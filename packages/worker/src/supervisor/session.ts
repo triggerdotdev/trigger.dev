@@ -69,26 +69,26 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     }
   }
 
-  subscribeToRunNotifications(runIds: string[]) {
-    console.log("[WorkerSession] Subscribing to run notifications", { runIds });
+  subscribeToRunNotifications(runFriendlyIds: string[]) {
+    console.log("[WorkerSession] Subscribing to run notifications", { runFriendlyIds });
 
     if (!this.socket) {
       console.error("[WorkerSession] Socket not connected");
       return;
     }
 
-    this.socket.emit("run:subscribe", { version: "1", runIds });
+    this.socket.emit("run:subscribe", { version: "1", runFriendlyIds });
   }
 
-  unsubscribeFromRunNotifications(runIds: string[]) {
-    console.log("[WorkerSession] Unsubscribing from run notifications", { runIds });
+  unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
+    console.log("[WorkerSession] Unsubscribing from run notifications", { runFriendlyIds });
 
     if (!this.socket) {
       console.error("[WorkerSession] Socket not connected");
       return;
     }
 
-    this.socket.emit("run:unsubscribe", { version: "1", runIds });
+    this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds });
   }
 
   private createSocket() {

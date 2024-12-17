@@ -10,8 +10,8 @@ export const action = createActionWorkerApiRoute(
   {
     body: WorkerApiRunAttemptStartRequestBody,
     params: z.object({
-      runId: z.string(),
-      snapshotId: z.string(),
+      runFriendlyId: z.string(),
+      snapshotFriendlyId: z.string(),
     }),
   },
   async ({
@@ -19,11 +19,11 @@ export const action = createActionWorkerApiRoute(
     body,
     params,
   }): Promise<TypedResponse<WorkerApiRunAttemptStartResponseBody>> => {
-    const { runId, snapshotId } = params;
+    const { runFriendlyId, snapshotFriendlyId } = params;
 
     const runExecutionData = await authenticatedWorker.startRunAttempt({
-      runId,
-      snapshotId,
+      runFriendlyId,
+      snapshotFriendlyId,
       isWarmStart: body.isWarmStart,
     });
 

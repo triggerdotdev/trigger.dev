@@ -119,7 +119,9 @@ export class ReplayTaskRunService extends BaseService {
         return;
       }
 
-      logger.error("Failed to replay a run", { error: error });
+      logger.error("Failed to replay a run", {
+        error: error instanceof Error ? error.message : error,
+      });
 
       return;
     }

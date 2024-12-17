@@ -24,6 +24,7 @@ import { $transaction } from "~/db.server";
 import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
+import { fromFriendlyId } from "@trigger.dev/core/v3/apps";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -615,29 +616,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   async heartbeatRun({
-    runId,
-    snapshotId,
+    runFriendlyId,
+    snapshotFriendlyId,
   }: {
-    runId: string;
-    snapshotId: string;
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
   }): Promise<ExecutionResult> {
-    return await this._engine.heartbeatRun({ runId, snapshotId });
+    return await this._engine.heartbeatRun({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+    });
   }
 
   async startRunAttempt({
-    runId,
-    snapshotId,
+    runFriendlyId,
+    snapshotFriendlyId,
     isWarmStart,
   }: {
-    runId: string;
-    snapshotId: string;
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
     isWarmStart?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
     }
   > {
-    const engineResult = await this._engine.startRunAttempt({ runId, snapshotId, isWarmStart });
+    const engineResult = await this._engine.startRunAttempt({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      isWarmStart,
+    });
 
     const defaultMachinePreset = {
       name: "small-1x",
@@ -669,31 +677,41 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 
   async completeRunAttempt({
-    runId,
-    snapshotId,
+    runFriendlyId,
+    snapshotFriendlyId,
     completion,
   }: {
-    runId: string;
-    snapshotId: string;
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
   }): Promise<CompleteRunAttemptResult> {
-    return await this._engine.completeRunAttempt({ runId, snapshotId, completion });
+    return await this._engine.completeRunAttempt({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      completion,
+    });
   }
 
   async waitForDuration({
-    runId,
-    snapshotId,
+    runFriendlyId,
+    snapshotFriendlyId,
     date,
   }: {
-    runId: string;
-    snapshotId: string;
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
     date: Date;
   }): Promise<WaitForDurationResult> {
-    return await this._engine.waitForDuration({ runId, snapshotId, date });
+    return await this._engine.waitForDuration({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      date,
+    });
   }
 
-  async getLatestSnapshot({ runId }: { runId: string }) {
-    return await this._engine.getRunExecutionData({ runId });
+  async getLatestSnapshot({ runFriendlyId }: { runFriendlyId: string }) {
+    return await this._engine.getRunExecutionData({
+      runId: fromFriendlyId(runFriendlyId),
+    });
   }
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {

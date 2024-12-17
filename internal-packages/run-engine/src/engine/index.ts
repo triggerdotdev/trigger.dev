@@ -21,10 +21,13 @@ import {
   WaitForDurationResult,
 } from "@trigger.dev/core/v3";
 import {
-  generateFriendlyId,
   getMaxDuration,
   parseNaturalLanguageDuration,
+  QueueId,
+  RunId,
   sanitizeQueueName,
+  SnapshotId,
+  WaitpointId,
 } from "@trigger.dev/core/v3/apps";
 import {
   $transaction,
@@ -49,11 +52,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "./consts";
 import { getRunWithBackgroundWorkerTasks } from "./db/worker";
 import { runStatusFromError } from "./errors";
 import { EventBusEvents } from "./eventBus";
-import {
-  executionResultFromSnapshot,
-  getExecutionSnapshotCompletedWaitpoints,
-  getLatestExecutionSnapshot,
-} from "./executionSnapshots";
+import { executionResultFromSnapshot, getLatestExecutionSnapshot } from "./executionSnapshots";
 import { RunLocker } from "./locking";
 import { machinePresetFromConfig } from "./machinePresets";
 import {
@@ -270,6 +269,7 @@ export class RunEngine {
         //create run
         const taskRun = await prisma.taskRun.create({
           data: {
+            id: RunId.fromFriendlyId(friendlyId),
             engine: "V2",
             status,
             number,
@@ -414,7 +414,7 @@ export class RunEngine {
             } else {
               taskQueue = await prisma.taskQueue.create({
                 data: {
-                  friendlyId: generateFriendlyId("queue"),
+                  ...QueueId.generate(),
                   name: queueName,
                   concurrencyLimit,
                   runtimeEnvironmentId: environment.id,
@@ -773,6 +773,7 @@ export class RunEngine {
               version: "1" as const,
               snapshot: {
                 id: newSnapshot.id,
+                friendlyId: newSnapshot.friendlyId,
                 executionStatus: newSnapshot.executionStatus,
                 description: newSnapshot.description,
               },
@@ -781,6 +782,7 @@ export class RunEngine {
               completedWaitpoints: snapshot.completedWaitpoints,
               backgroundWorker: {
                 id: result.worker.id,
+                friendlyId: result.worker.friendlyId,
                 version: result.worker.version,
               },
               deployment: {
@@ -1119,7 +1121,6 @@ export class RunEngine {
           },
           run: {
             id: run.friendlyId,
-            internalId: run.id,
             payload: run.payload,
             payloadType: run.payloadType,
             createdAt: run.createdAt,
@@ -1527,7 +1528,7 @@ export class RunEngine {
 
     return this.prisma.waitpoint.create({
       data: {
-        friendlyId: generateFriendlyId("waitpoint"),
+        ...WaitpointId.generate(),
         type: "MANUAL",
         idempotencyKey: idempotencyKey ?? nanoid(24),
         userProvidedIdempotencyKey: !!idempotencyKey,
@@ -1829,17 +1830,20 @@ export class RunEngine {
         version: "1" as const,
         snapshot: {
           id: snapshot.id,
+          friendlyId: snapshot.friendlyId,
           executionStatus: snapshot.executionStatus,
           description: snapshot.description,
         },
         run: {
           id: snapshot.runId,
+          friendlyId: snapshot.runFriendlyId,
           status: snapshot.runStatus,
           attemptNumber: snapshot.attemptNumber ?? undefined,
         },
         checkpoint: snapshot.checkpoint
           ? {
               id: snapshot.checkpoint.id,
+              friendlyId: snapshot.checkpoint.friendlyId,
               type: snapshot.checkpoint.type,
               location: snapshot.checkpoint.location,
               imageRef: snapshot.checkpoint.imageRef,
@@ -1893,6 +1897,7 @@ export class RunEngine {
           snapshot: latestSnapshot,
           run: {
             id: runId,
+            friendlyId: latestSnapshot.runFriendlyId,
             status: latestSnapshot.runStatus,
             attemptNumber: latestSnapshot.attemptNumber,
           },
@@ -2065,6 +2070,7 @@ export class RunEngine {
           },
           select: {
             id: true,
+            friendlyId: true,
             status: true,
             attemptNumber: true,
             spanId: true,
@@ -2432,11 +2438,13 @@ export class RunEngine {
         wasRequeued: true,
         snapshot: {
           id: newSnapshot.id,
+          friendlyId: newSnapshot.friendlyId,
           executionStatus: newSnapshot.executionStatus,
           description: newSnapshot.description,
         },
         run: {
           id: newSnapshot.runId,
+          friendlyId: newSnapshot.runFriendlyId,
           status: newSnapshot.runStatus,
           attemptNumber: newSnapshot.attemptNumber,
         },
@@ -2616,7 +2624,7 @@ export class RunEngine {
   ) {
     return tx.waitpoint.create({
       data: {
-        friendlyId: generateFriendlyId("waitpoint"),
+        ...WaitpointId.generate(),
         type: "RUN",
         status: "PENDING",
         idempotencyKey: nanoid(24),
@@ -2639,7 +2647,7 @@ export class RunEngine {
   ) {
     const waitpoint = await tx.waitpoint.create({
       data: {
-        friendlyId: generateFriendlyId("waitpoint"),
+        ...WaitpointId.generate(),
         type: "DATETIME",
         status: "PENDING",
         idempotencyKey: idempotencyKey ?? nanoid(24),
@@ -2772,7 +2780,11 @@ export class RunEngine {
       },
     });
 
-    return newSnapshot;
+    return {
+      ...newSnapshot,
+      friendlyId: SnapshotId.toFriendlyId(newSnapshot.id),
+      runFriendlyId: RunId.toFriendlyId(newSnapshot.runId),
+    };
   }
 
   async #setExecutionSnapshotHeartbeat({

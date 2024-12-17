@@ -80,7 +80,7 @@ export const TriggerTaskRequestBody = z.object({
       parentBatch: z.string().optional(),
       /**
        * RunEngine v2
-       * If triggered inside another run, the parentRunId is the id of the parent run.
+       * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
        */
       parentRunId: z.string().optional(),
       /**
@@ -114,7 +114,6 @@ export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
 export const TriggerTaskResponse = z.object({
   id: z.string(),
-  internalId: z.string(),
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;

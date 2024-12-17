@@ -99,7 +99,6 @@ export function useTaskTrigger<TTask extends AnyTask>(
       mutation.trigger({ payload, options });
     },
     isLoading: mutation.isMutating,
-    // @ts-expect-error
     handle: mutation.data as RunHandleFromTypes<InferRunTypes<TTask>>,
     error: mutation.error,
   };

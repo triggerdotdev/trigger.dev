@@ -5,9 +5,10 @@ import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import type { Attributes } from "@opentelemetry/api";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
-import { socketIo } from "./handleSocketIo.server";
+import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import { RunId } from "@trigger.dev/core/v3/apps";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -286,7 +287,12 @@ export function registerRunEngineEventBusHandlers() {
     logger.debug("[workerNotification] Notifying worker", { time, runId: run.id });
 
     try {
-      socketIo.workerNamespace.to(`run:${run.id}`).emit("run:notify", { version: "1", run });
+      const runFriendlyId = RunId.toFriendlyId(run.id);
+      const room = roomFromFriendlyRunId(runFriendlyId);
+
+      socketIo.workerNamespace
+        .to(room)
+        .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
     } catch (error) {
       logger.error("[workerNotification] Failed to notify worker", {
         error: error instanceof Error ? error.message : error,

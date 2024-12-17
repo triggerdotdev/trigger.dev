@@ -228,7 +228,6 @@ export const TaskRunExecution = z.object({
   run: TaskRun.and(
     z.object({
       traceContext: z.record(z.unknown()).optional(),
-      internalId: z.string().optional(),
     })
   ),
   queue: TaskRunExecutionQueue,

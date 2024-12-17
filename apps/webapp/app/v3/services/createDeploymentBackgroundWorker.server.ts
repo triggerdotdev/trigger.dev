@@ -9,7 +9,7 @@ import {
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
-import { logger } from "~/services/logger.server";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
 
 export class CreateDeploymentBackgroundWorkerService extends BaseService {
   public async call(
@@ -36,7 +36,7 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,

@@ -3,12 +3,12 @@ import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { CheckpointId } from "@trigger.dev/core/v3/apps";
 
 export class CreateCheckpointService extends BaseService {
   public async call(
@@ -98,7 +98,7 @@ export class CreateCheckpointService extends BaseService {
 
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
-        friendlyId: generateFriendlyId("checkpoint"),
+        ...CheckpointId.generate(),
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
         projectId: attempt.taskRun.projectId,
         attemptId: attempt.id,

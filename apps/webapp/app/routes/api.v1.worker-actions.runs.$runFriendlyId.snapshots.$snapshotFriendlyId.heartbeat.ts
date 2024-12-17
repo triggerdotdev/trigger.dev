@@ -6,19 +6,19 @@ import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.
 export const action = createActionWorkerApiRoute(
   {
     params: z.object({
-      runId: z.string(),
-      snapshotId: z.string(),
+      runFriendlyId: z.string(),
+      snapshotFriendlyId: z.string(),
     }),
   },
   async ({
     authenticatedWorker,
     params,
   }): Promise<TypedResponse<WorkloadHeartbeatResponseBody>> => {
-    const { runId, snapshotId } = params;
+    const { runFriendlyId, snapshotFriendlyId } = params;
 
     await authenticatedWorker.heartbeatRun({
-      runId,
-      snapshotId,
+      runFriendlyId,
+      snapshotFriendlyId,
     });
 
     return json({ ok: true });

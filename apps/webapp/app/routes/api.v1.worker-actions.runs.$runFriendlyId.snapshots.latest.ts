@@ -6,17 +6,17 @@ import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.
 export const loader = createLoaderWorkerApiRoute(
   {
     params: z.object({
-      runId: z.string(),
+      runFriendlyId: z.string(),
     }),
   },
   async ({
     authenticatedWorker,
     params,
   }): Promise<TypedResponse<WorkerApiRunLatestSnapshotResponseBody>> => {
-    const { runId } = params;
+    const { runFriendlyId } = params;
 
     const executionData = await authenticatedWorker.getLatestSnapshot({
-      runId,
+      runFriendlyId,
     });
 
     if (!executionData) {

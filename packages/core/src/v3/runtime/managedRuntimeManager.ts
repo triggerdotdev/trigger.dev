@@ -32,8 +32,6 @@ export class ManagedRuntimeManager implements RuntimeManager {
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    console.log("waitForDuration", ms);
-
     const wait = {
       type: "DATETIME",
       id: crypto.randomUUID(),
@@ -54,15 +52,9 @@ export class ManagedRuntimeManager implements RuntimeManager {
     return this.waitForDuration(date.getTime() - Date.now());
   }
 
-  async waitForTask(params: {
-    id: string;
-    internalId?: string;
-    ctx: TaskRunContext;
-  }): Promise<TaskRunExecutionResult> {
-    console.log("waitForTask", params);
-
+  async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
     const promise = new Promise<CompletedWaitpoint>((resolve) => {
-      this.resolversByWaitId.set(params.internalId ?? params.id, resolve);
+      this.resolversByWaitId.set(params.id, resolve);
     });
 
     const waitpoint = await promise;
@@ -109,7 +101,8 @@ export class ManagedRuntimeManager implements RuntimeManager {
   private completeWaitpoint(waitpoint: CompletedWaitpoint): void {
     console.log("completeWaitpoint", waitpoint);
 
-    const waitId = waitpoint.completedByTaskRunId ?? this.resolversByWaitpoint.get(waitpoint.id);
+    const waitId =
+      waitpoint.completedByTaskRun?.friendlyId ?? this.resolversByWaitpoint.get(waitpoint.id);
 
     if (!waitId) {
       // TODO: Handle failures better

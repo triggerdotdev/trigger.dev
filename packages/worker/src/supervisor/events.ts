@@ -15,10 +15,10 @@ export type WorkerEvents = {
     {
       time: Date;
       run: {
-        id: string;
+        friendlyId: string;
       };
       snapshot: {
-        id: string;
+        friendlyId: string;
       };
     },
   ];
@@ -33,10 +33,10 @@ export type WorkerEvents = {
     {
       time: Date;
       run: {
-        id: string;
+        friendlyId: string;
       };
       snapshot: {
-        id: string;
+        friendlyId: string;
       };
       completion: TaskRunExecutionResult;
     },
@@ -45,7 +45,7 @@ export type WorkerEvents = {
     {
       time: Date;
       run: {
-        id: string;
+        friendlyId: string;
       };
     },
   ];

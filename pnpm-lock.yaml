@@ -1317,6 +1317,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@bugsnag/cuid':
+        specifier: ^3.1.1
+        version: 3.1.1
       '@electric-sql/client':
         specifier: 1.0.0-beta.1
         version: 1.0.0-beta.1
@@ -4552,6 +4555,10 @@ packages:
 
   /@bufbuild/protobuf@1.10.0:
     resolution: {integrity: sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag==}
+    dev: false
+
+  /@bugsnag/cuid@3.1.1:
+    resolution: {integrity: sha512-d2z4b0rEo3chI07FNN1Xds8v25CNeekecU6FC/2Fs9MxY2EipkZTThVcV2YinMn8dvRUlViKOyC50evoUxg8tw==}
     dev: false
 
   /@bundled-es-modules/cookie@2.0.0:

@@ -10,8 +10,8 @@ export const action = createActionWorkerApiRoute(
   {
     body: WorkerApiRunAttemptCompleteRequestBody,
     params: z.object({
-      runId: z.string(),
-      snapshotId: z.string(),
+      runFriendlyId: z.string(),
+      snapshotFriendlyId: z.string(),
     }),
   },
   async ({
@@ -20,11 +20,11 @@ export const action = createActionWorkerApiRoute(
     params,
   }): Promise<TypedResponse<WorkerApiRunAttemptCompleteResponseBody>> => {
     const { completion } = body;
-    const { runId, snapshotId } = params;
+    const { runFriendlyId, snapshotFriendlyId } = params;
 
     const completeResult = await authenticatedWorker.completeRunAttempt({
-      runId,
-      snapshotId,
+      runFriendlyId,
+      snapshotFriendlyId,
       completion,
     });
 

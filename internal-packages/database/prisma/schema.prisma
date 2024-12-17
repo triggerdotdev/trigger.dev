@@ -2481,6 +2481,7 @@ model BatchTaskRun {
   updatedAt               DateTime           @updatedAt
 
   // new columns
+  /// Friendly IDs
   runIds       String[] @default([])
   runCount     Int      @default(0)
   payload      String?

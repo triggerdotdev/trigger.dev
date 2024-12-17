@@ -22,11 +22,12 @@ import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as wait } from "timers/promises";
 import { io, Socket } from "socket.io-client";
 
+// All IDs are friendly IDs
 const Env = z.object({
   TRIGGER_API_URL: z.string().url().default(CLOUD_API_URL),
   TRIGGER_CONTENT_HASH: z.string(),
   TRIGGER_WORKER_API_URL: z.string().url(),
-  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(randomUUID()),
+  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_DEPLOYMENT_ID: z.string(),
   TRIGGER_DEPLOYMENT_VERSION: z.string(),
   TRIGGER_ENV_ID: z.string(),
@@ -51,6 +52,14 @@ type ManagedRunControllerOptions = {
   heartbeatIntervalSeconds?: number;
 };
 
+type Run = {
+  friendlyId: string;
+};
+
+type Snapshot = {
+  friendlyId: string;
+};
+
 class ManagedRunController {
   private taskRunProcess?: TaskRunProcess;
 
@@ -66,8 +75,51 @@ class ManagedRunController {
   private readonly snapshotPollService: HeartbeatService;
   private readonly snapshotPollIntervalSeconds: number;
 
-  private runId?: string;
-  private snapshotId?: string;
+  private state:
+    | {
+        phase: "RUN";
+        run: Run;
+        snapshot: Snapshot;
+      }
+    | {
+        phase: "IDLE" | "WARM_START";
+      };
+
+  private enterIdlePhase() {
+    this.state = { phase: "IDLE" };
+  }
+
+  private enterRunPhase(run: Run, snapshot: Snapshot) {
+    this.state = { phase: "RUN", run, snapshot };
+  }
+
+  private updateSnapshot(snapshot: Snapshot) {
+    if (this.state.phase !== "RUN") {
+      throw new Error(`Invalid phase for updating snapshot: ${this.state.phase}`);
+    }
+
+    this.state.snapshot = snapshot;
+  }
+
+  private enterWarmStartPhase() {
+    this.state = { phase: "WARM_START" };
+  }
+
+  private get runFriendlyId() {
+    if (this.state.phase !== "RUN") {
+      return undefined;
+    }
+
+    return this.state.run.friendlyId;
+  }
+
+  private get snapshotFriendlyId() {
+    if (this.state.phase !== "RUN") {
+      return undefined;
+    }
+
+    return this.state.snapshot.friendlyId;
+  }
 
   constructor(opts: ManagedRunControllerOptions) {
     logger.debug("[ManagedRunController] Creating controller", { env });
@@ -77,8 +129,19 @@ class ManagedRunController {
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.snapshotPollIntervalSeconds = 5;
 
-    this.runId = env.TRIGGER_RUN_ID;
-    this.snapshotId = env.TRIGGER_SNAPSHOT_ID;
+    if (env.TRIGGER_RUN_ID) {
+      if (!env.TRIGGER_SNAPSHOT_ID) {
+        throw new Error("Missing snapshot ID");
+      }
+
+      this.state = {
+        phase: "RUN",
+        run: { friendlyId: env.TRIGGER_RUN_ID },
+        snapshot: { friendlyId: env.TRIGGER_SNAPSHOT_ID },
+      };
+    } else {
+      this.enterIdlePhase();
+    }
 
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: env.TRIGGER_WORKER_API_URL,
@@ -87,14 +150,14 @@ class ManagedRunController {
 
     this.snapshotPollService = new HeartbeatService({
       heartbeat: async () => {
-        if (!this.runId) {
+        if (!this.runFriendlyId) {
           logger.debug("[ManagedRunController] Skipping snapshot poll, no run ID");
           return;
         }
 
         console.debug("[ManagedRunController] Polling for latest snapshot");
 
-        const response = await this.httpClient.getRunExecutionData(this.runId);
+        const response = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
         if (!response.success) {
           console.error("[ManagedRunController] Snapshot poll failed", { error: response.error });
@@ -103,19 +166,19 @@ class ManagedRunController {
 
         const { snapshot } = response.data.execution;
 
-        if (snapshot.id === this.snapshotId) {
+        if (snapshot.friendlyId === this.snapshotFriendlyId) {
           console.debug("[ManagedRunController] Snapshot not changed", {
-            snapshotId: this.snapshotId,
+            snapshotId: this.snapshotFriendlyId,
           });
           return;
         }
 
         console.log("Snapshot changed", {
-          oldSnapshotId: this.snapshotId,
-          newSnapshotId: snapshot.id,
+          oldSnapshotId: this.snapshotFriendlyId,
+          newSnapshotId: snapshot.friendlyId,
         });
 
-        this.snapshotId = snapshot.id;
+        this.updateSnapshot(snapshot);
 
         await this.handleSnapshotChange(response.data.execution);
       },
@@ -128,17 +191,21 @@ class ManagedRunController {
 
     this.heartbeatService = new HeartbeatService({
       heartbeat: async () => {
-        if (!this.runId || !this.snapshotId) {
+        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
           logger.debug("[ManagedRunController] Skipping heartbeat, no run ID or snapshot ID");
           return;
         }
 
         console.debug("[ManagedRunController] Sending heartbeat");
 
-        const response = await this.httpClient.heartbeatRun(this.runId, this.snapshotId, {
-          cpu: 0,
-          memory: 0,
-        });
+        const response = await this.httpClient.heartbeatRun(
+          this.runFriendlyId,
+          this.snapshotFriendlyId,
+          {
+            cpu: 0,
+            memory: 0,
+          }
+        );
 
         if (!response.success) {
           console.error("[ManagedRunController] Heartbeat failed", { error: response.error });
@@ -158,14 +225,14 @@ class ManagedRunController {
   }
 
   private async handleSnapshotChange({ run, snapshot, completedWaitpoints }: RunExecutionData) {
-    console.log("Got latest snapshot", { snapshot, currentSnapshotId: this.snapshotId });
+    console.log("Got latest snapshot", { snapshot, currentSnapshotId: this.snapshotFriendlyId });
 
-    this.snapshotId = snapshot.id;
+    this.updateSnapshot(snapshot);
 
     switch (snapshot.executionStatus) {
       case "PENDING_CANCEL": {
         try {
-          await this.cancelAttempt(run.id);
+          await this.cancelAttempt(run.friendlyId);
         } catch (error) {
           console.error("Failed to cancel attempt, shutting down", {
             error,
@@ -194,10 +261,10 @@ class ManagedRunController {
   }
 
   private async startAndExecuteRunAttempt(isWarmStart = false) {
-    if (!this.runId || !this.snapshotId) {
+    if (!this.runFriendlyId || !this.snapshotFriendlyId) {
       logger.debug("[ManagedRunController] Missing run ID or snapshot ID", {
-        runId: this.runId,
-        snapshotId: this.snapshotId,
+        runId: this.runFriendlyId,
+        snapshotId: this.snapshotFriendlyId,
       });
       process.exit(1);
     }
@@ -208,13 +275,17 @@ class ManagedRunController {
 
     this.socket?.emit("run:start", {
       version: "1",
-      run: { id: this.runId },
-      snapshot: { id: this.snapshotId },
+      run: { friendlyId: this.runFriendlyId },
+      snapshot: { friendlyId: this.snapshotFriendlyId },
     });
 
-    const start = await this.httpClient.startRunAttempt(this.runId, this.snapshotId, {
-      isWarmStart,
-    });
+    const start = await this.httpClient.startRunAttempt(
+      this.runFriendlyId,
+      this.snapshotFriendlyId,
+      {
+        isWarmStart,
+      }
+    );
 
     if (!start.success) {
       console.error("[ManagedRunController] Failed to start run", { error: start.error });
@@ -224,12 +295,11 @@ class ManagedRunController {
     const { run, snapshot, execution, envVars } = start.data;
 
     logger.debug("[ManagedRunController] Started run", {
-      runId: run.id,
-      snapshot: snapshot.id,
+      runId: run.friendlyId,
+      snapshot: snapshot.friendlyId,
     });
 
-    this.runId = run.id;
-    this.snapshotId = snapshot.id;
+    this.updateSnapshot(snapshot);
 
     const taskRunEnv = {
       ...gatherProcessEnv(),
@@ -244,19 +314,23 @@ class ManagedRunController {
       });
 
       console.log("Submitting attempt completion", {
-        runId: run.id,
-        snapshotId: snapshot.id,
-        updatedSnapshotId: this.snapshotId,
+        runId: run.friendlyId,
+        snapshotId: snapshot.friendlyId,
+        updatedSnapshotId: this.snapshotFriendlyId,
       });
 
-      const completionResult = await this.httpClient.completeRunAttempt(run.id, this.snapshotId, {
-        completion: {
-          id: execution.run.id,
-          ok: false,
-          retry: undefined,
-          error: TaskRunProcess.parseExecuteError(error),
-        },
-      });
+      const completionResult = await this.httpClient.completeRunAttempt(
+        this.runFriendlyId,
+        this.snapshotFriendlyId,
+        {
+          completion: {
+            id: execution.run.id,
+            ok: false,
+            retry: undefined,
+            error: TaskRunProcess.parseExecuteError(error),
+          },
+        }
+      );
 
       if (!completionResult.success) {
         console.error("Failed to submit completion after error", {
@@ -265,16 +339,13 @@ class ManagedRunController {
         process.exit(1);
       }
 
-      logger.log("Attempt completion submitted", completionResult.data.result);
-    } finally {
-      this.runId = undefined;
-      this.snapshotId = undefined;
-
-      this.waitForNextRun();
+      logger.log("Attempt completion submitted after error", completionResult.data.result);
     }
   }
 
   private async waitForNextRun() {
+    this.enterWarmStartPhase();
+
     try {
       const warmStartUrl = new URL(
         "/warm-start",
@@ -308,8 +379,7 @@ class ManagedRunController {
 
       console.log("Got next run", { nextRun });
 
-      this.runId = nextRun.run.id;
-      this.snapshotId = nextRun.snapshot.id;
+      this.enterRunPhase(nextRun.run, nextRun.snapshot);
 
       this.startAndExecuteRunAttempt(true);
     } catch (error) {
@@ -331,16 +401,16 @@ class ManagedRunController {
     this.socket.on("run:notify", async ({ version, run }) => {
       console.log("[ManagedRunController] Received run notification", { version, run });
 
-      if (run.id !== this.runId) {
+      if (run.friendlyId !== this.runFriendlyId) {
         console.log("[ManagedRunController] Ignoring notification for different run", {
-          runId: run.id,
-          currentRunId: this.runId,
-          currentSnapshotId: this.snapshotId,
+          runId: run.friendlyId,
+          currentRunId: this.runFriendlyId,
+          currentSnapshotId: this.snapshotFriendlyId,
         });
         return;
       }
 
-      const latestSnapshot = await this.httpClient.getRunExecutionData(run.id);
+      const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
       if (!latestSnapshot.success) {
         console.error("Failed to get latest snapshot data", latestSnapshot.error);
@@ -378,7 +448,7 @@ class ManagedRunController {
         execution,
         traceContext: execution.run.traceContext ?? {},
       },
-      messageId: run.id,
+      messageId: run.friendlyId,
     });
 
     this.taskRunProcess.onWait.attach(this.handleWait.bind(this));
@@ -402,17 +472,21 @@ class ManagedRunController {
       });
     }
 
-    if (!this.runId || !this.snapshotId) {
+    if (!this.runFriendlyId || !this.snapshotFriendlyId) {
       console.error("Missing run ID or snapshot ID after execution", {
-        runId: this.runId,
-        snapshotId: this.snapshotId,
+        runId: this.runFriendlyId,
+        snapshotId: this.snapshotFriendlyId,
       });
       process.exit(1);
     }
 
-    const completionResult = await this.httpClient.completeRunAttempt(run.id, this.snapshotId, {
-      completion,
-    });
+    const completionResult = await this.httpClient.completeRunAttempt(
+      this.runFriendlyId,
+      this.snapshotFriendlyId,
+      {
+        completion,
+      }
+    );
 
     if (!completionResult.success) {
       console.error("Failed to submit completion", {
@@ -421,15 +495,15 @@ class ManagedRunController {
       process.exit(1);
     }
 
-    logger.log("Completion submitted", completionResult.data.result);
+    logger.log("Attempt completion submitted", completionResult.data.result);
 
-    const { attemptStatus } = completionResult.data.result;
+    const { attemptStatus, snapshot: completionSnapshot } = completionResult.data.result;
 
-    this.runId = completionResult.data.result.run.id;
-    this.snapshotId = completionResult.data.result.snapshot.id;
+    this.updateSnapshot(completionSnapshot);
 
     if (attemptStatus === "RUN_FINISHED") {
       logger.debug("Run finished");
+      this.waitForNextRun();
       return;
     }
 
@@ -440,6 +514,7 @@ class ManagedRunController {
 
     if (attemptStatus === "RETRY_QUEUED") {
       logger.debug("Retry queued");
+      this.waitForNextRun();
       return;
     }
 
@@ -462,7 +537,7 @@ class ManagedRunController {
   }
 
   private async handleWait({ wait }: OnWaitMessage) {
-    if (!this.runId || !this.snapshotId) {
+    if (!this.runFriendlyId || !this.snapshotFriendlyId) {
       logger.debug("[ManagedRunController] Ignoring wait, no run ID or snapshot ID");
       return;
     }
@@ -471,9 +546,13 @@ class ManagedRunController {
       case "DATETIME": {
         logger.log("Waiting for duration", { wait });
 
-        const waitpoint = await this.httpClient.waitForDuration(this.runId, this.snapshotId, {
-          date: wait.date,
-        });
+        const waitpoint = await this.httpClient.waitForDuration(
+          this.runFriendlyId,
+          this.snapshotFriendlyId,
+          {
+            date: wait.date,
+          }
+        );
 
         if (!waitpoint.success) {
           console.error("Failed to wait for datetime", { error: waitpoint.error });

@@ -1220,7 +1220,6 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
     }
   );
 
-  // @ts-expect-error
   return handle as RunHandleFromTypes<TRunTypes>;
 }
 
@@ -1365,7 +1364,6 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
 
       const result = await runtime.waitForTask({
         id: response.id,
-        internalId: response.internalId,
         ctx,
       });
 
@@ -1432,7 +1430,6 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
-                  // TODO: Check this works as expected
                   resumeParentOnCompletion: true,
                   parentRunId: ctx.run.id,
                 },

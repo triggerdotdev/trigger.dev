@@ -10,7 +10,6 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { sanitizeQueueName } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
@@ -22,7 +21,7 @@ import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.ser
 import { handleMetadataPacket } from "~/utils/packets";
 import { WorkerGroupService } from "./worker/workerGroupService.server";
 import { parseDelay } from "~/utils/delays";
-import { stringifyDuration } from "@trigger.dev/core/v3/apps";
+import { RunId, stringifyDuration } from "@trigger.dev/core/v3/apps";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
 import { Prisma } from "@trigger.dev/database";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -93,11 +92,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
           if (
             existingRun.associatedWaitpoint?.status === "PENDING" &&
             body.options?.resumeParentOnCompletion &&
-            // FIXME: This is currently the friendly ID
             body.options?.parentRunId
           ) {
             await this._engine.blockRunWithWaitpoint({
-              runId: body.options.parentRunId,
+              runId: RunId.fromFriendlyId(body.options.parentRunId),
               waitpointId: existingRun.associatedWaitpoint.id,
               environmentId: environment.id,
               projectId: environment.projectId,
@@ -147,7 +145,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         );
       }
 
-      const runFriendlyId = options?.runId ?? generateFriendlyId("run");
+      const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
 
       const payloadPacket = await this.#handlePayloadPacket(
         body.payload,

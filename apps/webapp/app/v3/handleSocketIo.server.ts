@@ -455,12 +455,12 @@ function createWorkerNamespace(io: Server) {
       clearInterval(interval);
     });
 
-    socket.on("run:subscribe", async ({ version, runIds }) => {
-      logger.debug("run:subscribe", { version, runIds });
+    socket.on("run:subscribe", async ({ version, runFriendlyIds }) => {
+      logger.debug("run:subscribe", { version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
-        runIds.map((runId) => {
-          const room = roomFromRunId(runId);
+        runFriendlyIds.map((friendlyId) => {
+          const room = roomFromFriendlyRunId(friendlyId);
 
           logger.debug("Joining room", { room });
 
@@ -472,7 +472,7 @@ function createWorkerNamespace(io: Server) {
       for (const result of settledResult) {
         if (result.status === "rejected") {
           logger.error("Error joining room", {
-            runIds,
+            runFriendlyIds,
             error: result.reason instanceof Error ? result.reason.message : result.reason,
           });
         }
@@ -484,12 +484,12 @@ function createWorkerNamespace(io: Server) {
       });
     });
 
-    socket.on("run:unsubscribe", async ({ version, runIds }) => {
-      logger.debug("run:unsubscribe", { version, runIds });
+    socket.on("run:unsubscribe", async ({ version, runFriendlyIds }) => {
+      logger.debug("run:unsubscribe", { version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
-        runIds.map((runId) => {
-          const room = roomFromRunId(runId);
+        runFriendlyIds.map((friendlyId) => {
+          const room = roomFromFriendlyRunId(friendlyId);
 
           logger.debug("Leaving room", { room });
 
@@ -501,7 +501,7 @@ function createWorkerNamespace(io: Server) {
       for (const result of settledResult) {
         if (result.status === "rejected") {
           logger.error("Error leaving room", {
-            runIds,
+            runFriendlyIds,
             error: result.reason instanceof Error ? result.reason.message : result.reason,
           });
         }
@@ -517,6 +517,6 @@ function createWorkerNamespace(io: Server) {
   return worker;
 }
 
-function roomFromRunId(runId: string) {
-  return `run:${runId}`;
+export function roomFromFriendlyRunId(id: string) {
+  return `room:${id}`;
 }

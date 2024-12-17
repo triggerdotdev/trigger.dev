@@ -21,6 +21,7 @@ import {
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -68,7 +69,7 @@ export class CreateBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,

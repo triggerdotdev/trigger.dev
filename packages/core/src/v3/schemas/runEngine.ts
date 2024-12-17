@@ -49,11 +49,17 @@ export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 
 export const CompletedWaitpoint = z.object({
   id: z.string(),
+  friendlyId: z.string(),
   type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
   completedAt: z.coerce.date(),
   idempotencyKey: z.string().optional(),
   /** For type === "RUN" */
-  completedByTaskRunId: z.string().optional(),
+  completedByTaskRun: z
+    .object({
+      id: z.string(),
+      friendlyId: z.string(),
+    })
+    .optional(),
   /** For type === "DATETIME" */
   completedAfter: z.coerce.date().optional(),
   output: z.string().optional(),
@@ -65,12 +71,14 @@ export type CompletedWaitpoint = z.infer<typeof CompletedWaitpoint>;
 
 const ExecutionSnapshot = z.object({
   id: z.string(),
+  friendlyId: z.string(),
   executionStatus: z.enum(Object.values(TaskRunExecutionStatus) as [TaskRunExecutionStatus]),
   description: z.string(),
 });
 
 const BaseRunMetadata = z.object({
   id: z.string(),
+  friendlyId: z.string(),
   status: z.enum(Object.values(TaskRunStatus) as [TaskRunStatus]),
   attemptNumber: z.number().nullish(),
 });
@@ -98,6 +106,7 @@ export const DequeuedMessage = z.object({
   completedWaitpoints: z.array(CompletedWaitpoint),
   backgroundWorker: z.object({
     id: z.string(),
+    friendlyId: z.string(),
     version: z.string(),
   }),
   deployment: z.object({
@@ -158,6 +167,7 @@ export const RunExecutionData = z.object({
   checkpoint: z
     .object({
       id: z.string(),
+      friendlyId: z.string(),
       type: z.string(),
       location: z.string(),
       imageRef: z.string(),

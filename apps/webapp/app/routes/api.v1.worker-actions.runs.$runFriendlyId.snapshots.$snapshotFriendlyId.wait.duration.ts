@@ -10,8 +10,8 @@ export const action = createActionWorkerApiRoute(
   {
     body: WorkerApiWaitForDurationRequestBody,
     params: z.object({
-      runId: z.string(),
-      snapshotId: z.string(),
+      runFriendlyId: z.string(),
+      snapshotFriendlyId: z.string(),
     }),
   },
   async ({
@@ -19,11 +19,11 @@ export const action = createActionWorkerApiRoute(
     body,
     params,
   }): Promise<TypedResponse<WorkerApiWaitForDurationResponseBody>> => {
-    const { runId, snapshotId } = params;
+    const { runFriendlyId, snapshotFriendlyId } = params;
 
     const waitResult = await authenticatedWorker.waitForDuration({
-      runId,
-      snapshotId,
+      runFriendlyId,
+      snapshotFriendlyId,
       date: body.date,
     });
 
