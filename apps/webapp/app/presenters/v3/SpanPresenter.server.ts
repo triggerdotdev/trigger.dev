@@ -241,7 +241,9 @@ export class SpanPresenter extends BasePresenter {
     const span = await eventRepository.getSpan(spanId, run.traceId);
 
     const metadata = run.metadata
-      ? await prettyPrintPacket(run.metadata, run.metadataType, { filteredKeys: ["$$streams"] })
+      ? await prettyPrintPacket(run.metadata, run.metadataType, {
+          filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
+        })
       : undefined;
 
     const context = {

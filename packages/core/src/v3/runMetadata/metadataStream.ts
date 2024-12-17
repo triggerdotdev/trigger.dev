@@ -2,70 +2,56 @@ export type MetadataOptions<T> = {
   baseUrl: string;
   runId: string;
   key: string;
-  iterator: AsyncIterator<T>;
+  source: AsyncIterable<T>;
+  headers?: Record<string, string>;
   signal?: AbortSignal;
+  version?: "v1" | "v2";
 };
 
 export class MetadataStream<T> {
   private controller = new AbortController();
-  private serverQueue: Array<Promise<IteratorResult<T>>> = [];
-  private consumerQueue: Array<Promise<IteratorResult<T>>> = [];
-  private serverIterator: AsyncIterator<T>;
-  private consumerIterator: AsyncIterator<T>;
+  private serverStream: ReadableStream<T>;
+  private consumerStream: ReadableStream<T>;
   private streamPromise: Promise<void | Response>;
 
   constructor(private options: MetadataOptions<T>) {
-    const { serverIterator, consumerIterator } = this.createTeeIterators();
-    this.serverIterator = serverIterator;
-    this.consumerIterator = consumerIterator;
+    const [serverStream, consumerStream] = this.createTeeStreams();
+    this.serverStream = serverStream;
+    this.consumerStream = consumerStream;
 
     this.streamPromise = this.initializeServerStream();
   }
 
-  private createTeeIterators() {
-    const teeIterator = (queue: Array<Promise<IteratorResult<T>>>): AsyncIterator<T> => ({
-      next: () => {
-        if (queue.length === 0) {
-          const result = this.options.iterator.next();
-          this.serverQueue.push(result);
-          this.consumerQueue.push(result);
+  private createTeeStreams() {
+    const readableSource = new ReadableStream<T>({
+      start: async (controller) => {
+        for await (const value of this.options.source) {
+          controller.enqueue(value);
         }
-        return queue.shift()!;
+
+        controller.close();
       },
     });
 
-    return {
-      serverIterator: teeIterator(this.serverQueue),
-      consumerIterator: teeIterator(this.consumerQueue),
-    };
+    return readableSource.tee();
   }
 
-  private initializeServerStream(): Promise<void | Response> {
-    const serverIterator = this.serverIterator;
-
-    // TODO: Why is this only sending stuff to the server at the end of the run?
-    const serverStream = new ReadableStream({
-      async pull(controller) {
-        try {
-          const { value, done } = await serverIterator.next();
-          if (done) {
-            controller.close();
-            return;
-          }
-
-          controller.enqueue(JSON.stringify(value) + "\n");
-        } catch (err) {
-          controller.error(err);
-        }
-      },
-      cancel: () => this.controller.abort(),
-    });
+  private initializeServerStream(): Promise<Response> {
+    const serverStream = this.serverStream.pipeThrough(
+      new TransformStream<T, string>({
+        async transform(chunk, controller) {
+          controller.enqueue(JSON.stringify(chunk) + "\n");
+        },
+      })
+    );
 
     return fetch(
-      `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${this.options.key}`,
+      `${this.options.baseUrl}/realtime/${this.options.version ?? "v1"}/streams/${
+        this.options.runId
+      }/${this.options.key}`,
       {
         method: "POST",
-        headers: {},
+        headers: this.options.headers ?? {},
         body: serverStream,
         // @ts-expect-error
         duplex: "half",
@@ -79,6 +65,19 @@ export class MetadataStream<T> {
   }
 
   public [Symbol.asyncIterator]() {
-    return this.consumerIterator;
+    return streamToAsyncIterator(this.consumerStream);
+  }
+}
+
+async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterableIterator<T> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
   }
 }

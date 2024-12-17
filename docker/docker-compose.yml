@@ -13,7 +13,9 @@ networks:
 services:
   database:
     container_name: database
-    image: postgres:14
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     restart: always
     volumes:
       - ${DB_VOLUME:-database-data}:/var/lib/postgresql/data/
@@ -30,6 +32,8 @@ services:
       - listen_addresses=*
       - -c
       - wal_level=logical
+      - -c
+      - shared_preload_libraries=pg_partman_bgw
 
   pgadmin:
     container_name: pgadmin
@@ -61,7 +65,7 @@ services:
       - 6379:6379
 
   electric:
-    image: electricsql/electric:0.9.4
+    image: electricsql/electric:1.0.0-beta.1@sha256:2262f6f09caf5fa45f233731af97b84999128170a9529e5f9b9b53642308493f
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable

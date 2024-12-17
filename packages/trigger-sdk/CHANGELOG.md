@@ -1,5 +1,25 @@
 # @trigger.dev/sdk
 
+## 3.3.7
+
+### Patch Changes
+
+- - Fixes an issue in streams where "chunks" could get split across multiple reads ([#1549](https://github.com/triggerdotdev/trigger.dev/pull/1549))
+  - Fixed stopping the run subscription after a run is finished, when using useRealtimeRun or useRealtimeRunWithStreams
+  - Added an `onComplete` callback to `useRealtimeRun` and `useRealtimeRunWithStreams`
+  - Optimized the run subscription to reduce unnecessary updates
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.7`
+
+## 3.3.6
+
+### Patch Changes
+
+- Realtime streams now powered by electric. Also, this change fixes a realtime bug that was causing too many re-renders, even on records that didn't change ([#1541](https://github.com/triggerdotdev/trigger.dev/pull/1541))
+- Add option to trigger batched items sequentially, and default to parallel triggering which is faster ([#1536](https://github.com/triggerdotdev/trigger.dev/pull/1536))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.6`
+
 ## 3.3.5
 
 ### Patch Changes

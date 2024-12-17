@@ -1,4 +1,4 @@
-import { ListRunResponse, ListRunResponseItem, RunStatus } from "@trigger.dev/core/v3";
+import { ListRunResponse, ListRunResponseItem, parsePacket, RunStatus } from "@trigger.dev/core/v3";
 import { Project, RuntimeEnvironment, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
@@ -220,36 +220,51 @@ export class ApiRunListPresenter extends BasePresenter {
 
       const results = await presenter.call(options);
 
-      const data: ListRunResponseItem[] = results.runs.map((run) => {
-        return {
-          id: run.friendlyId,
-          status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status),
-          taskIdentifier: run.taskIdentifier,
-          idempotencyKey: run.idempotencyKey,
-          version: run.version ?? undefined,
-          createdAt: new Date(run.createdAt),
-          updatedAt: new Date(run.updatedAt),
-          startedAt: run.startedAt ? new Date(run.startedAt) : undefined,
-          finishedAt: run.finishedAt ? new Date(run.finishedAt) : undefined,
-          delayedUntil: run.delayUntil ? new Date(run.delayUntil) : undefined,
-          isTest: run.isTest,
-          ttl: run.ttl ?? undefined,
-          expiredAt: run.expiredAt ? new Date(run.expiredAt) : undefined,
-          env: {
-            id: run.environment.id,
-            name: run.environment.slug,
-            user: run.environment.userName,
-          },
-          tags: run.tags,
-          costInCents: run.costInCents,
-          baseCostInCents: run.baseCostInCents,
-          durationMs: run.usageDurationMs,
-          depth: run.depth,
-          ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
-            ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
-          ),
-        };
-      });
+      logger.debug("RunListPresenter results", { results });
+
+      const data: ListRunResponseItem[] = await Promise.all(
+        results.runs.map(async (run) => {
+          const metadata = await parsePacket(
+            {
+              data: run.metadata ?? undefined,
+              dataType: run.metadataType,
+            },
+            {
+              filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
+            }
+          );
+
+          return {
+            id: run.friendlyId,
+            status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status),
+            taskIdentifier: run.taskIdentifier,
+            idempotencyKey: run.idempotencyKey,
+            version: run.version ?? undefined,
+            createdAt: new Date(run.createdAt),
+            updatedAt: new Date(run.updatedAt),
+            startedAt: run.startedAt ? new Date(run.startedAt) : undefined,
+            finishedAt: run.finishedAt ? new Date(run.finishedAt) : undefined,
+            delayedUntil: run.delayUntil ? new Date(run.delayUntil) : undefined,
+            isTest: run.isTest,
+            ttl: run.ttl ?? undefined,
+            expiredAt: run.expiredAt ? new Date(run.expiredAt) : undefined,
+            env: {
+              id: run.environment.id,
+              name: run.environment.slug,
+              user: run.environment.userName,
+            },
+            tags: run.tags,
+            costInCents: run.costInCents,
+            baseCostInCents: run.baseCostInCents,
+            durationMs: run.usageDurationMs,
+            depth: run.depth,
+            metadata,
+            ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
+              ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status)
+            ),
+          };
+        })
+      );
 
       return {
         data,

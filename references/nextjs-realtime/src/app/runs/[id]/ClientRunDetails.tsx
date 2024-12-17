@@ -27,6 +27,9 @@ function RunDetailsWrapper({
   const { run, error } = useRealtimeRun<typeof exampleTask>(runId, {
     accessToken,
     enabled: accessToken !== undefined,
+    onComplete: (run) => {
+      console.log("Run completed!", run);
+    },
   });
 
   if (error) {

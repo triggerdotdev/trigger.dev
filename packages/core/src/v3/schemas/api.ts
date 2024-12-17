@@ -784,3 +784,16 @@ export const RetrieveBatchResponse = z.object({
 });
 
 export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;
+
+export const SubscribeRealtimeStreamChunkRawShape = z.object({
+  id: z.string(),
+  runId: z.string(),
+  sequence: z.number(),
+  key: z.string(),
+  value: z.string(),
+  createdAt: z.coerce.date(),
+});
+
+export type SubscribeRealtimeStreamChunkRawShape = z.infer<
+  typeof SubscribeRealtimeStreamChunkRawShape
+>;

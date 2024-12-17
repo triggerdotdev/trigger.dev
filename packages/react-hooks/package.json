@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react-hooks",
-  "version": "3.3.5",
+  "version": "3.3.7",
   "description": "trigger.dev react hooks",
   "license": "MIT",
   "publishConfig": {
@@ -37,7 +37,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^3.3.5",
+    "@trigger.dev/core": "workspace:^3.3.7",
     "swr": "^2.2.5"
   },
   "devDependencies": {
@@ -51,8 +51,8 @@
     "typescript": "^5.5.4"
   },
   "peerDependencies": {
-    "react": ">=18 || >=19.0.0-beta",
-    "react-dom": ">=18 || >=19.0.0-beta"
+    "react": "^18.0 || ^19.0 || ^19.0.0-rc",
+    "react-dom": "^18.0 || ^19.0 || ^19.0.0-rc"
   },
   "engines": {
     "node": ">=18.20.0"

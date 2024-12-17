@@ -1,5 +1,8 @@
-import Redis, { RedisKey, RedisOptions, RedisValue } from "ioredis";
-import { logger } from "./logger.server";
+import Redis, { RedisOptions } from "ioredis";
+import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { logger } from "../logger.server";
+import { StreamIngestor, StreamResponder } from "./types";
+import { LineTransformStream } from "./utils.server";
 
 export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;
@@ -7,10 +10,17 @@ export type RealtimeStreamsOptions = {
 
 const END_SENTINEL = "<<CLOSE_STREAM>>";
 
-export class RealtimeStreams {
+// Class implementing both interfaces
+export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   constructor(private options: RealtimeStreamsOptions) {}
 
-  async streamResponse(runId: string, streamId: string, signal: AbortSignal): Promise<Response> {
+  async streamResponse(
+    request: Request,
+    runId: string,
+    streamId: string,
+    environment: AuthenticatedEnvironment,
+    signal: AbortSignal
+  ): Promise<Response> {
     const redis = new Redis(this.options.redis ?? {});
     const streamKey = `stream:${runId}:${streamId}`;
     let isCleanedUp = false;
@@ -47,7 +57,7 @@ export class RealtimeStreams {
                       controller.close();
                       return;
                     }
-                    controller.enqueue(`data: ${fields[1]}\n\n`);
+                    controller.enqueue(fields[1]);
 
                     if (signal.aborted) {
                       controller.close();
@@ -79,7 +89,18 @@ export class RealtimeStreams {
       cancel: async () => {
         await cleanup();
       },
-    });
+    })
+      .pipeThrough(new LineTransformStream())
+      .pipeThrough(
+        new TransformStream({
+          transform(chunk, controller) {
+            for (const line of chunk) {
+              controller.enqueue(`data: ${line}\n\n`);
+            }
+          },
+        })
+      )
+      .pipeThrough(new TextEncoderStream());
 
     async function cleanup() {
       if (isCleanedUp) return;
@@ -89,7 +110,7 @@ export class RealtimeStreams {
 
     signal.addEventListener("abort", cleanup);
 
-    return new Response(stream.pipeThrough(new TextEncoderStream()), {
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -110,59 +131,30 @@ export class RealtimeStreams {
       try {
         await redis.quit();
       } catch (error) {
-        logger.error("[RealtimeStreams][ingestData] Error in cleanup:", { error });
+        logger.error("[RedisRealtimeStreams][ingestData] Error in cleanup:", { error });
       }
     }
 
     try {
-      // Use TextDecoderStream to simplify text decoding
       const textStream = stream.pipeThrough(new TextDecoderStream());
       const reader = textStream.getReader();
-
-      const batchSize = 10; // Adjust this value based on performance testing
-      let batchCommands: Array<[key: RedisKey, ...args: RedisValue[]]> = [];
 
       while (true) {
         const { done, value } = await reader.read();
 
-        if (done) {
+        if (done || !value) {
           break;
         }
 
-        logger.debug("[RealtimeStreams][ingestData] Reading data", { streamKey, value });
+        logger.debug("[RedisRealtimeStreams][ingestData] Reading data", {
+          streamKey,
+          runId,
+          value,
+        });
 
-        // 'value' is a string containing the decoded text
-        const lines = value.split("\n");
-
-        for (const line of lines) {
-          if (line.trim()) {
-            // Avoid unnecessary parsing; assume 'line' is already a JSON string
-            // Add XADD command with MAXLEN option to limit stream size
-            batchCommands.push([streamKey, "MAXLEN", "~", "2500", "*", "data", line]);
-
-            if (batchCommands.length >= batchSize) {
-              // Send batch using a pipeline
-              const pipeline = redis.pipeline();
-              for (const args of batchCommands) {
-                pipeline.xadd(...args);
-              }
-              await pipeline.exec();
-              batchCommands = [];
-            }
-          }
-        }
+        await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", value);
       }
 
-      // Send any remaining commands
-      if (batchCommands.length > 0) {
-        const pipeline = redis.pipeline();
-        for (const args of batchCommands) {
-          pipeline.xadd(...args);
-        }
-        await pipeline.exec();
-      }
-
-      // Send the __end message to indicate the end of the stream
       await redis.xadd(streamKey, "MAXLEN", "~", "1000", "*", "data", END_SENTINEL);
 
       return new Response(null, { status: 200 });

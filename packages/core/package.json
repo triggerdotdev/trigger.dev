@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.3.5",
+  "version": "3.3.7",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -182,7 +182,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@electric-sql/client": "0.7.1",
+    "@electric-sql/client": "1.0.0-beta.1",
     "@google-cloud/precise-date": "^4.0.0",
     "@jsonhero/path": "^1.0.21",
     "@opentelemetry/api": "1.9.0",

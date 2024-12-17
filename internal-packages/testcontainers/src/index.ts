@@ -1,10 +1,10 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
-import { Redis } from "ioredis";
-import { test } from "vitest";
 import { PrismaClient } from "@trigger.dev/database";
-import { createPostgresContainer, createRedisContainer, createElectricContainer } from "./utils";
-import { Network, type StartedNetwork, type StartedTestContainer } from "testcontainers";
+import { Redis } from "ioredis";
+import { Network, type StartedNetwork } from "testcontainers";
+import { test } from "vitest";
+import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
 
 export { StartedRedisContainer };
 export * from "./setup";
@@ -24,7 +24,8 @@ type ElectricContext = {
 };
 
 type ContainerContext = NetworkContext & PostgresContext & RedisContext;
-type ContainerWithElectricContext = ContainerContext & ElectricContext;
+type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
+type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
 type Use<T> = (value: T) => Promise<void>;
 
@@ -121,6 +122,13 @@ export const containerTest = test.extend<ContainerContext>({
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
+  network,
+  postgresContainer,
+  prisma,
+  electricOrigin,
+});
+
+export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectricAndRedisContext>({
   network,
   postgresContainer,
   prisma,

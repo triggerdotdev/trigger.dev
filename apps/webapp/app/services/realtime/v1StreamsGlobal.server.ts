@@ -1,9 +1,9 @@
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
-import { RealtimeStreams } from "./realtimeStreams.server";
+import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 
-function initializeRealtimeStreams() {
-  return new RealtimeStreams({
+function initializeRedisRealtimeStreams() {
+  return new RedisRealtimeStreams({
     redis: {
       port: env.REDIS_PORT,
       host: env.REDIS_HOST,
@@ -16,4 +16,4 @@ function initializeRealtimeStreams() {
   });
 }
 
-export const realtimeStreams = singleton("realtimeStreams", initializeRealtimeStreams);
+export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);

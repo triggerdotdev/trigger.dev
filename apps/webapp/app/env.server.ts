@@ -272,6 +272,8 @@ const EnvironmentSchema = z.object({
   MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
+  REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+
   // Run Engine 2.0
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),

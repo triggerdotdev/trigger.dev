@@ -211,6 +211,7 @@ function createCoordinatorNamespace(io: Server) {
           const payload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
             id: attempt.id,
             setToExecuting: true,
+            skipStatusChecks: true,
           });
 
           if (!payload) {

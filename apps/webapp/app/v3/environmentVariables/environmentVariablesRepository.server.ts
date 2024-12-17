@@ -662,12 +662,25 @@ export async function resolveVariablesForEnvironment(runtimeEnvironment: Runtime
     runtimeEnvironment.id
   );
 
+  const overridableTriggerVariables = await resolveOverridableTriggerVariables(runtimeEnvironment);
+
   const builtInVariables =
     runtimeEnvironment.type === "DEVELOPMENT"
       ? await resolveBuiltInDevVariables(runtimeEnvironment)
       : await resolveBuiltInProdVariables(runtimeEnvironment);
 
-  return [...projectSecrets, ...builtInVariables];
+  return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
+}
+
+async function resolveOverridableTriggerVariables(runtimeEnvironment: RuntimeEnvironment) {
+  let result: Array<EnvironmentVariable> = [
+    {
+      key: "TRIGGER_REALTIME_STREAM_VERSION",
+      value: env.REALTIME_STREAM_VERSION,
+    },
+  ];
+
+  return result;
 }
 
 async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment) {

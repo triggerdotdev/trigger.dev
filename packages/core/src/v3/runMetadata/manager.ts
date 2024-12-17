@@ -20,7 +20,8 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   constructor(
     private apiClient: ApiClient,
-    private streamsBaseUrl: string
+    private streamsBaseUrl: string,
+    private streamsVersion: "v1" | "v2" = "v1"
   ) {}
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
@@ -229,23 +230,27 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
 
     try {
-      // Add the key to the special stream metadata object
-      this.appendKey(`$$streams`, key);
-
-      await this.flush();
-
       const streamInstance = new MetadataStream({
         key,
         runId: this.runId,
-        iterator: $value[Symbol.asyncIterator](),
+        source: $value,
         baseUrl: this.streamsBaseUrl,
+        headers: this.apiClient.getHeaders(),
         signal,
+        version: this.streamsVersion,
       });
 
       this.activeStreams.set(key, streamInstance);
 
       // Clean up when stream completes
       streamInstance.wait().finally(() => this.activeStreams.delete(key));
+
+      // Add the key to the special stream metadata object
+      this.appendKey(`$$streams`, key);
+      this.setKey("$$streamsVersion", this.streamsVersion);
+      this.setKey("$$streamsBaseUrl", this.streamsBaseUrl);
+
+      await this.flush();
 
       return streamInstance;
     } catch (error) {

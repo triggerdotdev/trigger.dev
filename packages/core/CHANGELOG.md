@@ -1,5 +1,13 @@
 # internal-platform
 
+## 3.3.7
+
+## 3.3.6
+
+### Patch Changes
+
+- Add option to trigger batched items sequentially, and default to parallel triggering which is faster ([#1536](https://github.com/triggerdotdev/trigger.dev/pull/1536))
+
 ## 3.3.5
 
 ### Patch Changes

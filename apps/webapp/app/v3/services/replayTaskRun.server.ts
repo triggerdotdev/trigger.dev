@@ -78,6 +78,14 @@ export class ReplayTaskRunService extends BaseService {
         environmentId: authenticatedEnvironment.id,
       });
 
+      //get the queue from the original run, so we can use the same settings on the replay
+      const taskQueue = await this._prisma.taskQueue.findFirst({
+        where: {
+          runtimeEnvironmentId: authenticatedEnvironment.id,
+          name: existingTaskRun.queue,
+        },
+      });
+
       const triggerTaskService = new TriggerTaskService();
       return await triggerTaskService.call(
         existingTaskRun.taskIdentifier,
@@ -85,9 +93,12 @@ export class ReplayTaskRunService extends BaseService {
         {
           payload: parsedPayload,
           options: {
-            queue: {
-              name: existingTaskRun.queue,
-            },
+            queue: taskQueue
+              ? {
+                  name: taskQueue.name,
+                  concurrencyLimit: taskQueue.concurrencyLimit ?? undefined,
+                }
+              : undefined,
             concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
             test: existingTaskRun.isTest,
             payloadType: payloadPacket.dataType,

@@ -37,6 +37,23 @@ export class RealtimeClient {
     this.#registerCommands();
   }
 
+  async streamChunks(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    runId: string,
+    streamId: string,
+    signal?: AbortSignal,
+    clientVersion?: string
+  ) {
+    return this.#streamChunksWhere(
+      url,
+      environment,
+      `"runId"='${runId}' AND "key"='${streamId}'`,
+      signal,
+      clientVersion
+    );
+  }
+
   async streamRun(
     url: URL | string,
     environment: RealtimeEnvironment,
@@ -85,12 +102,12 @@ export class RealtimeClient {
     whereClause: string,
     clientVersion?: string
   ) {
-    const electricUrl = this.#constructElectricUrl(url, whereClause, clientVersion);
+    const electricUrl = this.#constructRunsElectricUrl(url, whereClause, clientVersion);
 
-    return this.#performElectricRequest(electricUrl, environment, clientVersion);
+    return this.#performElectricRequest(electricUrl, environment, undefined, clientVersion);
   }
 
-  #constructElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
+  #constructRunsElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
     const $url = new URL(url.toString());
 
     const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
@@ -112,9 +129,44 @@ export class RealtimeClient {
     return electricUrl;
   }
 
+  async #streamChunksWhere(
+    url: URL | string,
+    environment: RealtimeEnvironment,
+    whereClause: string,
+    signal?: AbortSignal,
+    clientVersion?: string
+  ) {
+    const electricUrl = this.#constructChunksElectricUrl(url, whereClause, clientVersion);
+
+    return this.#performElectricRequest(electricUrl, environment, signal, clientVersion);
+  }
+
+  #constructChunksElectricUrl(url: URL | string, whereClause: string, clientVersion?: string): URL {
+    const $url = new URL(url.toString());
+
+    const electricUrl = new URL(`${this.options.electricOrigin}/v1/shape`);
+
+    // Copy over all the url search params to the electric url
+    $url.searchParams.forEach((value, key) => {
+      electricUrl.searchParams.set(key, value);
+    });
+
+    electricUrl.searchParams.set("where", whereClause);
+    electricUrl.searchParams.set("table", `public."RealtimeStreamChunk"`);
+
+    if (!clientVersion) {
+      // If the client version is not provided, that means we're using an older client
+      // This means the client will be sending shape_id instead of handle
+      electricUrl.searchParams.set("handle", electricUrl.searchParams.get("shape_id") ?? "");
+    }
+
+    return electricUrl;
+  }
+
   async #performElectricRequest(
     url: URL,
     environment: RealtimeEnvironment,
+    signal?: AbortSignal,
     clientVersion?: string
   ) {
     const shapeId = extractShapeId(url);
@@ -129,13 +181,13 @@ export class RealtimeClient {
 
     if (!shapeId) {
       // If the shapeId is not present, we're just getting the initial value
-      return longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
+      return longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
     }
 
     const isLive = isLiveRequestUrl(url);
 
     if (!isLive) {
-      return longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
+      return longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
     }
 
     const requestId = randomUUID();
@@ -177,7 +229,7 @@ export class RealtimeClient {
 
     try {
       // ... (rest of your existing code for the long polling request)
-      const response = await longPollingFetch(url.toString(), {}, rewriteResponseHeaders);
+      const response = await longPollingFetch(url.toString(), { signal }, rewriteResponseHeaders);
 
       // Decrement the counter after the long polling request is complete
       await this.#decrementConcurrency(environment.id, requestId);

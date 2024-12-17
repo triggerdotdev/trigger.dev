@@ -2999,3 +2999,19 @@ enum BulkActionItemStatus {
   COMPLETED
   FAILED
 }
+
+model RealtimeStreamChunk {
+  id String @id @default(cuid())
+
+  key   String
+  value String
+
+  sequence Int
+
+  runId String
+
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+  @@index([createdAt])
+}

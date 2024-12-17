@@ -65,6 +65,7 @@ import { UserProfilePhoto } from "../UserProfilePhoto";
 import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
 import { LinkButton } from "../primitives/Buttons";
+import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
 import {
   Popover,
@@ -90,6 +91,34 @@ type SideMenuProps = {
   button?: ReactNode;
   defaultValue?: FeedbackType;
 };
+
+function V2Countdown() {
+  const [days, setDays] = useState(0);
+
+  useEffect(() => {
+    const targetDate = new Date("2025-01-31T00:00:00Z");
+
+    const calculateDays = () => {
+      const now = new Date();
+      const difference = targetDate.getTime() - now.getTime();
+      return Math.floor(difference / (1000 * 60 * 60 * 24));
+    };
+
+    const timer = setInterval(() => {
+      setDays(calculateDays());
+    }, 1000 * 60 * 60); // Update every hour
+
+    setDays(calculateDays()); // Initial calculation
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <Header2 className="flex-wrap gap-4 text-error">
+      V2 goes offline in <span className="tabular-nums">{days}d</span>
+    </Header2>
+  );
+}
 
 export function SideMenu({ user, project, organization, organizations }: SideMenuProps) {
   const borderRef = useRef<HTMLDivElement>(null);
@@ -215,7 +244,8 @@ export function SideMenu({ user, project, organization, organizations }: SideMen
         </div>
         <div className="m-2">
           {project.version === "V2" && (
-            <div className="flex flex-col gap-3 rounded border border-success/50 bg-success/10 p-3">
+            <div className="flex flex-col gap-3 rounded border border-error/50 bg-error/5 p-3">
+              <V2Countdown />
               <Paragraph variant="small/bright">
                 This is a v2 project. V2 will be deprecated on January 31, 2025.{" "}
                 <TextLink
