@@ -220,13 +220,13 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("runRetryScheduled", async ({ time, run, organization }) => {
+  engine.eventBus.on("runAttemptStarted", async ({ time, run, organization }) => {
     try {
       if (run.attemptNumber === 1 && run.baseCostInCents > 0) {
         await reportInvocationUsage(organization.id, run.baseCostInCents, { runId: run.id });
       }
     } catch (error) {
-      logger.error("[runRetryScheduled] Failed to report invocation usage", {
+      logger.error("[runAttemptStarted] Failed to report invocation usage", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
         orgId: organization.id,
