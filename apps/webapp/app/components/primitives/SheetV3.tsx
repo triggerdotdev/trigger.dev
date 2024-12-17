@@ -90,7 +90,7 @@ const SheetTitle = React.forwardRef<
     )}
     {...props}
   >
-    <Header2 className="flex items-center gap-2">{children}</Header2>
+    {children}
     <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-charcoal-750 focus-visible:focus-custom disabled:pointer-events-none">
       <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
       <NamedIcon name="close" className="size-4" />

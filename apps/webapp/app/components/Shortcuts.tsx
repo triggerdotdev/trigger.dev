@@ -33,10 +33,14 @@ export function Shortcuts() {
       <SheetContent>
         <SheetHeader>
           <SheetTitle>
-            <Keyboard className="size-5 text-indigo-500" />
-            Keyboard shortcuts
+            <div className="flex items-center gap-x-2">
+              <Keyboard className="size-5 text-indigo-500" />
+              <span className="font-sans text-base font-medium text-text-bright">
+                Keyboard shortcuts
+              </span>
+            </div>
           </SheetTitle>
-          <SheetDescription className="space-y-6 px-4 py-2">
+          <div className="space-y-6 px-4 py-2">
             <div className="space-y-3">
               <Header3>General</Header3>
               <Shortcut name="Close">
@@ -127,7 +131,7 @@ export function Shortcuts() {
                 <ShortcutKey shortcut={{ key: "n" }} variant="medium/bright" />
               </Shortcut>
             </div>
-          </SheetDescription>
+          </div>
         </SheetHeader>
       </SheetContent>
     </Sheet>
