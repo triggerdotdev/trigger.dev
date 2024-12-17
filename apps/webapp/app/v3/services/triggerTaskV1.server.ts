@@ -29,6 +29,7 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { Prisma } from "@trigger.dev/database";
 import { parseDelay } from "~/utils/delays";
 import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
+import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 
 export class TriggerTaskServiceV1 extends BaseService {
   public async call(
@@ -421,9 +422,16 @@ export class TriggerTaskServiceV1 extends BaseService {
 
                 if (body.options?.queue) {
                   const concurrencyLimit =
-                    typeof body.options.queue.concurrencyLimit === "number"
-                      ? Math.max(0, body.options.queue.concurrencyLimit)
-                      : undefined;
+                    typeof body.options.queue?.concurrencyLimit === "number"
+                      ? Math.max(
+                          Math.min(
+                            body.options.queue.concurrencyLimit,
+                            environment.maximumConcurrencyLimit,
+                            environment.organization.maximumConcurrencyLimit
+                          ),
+                          0
+                        )
+                      : null;
 
                   let taskQueue = await tx.taskQueue.findFirst({
                     where: {
@@ -450,13 +458,33 @@ export class TriggerTaskServiceV1 extends BaseService {
                       });
 
                       if (typeof taskQueue.concurrencyLimit === "number") {
-                        await marqs?.updateQueueConcurrencyLimits(
+                        logger.debug("TriggerTaskService: updating concurrency limit", {
+                          runId: taskRun.id,
+                          friendlyId: taskRun.friendlyId,
+                          taskQueue,
+                          orgId: environment.organizationId,
+                          projectId: environment.projectId,
+                          existingConcurrencyLimit,
+                          concurrencyLimit,
+                          queueOptions: body.options?.queue,
+                        });
+                        await updateQueueConcurrencyLimits(
                           environment,
                           taskQueue.name,
                           taskQueue.concurrencyLimit
                         );
                       } else {
-                        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+                        logger.debug("TriggerTaskService: removing concurrency limit", {
+                          runId: taskRun.id,
+                          friendlyId: taskRun.friendlyId,
+                          taskQueue,
+                          orgId: environment.organizationId,
+                          projectId: environment.projectId,
+                          existingConcurrencyLimit,
+                          concurrencyLimit,
+                          queueOptions: body.options?.queue,
+                        });
+                        await removeQueueConcurrencyLimits(environment, taskQueue.name);
                       }
                     }
                   } else {
