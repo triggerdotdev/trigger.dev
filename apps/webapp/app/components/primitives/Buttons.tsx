@@ -177,6 +177,7 @@ export type ButtonContentPropsType = {
   variant: keyof typeof variant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltipDescription?: string;
+  iconSpacing?: string;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -192,6 +193,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     className,
     showTooltip,
     tooltipDescription,
+    iconSpacing,
   } = props;
   const variation = allVariants.variant[props.variant];
 
@@ -216,7 +218,8 @@ export function ButtonContent(props: ButtonContentPropsType) {
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
           "flex w-full items-center",
-          iconSpacingClassName
+          iconSpacingClassName,
+          iconSpacing
         )}
       >
         {LeadingIcon &&

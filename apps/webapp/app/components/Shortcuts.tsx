@@ -24,6 +24,8 @@ export function Shortcuts() {
           fullWidth
           textAlignLeft
           shortcut={{ modifiers: ["shift"], key: "?" }}
+          className="gap-x-0 pl-0.5"
+          iconSpacing="gap-x-0.5"
         >
           Shortcuts
         </Button>
