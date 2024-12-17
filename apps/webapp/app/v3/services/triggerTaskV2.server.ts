@@ -27,6 +27,7 @@ import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.
 import { Prisma } from "@trigger.dev/database";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { RunEngine } from "@internal/run-engine";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV2 extends WithRunEngine {
@@ -117,7 +118,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       }
 
       if (!options.skipChecks) {
-        const queueSizeGuard = await this.#guardQueueSizeLimitsForEnv(environment);
+        const queueSizeGuard = await guardQueueSizeLimitsForEnv(this._engine, environment);
 
         logger.debug("Queue size guard result", {
           queueSizeGuard,
@@ -465,22 +466,6 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
 
     return { dataType: payloadType };
   }
-
-  async #guardQueueSizeLimitsForEnv(environment: AuthenticatedEnvironment) {
-    const maximumSize = getMaximumSizeForEnvironment(environment);
-
-    if (typeof maximumSize === "undefined") {
-      return { isWithinLimits: true };
-    }
-
-    const queueSize = await this._engine.lengthOfEnvQueue(environment);
-
-    return {
-      isWithinLimits: queueSize < maximumSize,
-      maximumSize,
-      queueSize,
-    };
-  }
 }
 
 function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
@@ -489,4 +474,25 @@ function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): nu
   } else {
     return environment.organization.maximumDeployedQueueSize ?? env.MAXIMUM_DEPLOYED_QUEUE_SIZE;
   }
+}
+
+export async function guardQueueSizeLimitsForEnv(
+  engine: RunEngine,
+  environment: AuthenticatedEnvironment,
+  itemsToAdd: number = 1
+) {
+  const maximumSize = getMaximumSizeForEnvironment(environment);
+
+  if (typeof maximumSize === "undefined") {
+    return { isWithinLimits: true };
+  }
+
+  const queueSize = await engine.lengthOfEnvQueue(environment);
+  const projectedSize = queueSize + itemsToAdd;
+
+  return {
+    isWithinLimits: projectedSize <= maximumSize,
+    maximumSize,
+    queueSize,
+  };
 }
