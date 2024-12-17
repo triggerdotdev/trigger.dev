@@ -1941,6 +1941,13 @@ export class RunEngine {
         return;
       }
 
+      if (run.lockedAt) {
+        this.logger.debug("Run cannot be expired because it's locked, so will run", {
+          run,
+        });
+        return;
+      }
+
       const error: TaskRunError = {
         type: "STRING_ERROR",
         raw: `Run expired because the TTL (${run.ttl}) was reached`,
