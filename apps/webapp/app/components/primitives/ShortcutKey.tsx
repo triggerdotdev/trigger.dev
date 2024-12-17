@@ -1,20 +1,19 @@
-import { Fragment } from "react";
-import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
-import { cn } from "~/utils/cn";
-import { useOperatingSystem } from "./OperatingSystemProvider";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
+import { Modifier, ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { cn } from "~/utils/cn";
+import { useOperatingSystem } from "./OperatingSystemProvider";
 
 const medium =
-  "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
+  "text-[0.75rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
 
 export const variants = {
   small:
-    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 grid place-content-center border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
+    "text-[0.6rem] font-medium min-w-[17px] rounded-[2px] px-1 ml-1 -mr-0.5 flex items-center gap-x-1 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase",
   medium,
   "medium/bright": cn(medium, "bg-charcoal-750 text-text-bright border-charcoal-650"),
 };
@@ -37,9 +36,9 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   return (
     <span className={cn(variants[variant], className)}>
       {modifiers.map((k) => (
-        <Fragment key={k}>{modifierString(k, isMac)}</Fragment>
+        <span key={k}>{modifierString(k, isMac)}</span>
       ))}
-      {character}
+      <span>{character}</span>
     </span>
   );
 }
