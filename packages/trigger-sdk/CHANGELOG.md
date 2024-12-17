@@ -1,5 +1,16 @@
 # @trigger.dev/sdk
 
+## 3.3.7
+
+### Patch Changes
+
+- - Fixes an issue in streams where "chunks" could get split across multiple reads ([#1549](https://github.com/triggerdotdev/trigger.dev/pull/1549))
+  - Fixed stopping the run subscription after a run is finished, when using useRealtimeRun or useRealtimeRunWithStreams
+  - Added an `onComplete` callback to `useRealtimeRun` and `useRealtimeRunWithStreams`
+  - Optimized the run subscription to reduce unnecessary updates
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.7`
+
 ## 3.3.6
 
 ### Patch Changes
