@@ -3,8 +3,6 @@ title: "Limits"
 description: "There are some hard and soft limits that you might hit."
 ---
 
-import RateLimitHitUseBatchTrigger from "/snippets/rate-limit-hit-use-batchtrigger.mdx";
-
 ## Concurrency limits
 
 | Pricing tier | Limit                |
@@ -54,7 +52,7 @@ If you're creating schedules for your user you will definitely need to request m
 | Limit                  | Details                                       |
 | :--------------------- | :-------------------------------------------- |
 | Single trigger payload | Must not exceed 3MB                           |
-| Batch trigger payload  | The total of all payloads must not exceed 1MB |
+| Batch trigger payload  | The total of all payloads must not exceed 5MB |
 | Task outputs           | Must not exceed 10MB                          |
 
 Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
@@ -78,38 +76,47 @@ A single batch can have a maximum of 500 items.
 We limit the size of logs to prevent oversized data potentially causing issues.
 
 <Expandable title="log limits">
+  #### Attribute Limits
 
-#### Attribute Limits
+  * Span Attribute Count Limit: 256
 
-- Span Attribute Count Limit: 256
-- Log Attribute Count Limit: 256
-- Span Attribute Value Length Limit: 1028 characters
-- Log Attribute Value Length Limit: 1028 characters
+  * Log Attribute Count Limit: 256
 
-#### Event and Link Limits
+  * Span Attribute Value Length Limit: 1028 characters
 
-- Span Event Count Limit: 10
-- Link Count Limit: 2
-- Attributes per Link Limit: 10
-- Attributes per Event Limit: 10
+  * Log Attribute Value Length Limit: 1028 characters
 
-#### I/O Packet Length Limit
+  #### Event and Link Limits
 
-128 KB (131,072 bytes)
+  * Span Event Count Limit: 10
 
-#### Attribute Clipping Behavior
+  * Link Count Limit: 2
 
-- Attributes exceeding the value length limit (1028 characters) are discarded.
-- If the total number of attributes exceeds 256, additional attributes are not included.
+  * Attributes per Link Limit: 10
 
-#### Attribute Value Size Calculation
+  * Attributes per Event Limit: 10
 
-- Strings: Actual length of the string
-- Numbers: 8 bytes
-- Booleans: 4 bytes
-- Arrays: Sum of the sizes of all elements
-- Undefined or null: 0 bytes
+  #### I/O Packet Length Limit
 
+  128 KB (131,072 bytes)
+
+  #### Attribute Clipping Behavior
+
+  * Attributes exceeding the value length limit (1028 characters) are discarded.
+
+  * If the total number of attributes exceeds 256, additional attributes are not included.
+
+  #### Attribute Value Size Calculation
+
+  * Strings: Actual length of the string
+
+  * Numbers: 8 bytes
+
+  * Booleans: 4 bytes
+
+  * Arrays: Sum of the sizes of all elements
+
+  * Undefined or null: 0 bytes
 </Expandable>
 
 ## Alerts
