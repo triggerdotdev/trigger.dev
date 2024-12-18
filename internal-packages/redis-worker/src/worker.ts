@@ -297,7 +297,7 @@ class Worker<TCatalog extends WorkerCatalog> {
 
   private async handleRedriveMessage(channel: string, message: string) {
     try {
-      const { id } = JSON.parse(message);
+      const { id } = JSON.parse(message) as any;
       if (typeof id !== "string") {
         throw new Error("Invalid message format: id must be a string");
       }

@@ -128,7 +128,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       const dequeuedItems = [];
 
       for (const [id, serializedItem] of results) {
-        const parsedItem = JSON.parse(serializedItem);
+        const parsedItem = JSON.parse(serializedItem) as any;
         if (typeof parsedItem.job !== "string") {
           this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
           continue;
