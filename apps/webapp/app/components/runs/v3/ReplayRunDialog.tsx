@@ -159,7 +159,7 @@ function ReplayForm({
           variant="primary/medium"
           LeadingIcon={isSubmitting ? ButtonSpinner : undefined}
           disabled={isSubmitting}
-          shortcut={{ modifiers: ["meta"], key: "enter", enabledOnInputElements: true }}
+          shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
         >
           {isSubmitting ? "Replaying..." : "Replay run"}
         </Button>

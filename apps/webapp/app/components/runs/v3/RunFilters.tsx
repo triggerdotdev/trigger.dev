@@ -804,7 +804,7 @@ function RunIdDropdown({
               disabled={error !== undefined || !runId}
               variant="secondary/small"
               shortcut={{
-                modifiers: ["meta"],
+                modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
               }}
@@ -922,7 +922,7 @@ function BatchIdDropdown({
               disabled={error !== undefined || !batchId}
               variant="secondary/small"
               shortcut={{
-                modifiers: ["meta"],
+                modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
               }}
@@ -1040,7 +1040,7 @@ function ScheduleIdDropdown({
               disabled={error !== undefined || !scheduleId}
               variant="secondary/small"
               shortcut={{
-                modifiers: ["meta"],
+                modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
               }}

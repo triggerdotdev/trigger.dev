@@ -48,7 +48,7 @@ export function RetryDeploymentIndexingDialog({
             variant="primary/medium"
             LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
             disabled={isLoading}
-            shortcut={{ modifiers: ["meta"], key: "enter" }}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
           >
             {isLoading ? "Retrying..." : "Retry indexing"}
           </Button>
