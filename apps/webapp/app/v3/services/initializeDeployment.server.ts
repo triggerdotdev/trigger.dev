@@ -4,7 +4,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { WorkerDeploymentType } from "@trigger.dev/database";
@@ -18,6 +18,10 @@ export class InitializeDeploymentService extends BaseService {
     payload: InitializeDeploymentRequestBody
   ) {
     return this.traceWithEnv("call", environment, async (span) => {
+      if (payload.type !== "V1" && environment.project.engine !== "V2") {
+        throw new ServiceValidationError("Only V1 deployments are supported for this project");
+      }
+
       const latestDeployment = await this._prisma.workerDeployment.findFirst({
         where: {
           environmentId: environment.id,

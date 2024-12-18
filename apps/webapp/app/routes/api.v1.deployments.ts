@@ -6,6 +6,7 @@ import {
 import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -33,18 +34,30 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const service = new InitializeDeploymentService();
 
-  const { deployment, imageTag } = await service.call(authenticatedEnv, body.data);
+  try {
+    const { deployment, imageTag } = await service.call(authenticatedEnv, body.data);
 
-  const responseBody: InitializeDeploymentResponseBody = {
-    id: deployment.friendlyId,
-    contentHash: deployment.contentHash,
-    shortCode: deployment.shortCode,
-    version: deployment.version,
-    externalBuildData:
-      deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
-    imageTag,
-    registryHost: body.data.registryHost ?? env.DEPLOY_REGISTRY_HOST,
-  };
+    const responseBody: InitializeDeploymentResponseBody = {
+      id: deployment.friendlyId,
+      contentHash: deployment.contentHash,
+      shortCode: deployment.shortCode,
+      version: deployment.version,
+      externalBuildData:
+        deployment.externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
+      imageTag,
+      registryHost: body.data.registryHost ?? env.DEPLOY_REGISTRY_HOST,
+    };
 
-  return json(responseBody, { status: 200 });
+    return json(responseBody, { status: 200 });
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return json({ error: error.message }, { status: 400 });
+    } else if (error instanceof Error) {
+      logger.error("Error initializing deployment", { error: error.message });
+      return json({ error: `Internal server error: ${error.message}` }, { status: 500 });
+    } else {
+      logger.error("Error initializing deployment", { error: String(error) });
+      return json({ error: "Internal server error" }, { status: 500 });
+    }
+  }
 }
