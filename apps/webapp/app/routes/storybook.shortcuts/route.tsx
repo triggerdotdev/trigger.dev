@@ -10,8 +10,10 @@ const shortcuts: ShortcutDefinition[] = [
   { key: "f", modifiers: ["mod"] },
   { key: "k", modifiers: ["mod"] },
   { key: "del", modifiers: ["ctrl", "alt"] },
+  { key: "f", modifiers: ["shift"] },
   { key: "enter", modifiers: ["mod"] },
   { key: "enter", modifiers: ["mod"] },
+  { key: "g", modifiers: ["meta"] },
 ];
 
 export default function Story() {
