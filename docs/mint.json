@@ -379,6 +379,10 @@
       ]
     },
     {
+      "group": "Example projects",
+      "pages": ["guides/examples/fal-ai-image-to-cartoon", "guides/examples/fal-ai-realtime"]
+    },
+    {
       "group": "Example tasks",
       "pages": [
         "guides/examples/dall-e3-generate-image",
