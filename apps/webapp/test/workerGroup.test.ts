@@ -19,6 +19,7 @@ import { HEADER_NAME } from "@trigger.dev/worker";
 import { RunEngine } from "@internal/run-engine";
 import { trace } from "@opentelemetry/api";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { env } from "~/env.server";
 
 describe("worker", () => {
   const defaultInstanceName = "test_worker";
@@ -69,6 +70,7 @@ describe("worker", () => {
         headers: {
           Authorization: `Bearer ${token.plaintext}`,
           [HEADER_NAME.WORKER_INSTANCE_NAME]: defaultInstanceName,
+          [HEADER_NAME.WORKER_MANAGED_SECRET]: env.MANAGED_WORKER_SECRET,
         },
       });
 
@@ -86,6 +88,7 @@ describe("worker", () => {
         headers: {
           Authorization: `Bearer ${token.plaintext}`,
           [HEADER_NAME.WORKER_INSTANCE_NAME]: secondInstanceName,
+          [HEADER_NAME.WORKER_MANAGED_SECRET]: env.MANAGED_WORKER_SECRET,
         },
       });
       const secondAuth = await tokenService.authenticate(secondRequest);
@@ -99,7 +102,11 @@ describe("worker", () => {
     containerTest("dequeue - unmanaged", async ({ prisma, redisContainer }) => {
       const taskIdentifier = "test-task";
 
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(
+        prisma,
+        "PRODUCTION",
+        "V2"
+      );
 
       const { deployment } = await setupBackgroundWorker(
         prisma,
@@ -136,7 +143,7 @@ describe("worker", () => {
         const tokenService = new WorkerGroupTokenService({ prisma, engine });
         const authenticatedInstance = await tokenService.authenticate(request);
 
-        assert(authenticatedInstance, "authenticationInstance should be defined");
+        assert(authenticatedInstance, "authenticatedInstance should be defined");
         expect(authenticatedInstance.type).toBe(WorkerInstanceGroupType.UNMANAGED);
         assert(
           authenticatedInstance.type === WorkerInstanceGroupType.UNMANAGED,
