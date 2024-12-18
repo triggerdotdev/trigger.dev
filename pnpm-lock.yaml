@@ -1193,6 +1193,9 @@ importers:
       signal-exit:
         specifier: ^4.1.0
         version: 4.1.0
+      socket.io-client:
+        specifier: 4.7.5
+        version: 4.7.5
       source-map-support:
         specifier: 0.5.21
         version: 0.5.21
