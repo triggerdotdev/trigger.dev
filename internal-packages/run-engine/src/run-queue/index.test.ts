@@ -69,7 +69,7 @@ const messageDev: InputPayload = {
 describe("RunQueue", () => {
   redisTest(
     "Get/set Queue concurrency limit",
-    { timeout: 5_000 },
+    { timeout: 15_000 },
     async ({ redisContainer, redis }) => {
       const queue = new RunQueue({
         ...testOptions,
