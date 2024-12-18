@@ -45,7 +45,7 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
     <span className={cn(variants[variant], className)}>
       {modifiers.map((k) => (
         <span key={k}>
-          <span>{modifierString(k, isMac)}</span>
+          <span>{modifierString(k, isMac, variant)}</span>
         </span>
       ))}
       {character && <span>{character}</span>}
@@ -78,14 +78,20 @@ function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "m
   }
 }
 
-function modifierString(modifier: Modifier, isMac: boolean): string | JSX.Element {
+function modifierString(
+  modifier: Modifier,
+  isMac: boolean,
+  variant: "small" | "medium" | "medium/bright"
+): string | JSX.Element {
+  const className = variant === "small" ? "w-2.5 h-4" : "w-3.5 h-5";
+
   switch (modifier) {
     case "alt":
       return isMac ? "⌥" : <span className="capitalize">Alt</span>;
     case "ctrl":
       return isMac ? "⌃" : <span className="capitalize">Ctrl</span>;
     case "meta":
-      return isMac ? "⌘" : <KeyboardWindowsIcon />;
+      return isMac ? "⌘" : <KeyboardWindowsIcon className={className} />;
     case "shift":
       return "⇧";
     case "mod":
