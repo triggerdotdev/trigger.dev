@@ -83,6 +83,14 @@ export const handleCSVRow = schemaTask({
 
     metadata.parent.increment("processedRows", 1).append("rowRuns", ctx.run.id);
 
+    await metadata.parent.stream(
+      ctx.run.id,
+      (async function* () {
+        yield "hello";
+        yield "world";
+      })()
+    );
+
     return row;
   },
 });

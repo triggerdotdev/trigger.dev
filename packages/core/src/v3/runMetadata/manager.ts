@@ -60,7 +60,7 @@ export class StandardMetadataManager implements RunMetadataManager {
         this.queuedParentOperations.add({ type: "update", value });
         return this.parent;
       },
-      stream: (key, value, signal) => this.doStream(key, value, this.parent, signal),
+      stream: (key, value, signal) => this.doStream(key, value, "parent", this.parent, signal),
     };
   }
 
@@ -94,7 +94,7 @@ export class StandardMetadataManager implements RunMetadataManager {
         this.queuedParentOperations.add({ type: "update", value });
         return this.root;
       },
-      stream: (key, value, signal) => this.doStream(key, value, this.root, signal),
+      stream: (key, value, signal) => this.doStream(key, value, "root", this.root, signal),
     };
   }
 
@@ -194,12 +194,13 @@ export class StandardMetadataManager implements RunMetadataManager {
     value: AsyncIterable<T> | ReadableStream<T>,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
-    return this.doStream(key, value, this, signal);
+    return this.doStream(key, value, "self", this, signal);
   }
 
   private async doStream<T>(
     key: string,
     value: AsyncIterable<T> | ReadableStream<T>,
+    target: "self" | "parent" | "root",
     updater: RunMetadataUpdater = this,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
@@ -236,6 +237,7 @@ export class StandardMetadataManager implements RunMetadataManager {
         headers: this.apiClient.getHeaders(),
         signal,
         version: this.streamsVersion,
+        target,
       });
 
       this.activeStreams.set(key, streamInstance);
