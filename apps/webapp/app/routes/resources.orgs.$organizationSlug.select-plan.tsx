@@ -661,19 +661,19 @@ export function TierPro({
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
-                <DialogHeader>Upgrade plan?</DialogHeader>
+                <DialogHeader>Upgrade plan</DialogHeader>
                 <div className="mb-2 mt-4 flex items-start gap-3">
                   <span>
                     <ArrowUpCircleIcon className="size-12 text-primary" />
                   </span>
                   <Paragraph variant="base/bright" className="text-text-bright">
-                    Are you sure you want to upgrade to the Pro plan? You will be charged the new
-                    plan price for the remainder of this month on a pro rata basis.
+                    Upgrade to get instant access to all the Pro features. You will be charged the
+                    new plan price for the remainder of this month on a pro rata basis.
                   </Paragraph>
                 </div>
                 <DialogFooter>
                   <Button variant="tertiary/medium" onClick={() => setIsDialogOpen(false)}>
-                    Cancel
+                    Dismiss
                   </Button>
                   <Button
                     variant="primary/medium"
