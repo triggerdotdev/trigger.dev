@@ -78,8 +78,9 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
     return (
       <tr
         ref={ref}
+        tabIndex={0}
         className={cn(
-          "group/table-row relative w-full after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus:focus-custom",
           disabled && "opacity-50",
           isSelected && isSelectedStyle,
           className
@@ -216,11 +217,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
+          <Link to={to} tabIndex={-1} className={cn(flexClasses, actionClassName)}>
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
+          <button onClick={onClick} tabIndex={-1} className={cn(flexClasses, actionClassName)}>
             {children}
           </button>
         ) : (
