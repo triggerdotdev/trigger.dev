@@ -18,8 +18,6 @@ import {
 import { HEADER_NAME } from "@trigger.dev/worker";
 import { RunEngine } from "@internal/run-engine";
 import { trace } from "@opentelemetry/api";
-import { TriggerTaskService } from "~/v3/services/triggerTask.server";
-import { env } from "~/env.server";
 
 describe("worker", () => {
   const defaultInstanceName = "test_worker";
@@ -70,7 +68,7 @@ describe("worker", () => {
         headers: {
           Authorization: `Bearer ${token.plaintext}`,
           [HEADER_NAME.WORKER_INSTANCE_NAME]: defaultInstanceName,
-          [HEADER_NAME.WORKER_MANAGED_SECRET]: env.MANAGED_WORKER_SECRET,
+          [HEADER_NAME.WORKER_MANAGED_SECRET]: "managed-secret",
         },
       });
 
@@ -88,7 +86,7 @@ describe("worker", () => {
         headers: {
           Authorization: `Bearer ${token.plaintext}`,
           [HEADER_NAME.WORKER_INSTANCE_NAME]: secondInstanceName,
-          [HEADER_NAME.WORKER_MANAGED_SECRET]: env.MANAGED_WORKER_SECRET,
+          [HEADER_NAME.WORKER_MANAGED_SECRET]: "managed-secret",
         },
       });
       const secondAuth = await tokenService.authenticate(secondRequest);
@@ -117,7 +115,6 @@ describe("worker", () => {
       assert(deployment, "deployment should be defined");
 
       const engine = setupRunEngine(prisma, redisContainer);
-      const triggerService = new TriggerTaskService({ prisma, engine });
 
       const { token, workerGroupService, workerGroup } = await setupWorkerGroup({
         prisma,
@@ -151,7 +148,25 @@ describe("worker", () => {
         );
 
         // Trigger
-        const run = await triggerService.call(taskIdentifier, authenticatedEnvironment, {});
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t12345",
+            spanId: "s12345",
+            masterQueue: "main",
+            queueName: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
         assert(run, "run should be defined");
 
         // Check this is a V2 run
