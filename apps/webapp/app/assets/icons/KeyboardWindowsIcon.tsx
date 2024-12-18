@@ -2,16 +2,16 @@ export function KeyboardWindowsIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
+      width="12"
+      height="16"
+      viewBox="0 0 12 16"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect x="5.5" y="5.5" width="6" height="6" fill="currentColor" />
-      <rect x="12.5" y="5.5" width="6" height="6" fill="currentColor" />
-      <rect x="5.5" y="12.5" width="6" height="6" fill="currentColor" />
-      <rect x="12.5" y="12.5" width="6" height="6" fill="currentColor" />
+      <rect x="1.66666" y="3.66663" width="4" height="4" fill="currentColor" />
+      <rect x="6.33334" y="3.66663" width="4" height="4" fill="currentColor" />
+      <rect x="1.66666" y="8.33337" width="4" height="4" fill="currentColor" />
+      <rect x="6.33334" y="8.33337" width="4" height="4" fill="currentColor" />
     </svg>
   );
 }
