@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
-import { ReactNode, forwardRef, useState } from "react";
+import { useNavigate } from "@remix-run/react";
+import React, { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";
@@ -44,6 +44,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
           "sticky top-0 z-10 bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
           className
         )}
+        tabIndex={-1}
       >
         {children}
       </thead>
@@ -71,16 +72,49 @@ type TableRowProps = {
   children: ReactNode;
   disabled?: boolean;
   isSelected?: boolean;
+  to?: string;
+  onClick?: (event: React.KeyboardEvent | React.MouseEvent) => void;
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children }, ref) => {
+  ({ className, disabled, isSelected, children, to, onClick }, ref) => {
+    const navigate = useNavigate();
+
+    const handleInteraction = (event: React.KeyboardEvent | React.MouseEvent) => {
+      if ((event.target as HTMLElement).closest('button, a, [role="button"]')) {
+        return;
+      }
+
+      const firstCellWithTo = React.Children.toArray(children).find((child) => {
+        if (React.isValidElement(child) && child.type === TableCell) {
+          return child.props.to;
+        }
+        return false;
+      }) as React.ReactElement | undefined;
+
+      if (firstCellWithTo?.props.to) {
+        navigate(firstCellWithTo.props.to);
+      } else if (onClick) {
+        onClick(event);
+      }
+    };
+
+    const handleKeyDown = (event: React.KeyboardEvent) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        handleInteraction(event);
+      }
+    };
+
     return (
       <tr
         ref={ref}
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
+        onClick={handleInteraction}
+        onKeyDown={handleKeyDown}
         className={cn(
-          "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus:focus-custom",
+          "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus-visible:bg-background-bright",
           disabled && "opacity-50",
           isSelected && isSelectedStyle,
           className
@@ -126,6 +160,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
           className
         )}
         colSpan={colSpan}
+        tabIndex={-1}
       >
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
@@ -154,7 +189,7 @@ type TableCellProps = TableCellBasicProps & {
 
 const rowHoverStyles = {
   default:
-    "group-hover/table-row:bg-charcoal-800 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+    "group-hover/table-row:bg-charcoal-800 group-focus-visible/table-row:bg-background-bright group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
   dimmed:
     "group-hover/table-row:bg-charcoal-850 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-800 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-800 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
   bright:
@@ -193,22 +228,13 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         break;
     }
 
-    const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-3 py-3 text-xs text-text-dimmed",
-      alignment === "left"
-        ? "justify-start text-left"
-        : alignment === "center"
-        ? "justify-center text-center"
-        : "justify-end text-right"
-    );
-
     return (
       <td
         ref={ref}
         className={cn(
           "text-xs text-charcoal-400",
-          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
-          !to && !onClick && alignmentClassName,
+          hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
+          alignmentClassName,
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
@@ -216,17 +242,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         )}
         colSpan={colSpan}
       >
-        {to ? (
-          <Link to={to} tabIndex={-1} className={cn(flexClasses, actionClassName)}>
-            {children}
-          </Link>
-        ) : onClick ? (
-          <button onClick={onClick} tabIndex={-1} className={cn(flexClasses, actionClassName)}>
-            {children}
-          </button>
-        ) : (
-          <>{children}</>
-        )}
+        {children}
       </td>
     );
   }
