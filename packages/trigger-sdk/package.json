@@ -72,7 +72,6 @@
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "typescript": "^5.5.4",
     "zod": "3.23.8"
   },
   "peerDependencies": {

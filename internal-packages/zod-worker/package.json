@@ -10,7 +10,6 @@
     "@trigger.dev/database": "workspace:*",
     "graphile-worker": "0.16.6",
     "lodash.omit": "^4.5.0",
-    "typescript": "^5.5.4",
     "zod": "3.23.8"
   },
   "devDependencies": {
