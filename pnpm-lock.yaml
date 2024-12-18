@@ -93,9 +93,6 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0
     devDependencies:
-      '@types/node':
-        specifier: ^18
-        version: 18.17.1
       dotenv:
         specifier: ^16.4.2
         version: 16.4.4
@@ -115,9 +112,6 @@ importers:
         specifier: ^8.0.1
         version: 8.0.1
     devDependencies:
-      '@types/node':
-        specifier: ^18.19.8
-        version: 18.19.20
       dotenv:
         specifier: ^16.4.2
         version: 16.4.4
@@ -703,9 +697,6 @@ importers:
       '@types/morgan':
         specifier: ^1.9.3
         version: 1.9.4
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       '@types/node-fetch':
         specifier: ^2.6.2
         version: 2.6.2
@@ -872,9 +863,6 @@ importers:
         specifier: 3.23.8
         version: 3.23.8
     devDependencies:
-      '@types/node':
-        specifier: ^18
-        version: 18.19.20
       '@types/react':
         specifier: 18.2.69
         version: 18.2.69
@@ -1049,9 +1037,6 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       esbuild:
         specifier: ^0.23.0
         version: 0.23.0
@@ -1230,9 +1215,6 @@ importers:
       '@types/gradient-string':
         specifier: ^1.1.2
         version: 1.1.2
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       '@types/object-hash':
         specifier: 3.0.6
         version: 3.0.6
@@ -1375,9 +1357,6 @@ importers:
       '@types/humanize-duration':
         specifier: ^3.27.1
         version: 3.27.1
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       '@types/readable-stream':
         specifier: ^4.0.14
         version: 4.0.14
@@ -1427,9 +1406,6 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
-      '@types/node':
-        specifier: ^20.14.14
-        version: 20.14.14
       '@types/react':
         specifier: '*'
         version: 18.3.1
@@ -1467,9 +1443,6 @@ importers:
       '@trigger.dev/build':
         specifier: workspace:^3.3.7
         version: link:../build
-      '@types/node':
-        specifier: ^20.14.14
-        version: 20.14.14
       '@types/react':
         specifier: '*'
         version: 18.3.1
@@ -1534,9 +1507,6 @@ importers:
       '@types/debug':
         specifier: ^4.1.7
         version: 4.1.7
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       '@types/slug':
         specifier: ^5.0.3
         version: 5.0.3
@@ -1586,9 +1556,6 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
-      '@types/node':
-        specifier: 20.14.14
-        version: 20.14.14
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
@@ -1712,9 +1679,6 @@ importers:
       '@trigger.dev/rsc':
         specifier: workspace:^3
         version: link:../../packages/rsc
-      '@types/node':
-        specifier: ^20
-        version: 20.14.14
       '@types/react':
         specifier: ^18
         version: 18.3.1
@@ -1902,9 +1866,6 @@ importers:
       '@types/fluent-ffmpeg':
         specifier: ^2.1.26
         version: 2.1.26
-      '@types/node':
-        specifier: 20.4.2
-        version: 20.4.2
       '@types/react':
         specifier: ^18.3.1
         version: 18.3.1
@@ -15770,10 +15731,6 @@ packages:
 
   /@types/node@12.20.55:
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
-
-  /@types/node@18.17.1:
-    resolution: {integrity: sha512-xlR1jahfizdplZYRU59JlUx9uzF1ARa8jbhM11ccpCJya8kvos5jwdm2ZAgxSCwOl0fq21svP18EVwPBXMQudw==}
-    dev: true
 
   /@types/node@18.19.20:
     resolution: {integrity: sha512-SKXZvI375jkpvAj8o+5U2518XQv76mAsixqfXiVyWyXZbVWQK25RurFovYpVIxVzul0rZoH58V/3SkEnm7s3qA==}

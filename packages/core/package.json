@@ -215,7 +215,6 @@
     "@epic-web/test-server": "^0.1.0",
     "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",
-    "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
     "ai": "^3.4.33",
     "defu": "^6.1.4",

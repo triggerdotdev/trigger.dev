@@ -45,7 +45,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
     "@trigger.dev/build": "workspace:^3.3.7",
-    "@types/node": "^20.14.14",
     "@types/react": "*",
     "@types/react-dom": "*",
     "rimraf": "^3.0.2",

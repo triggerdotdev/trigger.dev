@@ -47,7 +47,6 @@
   "devDependencies": {
     "@epic-web/test-server": "^0.1.0",
     "@types/gradient-string": "^1.1.2",
-    "@types/node": "20.14.14",
     "@types/object-hash": "3.0.6",
     "@types/react": "^18.2.48",
     "@types/resolve": "^1.20.6",
