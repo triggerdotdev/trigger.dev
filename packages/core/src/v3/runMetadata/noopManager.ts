@@ -3,22 +3,25 @@ import { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class NoopRunMetadataManager implements RunMetadataManager {
-  appendKey(key: string, value: DeserializedJson): void {
+  append(key: string, value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  removeFromKey(key: string, value: DeserializedJson): void {
+  remove(key: string, value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  incrementKey(key: string, value: number): void {
+  increment(key: string, value: number): this {
     throw new Error("Method not implemented.");
   }
-  decrementKey(key: string, value: number): void {
+  decrement(key: string, value: number): this {
     throw new Error("Method not implemented.");
   }
   stream<T>(key: string, value: AsyncIterable<T>): Promise<AsyncIterable<T>> {
     throw new Error("Method not implemented.");
   }
   flush(requestOptions?: ApiRequestOptions): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  refresh(requestOptions?: ApiRequestOptions): Promise<void> {
     throw new Error("Method not implemented.");
   }
   enterWithMetadata(metadata: Record<string, DeserializedJson>): void {}
@@ -28,35 +31,49 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   getKey(key: string): DeserializedJson | undefined {
     throw new Error("Method not implemented.");
   }
-  setKey(key: string, value: DeserializedJson): void {
+  set(key: string, value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  deleteKey(key: string): void {
+  del(key: string): this {
     throw new Error("Method not implemented.");
   }
-  update(metadata: Record<string, DeserializedJson>): void {
+  update(metadata: Record<string, DeserializedJson>): this {
     throw new Error("Method not implemented.");
   }
 
   get parent(): RunMetadataUpdater {
     return {
-      appendKey: () => {},
-      setKey: () => {},
-      deleteKey: () => {},
-      incrementKey: () => {},
-      decrementKey: () => {},
-      removeFromKey: () => {},
+      append: () => this.parent,
+      set: () => this.parent,
+      del: () => this.parent,
+      increment: () => this.parent,
+      decrement: () => this.parent,
+      remove: () => this.parent,
+      stream: () =>
+        Promise.resolve({
+          [Symbol.asyncIterator]: () => ({
+            next: () => Promise.resolve({ done: true, value: undefined }),
+          }),
+        }),
+      update: () => this.parent,
     };
   }
 
   get root(): RunMetadataUpdater {
     return {
-      appendKey: () => {},
-      setKey: () => {},
-      deleteKey: () => {},
-      incrementKey: () => {},
-      decrementKey: () => {},
-      removeFromKey: () => {},
+      append: () => this.parent,
+      set: () => this.parent,
+      del: () => this.parent,
+      increment: () => this.parent,
+      decrement: () => this.parent,
+      remove: () => this.parent,
+      stream: () =>
+        Promise.resolve({
+          [Symbol.asyncIterator]: () => ({
+            next: () => Promise.resolve({ done: true, value: undefined }),
+          }),
+        }),
+      update: () => this.parent,
     };
   }
 }

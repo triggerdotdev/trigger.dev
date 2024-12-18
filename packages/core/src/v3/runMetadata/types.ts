@@ -2,12 +2,18 @@ import { DeserializedJson } from "../../schemas/json.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 
 export interface RunMetadataUpdater {
-  setKey(key: string, value: DeserializedJson): void;
-  deleteKey(key: string): void;
-  appendKey(key: string, value: DeserializedJson): void;
-  removeFromKey(key: string, value: DeserializedJson): void;
-  incrementKey(key: string, value: number): void;
-  decrementKey(key: string, value: number): void;
+  set(key: string, value: DeserializedJson): this;
+  del(key: string): this;
+  append(key: string, value: DeserializedJson): this;
+  remove(key: string, value: DeserializedJson): this;
+  increment(key: string, value: number): this;
+  decrement(key: string, value: number): this;
+  update(metadata: Record<string, DeserializedJson>): this;
+  stream<T>(
+    key: string,
+    value: AsyncIterable<T> | ReadableStream<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>>;
 }
 
 export interface RunMetadataManager extends RunMetadataUpdater {
@@ -15,13 +21,9 @@ export interface RunMetadataManager extends RunMetadataUpdater {
   enterWithMetadata(metadata: Record<string, DeserializedJson>): void;
   current(): Record<string, DeserializedJson> | undefined;
   getKey(key: string): DeserializedJson | undefined;
-  update(metadata: Record<string, DeserializedJson>): void;
   flush(requestOptions?: ApiRequestOptions): Promise<void>;
-  stream<T>(
-    key: string,
-    value: AsyncIterable<T> | ReadableStream<T>,
-    signal?: AbortSignal
-  ): Promise<AsyncIterable<T>>;
+  refresh(requestOptions?: ApiRequestOptions): Promise<void>;
+
   get parent(): RunMetadataUpdater;
   get root(): RunMetadataUpdater;
 }

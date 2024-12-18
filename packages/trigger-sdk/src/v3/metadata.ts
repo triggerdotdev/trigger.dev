@@ -20,21 +20,26 @@ const rootMetadataUpdater: RunMetadataUpdater = runMetadata.root;
  * @property {Function} save - Update the entire metadata object for the current run.
  */
 
-export const metadata = {
-  current: currentMetadata,
-  get: getMetadataKey,
+const metadataUpdater = {
   set: setMetadataKey,
   del: deleteMetadataKey,
-  save: saveMetadata,
-  replace: replaceMetadata,
-  flush: flushMetadata,
-  stream: stream,
   append: appendMetadataKey,
   remove: removeMetadataKey,
   increment: incrementMetadataKey,
   decrement: decrementMetadataKey,
+  flush: flushMetadata,
+};
+
+export const metadata = {
+  current: currentMetadata,
+  get: getMetadataKey,
+  save: saveMetadata,
+  replace: replaceMetadata,
+  stream: stream,
   parent: parentMetadataUpdater,
   root: rootMetadataUpdater,
+  refresh: refreshMetadata,
+  ...metadataUpdater,
 };
 
 export type RunMetadata = Record<string, DeserializedJson>;
@@ -79,7 +84,9 @@ function getMetadataKey(key: string): DeserializedJson | undefined {
  * metadata.set("progress", 0.5);
  */
 function setMetadataKey(key: string, value: DeserializedJson) {
-  runMetadata.setKey(key, value);
+  runMetadata.set(key, value);
+
+  return metadataUpdater;
 }
 
 /**
@@ -91,7 +98,8 @@ function setMetadataKey(key: string, value: DeserializedJson) {
  * metadata.del("progress");
  */
 function deleteMetadataKey(key: string) {
-  runMetadata.deleteKey(key);
+  runMetadata.del(key);
+  return metadataUpdater;
 }
 
 /**
@@ -104,14 +112,14 @@ function deleteMetadataKey(key: string) {
  * @example
  * metadata.replace({ progress: 0.6, user: { name: "Alice", id: "user_5678" } });
  */
-function replaceMetadata(metadata: RunMetadata): void {
+function replaceMetadata(metadata: RunMetadata) {
   runMetadata.update(metadata);
 }
 
 /**
  * @deprecated Use `metadata.replace()` instead.
  */
-function saveMetadata(metadata: RunMetadata): void {
+function saveMetadata(metadata: RunMetadata) {
   runMetadata.update(metadata);
 }
 
@@ -127,7 +135,8 @@ function saveMetadata(metadata: RunMetadata): void {
  * metadata.increment("score", 10); // Increments score by 10
  */
 function incrementMetadataKey(key: string, value: number = 1) {
-  runMetadata.incrementKey(key, value);
+  runMetadata.increment(key, value);
+  return metadataUpdater;
 }
 
 /**
@@ -142,7 +151,8 @@ function incrementMetadataKey(key: string, value: number = 1) {
  * metadata.decrement("score", 5); // Decrements score by 5
  */
 function decrementMetadataKey(key: string, value: number = 1) {
-  runMetadata.decrementKey(key, value);
+  runMetadata.decrement(key, value);
+  return metadataUpdater;
 }
 
 /**
@@ -158,7 +168,8 @@ function decrementMetadataKey(key: string, value: number = 1) {
  * metadata.append("events", { type: "click", timestamp: Date.now() });
  */
 function appendMetadataKey(key: string, value: DeserializedJson) {
-  runMetadata.appendKey(key, value);
+  runMetadata.append(key, value);
+  return metadataUpdater;
 }
 
 /**
@@ -173,7 +184,8 @@ function appendMetadataKey(key: string, value: DeserializedJson) {
  * metadata.remove("events", { type: "click", timestamp: Date.now() });
  */
 function removeMetadataKey(key: string, value: DeserializedJson) {
-  runMetadata.removeFromKey(key, value);
+  runMetadata.remove(key, value);
+  return metadataUpdater;
 }
 
 /**
@@ -193,6 +205,25 @@ async function flushMetadata(requestOptions?: ApiRequestOptions): Promise<void> 
   );
 
   await runMetadata.flush($requestOptions);
+}
+
+/**
+ * Refreshes metadata from the Trigger.dev instance
+ *
+ * @param {ApiRequestOptions} [requestOptions] - Optional request options to customize the API request.
+ * @returns {Promise<void>} A promise that resolves when the metadata refresh operation is complete.
+ */
+async function refreshMetadata(requestOptions?: ApiRequestOptions): Promise<void> {
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "metadata.refresh()",
+      icon: "code-plus",
+    },
+    requestOptions
+  );
+
+  await runMetadata.refresh($requestOptions);
 }
 
 async function stream<T>(

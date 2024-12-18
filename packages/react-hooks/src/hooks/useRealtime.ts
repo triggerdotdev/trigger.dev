@@ -20,6 +20,15 @@ export type UseRealtimeSingleRunOptions<TTask extends AnyTask = AnyTask> = UseRe
    * @param {Error} [err] - The error that occurred
    */
   onComplete?: (run: RealtimeRun<TTask>, err?: Error) => void;
+
+  /**
+   * Whether to stop the subscription when the run completes
+   *
+   * @default true
+   *
+   * Set this to false if you are making updates to the run metadata after completion through child runs
+   */
+  stopOnCompletion?: boolean;
 };
 
 export type UseRealtimeRunInstance<TTask extends AnyTask = AnyTask> = {
@@ -90,7 +99,13 @@ export function useRealtimeRun<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeRun(runId, apiClient, mutateRun, abortControllerRef);
+      await processRealtimeRun(
+        runId,
+        apiClient,
+        mutateRun,
+        abortControllerRef,
+        typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true
+      );
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -244,6 +259,7 @@ export function useRealtimeRunWithStreams<
         mutateStreams,
         streamsRef,
         abortControllerRef,
+        typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
         options?.experimental_throttleInMs
       );
     } catch (err) {
@@ -567,10 +583,12 @@ async function processRealtimeRunWithStreams<
   mutateStreamData: KeyedMutator<StreamResults<TStreams>>,
   existingDataRef: React.MutableRefObject<StreamResults<TStreams>>,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
+  stopOnCompletion: boolean = true,
   throttleInMs?: number
 ) {
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
+    closeOnComplete: stopOnCompletion,
   });
 
   type StreamUpdate = {
@@ -619,10 +637,12 @@ async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
   runId: string,
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
-  abortControllerRef: React.MutableRefObject<AbortController | null>
+  abortControllerRef: React.MutableRefObject<AbortController | null>,
+  stopOnCompletion: boolean = true
 ) {
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
+    closeOnComplete: stopOnCompletion,
   });
 
   for await (const part of subscription) {

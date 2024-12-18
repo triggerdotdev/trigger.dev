@@ -627,6 +627,19 @@ export function createActionApiRoute<
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
+
+        logger.error("Error in action", {
+          error:
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : String(error),
+          url: request.url,
+        });
+
         return await wrapResponse(
           request,
           json({ error: "Internal Server Error" }, { status: 500 }),
