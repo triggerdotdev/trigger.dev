@@ -65,6 +65,7 @@
     "vitest": "^2.0.5"
   },
   "scripts": {
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "typecheck": "tsc -p tsconfig.src.json --noEmit",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",

@@ -173,7 +173,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
