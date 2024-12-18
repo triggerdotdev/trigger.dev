@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import type { handleUpload } from "@/trigger/images";
+import type { handleCSVUpload } from "@/trigger/csv";
 import { auth, tasks } from "@trigger.dev/sdk/v3";
 
 const f = createUploadthing();
@@ -46,6 +47,13 @@ export const ourFileRouter = {
       // !!! Whatever is returned here is sent to the clientside `onClientUploadComplete` callback
       return { uploadedBy: metadata.userId, publicAccessToken, fileId: file.key };
     }),
+  csvUploader: f({ blob: { maxFileSize: "4MB" } }).onUploadComplete(async ({ metadata, file }) => {
+    console.log("file", file);
+
+    const handle = await tasks.trigger<typeof handleCSVUpload>("handle-csv-upload", file);
+
+    return handle;
+  }),
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

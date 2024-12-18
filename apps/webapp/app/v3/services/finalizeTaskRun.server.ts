@@ -1,4 +1,4 @@
-import { sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
+import { FlushedRunMetadata, sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
@@ -15,6 +15,8 @@ import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { socketIo } from "../handleSocketIo.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 
 type BaseInput = {
   id: string;
@@ -23,6 +25,8 @@ type BaseInput = {
   completedAt?: Date;
   attemptStatus?: FINAL_ATTEMPT_STATUSES;
   error?: TaskRunError;
+  metadata?: FlushedRunMetadata;
+  env?: AuthenticatedEnvironment;
 };
 
 type InputWithInclude<T extends Prisma.TaskRunInclude> = BaseInput & {
@@ -46,6 +50,8 @@ export class FinalizeTaskRunService extends BaseService {
     include,
     attemptStatus,
     error,
+    metadata,
+    env,
   }: T extends Prisma.TaskRunInclude ? InputWithInclude<T> : InputWithoutInclude): Promise<
     Output<T>
   > {
@@ -63,6 +69,24 @@ export class FinalizeTaskRunService extends BaseService {
       expiredAt,
       completedAt,
     });
+
+    if (env && metadata) {
+      try {
+        await updateMetadataService.call(env, id, metadata);
+      } catch (e) {
+        logger.error("[FinalizeTaskRunService] Failed to update metadata", {
+          taskRun: id,
+          error:
+            e instanceof Error
+              ? {
+                  name: e.name,
+                  message: e.message,
+                  stack: e.stack,
+                }
+              : e,
+        });
+      }
+    }
 
     // I moved the error update here for two reasons:
     // - A single update is more efficient than two

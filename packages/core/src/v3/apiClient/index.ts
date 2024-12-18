@@ -623,9 +623,25 @@ export class ApiClient {
     );
   }
 
-  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string, options?: { signal?: AbortSignal }) {
+  getRunMetadata(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      UpdateMetadataResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/metadata`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  subscribeToRun<TRunTypes extends AnyRunTypes>(
+    runId: string,
+    options?: { signal?: AbortSignal; closeOnComplete?: boolean }
+  ) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
-      closeOnComplete: true,
+      closeOnComplete:
+        typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
       headers: this.#getRealtimeHeaders(),
       client: this,
       signal: options?.signal,

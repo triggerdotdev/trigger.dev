@@ -123,7 +123,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
 
   const $options: RunSubscriptionOptions = {
     runShapeStream: runStreamInstance.stream,
-    stopRunShapeStream: runStreamInstance.stop,
+    stopRunShapeStream: () => runStreamInstance.stop(30 * 1000),
     streamFactory: new VersionedStreamSubscriptionFactory(version1, version2),
     abortController,
     ...options,
@@ -324,6 +324,7 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
 
           controller.enqueue(run);
 
+          // only set the run to complete when finishedAt is set
           this._isRunComplete = !!run.finishedAt;
 
           if (
