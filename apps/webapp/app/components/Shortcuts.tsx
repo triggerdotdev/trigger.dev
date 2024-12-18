@@ -44,12 +44,6 @@ export function Shortcuts() {
             <div className="space-y-3">
               <Header3>General</Header3>
               <Shortcut name="Close">
-                <ShortcutKey
-                  shortcut={{ modifiers: ["alt", "ctrl", "meta", "shift", "mod"], key: "w" }}
-                  variant="medium/bright"
-                />
-              </Shortcut>
-              <Shortcut name="Close">
                 <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
               </Shortcut>
               <Shortcut name="Confirm">
