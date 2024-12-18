@@ -21,8 +21,8 @@ export const runMetadataTask = task({
 export const runMetadataChildTask = task({
   id: "run-metadata-child-task",
   run: async (payload: any, { ctx }) => {
-    metadata.parent.incrementKey("numberOfChildren", 1);
-    metadata.root.incrementKey("numberOfChildren", 1);
+    metadata.parent.increment("numberOfChildren", 1);
+    metadata.root.increment("numberOfChildren", 1);
 
     logger.info("metadata", { metadata: metadata.current() });
 
@@ -63,7 +63,7 @@ export const runMetadataChildTask = task({
 export const runMetadataChildTask2 = task({
   id: "run-metadata-child-task-2",
   run: async (payload: any, { ctx }) => {
-    metadata.root.incrementKey("numberOfChildren", 1);
+    metadata.root.increment("numberOfChildren", 1);
   },
 });
 
