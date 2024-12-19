@@ -1,9 +1,9 @@
 import { TaskRun } from "@trigger.dev/database";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { RescheduleRunRequestBody } from "@trigger.dev/core/v3";
-import { parseDelay } from "./triggerTask.server";
 import { $transaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
+import { parseDelay } from "~/utils/delays";
 
 export class RescheduleTaskRunService extends BaseService {
   public async call(taskRun: TaskRun, body: RescheduleRunRequestBody) {

@@ -49,3 +49,25 @@ export function parseNaturalLanguageDuration(duration: string): Date | undefined
 
   return undefined;
 }
+
+export function stringifyDuration(seconds: number): string | undefined {
+  if (seconds <= 0) {
+    return;
+  }
+
+  const units = {
+    w: Math.floor(seconds / 604800),
+    d: Math.floor((seconds % 604800) / 86400),
+    h: Math.floor((seconds % 86400) / 3600),
+    m: Math.floor((seconds % 3600) / 60),
+    s: Math.floor(seconds % 60),
+  };
+
+  // Filter the units having non-zero values and join them
+  const result: string = Object.entries(units)
+    .filter(([unit, val]) => val != 0)
+    .map(([unit, val]) => `${val}${unit}`)
+    .join("");
+
+  return result;
+}

@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
@@ -321,7 +322,11 @@ function DeploymentActionsCell({
   const location = useLocation();
   const project = useProject();
 
-  const canRollback = !deployment.isCurrent && deployment.isDeployed;
+  const canRollback =
+    deployment.type === WorkerInstanceGroupType.MANAGED &&
+    !deployment.isCurrent &&
+    deployment.isDeployed;
+
   const canRetryIndexing = deployment.isLatest && deploymentIndexingIsRetryable(deployment);
 
   if (!canRollback && !canRetryIndexing) {

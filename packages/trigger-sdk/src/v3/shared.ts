@@ -1352,6 +1352,8 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxAttempts: options?.maxAttempts,
             metadata: options?.metadata,
             maxDuration: options?.maxDuration,
+            resumeParentOnCompletion: true,
+            parentRunId: ctx.run.id,
           },
         },
         {},
@@ -1428,6 +1430,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  resumeParentOnCompletion: true,
+                  parentRunId: ctx.run.id,
                 },
               };
             })
