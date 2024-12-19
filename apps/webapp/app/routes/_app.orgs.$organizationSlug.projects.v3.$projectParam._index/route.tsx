@@ -20,7 +20,12 @@ import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { Feedback } from "~/components/Feedback";
-import { InitCommandV3, TriggerDevStepV3, TriggerLoginStepV3 } from "~/components/SetupCommands";
+import {
+  InitCommandV3,
+  PackageManagerProvider,
+  TriggerDevStepV3,
+  TriggerLoginStepV3,
+} from "~/components/SetupCommands";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -431,38 +436,40 @@ export default function Page() {
 
 function CreateTaskInstructions() {
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between border-b">
-        <Header1 spacing>Get setup in 3 minutes</Header1>
-        <div className="flex items-center gap-2">
-          <Feedback
-            button={
-              <Button variant="minimal/small" LeadingIcon={ChatBubbleLeftRightIcon}>
-                I'm stuck!
-              </Button>
-            }
-            defaultValue="help"
-          />
+    <PackageManagerProvider>
+      <div>
+        <div className="mb-6 flex items-center justify-between border-b">
+          <Header1 spacing>Get setup in 3 minutes</Header1>
+          <div className="flex items-center gap-2">
+            <Feedback
+              button={
+                <Button variant="minimal/small" LeadingIcon={ChatBubbleLeftRightIcon}>
+                  I'm stuck!
+                </Button>
+              }
+              defaultValue="help"
+            />
+          </div>
         </div>
+        <StepNumber stepNumber="1" title="Run the CLI 'init' command in an existing project" />
+        <StepContentContainer>
+          <InitCommandV3 />
+          <Paragraph spacing>
+            You'll notice a new folder in your project called{" "}
+            <InlineCode variant="small">trigger</InlineCode>. We've added a very simple example task
+            in here to help you get started.
+          </Paragraph>
+        </StepContentContainer>
+        <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
+        <StepContentContainer>
+          <TriggerDevStepV3 />
+        </StepContentContainer>
+        <StepNumber stepNumber="3" title="Waiting for tasks" displaySpinner />
+        <StepContentContainer>
+          <Paragraph>This page will automatically refresh.</Paragraph>
+        </StepContentContainer>
       </div>
-      <StepNumber stepNumber="1" title="Run the CLI 'init' command in an existing project" />
-      <StepContentContainer>
-        <InitCommandV3 />
-        <Paragraph spacing>
-          You’ll notice a new folder in your project called{" "}
-          <InlineCode variant="small">trigger</InlineCode>. We’ve added a very simple example task
-          in here to help you get started.
-        </Paragraph>
-      </StepContentContainer>
-      <StepNumber stepNumber="2" title="Run the CLI 'dev' command" />
-      <StepContentContainer>
-        <TriggerDevStepV3 />
-      </StepContentContainer>
-      <StepNumber stepNumber="3" title="Waiting for tasks" displaySpinner />
-      <StepContentContainer>
-        <Paragraph>This page will automatically refresh.</Paragraph>
-      </StepContentContainer>
-    </div>
+    </PackageManagerProvider>
   );
 }
 
@@ -484,26 +491,28 @@ function UserHasNoTasks() {
         }
       >
         {open ? (
-          <div>
-            <Header2 spacing>Get setup in 3 minutes</Header2>
+          <PackageManagerProvider>
+            <div>
+              <Header2 spacing>Get setup in 3 minutes</Header2>
 
-            <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
-            <StepContentContainer>
-              <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
-            </StepContentContainer>
-            <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
-            <StepContentContainer>
-              <TriggerLoginStepV3 />
-            </StepContentContainer>
-            <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
-            <StepContentContainer>
-              <TriggerDevStepV3 />
-            </StepContentContainer>
-            <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
-            <StepContentContainer>
-              <Paragraph>This page will automatically refresh.</Paragraph>
-            </StepContentContainer>
-          </div>
+              <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
+              <StepContentContainer>
+                <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
+              </StepContentContainer>
+              <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
+              <StepContentContainer>
+                <TriggerLoginStepV3 />
+              </StepContentContainer>
+              <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
+              <StepContentContainer>
+                <TriggerDevStepV3 />
+              </StepContentContainer>
+              <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
+              <StepContentContainer>
+                <Paragraph>This page will automatically refresh.</Paragraph>
+              </StepContentContainer>
+            </div>
+          </PackageManagerProvider>
         ) : (
           "Your DEV environment isn't setup yet."
         )}

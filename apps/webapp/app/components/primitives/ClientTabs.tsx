@@ -5,7 +5,11 @@ import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cn } from "~/utils/cn";
 import { motion } from "framer-motion";
 
-const ClientTabs = TabsPrimitive.Root;
+const ClientTabs = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
+>((props, ref) => <TabsPrimitive.Root ref={ref} {...props} />);
+ClientTabs.displayName = TabsPrimitive.Root.displayName;
 
 const ClientTabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
