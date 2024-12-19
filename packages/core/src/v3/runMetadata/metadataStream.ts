@@ -6,6 +6,7 @@ export type MetadataOptions<T> = {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   version?: "v1" | "v2";
+  target?: "self" | "parent" | "root";
 };
 
 export class MetadataStream<T> {
@@ -45,19 +46,14 @@ export class MetadataStream<T> {
       })
     );
 
-    return fetch(
-      `${this.options.baseUrl}/realtime/${this.options.version ?? "v1"}/streams/${
-        this.options.runId
-      }/${this.options.key}`,
-      {
-        method: "POST",
-        headers: this.options.headers ?? {},
-        body: serverStream,
-        // @ts-expect-error
-        duplex: "half",
-        signal: this.controller.signal,
-      }
-    );
+    return fetch(this.buildUrl(), {
+      method: "POST",
+      headers: this.options.headers ?? {},
+      body: serverStream,
+      signal: this.controller.signal,
+      // @ts-expect-error
+      duplex: "half",
+    });
   }
 
   public async wait(): Promise<void> {
@@ -66,6 +62,19 @@ export class MetadataStream<T> {
 
   public [Symbol.asyncIterator]() {
     return streamToAsyncIterator(this.consumerStream);
+  }
+
+  private buildUrl(): string {
+    switch (this.options.version ?? "v1") {
+      case "v1": {
+        return `${this.options.baseUrl}/realtime/v1/streams/${this.options.runId}/${
+          this.options.target ?? "self"
+        }/${this.options.key}`;
+      }
+      case "v2": {
+        return `${this.options.baseUrl}/realtime/v2/streams/${this.options.runId}/${this.options.key}`;
+      }
+    }
   }
 }
 

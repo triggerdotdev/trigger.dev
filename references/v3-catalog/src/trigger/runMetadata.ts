@@ -3,6 +3,8 @@ import { logger, task, metadata, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 export const runMetadataTask = task({
   id: "run-metadata-task",
   run: async (payload: any) => {
+    metadata.set("numberOfChildren", 2);
+
     await runMetadataChildTask.triggerAndWait(payload, {
       metadata: {
         hello: "world",
@@ -19,6 +21,9 @@ export const runMetadataTask = task({
 export const runMetadataChildTask = task({
   id: "run-metadata-child-task",
   run: async (payload: any, { ctx }) => {
+    metadata.parent.increment("numberOfChildren", 1);
+    metadata.root.increment("numberOfChildren", 1);
+
     logger.info("metadata", { metadata: metadata.current() });
 
     metadata.set("child", "task");
@@ -58,7 +63,7 @@ export const runMetadataChildTask = task({
 export const runMetadataChildTask2 = task({
   id: "run-metadata-child-task-2",
   run: async (payload: any, { ctx }) => {
-    throw new AbortTaskRunError("aborting");
+    metadata.root.increment("numberOfChildren", 1);
   },
 });
 
