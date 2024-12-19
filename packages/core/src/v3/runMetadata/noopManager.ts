@@ -65,19 +65,19 @@ export class NoopRunMetadataManager implements RunMetadataManager {
 
   get root(): RunMetadataUpdater {
     return {
-      append: () => this.parent,
-      set: () => this.parent,
-      del: () => this.parent,
-      increment: () => this.parent,
-      decrement: () => this.parent,
-      remove: () => this.parent,
+      append: () => this.root,
+      set: () => this.root,
+      del: () => this.root,
+      increment: () => this.root,
+      decrement: () => this.root,
+      remove: () => this.root,
       stream: () =>
         Promise.resolve({
           [Symbol.asyncIterator]: () => ({
             next: () => Promise.resolve({ done: true, value: undefined }),
           }),
         }),
-      update: () => this.parent,
+      update: () => this.root,
     };
   }
 }
