@@ -4,6 +4,7 @@ import {
   mergeRequestOptions,
   runMetadata,
   type RunMetadataUpdater,
+  type AsyncIterableStream,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
@@ -36,6 +37,7 @@ export const metadata = {
   save: saveMetadata,
   replace: replaceMetadata,
   stream: stream,
+  fetchStream: fetchStream,
   parent: parentMetadataUpdater,
   root: rootMetadataUpdater,
   refresh: refreshMetadata,
@@ -232,4 +234,8 @@ async function stream<T>(
   signal?: AbortSignal
 ): Promise<AsyncIterable<T>> {
   return runMetadata.stream(key, value, signal);
+}
+
+async function fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
+  return runMetadata.fetchStream<T>(key, signal);
 }

@@ -1,4 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
+import { AsyncIterableStream } from "../apiClient/stream.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
@@ -16,6 +17,9 @@ export class NoopRunMetadataManager implements RunMetadataManager {
     throw new Error("Method not implemented.");
   }
   stream<T>(key: string, value: AsyncIterable<T>): Promise<AsyncIterable<T>> {
+    throw new Error("Method not implemented.");
+  }
+  fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
     throw new Error("Method not implemented.");
   }
   flush(requestOptions?: ApiRequestOptions): Promise<void> {

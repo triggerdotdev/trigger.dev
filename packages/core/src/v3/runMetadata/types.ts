@@ -1,4 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
+import { AsyncIterableStream } from "../apiClient/stream.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 
 export interface RunMetadataUpdater {
@@ -23,6 +24,7 @@ export interface RunMetadataManager extends RunMetadataUpdater {
   getKey(key: string): DeserializedJson | undefined;
   flush(requestOptions?: ApiRequestOptions): Promise<void>;
   refresh(requestOptions?: ApiRequestOptions): Promise<void>;
+  fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>>;
 
   get parent(): RunMetadataUpdater;
   get root(): RunMetadataUpdater;

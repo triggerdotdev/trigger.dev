@@ -7,6 +7,8 @@ import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
 import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
 import { applyMetadataOperations } from "./operations.js";
+import { SSEStreamSubscriptionFactory } from "../apiClient/runStream.js";
+import { AsyncIterableStream } from "../apiClient/stream.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -195,6 +197,25 @@ export class StandardMetadataManager implements RunMetadataManager {
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
     return this.doStream(key, value, "self", this, signal);
+  }
+
+  public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
+    if (!this.runId) {
+      throw new Error("Run ID is required to fetch metadata streams.");
+    }
+
+    const baseUrl = this.getKey("$$streamsBaseUrl");
+
+    const $baseUrl = typeof baseUrl === "string" ? baseUrl : this.streamsBaseUrl;
+
+    const streamFactory = new SSEStreamSubscriptionFactory($baseUrl, {
+      headers: this.apiClient.getHeaders(),
+      signal,
+    });
+
+    const subscription = streamFactory.createSubscription(this.store ?? {}, this.runId, key);
+
+    return (await subscription.subscribe()) as AsyncIterableStream<T>;
   }
 
   private async doStream<T>(
