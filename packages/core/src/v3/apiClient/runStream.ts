@@ -89,15 +89,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
 ): RunSubscription<TRunTypes> {
   const abortController = new AbortController();
 
-  const version1 = new SSEStreamSubscriptionFactory(
-    getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
-    {
-      headers: options?.headers,
-      signal: abortController.signal,
-    }
-  );
-
-  const version2 = new ElectricStreamSubscriptionFactory(
+  const streamFactory = new SSEStreamSubscriptionFactory(
     getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
     {
       headers: options?.headers,
@@ -124,7 +116,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
   const $options: RunSubscriptionOptions = {
     runShapeStream: runStreamInstance.stream,
     stopRunShapeStream: () => runStreamInstance.stop(30 * 1000),
-    streamFactory: new VersionedStreamSubscriptionFactory(version1, version2),
+    streamFactory: streamFactory,
     abortController,
     ...options,
   };
@@ -138,12 +130,7 @@ export interface StreamSubscription {
 }
 
 export interface StreamSubscriptionFactory {
-  createSubscription(
-    metadata: Record<string, unknown>,
-    runId: string,
-    streamKey: string,
-    baseUrl?: string
-  ): StreamSubscription;
+  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription;
 }
 
 // Real implementation for production
@@ -194,12 +181,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
     private options: { headers?: Record<string, string>; signal?: AbortSignal }
   ) {}
 
-  createSubscription(
-    metadata: Record<string, unknown>,
-    runId: string,
-    streamKey: string,
-    baseUrl?: string
-  ): StreamSubscription {
+  createSubscription(runId: string, streamKey: string, baseUrl?: string): StreamSubscription {
     if (!runId || !streamKey) {
       throw new Error("runId and streamKey are required");
     }
@@ -235,63 +217,6 @@ export class ElectricStreamSubscription implements StreamSubscription {
           },
         })
       );
-  }
-}
-
-export class ElectricStreamSubscriptionFactory implements StreamSubscriptionFactory {
-  constructor(
-    private baseUrl: string,
-    private options: { headers?: Record<string, string>; signal?: AbortSignal }
-  ) {}
-
-  createSubscription(
-    metadata: Record<string, unknown>,
-    runId: string,
-    streamKey: string,
-    baseUrl?: string
-  ): StreamSubscription {
-    if (!runId || !streamKey) {
-      throw new Error("runId and streamKey are required");
-    }
-
-    return new ElectricStreamSubscription(
-      `${baseUrl ?? this.baseUrl}/realtime/v2/streams/${runId}/${streamKey}`,
-      this.options
-    );
-  }
-}
-
-export class VersionedStreamSubscriptionFactory implements StreamSubscriptionFactory {
-  constructor(
-    private version1: StreamSubscriptionFactory,
-    private version2: StreamSubscriptionFactory
-  ) {}
-
-  createSubscription(
-    metadata: Record<string, unknown>,
-    runId: string,
-    streamKey: string,
-    baseUrl?: string
-  ): StreamSubscription {
-    if (!runId || !streamKey) {
-      throw new Error("runId and streamKey are required");
-    }
-
-    const version =
-      typeof metadata.$$streamsVersion === "string" ? metadata.$$streamsVersion : "v1";
-
-    const $baseUrl =
-      typeof metadata.$$streamsBaseUrl === "string" ? metadata.$$streamsBaseUrl : baseUrl;
-
-    if (version === "v1") {
-      return this.version1.createSubscription(metadata, runId, streamKey, $baseUrl);
-    }
-
-    if (version === "v2") {
-      return this.version2.createSubscription(metadata, runId, streamKey, $baseUrl);
-    }
-
-    throw new Error(`Unknown stream version: ${version}`);
   }
 }
 
@@ -385,7 +310,6 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                 activeStreams.add(streamKey);
 
                 const subscription = this.options.streamFactory.createSubscription(
-                  run.metadata,
                   run.id,
                   streamKey,
                   this.options.client?.baseUrl

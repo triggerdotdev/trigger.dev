@@ -13,6 +13,7 @@ import type {
   RunSubscription,
   TaskRunShape,
   AnyBatchedRunHandle,
+  AsyncIterableStream,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -51,6 +52,7 @@ export const runs = {
   subscribeToRun,
   subscribeToRunsWithTag,
   subscribeToBatch: subscribeToRunsInBatch,
+  fetchStream,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -464,4 +466,13 @@ function subscribeToRunsInBatch<TTasks extends AnyTask>(
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.subscribeToBatch<InferRunTypes<TTasks>>(batchId);
+}
+
+/**
+ * Fetches a stream of data from a run's stream key.
+ */
+async function fetchStream<T>(runId: string, streamKey: string): Promise<AsyncIterableStream<T>> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return await apiClient.fetchStream(runId, streamKey);
 }

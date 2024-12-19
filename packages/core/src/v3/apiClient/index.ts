@@ -50,6 +50,7 @@ import {
   RunSubscription,
   TaskRunShape,
   runShapeStream,
+  SSEStreamSubscriptionFactory,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -679,6 +680,23 @@ export class ApiClient {
       client: this,
       signal: options?.signal,
     });
+  }
+
+  async fetchStream<T>(
+    runId: string,
+    streamKey: string,
+    options?: { signal?: AbortSignal; baseUrl?: string }
+  ): Promise<AsyncIterableStream<T>> {
+    const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
+      headers: this.getHeaders(),
+      signal: options?.signal,
+    });
+
+    const subscription = streamFactory.createSubscription(runId, streamKey);
+
+    const stream = await subscription.subscribe();
+
+    return stream as AsyncIterableStream<T>;
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
