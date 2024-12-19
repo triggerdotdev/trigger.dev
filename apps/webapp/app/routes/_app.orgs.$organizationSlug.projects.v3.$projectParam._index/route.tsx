@@ -445,7 +445,7 @@ function CreateTaskInstructions() {
           />
         </div>
       </div>
-      <StepNumber stepNumber="1" title="Run the CLI 'init' command in your project" />
+      <StepNumber stepNumber="1" title="Run the CLI 'init' command in an existing project" />
       <StepContentContainer>
         <InitCommandV3 />
         <Paragraph spacing>
