@@ -25,6 +25,8 @@ import { CURRENT_UNMANAGED_DEPLOYMENT_LABEL } from "~/consts";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { fromFriendlyId } from "@trigger.dev/core/v3/apps";
+import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { defaultMachine } from "@trigger.dev/platform/v3";
 
 export class WorkerGroupTokenService extends WithRunEngine {
   private readonly tokenPrefix = "tr_wgt_";
@@ -647,12 +649,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       isWarmStart,
     });
 
-    const defaultMachinePreset = {
-      name: "small-1x",
-      cpu: 1,
-      memory: 1,
-      centsPerMs: 0,
-    } satisfies MachinePreset;
+    const defaultMachinePreset = machinePresetFromName(defaultMachine);
 
     const environment =
       this.environment ??
