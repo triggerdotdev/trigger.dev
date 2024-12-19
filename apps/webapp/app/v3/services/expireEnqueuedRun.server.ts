@@ -49,6 +49,14 @@ export class ExpireEnqueuedRunService extends BaseService {
       return;
     }
 
+    if (run.lockedAt) {
+      logger.debug("Run cannot be expired because it's locked", {
+        run,
+      });
+
+      return;
+    }
+
     logger.debug("Expiring enqueued run", {
       run,
     });
