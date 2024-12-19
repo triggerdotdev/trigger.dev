@@ -93,7 +93,7 @@ export class StandardMetadataManager implements RunMetadataManager {
         return this.root;
       },
       update: (value) => {
-        this.queuedParentOperations.add({ type: "update", value });
+        this.queuedRootOperations.add({ type: "update", value });
         return this.root;
       },
       stream: (key, value, signal) => this.doStream(key, value, "root", this.root, signal),

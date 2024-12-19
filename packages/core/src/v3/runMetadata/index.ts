@@ -94,7 +94,7 @@ export class RunMetadataAPI implements RunMetadataManager {
   }
 
   refresh(requestOptions?: ApiRequestOptions): Promise<void> {
-    return this.#getManager().flush(requestOptions);
+    return this.#getManager().refresh(requestOptions);
   }
 
   get parent(): RunMetadataUpdater {
