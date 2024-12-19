@@ -80,3 +80,4 @@ export const QueueId = new IdUtil("queue");
 export const RunId = new IdUtil("run");
 export const SnapshotId = new IdUtil("snapshot");
 export const WaitpointId = new IdUtil("waitpoint");
+export const BatchId = new IdUtil("batch");

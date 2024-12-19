@@ -13,7 +13,6 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
@@ -22,6 +21,7 @@ import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { z } from "zod";
+import { BatchId, RunId } from "@trigger.dev/core/v3/apps";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -52,7 +52,7 @@ export type BatchTriggerTaskServiceOptions = {
 /**
  * Larger batches, used in Run Engine v2
  */
-export class BatchTriggerV2Service extends BaseService {
+export class BatchTriggerV3Service extends BaseService {
   private _batchProcessingStrategy: BatchProcessingStrategy;
 
   constructor(
@@ -90,7 +90,7 @@ export class BatchTriggerV2Service extends BaseService {
               existingBatch.idempotencyKeyExpiresAt &&
               existingBatch.idempotencyKeyExpiresAt < new Date()
             ) {
-              logger.debug("[BatchTriggerV2][call] Idempotency key has expired", {
+              logger.debug("[BatchTriggerV3][call] Idempotency key has expired", {
                 idempotencyKey: options.idempotencyKey,
                 batch: {
                   id: existingBatch.id,
@@ -115,38 +115,9 @@ export class BatchTriggerV2Service extends BaseService {
             }
           }
 
-          const batchId = generateFriendlyId("batch");
+          const { id, friendlyId } = BatchId.generate();
 
-          span.setAttribute("batchId", batchId);
-
-          const dependentAttempt = body?.dependentAttempt
-            ? await this._prisma.taskRunAttempt.findUnique({
-                where: { friendlyId: body.dependentAttempt },
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
-                    },
-                  },
-                },
-              })
-            : undefined;
-
-          if (
-            dependentAttempt &&
-            (isFinalAttemptStatus(dependentAttempt.status) ||
-              isFinalRunStatus(dependentAttempt.taskRun.status))
-          ) {
-            logger.debug("[BatchTriggerV2][call] Dependent attempt or run is in a terminal state", {
-              dependentAttempt: dependentAttempt,
-              batchId,
-            });
-
-            throw new ServiceValidationError(
-              "Cannot process batch as the parent run is already in a terminal state"
-            );
-          }
+          span.setAttribute("batchId", friendlyId);
 
           if (environment.type !== "DEVELOPMENT") {
             const result = await getEntitlement(environment.organizationId);
@@ -175,9 +146,9 @@ export class BatchTriggerV2Service extends BaseService {
               : [];
 
           if (cachedRuns.length) {
-            logger.debug("[BatchTriggerV2][call] Found cached runs", {
+            logger.debug("[BatchTriggerV3][call] Found cached runs", {
               cachedRuns,
-              batchId,
+              batchId: friendlyId,
             });
           }
 
@@ -193,6 +164,8 @@ export class BatchTriggerV2Service extends BaseService {
               (r) => r.idempotencyKey === item.options?.idempotencyKey
             );
 
+            const runId = RunId.generate();
+
             if (cachedRun) {
               if (
                 cachedRun.idempotencyKeyExpiresAt &&
@@ -201,7 +174,7 @@ export class BatchTriggerV2Service extends BaseService {
                 expiredRunIds.add(cachedRun.friendlyId);
 
                 return {
-                  id: generateFriendlyId("run"),
+                  id: runId.friendlyId,
                   isCached: false,
                   idempotencyKey: item.options?.idempotencyKey ?? undefined,
                   taskIdentifier: item.task,
@@ -219,7 +192,7 @@ export class BatchTriggerV2Service extends BaseService {
             }
 
             return {
-              id: generateFriendlyId("run"),
+              id: runId.friendlyId,
               isCached: false,
               idempotencyKey: item.options?.idempotencyKey ?? undefined,
               taskIdentifier: item.task,
@@ -230,13 +203,13 @@ export class BatchTriggerV2Service extends BaseService {
           const newRunCount = body.items.length - cachedRunCount;
 
           if (newRunCount === 0) {
-            logger.debug("[BatchTriggerV2][call] All runs are cached", {
-              batchId,
+            logger.debug("[BatchTriggerV3][call] All runs are cached", {
+              batchId: friendlyId,
             });
 
             await this._prisma.batchTaskRun.create({
               data: {
-                friendlyId: batchId,
+                friendlyId,
                 runtimeEnvironmentId: environment.id,
                 idempotencyKey: options.idempotencyKey,
                 idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
@@ -323,7 +296,7 @@ export class BatchTriggerV2Service extends BaseService {
     } catch (error) {
       // Detect a prisma transaction Unique constraint violation
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        logger.debug("BatchTriggerV2: Prisma transaction error", {
+        logger.debug("BatchTriggerV3: Prisma transaction error", {
           code: error.code,
           message: error.message,
           meta: error.meta,
@@ -397,7 +370,7 @@ export class BatchTriggerV2Service extends BaseService {
 
       switch (result.status) {
         case "COMPLETE": {
-          logger.debug("[BatchTriggerV2][call] Batch inline processing complete", {
+          logger.debug("[BatchTriggerV3][call] Batch inline processing complete", {
             batchId: batch.friendlyId,
             currentIndex: 0,
           });
@@ -405,7 +378,7 @@ export class BatchTriggerV2Service extends BaseService {
           return batch;
         }
         case "INCOMPLETE": {
-          logger.debug("[BatchTriggerV2][call] Batch inline processing incomplete", {
+          logger.debug("[BatchTriggerV3][call] Batch inline processing incomplete", {
             batchId: batch.friendlyId,
             currentIndex: result.workingIndex,
           });
@@ -425,7 +398,7 @@ export class BatchTriggerV2Service extends BaseService {
           return batch;
         }
         case "ERROR": {
-          logger.error("[BatchTriggerV2][call] Batch inline processing error", {
+          logger.error("[BatchTriggerV3][call] Batch inline processing error", {
             batchId: batch.friendlyId,
             currentIndex: result.workingIndex,
             error: result.error,
@@ -545,7 +518,7 @@ export class BatchTriggerV2Service extends BaseService {
   }
 
   async processBatchTaskRun(options: BatchProcessingOptions) {
-    logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch", {
+    logger.debug("[BatchTriggerV3][processBatchTaskRun] Processing batch", {
       options,
     });
 
@@ -553,7 +526,7 @@ export class BatchTriggerV2Service extends BaseService {
 
     // Add early return if max attempts reached
     if ($attemptCount > MAX_ATTEMPTS) {
-      logger.error("[BatchTriggerV2][processBatchTaskRun] Max attempts reached", {
+      logger.error("[BatchTriggerV3][processBatchTaskRun] Max attempts reached", {
         options,
         attemptCount: $attemptCount,
       });
@@ -579,7 +552,7 @@ export class BatchTriggerV2Service extends BaseService {
 
     // Check to make sure the currentIndex is not greater than the runCount
     if (options.range.start >= batch.runCount) {
-      logger.debug("[BatchTriggerV2][processBatchTaskRun] currentIndex is greater than runCount", {
+      logger.debug("[BatchTriggerV3][processBatchTaskRun] currentIndex is greater than runCount", {
         options,
         batchId: batch.friendlyId,
         runCount: batch.runCount,
@@ -601,7 +574,7 @@ export class BatchTriggerV2Service extends BaseService {
     const payload = await parsePacket(payloadPacket);
 
     if (!payload) {
-      logger.debug("[BatchTriggerV2][processBatchTaskRun] Failed to parse payload", {
+      logger.debug("[BatchTriggerV3][processBatchTaskRun] Failed to parse payload", {
         options,
         batchId: batch.friendlyId,
         attemptCount: $attemptCount,
@@ -625,7 +598,7 @@ export class BatchTriggerV2Service extends BaseService {
 
     switch (result.status) {
       case "COMPLETE": {
-        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
+        logger.debug("[BatchTriggerV3][processBatchTaskRun] Batch processing complete", {
           options,
           batchId: batch.friendlyId,
           attemptCount: $attemptCount,
@@ -634,7 +607,7 @@ export class BatchTriggerV2Service extends BaseService {
         return;
       }
       case "INCOMPLETE": {
-        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing incomplete", {
+        logger.debug("[BatchTriggerV3][processBatchTaskRun] Batch processing incomplete", {
           batchId: batch.friendlyId,
           currentIndex: result.workingIndex,
           attemptCount: $attemptCount,
@@ -658,7 +631,7 @@ export class BatchTriggerV2Service extends BaseService {
         return;
       }
       case "ERROR": {
-        logger.error("[BatchTriggerV2][processBatchTaskRun] Batch processing error", {
+        logger.error("[BatchTriggerV3][processBatchTaskRun] Batch processing error", {
           batchId: batch.friendlyId,
           currentIndex: result.workingIndex,
           error: result.error,
@@ -714,7 +687,7 @@ export class BatchTriggerV2Service extends BaseService {
     // Grab the next PROCESSING_BATCH_SIZE runIds
     const runFriendlyIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
-    logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch items", {
+    logger.debug("[BatchTriggerV3][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
       currentIndex,
       runIds: runFriendlyIds,
@@ -735,7 +708,7 @@ export class BatchTriggerV2Service extends BaseService {
 
         workingIndex++;
       } catch (error) {
-        logger.error("[BatchTriggerV2][processBatchTaskRun] Failed to process item", {
+        logger.error("[BatchTriggerV3][processBatchTaskRun] Failed to process item", {
           batchId: batch.friendlyId,
           currentIndex: workingIndex,
           error,
@@ -764,7 +737,7 @@ export class BatchTriggerV2Service extends BaseService {
     currentIndex: number,
     options?: BatchTriggerTaskServiceOptions
   ) {
-    logger.debug("[BatchTriggerV2][processBatchTaskRunItem] Processing item", {
+    logger.debug("[BatchTriggerV3][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
       runId: task.runFriendlyId,
       currentIndex,
@@ -809,7 +782,7 @@ export class BatchTriggerV2Service extends BaseService {
   async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
     await workerQueue.enqueue("v3.processBatchTaskRun", options, {
       tx,
-      jobKey: `BatchTriggerV2Service.process:${options.batchId}:${options.processingId}`,
+      jobKey: `BatchTriggerV3Service.process:${options.batchId}:${options.processingId}`,
     });
   }
 
