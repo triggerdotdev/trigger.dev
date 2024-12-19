@@ -39,7 +39,7 @@ export default function Email(props: z.infer<typeof AlertDeploymentSuccessEmailS
         <Container style={container}>
           <Text
             style={h1}
-          >{`Version ${version} successfully deployed ${taskCount} tasks in ${environment}`}</Text>
+          >{`Version ${version} successfully deployed ${taskCount} tasks in ${environment} in your ${organization} organization`}</Text>
 
           <Link
             href={deploymentLink}
