@@ -349,13 +349,19 @@ export class StandardMetadataManager implements RunMetadataManager {
     const rootOperations = Array.from(this.queuedRootOperations);
     this.queuedRootOperations.clear();
 
-    const response = await this.apiClient.updateRunMetadata(
-      this.runId,
-      { operations, parentOperations, rootOperations },
-      requestOptions
-    );
+    try {
+      const response = await this.apiClient.updateRunMetadata(
+        this.runId,
+        { operations, parentOperations, rootOperations },
+        requestOptions
+      );
 
-    this.store = response.metadata;
+      this.store = response.metadata;
+    } catch (error) {
+      console.error("Failed to flush metadata", error);
+    } finally {
+      this.isFlushing = false;
+    }
   }
 
   public startPeriodicFlush(intervalMs: number = 1000) {

@@ -60,7 +60,8 @@ export function applyMetadataOperations(
           } else if (existingValue === undefined) {
             newMetadata[operation.key] = [operation.value];
           } else {
-            unappliedOperations.push(operation);
+            // Convert to array if not already
+            newMetadata[operation.key] = [existingValue, operation.value];
           }
         }
 
