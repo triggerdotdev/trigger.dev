@@ -460,6 +460,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           label={"Email"}
           description={alertChannel.properties.email}
           boxClassName="group-hover/table-row:bg-charcoal-800"
+          className="h-12"
         />
       );
     }

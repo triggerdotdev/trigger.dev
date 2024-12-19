@@ -209,8 +209,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       alignment = "left",
       children,
       colSpan,
-      to,
-      onClick,
       hasAction = false,
       isSticky = false,
       rowHoverStyle = "default",
@@ -233,8 +231,9 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         ref={ref}
         className={cn(
           "text-xs text-charcoal-400",
-          hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
+          hasAction ? "cursor-pointer" : "h-10 min-h-10 px-3 align-middle",
           alignmentClassName,
+          actionClassName,
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
