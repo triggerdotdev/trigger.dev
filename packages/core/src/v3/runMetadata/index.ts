@@ -1,4 +1,5 @@
 import { DeserializedJson } from "../../schemas/json.js";
+import { AsyncIterableStream } from "../apiClient/stream.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { ApiRequestOptions } from "../zodfetch.js";
 import { NoopRunMetadataManager } from "./noopManager.js";
@@ -82,6 +83,10 @@ export class RunMetadataAPI implements RunMetadataManager {
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
     return this.#getManager().stream(key, value, signal);
+  }
+
+  public fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
+    return this.#getManager().fetchStream(key, signal);
   }
 
   flush(requestOptions?: ApiRequestOptions): Promise<void> {

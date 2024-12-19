@@ -62,6 +62,16 @@ export const handleCSVUpload = schemaTask({
     const successfulRows = results.runs.filter((r) => r.ok);
     const failedRows = results.runs.filter((r) => !r.ok);
 
+    const firstSuccessfulRow = successfulRows[0];
+
+    if (firstSuccessfulRow) {
+      const stream = await metadata.fetchStream<string>(firstSuccessfulRow.id);
+
+      for await (const value of stream) {
+        logger.info(`Stream value from ${firstSuccessfulRow.id}`, { value });
+      }
+    }
+
     return {
       file,
       rows,
