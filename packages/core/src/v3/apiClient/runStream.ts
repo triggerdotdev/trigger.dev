@@ -391,30 +391,35 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                   this.options.client?.baseUrl
                 );
 
-                const stream = await subscription.subscribe();
-
-                // Create the pipeline and start it
-                stream
-                  .pipeThrough(
-                    new TransformStream({
-                      transform(chunk, controller) {
-                        controller.enqueue({
-                          type: streamKey,
-                          chunk: chunk as TStreams[typeof streamKey],
-                          run,
-                        } as StreamPartResult<RunShape<TRunTypes>, TStreams>);
-                      },
-                    })
-                  )
-                  .pipeTo(
-                    new WritableStream({
-                      write(chunk) {
-                        controller.enqueue(chunk);
-                      },
-                    })
-                  )
+                // Start stream processing in the background
+                subscription
+                  .subscribe()
+                  .then((stream) => {
+                    stream
+                      .pipeThrough(
+                        new TransformStream({
+                          transform(chunk, controller) {
+                            controller.enqueue({
+                              type: streamKey,
+                              chunk: chunk as TStreams[typeof streamKey],
+                              run,
+                            });
+                          },
+                        })
+                      )
+                      .pipeTo(
+                        new WritableStream({
+                          write(chunk) {
+                            controller.enqueue(chunk);
+                          },
+                        })
+                      )
+                      .catch((error) => {
+                        console.error(`Error in stream ${streamKey}:`, error);
+                      });
+                  })
                   .catch((error) => {
-                    console.error(`Error in stream ${streamKey}:`, error);
+                    console.error(`Error subscribing to stream ${streamKey}:`, error);
                   });
               }
             }
