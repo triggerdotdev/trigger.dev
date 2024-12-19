@@ -2,22 +2,30 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { createTestHttpServer } from "@epic-web/test-server/http";
 import { StandardMetadataManager } from "../src/v3/runMetadata/manager.js";
 import { ApiClient } from "../src/v3/apiClient/index.js";
+import { UpdateMetadataRequestBody } from "../src/v3/schemas/index.js";
+import { applyMetadataOperations } from "../src/v3/runMetadata/operations.js";
 
 describe("StandardMetadataManager", () => {
   const runId = "test-run-id";
   let server: Awaited<ReturnType<typeof createTestHttpServer>>;
-  let metadataUpdates: Array<Record<string, any>> = [];
+  let metadataUpdates: Array<UpdateMetadataRequestBody> = [];
   let manager: StandardMetadataManager;
 
   beforeEach(async () => {
     metadataUpdates = [];
+    const store = {};
 
     server = await createTestHttpServer({
       defineRoutes(router) {
         router.put("/api/v1/runs/:runId/metadata", async ({ req }) => {
           const body = await req.json();
-          metadataUpdates.push(body);
-          return Response.json({ metadata: body.metadata });
+          const parsedBody = UpdateMetadataRequestBody.parse(body);
+
+          metadataUpdates.push(parsedBody);
+
+          const { newMetadata } = applyMetadataOperations(store, parsedBody.operations ?? []);
+
+          return Response.json({ metadata: newMetadata });
         });
       },
     });
@@ -37,13 +45,13 @@ describe("StandardMetadataManager", () => {
   });
 
   test("should set and get simple keys", () => {
-    manager.setKey("test", "value");
+    manager.set("test", "value");
     expect(manager.getKey("test")).toBe("value");
   });
 
   test("should handle JSON path keys", () => {
-    manager.setKey("nested", { foo: "bar" });
-    manager.setKey("$.nested.path", "value");
+    manager.set("nested", { foo: "bar" });
+    manager.set("$.nested.path", "value");
     expect(manager.current()).toEqual({
       nested: {
         foo: "bar",
@@ -53,31 +61,26 @@ describe("StandardMetadataManager", () => {
   });
 
   test("should flush changes to server", async () => {
-    manager.setKey("test", "value");
+    manager.set("test", "value");
     await manager.flush();
 
     expect(metadataUpdates).toHaveLength(1);
-    expect(metadataUpdates[0]).toEqual({
-      metadata: {
-        test: "value",
-      },
-    });
   });
 
   test("should only flush to server when data has actually changed", async () => {
     // Initial set and flush
-    manager.setKey("test", "value");
+    manager.set("test", "value");
     await manager.flush();
     expect(metadataUpdates).toHaveLength(1);
 
     // Same value set again
-    manager.setKey("test", "value");
+    manager.set("test", "value");
     await manager.flush();
     // Should not trigger another update since value hasn't changed
     expect(metadataUpdates).toHaveLength(1);
 
     // Different value set
-    manager.setKey("test", "new value");
+    manager.set("test", "new value");
     await manager.flush();
     // Should trigger new update
     expect(metadataUpdates).toHaveLength(2);
@@ -85,18 +88,18 @@ describe("StandardMetadataManager", () => {
 
   test("should only flush to server when nested data has actually changed", async () => {
     // Initial nested object
-    manager.setKey("nested", { foo: "bar" });
+    manager.set("nested", { foo: "bar" });
     await manager.flush();
     expect(metadataUpdates).toHaveLength(1);
 
     // Same nested value
-    manager.setKey("nested", { foo: "bar" });
+    manager.set("nested", { foo: "bar" });
     await manager.flush();
     // Should not trigger another update
     expect(metadataUpdates).toHaveLength(1);
 
     // Different nested value
-    manager.setKey("nested", { foo: "baz" });
+    manager.set("nested", { foo: "baz" });
     await manager.flush();
     // Should trigger new update
     expect(metadataUpdates).toHaveLength(2);
@@ -104,20 +107,20 @@ describe("StandardMetadataManager", () => {
 
   test("should append to list with simple key", () => {
     // First append creates the array
-    manager.appendKey("myList", "first");
+    manager.append("myList", "first");
     expect(manager.getKey("myList")).toEqual(["first"]);
 
     // Second append adds to existing array
-    manager.appendKey("myList", "second");
+    manager.append("myList", "second");
     expect(manager.getKey("myList")).toEqual(["first", "second"]);
   });
 
   test("should append to list with JSON path", () => {
     // First create nested structure
-    manager.setKey("nested", { items: [] });
+    manager.set("nested", { items: [] });
 
     // Append to empty array
-    manager.appendKey("$.nested.items", "first");
+    manager.append("$.nested.items", "first");
     expect(manager.current()).toEqual({
       nested: {
         items: ["first"],
@@ -125,7 +128,7 @@ describe("StandardMetadataManager", () => {
     });
 
     // Append another item
-    manager.appendKey("$.nested.items", "second");
+    manager.append("$.nested.items", "second");
     expect(manager.current()).toEqual({
       nested: {
         items: ["first", "second"],
@@ -135,19 +138,19 @@ describe("StandardMetadataManager", () => {
 
   test("should convert non-array values to array when appending", () => {
     // Set initial non-array value
-    manager.setKey("value", "initial");
+    manager.set("value", "initial");
 
     // Append should convert to array
-    manager.appendKey("value", "second");
+    manager.append("value", "second");
     expect(manager.getKey("value")).toEqual(["initial", "second"]);
   });
 
   test("should convert non-array values to array when appending with JSON path", () => {
     // Set initial nested non-array value
-    manager.setKey("nested", { value: "initial" });
+    manager.set("nested", { value: "initial" });
 
     // Append should convert to array
-    manager.appendKey("$.nested.value", "second");
+    manager.append("$.nested.value", "second");
     expect(manager.current()).toEqual({
       nested: {
         value: ["initial", "second"],
@@ -156,35 +159,25 @@ describe("StandardMetadataManager", () => {
   });
 
   test("should trigger server update when appending to list", async () => {
-    manager.appendKey("myList", "first");
+    manager.append("myList", "first");
     await manager.flush();
 
     expect(metadataUpdates).toHaveLength(1);
-    expect(metadataUpdates[0]).toEqual({
-      metadata: {
-        myList: ["first"],
-      },
-    });
 
-    manager.appendKey("myList", "second");
+    manager.append("myList", "second");
     await manager.flush();
 
     expect(metadataUpdates).toHaveLength(2);
-    expect(metadataUpdates[1]).toEqual({
-      metadata: {
-        myList: ["first", "second"],
-      },
-    });
   });
 
   test("should not trigger server update when appending same value", async () => {
-    manager.appendKey("myList", "first");
+    manager.append("myList", "first");
     await manager.flush();
 
     expect(metadataUpdates).toHaveLength(1);
 
     // Append same value
-    manager.appendKey("myList", "first");
+    manager.append("myList", "first");
     await manager.flush();
 
     // Should still be only one update
@@ -192,34 +185,34 @@ describe("StandardMetadataManager", () => {
   });
 
   test("should increment and decrement keys", () => {
-    manager.incrementKey("counter");
+    manager.increment("counter");
     expect(manager.getKey("counter")).toBe(1);
 
-    manager.incrementKey("counter", 5);
+    manager.increment("counter", 5);
     expect(manager.getKey("counter")).toBe(6);
 
-    manager.decrementKey("counter");
+    manager.decrement("counter");
     expect(manager.getKey("counter")).toBe(5);
 
-    manager.decrementKey("counter", 3);
+    manager.decrement("counter", 3);
     expect(manager.getKey("counter")).toBe(2);
   });
 
   test("should remove value from array with simple key", () => {
     // Setup initial array
-    manager.setKey("myList", ["first", "second", "third"]);
+    manager.set("myList", ["first", "second", "third"]);
 
     // Remove a value
-    manager.removeFromKey("myList", "second");
+    manager.remove("myList", "second");
     expect(manager.getKey("myList")).toEqual(["first", "third"]);
   });
 
   test("should remove value from array with JSON path", () => {
     // Setup initial nested array
-    manager.setKey("nested", { items: ["first", "second", "third"] });
+    manager.set("nested", { items: ["first", "second", "third"] });
 
     // Remove a value
-    manager.removeFromKey("$.nested.items", "second");
+    manager.remove("$.nested.items", "second");
     expect(manager.current()).toEqual({
       nested: {
         items: ["first", "third"],
@@ -229,32 +222,32 @@ describe("StandardMetadataManager", () => {
 
   test("should handle removing non-existent value", () => {
     // Setup initial array
-    manager.setKey("myList", ["first", "second"]);
+    manager.set("myList", ["first", "second"]);
 
     // Try to remove non-existent value
-    manager.removeFromKey("myList", "third");
+    manager.remove("myList", "third");
     expect(manager.getKey("myList")).toEqual(["first", "second"]);
   });
 
   test("should handle removing from non-array values", () => {
     // Setup non-array value
-    manager.setKey("value", "string");
+    manager.set("value", "string");
 
     // Try to remove from non-array
-    manager.removeFromKey("value", "something");
+    manager.remove("value", "something");
     expect(manager.getKey("value")).toBe("string");
   });
 
   test("should remove object from array using deep equality", () => {
     // Setup array with objects
-    manager.setKey("objects", [
+    manager.set("objects", [
       { id: 1, name: "first" },
       { id: 2, name: "second" },
       { id: 3, name: "third" },
     ]);
 
     // Remove object
-    manager.removeFromKey("objects", { id: 2, name: "second" });
+    manager.remove("objects", { id: 2, name: "second" });
     expect(manager.getKey("objects")).toEqual([
       { id: 1, name: "first" },
       { id: 3, name: "third" },
@@ -263,30 +256,25 @@ describe("StandardMetadataManager", () => {
 
   test("should trigger server update when removing from array", async () => {
     // Setup initial array
-    manager.setKey("myList", ["first", "second", "third"]);
+    manager.set("myList", ["first", "second", "third"]);
     await manager.flush();
     expect(metadataUpdates).toHaveLength(1);
 
     // Remove value
-    manager.removeFromKey("myList", "second");
+    manager.remove("myList", "second");
     await manager.flush();
 
     expect(metadataUpdates).toHaveLength(2);
-    expect(metadataUpdates[1]).toEqual({
-      metadata: {
-        myList: ["first", "third"],
-      },
-    });
   });
 
   test("should not trigger server update when removing non-existent value", async () => {
     // Setup initial array
-    manager.setKey("myList", ["first", "second"]);
+    manager.set("myList", ["first", "second"]);
     await manager.flush();
     expect(metadataUpdates).toHaveLength(1);
 
     // Try to remove non-existent value
-    manager.removeFromKey("myList", "third");
+    manager.remove("myList", "third");
     await manager.flush();
 
     // Should not trigger new update since nothing changed
