@@ -1,4 +1,8 @@
-import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/core/v3";
+import {
+  clientWebsocketMessages,
+  HeartbeatService,
+  serverWebsocketMessages,
+} from "@trigger.dev/core/v3";
 import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
@@ -7,7 +11,6 @@ import { WebSocket } from "ws";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
-import { HeartbeatService } from "./services/heartbeatService.server";
 
 export class AuthenticatedSocketConnection {
   public id: string;
@@ -83,6 +86,7 @@ export class AuthenticatedSocketConnection {
 
         ws.ping();
       },
+      intervalMs: 45_000,
     });
     this._pingService.start();
 

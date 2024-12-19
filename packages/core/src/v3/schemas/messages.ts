@@ -12,9 +12,11 @@ import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  RuntimeWait,
   TaskRunExecutionLazyAttemptPayload,
   WaitReason,
 } from "./schemas.js";
+import { CompletedWaitpoint } from "./runEngine.js";
 
 const ackCallbackResult = z.discriminatedUnion("success", [
   z.object({
@@ -191,6 +193,12 @@ export const ExecutorToWorkerMessageCatalog = {
   UNCAUGHT_EXCEPTION: {
     message: UncaughtExceptionMessage,
   },
+  WAIT: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      wait: RuntimeWait,
+    }),
+  },
 };
 
 export const WorkerToExecutorMessageCatalog = {
@@ -225,6 +233,23 @@ export const WorkerToExecutorMessageCatalog = {
       timeoutInMs: z.number(),
     }),
     callback: z.void(),
+  },
+  WAITPOINT_CREATED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      wait: z.object({
+        id: z.string(),
+      }),
+      waitpoint: z.object({
+        id: z.string(),
+      }),
+    }),
+  },
+  WAITPOINT_COMPLETED: {
+    message: z.object({
+      version: z.literal("v1").default("v1"),
+      waitpoint: CompletedWaitpoint,
+    }),
   },
 };
 

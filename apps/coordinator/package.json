@@ -23,10 +23,8 @@
     "tinyexec": "^0.3.0"
   },
   "devDependencies": {
-    "@types/node": "^18",
     "dotenv": "^16.4.2",
     "esbuild": "^0.19.11",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "tsx": "^4.7.0"
   }
 }

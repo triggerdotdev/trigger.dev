@@ -84,6 +84,33 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_TLS_DISABLED: z.string().optional(),
 
+  // Valkey options (used in Run Engine 2.0+)
+  VALKEY_HOST: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_HOST ?? null),
+  VALKEY_READER_HOST: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_READER_HOST ?? null),
+  VALKEY_READER_PORT: z.coerce
+    .number()
+    .nullish()
+    .default(process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : null),
+  VALKEY_PORT: z.coerce
+    .number()
+    .nullish()
+    .default(process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : null),
+  VALKEY_USERNAME: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_USERNAME ?? null),
+  VALKEY_PASSWORD: z
+    .string()
+    .nullish()
+    .default(process.env.REDIS_PASSWORD ?? null),
+  VALKEY_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
@@ -155,6 +182,7 @@ const EnvironmentSchema = z.object({
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
+  MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
 
   // Development OTEL environment variables
   DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -245,6 +273,11 @@ const EnvironmentSchema = z.object({
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+
+  // Run Engine 2.0
+  RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
+  RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

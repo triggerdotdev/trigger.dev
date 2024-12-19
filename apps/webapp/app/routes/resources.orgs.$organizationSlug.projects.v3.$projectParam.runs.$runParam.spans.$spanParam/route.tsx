@@ -49,6 +49,7 @@ import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -415,6 +416,7 @@ function RunBody({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const isAdmin = useHasAdminAccess();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
@@ -633,6 +635,22 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>Engine version</Property.Label>
+                  <Property.Value>{run.engine}</Property.Value>
+                </Property.Item>
+                {isAdmin && (
+                  <>
+                    <Property.Item>
+                      <Property.Label>Primary master queue</Property.Label>
+                      <Property.Value>{run.masterQueue}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Secondary master queue</Property.Label>
+                      <Property.Value>{run.secondaryMasterQueue}</Property.Value>
+                    </Property.Item>
+                  </>
+                )}
+                <Property.Item>
                   <Property.Label>Test run</Property.Label>
                   <Property.Value>
                     {run.isTest ? <CheckIcon className="size-4 text-text-dimmed" /> : "–"}
@@ -769,12 +787,13 @@ function RunBody({
               </div>
               <RunTimeline run={run} />
 
+              {run.error && <RunError error={run.error} />}
+
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.error !== undefined ? (
-                <RunError error={run.error} />
-              ) : run.output !== undefined ? (
+
+              {run.error === undefined && run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
             </div>

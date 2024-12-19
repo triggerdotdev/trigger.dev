@@ -274,11 +274,4 @@ describe("Worker", () => {
       }
     }
   );
-
-  //todo test that throwing an error doesn't screw up the other items
-  //todo process more items when finished
-
-  //todo add a Dead Letter Queue when items are failed, with the error
-  //todo add a function on the worker to redrive them
-  //todo add an API endpoint to redrive with an ID
 });

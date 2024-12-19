@@ -18,8 +18,8 @@ import {
   waitUntil,
   apiClientManager,
 } from "@trigger.dev/core/v3";
-import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { ProdRuntimeManager } from "@trigger.dev/core/v3/prod";
+import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
   DevUsageManager,
@@ -40,11 +40,11 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
-import { VERSION } from "../version.js";
-import { setTimeout, setInterval } from "node:timers/promises";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,
@@ -476,7 +476,7 @@ const prodRuntimeManager = new ProdRuntimeManager(zodIpc, {
 
 runtime.setGlobalRuntimeManager(prodRuntimeManager);
 
-process.title = "trigger-dev-worker";
+process.title = "trigger-deploy-worker";
 
 const heartbeatInterval = parseInt(heartbeatIntervalMs ?? "30000", 10);
 

@@ -16,6 +16,12 @@ import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskSched
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import {
+  removeQueueConcurrencyLimits,
+  updateEnvConcurrencyLimits,
+  updateQueueConcurrencyLimits,
+} from "../runQueue.server";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -63,7 +69,7 @@ export class CreateBackgroundWorkerService extends BaseService {
 
       const backgroundWorker = await this._prisma.backgroundWorker.create({
         data: {
-          friendlyId: generateFriendlyId("worker"),
+          ...BackgroundWorkerId.generate(),
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
@@ -109,7 +115,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           }
         );
 
-        await marqs?.updateEnvConcurrencyLimits(environment);
+        await updateEnvConcurrencyLimits(environment);
       } catch (err) {
         logger.error(
           "Error publishing WORKER_CREATED event or updating global concurrency limits",
@@ -211,11 +217,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-        await marqs?.updateQueueConcurrencyLimits(
-          environment,
-          taskQueue.name,
-          taskQueue.concurrencyLimit
-        );
+        await updateQueueConcurrencyLimits(environment, taskQueue.name, taskQueue.concurrencyLimit);
       } else {
         logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
           workerId: worker.id,
@@ -226,7 +228,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
+        await removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
