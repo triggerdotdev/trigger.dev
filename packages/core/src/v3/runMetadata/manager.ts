@@ -1,14 +1,12 @@
-import { JSONHeroPath } from "@jsonhero/path";
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
-import { ApiRequestOptions } from "../zodfetch.js";
-import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
-import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
-import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
-import { applyMetadataOperations } from "./operations.js";
-import { SSEStreamSubscriptionFactory } from "../apiClient/runStream.js";
 import { AsyncIterableStream } from "../apiClient/stream.js";
+import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
+import { ApiRequestOptions } from "../zodfetch.js";
+import { MetadataStream } from "./metadataStream.js";
+import { applyMetadataOperations } from "./operations.js";
+import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 const MAXIMUM_ACTIVE_STREAMS = 5;
 const MAXIMUM_TOTAL_STREAMS = 10;
@@ -208,14 +206,7 @@ export class StandardMetadataManager implements RunMetadataManager {
 
     const $baseUrl = typeof baseUrl === "string" ? baseUrl : this.streamsBaseUrl;
 
-    const streamFactory = new SSEStreamSubscriptionFactory($baseUrl, {
-      headers: this.apiClient.getHeaders(),
-      signal,
-    });
-
-    const subscription = streamFactory.createSubscription(this.store ?? {}, this.runId, key);
-
-    return (await subscription.subscribe()) as AsyncIterableStream<T>;
+    return this.apiClient.fetchStream<T>(this.runId, key, { baseUrl: $baseUrl, signal });
   }
 
   private async doStream<T>(
