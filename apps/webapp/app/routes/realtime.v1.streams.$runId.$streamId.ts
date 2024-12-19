@@ -2,7 +2,6 @@ import { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { relayRealtimeStreams } from "~/services/realtime/relayRealtimeStreams.server";
-import { v1RealtimeStreams } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({

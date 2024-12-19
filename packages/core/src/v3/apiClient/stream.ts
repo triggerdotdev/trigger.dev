@@ -18,7 +18,7 @@ export type ZodShapeStreamOptions = {
 
 export type ZodShapeStreamInstance<TShapeSchema extends z.ZodTypeAny> = {
   stream: AsyncIterableStream<z.output<TShapeSchema>>;
-  stop: () => void;
+  stop: (delay?: number) => void;
 };
 
 export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
@@ -64,8 +64,16 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
 
   return {
     stream: stream as AsyncIterableStream<z.output<TShapeSchema>>,
-    stop: () => {
-      abortController.abort();
+    stop: (delay?: number) => {
+      if (delay) {
+        setTimeout(() => {
+          if (abortController.signal.aborted) return;
+
+          abortController.abort();
+        }, delay);
+      } else {
+        abortController.abort();
+      }
     },
   };
 }

@@ -1,23 +1,21 @@
 import { json } from "@remix-run/server-runtime";
 import {
-  BatchTriggerTaskResponse,
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
   generateJWT,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
   BatchTriggerV2Service,
 } from "~/v3/services/batchTriggerV2.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
-import { z } from "zod";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
 const { action, loader } = createActionApiRoute(
   {
