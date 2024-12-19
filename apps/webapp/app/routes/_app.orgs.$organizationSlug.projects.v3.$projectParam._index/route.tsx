@@ -224,7 +224,7 @@ export default function Page() {
                 <div className="flex min-w-0 max-w-full flex-col">
                   {!userHasTasks && <UserHasNoTasks />}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center p-2">
+                    <div className="flex items-center gap-1 p-2">
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
