@@ -15,7 +15,13 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "all",
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
-  async ({ authentication }): Promise<TypedResponse<WorkersListResponseBody>> => {
+  async ({
+    authentication,
+  }): Promise<TypedResponse<WorkersListResponseBody | { error: string }>> => {
+    if (authentication.environment.project.engine !== "V2") {
+      return json({ error: "Not supported for V1 projects" }, { status: 400 });
+    }
+
     const service = new WorkerGroupService();
     const workers = await service.listWorkerGroups({
       projectId: authentication.environment.projectId,
@@ -33,12 +39,19 @@ export const loader = createLoaderApiRoute(
   }
 );
 
-export const action = createActionApiRoute(
+export const { action } = createActionApiRoute(
   {
     corsStrategy: "all",
     body: WorkersCreateRequestBody,
   },
-  async ({ authentication, body }): Promise<TypedResponse<WorkersCreateResponseBody>> => {
+  async ({
+    authentication,
+    body,
+  }): Promise<TypedResponse<WorkersCreateResponseBody | { error: string }>> => {
+    if (authentication.environment.project.engine !== "V2") {
+      return json({ error: "Not supported" }, { status: 400 });
+    }
+
     const service = new WorkerGroupService();
     const { workerGroup, token } = await service.createWorkerGroup({
       projectId: authentication.environment.projectId,

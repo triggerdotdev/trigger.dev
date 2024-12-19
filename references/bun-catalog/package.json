@@ -11,7 +11,6 @@
   },
   "devDependencies": {
     "@types/bun": "^1.1.6",
-    "trigger.dev": "workspace:*",
-    "typescript": "^5.5.4"
+    "trigger.dev": "workspace:*"
   }
 }

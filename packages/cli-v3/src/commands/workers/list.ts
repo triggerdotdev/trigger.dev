@@ -104,7 +104,7 @@ async function _workersListCommand(dir: string, options: WorkersListCommandOptio
   const workers = await projectClient.client.workers.list();
 
   if (!workers.success) {
-    throw new Error("Failed to list workers");
+    throw new Error(`Failed to list workers: ${workers.error}`);
   }
 
   logger.table(

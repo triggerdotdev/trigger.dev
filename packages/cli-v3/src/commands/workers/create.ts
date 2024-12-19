@@ -126,7 +126,7 @@ async function _workersCreateCommand(dir: string, options: WorkersCreateCommandO
   });
 
   if (!newWorker.success) {
-    throw new Error("Failed to create worker");
+    throw new Error(`Failed to create worker: ${newWorker.error}`);
   }
 
   outro(

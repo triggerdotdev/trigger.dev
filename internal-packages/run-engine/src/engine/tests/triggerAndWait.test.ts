@@ -185,7 +185,7 @@ describe("RunEngine triggerAndWait", () => {
       expect(parentExecutionDataAfter.snapshot.executionStatus).toBe("EXECUTING");
       expect(parentExecutionDataAfter.completedWaitpoints?.length).toBe(1);
       expect(parentExecutionDataAfter.completedWaitpoints![0].id).toBe(runWaitpoint.waitpointId);
-      expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRunId).toBe(
+      expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRun?.id).toBe(
         childRun.id
       );
       expect(parentExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
@@ -426,7 +426,7 @@ describe("RunEngine triggerAndWait", () => {
         expect(parentExecutionDataAfter.snapshot.executionStatus).toBe("EXECUTING");
         expect(parentExecutionDataAfter.completedWaitpoints?.length).toBe(1);
         expect(parentExecutionDataAfter.completedWaitpoints![0].id).toBe(runWaitpoint.waitpointId);
-        expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRunId).toBe(
+        expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRun?.id).toBe(
           childRun.id
         );
         expect(parentExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');
@@ -441,7 +441,7 @@ describe("RunEngine triggerAndWait", () => {
         expect(parent2ExecutionDataAfter.completedWaitpoints![0].id).toBe(
           childRunWithWaitpoint.associatedWaitpoint!.id
         );
-        expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRunId).toBe(
+        expect(parentExecutionDataAfter.completedWaitpoints![0].completedByTaskRun?.id).toBe(
           childRun.id
         );
         expect(parent2ExecutionDataAfter.completedWaitpoints![0].output).toBe('{"foo":"bar"}');

@@ -653,7 +653,7 @@ export class RunQueue {
 
   private async handleRedriveMessage(channel: string, message: string) {
     try {
-      const { runId, orgId } = JSON.parse(message);
+      const { runId, orgId } = JSON.parse(message) as any;
       if (typeof orgId !== "string" || typeof runId !== "string") {
         this.logger.error(
           "handleRedriveMessage: invalid message format: runId and orgId must be strings",

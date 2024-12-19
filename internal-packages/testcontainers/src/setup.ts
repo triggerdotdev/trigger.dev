@@ -8,6 +8,7 @@ import {
   BackgroundWorkerTask,
   Prisma,
   PrismaClient,
+  RunEngineVersion,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 
@@ -17,7 +18,8 @@ export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
 
 export async function setupAuthenticatedEnvironment(
   prisma: PrismaClient,
-  type: RuntimeEnvironmentType
+  type: RuntimeEnvironmentType,
+  engine?: RunEngineVersion
 ) {
   // Your database setup logic here
   const org = await prisma.organization.create({
@@ -33,6 +35,7 @@ export async function setupAuthenticatedEnvironment(
       slug: "test-project",
       externalRef: "proj_1234",
       organizationId: org.id,
+      engine,
     },
   });
 

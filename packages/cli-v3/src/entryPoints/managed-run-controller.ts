@@ -401,6 +401,15 @@ class ManagedRunController {
     this.socket.on("run:notify", async ({ version, run }) => {
       console.log("[ManagedRunController] Received run notification", { version, run });
 
+      if (!this.runFriendlyId) {
+        logger.debug("[ManagedRunController] Ignoring notification, no local run ID", {
+          runId: run.friendlyId,
+          currentRunId: this.runFriendlyId,
+          currentSnapshotId: this.snapshotFriendlyId,
+        });
+        return;
+      }
+
       if (run.friendlyId !== this.runFriendlyId) {
         console.log("[ManagedRunController] Ignoring notification for different run", {
           runId: run.friendlyId,

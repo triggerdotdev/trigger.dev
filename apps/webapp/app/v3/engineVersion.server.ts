@@ -1,5 +1,6 @@
 import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { findCurrentWorkerDeploymentWithoutTasks } from "./models/workerDeployment.server";
 
 export async function determineEngineVersion({
   environment,
@@ -8,7 +9,9 @@ export async function determineEngineVersion({
   environment: AuthenticatedEnvironment;
   version?: RunEngineVersion;
 }): Promise<RunEngineVersion> {
-  if (version) return version;
+  if (version) {
+    return version;
+  }
 
   // If the project is V1, then none of the background workers are running V2
   if (environment.project.engine === RunEngineVersion.V1) {
@@ -17,6 +20,16 @@ export async function determineEngineVersion({
 
   // For now, dev is always V1
   if (environment.type === RuntimeEnvironmentType.DEVELOPMENT) {
+    return "V1";
+  }
+
+  /**
+   * The project has V2 enabled and this isn't dev
+   */
+
+  // Check the current deployment for this environment
+  const currentDeployment = await findCurrentWorkerDeploymentWithoutTasks(environment.id);
+  if (currentDeployment?.type === "V1") {
     return "V1";
   }
 

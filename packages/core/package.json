@@ -173,7 +173,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist .tshy .tshy-build .turbo",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
@@ -215,7 +215,6 @@
     "@epic-web/test-server": "^0.1.0",
     "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",
-    "@types/node": "20.14.14",
     "@types/readable-stream": "^4.0.14",
     "ai": "^3.4.33",
     "defu": "^6.1.4",
@@ -225,7 +224,6 @@
     "ts-essentials": "10.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
-    "typescript": "^5.5.4",
     "vitest": "^1.6.0"
   },
   "engines": {
