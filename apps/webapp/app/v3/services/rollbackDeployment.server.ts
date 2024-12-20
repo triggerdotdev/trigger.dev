@@ -1,7 +1,7 @@
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { WorkerDeployment, WorkerInstanceGroupType } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 
 export class RollbackDeploymentService extends BaseService {

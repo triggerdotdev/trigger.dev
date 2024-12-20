@@ -1,7 +1,5 @@
 export const LIVE_ENVIRONMENT = "live";
 export const DEV_ENVIRONMENT = "development";
-export const CURRENT_DEPLOYMENT_LABEL = "current";
-export const CURRENT_UNMANAGED_DEPLOYMENT_LABEL = "current-unmanaged";
 export const MAX_LIVE_PROJECTS = 1;
 export const DEFAULT_MAX_CONCURRENT_RUNS = 10;
 export const MAX_CONCURRENT_RUNS_LIMIT = 20;
