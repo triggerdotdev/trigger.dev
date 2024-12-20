@@ -207,6 +207,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         prisma: this._prisma,
         engine: this._engine,
         type: WorkerInstanceGroupType.MANAGED,
+        name: workerGroup.name,
         workerGroupId: workerGroup.id,
         workerInstanceId: workerInstance.id,
         masterQueue: workerGroup.masterQueue,
@@ -242,6 +243,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       prisma: this._prisma,
       engine: this._engine,
       type: WorkerInstanceGroupType.UNMANAGED,
+      name: workerGroup.name,
       workerGroupId: workerGroup.id,
       workerInstanceId: workerInstance.id,
       masterQueue: workerGroup.masterQueue,
@@ -481,6 +483,7 @@ export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;
+  name: string;
   workerGroupId: string;
   workerInstanceId: string;
   masterQueue: string;
@@ -492,6 +495,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly type: WorkerInstanceGroupType;
+  readonly name: string;
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
   readonly masterQueue: string;
@@ -499,13 +503,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly deploymentId?: string;
   readonly backgroundWorkerId?: string;
 
-  // FIXME
+  // FIXME: Required for unmanaged workers
   readonly isLatestDeployment = true;
 
   constructor(opts: AuthenticatedWorkerInstanceOptions) {
     super({ prisma: opts.prisma, engine: opts.engine });
 
     this.type = opts.type;
+    this.name = opts.name;
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
@@ -715,6 +720,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     if (this.type === WorkerInstanceGroupType.MANAGED) {
       return {
         type: WorkerInstanceGroupType.MANAGED,
+        name: this.name,
         workerGroupId: this.workerGroupId,
         workerInstanceId: this.workerInstanceId,
         masterQueue: this.masterQueue,
@@ -723,6 +729,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
     return {
       type: WorkerInstanceGroupType.UNMANAGED,
+      name: this.name,
       workerGroupId: this.workerGroupId,
       workerInstanceId: this.workerInstanceId,
       masterQueue: this.masterQueue,
@@ -761,12 +768,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 export type WorkerGroupTokenAuthenticationResponse =
   | {
       type: typeof WorkerInstanceGroupType.MANAGED;
+      name: string;
       workerGroupId: string;
       workerInstanceId: string;
       masterQueue: string;
     }
   | {
       type: typeof WorkerInstanceGroupType.UNMANAGED;
+      name: string;
       workerGroupId: string;
       workerInstanceId: string;
       masterQueue: string;

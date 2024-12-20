@@ -100,17 +100,17 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       extraHeaders: getDefaultWorkerHeaders(this.opts),
     });
     this.socket.on("run:notify", ({ version, run }) => {
-      console.log("[WorkerSession] Received run notification", { version, run });
+      console.log("[WorkerSession][WS] Received run notification", { version, run });
       this.emit("runNotification", { time: new Date(), run });
     });
     this.socket.on("connect", () => {
-      console.log("[WorkerSession] Connected to platform");
+      console.log("[WorkerSession][WS] Connected to platform");
     });
     this.socket.on("connect_error", (error) => {
-      console.error("[WorkerSession] Connection error", { error });
+      console.error("[WorkerSession][WS] Connection error", { error });
     });
     this.socket.on("disconnect", (reason, description) => {
-      console.log("[WorkerSession] Disconnected from platform", { reason, description });
+      console.log("[WorkerSession][WS] Disconnected from platform", { reason, description });
     });
   }
 
@@ -122,9 +122,16 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
 
     if (!connect.success) {
-      console.error("[WorkerSession] Failed to connect via HTTP client", { error: connect.error });
-      throw new Error("[WorkerSession] Failed to connect via HTTP client");
+      console.error("[WorkerSession][HTTP] Failed to connect", { error: connect.error });
+      throw new Error("[WorkerSession][HTTP] Failed to connect");
     }
+
+    const { workerGroup } = connect.data;
+
+    console.log("[WorkerSession][HTTP] Connected to platform", {
+      type: workerGroup.type,
+      name: workerGroup.name,
+    });
 
     this.queueConsumer.start();
     this.heartbeatService.start();
