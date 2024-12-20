@@ -56,6 +56,7 @@ export type TraceAttributes = Partial<
     | "attemptId"
     | "isError"
     | "isCancelled"
+    | "isDebug"
     | "runId"
     | "runIsTest"
     | "output"
@@ -119,6 +120,7 @@ export type QueriedEvent = Prisma.TaskEventGetPayload<{
     isError: true;
     isPartial: true;
     isCancelled: true;
+    isDebug: true;
     level: true;
     events: true;
     environmentType: true;
@@ -164,6 +166,7 @@ export type SpanSummary = {
     isError: boolean;
     isPartial: boolean;
     isCancelled: boolean;
+    isDebug: boolean;
     level: NonNullable<CreatableEvent["level"]>;
     environmentType: CreatableEventEnvironmentType;
   };
@@ -240,7 +243,7 @@ export class EventRepository {
       eventId: event.id,
     });
 
-    await this.insert({
+    const completedEvent = {
       ...omit(event, "id"),
       isPartial: false,
       isError: options?.attributes.isError ?? false,
@@ -260,7 +263,11 @@ export class EventRepository {
           : "application/json",
       payload: event.payload as Attributes,
       payloadType: event.payloadType,
-    });
+    } satisfies CreatableEvent;
+
+    await this.insert(completedEvent);
+
+    return completedEvent;
   }
 
   async cancelEvent(event: TaskEventRecord, cancelledAt: Date, reason: string) {
@@ -397,6 +404,7 @@ export class EventRepository {
           isError: true,
           isPartial: true,
           isCancelled: true,
+          isDebug: true,
           level: true,
           events: true,
           environmentType: true,
@@ -460,6 +468,7 @@ export class EventRepository {
             isError: event.isError,
             isPartial: ancestorCancelled ? false : event.isPartial,
             isCancelled: event.isCancelled === true ? true : event.isPartial && ancestorCancelled,
+            isDebug: event.isDebug,
             startTime: getDateFromNanoseconds(event.startTime),
             level: event.level,
             events: event.events,
@@ -505,6 +514,7 @@ export class EventRepository {
           isError: true,
           isPartial: true,
           isCancelled: true,
+          isDebug: true,
           level: true,
           events: true,
           environmentType: true,
@@ -744,11 +754,13 @@ export class EventRepository {
     });
   }
 
-  public async recordEvent(message: string, options: TraceEventOptions) {
+  public async recordEvent(message: string, options: TraceEventOptions & { duration?: number }) {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
     const startTime = options.startTime ?? getNowInNanoseconds();
-    const duration = options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100;
+    const duration =
+      options.duration ??
+      (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
 
     const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
     const parentId = propagatedContext?.traceparent?.spanId;
@@ -772,8 +784,10 @@ export class EventRepository {
       ...options.attributes.metadata,
     };
 
+    const isDebug = options.attributes.isDebug;
+
     const style = {
-      [SemanticInternalAttributes.STYLE_ICON]: "play",
+      [SemanticInternalAttributes.STYLE_ICON]: isDebug ? "warn" : "play",
     };
 
     if (!options.attributes.runId) {
@@ -788,11 +802,12 @@ export class EventRepository {
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
-      level: "TRACE",
+      level: isDebug ? "WARN" : "TRACE",
       kind: options.kind,
       status: "OK",
       startTime,
       isPartial: false,
+      isDebug,
       duration, // convert to nanoseconds
       environmentId: options.environment.id,
       environmentType: options.environment.type,

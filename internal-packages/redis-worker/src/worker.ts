@@ -9,11 +9,11 @@ import { SimpleQueue } from "./queue.js";
 
 import Redis from "ioredis";
 
-type WorkerCatalog = {
+export type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
     visibilityTimeoutMs: number;
-    retry: RetryOptions;
+    retry?: RetryOptions;
   };
 };
 
@@ -28,6 +28,11 @@ type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (param
   attempt: number;
 }) => Promise<void>;
 
+export type WorkerConcurrencyOptions = {
+  workers?: number;
+  tasksPerWorker?: number;
+};
+
 type WorkerOptions<TCatalog extends WorkerCatalog> = {
   name: string;
   redisOptions: RedisOptions;
@@ -35,12 +40,20 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   jobs: {
     [K in keyof TCatalog]: JobHandler<TCatalog, K>;
   };
-  concurrency?: {
-    workers?: number;
-    tasksPerWorker?: number;
-  };
+  concurrency?: WorkerConcurrencyOptions;
   pollIntervalMs?: number;
   logger?: Logger;
+};
+
+// This results in attempt 12 being a delay of 1 hour
+const defaultRetrySettings = {
+  maxAttempts: 12,
+  factor: 2,
+  //one second
+  minTimeoutInMs: 1_000,
+  //one hour
+  maxTimeoutInMs: 3_600_000,
+  randomize: true,
 };
 
 class Worker<TCatalog extends WorkerCatalog> {
@@ -83,16 +96,28 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.setupSubscriber();
   }
 
+  /**
+   * Enqueues a job for processing.
+   * @param options - The enqueue options.
+   * @param options.id - Optional unique identifier for the job. If not provided, one will be generated. It prevents duplication.
+   * @param options.job - The job type from the worker catalog.
+   * @param options.payload - The job payload that matches the schema defined in the catalog.
+   * @param options.visibilityTimeoutMs - Optional visibility timeout in milliseconds. Defaults to value from catalog.
+   * @param options.availableAt - Optional date when the job should become available for processing. Defaults to now.
+   * @returns A promise that resolves when the job is enqueued.
+   */
   enqueue<K extends keyof TCatalog>({
     id,
     job,
     payload,
     visibilityTimeoutMs,
+    availableAt,
   }: {
     id?: string;
     job: K;
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
+    availableAt?: Date;
   }) {
     const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
     return this.queue.enqueue({
@@ -100,7 +125,12 @@ class Worker<TCatalog extends WorkerCatalog> {
       job,
       item: payload,
       visibilityTimeoutMs: timeout,
+      availableAt,
     });
+  }
+
+  ack(id: string) {
+    return this.queue.ack(id);
   }
 
   private createWorker(tasksPerWorker: number) {
@@ -182,7 +212,12 @@ class Worker<TCatalog extends WorkerCatalog> {
             try {
               attempt = attempt + 1;
 
-              const retryDelay = calculateNextRetryDelay(catalogItem.retry, attempt);
+              const retrySettings = {
+                ...defaultRetrySettings,
+                ...catalogItem.retry,
+              };
+
+              const retryDelay = calculateNextRetryDelay(retrySettings, attempt);
 
               if (!retryDelay) {
                 this.logger.error(
@@ -262,7 +297,7 @@ class Worker<TCatalog extends WorkerCatalog> {
 
   private async handleRedriveMessage(channel: string, message: string) {
     try {
-      const { id } = JSON.parse(message);
+      const { id } = JSON.parse(message) as any;
       if (typeof id !== "string") {
         throw new Error("Invalid message format: id must be a string");
       }
@@ -283,9 +318,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.isShuttingDown = true;
     this.logger.log("Shutting down workers...");
 
-    for (const worker of this.workers) {
-      worker.terminate();
-    }
+    await Promise.all(this.workers.map((worker) => worker.terminate()));
 
     await this.subscriber.unsubscribe();
     await this.subscriber.quit();
@@ -301,8 +334,8 @@ class Worker<TCatalog extends WorkerCatalog> {
     }
   }
 
-  public stop() {
-    this.shutdown();
+  public async stop() {
+    await this.shutdown();
   }
 }
 

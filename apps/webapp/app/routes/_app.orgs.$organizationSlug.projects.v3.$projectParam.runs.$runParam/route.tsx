@@ -65,7 +65,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useUser } from "~/hooks/useUser";
+import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 import { Run, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -262,6 +262,7 @@ export default function Page() {
 function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: LoaderData) {
   const organization = useOrganization();
   const project = useProject();
+  const isAdmin = useHasAdminAccess();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
 
@@ -302,7 +303,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Loade
           <TasksTreeView
             selectedId={selectedSpanId}
             key={events[0]?.id ?? "-"}
-            events={events}
+            events={isAdmin ? events : events.filter((event) => !event.data.isDebug)}
             parentRunFriendlyId={parentRunFriendlyId}
             onSelectedIdChanged={(selectedSpan) => {
               //instantly close the panel if no span is selected

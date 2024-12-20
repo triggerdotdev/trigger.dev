@@ -1,5 +1,5 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
+import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
@@ -8,6 +8,10 @@ import { logger } from "../utilities/logger.js";
 import {
   deployEntryPoints,
   devEntryPoints,
+  getIndexControllerForTarget,
+  getIndexWorkerForTarget,
+  getRunControllerForTarget,
+  getRunWorkerForTarget,
   isIndexControllerForTarget,
   isIndexWorkerForTarget,
   isLoaderEntryPoint,
@@ -15,8 +19,15 @@ import {
   isRunWorkerForTarget,
   shims,
   telemetryEntryPoint,
+  managedEntryPoints,
+  unmanagedEntryPoints,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { CORE_VERSION } from "@trigger.dev/core/v3";
+import { resolveFileSources } from "../utilities/sourceFiles.js";
+import { copyManifestToDir } from "./manifests.js";
+import { VERSION } from "../version.js";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -223,10 +234,26 @@ async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
     projectEntryPoints.push(config.configFile);
   }
 
-  if (target === "dev") {
-    projectEntryPoints.push(...devEntryPoints);
-  } else {
-    projectEntryPoints.push(...deployEntryPoints);
+  switch (target) {
+    case "dev": {
+      projectEntryPoints.push(...devEntryPoints);
+      break;
+    }
+    case "deploy": {
+      projectEntryPoints.push(...deployEntryPoints);
+      break;
+    }
+    case "managed": {
+      projectEntryPoints.push(...managedEntryPoints);
+      break;
+    }
+    case "unmanaged": {
+      projectEntryPoints.push(...unmanagedEntryPoints);
+      break;
+    }
+    default: {
+      assertExhaustive(target);
+    }
   }
 
   if (config.instrumentedPackageNames?.length ?? 0 > 0) {
@@ -267,4 +294,62 @@ export function logBuildFailure(errors: esbuild.Message[], warnings: esbuild.Mes
     console.error(log);
   }
   logBuildWarnings(warnings);
+}
+
+export async function createBuildManifestFromBundle({
+  bundle,
+  destination,
+  resolvedConfig,
+  workerDir,
+  environment,
+  target,
+  envVars,
+  sdkVersion,
+}: {
+  bundle: BundleResult;
+  destination: string;
+  resolvedConfig: ResolvedConfig;
+  workerDir?: string;
+  environment: string;
+  target: BuildTarget;
+  envVars?: Record<string, string>;
+  sdkVersion?: string;
+}): Promise<BuildManifest> {
+  const buildManifest: BuildManifest = {
+    contentHash: bundle.contentHash,
+    runtime: resolvedConfig.runtime ?? DEFAULT_RUNTIME,
+    environment: environment,
+    packageVersion: sdkVersion ?? CORE_VERSION,
+    cliPackageVersion: VERSION,
+    target: target,
+    files: bundle.files,
+    sources: await resolveFileSources(bundle.files, resolvedConfig),
+    externals: [],
+    config: {
+      project: resolvedConfig.project,
+      dirs: resolvedConfig.dirs,
+    },
+    outputPath: destination,
+    indexControllerEntryPoint:
+      bundle.indexControllerEntryPoint ?? getIndexControllerForTarget(target),
+    indexWorkerEntryPoint: bundle.indexWorkerEntryPoint ?? getIndexWorkerForTarget(target),
+    runControllerEntryPoint: bundle.runControllerEntryPoint ?? getRunControllerForTarget(target),
+    runWorkerEntryPoint: bundle.runWorkerEntryPoint ?? getRunWorkerForTarget(target),
+    loaderEntryPoint: bundle.loaderEntryPoint,
+    configPath: bundle.configPath,
+    customConditions: resolvedConfig.build.conditions ?? [],
+    deploy: {
+      env: envVars ?? {},
+    },
+    build: {},
+    otelImportHook: {
+      include: resolvedConfig.instrumentedPackageNames ?? [],
+    },
+  };
+
+  if (!workerDir) {
+    return buildManifest;
+  }
+
+  return copyManifestToDir(buildManifest, destination, workerDir);
 }

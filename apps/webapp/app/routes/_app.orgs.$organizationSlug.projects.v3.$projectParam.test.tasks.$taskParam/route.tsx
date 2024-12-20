@@ -121,7 +121,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
 
-    logger.error("Failed to start a test run", { error: e });
+    logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
 
     return redirectBackWithErrorMessage(
       request,

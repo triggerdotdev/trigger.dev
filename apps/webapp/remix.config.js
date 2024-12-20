@@ -11,6 +11,7 @@ module.exports = {
     /^remix-utils.*/,
     "marked",
     "axios",
+    "@internal/redis-worker",
     "@trigger.dev/core",
     "@trigger.dev/sdk",
     "@trigger.dev/platform",

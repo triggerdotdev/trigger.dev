@@ -17,6 +17,10 @@ import {
   PersonalAccessTokenAuthenticationResult,
 } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
+import {
+  AuthenticatedWorkerInstance,
+  WorkerGroupTokenService,
+} from "~/v3/services/worker/workerGroupTokenService.server";
 
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends z.AnyZodObject | undefined = undefined,
@@ -639,4 +643,240 @@ async function wrapResponse(
         exposedHeaders: ["x-trigger-jwt", "x-trigger-jwt-claims"],
       })
     : response;
+}
+
+type WorkerLoaderRouteBuilderOptions<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+};
+
+type WorkerLoaderHandlerFunction<
+  TParamsSchema extends z.AnyZodObject | undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined
+> = (args: {
+  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
+  searchParams: TSearchParamsSchema extends z.AnyZodObject
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  authenticatedWorker: AuthenticatedWorkerInstance;
+  request: Request;
+  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+}) => Promise<Response>;
+
+export function createLoaderWorkerApiRoute<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined
+>(
+  options: WorkerLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
+  handler: WorkerLoaderHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
+) {
+  return async function loader({ request, params }: LoaderFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      headers: headersSchema,
+    } = options;
+
+    try {
+      const service = new WorkerGroupTokenService();
+      const authenticationResult = await service.authenticate(request);
+
+      if (!authenticationResult) {
+        return json({ error: "Invalid or missing worker token" }, { status: 401 });
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return json(
+            { error: "Params Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return json(
+            { error: "Query Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return json(
+            { error: "Headers Error", details: fromZodError(headers.error).details },
+            { status: 400 }
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+        headers: parsedHeaders,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
+}
+
+type WorkerActionRouteBuilderOptions<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+  body?: TBodySchema;
+};
+
+type WorkerActionHandlerFunction<
+  TParamsSchema extends z.AnyZodObject | undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
+> = (args: {
+  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
+  searchParams: TSearchParamsSchema extends z.AnyZodObject
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  authenticatedWorker: AuthenticatedWorkerInstance;
+  request: Request;
+  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
+}) => Promise<Response>;
+
+export function createActionWorkerApiRoute<
+  TParamsSchema extends z.AnyZodObject | undefined = undefined,
+  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
+  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TBodySchema extends z.AnyZodObject | undefined = undefined
+>(
+  options: WorkerActionRouteBuilderOptions<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >,
+  handler: WorkerActionHandlerFunction<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >
+) {
+  return async function action({ request, params }: ActionFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      body: bodySchema,
+      headers: headersSchema,
+    } = options;
+
+    try {
+      const service = new WorkerGroupTokenService();
+      const authenticationResult = await service.authenticate(request);
+
+      if (!authenticationResult) {
+        return json({ error: "Invalid or missing worker token" }, { status: 401 });
+      }
+
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return json(
+            { error: "Params Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return json(
+            { error: "Query Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return json(
+            { error: "Headers Error", details: fromZodError(headers.error).details },
+            { status: 400 }
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const body = await request.clone().json();
+        const parsed = bodySchema.safeParse(body);
+        if (!parsed.success) {
+          return json(
+            { error: "Body Error", details: fromZodError(parsed.error).details },
+            { status: 400 }
+          );
+        }
+        parsedBody = parsed.data;
+      }
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        authenticatedWorker: authenticationResult,
+        request,
+        body: parsedBody,
+        headers: parsedHeaders,
+      });
+      return result;
+    } catch (error) {
+      console.error("Error in API route:", error);
+      if (error instanceof Response) {
+        return error;
+      }
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  };
 }

@@ -44,13 +44,13 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
+import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 import {
   FINAL_ATTEMPT_STATUSES,
   FINAL_RUN_STATUSES,
   isFinalAttemptStatus,
   isFinalRunStatus,
 } from "../taskStatus";
-import { getMaxDuration } from "../utils/maxDuration";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),

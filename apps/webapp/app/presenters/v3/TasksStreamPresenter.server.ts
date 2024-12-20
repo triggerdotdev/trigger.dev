@@ -58,7 +58,7 @@ export class TasksStreamPresenter {
       projectSlug,
     });
 
-    let pinger: NodeJS.Timer | undefined = undefined;
+    let pinger: NodeJS.Timeout | undefined = undefined;
 
     const subscriber = await projectPubSub.subscribe(`project:${project.id}:*`);
 
