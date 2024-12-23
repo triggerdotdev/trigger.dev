@@ -65,6 +65,7 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -210,9 +211,19 @@ export default function Page() {
                     </div>
                   </div>
 
-                  <div className="h-fit max-h-full overflow-x-auto">
+                  <div
+                    className={cn(
+                      "grid h-fit max-h-full min-h-full overflow-x-auto",
+                      totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
+                    )}
+                  >
                     <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                    <div className="flex justify-end py-3">
+                    <div
+                      className={cn(
+                        "flex min-h-full",
+                        totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
+                      )}
+                    >
                       <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                     </div>
                   </div>
