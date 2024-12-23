@@ -80,12 +80,10 @@ export default function Page() {
         <div className="flex flex-col">
           <Table containerClassName="border-t-0">
             <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Environment</TableHeaderCell>
-                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
-              </TableRow>
+              <TableHeaderCell>Environment</TableHeaderCell>
+              <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+              <TableHeaderCell alignment="right">Running</TableHeaderCell>
+              <TableHeaderCell alignment="right">Concurrency limit</TableHeaderCell>
             </TableHeader>
             <TableBody>
               <Suspense fallback={<Spinner />}>

@@ -187,14 +187,12 @@ export default function Page() {
           </div>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Alert types</TableHeaderCell>
-                <TableHeaderCell>Environments</TableHeaderCell>
-                <TableHeaderCell>Channel</TableHeaderCell>
-                <TableHeaderCell>Enabled</TableHeaderCell>
-                <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
-              </TableRow>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell>Alert types</TableHeaderCell>
+              <TableHeaderCell>Environments</TableHeaderCell>
+              <TableHeaderCell>Channel</TableHeaderCell>
+              <TableHeaderCell>Enabled</TableHeaderCell>
+              <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
             </TableHeader>
             <TableBody>
               {alertChannels.length > 0 ? (
