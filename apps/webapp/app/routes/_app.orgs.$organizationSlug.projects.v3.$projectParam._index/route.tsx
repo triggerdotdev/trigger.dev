@@ -245,16 +245,14 @@ export default function Page() {
                     </div>
                     <Table containerClassName="max-h-full pb-[2.5rem]">
                       <TableHeader>
-                        <TableRow>
-                          <TableHeaderCell>Task ID</TableHeaderCell>
-                          <TableHeaderCell>Task</TableHeaderCell>
-                          <TableHeaderCell>Running</TableHeaderCell>
-                          <TableHeaderCell>Queued</TableHeaderCell>
-                          <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                          <TableHeaderCell>Avg. duration</TableHeaderCell>
-                          <TableHeaderCell>Environments</TableHeaderCell>
-                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                        </TableRow>
+                        <TableHeaderCell>Task ID</TableHeaderCell>
+                        <TableHeaderCell>Task</TableHeaderCell>
+                        <TableHeaderCell>Running</TableHeaderCell>
+                        <TableHeaderCell>Queued</TableHeaderCell>
+                        <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                        <TableHeaderCell>Avg. duration</TableHeaderCell>
+                        <TableHeaderCell>Environments</TableHeaderCell>
+                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length > 0 ? (
@@ -291,13 +289,13 @@ export default function Page() {
                                     <span>{task.slug}</span>
                                   </div>
                                 </TableCell>
-                                <TableCell to={path} className="py-0" actionClassName="py-0">
+                                <TableCell to={path}>
                                   <TaskFunctionName
                                     functionName={task.exportName}
                                     variant="extra-extra-small"
                                   />
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense
                                     fallback={
                                       <>
@@ -313,7 +311,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={runningStats}>
                                       {(data) => {
@@ -323,7 +321,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0" actionClassName="py-0">
+                                <TableCell to={path}>
                                   <Suspense fallback={<TaskActivityBlankState />}>
                                     <TypedAwait resolve={activity}>
                                       {(data) => {
@@ -343,7 +341,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={durations}>
                                       {(data) => {
