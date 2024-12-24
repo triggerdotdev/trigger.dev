@@ -1,5 +1,6 @@
 import type { DeliverEmail, SendPlainTextOptions } from "emails";
 import { EmailClient } from "emails";
+import { MailTransportOptions } from "emails/transports";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
@@ -13,7 +14,7 @@ const client = singleton(
   "email-client",
   () =>
     new EmailClient({
-      apikey: env.RESEND_API_KEY,
+      transport: buildTransportOptions(false),
       imagesBaseUrl: env.APP_ORIGIN,
       from: env.FROM_EMAIL ?? "team@email.trigger.dev",
       replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
@@ -24,12 +25,41 @@ const alertsClient = singleton(
   "alerts-email-client",
   () =>
     new EmailClient({
-      apikey: env.ALERT_RESEND_API_KEY,
+      transport: buildTransportOptions(true),
       imagesBaseUrl: env.APP_ORIGIN,
       from: env.ALERT_FROM_EMAIL ?? "noreply@alerts.trigger.dev",
       replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
     })
 );
+
+function buildTransportOptions(alerts?: boolean): MailTransportOptions {
+  switch (alerts ? env.ALERT_EMAIL_SERVICE : env.EMAIL_SERVICE) {
+    case "aws-ses":
+      return { type: "aws-ses" };
+    case "resend":
+      return {
+        type: "resend",
+        config: {
+          apiKey: alerts ? env.ALERT_RESEND_API_KEY : env.RESEND_API_KEY,
+        }
+      }
+    case "smtp":
+      return {
+        type: "smtp",
+        config: {
+          host: alerts ? env.ALERT_SMTP_HOST : env.SMTP_HOST,
+          port: alerts ? env.ALERT_SMTP_PORT : env.SMTP_PORT,
+          secure: alerts ? env.ALERT_SMTP_SECURE : env.ALERT_SMTP_SECURE,
+          auth: {
+            user: alerts ? env.ALERT_SMTP_USER : env.SMTP_USER,
+            password: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD
+          }
+        }
+      };
+    default:
+      return { type: undefined };
+  }
+}
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
   // Auto redirect when in development mode

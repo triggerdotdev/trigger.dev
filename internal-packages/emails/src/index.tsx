@@ -1,7 +1,8 @@
-import { render } from "@react-email/render";
 import { ReactElement } from "react";
-import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
+
+import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
+import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import AlertDeploymentFailureEmail, {
   AlertDeploymentFailureEmailSchema,
@@ -12,9 +13,7 @@ import AlertDeploymentSuccessEmail, {
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import MagicLinkEmail from "../emails/magic-link";
 import WelcomeEmail from "../emails/welcome";
-
-import { Resend } from "resend";
-import { z } from "zod";
+import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
 
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
@@ -39,14 +38,20 @@ export type DeliverEmail = z.infer<typeof DeliverEmailSchema>;
 export type SendPlainTextOptions = { to: string; subject: string; text: string };
 
 export class EmailClient {
-  #client?: Resend;
+  #transport: MailTransport;
+
   #imagesBaseUrl: string;
   #from: string;
   #replyTo: string;
 
-  constructor(config: { apikey?: string; imagesBaseUrl: string; from: string; replyTo: string }) {
-    this.#client =
-      config.apikey && config.apikey.startsWith("re_") ? new Resend(config.apikey) : undefined;
+  constructor(config: {
+    transport?: MailTransportOptions;
+    imagesBaseUrl: string;
+    from: string;
+    replyTo: string;
+  }) {
+    this.#transport = constructMailTransport(config.transport ?? { type: undefined });
+
     this.#imagesBaseUrl = config.imagesBaseUrl;
     this.#from = config.from;
     this.#replyTo = config.replyTo;
@@ -57,25 +62,21 @@ export class EmailClient {
 
     setGlobalBasePath(this.#imagesBaseUrl);
 
-    return this.#sendEmail({
+    return await this.#transport.send({
       to: data.to,
       subject,
       react: component,
+      from: this.#from,
+      replyTo: this.#replyTo,
     });
   }
 
   async sendPlainText(options: SendPlainTextOptions) {
-    if (this.#client) {
-      await this.#client.emails.send({
-        from: this.#from,
-        to: options.to,
-        reply_to: this.#replyTo,
-        subject: options.subject,
-        text: options.text,
-      });
-
-      return;
-    }
+    await this.#transport.sendPlainText({
+      ...options,
+      from: this.#from,
+      replyTo: this.#replyTo,
+    });
   }
 
   #getTemplate(data: DeliverEmail): {
@@ -123,42 +124,5 @@ export class EmailClient {
         };
       }
     }
-  }
-
-  async #sendEmail({ to, subject, react }: { to: string; subject: string; react: ReactElement }) {
-    if (this.#client) {
-      const result = await this.#client.emails.send({
-        from: this.#from,
-        to,
-        reply_to: this.#replyTo,
-        subject,
-        react,
-      });
-
-      if (result.error) {
-        console.error(
-          `Failed to send email to ${to}, ${subject}. Error ${result.error.name}: ${result.error.message}`
-        );
-        throw new EmailError(result.error);
-      }
-
-      return;
-    }
-
-    console.log(`
-##### sendEmail to ${to}, subject: ${subject}
-
-${render(react, {
-  plainText: true,
-})}
-    `);
-  }
-}
-
-//EmailError type where you can set the name and message
-export class EmailError extends Error {
-  constructor({ name, message }: { name: string; message: string }) {
-    super(message);
-    this.name = name;
   }
 }

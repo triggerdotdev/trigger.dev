@@ -44,9 +44,16 @@ const EnvironmentSchema = z.object({
   HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
+  EMAIL_SERVICE: z.enum(["resend", "smtp", "aws-ses"]).default("resend"),
   FROM_EMAIL: z.string().optional(),
   REPLY_TO_EMAIL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().optional(),
+  SMTP_SECURE: z.coerce.boolean().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD:  z.string().optional(),
+
   PLAIN_API_KEY: z.string().optional(),
   RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
   WORKER_SCHEMA: z.string().default("graphile_worker"),
@@ -195,8 +202,16 @@ const EnvironmentSchema = z.object({
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
   /** These enable the alerts feature in v3 */
+  ALERT_EMAIL_SERVICE: z.union([z.literal("resend"), z.literal("smtp"), z.literal("aws-ses")]).default("resend"),
   ALERT_FROM_EMAIL: z.string().optional(),
+  ALERT_REPLY_TO_EMAIL: z.string().optional(),
   ALERT_RESEND_API_KEY: z.string().optional(),
+  ALERT_SMTP_HOST: z.string().optional(),
+  ALERT_SMTP_PORT: z.coerce.number().optional(),
+  ALERT_SMTP_SECURE: z.coerce.boolean().optional(),
+  ALERT_SMTP_USER: z.string().optional(),
+  ALERT_SMTP_PASSWORD:  z.string().optional(),
+
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
