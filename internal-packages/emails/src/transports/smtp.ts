@@ -10,7 +10,7 @@ export type SmtpMailTransportOptions = {
     secure?: boolean,
     auth?: {
       user?: string,
-      password?: string
+      pass?: string
     }
   }
 }
