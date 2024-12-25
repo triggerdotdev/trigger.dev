@@ -1,7 +1,7 @@
 import { render } from "@react-email/render";
 import { EmailError, MailMessage, MailTransport, PlainTextMailMessage } from "./index";
 import nodemailer from "nodemailer"
-import awsSes from "@aws-sdk/client-ses"
+import * as awsSes from "@aws-sdk/client-ses"
 
 export type AwsSesMailTransportOptions = {
   type: 'aws-ses',
