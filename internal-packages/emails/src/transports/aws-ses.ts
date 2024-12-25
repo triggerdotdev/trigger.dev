@@ -31,11 +31,15 @@ export class AwsSesMailTransport implements MailTransport {
         html: render(react),
       });
     }
-    catch (error: Error) {
-      console.error(
-        `Failed to send email to ${to}, ${subject}. Error ${error.name}: ${error.message}`
-      );
-      throw new EmailError(error);
+    catch (error) {
+      if (error instanceof Error) {
+        console.error(
+          `Failed to send email to ${to}, ${subject}. Error ${error.name}: ${error.message}`
+        );
+        throw new EmailError(error);
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -49,11 +53,15 @@ export class AwsSesMailTransport implements MailTransport {
         text: text,
       });
     }
-    catch (error: Error) {
-      console.error(
-        `Failed to send email to ${to}, ${subject}. Error ${error.name}: ${error.message}`
-      );
-      throw new EmailError(error);
+    catch (error) {
+      if (error instanceof Error) {
+        console.error(
+          `Failed to send email to ${to}, ${subject}. Error ${error.name}: ${error.message}`
+        );
+        throw new EmailError(error);
+      } else {
+        throw error;
+      }
     }
   }
 }
