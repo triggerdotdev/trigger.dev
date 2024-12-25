@@ -44,7 +44,7 @@ const EnvironmentSchema = z.object({
   HIGHLIGHT_PROJECT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_ID: z.string().optional(),
   AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
-  EMAIL_SERVICE: z.enum(["resend", "smtp", "aws-ses"]).default("resend"),
+  EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
   FROM_EMAIL: z.string().optional(),
   REPLY_TO_EMAIL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
@@ -202,7 +202,7 @@ const EnvironmentSchema = z.object({
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
   /** These enable the alerts feature in v3 */
-  ALERT_EMAIL_SERVICE: z.union([z.literal("resend"), z.literal("smtp"), z.literal("aws-ses")]).default("resend"),
+  ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
   ALERT_FROM_EMAIL: z.string().optional(),
   ALERT_REPLY_TO_EMAIL: z.string().optional(),
   ALERT_RESEND_API_KEY: z.string().optional(),

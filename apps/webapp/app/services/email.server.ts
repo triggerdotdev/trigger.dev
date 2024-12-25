@@ -14,7 +14,7 @@ const client = singleton(
   "email-client",
   () =>
     new EmailClient({
-      transport: buildTransportOptions(false),
+      transport: buildTransportOptions(),
       imagesBaseUrl: env.APP_ORIGIN,
       from: env.FROM_EMAIL ?? "team@email.trigger.dev",
       replyTo: env.REPLY_TO_EMAIL ?? "help@email.trigger.dev",
@@ -33,7 +33,10 @@ const alertsClient = singleton(
 );
 
 function buildTransportOptions(alerts?: boolean): MailTransportOptions {
-  switch (alerts ? env.ALERT_EMAIL_SERVICE : env.EMAIL_SERVICE) {
+  const transportType = alerts ? env.ALERT_EMAIL_TRANSPORT : env.EMAIL_TRANSPORT
+  logger.debug(`Constructing email transport '${transportType}' for usage '${alerts?'alerts':'general'}'`)
+
+  switch (transportType) {
     case "aws-ses":
       return { type: "aws-ses" };
     case "resend":
@@ -52,7 +55,7 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
           secure: alerts ? env.ALERT_SMTP_SECURE : env.ALERT_SMTP_SECURE,
           auth: {
             user: alerts ? env.ALERT_SMTP_USER : env.SMTP_USER,
-            password: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD
+            pass: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD
           }
         }
       };
