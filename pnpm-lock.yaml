@@ -868,9 +868,6 @@ importers:
       '@react-email/render':
         specifier: ^0.0.12
         version: 0.0.12
-      '@types/nodemailer':
-        specifier: ^6.4.17
-        version: 6.4.17
       nodemailer:
         specifier: ^6.9.16
         version: 6.9.16
@@ -893,6 +890,9 @@ importers:
       '@types/node':
         specifier: ^18
         version: 18.19.20
+      '@types/nodemailer':
+        specifier: ^6.4.17
+        version: 6.4.17
       '@types/react':
         specifier: 18.2.69
         version: 18.2.69
@@ -16631,7 +16631,7 @@ packages:
     resolution: {integrity: sha512-I9CCaIp6DTldEg7vyUTZi8+9Vo0hi1/T8gv3C89yk1rSAAzoKQ8H8ki/jBYJSFoH/BisgLP8tkZMlQ91CIquww==}
     dependencies:
       '@types/node': 18.19.20
-    dev: false
+    dev: true
 
   /@types/normalize-package-data@2.4.1:
     resolution: {integrity: sha512-Gj7cI7z+98M282Tqmp2K5EIsoouUEzbBJhQQzDE3jSIRk6r9gsz0oUokqIUR4u1R3dMHo0pDHM7sNOHyhulypw==}

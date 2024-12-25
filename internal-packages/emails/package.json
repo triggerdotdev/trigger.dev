@@ -12,7 +12,6 @@
     "@aws-sdk/client-ses": "^3.716.0",
     "@react-email/components": "0.0.16",
     "@react-email/render": "^0.0.12",
-    "@types/nodemailer": "^6.4.17",
     "nodemailer": "^6.9.16",
     "react": "^18.2.0",
     "react-email": "^2.1.1",
@@ -22,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^18",
+    "@types/nodemailer": "^6.4.17",
     "@types/react": "18.2.69",
     "typescript": "^4.9.4"
   },
