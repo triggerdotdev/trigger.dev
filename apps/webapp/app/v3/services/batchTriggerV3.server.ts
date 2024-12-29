@@ -759,6 +759,8 @@ export class BatchTriggerV3Service extends WithRunEngine {
           task: item,
           currentIndex: workingIndex,
           options,
+          parentRunId,
+          resumeParentOnCompletion,
         });
 
         workingIndex++;
@@ -799,8 +801,8 @@ export class BatchTriggerV3Service extends WithRunEngine {
     task: { runFriendlyId: string; item: BatchTriggerTaskV2RequestBody["items"][number] };
     currentIndex: number;
     options?: BatchTriggerTaskServiceOptions;
-    parentRunId?: string | undefined;
-    resumeParentOnCompletion?: boolean | undefined;
+    parentRunId: string | undefined;
+    resumeParentOnCompletion: boolean | undefined;
   }) {
     logger.debug("[BatchTriggerV3][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
