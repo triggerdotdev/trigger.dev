@@ -99,7 +99,6 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
               waitpointId: existingRun.associatedWaitpoint.id,
               environmentId: environment.id,
               projectId: environment.projectId,
-              checkWaitpointIsPending: true,
               tx: this._prisma,
             });
           }
