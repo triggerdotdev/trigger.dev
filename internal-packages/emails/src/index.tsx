@@ -15,6 +15,8 @@ import MagicLinkEmail from "../emails/magic-link";
 import WelcomeEmail from "../emails/welcome";
 import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
 
+export { type MailTransportOptions }
+
 export const DeliverEmailSchema = z
   .discriminatedUnion("email", [
     z.object({

@@ -1,6 +1,5 @@
 import type { DeliverEmail, SendPlainTextOptions } from "emails";
-import { EmailClient } from "emails";
-import { MailTransportOptions } from "emails/transports";
+import { EmailClient, MailTransportOptions } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
