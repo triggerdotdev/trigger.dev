@@ -1,23 +1,23 @@
 import { json } from "@remix-run/server-runtime";
 import {
-  BatchTriggerTaskResponse,
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
   generateJWT,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { determineEngineVersion } from "~/v3/engineVersion.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
   BatchTriggerV2Service,
 } from "~/v3/services/batchTriggerV2.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
-import { logger } from "~/services/logger.server";
-import { z } from "zod";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -87,7 +87,11 @@ const { action, loader } = createActionApiRoute(
       resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
-    const service = new BatchTriggerV2Service(batchProcessingStrategy ?? undefined);
+    const version = await determineEngineVersion({ environment: authentication.environment });
+    const service =
+      version === "V1"
+        ? new BatchTriggerV2Service(batchProcessingStrategy ?? undefined)
+        : new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {

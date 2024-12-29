@@ -830,7 +830,8 @@ export class BatchTriggerV3Service extends WithRunEngine {
         batchId: batch.friendlyId,
         skipChecks: true,
         runFriendlyId: task.runFriendlyId,
-      }
+      },
+      "V2"
     );
   }
 
