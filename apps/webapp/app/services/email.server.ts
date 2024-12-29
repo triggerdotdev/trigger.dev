@@ -51,7 +51,7 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
         config: {
           host: alerts ? env.ALERT_SMTP_HOST : env.SMTP_HOST,
           port: alerts ? env.ALERT_SMTP_PORT : env.SMTP_PORT,
-          secure: alerts ? env.ALERT_SMTP_SECURE : env.ALERT_SMTP_SECURE,
+          secure: alerts ? env.ALERT_SMTP_SECURE : env.SMTP_SECURE,
           auth: {
             user: alerts ? env.ALERT_SMTP_USER : env.SMTP_USER,
             pass: alerts ? env.ALERT_SMTP_PASSWORD : env.SMTP_PASSWORD
