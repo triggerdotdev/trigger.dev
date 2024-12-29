@@ -423,7 +423,7 @@ model RuntimeEnvironment {
   taskRunNumberCounter TaskRunNumberCounter[]
   taskRunCheckpoints   TaskRunCheckpoint[]
   waitpoints           Waitpoint[]
-  workerInstance       WorkerInstance[]
+  workerInstances      WorkerInstance[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])

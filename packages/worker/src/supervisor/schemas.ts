@@ -33,6 +33,10 @@ export type WorkerApiConnectRequestBody = z.infer<typeof WorkerApiConnectRequest
 
 export const WorkerApiConnectResponseBody = z.object({
   ok: z.literal(true),
+  workerGroup: z.object({
+    type: z.string(),
+    name: z.string(),
+  }),
 });
 export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectResponseBody>;
 

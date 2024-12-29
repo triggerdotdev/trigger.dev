@@ -27,7 +27,7 @@ function createRunEngine() {
       pollIntervalMs: env.RUN_ENGINE_WORKER_POLL_INTERVAL,
     },
     machines: {
-      defaultMachine: defaultMachine,
+      defaultMachine,
       machines: allMachines(),
       baseCostInCents: env.CENTS_PER_RUN,
     },
