@@ -53,7 +53,7 @@ export function ShortcutKey({ shortcut, variant, className }: ShortcutKeyProps) 
   );
 }
 
-function keyString(key: String, isMac: boolean, variant: "small" | "medium" | "medium/bright") {
+function keyString(key: string, isMac: boolean, variant: "small" | "medium" | "medium/bright") {
   key = key.toLowerCase();
 
   const className = variant === "small" ? "w-2.5 h-4" : "w-3 h-5";
