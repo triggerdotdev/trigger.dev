@@ -790,7 +790,8 @@ export class BatchTriggerV2Service extends BaseService {
         batchId: batch.friendlyId,
         skipChecks: true,
         runFriendlyId: task.runFriendlyId,
-      }
+      },
+      "V1"
     );
 
     if (!run) {
