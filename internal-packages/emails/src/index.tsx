@@ -103,25 +103,25 @@ export class EmailClient {
         };
       case "alert-attempt": {
         return {
-          subject: `Error on ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          subject: `[${data.organization}] Error on ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
           component: <AlertAttemptFailureEmail {...data} />,
         };
       }
       case "alert-run": {
         return {
-          subject: `Run ${data.runId} failed for ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
+          subject: `[${data.organization}] Run ${data.runId} failed for ${data.taskIdentifier} [${data.version}.${data.environment}] ${data.error.message}`,
           component: <AlertRunFailureEmail {...data} />,
         };
       }
       case "alert-deployment-failure": {
         return {
-          subject: `Deployment ${data.version} [${data.environment}] failed: ${data.error.name}`,
+          subject: `[${data.organization}] Deployment ${data.version} [${data.environment}] failed: ${data.error.name}`,
           component: <AlertDeploymentFailureEmail {...data} />,
         };
       }
       case "alert-deployment-success": {
         return {
-          subject: `Deployment ${data.version} [${data.environment}] succeeded`,
+          subject: `[${data.organization}] Deployment ${data.version} [${data.environment}] succeeded`,
           component: <AlertDeploymentSuccessEmail {...data} />,
         };
       }
