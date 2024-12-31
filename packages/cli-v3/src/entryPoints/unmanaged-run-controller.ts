@@ -9,7 +9,7 @@ import { WorkerManifest } from "@trigger.dev/core/v3";
 import { SupervisorSession } from "@trigger.dev/worker";
 
 const Env = z.object({
-  TRIGGER_API_URL: z.string().default(CLOUD_API_URL),
+  TRIGGER_API_URL: z.string().url().default(CLOUD_API_URL),
   TRIGGER_CONTENT_HASH: z.string(),
   TRIGGER_WORKER_TOKEN: z.string(),
   TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
@@ -17,7 +17,7 @@ const Env = z.object({
   TRIGGER_DEPLOYMENT_VERSION: z.string(),
   NODE_ENV: z.string().default("production"),
   NODE_EXTRA_CA_CERTS: z.string().optional(),
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default("http://0.0.0.0:3030/otel"),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
 });
 
 const env = Env.parse(stdEnv);
