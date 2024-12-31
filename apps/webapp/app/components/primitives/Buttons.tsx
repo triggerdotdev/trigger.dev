@@ -1,5 +1,5 @@
 import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
@@ -173,10 +173,9 @@ export type ButtonContentPropsType = {
   textAlignLeft?: boolean;
   className?: string;
   shortcut?: ShortcutDefinition;
-  showTooltip?: boolean;
   variant: keyof typeof variant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
-  tooltipDescription?: string;
+  tooltip?: ReactNode;
   iconSpacing?: string;
 };
 
@@ -191,8 +190,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     fullWidth,
     textAlignLeft,
     className,
-    showTooltip,
-    tooltipDescription,
+    tooltip,
     iconSpacing,
   } = props;
   const variation = allVariants.variant[props.variant];
@@ -254,7 +252,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
           ))}
 
         {shortcut &&
-          !showTooltip &&
+          !tooltip &&
           props.shortcutPosition === "before-trailing-icon" &&
           renderShortcutKey()}
 
@@ -281,20 +279,20 @@ export function ButtonContent(props: ButtonContentPropsType) {
           ))}
 
         {shortcut &&
-          !showTooltip &&
+          !tooltip &&
           (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") &&
           renderShortcutKey()}
       </div>
     </div>
   );
 
-  if (shortcut && showTooltip) {
+  if (tooltip) {
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
           <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
-            {tooltipDescription} {renderShortcutKey()}
+            {tooltip} {shortcut && renderShortcutKey()}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

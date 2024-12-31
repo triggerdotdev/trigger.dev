@@ -34,8 +34,8 @@ function NextButton({ cursor }: { cursor?: string }) {
       )}
       onClick={(e) => !path && e.preventDefault()}
       shortcut={{ key: "k" }}
-      showTooltip
-      tooltipDescription="Next"
+      tooltip="Next"
+      disabled={!path}
     >
       Next
     </LinkButton>
@@ -57,8 +57,8 @@ function PreviousButton({ cursor }: { cursor?: string }) {
       )}
       onClick={(e) => !path && e.preventDefault()}
       shortcut={{ key: "j" }}
-      showTooltip
-      tooltipDescription="Previous"
+      tooltip="Previous"
+      disabled={!path}
     >
       Prev
     </LinkButton>

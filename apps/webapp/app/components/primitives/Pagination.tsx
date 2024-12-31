@@ -25,8 +25,7 @@ export function PaginationControls({
         variant="minimal/small"
         LeadingIcon={ChevronLeftIcon}
         shortcut={{ key: "j" }}
-        showTooltip
-        tooltipDescription="Previous"
+        tooltip="Previous"
         disabled={currentPage === 1}
         className={currentPage > 1 ? "group" : ""}
       >
@@ -44,8 +43,7 @@ export function PaginationControls({
         variant="minimal/small"
         TrailingIcon={ChevronRightIcon}
         shortcut={{ key: "k" }}
-        showTooltip
-        tooltipDescription="Next"
+        tooltip="Next"
         disabled={currentPage === totalPages}
         className={currentPage !== totalPages ? "group" : ""}
       >
