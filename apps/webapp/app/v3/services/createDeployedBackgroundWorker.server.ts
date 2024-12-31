@@ -1,9 +1,8 @@
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import type { BackgroundWorker } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";

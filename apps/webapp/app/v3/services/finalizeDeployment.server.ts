@@ -1,5 +1,5 @@
 import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";

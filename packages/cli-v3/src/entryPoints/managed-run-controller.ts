@@ -2,7 +2,6 @@ import { logger } from "../utilities/logger.js";
 import { OnWaitMessage, TaskRunProcess } from "../executions/taskRunProcess.js";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
-import { CLOUD_API_URL } from "../consts.js";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
@@ -24,20 +23,22 @@ import { io, Socket } from "socket.io-client";
 
 // All IDs are friendly IDs
 const Env = z.object({
-  TRIGGER_API_URL: z.string().url().default(CLOUD_API_URL),
+  // Set at build time
   TRIGGER_CONTENT_HASH: z.string(),
-  TRIGGER_WORKER_API_URL: z.string().url(),
-  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_DEPLOYMENT_ID: z.string(),
   TRIGGER_DEPLOYMENT_VERSION: z.string(),
-  TRIGGER_ENV_ID: z.string(),
-  // This is only useful for cold starts
-  TRIGGER_RUN_ID: z.string().optional(),
-  // This is only useful for cold starts
-  TRIGGER_SNAPSHOT_ID: z.string().optional(),
+  TRIGGER_PROJECT_ID: z.string(),
+  TRIGGER_PROJECT_REF: z.string(),
   NODE_ENV: z.string().default("production"),
   NODE_EXTRA_CA_CERTS: z.string().optional(),
-  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().default("http://0.0.0.0:3030/otel"),
+
+  // Set at runtime
+  TRIGGER_WORKER_API_URL: z.string().url(),
+  TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
+  TRIGGER_ENV_ID: z.string(),
+  TRIGGER_RUN_ID: z.string().optional(), // This is only useful for cold starts
+  TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is only useful for cold starts
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),

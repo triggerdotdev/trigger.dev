@@ -1731,6 +1731,9 @@ model TaskRun {
   completedAt   DateTime?
   machinePreset String?
 
+  /// Run Engine 2.0+
+  firstAttemptStartedAt DateTime?
+
   usageDurationMs Int   @default(0)
   costInCents     Float @default(0)
   baseCostInCents Float @default(0)

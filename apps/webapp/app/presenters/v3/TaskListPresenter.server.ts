@@ -19,8 +19,8 @@ import {
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
 import { TaskRunStatus } from "~/database-types";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 
 export type Task = {
   slug: string;
