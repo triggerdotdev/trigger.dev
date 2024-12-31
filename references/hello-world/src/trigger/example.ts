@@ -26,6 +26,14 @@ export const parentTask = task({
   },
 });
 
+export const batchParentTask = task({
+  id: "batch-parent",
+  run: async (payload: any, { ctx }) => {
+    logger.log("Hello, world from the parent", { payload });
+    await childTask.batchTriggerAndWait([{ payload: { message: "Hello, world!" } }]);
+  },
+});
+
 export const childTask = task({
   id: "child",
   run: async (payload: any, { ctx }) => {
