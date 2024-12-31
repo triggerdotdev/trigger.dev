@@ -44,9 +44,8 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
           "sticky top-0 z-10 bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
           className
         )}
-        tabIndex={-1}
       >
-        {children}
+        <tr tabIndex={-1}>{children}</tr>
       </thead>
     );
   }
