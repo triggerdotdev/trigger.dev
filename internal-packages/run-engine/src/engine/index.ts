@@ -1601,26 +1601,24 @@ export class RunEngine {
         newStatus = "EXECUTING_WITH_WAITPOINTS";
       }
 
-      const insertedBlockers = await $transaction(
-        prisma,
-        async (tx) => {
-          return tx.$executeRaw`
-          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
-          SELECT
-            gen_random_uuid(),
-            ${runId},
-            w.id,
-            ${projectId},
-            NOW(),
-            NOW()
-          FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join(waitpointIds)})
-            AND w.status = 'PENDING'
-          ON CONFLICT DO NOTHING;
-        `;
-        },
-        (error) => {}
-      );
+      const insertedBlockers = await prisma.$executeRaw`
+        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
+        SELECT
+          gen_random_uuid(),
+          ${runId},
+          w.id,
+          ${projectId},
+          NOW(),
+          NOW()
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join(waitpointIds)})
+          AND w.status = 'PENDING'
+        ON CONFLICT DO NOTHING;`;
+
+      //if no runs were blocked we don't want to do anything more
+      if (insertedBlockers === 0) {
+        return snapshot;
+      }
 
       //if the state has changed, create a new snapshot
       if (newStatus !== snapshot.executionStatus) {
