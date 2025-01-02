@@ -58,6 +58,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
+      "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       traceparent,
       tracestate,
@@ -87,7 +88,11 @@ const { action, loader } = createActionApiRoute(
       resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
-    const version = await determineEngineVersion({ environment: authentication.environment });
+    const version = await determineEngineVersion({
+      environment: authentication.environment,
+      version: engineVersion ?? undefined,
+    });
+
     const service =
       version === "V1"
         ? new BatchTriggerV2Service(batchProcessingStrategy ?? undefined)
