@@ -31,14 +31,15 @@ export class TriggerTaskService extends WithRunEngine {
     taskId: string,
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
+    options: TriggerTaskServiceOptions = {},
+    version?: RunEngineVersion
   ) {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const version = await determineEngineVersion({ environment });
+      const v = await determineEngineVersion({ environment, version });
 
-      switch (version) {
+      switch (v) {
         case "V1": {
           return await this.callV1(taskId, environment, body, options);
         }

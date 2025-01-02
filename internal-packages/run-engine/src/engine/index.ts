@@ -1577,19 +1577,18 @@ export class RunEngine {
     waitpointId,
     projectId,
     failAfter,
-    checkWaitpointIsPending = false,
     tx,
   }: {
     runId: string;
-    waitpointId: string;
+    waitpointId: string | string[];
     environmentId: string;
     projectId: string;
     failAfter?: Date;
-    /** If the waitpoint could be completed, i.e. not inside a run lock and not new */
-    checkWaitpointIsPending?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
+
+    let waitpointIds = typeof waitpointId === "string" ? [waitpointId] : waitpointId;
 
     return await this.runLock.lock([runId], 5000, async (signal) => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -1602,28 +1601,24 @@ export class RunEngine {
         newStatus = "EXECUTING_WITH_WAITPOINTS";
       }
 
-      if (checkWaitpointIsPending) {
-        const waitpoint = await prisma.waitpoint.findUnique({
-          where: { id: waitpointId },
-        });
+      const insertedBlockers = await prisma.$executeRaw`
+        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
+        SELECT
+          gen_random_uuid(),
+          ${runId},
+          w.id,
+          ${projectId},
+          NOW(),
+          NOW()
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join(waitpointIds)})
+          AND w.status = 'PENDING'
+        ON CONFLICT DO NOTHING;`;
 
-        if (!waitpoint) {
-          throw new ServiceValidationError("Waitpoint not found", 404);
-        }
-
-        //the waitpoint has been completed since it was retrieved
-        if (waitpoint.status !== "PENDING") {
-          return snapshot;
-        }
+      //if no runs were blocked we don't want to do anything more
+      if (insertedBlockers === 0) {
+        return snapshot;
       }
-
-      const taskWaitpoint = await prisma.taskRunWaitpoint.create({
-        data: {
-          taskRunId: runId,
-          waitpointId: waitpointId,
-          projectId: projectId,
-        },
-      });
 
       //if the state has changed, create a new snapshot
       if (newStatus !== snapshot.executionStatus) {
@@ -1641,12 +1636,14 @@ export class RunEngine {
       }
 
       if (failAfter) {
-        await this.worker.enqueue({
-          id: `finishWaitpoint.${waitpointId}`,
-          job: "finishWaitpoint",
-          payload: { waitpointId, error: "Waitpoint timed out" },
-          availableAt: failAfter,
-        });
+        for (const waitpointId of waitpointIds) {
+          await this.worker.enqueue({
+            id: `finishWaitpoint.${waitpointId}`,
+            job: "finishWaitpoint",
+            payload: { waitpointId, error: "Waitpoint timed out" },
+            availableAt: failAfter,
+          });
+        }
       }
 
       return snapshot;
