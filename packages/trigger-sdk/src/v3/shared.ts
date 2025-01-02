@@ -954,6 +954,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           };
         })
       ),
+      parentRunId: taskContext.ctx?.run.id,
     },
     {
       spanParentAsLink: true,
