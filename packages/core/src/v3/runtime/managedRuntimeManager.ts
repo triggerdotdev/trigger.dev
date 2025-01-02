@@ -68,8 +68,6 @@ export class ManagedRuntimeManager implements RuntimeManager {
     runs: string[];
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    console.log("waitForBatch", params);
-
     if (!params.runs.length) {
       return Promise.resolve({ id: params.id, items: [] });
     }
