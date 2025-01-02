@@ -617,6 +617,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
           };
         })
       ),
+      parentRunId: taskContext.ctx?.run.id,
     },
     {
       spanParentAsLink: true,
@@ -1204,6 +1205,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         parentAttempt: taskContext.ctx?.attempt.id,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
+        parentRunId: taskContext.ctx?.run.id,
       },
     },
     {
