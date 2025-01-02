@@ -204,11 +204,15 @@ export class BatchTriggerV3Service extends WithRunEngine {
 
           //block the parent with any existing children
           if (body.resumeParentOnCompletion && body.parentRunId) {
-            await this.#blockParentRun({
-              parentRunId: body.parentRunId,
-              childFriendlyIds: runs.flatMap((r) => (r.isCached ? [r.id] : [])),
-              environment,
-            });
+            const existingChildFriendlyIds = runs.flatMap((r) => (r.isCached ? [r.id] : []));
+
+            if (existingChildFriendlyIds.length > 0) {
+              await this.#blockParentRun({
+                parentRunId: body.parentRunId,
+                childFriendlyIds: existingChildFriendlyIds,
+                environment,
+              });
+            }
           }
 
           // Calculate how many new runs we need to create
@@ -885,8 +889,8 @@ export class BatchTriggerV3Service extends WithRunEngine {
   }) {
     const runsWithAssociatedWaitpoints = await this._prisma.taskRun.findMany({
       where: {
-        friendlyId: {
-          in: childFriendlyIds,
+        id: {
+          in: childFriendlyIds.map((r) => RunId.fromFriendlyId(r)),
         },
       },
       select: {
@@ -899,7 +903,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
     });
 
     await this._engine.blockRunWithWaitpoint({
-      runId: parentRunId,
+      runId: RunId.fromFriendlyId(parentRunId),
       waitpointId: runsWithAssociatedWaitpoints.flatMap((r) =>
         r.associatedWaitpoint ? [r.associatedWaitpoint.id] : []
       ),

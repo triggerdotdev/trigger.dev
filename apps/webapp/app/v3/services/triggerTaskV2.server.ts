@@ -163,7 +163,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       //todo we will pass in the `parentRun` and `resumeParentOnCompletion`
       const parentRun = body.options?.parentRunId
         ? await this._prisma.taskRun.findFirst({
-            where: { friendlyId: body.options.parentRunId },
+            where: { id: RunId.fromFriendlyId(body.options.parentRunId) },
           })
         : undefined;
 
@@ -298,7 +298,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     tags,
                     oneTimeUseToken: options.oneTimeUseToken,
                     parentTaskRunId: parentRun?.id,
-                    rootTaskRunId: parentRun?.rootTaskRunId ?? undefined,
+                    rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
                     batchId: body.options?.parentBatch ?? undefined,
                     resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
                     depth,

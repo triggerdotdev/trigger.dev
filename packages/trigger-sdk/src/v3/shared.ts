@@ -791,6 +791,8 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             })
           ),
           dependentAttempt: ctx.attempt.id,
+          parentRunId: ctx.run.id,
+          resumeParentOnCompletion: true,
         },
         {
           processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
@@ -1127,6 +1129,8 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             })
           ),
           dependentAttempt: ctx.attempt.id,
+          parentRunId: ctx.run.id,
+          resumeParentOnCompletion: true,
         },
         {
           processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
@@ -1234,6 +1238,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 ): Promise<BatchRunHandleFromTypes<TRunTypes>> {
   const apiClient = apiClientManager.clientOrThrow();
 
+  const ctx = taskContext.ctx;
+
   const response = await apiClient.batchTriggerV2(
     {
       items: await Promise.all(
@@ -1259,6 +1265,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              parentRunId: ctx?.run.id,
             },
           };
         })
@@ -1430,13 +1437,13 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
-                  resumeParentOnCompletion: true,
-                  parentRunId: ctx.run.id,
                 },
               };
             })
           ),
           dependentAttempt: ctx.attempt.id,
+          resumeParentOnCompletion: true,
+          parentRunId: ctx.run.id,
         },
         {
           processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
