@@ -2149,7 +2149,7 @@ model WorkerInstance {
 }
 
 enum WorkerInstanceGroupType {
-  MANAGED   @map("SHARED")
+  MANAGED
   UNMANAGED
 }
 
