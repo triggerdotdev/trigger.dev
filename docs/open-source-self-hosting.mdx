@@ -269,7 +269,45 @@ TRIGGER_IMAGE_TAG=v3.0.4
 
 ### Auth options
 
-By default, magic link auth is the only login option. If the `RESEND_API_KEY` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+By default, magic link auth is the only login option. If the `EMAIL_TRANSPORT` env var is not set, the magic links will be logged by the webapp container and not sent via email.
+
+Depending on your choice of mail provider/transport, you will want to configure a set of variables like one of the following:
+
+##### Resend:
+```bash
+EMAIL_TRANSPORT=resend
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+RESEND_API_KEY=<your_resend_api_key>
+```
+
+##### SMTP
+
+Note that setting `SMTP_SECURE=false` does _not_ mean the email is sent insecurely.
+This simply means that the connection is secured using the modern STARTTLS protocol command instead of implicit TLS.
+You should only set this to true when the SMTP server host directs you to do so (generally when using port 465)
+
+```bash
+EMAIL_TRANSPORT=smtp
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+SMTP_HOST=<your_smtp_server>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<your_smtp_username>
+SMTP_PASSWORD=<your_smtp_password>
+```
+
+##### AWS Simple Email Service
+
+Credentials are to be supplied as with any other program using the AWS SDK.
+In this scenario, you would likely either supply the additional environment variables `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` or, when running on AWS, use credentials supplied by the EC2 IMDS.
+
+```bash
+EMAIL_TRANSPORT=aws-ses
+FROM_EMAIL=
+REPLY_TO_EMAIL=
+```
 
 All email addresses can sign up and log in this way. If you would like to restrict this, you can use the `WHITELISTED_EMAILS` env var. For example:
 
