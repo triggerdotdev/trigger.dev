@@ -120,39 +120,37 @@ export default function Page() {
               <div className="grid max-h-full grid-rows-[1fr_auto]">
                 <Table containerClassName="border-t-0">
                   <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Deploy</TableHeaderCell>
-                      <TableHeaderCell>Env</TableHeaderCell>
-                      <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell
-                        tooltip={
-                          <div className="flex flex-col divide-y divide-grid-dimmed">
-                            {deploymentStatuses.map((status) => (
-                              <div
-                                key={status}
-                                className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
-                              >
-                                <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
-                                  <DeploymentStatus status={status} isBuilt={false} />
-                                </div>
-                                <Paragraph
-                                  variant="extra-small"
-                                  className="!text-wrap text-text-dimmed"
-                                >
-                                  {deploymentStatusDescription(status)}
-                                </Paragraph>
+                    <TableHeaderCell>Deploy</TableHeaderCell>
+                    <TableHeaderCell>Env</TableHeaderCell>
+                    <TableHeaderCell>Version</TableHeaderCell>
+                    <TableHeaderCell
+                      tooltip={
+                        <div className="flex flex-col divide-y divide-grid-dimmed">
+                          {deploymentStatuses.map((status) => (
+                            <div
+                              key={status}
+                              className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                            >
+                              <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                                <DeploymentStatus status={status} isBuilt={false} />
                               </div>
-                            ))}
-                          </div>
-                        }
-                      >
-                        Status
-                      </TableHeaderCell>
-                      <TableHeaderCell>Tasks</TableHeaderCell>
-                      <TableHeaderCell>Deployed at</TableHeaderCell>
-                      <TableHeaderCell>Deployed by</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                    </TableRow>
+                              <Paragraph
+                                variant="extra-small"
+                                className="!text-wrap text-text-dimmed"
+                              >
+                                {deploymentStatusDescription(status)}
+                              </Paragraph>
+                            </div>
+                          ))}
+                        </div>
+                      }
+                    >
+                      Status
+                    </TableHeaderCell>
+                    <TableHeaderCell>Tasks</TableHeaderCell>
+                    <TableHeaderCell>Deployed at</TableHeaderCell>
+                    <TableHeaderCell>Deployed by</TableHeaderCell>
+                    <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                   </TableHeader>
                   <TableBody>
                     {deployments.length > 0 ? (

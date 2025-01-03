@@ -1,6 +1,6 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
-import { Link } from "@remix-run/react";
-import { ReactNode, forwardRef, useState } from "react";
+import { useNavigate } from "@remix-run/react";
+import React, { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";
@@ -45,7 +45,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
           className
         )}
       >
-        {children}
+        <tr tabIndex={-1}>{children}</tr>
       </thead>
     );
   }
@@ -71,19 +71,80 @@ type TableRowProps = {
   children: ReactNode;
   disabled?: boolean;
   isSelected?: boolean;
+  to?: string;
+  onClick?: (event: React.KeyboardEvent | React.MouseEvent) => void;
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children }, ref) => {
+  ({ className, disabled, isSelected, children, to, onClick }, ref) => {
+    const navigate = useNavigate();
+
+    const handleNavigation = (event: React.KeyboardEvent | React.MouseEvent) => {
+      // Don't trigger navigation if clicking on interactive elements
+      if ((event.target as HTMLElement).closest('button, a, [role="button"], [role="menu"]')) {
+        return;
+      }
+
+      // For mouse events
+      if ("button" in event) {
+        // Handle middle mouse button click
+        if (event.button === 1) {
+          return; // Let default behavior handle middle click
+        }
+
+        // Handle CMD/CTRL + Click
+        if (event.metaKey || event.ctrlKey) {
+          if (to) {
+            window.open(to, "_blank");
+          }
+          return;
+        }
+      }
+
+      // For keyboard events
+      if ("key" in event) {
+        if (event.key === "Enter") {
+          if (event.metaKey || event.ctrlKey) {
+            if (to) {
+              window.open(to, "_blank");
+            }
+            return;
+          }
+        } else {
+          return; // Only handle Enter key for keyboard events
+        }
+      }
+
+      // Default navigation behavior
+      if (to) {
+        navigate(to);
+      } else if (onClick) {
+        onClick(event);
+      }
+    };
+
+    const handleKeyDown = (event: React.KeyboardEvent) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        handleNavigation(event);
+      }
+    };
+
     return (
       <tr
         ref={ref}
+        role="link"
+        tabIndex={disabled ? -1 : 0}
+        onClick={handleNavigation}
+        onKeyDown={handleKeyDown}
         className={cn(
-          "group/table-row relative w-full after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
-          disabled && "opacity-50",
+          "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus-visible:bg-background-bright",
+          disabled && "cursor-not-allowed opacity-50",
           isSelected && isSelectedStyle,
           className
         )}
+        aria-disabled={disabled}
       >
         {children}
       </tr>
@@ -125,6 +186,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
           className
         )}
         colSpan={colSpan}
+        tabIndex={-1}
       >
         {hiddenLabel ? (
           <span className="sr-only">{children}</span>
@@ -153,7 +215,7 @@ type TableCellProps = TableCellBasicProps & {
 
 const rowHoverStyles = {
   default:
-    "group-hover/table-row:bg-charcoal-800 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
+    "group-hover/table-row:bg-charcoal-800 group-focus-visible/table-row:bg-background-bright group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
   dimmed:
     "group-hover/table-row:bg-charcoal-850 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-800 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-800 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
   bright:
@@ -173,8 +235,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       alignment = "left",
       children,
       colSpan,
-      to,
-      onClick,
       hasAction = false,
       isSticky = false,
       rowHoverStyle = "default",
@@ -192,40 +252,23 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         break;
     }
 
-    const flexClasses = cn(
-      "flex w-full whitespace-nowrap px-3 py-3 text-xs text-text-dimmed",
-      alignment === "left"
-        ? "justify-start text-left"
-        : alignment === "center"
-        ? "justify-center text-center"
-        : "justify-end text-right"
-    );
-
     return (
       <td
         ref={ref}
         className={cn(
           "text-xs text-charcoal-400",
-          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
-          !to && !onClick && alignmentClassName,
+          hasAction ? "cursor-pointer" : "h-10 min-h-10 px-3 align-middle",
+          alignmentClassName,
+          actionClassName,
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
+          "child:pointer-events-none [&>[role=button]]:pointer-events-auto [&>[role=menu]]:pointer-events-auto [&>a]:pointer-events-auto [&>button]:pointer-events-auto",
           className
         )}
         colSpan={colSpan}
       >
-        {to ? (
-          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
-            {children}
-          </Link>
-        ) : onClick ? (
-          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
-            {children}
-          </button>
-        ) : (
-          <>{children}</>
-        )}
+        {children}
       </td>
     );
   }
@@ -297,10 +340,7 @@ export const TableCellMenu = forwardRef<
         <div className="relative h-full p-1">
           <div
             className={cn(
-              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright",
-              isSelected && isSelectedStyle,
-              isSelected &&
-                "group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/50"
+              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright"
             )}
           >
             {/* Hidden buttons that show on hover */}

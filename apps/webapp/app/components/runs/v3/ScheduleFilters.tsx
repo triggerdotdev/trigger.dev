@@ -93,7 +93,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
   }, []);
 
   return (
-    <div className="flex w-full flex-row">
+    <div className="flex w-full">
       <Input
         name="search"
         placeholder="Search schedule id, external id, deduplication id or CRON pattern"
@@ -103,7 +103,7 @@ export function ScheduleFilters({ possibleEnvironments, possibleTasks }: Schedul
         defaultValue={search}
         onChange={(e) => handleSearchChange(e.target.value)}
       />
-      <SelectGroup>
+      <SelectGroup className="ml-2">
         <Select name="type" value={type ?? "ALL"} onValueChange={handleTypeChange}>
           <SelectTrigger size="minimal" width="full">
             <SelectValue placeholder={"Select type"} className="ml-2 whitespace-nowrap p-0" />

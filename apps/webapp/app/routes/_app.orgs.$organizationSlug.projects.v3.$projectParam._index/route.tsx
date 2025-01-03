@@ -229,7 +229,7 @@ export default function Page() {
                 <div className="flex min-w-0 max-w-full flex-col">
                   {!userHasTasks && <UserHasNoTasks />}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center p-2">
+                    <div className="flex items-center gap-1 p-2">
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
@@ -250,16 +250,14 @@ export default function Page() {
                     </div>
                     <Table containerClassName="max-h-full pb-[2.5rem]">
                       <TableHeader>
-                        <TableRow>
-                          <TableHeaderCell>Task ID</TableHeaderCell>
-                          <TableHeaderCell>Task</TableHeaderCell>
-                          <TableHeaderCell>Running</TableHeaderCell>
-                          <TableHeaderCell>Queued</TableHeaderCell>
-                          <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                          <TableHeaderCell>Avg. duration</TableHeaderCell>
-                          <TableHeaderCell>Environments</TableHeaderCell>
-                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                        </TableRow>
+                        <TableHeaderCell>Task ID</TableHeaderCell>
+                        <TableHeaderCell>Task</TableHeaderCell>
+                        <TableHeaderCell>Running</TableHeaderCell>
+                        <TableHeaderCell>Queued</TableHeaderCell>
+                        <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                        <TableHeaderCell>Avg. duration</TableHeaderCell>
+                        <TableHeaderCell>Environments</TableHeaderCell>
+                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length > 0 ? (
@@ -286,8 +284,8 @@ export default function Page() {
                               : v3TestPath(organization, project);
 
                             return (
-                              <TableRow key={task.slug} className="group">
-                                <TableCell to={path}>
+                              <TableRow to={path} key={task.slug} className="group">
+                                <TableCell>
                                   <div className="flex items-center gap-2">
                                     <SimpleTooltip
                                       button={<TaskTriggerSourceIcon source={task.triggerSource} />}
@@ -296,13 +294,13 @@ export default function Page() {
                                     <span>{task.slug}</span>
                                   </div>
                                 </TableCell>
-                                <TableCell to={path} className="py-0" actionClassName="py-0">
+                                <TableCell>
                                   <TaskFunctionName
                                     functionName={task.exportName}
                                     variant="extra-extra-small"
                                   />
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell>
                                   <Suspense
                                     fallback={
                                       <>
@@ -318,7 +316,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={runningStats}>
                                       {(data) => {
@@ -328,7 +326,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0" actionClassName="py-0">
+                                <TableCell>
                                   <Suspense fallback={<TaskActivityBlankState />}>
                                     <TypedAwait resolve={activity}>
                                       {(data) => {
@@ -348,7 +346,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={durations}>
                                       {(data) => {
@@ -362,7 +360,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <EnvironmentLabels environments={task.environments} />
                                 </TableCell>
                                 <TableCellMenu

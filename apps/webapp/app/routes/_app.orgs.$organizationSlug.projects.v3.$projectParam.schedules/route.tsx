@@ -65,6 +65,7 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -210,9 +211,19 @@ export default function Page() {
                     </div>
                   </div>
 
-                  <div className="h-fit max-h-full overflow-x-auto">
+                  <div
+                    className={cn(
+                      "grid h-fit max-h-full min-h-full overflow-x-auto",
+                      totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
+                    )}
+                  >
                     <SchedulesTable schedules={schedules} hasFilters={hasFilters} />
-                    <div className="flex justify-end py-3">
+                    <div
+                      className={cn(
+                        "flex min-h-full",
+                        totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
+                      )}
+                    >
                       <PaginationControls currentPage={currentPage} totalPages={totalPages} />
                     </div>
                   </div>
@@ -374,64 +385,62 @@ function SchedulesTable({
   return (
     <Table>
       <TableHeader>
-        <TableRow>
-          <TableHeaderCell>ID</TableHeaderCell>
-          <TableHeaderCell>Task ID</TableHeaderCell>
-          <TableHeaderCell
-            tooltip={
-              <div className="flex max-w-xs flex-col gap-4 p-1">
-                <div>
-                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <div className={"flex items-center space-x-1"}>
-                      <ScheduleTypeIcon type={"DECLARATIVE"} className="text-sky-500" />
-                      <span className="font-medium">{scheduleTypeName("DECLARATIVE")}</span>
-                    </div>
+        <TableHeaderCell>ID</TableHeaderCell>
+        <TableHeaderCell>Task ID</TableHeaderCell>
+        <TableHeaderCell
+          tooltip={
+            <div className="flex max-w-xs flex-col gap-4 p-1">
+              <div>
+                <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                  <div className={"flex items-center space-x-1"}>
+                    <ScheduleTypeIcon type={"DECLARATIVE"} className="text-sky-500" />
+                    <span className="font-medium">{scheduleTypeName("DECLARATIVE")}</span>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                    Declarative schedules are defined in a{" "}
-                    <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
-                    <InlineCode variant="extra-small">cron</InlineCode>
-                    property. They sync when you update your{" "}
-                    <InlineCode variant="extra-small">schedules.task</InlineCode> definition and run
-                    the CLI dev or deploy commands.
-                  </Paragraph>
                 </div>
-                <div>
-                  <div className="mb-0.5 flex items-center gap-1.5 text-sm">
-                    <div className={"flex items-center space-x-1"}>
-                      <ScheduleTypeIcon type={"IMPERATIVE"} className="text-teal-500" />
-                      <span className="font-medium">{scheduleTypeName("IMPERATIVE")}</span>
-                    </div>
-                  </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                    Imperative schedules are defined here in the dashboard or by using the SDK
-                    functions to create or delete them. They can be created, updated, disabled, and
-                    deleted from the dashboard or using the SDK.
-                  </Paragraph>
-                </div>
-                <LinkButton
-                  variant="docs/small"
-                  to={docsPath("v3/tasks-scheduled")}
-                  LeadingIcon={BookOpenIcon}
-                  className="mb-1"
-                >
-                  View the docs
-                </LinkButton>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                  Declarative schedules are defined in a{" "}
+                  <InlineCode variant="extra-small">schedules.task</InlineCode> with the{" "}
+                  <InlineCode variant="extra-small">cron</InlineCode>
+                  property. They sync when you update your{" "}
+                  <InlineCode variant="extra-small">schedules.task</InlineCode> definition and run
+                  the CLI dev or deploy commands.
+                </Paragraph>
               </div>
-            }
-          >
-            Type
-          </TableHeaderCell>
-          <TableHeaderCell>External ID</TableHeaderCell>
-          <TableHeaderCell>CRON</TableHeaderCell>
-          <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
-          <TableHeaderCell>Timezone</TableHeaderCell>
-          <TableHeaderCell>Next run</TableHeaderCell>
-          <TableHeaderCell>Last run</TableHeaderCell>
-          <TableHeaderCell>Deduplication key</TableHeaderCell>
-          <TableHeaderCell>Environments</TableHeaderCell>
-          <TableHeaderCell>Enabled</TableHeaderCell>
-        </TableRow>
+              <div>
+                <div className="mb-0.5 flex items-center gap-1.5 text-sm">
+                  <div className={"flex items-center space-x-1"}>
+                    <ScheduleTypeIcon type={"IMPERATIVE"} className="text-teal-500" />
+                    <span className="font-medium">{scheduleTypeName("IMPERATIVE")}</span>
+                  </div>
+                </div>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                  Imperative schedules are defined here in the dashboard or by using the SDK
+                  functions to create or delete them. They can be created, updated, disabled, and
+                  deleted from the dashboard or using the SDK.
+                </Paragraph>
+              </div>
+              <LinkButton
+                variant="docs/small"
+                to={docsPath("v3/tasks-scheduled")}
+                LeadingIcon={BookOpenIcon}
+                className="mb-1"
+              >
+                View the docs
+              </LinkButton>
+            </div>
+          }
+        >
+          Type
+        </TableHeaderCell>
+        <TableHeaderCell>External ID</TableHeaderCell>
+        <TableHeaderCell>CRON</TableHeaderCell>
+        <TableHeaderCell hiddenLabel>CRON description</TableHeaderCell>
+        <TableHeaderCell>Timezone</TableHeaderCell>
+        <TableHeaderCell>Next run</TableHeaderCell>
+        <TableHeaderCell>Last run</TableHeaderCell>
+        <TableHeaderCell>Deduplication key</TableHeaderCell>
+        <TableHeaderCell>Environments</TableHeaderCell>
+        <TableHeaderCell>Enabled</TableHeaderCell>
       </TableHeader>
       <TableBody>
         {schedules.length === 0 ? (

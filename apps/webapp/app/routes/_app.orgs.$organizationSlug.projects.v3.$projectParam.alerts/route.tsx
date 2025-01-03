@@ -187,14 +187,12 @@ export default function Page() {
           </div>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Alert types</TableHeaderCell>
-                <TableHeaderCell>Environments</TableHeaderCell>
-                <TableHeaderCell>Channel</TableHeaderCell>
-                <TableHeaderCell>Enabled</TableHeaderCell>
-                <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
-              </TableRow>
+              <TableHeaderCell>Name</TableHeaderCell>
+              <TableHeaderCell>Alert types</TableHeaderCell>
+              <TableHeaderCell>Environments</TableHeaderCell>
+              <TableHeaderCell>Channel</TableHeaderCell>
+              <TableHeaderCell>Enabled</TableHeaderCell>
+              <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
             </TableHeader>
             <TableBody>
               {alertChannels.length > 0 ? (
@@ -460,6 +458,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           label={"Email"}
           description={alertChannel.properties.email}
           boxClassName="group-hover/table-row:bg-charcoal-800"
+          className="h-12"
         />
       );
     }

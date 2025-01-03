@@ -210,12 +210,10 @@ function TaskSelector({
       )}
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHeaderCell className="pl-3" colSpan={2}>
-              Task
-            </TableHeaderCell>
-            <TableHeaderCell className="px-2">File path</TableHeaderCell>
-          </TableRow>
+          <TableHeaderCell className="pl-3" colSpan={2}>
+            Task
+          </TableHeaderCell>
+          <TableHeaderCell className="px-2">File path</TableHeaderCell>
         </TableHeader>
         <TableBody>
           {filteredItems.length > 0 ? (

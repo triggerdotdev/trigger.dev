@@ -85,14 +85,12 @@ export default function Page() {
         <div className="flex flex-col">
           <Table containerClassName="border-t-0">
             <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Environment</TableHeaderCell>
-                <TableHeaderCell>Secret key</TableHeaderCell>
-                <TableHeaderCell>Key generated</TableHeaderCell>
-                <TableHeaderCell>Latest version</TableHeaderCell>
-                <TableHeaderCell>Env vars</TableHeaderCell>
-                <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
-              </TableRow>
+              <TableHeaderCell>Environment</TableHeaderCell>
+              <TableHeaderCell>Secret key</TableHeaderCell>
+              <TableHeaderCell>Key generated</TableHeaderCell>
+              <TableHeaderCell>Latest version</TableHeaderCell>
+              <TableHeaderCell>Env vars</TableHeaderCell>
+              <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
             </TableHeader>
             <TableBody>
               {environments.map((environment) => (
