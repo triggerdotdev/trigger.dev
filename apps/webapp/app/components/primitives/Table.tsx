@@ -79,20 +79,45 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, isSelected, children, to, onClick }, ref) => {
     const navigate = useNavigate();
 
-    const handleInteraction = (event: React.KeyboardEvent | React.MouseEvent) => {
-      if ((event.target as HTMLElement).closest('button, a, [role="button"]')) {
+    const handleNavigation = (event: React.KeyboardEvent | React.MouseEvent) => {
+      // Don't trigger navigation if clicking on interactive elements
+      if ((event.target as HTMLElement).closest('button, a, [role="button"], [role="menu"]')) {
         return;
       }
 
-      const firstCellWithTo = React.Children.toArray(children).find((child) => {
-        if (React.isValidElement(child) && child.type === TableCell) {
-          return child.props.to;
+      // For mouse events
+      if ("button" in event) {
+        // Handle middle mouse button click
+        if (event.button === 1) {
+          return; // Let default behavior handle middle click
         }
-        return false;
-      }) as React.ReactElement | undefined;
 
-      if (firstCellWithTo?.props.to) {
-        navigate(firstCellWithTo.props.to);
+        // Handle CMD/CTRL + Click
+        if (event.metaKey || event.ctrlKey) {
+          if (to) {
+            window.open(to, "_blank");
+          }
+          return;
+        }
+      }
+
+      // For keyboard events
+      if ("key" in event) {
+        if (event.key === "Enter") {
+          if (event.metaKey || event.ctrlKey) {
+            if (to) {
+              window.open(to, "_blank");
+            }
+            return;
+          }
+        } else {
+          return; // Only handle Enter key for keyboard events
+        }
+      }
+
+      // Default navigation behavior
+      if (to) {
+        navigate(to);
       } else if (onClick) {
         onClick(event);
       }
@@ -102,22 +127,24 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        handleInteraction(event);
+        handleNavigation(event);
       }
     };
 
     return (
       <tr
         ref={ref}
+        role="link"
         tabIndex={disabled ? -1 : 0}
-        onClick={handleInteraction}
+        onClick={handleNavigation}
         onKeyDown={handleKeyDown}
         className={cn(
           "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus-visible:bg-background-bright",
-          disabled && "opacity-50",
+          disabled && "cursor-not-allowed opacity-50",
           isSelected && isSelectedStyle,
           className
         )}
+        aria-disabled={disabled}
       >
         {children}
       </tr>
@@ -236,6 +263,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
+          "child:pointer-events-none [&>[role=button]]:pointer-events-auto [&>[role=menu]]:pointer-events-auto [&>a]:pointer-events-auto [&>button]:pointer-events-auto",
           className
         )}
         colSpan={colSpan}
