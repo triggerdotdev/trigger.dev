@@ -279,8 +279,8 @@ export default function Page() {
                               : v3TestPath(organization, project);
 
                             return (
-                              <TableRow key={task.slug} className="group">
-                                <TableCell to={path}>
+                              <TableRow to={path} key={task.slug} className="group">
+                                <TableCell>
                                   <div className="flex items-center gap-2">
                                     <SimpleTooltip
                                       button={<TaskTriggerSourceIcon source={task.triggerSource} />}
@@ -289,13 +289,13 @@ export default function Page() {
                                     <span>{task.slug}</span>
                                   </div>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <TaskFunctionName
                                     functionName={task.exportName}
                                     variant="extra-extra-small"
                                   />
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <Suspense
                                     fallback={
                                       <>
@@ -311,7 +311,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={runningStats}>
                                       {(data) => {
@@ -321,7 +321,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <Suspense fallback={<TaskActivityBlankState />}>
                                     <TypedAwait resolve={activity}>
                                       {(data) => {
@@ -341,7 +341,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={durations}>
                                       {(data) => {
@@ -355,7 +355,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell>
                                   <EnvironmentLabels environments={task.environments} />
                                 </TableCell>
                                 <TableCellMenu

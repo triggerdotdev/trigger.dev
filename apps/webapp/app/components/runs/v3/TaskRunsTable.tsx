@@ -283,7 +283,7 @@ export function TaskRunsTable({
           runs.map((run, index) => {
             const path = v3RunSpanPath(organization, project, run, { spanId: run.spanId });
             return (
-              <TableRow key={run.id}>
+              <TableRow to={path} key={run.id}>
                 {allowSelection && (
                   <TableCell className="pl-3 pr-0">
                     <Checkbox
@@ -298,33 +298,29 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell to={path} alignment="right">
-                  {formatNumber(run.number)}
-                </TableCell>
-                <TableCell to={path}>
+                <TableCell alignment="right">{formatNumber(run.number)}</TableCell>
+                <TableCell>
                   <EnvironmentLabel
                     environment={run.environment}
                     userName={run.environment.userName}
                   />
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell>
                   <span className="flex items-center gap-x-1">
                     {run.taskIdentifier}
                     {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
                   </span>
                 </TableCell>
-                <TableCell to={path}>{run.version ?? "–"}</TableCell>
-                <TableCell to={path}>
+                <TableCell>{run.version ?? "–"}</TableCell>
+                <TableCell>
                   <SimpleTooltip
                     content={descriptionForTaskRunStatus(run.status)}
                     disableHoverableContent
                     button={<TaskRunStatusCombo status={run.status} />}
                   />
                 </TableCell>
-                <TableCell to={path}>
-                  {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}
-                </TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="pr-0 tabular-nums">
+                <TableCell>{run.startedAt ? <DateTime date={run.startedAt} /> : "–"}</TableCell>
+                <TableCell className="w-[1%]" actionClassName="pr-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     {run.startedAt ? (
@@ -340,7 +336,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} className="w-[1%]" actionClassName="px-4 tabular-nums">
+                <TableCell className="w-[1%]" actionClassName="px-4 tabular-nums">
                   <div className="flex items-center gap-1">
                     <ClockIcon className="size-4 text-blue-500" />
                     {run.startedAt && run.finishedAt ? (
@@ -354,7 +350,7 @@ export function TaskRunsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell to={path} actionClassName="pl-0 tabular-nums">
+                <TableCell actionClassName="pl-0 tabular-nums">
                   <div className="flex items-center gap-1">
                     <CpuChipIcon className="size-4 text-success" />
                     {run.usageDurationMs > 0
@@ -365,21 +361,17 @@ export function TaskRunsTable({
                   </div>
                 </TableCell>
                 {showCompute && (
-                  <TableCell to={path} className="tabular-nums">
+                  <TableCell className="tabular-nums">
                     {run.costInCents > 0 ? formatCurrencyAccurate(run.costInCents / 100) : "–"}
                   </TableCell>
                 )}
-                <TableCell to={path}>
+                <TableCell>
                   {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
                 </TableCell>
-                <TableCell to={path}>
-                  {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
-                </TableCell>
-                <TableCell to={path}>
-                  {run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}
-                </TableCell>
-                <TableCell to={path}>{run.ttl ?? "–"}</TableCell>
-                <TableCell to={path} actionClassName="py-1">
+                <TableCell>{run.createdAt ? <DateTime date={run.createdAt} /> : "–"}</TableCell>
+                <TableCell>{run.delayUntil ? <DateTime date={run.delayUntil} /> : "–"}</TableCell>
+                <TableCell>{run.ttl ?? "–"}</TableCell>
+                <TableCell actionClassName="py-1">
                   <div className="flex gap-1">
                     {run.tags.map((tag) => <RunTag key={tag} tag={tag} />) || "–"}
                   </div>
