@@ -1,10 +1,7 @@
 {
   "$schema": "https://mintlify.com/schema.json",
   "name": "Trigger.dev",
-  "openapi": [
-    "/openapi.yml",
-    "/v3-openapi.yaml"
-  ],
+  "openapi": ["/openapi.yml", "/v3-openapi.yaml"],
   "api": {
     "playground": {
       "mode": "simple"
@@ -140,30 +137,20 @@
       "pages": [
         {
           "group": "Tasks",
-          "pages": [
-            "tasks/overview",
-            "tasks/schemaTask",
-            "tasks/scheduled"
-          ]
+          "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
         },
         "triggering",
         "runs",
         "apikeys",
         {
           "group": "Configuration",
-          "pages": [
-            "config/config-file",
-            "config/extensions/overview"
-          ]
+          "pages": ["config/config-file", "config/extensions/overview"]
         }
       ]
     },
     {
       "group": "Development",
-      "pages": [
-        "cli-dev",
-        "run-tests"
-      ]
+      "pages": ["cli-dev", "run-tests"]
     },
     {
       "group": "Deployment",
@@ -173,9 +160,7 @@
         "github-actions",
         {
           "group": "Deployment integrations",
-          "pages": [
-            "vercel-integration"
-          ]
+          "pages": ["vercel-integration"]
         }
       ]
     },
@@ -187,13 +172,7 @@
         "errors-retrying",
         {
           "group": "Wait",
-          "pages": [
-            "wait",
-            "wait-for",
-            "wait-until",
-            "wait-for-event",
-            "wait-for-request"
-          ]
+          "pages": ["wait", "wait-for", "wait-until", "wait-for-event", "wait-for-request"]
         },
         "queue-concurrency",
         "versioning",
@@ -238,10 +217,7 @@
         "management/overview",
         {
           "group": "Tasks API",
-          "pages": [
-            "management/tasks/trigger",
-            "management/tasks/batch-trigger"
-          ]
+          "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
         },
         {
           "group": "Runs API",
@@ -280,9 +256,7 @@
         },
         {
           "group": "Projects API",
-          "pages": [
-            "management/projects/runs"
-          ]
+          "pages": ["management/projects/runs"]
         }
       ]
     },
@@ -328,17 +302,11 @@
     },
     {
       "group": "Help",
-      "pages": [
-        "community",
-        "help-slack",
-        "help-email"
-      ]
+      "pages": ["community", "help-slack", "help-email"]
     },
     {
       "group": "",
-      "pages": [
-        "guides/introduction"
-      ]
+      "pages": ["guides/introduction"]
     },
     {
       "group": "Frameworks",
@@ -380,7 +348,7 @@
     },
     {
       "group": "Example projects",
-      "pages": ["guides/examples/fal-ai-image-to-cartoon", "guides/examples/fal-ai-realtime"]
+      "pages": ["guides/example-projects/realtime-fal-ai"]
     },
     {
       "group": "Example tasks",
@@ -408,15 +376,11 @@
     },
     {
       "group": "Dashboard",
-      "pages": [
-        "guides/dashboard/creating-a-project"
-      ]
+      "pages": ["guides/dashboard/creating-a-project"]
     },
     {
       "group": "Migrations",
-      "pages": [
-        "guides/use-cases/upgrading-from-v2"
-      ]
+      "pages": ["guides/use-cases/upgrading-from-v2"]
     }
   ],
   "footerSocials": {
