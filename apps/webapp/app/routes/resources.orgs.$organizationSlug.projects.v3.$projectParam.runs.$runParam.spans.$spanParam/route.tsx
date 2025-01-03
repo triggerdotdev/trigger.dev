@@ -44,7 +44,6 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -58,7 +57,6 @@ import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3BatchPath,
-  v3BatchRunsPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
@@ -427,12 +425,15 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={"task"}
+            name={run.isCached ? "task-cached" : "task"}
             spanName={run.taskIdentifier}
             className="h-4 min-h-4 w-4 min-w-4"
           />
           <Header2 className={cn("overflow-x-hidden text-blue-500")}>
-            <span className="truncate">{run.taskIdentifier}</span>
+            <span className="truncate">
+              {run.taskIdentifier}
+              {run.isCached ? " (cached)" : null}
+            </span>
           </Header2>
         </div>
         {runParam && closePanel && (
@@ -602,6 +603,20 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
+                <Property.Item>
+                  <Property.Label>Idempotency</Property.Label>
+                  <Property.Value>
+                    <div>{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                    <div>
+                      Expires:{" "}
+                      {run.idempotencyKeyExpiresAt ? (
+                        <DateTime date={run.idempotencyKeyExpiresAt} />
+                      ) : (
+                        "–"
+                      )}
+                    </div>
+                  </Property.Value>
+                </Property.Item>
                 <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
@@ -804,12 +819,17 @@ function RunBody({
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
-              to={v3RunSpanPath(organization, project, { friendlyId: run.friendlyId }, { spanId })}
+              to={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
               variant="minimal/medium"
               LeadingIcon={QueueListIcon}
               shortcut={{ key: "f" }}
             >
-              Focus on run
+              {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
         </div>

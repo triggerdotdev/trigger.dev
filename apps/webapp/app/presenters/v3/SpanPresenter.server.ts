@@ -2,6 +2,7 @@ import {
   MachinePresetName,
   parsePacket,
   prettyPrintPacket,
+  SemanticInternalAttributes,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -39,7 +40,22 @@ export class SpanPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const run = await this.getRun(spanId);
+    const parentRun = await this._prisma.taskRun.findFirst({
+      select: {
+        traceId: true,
+      },
+      where: {
+        friendlyId: runFriendlyId,
+      },
+    });
+
+    if (!parentRun) {
+      return;
+    }
+
+    const { traceId } = parentRun;
+
+    const run = await this.getRun(traceId, spanId);
     if (run) {
       return {
         type: "run" as const,
@@ -48,7 +64,7 @@ export class SpanPresenter extends BasePresenter {
     }
 
     //get the run
-    const span = await this.getSpan(runFriendlyId, spanId);
+    const span = await this.getSpan(traceId, spanId);
 
     if (!span) {
       throw new Error("Span not found");
@@ -60,10 +76,17 @@ export class SpanPresenter extends BasePresenter {
     };
   }
 
-  async getRun(spanId: string) {
+  async getRun(traceId: string, spanId: string) {
+    const span = await eventRepository.getSpan(spanId, traceId);
+
+    if (!span) {
+      return;
+    }
+
     const run = await this._replica.taskRun.findFirst({
       select: {
         id: true,
+        spanId: true,
         traceId: true,
         //metadata
         number: true,
@@ -99,6 +122,7 @@ export class SpanPresenter extends BasePresenter {
         logsDeletedAt: true,
         //idempotency
         idempotencyKey: true,
+        idempotencyKeyExpiresAt: true,
         //delayed
         delayUntil: true,
         //ttl
@@ -161,9 +185,13 @@ export class SpanPresenter extends BasePresenter {
           },
         },
       },
-      where: {
-        spanId,
-      },
+      where: span.originalRun
+        ? {
+            friendlyId: span.originalRun,
+          }
+        : {
+            spanId,
+          },
     });
 
     if (!run) {
@@ -238,8 +266,6 @@ export class SpanPresenter extends BasePresenter {
       }
     }
 
-    const span = await eventRepository.getSpan(spanId, run.traceId);
-
     const metadata = run.metadata
       ? await prettyPrintPacket(run.metadata, run.metadataType, {
           filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
@@ -307,6 +333,8 @@ export class SpanPresenter extends BasePresenter {
       sdkVersion: run.lockedToVersion?.sdkVersion,
       isTest: run.isTest,
       environmentId: run.runtimeEnvironment.id,
+      idempotencyKey: run.idempotencyKey,
+      idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
       schedule: run.schedule
         ? {
             friendlyId: run.schedule.friendlyId,
@@ -349,24 +377,13 @@ export class SpanPresenter extends BasePresenter {
       engine: run.engine,
       masterQueue: run.masterQueue,
       secondaryMasterQueue: run.secondaryMasterQueue,
+      spanId: run.spanId,
+      isCached: !!span.originalRun,
     };
   }
 
-  async getSpan(runFriendlyId: string, spanId: string) {
-    const run = await this._prisma.taskRun.findFirst({
-      select: {
-        traceId: true,
-      },
-      where: {
-        friendlyId: runFriendlyId,
-      },
-    });
-
-    if (!run) {
-      return;
-    }
-
-    const span = await eventRepository.getSpan(spanId, run.traceId);
+  async getSpan(traceId: string, spanId: string) {
+    const span = await eventRepository.getSpan(spanId, traceId);
 
     if (!span) {
       return;
