@@ -2,7 +2,7 @@ import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/datab
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
-import { makeFlags } from "~/v3/featureFlags.server";
+import { makeFlags, makeSetFlags } from "~/v3/featureFlags.server";
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";
@@ -37,6 +37,22 @@ export class WorkerGroupService extends WithRunEngine {
         name,
       },
     });
+
+    if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
+      const managedCount = await this._prisma.workerInstanceGroup.count({
+        where: {
+          type: WorkerInstanceGroupType.MANAGED,
+        },
+      });
+
+      if (managedCount === 1) {
+        const setFlag = makeSetFlags(this._prisma);
+        await setFlag({
+          key: "defaultWorkerInstanceGroupId",
+          value: workerGroup.id,
+        });
+      }
+    }
 
     return {
       workerGroup,
