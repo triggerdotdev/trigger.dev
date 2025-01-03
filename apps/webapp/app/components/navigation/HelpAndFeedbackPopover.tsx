@@ -19,7 +19,7 @@ import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverSideMenuTrigger } from "../primitives/Popover";
 import { StepNumber } from "../primitives/StepNumber";
 import { MenuCount, SideMenuItem } from "./SideMenuItem";
-
+import { Shortcuts } from "../Shortcuts";
 export function HelpAndFeedback() {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
@@ -84,6 +84,7 @@ export function HelpAndFeedback() {
               data-action="changelog"
               target="_blank"
             />
+            <Shortcuts />
           </div>
           <div className="flex flex-col gap-1 p-1">
             <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Need help?</Paragraph>

@@ -390,7 +390,7 @@ export function CustomDateRangeDropdown({
             <Button
               variant="secondary/small"
               shortcut={{
-                modifiers: ["meta"],
+                modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
               }}

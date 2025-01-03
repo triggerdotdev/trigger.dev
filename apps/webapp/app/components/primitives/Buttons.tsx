@@ -1,9 +1,10 @@
 import { Link, LinkProps, NavLink, NavLinkProps } from "@remix-run/react";
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, ReactNode, useImperativeHandle, useRef } from "react";
 import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 import { ShortcutKey } from "./ShortcutKey";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
 const sizes = {
   small: {
@@ -65,8 +66,7 @@ const theme = {
     icon: "text-text-bright",
   },
   minimal: {
-    textColor:
-      "text-text-dimmed group-hover/button:text-text-bright transition group-disabled/button:text-text-dimmed/80",
+    textColor: "text-text-dimmed group-disabled/button:text-text-dimmed transition",
     button:
       "bg-transparent group-hover/button:bg-tertiary disabled:opacity-50 group-disabled/button:bg-transparent group-disabled/button:pointer-events-none",
     shortcut:
@@ -175,6 +175,8 @@ export type ButtonContentPropsType = {
   shortcut?: ShortcutDefinition;
   variant: keyof typeof variant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
+  tooltip?: ReactNode;
+  iconSpacing?: string;
 };
 
 export function ButtonContent(props: ButtonContentPropsType) {
@@ -188,23 +190,34 @@ export function ButtonContent(props: ButtonContentPropsType) {
     fullWidth,
     textAlignLeft,
     className,
+    tooltip,
+    iconSpacing,
   } = props;
   const variation = allVariants.variant[props.variant];
 
-  // Based on the size prop, we'll use the corresponding variant classnames
   const btnClassName = cn(allVariants.$all, variation.button);
   const iconClassName = variation.icon;
   const iconSpacingClassName = variation.iconSpacing;
   const shortcutClassName = variation.shortcut;
   const textColorClassName = variation.textColor;
 
-  return (
+  const renderShortcutKey = () =>
+    shortcut && (
+      <ShortcutKey
+        className={cn(shortcutClassName)}
+        shortcut={shortcut}
+        variant={variation.shortcutVariant ?? "medium"}
+      />
+    );
+
+  const buttonContent = (
     <div className={cn("flex", fullWidth ? "" : "w-fit text-xxs", btnClassName, className)}>
       <div
         className={cn(
           textAlignLeft ? "text-left" : "justify-center",
           "flex w-full items-center",
-          iconSpacingClassName
+          iconSpacingClassName,
+          iconSpacing
         )}
       >
         {LeadingIcon &&
@@ -238,13 +251,10 @@ export function ButtonContent(props: ButtonContentPropsType) {
             <>{text}</>
           ))}
 
-        {shortcut && props.shortcutPosition === "before-trailing-icon" && (
-          <ShortcutKey
-            className={cn(shortcutClassName)}
-            shortcut={shortcut}
-            variant={variation.shortcutVariant ?? "medium"}
-          />
-        )}
+        {shortcut &&
+          !tooltip &&
+          props.shortcutPosition === "before-trailing-icon" &&
+          renderShortcutKey()}
 
         {TrailingIcon &&
           (typeof TrailingIcon === "string" ? (
@@ -269,16 +279,27 @@ export function ButtonContent(props: ButtonContentPropsType) {
           ))}
 
         {shortcut &&
-          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") && (
-            <ShortcutKey
-              className={cn(shortcutClassName)}
-              shortcut={shortcut}
-              variant={variation.shortcutVariant ?? "medium"}
-            />
-          )}
+          !tooltip &&
+          (!props.shortcutPosition || props.shortcutPosition === "after-trailing-icon") &&
+          renderShortcutKey()}
       </div>
     </div>
   );
+
+  if (tooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+          <TooltipContent className="text-dimmed flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs">
+            {tooltip} {shortcut && renderShortcutKey()}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return buttonContent;
 }
 
 type ButtonPropsType = Pick<

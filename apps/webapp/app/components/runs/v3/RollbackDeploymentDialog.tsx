@@ -48,7 +48,7 @@ export function RollbackDeploymentDialog({
             variant="primary/medium"
             LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
             disabled={isLoading}
-            shortcut={{ modifiers: ["meta"], key: "enter" }}
+            shortcut={{ modifiers: ["mod"], key: "enter" }}
           >
             {isLoading ? "Rolling back..." : "Roll back deployment"}
           </Button>

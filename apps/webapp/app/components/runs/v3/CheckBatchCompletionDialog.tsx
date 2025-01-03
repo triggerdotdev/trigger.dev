@@ -39,7 +39,7 @@ export function CheckBatchCompletionDialog({
                 variant="primary/medium"
                 LeadingIcon={isLoading ? "spinner-white" : undefined}
                 disabled={isLoading}
-                shortcut={{ modifiers: ["meta"], key: "enter" }}
+                shortcut={{ modifiers: ["mod"], key: "enter" }}
               >
                 {isLoading ? "Attempting resume..." : "Attempt resume"}
               </Button>

@@ -346,7 +346,7 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
               variant="danger/medium"
               LeadingIcon={isLoading ? "spinner-white" : StopCircleIcon}
               disabled={isLoading}
-              shortcut={{ modifiers: ["meta"], key: "enter" }}
+              shortcut={{ modifiers: ["mod"], key: "enter" }}
             >
               {isLoading ? "Canceling..." : `Cancel ${selectedItems.size} runs`}
             </Button>
@@ -403,7 +403,7 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
               variant="primary/medium"
               LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
               disabled={isLoading}
-              shortcut={{ modifiers: ["meta"], key: "enter" }}
+              shortcut={{ modifiers: ["mod"], key: "enter" }}
             >
               {isLoading ? "Replaying..." : `Replay ${selectedItems.size} runs`}
             </Button>

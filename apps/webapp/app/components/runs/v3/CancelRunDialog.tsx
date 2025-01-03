@@ -40,7 +40,7 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
                 variant="danger/medium"
                 LeadingIcon={isLoading ? "spinner-white" : NoSymbolIcon}
                 disabled={isLoading}
-                shortcut={{ modifiers: ["meta"], key: "enter" }}
+                shortcut={{ modifiers: ["mod"], key: "enter" }}
               >
                 {isLoading ? "Canceling..." : "Cancel run"}
               </Button>
