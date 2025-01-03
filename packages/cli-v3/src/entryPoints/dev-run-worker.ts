@@ -18,8 +18,8 @@ import {
   waitUntil,
   apiClientManager,
 } from "@trigger.dev/core/v3";
-import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import { DevRuntimeManager } from "@trigger.dev/core/v3/dev";
+import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
   ConsoleInterceptor,
   DevUsageManager,
@@ -40,9 +40,9 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
-import { VERSION } from "../version.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,

@@ -31,10 +31,14 @@
       "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
       "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
       "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
+      "@trigger.dev/worker": ["../../packages/worker/src/index"],
+      "@trigger.dev/worker/*": ["../../packages/worker/src/*"],
       "emails": ["../../internal-packages/emails/src/index"],
       "emails/*": ["../../internal-packages/emails/src/*"],
       "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
-      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"]
+      "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
+      "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
+      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"]
     },
     "noEmit": true
   }

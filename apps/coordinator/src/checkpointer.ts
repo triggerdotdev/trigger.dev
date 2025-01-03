@@ -193,7 +193,7 @@ export class Checkpointer {
     const start = performance.now();
     this.#logger.log(`checkpointAndPush() start`, { start, opts });
 
-    let interval: NodeJS.Timer | undefined;
+    let interval: NodeJS.Timeout | undefined;
 
     if (opts.shouldHeartbeat) {
       interval = setInterval(() => {

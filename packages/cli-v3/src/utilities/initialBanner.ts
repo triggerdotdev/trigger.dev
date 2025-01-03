@@ -4,9 +4,32 @@ import { VERSION } from "../version.js";
 import { chalkGrey, chalkRun, chalkTask, chalkWorker, logo } from "./cliOutput.js";
 import { logger } from "./logger.js";
 import { spinner } from "./windows.js";
+import {
+  DEFFAULT_PROFILE,
+  readAuthConfigCurrentProfileName,
+  readAuthConfigProfile,
+} from "./configFiles.js";
+import { CLOUD_API_URL } from "../consts.js";
+
+function getProfileInfo() {
+  const currentProfile = readAuthConfigCurrentProfileName();
+  const profile = readAuthConfigProfile(currentProfile);
+
+  if (currentProfile === DEFFAULT_PROFILE || !profile) {
+    return;
+  }
+
+  return `Profile: ${currentProfile}${
+    profile.apiUrl === CLOUD_API_URL ? "" : ` - ${profile.apiUrl}`
+  }`;
+}
 
 export async function printInitialBanner(performUpdateCheck = true) {
-  const text = `\n${logo()} ${chalkGrey(`(${VERSION})`)}\n`;
+  const profileInfo = getProfileInfo();
+
+  const text = `\n${logo()} ${chalkGrey(`(${VERSION})`)}${
+    profileInfo ? chalkGrey(` | ${profileInfo}`) : ""
+  }\n`;
 
   logger.info(text);
 
@@ -40,19 +63,23 @@ After installation, run Trigger.dev with \`npx trigger.dev\`.`
 }
 
 export async function printStandloneInitialBanner(performUpdateCheck = true) {
+  const profileInfo = getProfileInfo();
+  const profileText = profileInfo ? chalkGrey(` | ${profileInfo}`) : "";
+
+  let versionText = `\n${logo()} ${chalkGrey(`(${VERSION})`)}`;
+
   if (performUpdateCheck) {
     const maybeNewVersion = await updateCheck();
 
     // Log a slightly more noticeable message if this is a major bump
     if (maybeNewVersion !== undefined) {
-      logger.log(`\n${logo()} ${chalkGrey(`(${VERSION} -> ${chalk.green(maybeNewVersion)})`)}`);
+      versionText = `\n${logo()} ${chalkGrey(`(${VERSION} -> ${chalk.green(maybeNewVersion)})`)}`;
     } else {
-      logger.log(`\n${logo()} ${chalkGrey(`(${VERSION})`)}`);
+      versionText = `\n${logo()} ${chalkGrey(`(${VERSION})`)}`;
     }
-  } else {
-    logger.log(`\n${logo()} ${chalkGrey(`(${VERSION})`)}`);
   }
 
+  logger.log(`${versionText}${profileText}`);
   logger.log(`${chalkGrey("-".repeat(54))}`);
 }
 

@@ -12,7 +12,7 @@ import {
   shouldRetryError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
-import { $transaction, PrismaClientOrTransaction } from "~/db.server";
+import { PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
