@@ -8,6 +8,8 @@ import { MachineConfig, MachinePreset, TaskRunExecution } from "./common.js";
 export const EnvironmentType = z.enum(["PRODUCTION", "STAGING", "DEVELOPMENT", "PREVIEW"]);
 export type EnvironmentType = z.infer<typeof EnvironmentType>;
 
+export const RunEngineVersionSchema = z.enum(["V1", "V2"]);
+
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
   traceContext: z.record(z.unknown()),
@@ -25,6 +27,7 @@ export const ProdTaskRunExecution = TaskRunExecution.extend({
     id: z.string(),
     contentHash: z.string(),
     version: z.string(),
+    type: RunEngineVersionSchema.optional(),
   }),
   machine: MachinePreset.default({ name: "small-1x", cpu: 1, memory: 1, centsPerMs: 0 }),
 });

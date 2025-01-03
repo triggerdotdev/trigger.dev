@@ -52,24 +52,20 @@ export class WorkerGroupTokenService extends WithRunEngine {
   async findWorkerGroup({ token }: { token: string }) {
     const tokenHash = await this.hashToken(token);
 
-    const workerGroupToken = await this._prisma.workerGroupToken.findFirst({
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
-        workerGroup: {
-          isNot: null,
+        token: {
+          tokenHash,
         },
-        tokenHash,
-      },
-      include: {
-        workerGroup: true,
       },
     });
 
-    if (!workerGroupToken) {
-      logger.warn("[WorkerGroupTokenService] Token not found", { token });
-      return;
+    if (!workerGroup) {
+      logger.warn("[WorkerGroupTokenService] No matching worker group found", { token });
+      return null;
     }
 
-    return workerGroupToken.workerGroup;
+    return workerGroup;
   }
 
   async rotateToken({ workerGroupId }: { workerGroupId: string }) {

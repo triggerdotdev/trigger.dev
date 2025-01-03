@@ -459,7 +459,7 @@ model Project {
   workers      WorkerInstance[]
 
   defaultWorkerGroup   WorkerInstanceGroup? @relation("ProjectDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
-  defaultWorkerGroupId String?              @unique
+  defaultWorkerGroupId String?
 
   environments           RuntimeEnvironment[]
   endpoints              Endpoint[]
@@ -2149,7 +2149,7 @@ model WorkerInstance {
 }
 
 enum WorkerInstanceGroupType {
-  MANAGED   @map("SHARED")
+  MANAGED
   UNMANAGED
 }
 

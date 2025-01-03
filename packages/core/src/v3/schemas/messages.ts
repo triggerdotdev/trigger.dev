@@ -12,6 +12,7 @@ import {
   EnvironmentType,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  RunEngineVersionSchema,
   RuntimeWait,
   TaskRunExecutionLazyAttemptPayload,
   WaitReason,
@@ -103,6 +104,7 @@ export const ServerBackgroundWorker = z.object({
   id: z.string(),
   version: z.string(),
   contentHash: z.string(),
+  engine: RunEngineVersionSchema.optional(),
 });
 
 export type ServerBackgroundWorker = z.infer<typeof ServerBackgroundWorker>;

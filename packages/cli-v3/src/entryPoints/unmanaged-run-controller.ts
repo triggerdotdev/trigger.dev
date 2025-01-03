@@ -65,6 +65,7 @@ class UnmanagedRunController {
           id: "unmanaged",
           contentHash: env.TRIGGER_CONTENT_HASH,
           version: env.TRIGGER_DEPLOYMENT_VERSION,
+          engine: "V2",
         },
         payload: {
           execution,
