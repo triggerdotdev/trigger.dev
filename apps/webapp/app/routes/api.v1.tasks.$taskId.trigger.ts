@@ -96,6 +96,7 @@ const { action, loader } = createActionApiRoute(
       return json(
         {
           id: run.friendlyId,
+          isCached: run.isCached,
         },
         {
           headers: $responseHeaders,

@@ -41,7 +41,13 @@ export class TriggerTaskService extends WithRunEngine {
 
       switch (v) {
         case "V1": {
-          return await this.callV1(taskId, environment, body, options);
+          const run = await this.callV1(taskId, environment, body, options);
+          return run
+            ? {
+                ...run,
+                isCached: false,
+              }
+            : undefined;
         }
         case "V2": {
           return await this.callV2(taskId, environment, body, options);

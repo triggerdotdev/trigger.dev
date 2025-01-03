@@ -114,6 +114,7 @@ export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
 export const TriggerTaskResponse = z.object({
   id: z.string(),
+  isCached: z.boolean().optional(),
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;

@@ -103,7 +103,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             });
           }
 
-          return existingRun;
+          return { ...existingRun, isCached: true };
         }
       }
 
@@ -313,7 +313,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   this._prisma
                 );
 
-                return taskRun;
+                return { ...taskRun, isCached: false };
               },
               async (_, tx) => {
                 const counter = await tx.taskRunNumberCounter.findUnique({
