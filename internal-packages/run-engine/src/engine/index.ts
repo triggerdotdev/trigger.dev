@@ -1594,7 +1594,7 @@ export class RunEngine {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
       //block the run with the waitpoints, returning how many waitpoints are pending
-      const insert = await prisma.$queryRaw<{ pending_count: number }[]>`
+      const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
         WITH inserted AS (
           INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
           SELECT
@@ -1614,7 +1614,7 @@ export class RunEngine {
         JOIN "Waitpoint" w ON w.id = i."waitpointId"
         WHERE w.status = 'PENDING';`;
 
-      const pendingCount = insert.at(0)?.pending_count ?? 0;
+      const pendingCount = Number(insert.at(0)?.pending_count ?? 0);
 
       let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
       if (
