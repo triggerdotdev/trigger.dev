@@ -90,7 +90,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         } else {
           //We're using `andWait` so we need to block the parent run with a waitpoint
           if (
-            existingRun.associatedWaitpoint?.status === "PENDING" &&
+            existingRun.associatedWaitpoint &&
             body.options?.resumeParentOnCompletion &&
             body.options?.parentRunId
           ) {

@@ -1593,31 +1593,35 @@ export class RunEngine {
     return await this.runLock.lock([runId], 5000, async (signal) => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
+      //block the run with the waitpoints, returning how many waitpoints are pending
+      const insert = await prisma.$queryRaw<{ pending_count: number }[]>`
+        WITH inserted AS (
+          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
+          SELECT
+            gen_random_uuid(),
+            ${runId},
+            w.id,
+            ${projectId},
+            NOW(),
+            NOW()
+          FROM "Waitpoint" w
+          WHERE w.id IN (${Prisma.join(waitpointIds)})
+          ON CONFLICT DO NOTHING
+          RETURNING "waitpointId"
+        )
+        SELECT COUNT(*) as pending_count
+        FROM inserted i
+        JOIN "Waitpoint" w ON w.id = i."waitpointId"
+        WHERE w.status = 'PENDING';`;
+
+      const pendingCount = insert.at(0)?.pending_count ?? 0;
+
       let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
       if (
         snapshot.executionStatus === "EXECUTING" ||
         snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
       ) {
         newStatus = "EXECUTING_WITH_WAITPOINTS";
-      }
-
-      const insertedBlockers = await prisma.$executeRaw`
-        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
-        SELECT
-          gen_random_uuid(),
-          ${runId},
-          w.id,
-          ${projectId},
-          NOW(),
-          NOW()
-        FROM "Waitpoint" w
-        WHERE w.id IN (${Prisma.join(waitpointIds)})
-          AND w.status = 'PENDING'
-        ON CONFLICT DO NOTHING;`;
-
-      //if no runs were blocked we don't want to do anything more
-      if (insertedBlockers === 0) {
-        return snapshot;
       }
 
       //if the state has changed, create a new snapshot
@@ -1644,6 +1648,19 @@ export class RunEngine {
             availableAt: failAfter,
           });
         }
+      }
+
+      //no pending waitpoint, schedule unblocking the run
+      //debounce if we're rapidly adding waitpoints
+      if (pendingCount === 0) {
+        await this.worker.enqueue({
+          //this will debounce the call
+          id: `continueRunIfUnblocked:${runId}`,
+          job: "continueRunIfUnblocked",
+          payload: { runId: runId },
+          //100ms in the future
+          availableAt: new Date(Date.now() + 100),
+        });
       }
 
       return snapshot;

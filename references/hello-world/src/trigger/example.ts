@@ -60,7 +60,11 @@ export const batchParentTask = task({
 export const childTask = task({
   id: "child",
   run: async (
-    { message, failureChance = 0.3 }: { message?: string; failureChance?: number },
+    {
+      message,
+      failureChance = 0.3,
+      duration = 3_000,
+    }: { message?: string; failureChance?: number; duration?: number },
     { ctx }
   ) => {
     logger.info("Hello, world from the child", { message, failureChance });
@@ -69,7 +73,7 @@ export const childTask = task({
       throw new Error("Random error at start");
     }
 
-    await setTimeout(3_000);
+    await setTimeout(duration);
 
     if (Math.random() < failureChance) {
       throw new Error("Random error at end");
