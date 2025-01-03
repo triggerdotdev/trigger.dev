@@ -1,4 +1,4 @@
-import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
+import { Attributes, AttributeValue, Link, TraceFlags } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -603,6 +603,11 @@ export class EventRepository {
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
+      const originalRun = rehydrateAttribute<string>(
+        spanEvent.properties,
+        SemanticInternalAttributes.ORIGINAL_RUN_ID
+      );
+
       return {
         ...spanEvent,
         ...span.data,
@@ -612,6 +617,7 @@ export class EventRepository {
         events: spanEvents,
         show,
         links,
+        originalRun,
       };
     });
   }
@@ -1549,4 +1555,27 @@ function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | un
   }
 
   return;
+}
+
+function rehydrateAttribute<T extends AttributeValue>(
+  properties: Prisma.JsonValue,
+  key: string
+): T | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const value = properties[key];
+
+  if (!value) return;
+
+  return value as T;
 }

@@ -777,7 +777,7 @@ export type TriggerOptions = {
   maxDuration?: number;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
+export type TriggerAndWaitOptions = TriggerOptions;
 
 export type BatchTriggerOptions = {
   idempotencyKey?: IdempotencyKey | string | string[];
