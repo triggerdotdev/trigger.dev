@@ -9,7 +9,16 @@ description: "This example task generates an image from a prompt using Fal.ai an
 This video walks through the process of creating this task in a Next.js project.
 
 <div className="w-full h-full aspect-video mb-3">
-  <iframe width="100%" height="100%" src="https://www.youtube.com/embed/BWZqYfUaigg?si=XpqVUEIf1j4bsYZ4" title="Trigger.dev walkthrough" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen/>
+  <iframe
+    width="100%"
+    height="100%"
+    src="https://www.youtube.com/embed/BWZqYfUaigg?si=XpqVUEIf1j4bsYZ4"
+    title="Trigger.dev walkthrough"
+    frameborder="0"
+    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen
+  />
 </div>
 
 ## Prerequisites
@@ -20,7 +29,7 @@ This video walks through the process of creating this task in a Next.js project.
 
 ## Task code
 
-This task converts an image to a cartoon using fal AI, and uploads the result to Cloudflare R2.
+This task generates an image from a prompt using Fal.ai.
 
 ```ts trigger/fal-ai-image-from-prompt-realtime.ts
 import * as fal from "@fal-ai/serverless-client";
