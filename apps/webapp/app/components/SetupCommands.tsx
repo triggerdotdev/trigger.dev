@@ -1,3 +1,5 @@
+import { createContext, useContext, useState } from "react";
+import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { InlineCode } from "./code/InlineCode";
 import {
@@ -8,7 +10,31 @@ import {
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
 import { Paragraph } from "./primitives/Paragraph";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+
+type PackageManagerContextType = {
+  activePackageManager: string;
+  setActivePackageManager: (value: string) => void;
+};
+
+const PackageManagerContext = createContext<PackageManagerContextType | undefined>(undefined);
+
+export function PackageManagerProvider({ children }: { children: React.ReactNode }) {
+  const [activePackageManager, setActivePackageManager] = useState("npm");
+
+  return (
+    <PackageManagerContext.Provider value={{ activePackageManager, setActivePackageManager }}>
+      {children}
+    </PackageManagerContext.Provider>
+  );
+}
+
+function usePackageManager() {
+  const context = useContext(PackageManagerContext);
+  if (context === undefined) {
+    throw new Error("usePackageManager must be used within a PackageManagerProvider");
+  }
+  return context;
+}
 
 export function InitCommand({ appOrigin, apiKey }: { appOrigin: string; apiKey: string }) {
   return (
@@ -131,7 +157,6 @@ export function TriggerDevStep({ extra }: { extra?: string }) {
   );
 }
 
-// Trigger.dev version 3 setup commands
 const v3PackageTag = "latest";
 
 function getApiUrlArg() {
@@ -160,14 +185,19 @@ function getApiUrlArg() {
 export function InitCommandV3() {
   const project = useProject();
   const projectRef = project.ref;
-
   const apiUrlArg = getApiUrlArg();
 
   const initCommandParts = [`trigger.dev@${v3PackageTag}`, "init", `-p ${projectRef}`, apiUrlArg];
   const initCommand = initCommandParts.filter(Boolean).join(" ");
 
+  const { activePackageManager, setActivePackageManager } = usePackageManager();
+
   return (
-    <ClientTabs defaultValue="npm">
+    <ClientTabs
+      defaultValue="npm"
+      value={activePackageManager}
+      onValueChange={setActivePackageManager}
+    >
       <ClientTabsList>
         <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
         <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
@@ -202,8 +232,14 @@ export function InitCommandV3() {
 }
 
 export function TriggerDevStepV3() {
+  const { activePackageManager, setActivePackageManager } = usePackageManager();
+
   return (
-    <ClientTabs defaultValue="npm">
+    <ClientTabs
+      defaultValue="npm"
+      value={activePackageManager}
+      onValueChange={setActivePackageManager}
+    >
       <ClientTabsList>
         <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
         <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>
@@ -238,8 +274,14 @@ export function TriggerDevStepV3() {
 }
 
 export function TriggerLoginStepV3() {
+  const { activePackageManager, setActivePackageManager } = usePackageManager();
+
   return (
-    <ClientTabs defaultValue="npm">
+    <ClientTabs
+      defaultValue="npm"
+      value={activePackageManager}
+      onValueChange={setActivePackageManager}
+    >
       <ClientTabsList>
         <ClientTabsTrigger value={"npm"}>npm</ClientTabsTrigger>
         <ClientTabsTrigger value={"pnpm"}>pnpm</ClientTabsTrigger>

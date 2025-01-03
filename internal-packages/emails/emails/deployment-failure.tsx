@@ -54,7 +54,9 @@ export default function Email(props: z.infer<typeof AlertDeploymentFailureEmailS
       <Preview>{`[${organization}] Deployment ${version} [${environment}] failed: ${error.name}`}</Preview>
       <Body style={main}>
         <Container style={container}>
-          <Text style={h1}>{`An error occurred deploying ${version} in ${environment}`}</Text>
+          <Text
+            style={h1}
+          >{`An error occurred deploying ${version} in ${environment} in your ${organization} organization`}</Text>
           <Text style={paragraphLight}>
             {error.name} {error.message}
           </Text>
