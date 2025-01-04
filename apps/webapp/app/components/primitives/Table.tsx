@@ -166,7 +166,7 @@ const rowHoverStyles = {
 };
 
 const stickyStyles =
-  "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 w-[--sticky-width] [&:has(.group-hover\\/table-row\\:block)]:w-auto";
+  "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 [&:has(.group-hover\\/table-row\\:block)]:w-auto group-has-[[tabindex='0']:focus]:bg-background-bright";
 
 const isSelectedStyle = "bg-charcoal-750 group-hover:bg-charcoal-750";
 
@@ -212,7 +212,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         ref={ref}
         className={cn(
           "text-xs text-charcoal-400",
-          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
+          to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
@@ -311,7 +311,7 @@ export const TableCellMenu = forwardRef<
         <div className="relative h-full p-1">
           <div
             className={cn(
-              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright"
+              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]:bg-background-bright"
             )}
           >
             {/* Hidden buttons that show on hover */}
