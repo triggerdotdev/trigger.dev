@@ -80,9 +80,9 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
     return (
       <tr
         ref={ref}
-        tabIndex={disabled ? -1 : 0}
         className={cn(
-          "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus-visible:bg-background-bright",
+          "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "has-[[tabindex='0']:focus]:bg-background-bright",
           disabled && "opacity-50",
           isSelected && isSelectedStyle,
           className
@@ -153,6 +153,7 @@ type TableCellProps = TableCellBasicProps & {
   actionClassName?: string;
   rowHoverStyle?: keyof typeof rowHoverStyles;
   isSelected?: boolean;
+  isTabbableCell?: boolean;
 };
 
 const rowHoverStyles = {
@@ -183,6 +184,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       rowHoverStyle = "default",
       isSelected,
+      isTabbableCell = false,
     },
     ref
   ) => {
@@ -220,11 +222,19 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         colSpan={colSpan}
       >
         {to ? (
-          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
+          <Link
+            to={to}
+            className={cn("focus:outline-none", flexClasses, actionClassName)}
+            tabIndex={isTabbableCell ? 0 : -1}
+          >
             {children}
           </Link>
         ) : onClick ? (
-          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
+          <button
+            onClick={onClick}
+            className={cn("focus:outline-none", flexClasses, actionClassName)}
+            tabIndex={isTabbableCell ? 0 : -1}
+          >
             {children}
           </button>
         ) : (
