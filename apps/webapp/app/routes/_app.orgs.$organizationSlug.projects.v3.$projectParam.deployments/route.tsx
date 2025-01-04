@@ -168,7 +168,7 @@ export default function Page() {
                         const isSelected = deploymentParam === deployment.shortCode;
                         return (
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
-                            <TableCell to={path} isSelected={isSelected}>
+                            <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
                                 <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (

@@ -298,7 +298,7 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell to={path} alignment="right">
+                <TableCell to={path} alignment="right" isTabbableCell>
                   {formatNumber(run.number)}
                 </TableCell>
                 <TableCell to={path}>

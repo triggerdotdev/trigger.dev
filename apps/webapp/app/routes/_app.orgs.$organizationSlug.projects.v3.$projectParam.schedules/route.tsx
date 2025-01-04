@@ -452,7 +452,7 @@ function SchedulesTable({
             const cellClass = schedule.active ? "" : "opacity-50";
             return (
               <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} isTabbableCell className={cellClass}>
                   {schedule.friendlyId}
                 </TableCell>
                 <TableCell to={path} className={cellClass}>

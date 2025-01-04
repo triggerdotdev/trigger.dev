@@ -280,7 +280,7 @@ export default function Page() {
 
                             return (
                               <TableRow key={task.slug} className="group">
-                                <TableCell to={path}>
+                                <TableCell to={path} isTabbableCell>
                                   <div className="flex items-center gap-2">
                                     <SimpleTooltip
                                       button={<TaskTriggerSourceIcon source={task.triggerSource} />}
