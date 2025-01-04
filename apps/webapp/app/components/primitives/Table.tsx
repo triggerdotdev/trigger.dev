@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
-import { useNavigate } from "@remix-run/react";
+import { Link, useNavigate } from "@remix-run/react";
 import React, { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
@@ -76,42 +76,11 @@ type TableRowProps = {
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
-  ({ className, disabled, isSelected, children, to, onClick }, ref) => {
-    const navigate = useNavigate();
-
-    const handleInteraction = (event: React.KeyboardEvent | React.MouseEvent) => {
-      if ((event.target as HTMLElement).closest('button, a, [role="button"]')) {
-        return;
-      }
-
-      const firstCellWithTo = React.Children.toArray(children).find((child) => {
-        if (React.isValidElement(child) && child.type === TableCell) {
-          return child.props.to;
-        }
-        return false;
-      }) as React.ReactElement | undefined;
-
-      if (firstCellWithTo?.props.to) {
-        navigate(firstCellWithTo.props.to);
-      } else if (onClick) {
-        onClick(event);
-      }
-    };
-
-    const handleKeyDown = (event: React.KeyboardEvent) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        handleInteraction(event);
-      }
-    };
-
+  ({ className, disabled, isSelected, children }, ref) => {
     return (
       <tr
         ref={ref}
         tabIndex={disabled ? -1 : 0}
-        onClick={handleInteraction}
-        onKeyDown={handleKeyDown}
         className={cn(
           "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed focus-visible:bg-background-bright",
           disabled && "opacity-50",
@@ -208,6 +177,8 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       alignment = "left",
       children,
       colSpan,
+      to,
+      onClick,
       hasAction = false,
       isSticky = false,
       rowHoverStyle = "default",
@@ -225,14 +196,22 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         break;
     }
 
+    const flexClasses = cn(
+      "flex w-full whitespace-nowrap px-3 py-3 items-center text-xs text-text-dimmed",
+      alignment === "left"
+        ? "justify-start text-left"
+        : alignment === "center"
+        ? "justify-center text-center"
+        : "justify-end text-right"
+    );
+
     return (
       <td
         ref={ref}
         className={cn(
           "text-xs text-charcoal-400",
-          hasAction ? "cursor-pointer" : "h-10 min-h-10 px-3 align-middle",
-          alignmentClassName,
-          actionClassName,
+          to || onClick || hasAction ? "cursor-pointer" : "px-3 py-3 align-middle",
+          !to && !onClick && alignmentClassName,
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
@@ -240,7 +219,17 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         )}
         colSpan={colSpan}
       >
-        {children}
+        {to ? (
+          <Link to={to} className={cn("focus-custom", flexClasses, actionClassName)}>
+            {children}
+          </Link>
+        ) : onClick ? (
+          <button onClick={onClick} className={cn("focus-custom", flexClasses, actionClassName)}>
+            {children}
+          </button>
+        ) : (
+          <>{children}</>
+        )}
       </td>
     );
   }
