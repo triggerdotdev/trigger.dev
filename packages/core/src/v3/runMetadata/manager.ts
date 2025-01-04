@@ -1,20 +1,26 @@
-import { JSONHeroPath } from "@jsonhero/path";
 import { dequal } from "dequal/lite";
 import { DeserializedJson } from "../../schemas/json.js";
-import { ApiRequestOptions } from "../zodfetch.js";
-import { RunMetadataManager } from "./types.js";
-import { MetadataStream } from "./metadataStream.js";
 import { ApiClient } from "../apiClient/index.js";
+import { AsyncIterableStream } from "../apiClient/stream.js";
+import { FlushedRunMetadata, RunMetadataChangeOperation } from "../schemas/common.js";
+import { ApiRequestOptions } from "../zodfetch.js";
+import { MetadataStream } from "./metadataStream.js";
+import { applyMetadataOperations } from "./operations.js";
+import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
-const MAXIMUM_ACTIVE_STREAMS = 2;
-const MAXIMUM_TOTAL_STREAMS = 5;
+const MAXIMUM_ACTIVE_STREAMS = 5;
+const MAXIMUM_TOTAL_STREAMS = 10;
 
 export class StandardMetadataManager implements RunMetadataManager {
   private flushTimeoutId: NodeJS.Timeout | null = null;
-  private hasChanges: boolean = false;
+  private isFlushing: boolean = false;
   private store: Record<string, DeserializedJson> | undefined;
   // Add a Map to track active streams
   private activeStreams = new Map<string, MetadataStream<any>>();
+
+  private queuedOperations: Set<RunMetadataChangeOperation> = new Set();
+  private queuedParentOperations: Set<RunMetadataChangeOperation> = new Set();
+  private queuedRootOperations: Set<RunMetadataChangeOperation> = new Set();
 
   public runId: string | undefined;
 
@@ -23,6 +29,74 @@ export class StandardMetadataManager implements RunMetadataManager {
     private streamsBaseUrl: string,
     private streamsVersion: "v1" | "v2" = "v1"
   ) {}
+
+  get parent(): RunMetadataUpdater {
+    return {
+      set: (key, value) => {
+        this.queuedParentOperations.add({ type: "set", key, value });
+        return this.parent;
+      },
+      del: (key) => {
+        this.queuedParentOperations.add({ type: "delete", key });
+        return this.parent;
+      },
+      append: (key, value) => {
+        this.queuedParentOperations.add({ type: "append", key, value });
+        return this.parent;
+      },
+      remove: (key, value) => {
+        this.queuedParentOperations.add({ type: "remove", key, value });
+        return this.parent;
+      },
+      increment: (key, value) => {
+        this.queuedParentOperations.add({ type: "increment", key, value });
+        return this.parent;
+      },
+      decrement: (key, value) => {
+        this.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        return this.parent;
+      },
+      update: (value) => {
+        this.queuedParentOperations.add({ type: "update", value });
+        return this.parent;
+      },
+      stream: (key, value, signal) => this.doStream(key, value, "parent", this.parent, signal),
+    };
+  }
+
+  get root(): RunMetadataUpdater {
+    return {
+      set: (key, value) => {
+        this.queuedRootOperations.add({ type: "set", key, value });
+        return this.root;
+      },
+      del: (key) => {
+        this.queuedRootOperations.add({ type: "delete", key });
+        return this.root;
+      },
+      append: (key, value) => {
+        this.queuedRootOperations.add({ type: "append", key, value });
+        return this.root;
+      },
+      remove: (key, value) => {
+        this.queuedRootOperations.add({ type: "remove", key, value });
+        return this.root;
+      },
+      increment: (key, value) => {
+        this.queuedRootOperations.add({ type: "increment", key, value });
+        return this.root;
+      },
+      decrement: (key, value) => {
+        this.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        return this.root;
+      },
+      update: (value) => {
+        this.queuedRootOperations.add({ type: "update", value });
+        return this.root;
+      },
+      stream: (key, value, signal) => this.doStream(key, value, "root", this.root, signal),
+    };
+  }
 
   public enterWithMetadata(metadata: Record<string, DeserializedJson>): void {
     this.store = metadata ?? {};
@@ -36,173 +110,110 @@ export class StandardMetadataManager implements RunMetadataManager {
     return this.store?.[key];
   }
 
-  public setKey(key: string, value: DeserializedJson) {
-    if (!this.runId) {
+  private enqueueOperation(operation: RunMetadataChangeOperation) {
+    const applyResults = applyMetadataOperations(this.store ?? {}, operation);
+
+    if (applyResults.unappliedOperations.length > 0) {
       return;
     }
 
-    let nextStore: Record<string, DeserializedJson> | undefined = this.store
-      ? structuredClone(this.store)
-      : undefined;
-
-    if (key.startsWith("$.")) {
-      const path = new JSONHeroPath(key);
-      path.set(nextStore, value);
-    } else {
-      nextStore = {
-        ...(nextStore ?? {}),
-        [key]: value,
-      };
-    }
-
-    if (!nextStore) {
+    if (dequal(this.store, applyResults.newMetadata)) {
       return;
     }
 
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    this.queuedOperations.add(operation);
+    this.store = applyResults.newMetadata as Record<string, DeserializedJson>;
   }
 
-  public deleteKey(key: string) {
+  public set(key: string, value: DeserializedJson) {
     if (!this.runId) {
-      return;
+      return this;
     }
 
-    const nextStore = { ...(this.store ?? {}) };
-    delete nextStore[key];
+    this.enqueueOperation({ type: "set", key, value });
 
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    return this;
   }
 
-  public appendKey(key: string, value: DeserializedJson) {
+  public del(key: string) {
     if (!this.runId) {
-      return;
+      return this;
     }
 
-    let nextStore: Record<string, DeserializedJson> | undefined = this.store
-      ? structuredClone(this.store)
-      : {};
+    this.enqueueOperation({ type: "delete", key });
 
-    if (key.startsWith("$.")) {
-      const path = new JSONHeroPath(key);
-      const currentValue = path.first(nextStore);
-
-      if (currentValue === undefined) {
-        // Initialize as array with single item
-        path.set(nextStore, [value]);
-      } else if (Array.isArray(currentValue)) {
-        // Append to existing array
-        path.set(nextStore, [...currentValue, value]);
-      } else {
-        // Convert to array if not already
-        path.set(nextStore, [currentValue, value]);
-      }
-    } else {
-      const currentValue = nextStore[key];
-
-      if (currentValue === undefined) {
-        // Initialize as array with single item
-        nextStore[key] = [value];
-      } else if (Array.isArray(currentValue)) {
-        // Append to existing array
-        nextStore[key] = [...currentValue, value];
-      } else {
-        // Convert to array if not already
-        nextStore[key] = [currentValue, value];
-      }
-    }
-
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    return this;
   }
 
-  public removeFromKey(key: string, value: DeserializedJson) {
+  public append(key: string, value: DeserializedJson) {
     if (!this.runId) {
-      return;
+      return this;
     }
 
-    let nextStore: Record<string, DeserializedJson> | undefined = this.store
-      ? structuredClone(this.store)
-      : {};
+    this.enqueueOperation({ type: "append", key, value });
 
-    if (key.startsWith("$.")) {
-      const path = new JSONHeroPath(key);
-      const currentValue = path.first(nextStore);
-
-      if (Array.isArray(currentValue)) {
-        // Remove the value from array using deep equality check
-        const newArray = currentValue.filter((item) => !dequal(item, value));
-        path.set(nextStore, newArray);
-      }
-    } else {
-      const currentValue = nextStore[key];
-
-      if (Array.isArray(currentValue)) {
-        // Remove the value from array using deep equality check
-        nextStore[key] = currentValue.filter((item) => !dequal(item, value));
-      }
-    }
-
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-    }
-
-    this.store = nextStore;
+    return this;
   }
 
-  public incrementKey(key: string, increment: number = 1) {
+  public remove(key: string, value: DeserializedJson) {
     if (!this.runId) {
-      return;
+      return this;
     }
 
-    let nextStore = this.store ? structuredClone(this.store) : {};
-    let currentValue = key.startsWith("$.")
-      ? new JSONHeroPath(key).first(nextStore)
-      : nextStore[key];
+    this.enqueueOperation({ type: "remove", key, value });
 
-    const newValue = (typeof currentValue === "number" ? currentValue : 0) + increment;
-
-    if (key.startsWith("$.")) {
-      new JSONHeroPath(key).set(nextStore, newValue);
-    } else {
-      nextStore[key] = newValue;
-    }
-
-    if (!dequal(this.store, nextStore)) {
-      this.hasChanges = true;
-      this.store = nextStore;
-    }
+    return this;
   }
 
-  public decrementKey(key: string, decrement: number = 1) {
-    this.incrementKey(key, -decrement);
+  public increment(key: string, increment: number = 1) {
+    if (!this.runId) {
+      return this;
+    }
+
+    this.enqueueOperation({ type: "increment", key, value: increment });
+
+    return this;
   }
 
-  public update(metadata: Record<string, DeserializedJson>): void {
+  public decrement(key: string, decrement: number = 1) {
+    return this.increment(key, -decrement);
+  }
+
+  public update(metadata: Record<string, DeserializedJson>) {
     if (!this.runId) {
-      return;
+      return this;
     }
 
-    if (!dequal(this.store, metadata)) {
-      this.hasChanges = true;
-    }
+    this.enqueueOperation({ type: "update", value: metadata });
 
-    this.store = metadata;
+    return this;
   }
 
   public async stream<T>(
     key: string,
     value: AsyncIterable<T> | ReadableStream<T>,
+    signal?: AbortSignal
+  ): Promise<AsyncIterable<T>> {
+    return this.doStream(key, value, "self", this, signal);
+  }
+
+  public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
+    if (!this.runId) {
+      throw new Error("Run ID is required to fetch metadata streams.");
+    }
+
+    const baseUrl = this.getKey("$$streamsBaseUrl");
+
+    const $baseUrl = typeof baseUrl === "string" ? baseUrl : this.streamsBaseUrl;
+
+    return this.apiClient.fetchStream<T>(this.runId, key, { baseUrl: $baseUrl, signal });
+  }
+
+  private async doStream<T>(
+    key: string,
+    value: AsyncIterable<T> | ReadableStream<T>,
+    target: "self" | "parent" | "root",
+    updater: RunMetadataUpdater = this,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
     const $value = value as AsyncIterable<T>;
@@ -238,6 +249,7 @@ export class StandardMetadataManager implements RunMetadataManager {
         headers: this.apiClient.getHeaders(),
         signal,
         version: this.streamsVersion,
+        target,
       });
 
       this.activeStreams.set(key, streamInstance);
@@ -246,16 +258,17 @@ export class StandardMetadataManager implements RunMetadataManager {
       streamInstance.wait().finally(() => this.activeStreams.delete(key));
 
       // Add the key to the special stream metadata object
-      this.appendKey(`$$streams`, key);
-      this.setKey("$$streamsVersion", this.streamsVersion);
-      this.setKey("$$streamsBaseUrl", this.streamsBaseUrl);
+      updater
+        .append(`$$streams`, key)
+        .set("$$streamsVersion", this.streamsVersion)
+        .set("$$streamsBaseUrl", this.streamsBaseUrl);
 
       await this.flush();
 
       return streamInstance;
     } catch (error) {
       // Clean up metadata key if stream creation fails
-      this.removeFromKey(`$$streams`, key);
+      updater.remove(`$$streams`, key);
       throw error;
     }
   }
@@ -289,36 +302,72 @@ export class StandardMetadataManager implements RunMetadataManager {
     }
   }
 
+  public async refresh(requestOptions?: ApiRequestOptions): Promise<void> {
+    if (!this.runId) {
+      return;
+    }
+
+    try {
+      const metadata = await this.apiClient.getRunMetadata(this.runId, requestOptions);
+      this.store = metadata.metadata;
+    } catch (error) {
+      console.error("Failed to refresh metadata", error);
+      throw error;
+    }
+  }
+
   public async flush(requestOptions?: ApiRequestOptions): Promise<void> {
     if (!this.runId) {
       return;
     }
 
-    if (!this.store) {
+    if (!this.#needsFlush()) {
       return;
     }
 
-    if (!this.hasChanges) {
+    if (this.isFlushing) {
       return;
     }
+
+    this.isFlushing = true;
+
+    const operations = Array.from(this.queuedOperations);
+    this.queuedOperations.clear();
+
+    const parentOperations = Array.from(this.queuedParentOperations);
+    this.queuedParentOperations.clear();
+
+    const rootOperations = Array.from(this.queuedRootOperations);
+    this.queuedRootOperations.clear();
 
     try {
-      this.hasChanges = false;
-      await this.apiClient.updateRunMetadata(this.runId, { metadata: this.store }, requestOptions);
+      const response = await this.apiClient.updateRunMetadata(
+        this.runId,
+        { operations, parentOperations, rootOperations },
+        requestOptions
+      );
+
+      this.store = response.metadata;
     } catch (error) {
-      this.hasChanges = true;
-      throw error;
+      console.error("Failed to flush metadata", error);
+    } finally {
+      this.isFlushing = false;
     }
   }
 
   public startPeriodicFlush(intervalMs: number = 1000) {
     const periodicFlush = async (intervalMs: number) => {
+      if (this.isFlushing) {
+        return;
+      }
+
       try {
         await this.flush();
       } catch (error) {
         console.error("Failed to flush metadata", error);
         throw error;
       } finally {
+        this.isFlushing = false;
         scheduleNext();
       }
     };
@@ -335,5 +384,28 @@ export class StandardMetadataManager implements RunMetadataManager {
       clearTimeout(this.flushTimeoutId);
       this.flushTimeoutId = null;
     }
+  }
+
+  stopAndReturnLastFlush(): FlushedRunMetadata | undefined {
+    this.stopPeriodicFlush();
+    this.isFlushing = true;
+
+    if (!this.#needsFlush()) {
+      return;
+    }
+
+    return {
+      operations: Array.from(this.queuedOperations),
+      parentOperations: Array.from(this.queuedParentOperations),
+      rootOperations: Array.from(this.queuedRootOperations),
+    };
+  }
+
+  #needsFlush(): boolean {
+    return (
+      this.queuedOperations.size > 0 ||
+      this.queuedParentOperations.size > 0 ||
+      this.queuedRootOperations.size > 0
+    );
   }
 }
