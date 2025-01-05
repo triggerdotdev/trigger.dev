@@ -1,5 +1,5 @@
-import { ArrowRightIcon } from "@heroicons/react/24/solid";
-import { Await } from "@remix-run/react";
+import { InformationCircleIcon } from "@heroicons/react/20/solid";
+import { Await, MetaFunction } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense } from "react";
@@ -14,7 +14,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "~/components/primitives/Chart";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -35,8 +36,14 @@ import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { InformationCircleIcon } from "@heroicons/react/20/solid";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Usage | Trigger.dev`,
+    },
+  ];
+};
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);

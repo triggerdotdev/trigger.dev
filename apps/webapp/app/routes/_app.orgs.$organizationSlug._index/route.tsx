@@ -1,20 +1,21 @@
-import { Link } from "@remix-run/react";
-import simplur from "simplur";
+import { Link, MetaFunction } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
-import {
-  PageAccessories,
-  NavBar,
-  PageInfoGroup,
-  PageInfoRow,
-  PageTitle,
-} from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { newProjectPath, projectPath } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: "Projects | Trigger.dev",
+    },
+  ];
+};
 
 export default function Page() {
   const organization = useOrganization();

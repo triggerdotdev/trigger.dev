@@ -1,6 +1,6 @@
 import { ClockIcon, LockOpenIcon, PlusIcon, RectangleGroupIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { Outlet, useLocation, useParams } from "@remix-run/react";
+import { MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
@@ -65,6 +65,14 @@ import {
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Schedules | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

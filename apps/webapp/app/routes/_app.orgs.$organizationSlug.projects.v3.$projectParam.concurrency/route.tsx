@@ -3,7 +3,8 @@ import {
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/20/solid";
-import { Await } from "@remix-run/react";
+import { LockOpenIcon } from "@heroicons/react/24/solid";
+import { Await, MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -12,8 +13,8 @@ import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -31,8 +32,14 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { docsPath, ProjectParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { LockOpenIcon } from "@heroicons/react/24/solid";
-import { Paragraph } from "~/components/primitives/Paragraph";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Concurrency limits | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
