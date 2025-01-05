@@ -18,7 +18,9 @@ export class WorkerGroupService extends WithRunEngine {
     name?: string;
     description?: string;
   }) {
-    name = name ?? (await this.generateWorkerName({ projectId }));
+    if (!name) {
+      name = await this.generateWorkerName({ projectId });
+    }
 
     const tokenService = new WorkerGroupTokenService({
       prisma: this._prisma,
