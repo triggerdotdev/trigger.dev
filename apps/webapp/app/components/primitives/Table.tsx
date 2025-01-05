@@ -168,6 +168,9 @@ const rowHoverStyles = {
 const stickyStyles =
   "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 [&:has(.group-hover\\/table-row\\:block)]:w-auto group-has-[[tabindex='0']:focus]/table-row:bg-background-bright";
 
+const tabFocusRowDividerStyles =
+  "has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed";
+
 const isSelectedStyle = "bg-charcoal-750 group-hover:bg-charcoal-750";
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
@@ -217,6 +220,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           isSticky && stickyStyles,
           isSelected && isSelectedStyle,
           !isSelected && rowHoverStyles[rowHoverStyle],
+          tabFocusRowDividerStyles,
           className
         )}
         colSpan={colSpan}
