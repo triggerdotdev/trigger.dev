@@ -4,7 +4,6 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -108,107 +107,118 @@ export default function Page() {
 
         <LinkButton
           to={`${v3DeploymentsPath(organization, project)}${page ? `?page=${page}` : ""}`}
-          variant="minimal/medium"
-          LeadingIcon={ExitIcon}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="flex flex-col gap-4">
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Deploy</Property.Label>
-              <Property.Value className="flex items-center gap-2">
-                <span>{deployment.shortCode}</span>
-                {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Environment</Property.Label>
-              <Property.Value>
-                <EnvironmentLabel environment={deployment.environment} userName={usernameForEnv} />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Version</Property.Label>
-              <Property.Value>{deployment.version}</Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Status</Property.Label>
-              <Property.Value>
-                <DeploymentStatus
-                  status={deployment.status}
-                  isBuilt={deployment.isBuilt}
-                  className="text-sm"
-                />
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Tasks</Property.Label>
-              <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>SDK Version</Property.Label>
-              <Property.Value>{deployment.sdkVersion ? deployment.sdkVersion : "–"}</Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>CLI Version</Property.Label>
-              <Property.Value>{deployment.cliVersion ? deployment.cliVersion : "–"}</Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Started at</Property.Label>
-              <Property.Value>
-                <DateTimeAccurate date={deployment.createdAt} /> UTC
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Built at</Property.Label>
-              <Property.Value>
-                {deployment.builtAt ? (
-                  <>
-                    <DateTimeAccurate date={deployment.builtAt} /> UTC
-                  </>
-                ) : (
-                  "–"
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Deployed at</Property.Label>
-              <Property.Value>
-                {deployment.deployedAt ? (
-                  <>
-                    <DateTimeAccurate date={deployment.deployedAt} /> UTC
-                  </>
-                ) : (
-                  "–"
-                )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Deployed by</Property.Label>
-              <Property.Value>
-                {deployment.deployedBy ? (
-                  <div className="flex items-center gap-1">
-                    <UserAvatar
-                      avatarUrl={deployment.deployedBy.avatarUrl}
-                      name={deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                      className="h-4 w-4"
-                    />
-                    <Paragraph variant="small">
-                      {deployment.deployedBy.name ?? deployment.deployedBy.displayName}
-                    </Paragraph>
-                  </div>
-                ) : (
-                  "–"
-                )}
-              </Property.Value>
-            </Property.Item>
-          </Property.Table>
+      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="flex flex-col">
+          <div className="p-3">
+            <Property.Table>
+              <Property.Item>
+                <Property.Label>Deploy</Property.Label>
+                <Property.Value className="flex items-center gap-2">
+                  <span>{deployment.shortCode}</span>
+                  {deployment.label && <Badge variant="outline-rounded">{deployment.label}</Badge>}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Environment</Property.Label>
+                <Property.Value>
+                  <EnvironmentLabel
+                    environment={deployment.environment}
+                    userName={usernameForEnv}
+                  />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Version</Property.Label>
+                <Property.Value>{deployment.version}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Status</Property.Label>
+                <Property.Value>
+                  <DeploymentStatus
+                    status={deployment.status}
+                    isBuilt={deployment.isBuilt}
+                    className="text-sm"
+                  />
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Tasks</Property.Label>
+                <Property.Value>{deployment.tasks ? deployment.tasks.length : "–"}</Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>SDK Version</Property.Label>
+                <Property.Value>
+                  {deployment.sdkVersion ? deployment.sdkVersion : "–"}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>CLI Version</Property.Label>
+                <Property.Value>
+                  {deployment.cliVersion ? deployment.cliVersion : "–"}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Started at</Property.Label>
+                <Property.Value>
+                  <DateTimeAccurate date={deployment.createdAt} /> UTC
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Built at</Property.Label>
+                <Property.Value>
+                  {deployment.builtAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.builtAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Deployed at</Property.Label>
+                <Property.Value>
+                  {deployment.deployedAt ? (
+                    <>
+                      <DateTimeAccurate date={deployment.deployedAt} /> UTC
+                    </>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+              <Property.Item>
+                <Property.Label>Deployed by</Property.Label>
+                <Property.Value>
+                  {deployment.deployedBy ? (
+                    <div className="flex items-center gap-1">
+                      <UserAvatar
+                        avatarUrl={deployment.deployedBy.avatarUrl}
+                        name={deployment.deployedBy.name ?? deployment.deployedBy.displayName}
+                        className="h-4 w-4"
+                      />
+                      <Paragraph variant="small">
+                        {deployment.deployedBy.name ?? deployment.deployedBy.displayName}
+                      </Paragraph>
+                    </div>
+                  ) : (
+                    "–"
+                  )}
+                </Property.Value>
+              </Property.Item>
+            </Property.Table>
+          </div>
 
           {deployment.tasks ? (
             <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-              <Table>
+              <Table variant="bright">
                 <TableHeader>
                   <TableHeaderCell className="px-2">Task</TableHeaderCell>
                   <TableHeaderCell className="px-2">File path</TableHeaderCell>
