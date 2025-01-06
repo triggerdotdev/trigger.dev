@@ -303,10 +303,8 @@ export default function Page() {
               <Header3>Next 5 runs</Header3>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
-                    <TableHeaderCell>UTC</TableHeaderCell>
-                  </TableRow>
+                  {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
+                  <TableHeaderCell>UTC</TableHeaderCell>
                 </TableHeader>
                 <TableBody>
                   {schedule.active ? (
