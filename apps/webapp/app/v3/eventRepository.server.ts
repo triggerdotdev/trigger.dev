@@ -1229,7 +1229,7 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
   );
 }
 
-function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
+export function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
   const traceparent = carrier["traceparent"];
   const tracestate = carrier["tracestate"];
 

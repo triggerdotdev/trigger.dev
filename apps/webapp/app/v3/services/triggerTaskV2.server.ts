@@ -9,7 +9,11 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { sanitizeQueueName } from "~/v3/marqs/index.server";
-import { CreatableEvent, eventRepository } from "../eventRepository.server";
+import {
+  CreatableEvent,
+  eventRepository,
+  extractContextFromCarrier,
+} from "../eventRepository.server";
 import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
@@ -97,52 +101,27 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             body.options?.resumeParentOnCompletion &&
             body.options?.parentRunId
           ) {
-            let spanId = await eventRepository.traceEvent(
-              `${taskId} (cached)`,
-              {
-                context: options.traceContext,
-                spanParentAsLink: options.spanParentAsLink,
-                parentAsLinkType: options.parentAsLinkType,
-                kind: "SERVER",
-                environment,
-                taskSlug: taskId,
-                attributes: {
-                  properties: {
-                    [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-                    [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
-                  },
-                  style: {
-                    icon: options.customIcon ?? "task-cached",
-                  },
-                  runIsTest: body.options?.test ?? false,
-                  batchId: options.batchId,
-                  idempotencyKey,
+            await insertCachedRunTraceEvent({
+              environment,
+              context: options.traceContext ?? {},
+              spanParentAsLink: options.spanParentAsLink,
+              runs: [
+                {
+                  taskId,
                   runId: existingRun.friendlyId,
+                  isComplete: existingRun.associatedWaitpoint.status === "COMPLETED",
+                  hasError: existingRun.associatedWaitpoint.outputIsError,
                 },
-                incomplete: true,
-                immediate: true,
-              },
-              async (event, traceContext, traceparent) => {
-                await this._engine.blockRunWithWaitpoint({
-                  runId: RunId.fromFriendlyId(body.options!.parentRunId!),
-                  waitpointId: existingRun.associatedWaitpoint!.id,
-                  environmentId: environment.id,
-                  projectId: environment.projectId,
-                  tx: this._prisma,
-                });
+              ],
+            });
 
-                return event.spanId;
-              }
-            );
-
-            if (existingRun.associatedWaitpoint?.status === "COMPLETED") {
-              await eventRepository.completeEvent(spanId, {
-                endTime: new Date(),
-                attributes: {
-                  isError: existingRun.associatedWaitpoint.outputIsError,
-                },
-              });
-            }
+            await this._engine.blockRunWithWaitpoint({
+              runId: RunId.fromFriendlyId(body.options!.parentRunId!),
+              waitpointId: existingRun.associatedWaitpoint!.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              tx: this._prisma,
+            });
           }
 
           return { ...existingRun, isCached: true };
@@ -534,4 +513,67 @@ export async function guardQueueSizeLimitsForEnv(
     maximumSize,
     queueSize,
   };
+}
+
+export async function insertCachedRunTraceEvent({
+  spanParentAsLink,
+  context,
+  runs,
+  environment,
+}: {
+  environment: AuthenticatedEnvironment;
+  spanParentAsLink: boolean | undefined;
+  context: Record<string, string | undefined>;
+  runs: {
+    taskId: string;
+    runId: string;
+    isComplete: boolean;
+    hasError: boolean;
+  }[];
+}) {
+  const propagatedContext = extractContextFromCarrier(context ?? {});
+  const traceId = spanParentAsLink
+    ? eventRepository.generateTraceId()
+    : propagatedContext?.traceparent?.traceId ?? eventRepository.generateTraceId();
+  const parentId = spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
+
+  const startTime = getNowInNanoseconds();
+  const events: CreatableEvent[] = runs.map((r) => {
+    const spanId = eventRepository.generateSpanId();
+    return {
+      message: `${r.taskId} (cached)`,
+      traceId,
+      spanId,
+      parentId,
+      duration: r.isComplete ? 10 : 0,
+      isPartial: r.isComplete === false,
+      isError: r.hasError,
+      serviceName: "api server",
+      serviceNamespace: "trigger.dev",
+      level: "TRACE",
+      kind: "SERVER",
+      status: "OK",
+      startTime,
+      environmentId: environment.id,
+      environmentType: environment.type,
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
+      projectRef: environment.project.externalRef,
+      runId: r.runId,
+      taskSlug: r.taskId,
+      properties: {
+        [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+        [SemanticInternalAttributes.ORIGINAL_RUN_ID]: r.runId,
+      },
+      metadata: undefined,
+      style: {
+        icon: "task-cached",
+        variant: "primary",
+      },
+      output: undefined,
+      payload: undefined,
+    };
+  });
+
+  await eventRepository.insertManyImmediate(events);
 }
