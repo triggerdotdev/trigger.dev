@@ -1374,39 +1374,10 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
 
       span.setAttribute("runId", response.id);
 
-      let result: TaskRunExecutionResult;
-      if (response.isCached) {
-        result = await tracer.startActiveSpan(
-          `${id} (cached)`,
-          async (span) => {
-            console.log(`There's an existing run for idempotencyKey: ${options?.idempotencyKey}`);
-
       const result = await runtime.waitForTask({
         id: response.id,
         ctx,
       });
-
-            if (!result.ok) {
-              span.setStatus({ code: SpanStatusCode.ERROR });
-            }
-
-            return result;
-          },
-          {
-            kind: SpanKind.PRODUCER,
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "task-cached",
-              [SemanticInternalAttributes.STYLE_VARIANT]: "primary",
-              [SemanticInternalAttributes.ORIGINAL_RUN_ID]: response.id,
-            },
-          }
-        );
-      } else {
-        result = await runtime.waitForTask({
-          id: response.id,
-          ctx,
-        });
-      }
 
       return await handleTaskRunExecutionResult<TIdentifier, TOutput>(result, id);
     },
