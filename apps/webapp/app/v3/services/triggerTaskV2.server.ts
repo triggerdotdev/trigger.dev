@@ -9,7 +9,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { sanitizeQueueName } from "~/v3/marqs/index.server";
-import { eventRepository } from "../eventRepository.server";
+import { CreatableEvent, eventRepository } from "../eventRepository.server";
 import { uploadPacketToObjectStore } from "../r2.server";
 import { startActiveSpan } from "../tracer.server";
 import { getEntitlement } from "~/services/platform.v3.server";
@@ -27,6 +27,9 @@ import { Prisma } from "@trigger.dev/database";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { RunEngine } from "@internal/run-engine";
+import { Attributes } from "@opentelemetry/api";
+import { safeJsonParse } from "~/utils/json";
+import { getNowInNanoseconds } from "~/utils/taskEvent";
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV2 extends WithRunEngine {
@@ -94,13 +97,52 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             body.options?.resumeParentOnCompletion &&
             body.options?.parentRunId
           ) {
-            await this._engine.blockRunWithWaitpoint({
-              runId: RunId.fromFriendlyId(body.options.parentRunId),
-              waitpointId: existingRun.associatedWaitpoint.id,
-              environmentId: environment.id,
-              projectId: environment.projectId,
-              tx: this._prisma,
-            });
+            let spanId = await eventRepository.traceEvent(
+              `${taskId} (cached)`,
+              {
+                context: options.traceContext,
+                spanParentAsLink: options.spanParentAsLink,
+                parentAsLinkType: options.parentAsLinkType,
+                kind: "SERVER",
+                environment,
+                taskSlug: taskId,
+                attributes: {
+                  properties: {
+                    [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+                    [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
+                  },
+                  style: {
+                    icon: options.customIcon ?? "task-cached",
+                  },
+                  runIsTest: body.options?.test ?? false,
+                  batchId: options.batchId,
+                  idempotencyKey,
+                  runId: existingRun.friendlyId,
+                },
+                incomplete: true,
+                immediate: true,
+              },
+              async (event, traceContext, traceparent) => {
+                await this._engine.blockRunWithWaitpoint({
+                  runId: RunId.fromFriendlyId(body.options!.parentRunId!),
+                  waitpointId: existingRun.associatedWaitpoint!.id,
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                  tx: this._prisma,
+                });
+
+                return event.spanId;
+              }
+            );
+
+            if (existingRun.associatedWaitpoint?.status === "COMPLETED") {
+              await eventRepository.completeEvent(spanId, {
+                endTime: new Date(),
+                attributes: {
+                  isError: existingRun.associatedWaitpoint.outputIsError,
+                },
+              });
+            }
           }
 
           return { ...existingRun, isCached: true };
