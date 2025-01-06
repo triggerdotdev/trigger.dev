@@ -214,7 +214,7 @@ export default function Page() {
                         />
                       ))}
                     </TableCell>
-                    <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
+                    <TableCell className={cn("py-1", alertChannel.enabled ? "" : "opacity-50")}>
                       <AlertChannelDetails alertChannel={alertChannel} />
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
