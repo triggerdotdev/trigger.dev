@@ -1,9 +1,32 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
-import React, { ReactNode, forwardRef, useState } from "react";
+import React, { ReactNode, forwardRef, useState, useContext, createContext } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
 import { InfoIconTooltip } from "./Tooltip";
+
+const variants = {
+  bright: {
+    header: "bg-background-bright",
+    cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
+    menuButton:
+      "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    menuButtonDivider: "group-hover/table-row:border-charcoal-600/70",
+    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+  },
+  dimmed: {
+    header: "bg-background-dimmed",
+    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    menuButton:
+      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    menuButtonDivider: "group-hover/table-row:border-grid-dimmed",
+    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+  },
+} as const;
+
+export type TableVariant = keyof typeof variants;
 
 type TableProps = {
   containerClassName?: string;
@@ -12,20 +35,25 @@ type TableProps = {
   fullWidth?: boolean;
 };
 
-export const Table = forwardRef<HTMLTableElement, TableProps>(
-  ({ className, containerClassName, children, fullWidth }, ref) => {
+// Add TableContext
+const TableContext = createContext<{ variant: TableVariant }>({ variant: "dimmed" });
+
+export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: TableVariant }>(
+  ({ className, containerClassName, children, fullWidth, variant = "dimmed" }, ref) => {
     return (
-      <div
-        className={cn(
-          "overflow-x-auto whitespace-nowrap border-t border-grid-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-          containerClassName,
-          fullWidth && "w-full"
-        )}
-      >
-        <table ref={ref} className={cn("w-full", className)}>
-          {children}
-        </table>
-      </div>
+      <TableContext.Provider value={{ variant }}>
+        <div
+          className={cn(
+            "overflow-x-auto whitespace-nowrap border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            containerClassName,
+            fullWidth && "w-full"
+          )}
+        >
+          <table ref={ref} className={cn("w-full", className)}>
+            {children}
+          </table>
+        </div>
+      </TableContext.Provider>
     );
   }
 );
@@ -33,15 +61,18 @@ export const Table = forwardRef<HTMLTableElement, TableProps>(
 type TableHeaderProps = {
   className?: string;
   children: ReactNode;
+  variant?: TableVariant;
 };
 
-export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>(
+export const TableHeader = forwardRef<HTMLTableSectionElement, Omit<TableHeaderProps, "variant">>(
   ({ className, children }, ref) => {
+    const { variant } = useContext(TableContext);
     return (
       <thead
         ref={ref}
         className={cn(
-          "sticky top-0 z-10 bg-background-dimmed after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          "sticky top-0 z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+          variants[variant].header,
           className
         )}
       >
@@ -71,18 +102,19 @@ type TableRowProps = {
   children: ReactNode;
   disabled?: boolean;
   isSelected?: boolean;
+  variant?: TableVariant;
 };
 
-export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
+export const TableRow = forwardRef<HTMLTableRowElement, Omit<TableRowProps, "variant">>(
   ({ className, disabled, isSelected, children }, ref) => {
+    const { variant } = useContext(TableContext);
     return (
       <tr
         ref={ref}
         className={cn(
           "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
-          "has-[[tabindex='0']:focus]:bg-background-bright",
+          isSelected && variants[variant].rowSelected,
           disabled && "opacity-50",
-          isSelected && isSelectedStyle,
           className
         )}
       >
@@ -95,7 +127,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
 type TableCellBasicProps = {
   className?: string;
   alignment?: "left" | "center" | "right";
-  children: ReactNode;
+  children?: ReactNode;
   colSpan?: number;
 };
 
@@ -149,29 +181,14 @@ type TableCellProps = TableCellBasicProps & {
   hasAction?: boolean;
   isSticky?: boolean;
   actionClassName?: string;
-  rowHoverStyle?: keyof typeof rowHoverStyles;
+  rowHoverStyle?: string;
   isSelected?: boolean;
   isTabbableCell?: boolean;
+  variant?: TableVariant;
+  children?: ReactNode;
 };
 
-const rowHoverStyles = {
-  default:
-    "group-hover/table-row:bg-charcoal-800 group-focus-visible/table-row:bg-background-bright group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-750 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
-  dimmed:
-    "group-hover/table-row:bg-charcoal-850 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-800 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-800 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
-  bright:
-    "group-hover/table-row:bg-charcoal-750 group-hover/table-row:before:absolute group-hover/table-row:before:bg-charcoal-700 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:left-0 group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:after:absolute group-hover/table-row:after:bg-charcoal-700 group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3",
-};
-
-const stickyStyles =
-  "sticky right-0 bg-background-dimmed group-hover/table-row:bg-charcoal-750 [&:has(.group-hover\\/table-row\\:block)]:w-auto group-has-[[tabindex='0']:focus]/table-row:bg-background-bright";
-
-const tabFocusRowDividerStyles =
-  "has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed";
-
-const isSelectedStyle = "bg-charcoal-750 group-hover:bg-charcoal-750";
-
-export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
+export const TableCell = forwardRef<HTMLTableCellElement, Omit<TableCellProps, "variant">>(
   (
     {
       className,
@@ -183,7 +200,6 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       onClick,
       hasAction = false,
       isSticky = false,
-      rowHoverStyle = "default",
       isSelected,
       isTabbableCell = false,
     },
@@ -207,18 +223,22 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         ? "justify-center text-center"
         : "justify-end text-right"
     );
+    const { variant } = useContext(TableContext);
 
     return (
       <td
         ref={ref}
         className={cn(
-          "text-xs text-charcoal-400",
+          "text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          variants[variant].cell,
           to || onClick || hasAction ? "cursor-pointer" : "cursor-default px-3 py-3 align-middle",
           !to && !onClick && alignmentClassName,
-          isSticky && stickyStyles,
-          isSelected && isSelectedStyle,
-          !isSelected && rowHoverStyles[rowHoverStyle],
-          tabFocusRowDividerStyles,
+          isSticky &&
+            "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
+          isSticky && variants[variant].stickyCell,
+          isSelected && variants[variant].rowSelected,
+          !isSelected &&
+            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
           className
         )}
         colSpan={colSpan}
@@ -274,7 +294,7 @@ export const TableCellChevron = forwardRef<
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,
-  {
+  Omit<TableCellProps, "variant"> & {
     className?: string;
     isSticky?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
@@ -283,6 +303,7 @@ export const TableCellMenu = forwardRef<
     popoverContent?: ReactNode;
     children?: ReactNode;
     isSelected?: boolean;
+    variant?: TableVariant;
   }
 >(
   (
@@ -299,6 +320,7 @@ export const TableCellMenu = forwardRef<
     ref
   ) => {
     const [isOpen, setIsOpen] = useState(false);
+    const { variant } = useContext(TableContext);
 
     return (
       <TableCell
@@ -313,12 +335,18 @@ export const TableCellMenu = forwardRef<
         <div className="relative h-full p-1">
           <div
             className={cn(
-              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] bg-background-dimmed p-0.5 group-hover/table-row:bg-background-bright group-hover/table-row:ring-1 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright"
+              "absolute right-0 top-1/2 mr-1 flex -translate-y-1/2 items-center justify-end gap-0.5 rounded-[0.25rem] p-0.5 group-hover/table-row:ring-1",
+              variants[variant].menuButton
             )}
           >
             {/* Hidden buttons that show on hover */}
             {hiddenButtons && (
-              <div className="hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r group-hover/table-row:border-grid-dimmed">
+              <div
+                className={cn(
+                  "hidden pr-0.5 group-hover/table-row:block group-hover/table-row:border-r",
+                  variants[variant].menuButtonDivider
+                )}
+              >
                 {hiddenButtons}
               </div>
             )}

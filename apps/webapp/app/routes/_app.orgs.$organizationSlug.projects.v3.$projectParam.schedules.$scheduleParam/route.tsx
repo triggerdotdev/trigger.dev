@@ -220,6 +220,7 @@ export default function Page() {
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
+          className="pl-1"
         />
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -297,11 +298,12 @@ export default function Page() {
                 }}
                 runs={schedule.runs}
                 isLoading={false}
+                variant="bright"
               />
             </div>
             <div className="flex flex-col gap-1">
               <Header3>Next 5 runs</Header3>
-              <Table>
+              <Table variant="bright">
                 <TableHeader>
                   {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
                   <TableHeaderCell>UTC</TableHeaderCell>
