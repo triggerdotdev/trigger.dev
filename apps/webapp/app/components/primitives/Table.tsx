@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
-import { Link, useNavigate } from "@remix-run/react";
+import { Link } from "@remix-run/react";
 import React, { ReactNode, forwardRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Popover, PopoverContent, PopoverVerticalEllipseTrigger } from "./Popover";
@@ -71,8 +71,6 @@ type TableRowProps = {
   children: ReactNode;
   disabled?: boolean;
   isSelected?: boolean;
-  to?: string;
-  onClick?: (event: React.KeyboardEvent | React.MouseEvent) => void;
 };
 
 export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
