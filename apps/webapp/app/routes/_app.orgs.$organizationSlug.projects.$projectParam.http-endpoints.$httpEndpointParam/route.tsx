@@ -114,14 +114,12 @@ export default function Page() {
                   <div className="mb-8">
                     <Table fullWidth>
                       <TableHeader>
-                        <TableRow>
-                          <TableHeaderCell>Environment</TableHeaderCell>
-                          <TableHeaderCell>Endpoint URL</TableHeaderCell>
-                          <TableHeaderCell>Secret</TableHeaderCell>
-                          <TableHeaderCell>Source</TableHeaderCell>
-                          <TableHeaderCell>Respond to request?</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Updated</TableHeaderCell>
-                        </TableRow>
+                        <TableHeaderCell>Environment</TableHeaderCell>
+                        <TableHeaderCell>Endpoint URL</TableHeaderCell>
+                        <TableHeaderCell>Secret</TableHeaderCell>
+                        <TableHeaderCell>Source</TableHeaderCell>
+                        <TableHeaderCell>Respond to request?</TableHeaderCell>
+                        <TableHeaderCell alignment="right">Updated</TableHeaderCell>
                       </TableHeader>
                       <TableBody>
                         {httpEndpoint.httpEndpointEnvironments.map((httpEnvironment) => {

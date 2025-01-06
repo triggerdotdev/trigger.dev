@@ -58,21 +58,19 @@ export function RunsTable({
   return (
     <Table>
       <TableHeader>
-        <TableRow>
-          <TableHeaderCell>Run</TableHeaderCell>
-          {showJob && <TableHeaderCell>Job</TableHeaderCell>}
-          <TableHeaderCell>Env</TableHeaderCell>
-          <TableHeaderCell>Status</TableHeaderCell>
-          <TableHeaderCell>Started</TableHeaderCell>
-          <TableHeaderCell>Duration</TableHeaderCell>
-          <TableHeaderCell>Exec Time</TableHeaderCell>
-          <TableHeaderCell>Test</TableHeaderCell>
-          <TableHeaderCell>Version</TableHeaderCell>
-          <TableHeaderCell>Created at</TableHeaderCell>
-          <TableHeaderCell>
-            <span className="sr-only">Go to page</span>
-          </TableHeaderCell>
-        </TableRow>
+        <TableHeaderCell>Run</TableHeaderCell>
+        {showJob && <TableHeaderCell>Job</TableHeaderCell>}
+        <TableHeaderCell>Env</TableHeaderCell>
+        <TableHeaderCell>Status</TableHeaderCell>
+        <TableHeaderCell>Started</TableHeaderCell>
+        <TableHeaderCell>Duration</TableHeaderCell>
+        <TableHeaderCell>Exec Time</TableHeaderCell>
+        <TableHeaderCell>Test</TableHeaderCell>
+        <TableHeaderCell>Version</TableHeaderCell>
+        <TableHeaderCell>Created at</TableHeaderCell>
+        <TableHeaderCell>
+          <span className="sr-only">Go to page</span>
+        </TableHeaderCell>
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (

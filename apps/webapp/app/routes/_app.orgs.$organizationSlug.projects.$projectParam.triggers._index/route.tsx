@@ -49,14 +49,12 @@ export default function Integrations() {
       </Paragraph>
       <Table containerClassName="mt-4">
         <TableHeader>
-          <TableRow>
-            <TableHeaderCell>Integration</TableHeaderCell>
-            <TableHeaderCell>Dynamic</TableHeaderCell>
-            <TableHeaderCell>Properties</TableHeaderCell>
-            <TableHeaderCell>Environment</TableHeaderCell>
-            <TableHeaderCell>Active</TableHeaderCell>
-            <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-          </TableRow>
+          <TableHeaderCell>Integration</TableHeaderCell>
+          <TableHeaderCell>Dynamic</TableHeaderCell>
+          <TableHeaderCell>Properties</TableHeaderCell>
+          <TableHeaderCell>Environment</TableHeaderCell>
+          <TableHeaderCell>Active</TableHeaderCell>
+          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
         </TableHeader>
         <TableBody>
           {triggers.length > 0 ? (
