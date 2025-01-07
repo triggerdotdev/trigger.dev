@@ -205,6 +205,7 @@
     "nanoid": "^3.3.4",
     "socket.io-client": "4.7.5",
     "superjson": "^2.2.1",
+    "tinyexec": "^0.3.2",
     "zod": "3.23.8",
     "zod-error": "1.5.0",
     "zod-validation-error": "^1.5.0"
