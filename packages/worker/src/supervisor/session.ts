@@ -1,4 +1,4 @@
-import { HeartbeatService } from "@trigger.dev/core/v3";
+import { HeartbeatService, MachineResources } from "@trigger.dev/core/v3";
 import { SupervisorHttpClient } from "./http.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
@@ -13,6 +13,9 @@ import { getDefaultWorkerHeaders } from "./util.js";
 type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   heartbeatIntervalSeconds?: number;
   dequeueIntervalMs?: number;
+  preDequeue?: () => Promise<{
+    maxResources?: MachineResources;
+  }>;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -30,6 +33,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.httpClient = new SupervisorHttpClient(opts);
     this.queueConsumer = new RunQueueConsumer({
       client: this.httpClient,
+      preDequeue: opts.preDequeue,
       onDequeue: this.onDequeue.bind(this),
       intervalMs: opts.dequeueIntervalMs,
     });

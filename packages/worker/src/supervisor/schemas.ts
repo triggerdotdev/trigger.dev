@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   CompleteRunAttemptResult,
   DequeuedMessage,
+  MachineResources,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunExecutionResult,
@@ -39,6 +40,11 @@ export const WorkerApiConnectResponseBody = z.object({
   }),
 });
 export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectResponseBody>;
+
+export const WorkerApiDequeueRequestBody = z.object({
+  maxResources: MachineResources.optional(),
+});
+export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequestBody>;
 
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;

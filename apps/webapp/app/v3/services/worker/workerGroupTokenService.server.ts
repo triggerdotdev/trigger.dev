@@ -18,6 +18,7 @@ import {
   ExecutionResult,
   MachinePreset,
   WaitForDurationResult,
+  MachineResources,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
@@ -525,12 +526,19 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async dequeue(maxRunCount = 10): Promise<DequeuedMessage[]> {
+  async dequeue({
+    maxRunCount = 10,
+    maxResources,
+  }: {
+    maxRunCount?: number;
+    maxResources?: MachineResources;
+  } = {}): Promise<DequeuedMessage[]> {
     if (this.type === WorkerInstanceGroupType.MANAGED) {
       return await this._engine.dequeueFromMasterQueue({
         consumerId: this.workerInstanceId,
         masterQueue: this.masterQueue,
         maxRunCount,
+        maxResources,
       });
     }
 
