@@ -528,6 +528,9 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     case "EXPIRED": {
       return "EXPIRED";
     }
+    case "TIMED_OUT": {
+      return "TIMED_OUT";
+    }
     default: {
       throw new Error(`Unknown status: ${status}`);
     }
