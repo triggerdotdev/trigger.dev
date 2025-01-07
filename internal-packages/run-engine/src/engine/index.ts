@@ -6,6 +6,7 @@ import {
   CompleteRunAttemptResult,
   DequeuedMessage,
   ExecutionResult,
+  MachineResources,
   parsePacket,
   RunExecutionData,
   sanitizeError,
@@ -61,7 +62,7 @@ import {
   isExecuting,
   isFinalRunStatus,
 } from "./statuses";
-import { HeartbeatTimeouts, MachineResources, RunEngineOptions, TriggerParams } from "./types";
+import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types";
 
 const workerCatalog = {
   finishWaitpoint: {

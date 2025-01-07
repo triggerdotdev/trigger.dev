@@ -34,11 +34,6 @@ export type HeartbeatTimeouts = {
   EXECUTING_WITH_WAITPOINTS: number;
 };
 
-export type MachineResources = {
-  cpu: number;
-  memory: number;
-};
-
 export type TriggerParams = {
   friendlyId: string;
   number: number;
