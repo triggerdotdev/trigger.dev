@@ -606,15 +606,17 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Idempotency</Property.Label>
                   <Property.Value>
-                    <div>{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
-                    <div>
-                      Expires:{" "}
-                      {run.idempotencyKeyExpiresAt ? (
-                        <DateTime date={run.idempotencyKeyExpiresAt} />
-                      ) : (
-                        "–"
-                      )}
-                    </div>
+                    <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                    {run.idempotencyKey && (
+                      <div>
+                        Expires:{" "}
+                        {run.idempotencyKeyExpiresAt ? (
+                          <DateTime date={run.idempotencyKeyExpiresAt} />
+                        ) : (
+                          "–"
+                        )}
+                      </div>
+                    )}
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>

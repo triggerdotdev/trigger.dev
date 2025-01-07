@@ -1442,6 +1442,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
+                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
                 },
               };
             })
@@ -1451,6 +1453,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           parentRunId: ctx.run.id,
         },
         {
+          idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+          idempotencyKeyTTL: options?.idempotencyKeyTTL,
           processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
         },
         requestOptions

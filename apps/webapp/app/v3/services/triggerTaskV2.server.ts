@@ -101,24 +101,57 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             body.options?.resumeParentOnCompletion &&
             body.options?.parentRunId
           ) {
-            const event = await insertCachedRunTraceEvent({
-              environment,
-              context: options.traceContext ?? {},
-              spanParentAsLink: options.spanParentAsLink,
-              taskId,
-              runId: existingRun.friendlyId,
-              isComplete: existingRun.associatedWaitpoint.status === "COMPLETED",
-              hasError: existingRun.associatedWaitpoint.outputIsError,
-            });
-
-            await this._engine.blockRunWithWaitpoint({
-              runId: RunId.fromFriendlyId(body.options!.parentRunId!),
-              waitpoints: existingRun.associatedWaitpoint!.id,
-              spanIdToComplete: event.spanId,
-              environmentId: environment.id,
-              projectId: environment.projectId,
-              tx: this._prisma,
-            });
+            await eventRepository.traceEvent(
+              `${taskId} (cached)`,
+              {
+                context: options.traceContext,
+                spanParentAsLink: options.spanParentAsLink,
+                parentAsLinkType: options.parentAsLinkType,
+                kind: "SERVER",
+                environment,
+                taskSlug: taskId,
+                attributes: {
+                  properties: {
+                    [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+                    [SemanticInternalAttributes.ORIGINAL_RUN_ID]: existingRun.friendlyId,
+                  },
+                  style: {
+                    icon: "task-cached",
+                  },
+                  runIsTest: body.options?.test ?? false,
+                  batchId: options.batchId,
+                  idempotencyKey,
+                  runId: existingRun.friendlyId,
+                },
+                incomplete: existingRun.associatedWaitpoint.status === "PENDING",
+                isError: existingRun.associatedWaitpoint.outputIsError,
+                immediate: true,
+              },
+              async (event) => {
+                //log a message
+                await eventRepository.recordEvent(
+                  `There's an existing run for idempotencyKey: ${idempotencyKey}`,
+                  {
+                    taskSlug: taskId,
+                    environment,
+                    attributes: {
+                      runId: existingRun.friendlyId,
+                    },
+                    context: options.traceContext,
+                    parentId: event.spanId,
+                  }
+                );
+                //block run with waitpoint
+                await this._engine.blockRunWithWaitpoint({
+                  runId: RunId.fromFriendlyId(body.options!.parentRunId!),
+                  waitpoints: existingRun.associatedWaitpoint!.id,
+                  spanIdToComplete: event.spanId,
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                  tx: this._prisma,
+                });
+              }
+            );
           }
 
           return { ...existingRun, isCached: true };
@@ -510,67 +543,4 @@ export async function guardQueueSizeLimitsForEnv(
     maximumSize,
     queueSize,
   };
-}
-
-async function insertCachedRunTraceEvent({
-  spanParentAsLink,
-  context,
-  taskId,
-  runId,
-  isComplete,
-  hasError,
-  environment,
-}: {
-  environment: AuthenticatedEnvironment;
-  spanParentAsLink: boolean | undefined;
-  context: Record<string, string | undefined>;
-  taskId: string;
-  runId: string;
-  isComplete: boolean;
-  hasError: boolean;
-}) {
-  const propagatedContext = extractContextFromCarrier(context ?? {});
-  const traceId = spanParentAsLink
-    ? eventRepository.generateTraceId()
-    : propagatedContext?.traceparent?.traceId ?? eventRepository.generateTraceId();
-  const parentId = spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
-
-  const startTime = getNowInNanoseconds();
-  const event: CreatableEvent = {
-    message: `${taskId} (cached)`,
-    traceId,
-    spanId: eventRepository.generateSpanId(),
-    parentId,
-    duration: isComplete ? 10 : 0,
-    isPartial: isComplete === false,
-    isError: hasError,
-    serviceName: "api server",
-    serviceNamespace: "trigger.dev",
-    level: "TRACE",
-    kind: "SERVER",
-    status: "OK",
-    startTime,
-    environmentId: environment.id,
-    environmentType: environment.type,
-    organizationId: environment.organizationId,
-    projectId: environment.projectId,
-    projectRef: environment.project.externalRef,
-    runId: runId,
-    taskSlug: taskId,
-    properties: {
-      [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-      [SemanticInternalAttributes.ORIGINAL_RUN_ID]: runId,
-    },
-    metadata: undefined,
-    style: {
-      icon: "task-cached",
-      variant: "primary",
-    },
-    output: undefined,
-    payload: undefined,
-  };
-
-  await eventRepository.insertImmediate(event);
-
-  return { spanId: event.spanId };
 }

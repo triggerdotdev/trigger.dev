@@ -4,6 +4,7 @@ import { childTask } from "./example.js";
 
 export const idempotency = task({
   id: "idempotency",
+  maxDuration: 60,
   run: async (payload: any, { ctx }) => {
     logger.log("Hello, world from the parent", { payload });
 
@@ -19,6 +20,10 @@ export const idempotency = task({
       { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" }
     );
     logger.log("Child 2", { child2 });
+    await childTask.trigger(
+      { message: "Hello, world!", duration: 500, failureChance: 0 },
+      { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" }
+    );
 
     const failureKey = await idempotencyKeys.create("b", { scope: "global" });
 
@@ -47,6 +52,17 @@ export const idempotency = task({
       },
     ]);
     logger.log("Batch 1", { batch1 });
+
+    await childTask.batchTrigger([
+      {
+        payload: { message: "Hello, world!" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
+      },
+      {
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
+      },
+    ]);
 
     // const results2 = await batch.triggerAndWait<typeof childTask>([
     //   {
