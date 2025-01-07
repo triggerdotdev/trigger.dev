@@ -904,9 +904,10 @@ export class BatchTriggerV3Service extends WithRunEngine {
 
     await this._engine.blockRunWithWaitpoint({
       runId: RunId.fromFriendlyId(parentRunId),
-      waitpointId: runsWithAssociatedWaitpoints.flatMap((r) =>
-        r.associatedWaitpoint ? [r.associatedWaitpoint.id] : []
-      ),
+      waitpoints: runsWithAssociatedWaitpoints.flatMap((r) => {
+        if (!r.associatedWaitpoint) return [];
+        return [r.associatedWaitpoint.id];
+      }),
       environmentId: environment.id,
       projectId: environment.projectId,
     });

@@ -340,7 +340,7 @@ describe("RunEngine Waitpoints", () => {
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpointId: waitpoint.id,
+          waitpoints: waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
         });
@@ -479,7 +479,7 @@ describe("RunEngine Waitpoints", () => {
         //block the run
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpointId: waitpoint.id,
+          waitpoints: waitpoint.id,
           environmentId: authenticatedEnvironment.id,
           projectId: authenticatedEnvironment.projectId,
           //fail after 200ms
@@ -608,7 +608,7 @@ describe("RunEngine Waitpoints", () => {
             waitpoints.map((waitpoint) =>
               engine.blockRunWithWaitpoint({
                 runId: run.id,
-                waitpointId: waitpoint.id,
+                waitpoints: waitpoint.id,
                 environmentId: authenticatedEnvironment.id,
                 projectId: authenticatedEnvironment.projectId,
               })

@@ -101,23 +101,20 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             body.options?.resumeParentOnCompletion &&
             body.options?.parentRunId
           ) {
-            await insertCachedRunTraceEvent({
+            const event = await insertCachedRunTraceEvent({
               environment,
               context: options.traceContext ?? {},
               spanParentAsLink: options.spanParentAsLink,
-              runs: [
-                {
-                  taskId,
-                  runId: existingRun.friendlyId,
-                  isComplete: existingRun.associatedWaitpoint.status === "COMPLETED",
-                  hasError: existingRun.associatedWaitpoint.outputIsError,
-                },
-              ],
+              taskId,
+              runId: existingRun.friendlyId,
+              isComplete: existingRun.associatedWaitpoint.status === "COMPLETED",
+              hasError: existingRun.associatedWaitpoint.outputIsError,
             });
 
             await this._engine.blockRunWithWaitpoint({
               runId: RunId.fromFriendlyId(body.options!.parentRunId!),
-              waitpointId: existingRun.associatedWaitpoint!.id,
+              waitpoints: existingRun.associatedWaitpoint!.id,
+              spanIdToComplete: event.spanId,
               environmentId: environment.id,
               projectId: environment.projectId,
               tx: this._prisma,
@@ -515,21 +512,22 @@ export async function guardQueueSizeLimitsForEnv(
   };
 }
 
-export async function insertCachedRunTraceEvent({
+async function insertCachedRunTraceEvent({
   spanParentAsLink,
   context,
-  runs,
+  taskId,
+  runId,
+  isComplete,
+  hasError,
   environment,
 }: {
   environment: AuthenticatedEnvironment;
   spanParentAsLink: boolean | undefined;
   context: Record<string, string | undefined>;
-  runs: {
-    taskId: string;
-    runId: string;
-    isComplete: boolean;
-    hasError: boolean;
-  }[];
+  taskId: string;
+  runId: string;
+  isComplete: boolean;
+  hasError: boolean;
 }) {
   const propagatedContext = extractContextFromCarrier(context ?? {});
   const traceId = spanParentAsLink
@@ -538,42 +536,41 @@ export async function insertCachedRunTraceEvent({
   const parentId = spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
 
   const startTime = getNowInNanoseconds();
-  const events: CreatableEvent[] = runs.map((r) => {
-    const spanId = eventRepository.generateSpanId();
-    return {
-      message: `${r.taskId} (cached)`,
-      traceId,
-      spanId,
-      parentId,
-      duration: r.isComplete ? 10 : 0,
-      isPartial: r.isComplete === false,
-      isError: r.hasError,
-      serviceName: "api server",
-      serviceNamespace: "trigger.dev",
-      level: "TRACE",
-      kind: "SERVER",
-      status: "OK",
-      startTime,
-      environmentId: environment.id,
-      environmentType: environment.type,
-      organizationId: environment.organizationId,
-      projectId: environment.projectId,
-      projectRef: environment.project.externalRef,
-      runId: r.runId,
-      taskSlug: r.taskId,
-      properties: {
-        [SemanticInternalAttributes.SHOW_ACTIONS]: true,
-        [SemanticInternalAttributes.ORIGINAL_RUN_ID]: r.runId,
-      },
-      metadata: undefined,
-      style: {
-        icon: "task-cached",
-        variant: "primary",
-      },
-      output: undefined,
-      payload: undefined,
-    };
-  });
+  const event: CreatableEvent = {
+    message: `${taskId} (cached)`,
+    traceId,
+    spanId: eventRepository.generateSpanId(),
+    parentId,
+    duration: isComplete ? 10 : 0,
+    isPartial: isComplete === false,
+    isError: hasError,
+    serviceName: "api server",
+    serviceNamespace: "trigger.dev",
+    level: "TRACE",
+    kind: "SERVER",
+    status: "OK",
+    startTime,
+    environmentId: environment.id,
+    environmentType: environment.type,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    projectRef: environment.project.externalRef,
+    runId: runId,
+    taskSlug: taskId,
+    properties: {
+      [SemanticInternalAttributes.SHOW_ACTIONS]: true,
+      [SemanticInternalAttributes.ORIGINAL_RUN_ID]: runId,
+    },
+    metadata: undefined,
+    style: {
+      icon: "task-cached",
+      variant: "primary",
+    },
+    output: undefined,
+    payload: undefined,
+  };
 
-  await eventRepository.insertManyImmediate(events);
+  await eventRepository.insertImmediate(event);
+
+  return { spanId: event.spanId };
 }

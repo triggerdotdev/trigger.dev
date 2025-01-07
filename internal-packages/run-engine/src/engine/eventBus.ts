@@ -79,6 +79,13 @@ export type EventBusEvents = {
       };
     },
   ];
+  cachedRunCompleted: [
+    {
+      time: Date;
+      spanId: string;
+      hasError: boolean;
+    },
+  ];
   workerNotification: [
     {
       time: Date;

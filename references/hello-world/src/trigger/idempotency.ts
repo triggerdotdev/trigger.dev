@@ -10,40 +10,40 @@ export const idempotency = task({
     const successfulKey = await idempotencyKeys.create("a", { scope: "global" });
 
     const child1 = await childTask.triggerAndWait(
-      { message: "Hello, world!", duration: 2_000, failureChance: 0 },
-      { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" }
+      { message: "Hello, world!", duration: 500, failureChance: 0 },
+      { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" }
     );
     logger.log("Child 1", { child1 });
     const child2 = await childTask.triggerAndWait(
-      { message: "Hello, world!", duration: 2_000 },
-      { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" }
+      { message: "Hello, world!", duration: 500 },
+      { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" }
     );
     logger.log("Child 2", { child2 });
 
     const failureKey = await idempotencyKeys.create("b", { scope: "global" });
 
     const child3 = await childTask.triggerAndWait(
-      { message: "Hello, world!", duration: 2_000, failureChance: 1 },
-      { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" }
+      { message: "Hello, world!", duration: 500, failureChance: 1 },
+      { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" }
     );
     logger.log("Child 3", { child3 });
     const child4 = await childTask.triggerAndWait(
-      { message: "Hello, world!", duration: 2_000, failureChance: 1 },
-      { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" }
+      { message: "Hello, world!", duration: 500, failureChance: 1 },
+      { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" }
     );
     logger.log("Child 4", { child4 });
 
     const batch1 = await childTask.batchTriggerAndWait([
       {
         payload: { message: "Hello, world!" },
-        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
       },
       {
         payload: { message: "Hello, world 2!" },
-        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
       },
       {
-        payload: { message: "Hello, world 3", duration: 2_000, failureChance: 0 },
+        payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
       },
     ]);
     logger.log("Batch 1", { batch1 });

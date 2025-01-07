@@ -344,7 +344,7 @@ export class RunEngine {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
             await this.blockRunWithWaitpoint({
               runId: parentTaskRunId,
-              waitpointId: associatedWaitpoint.id,
+              waitpoints: associatedWaitpoint.id,
               environmentId: associatedWaitpoint.environmentId,
               projectId: associatedWaitpoint.projectId,
               tx: prisma,
@@ -1269,7 +1269,7 @@ export class RunEngine {
       //block the run
       const blockResult = await this.blockRunWithWaitpoint({
         runId,
-        waitpointId: waitpoint.id,
+        waitpoints: waitpoint.id,
         environmentId: waitpoint.environmentId,
         projectId: waitpoint.projectId,
         tx: prisma,
@@ -1574,21 +1574,23 @@ export class RunEngine {
    */
   async blockRunWithWaitpoint({
     runId,
-    waitpointId,
+    waitpoints,
     projectId,
     failAfter,
+    spanIdToComplete,
     tx,
   }: {
     runId: string;
-    waitpointId: string | string[];
+    waitpoints: string | string[];
     environmentId: string;
     projectId: string;
     failAfter?: Date;
+    spanIdToComplete?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
 
-    let waitpointIds = typeof waitpointId === "string" ? [waitpointId] : waitpointId;
+    let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.runLock.lock([runId], 5000, async (signal) => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -1596,16 +1598,17 @@ export class RunEngine {
       //block the run with the waitpoints, returning how many waitpoints are pending
       const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
         WITH inserted AS (
-          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
+          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete")
           SELECT
             gen_random_uuid(),
             ${runId},
             w.id,
             ${projectId},
             NOW(),
-            NOW()
+            NOW(),
+            ${spanIdToComplete ?? null}
           FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join(waitpointIds)})
+          WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
           RETURNING "waitpointId"
         )
@@ -1640,11 +1643,11 @@ export class RunEngine {
       }
 
       if (failAfter) {
-        for (const waitpointId of waitpointIds) {
+        for (const waitpoint of $waitpoints) {
           await this.worker.enqueue({
-            id: `finishWaitpoint.${waitpointId}`,
+            id: `finishWaitpoint.${waitpoint}`,
             job: "finishWaitpoint",
-            payload: { waitpointId, error: "Waitpoint timed out" },
+            payload: { waitpointId: waitpoint, error: "Waitpoint timed out" },
             availableAt: failAfter,
           });
         }
@@ -1694,7 +1697,7 @@ export class RunEngine {
         // 1. Find the TaskRuns blocked by this waitpoint
         const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
           where: { waitpointId: id },
-          select: { taskRunId: true },
+          select: { taskRunId: true, spanIdToComplete: true },
         });
 
         if (affectedTaskRuns.length === 0) {
@@ -1737,6 +1740,15 @@ export class RunEngine {
         //50ms in the future
         availableAt: new Date(Date.now() + 50),
       });
+
+      // emit an event to complete associated cached runs
+      if (run.spanIdToComplete) {
+        this.eventBus.emit("cachedRunCompleted", {
+          time: new Date(),
+          spanId: run.spanIdToComplete,
+          hasError: output?.isError ?? false,
+        });
+      }
     }
 
     return result.updatedWaitpoint;

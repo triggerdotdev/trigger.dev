@@ -136,6 +136,29 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
+  engine.eventBus.on("cachedRunCompleted", async ({ time, spanId, hasError }) => {
+    try {
+      const completedEvent = await eventRepository.completeEvent(spanId, {
+        endTime: time,
+        attributes: {
+          isError: hasError,
+        },
+      });
+
+      if (!completedEvent) {
+        logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
+          spanId,
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error("[cachedRunCompleted] Failed to complete event for unknown reason", {
+        error: error instanceof Error ? error.message : error,
+        spanId,
+      });
+    }
+  });
+
   engine.eventBus.on("runExpired", async ({ time, run }) => {
     try {
       const completedEvent = await eventRepository.completeEvent(run.spanId, {
