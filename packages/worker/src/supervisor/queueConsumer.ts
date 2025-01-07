@@ -1,21 +1,17 @@
-import { MachineResources } from "@trigger.dev/core/v3";
 import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody } from "./schemas.js";
+import { PreDequeueFn } from "./types.js";
 
 type RunQueueConsumerOptions = {
   client: SupervisorHttpClient;
   intervalMs?: number;
-  preDequeue?: () => Promise<{
-    maxResources?: MachineResources;
-  }>;
+  preDequeue?: PreDequeueFn;
   onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 };
 
 export class RunQueueConsumer {
   private readonly client: SupervisorHttpClient;
-  private readonly preDequeue?: () => Promise<{
-    maxResources?: MachineResources;
-  }>;
+  private readonly preDequeue?: PreDequeueFn;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 
   private intervalMs: number;
@@ -54,18 +50,27 @@ export class RunQueueConsumer {
       return;
     }
 
-    let maxResources: MachineResources | undefined;
+    let preDequeueResult: Awaited<ReturnType<PreDequeueFn>> | undefined;
     if (this.preDequeue) {
       try {
-        const preDequeueResult = await this.preDequeue();
-        maxResources = preDequeueResult.maxResources;
+        preDequeueResult = await this.preDequeue();
       } catch (preDequeueError) {
         console.error("[RunQueueConsumer] preDequeue error", { error: preDequeueError });
       }
     }
 
+    if (
+      preDequeueResult?.skipDequeue ||
+      preDequeueResult?.maxResources?.cpu === 0 ||
+      preDequeueResult?.maxResources?.memory === 0
+    ) {
+      return this.scheduleNextDequeue();
+    }
+
     try {
-      const response = await this.client.dequeue({ maxResources });
+      const response = await this.client.dequeue({
+        maxResources: preDequeueResult?.maxResources,
+      });
 
       if (!response.success) {
         console.error("[RunQueueConsumer] Failed to dequeue", { error: response.error });
