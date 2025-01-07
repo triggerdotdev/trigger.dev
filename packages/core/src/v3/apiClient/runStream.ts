@@ -528,6 +528,9 @@ function apiStatusFromRunStatus(status: string): RunStatus {
     case "EXPIRED": {
       return "EXPIRED";
     }
+    case "TIMED_OUT": {
+      return "TIMED_OUT";
+    }
     default: {
       throw new Error(`Unknown status: ${status}`);
     }
@@ -540,4 +543,70 @@ function safeParseJSON(data: string): unknown {
   } catch (error) {
     return data;
   }
+}
+
+const isSafari = () => {
+  // Check if we're in a browser environment
+  if (
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.userAgent === "string"
+  ) {
+    return (
+      /^((?!chrome|android).)*safari/i.test(navigator.userAgent) ||
+      /iPad|iPhone|iPod/.test(navigator.userAgent)
+    );
+  }
+  // If we're not in a browser environment, return false
+  return false;
+};
+
+/**
+ * A polyfill for `ReadableStream.protototype[Symbol.asyncIterator]`,
+ * aligning as closely as possible to the specification.
+ *
+ * @see https://streams.spec.whatwg.org/#rs-asynciterator
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream#async_iteration
+ *
+ * This is needed for Safari: https://bugs.webkit.org/show_bug.cgi?id=194379
+ *
+ * From https://gist.github.com/MattiasBuelens/496fc1d37adb50a733edd43853f2f60e
+ *
+ */
+
+if (isSafari()) {
+  // @ts-expect-error
+  ReadableStream.prototype.values ??= function ({ preventCancel = false } = {}) {
+    const reader = this.getReader();
+    return {
+      async next() {
+        try {
+          const result = await reader.read();
+          if (result.done) {
+            reader.releaseLock();
+          }
+          return result;
+        } catch (e) {
+          reader.releaseLock();
+          throw e;
+        }
+      },
+      async return(value: unknown) {
+        if (!preventCancel) {
+          const cancelPromise = reader.cancel(value);
+          reader.releaseLock();
+          await cancelPromise;
+        } else {
+          reader.releaseLock();
+        }
+        return { done: true, value };
+      },
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+  };
+
+  // @ts-expect-error
+  ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
 }
