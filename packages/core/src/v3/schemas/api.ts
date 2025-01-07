@@ -682,16 +682,26 @@ export const UpdateMetadataResponseBody = z.object({
 
 export type UpdateMetadataResponseBody = z.infer<typeof UpdateMetadataResponseBody>;
 
+const RawShapeDate = z
+  .string()
+  .transform((val) => `${val}Z`)
+  .pipe(z.coerce.date());
+
+const RawOptionalShapeDate = z
+  .string()
+  .nullish()
+  .transform((val) => (val ? new Date(`${val}Z`) : val));
+
 export const SubscribeRunRawShape = z.object({
   id: z.string(),
   idempotencyKey: z.string().nullish(),
-  createdAt: z.coerce.date(),
-  updatedAt: z.coerce.date(),
-  startedAt: z.coerce.date().nullish(),
-  delayUntil: z.coerce.date().nullish(),
-  queuedAt: z.coerce.date().nullish(),
-  expiredAt: z.coerce.date().nullish(),
-  completedAt: z.coerce.date().nullish(),
+  createdAt: RawShapeDate,
+  updatedAt: RawShapeDate,
+  startedAt: RawOptionalShapeDate,
+  delayUntil: RawOptionalShapeDate,
+  queuedAt: RawOptionalShapeDate,
+  expiredAt: RawOptionalShapeDate,
+  completedAt: RawOptionalShapeDate,
   taskIdentifier: z.string(),
   friendlyId: z.string(),
   number: z.number(),
