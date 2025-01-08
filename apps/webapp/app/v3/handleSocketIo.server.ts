@@ -127,6 +127,8 @@ function createCoordinatorNamespace(io: Server) {
         await resumeAttempt.call(message);
       },
       TASK_RUN_COMPLETED: async (message) => {
+        logger.debug("[handleSocketIO] TASK_RUN_COMPLETED", { completion: message.completion });
+
         const completeAttempt = new CompleteAttemptService({
           supportsRetryCheckpoints: message.version === "v1",
         });

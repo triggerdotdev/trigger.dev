@@ -703,6 +703,7 @@ class TaskCoordinator {
             completion: {
               id: message.completion.id,
               ok: message.completion.ok,
+              metadata: message.completion.metadata,
             },
           });
 
