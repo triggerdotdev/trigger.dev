@@ -9,7 +9,7 @@ import {
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { HEADER_NAME } from "@trigger.dev/worker";
+import { WORKER_HEADER_NAME } from "@trigger.dev/core/v3/workers";
 import {
   TaskRunExecutionResult,
   DequeuedMessage,
@@ -136,7 +136,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    const instanceName = request.headers.get(HEADER_NAME.WORKER_INSTANCE_NAME);
+    const instanceName = request.headers.get(WORKER_HEADER_NAME.WORKER_INSTANCE_NAME);
 
     if (!instanceName) {
       logger.error("[WorkerGroupTokenService] Instance name not found in request", {
@@ -153,7 +153,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
     }
 
     if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-      const managedWorkerSecret = request.headers.get(HEADER_NAME.WORKER_MANAGED_SECRET);
+      const managedWorkerSecret = request.headers.get(WORKER_HEADER_NAME.WORKER_MANAGED_SECRET);
 
       if (!managedWorkerSecret) {
         logger.error("[WorkerGroupTokenService] Managed secret not found in request", {
@@ -187,7 +187,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
     const workerInstance = await this.getOrCreateWorkerInstance({
       workerGroup,
       instanceName,
-      deploymentId: request.headers.get(HEADER_NAME.WORKER_DEPLOYMENT_ID) ?? undefined,
+      deploymentId: request.headers.get(WORKER_HEADER_NAME.WORKER_DEPLOYMENT_ID) ?? undefined,
     });
 
     if (!workerInstance) {

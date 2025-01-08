@@ -381,9 +381,6 @@ importers:
       '@trigger.dev/sdk':
         specifier: workspace:*
         version: link:../../packages/trigger-sdk
-      '@trigger.dev/worker':
-        specifier: workspace:*
-        version: link:../../packages/worker
       '@trigger.dev/yalt':
         specifier: npm:@trigger.dev/yalt
         version: 2.3.19
@@ -1112,9 +1109,6 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:3.3.8
         version: link:../core
-      '@trigger.dev/worker':
-        specifier: workspace:3.3.8
-        version: link:../worker
       c12:
         specifier: ^1.11.1
         version: 1.11.1(magicast@0.3.4)
@@ -1338,6 +1332,9 @@ importers:
       nanoid:
         specifier: ^3.3.4
         version: 3.3.7
+      socket.io:
+        specifier: 4.7.4
+        version: 4.7.4
       socket.io-client:
         specifier: 4.7.5
         version: 4.7.5
@@ -1387,9 +1384,6 @@ importers:
       rimraf:
         specifier: ^3.0.2
         version: 3.0.2
-      socket.io:
-        specifier: 4.7.4
-        version: 4.7.4
       ts-essentials:
         specifier: 10.0.1
         version: 10.0.1(typescript@5.5.4)
@@ -1552,34 +1546,6 @@ importers:
       zod:
         specifier: 3.23.8
         version: 3.23.8
-
-  packages/worker:
-    dependencies:
-      '@trigger.dev/core':
-        specifier: workspace:*
-        version: link:../core
-      socket.io:
-        specifier: 4.7.4
-        version: 4.7.4
-      socket.io-client:
-        specifier: 4.7.5
-        version: 4.7.5
-      zod:
-        specifier: 3.23.8
-        version: 3.23.8
-    devDependencies:
-      '@arethetypeswrong/cli':
-        specifier: ^0.15.4
-        version: 0.15.4
-      rimraf:
-        specifier: 6.0.1
-        version: 6.0.1
-      tshy:
-        specifier: ^3.0.2
-        version: 3.0.2
-      tsx:
-        specifier: 4.17.0
-        version: 4.17.0
 
   references/bun-catalog:
     dependencies:
@@ -15826,6 +15792,7 @@ packages:
 
   /@socket.io/component-emitter@3.1.0:
     resolution: {integrity: sha512-+9jVqKhRSpsc591z5vX+X5Yyw+he/HCB4iQ/RYxw35CEPaY1gnsNE43nf9n9AaYjAQrTiI/mOwKUKdUs9vf7Xg==}
+    dev: false
 
   /@socket.io/redis-adapter@8.3.0(socket.io-adapter@2.5.4):
     resolution: {integrity: sha512-ly0cra+48hDmChxmIpnESKrc94LjRL80TEmZVscuQ/WWkRP81nNj8W8cCGMqbI4L6NCuAaPRSzZF1a9GlAxxnA==}
@@ -29033,6 +29000,7 @@ packages:
       - bufferutil
       - supports-color
       - utf-8-validate
+    dev: false
 
   /socket.io-client@4.7.3:
     resolution: {integrity: sha512-nU+ywttCyBitXIl9Xe0RSEfek4LneYkJxCeNnKCuhwoH4jGXO1ipIUw/VA/+Vvv2G1MTym11fzFC0SxkrcfXDw==}
@@ -29070,6 +29038,7 @@ packages:
       debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
+    dev: false
 
   /socket.io@4.7.3:
     resolution: {integrity: sha512-SE+UIQXBQE+GPG2oszWMlsEmWtHVqw/h1VrYJGK5/MC7CH5p58N448HwIrtREcvR4jfdOJAY4ieQfxMr55qbbw==}
@@ -29103,6 +29072,7 @@ packages:
       - bufferutil
       - supports-color
       - utf-8-validate
+    dev: false
 
   /socket.io@4.7.5:
     resolution: {integrity: sha512-DmeAkF6cwM9jSfmp6Dr/5/mfMwb5Z5qRrSXLpo3Fq5SqyU8CMF15jIN4ZhfSwu35ksM1qmHZDQ/DK5XTccSTvA==}

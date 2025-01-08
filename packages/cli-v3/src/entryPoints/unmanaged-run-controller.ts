@@ -6,7 +6,7 @@ import { CLOUD_API_URL } from "../consts.js";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import { WorkerManifest } from "@trigger.dev/core/v3";
-import { SupervisorSession } from "@trigger.dev/worker";
+import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 
 const Env = z.object({
   TRIGGER_API_URL: z.string().url().default(CLOUD_API_URL),

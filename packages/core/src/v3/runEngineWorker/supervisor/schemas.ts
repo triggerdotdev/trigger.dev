@@ -1,13 +1,13 @@
 import { z } from "zod";
+import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
-  CompleteRunAttemptResult,
-  DequeuedMessage,
   MachineResources,
-  RunExecutionData,
+  DequeuedMessage,
   StartRunAttemptResult,
-  TaskRunExecutionResult,
+  CompleteRunAttemptResult,
+  RunExecutionData,
   WaitForDurationResult,
-} from "@trigger.dev/core/v3";
+} from "../../schemas/runEngine.js";
 
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({

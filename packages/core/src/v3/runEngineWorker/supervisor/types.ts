@@ -1,4 +1,4 @@
-import type { MachineResources } from "@trigger.dev/core/v3";
+import { MachineResources } from "../../schemas/runEngine.js";
 
 export type SupervisorClientCommonOptions = {
   apiUrl: string;

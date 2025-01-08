@@ -26,7 +26,7 @@ import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
-import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "@trigger.dev/worker";
+import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "@trigger.dev/core/v3/workers";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 

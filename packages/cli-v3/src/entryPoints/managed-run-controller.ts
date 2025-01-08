@@ -16,7 +16,7 @@ import {
   WorkloadHttpClient,
   WorkloadServerToClientEvents,
   type WorkloadRunAttemptStartResponseBody,
-} from "@trigger.dev/worker";
+} from "@trigger.dev/core/v3/workers";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { setTimeout as wait } from "timers/promises";
 import { io, Socket } from "socket.io-client";

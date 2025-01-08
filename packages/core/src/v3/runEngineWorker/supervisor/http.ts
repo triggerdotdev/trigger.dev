@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import {
   WorkerApiConnectRequestBody,
   WorkerApiConnectResponseBody,
@@ -19,6 +18,7 @@ import {
 } from "./schemas.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
+import { ApiError, zodfetch } from "../../zodfetch.js";
 
 type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 
