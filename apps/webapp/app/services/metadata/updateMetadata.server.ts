@@ -229,17 +229,21 @@ export class UpdateMetadataService extends BaseService {
   }
 
   public async call(
-    environment: AuthenticatedEnvironment,
     runId: string,
-    body: UpdateMetadataRequestBody
+    body: UpdateMetadataRequestBody,
+    environment?: AuthenticatedEnvironment
   ) {
     const runIdType = runId.startsWith("run_") ? "friendly" : "internal";
 
     const taskRun = await this._prisma.taskRun.findFirst({
-      where: {
-        runtimeEnvironmentId: environment.id,
-        ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
-      },
+      where: environment
+        ? {
+            runtimeEnvironmentId: environment.id,
+            ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
+          }
+        : {
+            ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
+          },
       select: {
         id: true,
         status: true,
@@ -351,6 +355,15 @@ export class UpdateMetadataService extends BaseService {
       });
 
       if (result.count === 0) {
+        if (this.flushLoggingEnabled) {
+          logger.debug(
+            `[UpdateMetadataService][updateRunMetadataWithOperations] Optimistic lock failed for run ${runId}`,
+            {
+              metadataVersion: run.metadataVersion,
+            }
+          );
+        }
+
         // If this was our last attempt, buffer the operations and return optimistically
         if (attempts === MAX_RETRIES) {
           this.#ingestRunOperations(runId, operations);
@@ -361,6 +374,15 @@ export class UpdateMetadataService extends BaseService {
         await setTimeout(100 * Math.pow(1.4, attempts));
         attempts++;
         continue;
+      }
+
+      if (this.flushLoggingEnabled) {
+        logger.debug(
+          `[UpdateMetadataService][updateRunMetadataWithOperations] Updated metadata for run ${runId}`,
+          {
+            metadata: applyResults.newMetadata,
+          }
+        );
       }
 
       // Success! Return the new metadata
@@ -383,10 +405,15 @@ export class UpdateMetadataService extends BaseService {
       metadataPacket.data !== "{}" ||
       (existingMetadata.data && metadataPacket.data !== existingMetadata.data)
     ) {
-      logger.debug(`Updating metadata directly for run`, {
-        metadata: metadataPacket.data,
-        runId,
-      });
+      if (this.flushLoggingEnabled) {
+        logger.debug(
+          `[UpdateMetadataService][updateRunMetadataDirectly] Updating metadata directly for run`,
+          {
+            metadata: metadataPacket.data,
+            runId,
+          }
+        );
+      }
 
       // Update the metadata without version check
       await this._prisma.taskRun.update({
@@ -415,6 +442,13 @@ export class UpdateMetadataService extends BaseService {
         operation,
       };
     });
+
+    if (this.flushLoggingEnabled) {
+      logger.debug(`[UpdateMetadataService] Ingesting operations for run`, {
+        runId,
+        bufferedOperations,
+      });
+    }
 
     const existingBufferedOperations = this._bufferedOperations.get(runId) ?? [];
 
