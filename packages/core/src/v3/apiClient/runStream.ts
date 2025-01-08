@@ -505,7 +505,6 @@ const isSafari = () => {
  */
 
 if (isSafari()) {
-  // @ts-expect-error
   ReadableStream.prototype.values ??= function ({ preventCancel = false } = {}) {
     const reader = this.getReader();
     return {
@@ -521,7 +520,7 @@ if (isSafari()) {
           throw e;
         }
       },
-      async return(value: unknown) {
+      async return(value: any) {
         if (!preventCancel) {
           const cancelPromise = reader.cancel(value);
           reader.releaseLock();
@@ -537,6 +536,5 @@ if (isSafari()) {
     };
   };
 
-  // @ts-expect-error
   ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
 }
