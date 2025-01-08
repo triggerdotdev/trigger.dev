@@ -52,7 +52,7 @@ const EnvironmentSchema = z.object({
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_SECURE: z.coerce.boolean().optional(),
   SMTP_USER: z.string().optional(),
-  SMTP_PASSWORD:  z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
 
   PLAIN_API_KEY: z.string().optional(),
   RUNTIME_PLATFORM: z.enum(["docker-compose", "ecs", "local"]).default("local"),
@@ -210,8 +210,7 @@ const EnvironmentSchema = z.object({
   ALERT_SMTP_PORT: z.coerce.number().optional(),
   ALERT_SMTP_SECURE: z.coerce.boolean().optional(),
   ALERT_SMTP_USER: z.string().optional(),
-  ALERT_SMTP_PASSWORD:  z.string().optional(),
-
+  ALERT_SMTP_PASSWORD: z.string().optional(),
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
@@ -261,6 +260,8 @@ const EnvironmentSchema = z.object({
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+  BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
+  BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
