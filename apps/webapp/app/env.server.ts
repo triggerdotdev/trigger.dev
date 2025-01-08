@@ -281,13 +281,14 @@ const EnvironmentSchema = z.object({
   TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
   TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
   BATCH_TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(1_000_000), // 1MB
-  TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(4_096), // 4KB
+  TASK_RUN_METADATA_MAXIMUM_SIZE: z.coerce.number().int().default(262_144), // 256KB
 
   MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
+  BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
 
   // Run Engine 2.0
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),

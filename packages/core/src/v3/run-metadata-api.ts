@@ -3,3 +3,6 @@
 import { RunMetadataAPI } from "./runMetadata/index.js";
 
 export const runMetadata = RunMetadataAPI.getInstance();
+
+export * from "./runMetadata/types.js";
+export * from "./runMetadata/operations.js";

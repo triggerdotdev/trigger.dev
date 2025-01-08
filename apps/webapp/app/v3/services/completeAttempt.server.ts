@@ -12,22 +12,23 @@ import {
   shouldRetryError,
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
+import { TaskRun } from "@trigger.dev/database";
+import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
-import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
 import { marqs } from "~/v3/marqs/index.server";
+import { createExceptionPropertiesFromError, eventRepository } from "../eventRepository.server";
+import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
-import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import { CreateCheckpointService } from "./createCheckpoint.server";
-import { TaskRun } from "@trigger.dev/database";
-import { RetryAttemptService } from "./retryAttempt.server";
-import { FAILED_RUN_STATUSES, isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { env } from "~/env.server";
-import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
+import { RetryAttemptService } from "./retryAttempt.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -94,6 +95,8 @@ export class CompleteAttemptService extends BaseService {
           code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
           message: "Tried to complete attempt but it doesn't exist",
         },
+        metadata: completion.metadata,
+        env,
       });
 
       // No attempt, so there's no message to ACK
@@ -153,6 +156,8 @@ export class CompleteAttemptService extends BaseService {
       id: taskRunAttempt.taskRunId,
       status: "COMPLETED_SUCCESSFULLY",
       completedAt: new Date(),
+      metadata: completion.metadata,
+      env,
     });
 
     // Now we need to "complete" the task run event/span
@@ -306,6 +311,8 @@ export class CompleteAttemptService extends BaseService {
       id: taskRunAttempt.taskRunId,
       status,
       completedAt: failedAt,
+      metadata: completion.metadata,
+      env,
     });
 
     if (status !== "CRASHED" && status !== "SYSTEM_FAILURE") {

@@ -26,6 +26,7 @@ import { logger } from "../utilities/logger.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker, BackgroundWorkerCoordinator } from "./backgroundWorker.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
+import { VERSION } from "../version.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
@@ -325,7 +326,13 @@ class DevWorkerRuntime implements WorkerRuntime {
 function WebsocketFactory(apiKey: string) {
   return class extends wsWebSocket {
     constructor(address: string | URL, options?: ClientOptions | ClientRequestArgs) {
-      super(address, { ...(options ?? {}), headers: { Authorization: `Bearer ${apiKey}` } });
+      super(address, {
+        ...(options ?? {}),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "User-Agent": `trigger.dev-cli/${VERSION}`,
+        },
+      });
     }
   };
 }

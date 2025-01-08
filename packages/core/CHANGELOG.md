@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.3.8
+
+### Patch Changes
+
+- Fix realtime safari bug because of missing ReadableStream async iterable support ([#1585](https://github.com/triggerdotdev/trigger.dev/pull/1585))
+- Fix issue with dates in realtime not reflecting the current timezone ([#1585](https://github.com/triggerdotdev/trigger.dev/pull/1585))
+
 ## 3.3.7
 
 ## 3.3.6

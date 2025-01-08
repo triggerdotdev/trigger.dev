@@ -1,6 +1,72 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 
+export const RunMetadataUpdateOperation = z.object({
+  type: z.literal("update"),
+  value: z.record(z.unknown()),
+});
+
+export type RunMetadataUpdateOperation = z.infer<typeof RunMetadataUpdateOperation>;
+
+export const RunMetadataSetKeyOperation = z.object({
+  type: z.literal("set"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataSetKeyOperation = z.infer<typeof RunMetadataSetKeyOperation>;
+
+export const RunMetadataDeleteKeyOperation = z.object({
+  type: z.literal("delete"),
+  key: z.string(),
+});
+
+export type RunMetadataDeleteKeyOperation = z.infer<typeof RunMetadataDeleteKeyOperation>;
+
+export const RunMetadataAppendKeyOperation = z.object({
+  type: z.literal("append"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataAppendKeyOperation = z.infer<typeof RunMetadataAppendKeyOperation>;
+
+export const RunMetadataRemoveFromKeyOperation = z.object({
+  type: z.literal("remove"),
+  key: z.string(),
+  value: DeserializedJsonSchema,
+});
+
+export type RunMetadataRemoveFromKeyOperation = z.infer<typeof RunMetadataRemoveFromKeyOperation>;
+
+export const RunMetadataIncrementKeyOperation = z.object({
+  type: z.literal("increment"),
+  key: z.string(),
+  value: z.number(),
+});
+
+export type RunMetadataIncrementKeyOperation = z.infer<typeof RunMetadataIncrementKeyOperation>;
+
+export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
+  RunMetadataUpdateOperation,
+  RunMetadataSetKeyOperation,
+  RunMetadataDeleteKeyOperation,
+  RunMetadataAppendKeyOperation,
+  RunMetadataRemoveFromKeyOperation,
+  RunMetadataIncrementKeyOperation,
+]);
+
+export type RunMetadataChangeOperation = z.infer<typeof RunMetadataChangeOperation>;
+
+export const FlushedRunMetadata = z.object({
+  metadata: z.record(DeserializedJsonSchema).optional(),
+  operations: z.array(RunMetadataChangeOperation).optional(),
+  parentOperations: z.array(RunMetadataChangeOperation).optional(),
+  rootOperations: z.array(RunMetadataChangeOperation).optional(),
+});
+
+export type FlushedRunMetadata = z.infer<typeof FlushedRunMetadata>;
+
 // Defaults to 0.5
 export const MachineCpu = z.union([
   z.literal(0.25),
@@ -281,6 +347,7 @@ export const TaskRunFailedExecutionResult = z.object({
   usage: TaskRunExecutionUsage.optional(),
   // Optional for now for backwards compatibility
   taskIdentifier: z.string().optional(),
+  metadata: FlushedRunMetadata.optional(),
 });
 
 export type TaskRunFailedExecutionResult = z.infer<typeof TaskRunFailedExecutionResult>;
@@ -293,6 +360,7 @@ export const TaskRunSuccessfulExecutionResult = z.object({
   usage: TaskRunExecutionUsage.optional(),
   // Optional for now for backwards compatibility
   taskIdentifier: z.string().optional(),
+  metadata: FlushedRunMetadata.optional(),
 });
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;
