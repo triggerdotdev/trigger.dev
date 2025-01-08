@@ -13,11 +13,6 @@ import NextjsTroubleshootingButtonSyntax from "/snippets/nextjs-button-syntax.md
 import WorkerFailedToStartWhenRunningDevCommand from "/snippets/worker-failed-to-start.mdx";
 import SupabaseDocsCards from "/snippets/supabase-docs-cards.mdx";
 
-<Info>
-  The project created in this guide can be found in this [GitHub
-  repo](https://github.com/triggerdotdev/example-projects/tree/main/supabase).
-</Info>
-
 ## Overview
 
 Supabase and Trigger.dev can be used together to create powerful workflows triggered by real-time changes in your database tables:
@@ -25,6 +20,7 @@ Supabase and Trigger.dev can be used together to create powerful workflows trigg
 - A Supabase Database Webhook triggers an Edge Function when a row including a video URL is inserted into a table
 - The Edge Function triggers a Trigger.dev task, passing the `video_url` column data from the new table row as the payload
 - The Trigger.dev task then:
+
   - Uses [FFmpeg](https://www.ffmpeg.org/) to extract the audio track from a video URL
   - Uses [Deepgram](https://deepgram.com) to transcribe the extracted audio
   - Updates the original table row using the `record.id` in Supabase with the new transcription using `update`
@@ -37,6 +33,17 @@ Supabase and Trigger.dev can be used together to create powerful workflows trigg
 - [Create a Trigger.dev account](https://cloud.trigger.dev)
 - [Create a new Trigger.dev project](/guides/dashboard/creating-a-project)
 - [Create a new Deepgram account](https://deepgram.com/) and get your API key from the dashboard
+
+## GitHub repo
+
+<Card
+  title="View the project on GitHub"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/supabase-edge-functions"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
 
 ## Initial setup
 

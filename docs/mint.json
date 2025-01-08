@@ -348,7 +348,10 @@
     },
     {
       "group": "Example projects",
-      "pages": ["guides/example-projects/realtime-fal-ai"]
+      "pages": [
+        "guides/example-projects/realtime-fal-ai",
+        "guides/example-projects/batch-llm-evaluator"
+      ]
     },
     {
       "group": "Example tasks",
