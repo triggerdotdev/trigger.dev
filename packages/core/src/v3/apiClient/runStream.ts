@@ -508,19 +508,22 @@ if (isSafari()) {
   ReadableStream.prototype.values ??= function ({ preventCancel = false } = {}) {
     const reader = this.getReader();
     return {
-      async next() {
+      async next(): Promise<IteratorResult<any>> {
         try {
           const result = await reader.read();
           if (result.done) {
             reader.releaseLock();
           }
-          return result;
+          return {
+            done: result.done,
+            value: result.value,
+          };
         } catch (e) {
           reader.releaseLock();
           throw e;
         }
       },
-      async return(value: any) {
+      async return(value: any): Promise<IteratorResult<any>> {
         if (!preventCancel) {
           const cancelPromise = reader.cancel(value);
           reader.releaseLock();
