@@ -2,8 +2,7 @@ import { ChevronRightIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon } from "@heroicons/react/24/solid";
 import { Link, useLocation } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { ButtonContent } from "./Buttons";
-import { LinkDisabled } from "./LinkWithDisabled";
+import { LinkButton } from "./Buttons";
 
 export function PaginationControls({
   currentPage,
@@ -21,16 +20,17 @@ export function PaginationControls({
 
   return (
     <nav className="flex items-center gap-0.5" aria-label="Pagination">
-      <LinkDisabled
+      <LinkButton
         to={pageUrl(location, currentPage - 1)}
-        className={currentPage > 1 ? "group" : ""}
+        variant="minimal/small"
+        LeadingIcon={ChevronLeftIcon}
+        shortcut={{ key: "j" }}
+        tooltip="Previous"
         disabled={currentPage === 1}
-        disabledClassName="opacity-30 cursor-default"
+        className={currentPage > 1 ? "group" : ""}
       >
-        <ButtonContent variant="minimal/small" LeadingIcon={ChevronLeftIcon}>
-          Prev
-        </ButtonContent>
-      </LinkDisabled>
+        Prev
+      </LinkButton>
 
       {showPageNumbers
         ? calculatePageLinks(currentPage, totalPages).map((page, i) => (
@@ -38,16 +38,17 @@ export function PaginationControls({
           ))
         : null}
 
-      <LinkDisabled
+      <LinkButton
         to={pageUrl(location, currentPage + 1)}
-        className={currentPage !== totalPages ? "group" : ""}
+        variant="minimal/small"
+        TrailingIcon={ChevronRightIcon}
+        shortcut={{ key: "k" }}
+        tooltip="Next"
         disabled={currentPage === totalPages}
-        disabledClassName="opacity-30 cursor-default"
+        className={currentPage !== totalPages ? "group" : ""}
       >
-        <ButtonContent variant="minimal/small" TrailingIcon={ChevronRightIcon}>
-          Next
-        </ButtonContent>
-      </LinkDisabled>
+        Next
+      </LinkButton>
     </nav>
   );
 }
@@ -61,7 +62,7 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 }
 
 const baseClass =
-  "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm";
+  "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm focus-visible:focus-custom";
 const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
 const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-charcoal-600/50";
 

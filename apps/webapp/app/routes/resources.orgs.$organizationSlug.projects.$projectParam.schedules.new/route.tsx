@@ -393,7 +393,7 @@ export function UpsertScheduleForm({
             variant="primary/medium"
             type="submit"
             disabled={isLoading}
-            shortcut={{ key: "enter", modifiers: ["meta"] }}
+            shortcut={{ key: "enter", modifiers: ["mod"] }}
             LeadingIcon={isLoading ? "spinner" : undefined}
           >
             {buttonText(mode, isLoading)}

@@ -70,7 +70,7 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/small" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="primary/small" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Primary button
           </Button>
           <Button variant="secondary/small" shortcut={{ key: "f" }}>
@@ -82,7 +82,7 @@ export default function Story() {
           <Button variant="minimal/small" shortcut={{ key: "i" }}>
             Minimal button
           </Button>
-          <Button variant="danger/small" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="danger/small" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Danger button
           </Button>
         </div>
@@ -193,19 +193,19 @@ export default function Story() {
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Shortcut</Header3>
-          <Button variant="primary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="primary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Primary button
           </Button>
-          <Button variant="secondary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="secondary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Secondary button
           </Button>
-          <Button variant="tertiary/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="tertiary/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Tertiary button
           </Button>
-          <Button variant="minimal/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="minimal/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Minimal button
           </Button>
-          <Button variant="danger/medium" shortcut={{ key: "s", modifiers: ["meta"] }}>
+          <Button variant="danger/medium" shortcut={{ key: "s", modifiers: ["mod"] }}>
             Danger button
           </Button>
         </div>
