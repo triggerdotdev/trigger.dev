@@ -70,9 +70,9 @@ export class FinalizeTaskRunService extends BaseService {
       completedAt,
     });
 
-    if (env && metadata) {
+    if (metadata) {
       try {
-        await updateMetadataService.call(env, id, metadata);
+        await updateMetadataService.call(id, metadata, env);
       } catch (e) {
         logger.error("[FinalizeTaskRunService] Failed to update metadata", {
           taskRun: id,

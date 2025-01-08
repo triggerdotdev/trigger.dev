@@ -229,17 +229,21 @@ export class UpdateMetadataService extends BaseService {
   }
 
   public async call(
-    environment: AuthenticatedEnvironment,
     runId: string,
-    body: UpdateMetadataRequestBody
+    body: UpdateMetadataRequestBody,
+    environment?: AuthenticatedEnvironment
   ) {
     const runIdType = runId.startsWith("run_") ? "friendly" : "internal";
 
     const taskRun = await this._prisma.taskRun.findFirst({
-      where: {
-        runtimeEnvironmentId: environment.id,
-        ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
-      },
+      where: environment
+        ? {
+            runtimeEnvironmentId: environment.id,
+            ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
+          }
+        : {
+            ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
+          },
       select: {
         id: true,
         status: true,
