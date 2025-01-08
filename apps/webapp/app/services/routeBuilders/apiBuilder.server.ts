@@ -384,6 +384,7 @@ type ApiKeyActionRouteBuilderOptions<
   headers?: THeadersSchema;
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
+  method?: "POST" | "PUT" | "DELETE" | "PATCH";
   authorization?: {
     action: AuthorizationAction;
     resource: (
@@ -455,6 +456,19 @@ export function createActionApiRoute<
   }
 
   async function action({ request, params }: ActionFunctionArgs) {
+    if (options.method) {
+      if (request.method.toUpperCase() !== options.method) {
+        return await wrapResponse(
+          request,
+          json(
+            { error: "Method not allowed" },
+            { status: 405, headers: { Allow: options.method } }
+          ),
+          corsStrategy !== "none"
+        );
+      }
+    }
+
     try {
       const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
 
@@ -613,6 +627,19 @@ export function createActionApiRoute<
         if (error instanceof Response) {
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
+
+        logger.error("Error in action", {
+          error:
+            error instanceof Error
+              ? {
+                  name: error.name,
+                  message: error.message,
+                  stack: error.stack,
+                }
+              : String(error),
+          url: request.url,
+        });
+
         return await wrapResponse(
           request,
           json({ error: "Internal Server Error" }, { status: 500 }),

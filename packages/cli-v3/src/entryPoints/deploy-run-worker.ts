@@ -363,6 +363,7 @@ const zodIpc = new ZodIpcConnection({
                     durationMs: usageSample.cpuTime,
                   },
                   taskIdentifier: execution.task.id,
+                  metadata: runMetadataManager.stopAndReturnLastFlush(),
                 },
               });
             }
@@ -387,6 +388,7 @@ const zodIpc = new ZodIpcConnection({
                   durationMs: usageSample.cpuTime,
                 },
                 taskIdentifier: execution.task.id,
+                metadata: runMetadataManager.stopAndReturnLastFlush(),
               },
             });
           }
@@ -410,6 +412,7 @@ const zodIpc = new ZodIpcConnection({
               durationMs: 0,
             },
             taskIdentifier: execution.task.id,
+            metadata: runMetadataManager.stopAndReturnLastFlush(),
           },
         });
       }

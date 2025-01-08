@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
-import { SerializedError, TaskRunError } from "./common.js";
+import {
+  FlushedRunMetadata,
+  RunMetadataChangeOperation,
+  SerializedError,
+  TaskRunError,
+} from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
 
@@ -669,10 +674,7 @@ export const EnvironmentVariables = z.array(EnvironmentVariable);
 
 export type EnvironmentVariables = z.infer<typeof EnvironmentVariables>;
 
-export const UpdateMetadataRequestBody = z.object({
-  metadata: z.record(DeserializedJsonSchema),
-  metadataType: z.string().optional(),
-});
+export const UpdateMetadataRequestBody = FlushedRunMetadata;
 
 export type UpdateMetadataRequestBody = z.infer<typeof UpdateMetadataRequestBody>;
 

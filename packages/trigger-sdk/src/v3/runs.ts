@@ -13,6 +13,7 @@ import type {
   RunSubscription,
   TaskRunShape,
   AnyBatchedRunHandle,
+  AsyncIterableStream,
 } from "@trigger.dev/core/v3";
 import {
   ApiPromise,
@@ -51,6 +52,7 @@ export const runs = {
   subscribeToRun,
   subscribeToRunsWithTag,
   subscribeToBatch: subscribeToRunsInBatch,
+  fetchStream,
 };
 
 export type ListRunsItem = ListRunResponseItem;
@@ -335,6 +337,17 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   );
 }
 
+export type SubscribeToRunOptions = {
+  /**
+   * Whether to close the subscription when the run completes
+   *
+   * @default true
+   *
+   * Set this to false if you are making updates to the run metadata after completion through child runs
+   */
+  stopOnCompletion?: boolean;
+};
+
 /**
  * Subscribes to real-time updates for a specific run.
  *
@@ -345,6 +358,8 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
  *
  * @template TRunId - The type parameter extending AnyRunHandle, AnyTask, or string
  * @param {RunId<TRunId>} runId - The ID of the run to subscribe to. Can be a string ID, RunHandle, or Task
+ * @param {SubscribeToRunOptions} [options] - Optional configuration for the subscription
+ * @param {boolean} [options.stopOnCompletion=true] - Whether to close the subscription when the run completes
  * @returns {RunSubscription<InferRunTypes<TRunId>>} An async iterator that yields updated run objects
  *
  * @example
@@ -365,13 +380,17 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
  * ```
  */
 function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
-  runId: RunId<TRunId>
+  runId: RunId<TRunId>,
+  options?: SubscribeToRunOptions
 ): RunSubscription<InferRunTypes<TRunId>> {
   const $runId = typeof runId === "string" ? runId : runId.id;
 
   const apiClient = apiClientManager.clientOrThrow();
 
-  return apiClient.subscribeToRun($runId);
+  return apiClient.subscribeToRun($runId, {
+    closeOnComplete:
+      typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
+  });
 }
 
 /**
@@ -447,4 +466,13 @@ function subscribeToRunsInBatch<TTasks extends AnyTask>(
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.subscribeToBatch<InferRunTypes<TTasks>>(batchId);
+}
+
+/**
+ * Fetches a stream of data from a run's stream key.
+ */
+async function fetchStream<T>(runId: string, streamKey: string): Promise<AsyncIterableStream<T>> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return await apiClient.fetchStream(runId, streamKey);
 }

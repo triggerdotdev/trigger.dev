@@ -1778,8 +1778,9 @@ model TaskRun {
   seedMetadataType String  @default("application/json")
 
   /// Run metadata
-  metadata     String?
-  metadataType String  @default("application/json")
+  metadata        String?
+  metadataType    String  @default("application/json")
+  metadataVersion Int     @default(1)
 
   /// Run output
   output     String?
