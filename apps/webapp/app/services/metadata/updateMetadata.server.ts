@@ -30,7 +30,9 @@ export class UpdateMetadataService extends BaseService {
 
   constructor(
     protected readonly _prisma: PrismaClientOrTransaction = prisma,
-    private readonly flushIntervalMs: number = 5000
+    private readonly flushIntervalMs: number = 5000,
+    private readonly flushEnabled: boolean = true,
+    private readonly flushLoggingEnabled: boolean = true
   ) {
     super();
 
@@ -39,6 +41,14 @@ export class UpdateMetadataService extends BaseService {
 
   // Start a loop that periodically flushes buffered operations
   private _startFlushing() {
+    if (!this.flushEnabled) {
+      logger.info("[UpdateMetadataService] 🚽 Flushing disabled");
+
+      return;
+    }
+
+    logger.info("[UpdateMetadataService] 🚽 Flushing started");
+
     // Create a program that sleeps, then processes buffered ops
     const program = Effect.gen(this, function* (_) {
       while (true) {
@@ -50,9 +60,11 @@ export class UpdateMetadataService extends BaseService {
         this._bufferedOperations.clear();
 
         yield* Effect.sync(() => {
-          logger.debug(`[UpdateMetadataService] Flushing operations`, {
-            operations: Object.fromEntries(currentOperations),
-          });
+          if (this.flushLoggingEnabled) {
+            logger.debug(`[UpdateMetadataService] Flushing operations`, {
+              operations: Object.fromEntries(currentOperations),
+            });
+          }
         });
 
         // If we have operations, process them
@@ -87,10 +99,12 @@ export class UpdateMetadataService extends BaseService {
         }
 
         yield* Effect.sync(() => {
-          logger.debug(`[UpdateMetadataService] Processing operations for run`, {
-            runId,
-            operationsCount: processedOps.length,
-          });
+          if (this.flushLoggingEnabled) {
+            logger.debug(`[UpdateMetadataService] Processing operations for run`, {
+              runId,
+              operationsCount: processedOps.length,
+            });
+          }
         });
 
         // Update run with retry
@@ -410,5 +424,11 @@ export class UpdateMetadataService extends BaseService {
 
 export const updateMetadataService = singleton(
   "update-metadata-service",
-  () => new UpdateMetadataService(prisma, env.BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS)
+  () =>
+    new UpdateMetadataService(
+      prisma,
+      env.BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS,
+      env.BATCH_METADATA_OPERATIONS_FLUSH_ENABLED === "1",
+      env.BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED === "1"
+    )
 );
