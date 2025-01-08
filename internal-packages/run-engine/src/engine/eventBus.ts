@@ -1,6 +1,6 @@
 import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "../shared";
-import { TaskRunError } from "@trigger.dev/core/v3";
+import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
 
 export type EventBusEvents = {
   runAttemptStarted: [
@@ -76,6 +76,15 @@ export type EventBusEvents = {
         friendlyId: string;
         spanId: string;
         error: TaskRunError;
+      };
+    },
+  ];
+  runMetadataUpdated: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        metadata: FlushedRunMetadata;
       };
     },
   ];

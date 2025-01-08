@@ -1185,6 +1185,16 @@ export class RunEngine {
     snapshotId: string;
     completion: TaskRunExecutionResult;
   }): Promise<CompleteRunAttemptResult> {
+    if (completion.metadata) {
+      this.eventBus.emit("runMetadataUpdated", {
+        time: new Date(),
+        run: {
+          id: runId,
+          metadata: completion.metadata,
+        },
+      });
+    }
+
     switch (completion.ok) {
       case true: {
         return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
