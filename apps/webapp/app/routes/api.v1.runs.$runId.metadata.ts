@@ -16,7 +16,7 @@ const { action } = createActionApiRoute(
     method: "PUT",
   },
   async ({ authentication, body, params }) => {
-    const result = await updateMetadataService.call(authentication.environment, params.runId, body);
+    const result = await updateMetadataService.call(params.runId, body, authentication.environment);
 
     if (!result) {
       return json({ error: "Task Run not found" }, { status: 404 });
