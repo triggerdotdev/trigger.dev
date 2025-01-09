@@ -350,7 +350,8 @@
       "group": "Example projects",
       "pages": [
         "guides/example-projects/realtime-fal-ai",
-        "guides/example-projects/batch-llm-evaluator"
+        "guides/example-projects/batch-llm-evaluator",
+        "guides/example-projects/realtime-csv-importer"
       ]
     },
     {
