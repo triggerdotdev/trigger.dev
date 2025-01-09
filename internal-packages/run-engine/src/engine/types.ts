@@ -70,7 +70,10 @@ export type TriggerParams = {
   tags: { id: string; name: string }[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
-  batchId?: string;
+  batch?: {
+    id: string;
+    index: number;
+  };
   resumeParentOnCompletion?: boolean;
   depth?: number;
   metadata?: string;

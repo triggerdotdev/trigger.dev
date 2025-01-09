@@ -43,12 +43,14 @@ export const WaitpointType = {
   RUN: "RUN",
   DATETIME: "DATETIME",
   MANUAL: "MANUAL",
+  BATCH: "BATCH",
 } satisfies Enum<DB_TYPES.WaitpointType>;
 
 export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 
 export const CompletedWaitpoint = z.object({
   id: z.string(),
+  index: z.number().optional(),
   friendlyId: z.string(),
   type: z.enum(Object.values(WaitpointType) as [WaitpointType]),
   completedAt: z.coerce.date(),
@@ -62,6 +64,8 @@ export const CompletedWaitpoint = z.object({
     .optional(),
   /** For type === "DATETIME" */
   completedAfter: z.coerce.date().optional(),
+  /** For type === "BATCH" */
+  completedByBatchId: z.string().optional(),
   output: z.string().optional(),
   outputType: z.string().optional(),
   outputIsError: z.boolean(),
@@ -164,6 +168,12 @@ export const RunExecutionData = z.object({
   version: z.literal("1"),
   snapshot: ExecutionSnapshot,
   run: BaseRunMetadata,
+  batch: z
+    .object({
+      id: z.string(),
+      friendlyId: z.string(),
+    })
+    .optional(),
   checkpoint: z
     .object({
       id: z.string(),

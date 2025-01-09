@@ -35,29 +35,30 @@ export async function getLatestExecutionSnapshot(
     ...snapshot,
     friendlyId: SnapshotId.toFriendlyId(snapshot.id),
     runFriendlyId: RunId.toFriendlyId(snapshot.runId),
-    completedWaitpoints: snapshot.completedWaitpoints.map(
-      (w) =>
-        ({
-          id: w.id,
-          friendlyId: w.friendlyId,
-          type: w.type,
-          completedAt: w.completedAt ?? new Date(),
-          idempotencyKey:
-            w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey
-              ? w.idempotencyKey
-              : undefined,
-          completedByTaskRun: w.completedByTaskRunId
-            ? {
-                id: w.completedByTaskRunId,
-                friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
-              }
-            : undefined,
-          completedAfter: w.completedAfter ?? undefined,
-          output: w.output ?? undefined,
-          outputType: w.outputType,
-          outputIsError: w.outputIsError,
-        }) satisfies CompletedWaitpoint
-    ),
+    completedWaitpoints: snapshot.completedWaitpoints.map((w) => {
+      const index = snapshot.completedWaitpointOrder.findIndex((s) => s === w.id);
+
+      return {
+        id: w.id,
+        index: index === -1 ? undefined : index,
+        friendlyId: w.friendlyId,
+        type: w.type,
+        completedAt: w.completedAt ?? new Date(),
+        idempotencyKey:
+          w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
+        completedByTaskRun: w.completedByTaskRunId
+          ? {
+              id: w.completedByTaskRunId,
+              friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
+            }
+          : undefined,
+        completedAfter: w.completedAfter ?? undefined,
+        completedByBatchId: w.completedByBatchId ?? undefined,
+        output: w.output ?? undefined,
+        outputType: w.outputType,
+        outputIsError: w.outputIsError,
+      } satisfies CompletedWaitpoint;
+    }),
   };
 }
 

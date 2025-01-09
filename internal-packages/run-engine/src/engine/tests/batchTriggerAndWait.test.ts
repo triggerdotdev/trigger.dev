@@ -97,6 +97,18 @@ describe("RunEngine batchTriggerAndWait", () => {
           snapshotId: initialExecutionData.snapshot.id,
         });
 
+        //block using the batch
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRun.id,
+          batchId: batch.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        const afterBlockedByBatch = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(afterBlockedByBatch);
+        expect(afterBlockedByBatch.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
         const child1 = await engine.trigger(
           {
             number: 1,
@@ -163,15 +175,31 @@ describe("RunEngine batchTriggerAndWait", () => {
             createdAt: "asc",
           },
         });
-        expect(runWaitpoints.length).toBe(2);
-        expect(runWaitpoints[0].waitpoint.type).toBe("RUN");
-        expect(runWaitpoints[0].waitpoint.completedByTaskRunId).toBe(child1.id);
-        expect(runWaitpoints[0].batchId).toBe(batch.id);
-        expect(runWaitpoints[0].batchIndex).toBe(0);
-        expect(runWaitpoints[1].waitpoint.type).toBe("RUN");
-        expect(runWaitpoints[1].waitpoint.completedByTaskRunId).toBe(child2.id);
-        expect(runWaitpoints[1].batchId).toBe(batch.id);
-        expect(runWaitpoints[1].batchIndex).toBe(1);
+        expect(runWaitpoints.length).toBe(3);
+        const child1Waitpoint = runWaitpoints.find(
+          (w) => w.waitpoint.completedByTaskRunId === child1.id
+        );
+        expect(child1Waitpoint?.waitpoint.type).toBe("RUN");
+        expect(child1Waitpoint?.waitpoint.completedByTaskRunId).toBe(child1.id);
+        expect(child1Waitpoint?.batchId).toBe(batch.id);
+        expect(child1Waitpoint?.batchIndex).toBe(0);
+        const child2Waitpoint = runWaitpoints.find(
+          (w) => w.waitpoint.completedByTaskRunId === child2.id
+        );
+        expect(child2Waitpoint?.waitpoint.type).toBe("RUN");
+        expect(child2Waitpoint?.waitpoint.completedByTaskRunId).toBe(child2.id);
+        expect(child2Waitpoint?.batchId).toBe(batch.id);
+        expect(child2Waitpoint?.batchIndex).toBe(1);
+        const batchWaitpoint = runWaitpoints.find((w) => w.waitpoint.type === "BATCH");
+        expect(batchWaitpoint?.waitpoint.type).toBe("BATCH");
+        expect(batchWaitpoint?.waitpoint.completedByBatchId).toBe(batch.id);
+
+        await engine.unblockRunForCreatedBatch({
+          runId: parentRun.id,
+          batchId: batch.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
 
         //dequeue and start the 1st child
         const dequeuedChild = await engine.dequeueFromMasterQueue({
@@ -203,7 +231,7 @@ describe("RunEngine batchTriggerAndWait", () => {
 
         const child1WaitpointAfter = await prisma.waitpoint.findFirst({
           where: {
-            id: runWaitpoints[0].waitpointId,
+            id: child1Waitpoint?.waitpointId,
           },
         });
         expect(child1WaitpointAfter?.completedAt).not.toBeNull();
@@ -220,7 +248,7 @@ describe("RunEngine batchTriggerAndWait", () => {
             waitpoint: true,
           },
         });
-        expect(runWaitpointsAfterFirstChild.length).toBe(2);
+        expect(runWaitpointsAfterFirstChild.length).toBe(3);
 
         //parent snapshot
         const parentExecutionDataAfterFirstChildComplete = await engine.getRunExecutionData({
@@ -261,7 +289,7 @@ describe("RunEngine batchTriggerAndWait", () => {
 
         const child2WaitpointAfter = await prisma.waitpoint.findFirst({
           where: {
-            id: runWaitpoints[1].waitpointId,
+            id: child2Waitpoint?.waitpointId,
           },
         });
         expect(child2WaitpointAfter?.completedAt).not.toBeNull();
@@ -289,21 +317,42 @@ describe("RunEngine batchTriggerAndWait", () => {
           "EXECUTING"
         );
         expect(parentExecutionDataAfterSecondChildComplete.batch?.id).toBe(batch.id);
-        expect(parentExecutionDataAfterSecondChildComplete.completedWaitpoints.length).toBe(2);
+        expect(parentExecutionDataAfterSecondChildComplete.completedWaitpoints.length).toBe(3);
 
         const completedWaitpoint0 =
-          parentExecutionDataAfterSecondChildComplete.completedWaitpoints![0];
-        expect(completedWaitpoint0.id).toBe(runWaitpoints[0].waitpointId);
+          parentExecutionDataAfterSecondChildComplete.completedWaitpoints.find(
+            (w) => w.index === 0
+          );
+        assertNonNullable(completedWaitpoint0);
+        expect(completedWaitpoint0.id).toBe(child1Waitpoint!.waitpointId);
         expect(completedWaitpoint0.completedByTaskRun?.id).toBe(child1.id);
         expect(completedWaitpoint0.output).toBe('{"foo":"bar"}');
         expect(completedWaitpoint0.index).toBe(0);
 
         const completedWaitpoint1 =
-          parentExecutionDataAfterSecondChildComplete.completedWaitpoints![1];
-        expect(completedWaitpoint1.id).toBe(runWaitpoints[1].waitpointId);
+          parentExecutionDataAfterSecondChildComplete.completedWaitpoints.find(
+            (w) => w.index === 1
+          );
+        assertNonNullable(completedWaitpoint1);
+        expect(completedWaitpoint1.id).toBe(child2Waitpoint!.waitpointId);
         expect(completedWaitpoint1.completedByTaskRun?.id).toBe(child2.id);
         expect(completedWaitpoint1.output).toBe('{"baz":"qux"}');
         expect(completedWaitpoint1.index).toBe(1);
+
+        const batchWaitpointAfter =
+          parentExecutionDataAfterSecondChildComplete.completedWaitpoints.find(
+            (w) => w.type === "BATCH"
+          );
+        expect(batchWaitpointAfter?.id).toBe(batchWaitpoint?.waitpointId);
+        expect(batchWaitpointAfter?.completedByBatchId).toBe(batch.id);
+        expect(batchWaitpointAfter?.index).toBeUndefined();
+
+        const batchAfter = await prisma.batchTaskRun.findUnique({
+          where: {
+            id: batch.id,
+          },
+        });
+        expect(batchAfter?.status === "COMPLETED");
       } finally {
         engine.quit();
       }
