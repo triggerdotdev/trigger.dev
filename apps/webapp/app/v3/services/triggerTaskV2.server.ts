@@ -1,39 +1,35 @@
+import { RunEngine } from "@internal/run-engine";
+import { RunDuplicateIdempotencyKeyError } from "@internal/run-engine/engine";
 import {
   IOPacket,
+  packetRequiresOffloading,
   QueueOptions,
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
-  packetRequiresOffloading,
 } from "@trigger.dev/core/v3";
+import { BatchId, RunId, stringifyDuration } from "@trigger.dev/core/v3/apps";
+import { Prisma, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
+import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
-import { sanitizeQueueName } from "~/v3/marqs/index.server";
-import {
-  CreatableEvent,
-  eventRepository,
-  extractContextFromCarrier,
-} from "../eventRepository.server";
-import { uploadPacketToObjectStore } from "../r2.server";
-import { startActiveSpan } from "../tracer.server";
-import { getEntitlement } from "~/services/platform.v3.server";
-import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { isFinalRunStatus } from "../taskStatus";
-import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
-import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
-import { handleMetadataPacket } from "~/utils/packets";
-import { WorkerGroupService } from "./worker/workerGroupService.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 import { parseDelay } from "~/utils/delays";
-import { RunId, stringifyDuration } from "@trigger.dev/core/v3/apps";
-import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
-import { Prisma } from "@trigger.dev/database";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
+import { handleMetadataPacket } from "~/utils/packets";
+import { sanitizeQueueName } from "~/v3/marqs/index.server";
+import { eventRepository } from "../eventRepository.server";
+import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
+import { uploadPacketToObjectStore } from "../r2.server";
+import { isFinalRunStatus } from "../taskStatus";
+import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
-import { RunEngine } from "@internal/run-engine";
-import { Attributes } from "@opentelemetry/api";
-import { safeJsonParse } from "~/utils/json";
-import { getNowInNanoseconds } from "~/utils/taskEvent";
+import { ServiceValidationError, WithRunEngine } from "./baseService.server";
+import { OutOfEntitlementError, TriggerTaskServiceOptions } from "./triggerTask.server";
+import { WorkerGroupService } from "./worker/workerGroupService.server";
+
+type Result = TaskRun & { isCached: boolean };
 
 /** @deprecated Use TriggerTaskService in `triggerTask.server.ts` instead. */
 export class TriggerTaskServiceV2 extends WithRunEngine {
@@ -47,7 +43,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
     environment: AuthenticatedEnvironment;
     body: TriggerTaskRequestBody;
     options?: TriggerTaskServiceOptions;
-  }) {
+  }): Promise<Result | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
@@ -119,7 +115,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     icon: "task-cached",
                   },
                   runIsTest: body.options?.test ?? false,
-                  batchId: options.batchId,
+                  batchId: options.batchId ? BatchId.toFriendlyId(options.batchId) : undefined,
                   idempotencyKey,
                   runId: existingRun.friendlyId,
                 },
@@ -146,6 +142,12 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   runId: RunId.fromFriendlyId(body.options!.parentRunId!),
                   waitpoints: existingRun.associatedWaitpoint!.id,
                   spanIdToComplete: event.spanId,
+                  batch: options?.batchId
+                    ? {
+                        id: options.batchId,
+                        index: options.batchIndex ?? 0,
+                      }
+                    : undefined,
                   environmentId: environment.id,
                   projectId: environment.projectId,
                   tx: this._prisma,
@@ -246,7 +248,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 icon: options.customIcon ?? "task",
               },
               runIsTest: body.options?.test ?? false,
-              batchId: options.batchId,
+              batchId: options.batchId ? BatchId.toFriendlyId(options.batchId) : undefined,
               idempotencyKey,
             },
             incomplete: true,
@@ -350,7 +352,12 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     oneTimeUseToken: options.oneTimeUseToken,
                     parentTaskRunId: parentRun?.id,
                     rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
-                    batchId: body.options?.parentBatch ?? undefined,
+                    batch: options?.batchId
+                      ? {
+                          id: options.batchId,
+                          index: options.batchIndex ?? 0,
+                        }
+                      : undefined,
                     resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
                     depth,
                     metadata: metadataPacket?.data,
@@ -386,6 +393,11 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
           }
         );
       } catch (error) {
+        if (error instanceof RunDuplicateIdempotencyKeyError) {
+          //retry calling this function, because this time it will return the idempotent run
+          return await this.call({ taskId, environment, body, options });
+        }
+
         // Detect a prisma transaction Unique constraint violation
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           logger.debug("TriggerTask: Prisma transaction error", {
