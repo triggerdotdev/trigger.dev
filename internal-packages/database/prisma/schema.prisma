@@ -1945,11 +1945,17 @@ model TaskRunExecutionSnapshot {
   run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
 
+  batchId String?
+  batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
+
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
+
+  /// An array of waitpoint IDs in the correct order, used for batches
+  completedWaitpointOrder String[]
 
   /// Checkpoint
   checkpointId String?
@@ -2049,6 +2055,10 @@ model Waitpoint {
   /// If it's a DATETIME type waitpoint, this is the date
   completedAfter DateTime?
 
+  /// If it's a BATCH type waitpoint, this is the associated batch
+  completedByBatchId String?
+  completedByBatch   BatchTaskRun? @relation(fields: [completedByBatchId], references: [id], onDelete: SetNull)
+
   /// The runs this waitpoint is blocking
   blockingTaskRuns TaskRunWaitpoint[]
 
@@ -2070,12 +2080,14 @@ model Waitpoint {
   updatedAt DateTime @updatedAt
 
   @@unique([environmentId, idempotencyKey])
+  @@index([completedByBatchId])
 }
 
 enum WaitpointType {
   RUN
   DATETIME
   MANUAL
+  BATCH
 }
 
 enum WaitpointStatus {
@@ -2097,6 +2109,13 @@ model TaskRunWaitpoint {
 
   /// This span id is completed when the waitpoint is completed. This is used with cached runs (idempotent)
   spanIdToComplete String?
+
+  //associated batch
+  batchId    String?
+  batch      BatchTaskRun? @relation(fields: [batchId], references: [id])
+  //if there's an associated batch and this isn't set it's for the entire batch
+  //if it is set, it's a specific run in the batch
+  batchIndex Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2482,6 +2501,7 @@ model BatchTaskRun {
   runtimeEnvironment      RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   status                  BatchTaskRunStatus @default(PENDING)
   runtimeEnvironmentId    String
+  /// This only includes new runs, not idempotent runs.
   runs                    TaskRun[]
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
@@ -2494,6 +2514,15 @@ model BatchTaskRun {
   payloadType  String   @default("application/json")
   options      Json?
   batchVersion String   @default("v1")
+
+  //engine v2
+  /// Snapshots that reference this batch
+  executionSnapshots TaskRunExecutionSnapshot[]
+  /// Specific run blockers,
+  runsBlocked        TaskRunWaitpoint[]
+  /// Waitpoints that are blocked by this batch.
+  /// When a Batch is created it blocks execution of the associated parent run (for andWait)
+  waitpoints         Waitpoint[]
 
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
