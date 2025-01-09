@@ -4,11 +4,11 @@ sidebarTitle: "Metadata"
 description: "Attach a small amount of data to a run and update it as the run progresses."
 ---
 
-You can attach up to 4KB (4,096 bytes) of metadata to a run, which you can then access from inside the run function, via the API, and in the dashboard. You can use metadata to store additional, structured information on a run. For example, you could store your user’s full name and corresponding unique identifier from your system on every task that is associated with that user.
+You can attach up to 256KB of metadata to a run, which you can then access from inside the run function, via the API, Realtime, and in the dashboard. You can use metadata to store additional, structured information on a run. For example, you could store your user’s full name and corresponding unique identifier from your system on every task that is associated with that user. Or you could store the progress of a long-running task, or intermediate results that you want to access later.
 
 ## Usage
 
-Add metadata to a run by passing it as an object to the `trigger` function:
+Add metadata to a run when triggering by passing it as an object to the `trigger` function:
 
 ```ts
 const handle = await myTask.trigger(
@@ -49,6 +49,7 @@ export const myTask = task({
 });
 
 async function doSomeWork() {
+  // Set the value of a specific key
   metadata.set("progress", 0.5);
 }
 ```
@@ -378,6 +379,141 @@ export const myTask = task({
 });
 ```
 
+## Fluent API
+
+All of the update methods can be chained together in a fluent API:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    metadata
+      .set("progress", 0.1)
+      .append("logs", "Step 1 complete")
+      .increment("progress", 0.4)
+      .decrement("otherProgress", 0.1);
+  },
+});
+```
+
+## Parent & root updates
+
+Tasks that have been triggered by a parent task (a.k.a. a "child task") can update the metadata of the parent task. This is useful for propagating progress information up the task hierarchy. You can also update the metadata of the root task (root = the initial task that was triggered externally, like from your backend).
+
+To update the parent task's metadata, use the `metadata.parent` accessor:
+
+```ts
+import { task, metadata } from "@trigger.dev/sdk/v3";
+
+export const myParentTask = task({
+  id: "my-parent-task",
+  run: async (payload: { message: string }) => {
+    // Do some work
+    metadata.set("progress", 0.1);
+
+    // Trigger a child task
+    await childTask.triggerAndWait({ message: "hello world" });
+  },
+});
+
+export const childTask = task({
+  id: "child-task",
+  run: async (payload: { message: string }) => {
+    // This will update the parent task's metadata
+    metadata.parent.set("progress", 0.5);
+  },
+});
+```
+
+All of the update methods are available on `metadata.parent` and `metadata.root`:
+
+```ts
+metadata.parent.set("progress", 0.5);
+metadata.parent.append("logs", "Step 1 complete");
+metadata.parent.remove("logs", "Step 1 complete");
+metadata.parent.increment("progress", 0.4);
+metadata.parent.decrement("otherProgress", 0.1);
+metadata.parent.stream("llm", readableStream);
+
+metadata.root.set("progress", 0.5);
+metadata.root.append("logs", "Step 1 complete");
+metadata.root.remove("logs", "Step 1 complete");
+metadata.root.increment("progress", 0.4);
+metadata.root.decrement("otherProgress", 0.1);
+metadata.root.stream("llm", readableStream);
+```
+
+You can also chain the update methods together:
+
+```ts
+metadata.parent
+  .set("progress", 0.1)
+  .append("logs", "Step 1 complete")
+  .increment("progress", 0.4)
+  .decrement("otherProgress", 0.1);
+```
+
+### Example
+
+An example of where you might use parent and root updates is in a task that triggers multiple child tasks in parallel. You could use the parent metadata to track the progress of the child tasks and update the parent task's progress as each child task completes:
+
+```ts
+import { CSVRow, UploadedFileData, parseCSVFromUrl } from "@/utils";
+import { batch, logger, metadata, schemaTask } from "@trigger.dev/sdk/v3";
+
+export const handleCSVRow = schemaTask({
+  id: "handle-csv-row",
+  schema: CSVRow,
+  run: async (row, { ctx }) => {
+    // Do some work with the row
+
+    // Update the parent task's metadata with the progress of this row
+    metadata.parent.increment("processedRows", 1).append("rowRuns", ctx.run.id);
+
+    return row;
+  },
+});
+
+export const handleCSVUpload = schemaTask({
+  id: "handle-csv-upload",
+  schema: UploadedFileData,
+  run: async (file, { ctx }) => {
+    metadata.set("status", "fetching");
+
+    const rows = await parseCSVFromUrl(file.url);
+
+    metadata.set("status", "processing").set("totalRows", rows.length);
+
+    const results = await batch.triggerAndWait<typeof handleCSVRow>(
+      rows.map((row) => ({ id: "handle-csv-row", payload: row }))
+    );
+
+    metadata.set("status", "complete");
+
+    return {
+      file,
+      rows,
+      results,
+    };
+  },
+});
+```
+
+Combined with [Realtime](/realtime), you could use this to show a live progress bar of the CSV processing in your frontend, like this:
+
+<video
+  src="https://content.trigger.dev/csv-upload-realtime.mp4"
+  preload="auto"
+  controls={true}
+  loop
+  muted
+  autoPlay={true}
+  width="100%"
+  height="100%"
+/>
+
 ## Metadata propagation
 
 Metadata is NOT propagated to child tasks. If you want to pass metadata to a child task, you must do so explicitly:
@@ -488,4 +624,4 @@ See the [API reference](/management/runs/retrieve) for more information.
 
 ## Size limit
 
-The maximum size of the metadata object is 4KB. If you exceed this limit, the SDK will throw an error. If you are self-hosting Trigger.dev, you can increase this limit by setting the `TASK_RUN_METADATA_MAXIMUM_SIZE` environment variable. For example, to increase the limit to 16KB, you would set `TASK_RUN_METADATA_MAXIMUM_SIZE=16384`.
+The maximum size of the metadata object is 256KB. If you exceed this limit, the SDK will throw an error. If you are self-hosting Trigger.dev, you can increase this limit by setting the `TASK_RUN_METADATA_MAXIMUM_SIZE` environment variable. For example, to increase the limit to 16KB, you would set `TASK_RUN_METADATA_MAXIMUM_SIZE=16384`.
