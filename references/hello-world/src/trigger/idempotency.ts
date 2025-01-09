@@ -38,6 +38,8 @@ export const idempotency = task({
     );
     logger.log("Child 4", { child4 });
 
+    const anotherKey = await idempotencyKeys.create("c", { scope: "global" });
+
     const batch1 = await childTask.batchTriggerAndWait([
       {
         payload: { message: "Hello, world!" },
@@ -49,6 +51,7 @@ export const idempotency = task({
       },
       {
         payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
+        options: { idempotencyKey: anotherKey, idempotencyKeyTTL: "120s" },
       },
     ]);
     logger.log("Batch 1", { batch1 });
@@ -64,40 +67,46 @@ export const idempotency = task({
       },
     ]);
 
-    // const results2 = await batch.triggerAndWait<typeof childTask>([
-    //   {
-    //     id: "child",
-    //     payload: { message: "Hello, world !" },
-    //     //@ts-ignore
-    //     options: { idempotencyKey: "1", idempotencyKeyTTL: "60s" },
-    //   },
-    //   {
-    //     id: "child",
-    //     payload: { message: "Hello, world 2!" },
-    //     //@ts-ignore
-    //     options: { idempotencyKey: "2", idempotencyKeyTTL: "60s" },
-    //   },
-    // ]);
-    // logger.log("Results 2", { results2 });
+    const results2 = await batch.triggerAndWait<typeof childTask>([
+      {
+        id: "child",
+        payload: { message: "Hello, world !" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+      },
+      {
+        id: "child",
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+      },
+    ]);
+    logger.log("Results 2", { results2 });
 
-    // const results3 = await batch.triggerByTask([
-    //   {
-    //     task: childTask,
-    //     payload: { message: "Hello, world !" },
-    //     options: { idempotencyKey: "1", idempotencyKeyTTL: "60s" },
-    //   },
-    //   {
-    //     task: childTask,
-    //     payload: { message: "Hello, world 2!" },
-    //     options: { idempotencyKey: "2", idempotencyKeyTTL: "60s" },
-    //   },
-    // ]);
-    // logger.log("Results 3", { results3 });
+    const results3 = await batch.triggerByTask([
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+      },
+      {
+        task: childTask,
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+      },
+    ]);
+    logger.log("Results 3", { results3 });
 
-    // const results4 = await batch.triggerByTaskAndWait([
-    //   { task: childTask, payload: { message: "Hello, world !" } },
-    //   { task: childTask, payload: { message: "Hello, world 2!" } },
-    // ]);
-    // logger.log("Results 4", { results4 });
+    const results4 = await batch.triggerByTaskAndWait([
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+      },
+      {
+        task: childTask,
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+      },
+    ]);
+    logger.log("Results 4", { results4 });
   },
 });
