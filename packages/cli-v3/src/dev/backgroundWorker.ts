@@ -111,6 +111,7 @@ export class BackgroundWorkerCoordinator {
     }
 
     this._backgroundWorkers.set(worker.serverWorker.id, worker);
+
     this.onWorkerRegistered.post({
       worker,
       id: worker.serverWorker.id,
@@ -124,14 +125,6 @@ export class BackgroundWorkerCoordinator {
         worker,
       });
     });
-  }
-
-  close() {
-    for (const worker of this._backgroundWorkers.values()) {
-      worker.close();
-    }
-
-    this._backgroundWorkers.clear();
   }
 
   async executeTaskRun(id: string, payload: TaskRunExecutionPayload, messageId: string) {
@@ -186,11 +179,11 @@ export class BackgroundWorkerCoordinator {
 export type BackgroundWorkerOptions = {
   env: Record<string, string>;
   cwd: string;
+  stop: () => void;
 };
 
 export class BackgroundWorker {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
-  private _onClose: Evt<void> = new Evt();
 
   public deprecated: boolean = false;
   public manifest: WorkerManifest | undefined;
@@ -199,33 +192,27 @@ export class BackgroundWorker {
   _taskRunProcesses: Map<string, TaskRunProcess> = new Map();
   private _taskRunProcessesBeingKilled: Map<number, TaskRunProcess> = new Map();
 
-  private _closed: boolean = false;
-
   constructor(
     public build: BuildManifest,
     public params: BackgroundWorkerOptions
   ) {}
 
   deprecate() {
-    this.deprecated = true;
-  }
-
-  close() {
-    if (this._closed) {
+    if (this.deprecated) {
       return;
     }
 
-    this._closed = true;
+    this.deprecated = true;
 
-    this.onTaskRunHeartbeat.detach();
+    this.#tryStopWorker();
+  }
 
-    // We need to close all the task run processes
-    for (const taskRunProcess of this._taskRunProcesses.values()) {
-      taskRunProcess.cleanup(true);
+  #tryStopWorker() {
+    if (this.deprecated && this._taskRunProcesses.size === 0) {
+      logger.debug("Worker deprecated, stopping", { outputPath: this.build.outputPath });
+
+      this.params.stop();
     }
-
-    // Delete worker files
-    this._onClose.post();
   }
 
   get inProgressRuns(): Array<string> {
@@ -301,8 +288,6 @@ export class BackgroundWorker {
       throw new Error("Worker not initialized");
     }
 
-    this._closed = false;
-
     logger.debug(this.#prefixedMessage(payload, "killing current task run process before attempt"));
 
     await this.#killCurrentTaskRunProcessBeforeAttempt(payload.execution.run.id);
@@ -332,6 +317,8 @@ export class BackgroundWorker {
       // Only delete the task run process if the pid matches
       if (taskRunProcess?.pid === pid) {
         this._taskRunProcesses.delete(payload.execution.run.id);
+
+        this.#tryStopWorker();
       }
 
       if (pid) {
@@ -435,10 +422,6 @@ export class BackgroundWorker {
     payload: TaskRunExecutionPayload,
     messageId: string
   ): Promise<TaskRunExecutionResult> {
-    if (this._closed) {
-      throw new Error("Worker is closed");
-    }
-
     if (!this.manifest) {
       throw new Error("Worker not initialized");
     }

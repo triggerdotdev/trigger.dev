@@ -18,6 +18,7 @@ const DevCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
   envFile: z.string().optional(),
+  keepTmpFiles: z.boolean().default(false),
 });
 
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
@@ -38,6 +39,10 @@ export function configureDevCommand(program: Command) {
       )
       .option("--debug-otel", "Enable OpenTelemetry debugging")
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
+      .option(
+        "--keep-tmp-files",
+        "Keep temporary files after the dev session ends, helpful for debugging"
+      )
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
@@ -151,6 +156,7 @@ async function startDev(options: StartDevOptions) {
         initialMode: "local",
         dashboardUrl: options.login.dashboardUrl,
         showInteractiveDevSession: true,
+        keepTmpFiles: options.keepTmpFiles,
       });
     }
 

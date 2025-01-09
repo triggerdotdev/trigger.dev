@@ -30,8 +30,14 @@ export function getTmpDir(
   const tmpPrefix = path.join(tmpRoot, `${prefix}-`);
   const tmpDir = fs.realpathSync(fs.mkdtempSync(tmpPrefix));
 
-  let removeDir = keep ? () => {} : () => fs.rmSync(tmpDir, { recursive: true, force: true });
-  let removeExitListener = keep ? () => {} : onExit(removeDir);
+  const removeDir = () => {
+    try {
+      return fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (e) {
+      // This sometimes fails on Windows with EBUSY
+    }
+  };
+  const removeExitListener = keep ? () => {} : onExit(removeDir);
 
   return {
     path: tmpDir,
@@ -40,4 +46,15 @@ export function getTmpDir(
       removeDir();
     },
   };
+}
+
+export function clearTmpDirs(projectRoot: string | undefined) {
+  projectRoot ??= process.cwd();
+  const tmpRoot = path.join(projectRoot, ".trigger", "tmp");
+
+  try {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  } catch (e) {
+    // This sometimes fails on Windows with EBUSY
+  }
 }

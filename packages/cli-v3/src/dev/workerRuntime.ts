@@ -30,7 +30,7 @@ import { VERSION } from "../version.js";
 
 export interface WorkerRuntime {
   shutdown(): Promise<void>;
-  initializeWorker(manifest: BuildManifest): Promise<void>;
+  initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void>;
 }
 
 export type WorkerRuntimeOptions = {
@@ -167,9 +167,10 @@ class DevWorkerRuntime implements WorkerRuntime {
     }
   }
 
-  async initializeWorker(manifest: BuildManifest, options?: { cwd?: string }): Promise<void> {
+  async initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void> {
     if (this.lastBuild && this.lastBuild.contentHash === manifest.contentHash) {
       eventBus.emit("workerSkipped");
+      stop();
       return;
     }
 
@@ -178,11 +179,13 @@ class DevWorkerRuntime implements WorkerRuntime {
     const backgroundWorker = new BackgroundWorker(manifest, {
       env,
       cwd: this.options.config.workingDir,
+      stop,
     });
 
     await backgroundWorker.initialize();
 
     if (!backgroundWorker.manifest) {
+      stop();
       throw new Error("Could not initialize worker");
     }
 
@@ -190,6 +193,7 @@ class DevWorkerRuntime implements WorkerRuntime {
 
     if (issues.length > 0) {
       issues.forEach((issue) => logger.error(issue));
+      stop();
       return;
     }
 
@@ -213,6 +217,7 @@ class DevWorkerRuntime implements WorkerRuntime {
     );
 
     if (!backgroundWorkerRecord.success) {
+      stop();
       throw new Error(backgroundWorkerRecord.error);
     }
 
