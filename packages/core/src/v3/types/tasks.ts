@@ -763,7 +763,7 @@ export type TriggerOptions = {
   tags?: RunTags;
 
   /**
-   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
+   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 256KB.
    */
   metadata?: Record<string, SerializableJson>;
 
