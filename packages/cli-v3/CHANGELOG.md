@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.3.9
+
+### Patch Changes
+
+- Increase the number of active streams from 2 to 5, total streams from 5 to 10 ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+- Adding ability to update parent run metadata from child runs/tasks ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.9`
+  - `@trigger.dev/build@3.3.9`
+
 ## 3.3.8
 
 ### Patch Changes
