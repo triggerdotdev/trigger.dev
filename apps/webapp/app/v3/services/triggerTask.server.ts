@@ -14,6 +14,7 @@ export type TriggerTaskServiceOptions = {
   spanParentAsLink?: boolean;
   parentAsLinkType?: "replay" | "trigger";
   batchId?: string;
+  batchIndex?: number;
   customIcon?: string;
   runFriendlyId?: string;
   skipChecks?: boolean;
