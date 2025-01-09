@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.3.9
+
+### Patch Changes
+
+- Adding ability to update parent run metadata from child runs/tasks ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+
 ## 3.3.8
 
 ### Patch Changes
