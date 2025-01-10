@@ -15,19 +15,70 @@ export type TriggerConfig = {
    * @default "node"
    */
   runtime?: BuildRuntime;
+
+  /**
+   * Specify the project ref for your trigger.dev tasks. This is the project ref that you get when you create a new project in the trigger.dev dashboard.
+   */
   project: string;
+
+  /**
+   * Specify the directories that contain your trigger.dev tasks. This is useful if you have multiple directories that contain tasks.
+   *
+   * We automatically detect directories named `trigger` to be task directories. You can override this behavior by specifying the directories here.
+   *
+   * @see @see https://trigger.dev/docs/config/config-file#dirs
+   */
   dirs?: string[];
+
+  /**
+   * Specify glob patterns to ignore when detecting task files. By default we ignore:
+   *
+   * - *.test.ts
+   * - *.spec.ts
+   * - *.test.mts
+   * - *.spec.mts
+   * - *.test.cts
+   * - *.spec.cts
+   * - *.test.js
+   * - *.spec.js
+   * - *.test.mjs
+   * - *.spec.mjs
+   * - *.test.cjs
+   * - *.spec.cjs
+   *
+   */
+  ignorePatterns?: string[];
+
+  /**
+   * Instrumentations to use for OpenTelemetry. This is useful if you want to add custom instrumentations to your tasks.
+   *
+   * @see https://trigger.dev/docs/config/config-file#instrumentations
+   */
   instrumentations?: Array<Instrumentation>;
+
+  /**
+   * Specify a custom path to your tsconfig file. This is useful if you have a custom tsconfig file that you want to use.
+   */
   tsconfig?: string;
+
+  /**
+   * Specify the global retry options for your tasks. You can override this on a per-task basis.
+   *
+   * @see https://trigger.dev/docs/tasks/overview#retry-options
+   */
   retries?: {
     enabledInDev?: boolean;
     default?: RetryOptions;
   };
+
   /**
    * The default machine preset to use for your deployed trigger.dev tasks. You can override this on a per-task basis.
    * @default "small-1x"
+   *
+   * @see https://trigger.dev/docs/machines
    */
   machine?: MachinePresetName;
+
   /**
    * Set the log level for the logger. Defaults to "info", so you will see "log", "info", "warn", and "error" messages, but not "debug" messages.
    *
@@ -43,6 +94,8 @@ export type TriggerConfig = {
    * Minimum value is 5 seconds
    *
    * Setting this value will effect all tasks in the project.
+   *
+   * @see https://trigger.dev/docs/tasks/overview#maxduration-option
    */
   maxDuration?: number;
 
@@ -50,6 +103,7 @@ export type TriggerConfig = {
    * Enable console logging while running the dev CLI. This will print out logs from console.log, console.warn, and console.error. By default all logs are sent to the trigger.dev backend, and not logged to the console.
    */
   enableConsoleLogging?: boolean;
+
   build?: {
     /**
      * Add custom conditions to the esbuild build. For example, if you are importing `ai/rsc`, you'll need to add "react-server" condition.
@@ -61,8 +115,21 @@ export type TriggerConfig = {
      * - "node"
      */
     conditions?: string[];
+
+    /**
+     * Add custom build extensions to the build process.
+     *
+     * @see https://trigger.dev/docs/config/config-file#extensions
+     */
     extensions?: BuildExtension[];
+
+    /**
+     * External dependencies to exclude from the bundle. This is useful if you want to keep some dependencies as external, and not bundle them with your code.
+     *
+     * @see https://trigger.dev/docs/config/config-file#external
+     */
     external?: string[];
+
     jsx?: {
       /**
        * @default "React.createElement"
@@ -81,6 +148,7 @@ export type TriggerConfig = {
       automatic?: boolean;
     };
   };
+
   deploy?: {
     env?: Record<string, string>;
   };
