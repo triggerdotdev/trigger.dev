@@ -103,6 +103,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
         runId,
         apiClient,
         mutateRun,
+        setError,
         abortControllerRef,
         typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true
       );
@@ -149,6 +150,12 @@ export function useRealtimeRun<TTask extends AnyTask>(
       stop();
     };
   }, [runId, stop, options?.enabled]);
+
+  useEffect(() => {
+    if (run?.finishedAt) {
+      setIsComplete(true);
+    }
+  }, [run]);
 
   return { run, error, stop };
 }
@@ -258,6 +265,7 @@ export function useRealtimeRunWithStreams<
         mutateRun,
         mutateStreams,
         streamsRef,
+        setError,
         abortControllerRef,
         typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
         options?.experimental_throttleInMs
@@ -305,6 +313,12 @@ export function useRealtimeRunWithStreams<
       stop();
     };
   }, [runId, stop, options?.enabled]);
+
+  useEffect(() => {
+    if (run?.finishedAt) {
+      setIsComplete(true);
+    }
+  }, [run]);
 
   return { run, streams: streams ?? initialStreamsFallback, error, stop };
 }
@@ -380,7 +394,14 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeRunsWithTag(tag, apiClient, mutateRuns, runsRef, abortControllerRef);
+      await processRealtimeRunsWithTag(
+        tag,
+        apiClient,
+        mutateRuns,
+        runsRef,
+        setError,
+        abortControllerRef
+      );
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -470,7 +491,14 @@ export function useRealtimeBatch<TTask extends AnyTask>(
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      await processRealtimeBatch(batchId, apiClient, mutateRuns, runsRef, abortControllerRef);
+      await processRealtimeBatch(
+        batchId,
+        apiClient,
+        mutateRuns,
+        runsRef,
+        setError,
+        abortControllerRef
+      );
     } catch (err) {
       // Ignore abort errors as they are expected.
       if ((err as any).name === "AbortError") {
@@ -506,10 +534,12 @@ async function processRealtimeBatch<TTask extends AnyTask = AnyTask>(
   apiClient: ApiClient,
   mutateRunsData: KeyedMutator<RealtimeRun<TTask>[]>,
   existingRunsRef: React.MutableRefObject<RealtimeRun<TTask>[]>,
+  onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>
 ) {
   const subscription = apiClient.subscribeToBatch<InferRunTypes<TTask>>(batchId, {
     signal: abortControllerRef.current?.signal,
+    onFetchError: onError,
   });
 
   for await (const part of subscription) {
@@ -541,10 +571,12 @@ async function processRealtimeRunsWithTag<TTask extends AnyTask = AnyTask>(
   apiClient: ApiClient,
   mutateRunsData: KeyedMutator<RealtimeRun<TTask>[]>,
   existingRunsRef: React.MutableRefObject<RealtimeRun<TTask>[]>,
+  onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>
 ) {
   const subscription = apiClient.subscribeToRunsWithTag<InferRunTypes<TTask>>(tag, {
     signal: abortControllerRef.current?.signal,
+    onFetchError: onError,
   });
 
   for await (const part of subscription) {
@@ -582,6 +614,7 @@ async function processRealtimeRunWithStreams<
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
   mutateStreamData: KeyedMutator<StreamResults<TStreams>>,
   existingDataRef: React.MutableRefObject<StreamResults<TStreams>>,
+  onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   stopOnCompletion: boolean = true,
   throttleInMs?: number
@@ -589,6 +622,7 @@ async function processRealtimeRunWithStreams<
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
+    onFetchError: onError,
   });
 
   type StreamUpdate = {
@@ -637,12 +671,14 @@ async function processRealtimeRun<TTask extends AnyTask = AnyTask>(
   runId: string,
   apiClient: ApiClient,
   mutateRunData: KeyedMutator<RealtimeRun<TTask>>,
+  onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   stopOnCompletion: boolean = true
 ) {
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
+    onFetchError: onError,
   });
 
   for await (const part of subscription) {

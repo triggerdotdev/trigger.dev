@@ -640,7 +640,11 @@ export class ApiClient {
 
   subscribeToRun<TRunTypes extends AnyRunTypes>(
     runId: string,
-    options?: { signal?: AbortSignal; closeOnComplete?: boolean }
+    options?: {
+      signal?: AbortSignal;
+      closeOnComplete?: boolean;
+      onFetchError?: (error: Error) => void;
+    }
   ) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
       closeOnComplete:
@@ -648,12 +652,13 @@ export class ApiClient {
       headers: this.#getRealtimeHeaders(),
       client: this,
       signal: options?.signal,
+      onFetchError: options?.onFetchError,
     });
   }
 
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
@@ -666,19 +671,21 @@ export class ApiClient {
         headers: this.#getRealtimeHeaders(),
         client: this,
         signal: options?.signal,
+        onFetchError: options?.onFetchError,
       }
     );
   }
 
   subscribeToBatch<TRunTypes extends AnyRunTypes>(
     batchId: string,
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
   ) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/batches/${batchId}`, {
       closeOnComplete: false,
       headers: this.#getRealtimeHeaders(),
       client: this,
       signal: options?.signal,
+      onFetchError: options?.onFetchError,
     });
   }
 

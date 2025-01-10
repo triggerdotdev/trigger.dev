@@ -32,7 +32,7 @@ function RunDetailsWrapper({
     },
   });
 
-  if (error) {
+  if (error && !run) {
     return (
       <div className="w-full min-h-screen bg-gray-900 p-4">
         <Card className="w-full bg-gray-800 shadow-md">
