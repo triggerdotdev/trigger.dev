@@ -182,30 +182,16 @@ export class ResumeAttemptService extends BaseService {
         completedRunId: completedAttempt.taskRunId,
       });
 
-      const completion = await sharedQueueTasks.getCompletionPayloadFromAttempt(
-        completedAttempt.id
-      );
+      const resumePayload = await sharedQueueTasks.getResumePayload(completedAttempt.id);
 
-      if (!completion) {
-        logger.error("Failed to get completion payload");
+      if (!resumePayload) {
+        logger.error("Failed to get resume payload");
         await marqs?.acknowledgeMessage(attempt.taskRunId);
         return;
       }
 
-      completions.push(completion);
-
-      const executionPayload = await sharedQueueTasks.getExecutionPayloadFromAttempt({
-        id: completedAttempt.id,
-        skipStatusChecks: true, // already checked when getting the completion
-      });
-
-      if (!executionPayload) {
-        logger.error("Failed to get execution payload");
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
-        return;
-      }
-
-      executions.push(executionPayload.execution);
+      completions.push(resumePayload.completion);
+      executions.push(resumePayload.execution);
     }
 
     await this.#setPostResumeStatuses(attempt);

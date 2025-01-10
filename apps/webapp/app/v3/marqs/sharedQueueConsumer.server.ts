@@ -17,6 +17,7 @@ import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
+  Prisma,
   RuntimeEnvironment,
   TaskRun,
   TaskRunStatus,
@@ -998,7 +999,157 @@ export class SharedQueueConsumer {
   }
 }
 
+type AttemptForCompletion = Prisma.TaskRunAttemptGetPayload<{
+  include: {
+    backgroundWorker: true;
+    backgroundWorkerTask: true;
+    taskRun: {
+      include: {
+        runtimeEnvironment: {
+          include: {
+            organization: true;
+            project: true;
+          };
+        };
+        tags: true;
+      };
+    };
+    queue: true;
+  };
+}>;
+
+type AttemptForExecution = Prisma.TaskRunAttemptGetPayload<{
+  include: {
+    backgroundWorker: true;
+    backgroundWorkerTask: true;
+    runtimeEnvironment: {
+      include: {
+        organization: true;
+        project: true;
+      };
+    };
+    taskRun: {
+      include: {
+        tags: true;
+        batchItems: {
+          include: {
+            batchTaskRun: {
+              select: {
+                friendlyId: true;
+              };
+            };
+          };
+        };
+      };
+    };
+    queue: true;
+  };
+}>;
+
 class SharedQueueTasks {
+  private _completionPayloadFromAttempt(attempt: AttemptForCompletion): TaskRunExecutionResult {
+    const ok = attempt.status === "COMPLETED";
+
+    if (ok) {
+      const success: TaskRunSuccessfulExecutionResult = {
+        ok,
+        id: attempt.taskRun.friendlyId,
+        output: attempt.output ?? undefined,
+        outputType: attempt.outputType,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
+      };
+      return success;
+    } else {
+      const failure: TaskRunFailedExecutionResult = {
+        ok,
+        id: attempt.taskRun.friendlyId,
+        error: attempt.error as TaskRunError,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
+      };
+      return failure;
+    }
+  }
+
+  private async _executionFromAttempt(
+    attempt: AttemptForExecution,
+    machinePreset?: MachinePreset
+  ): Promise<ProdTaskRunExecution> {
+    const { backgroundWorkerTask, taskRun, queue } = attempt;
+
+    if (!machinePreset) {
+      machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+    }
+
+    const metadata = await parsePacket({
+      data: taskRun.metadata ?? undefined,
+      dataType: taskRun.metadataType,
+    });
+
+    const execution: ProdTaskRunExecution = {
+      task: {
+        id: backgroundWorkerTask.slug,
+        filePath: backgroundWorkerTask.filePath,
+        exportName: backgroundWorkerTask.exportName,
+      },
+      attempt: {
+        id: attempt.friendlyId,
+        number: attempt.number,
+        startedAt: attempt.startedAt ?? attempt.createdAt,
+        backgroundWorkerId: attempt.backgroundWorkerId,
+        backgroundWorkerTaskId: attempt.backgroundWorkerTaskId,
+        status: "EXECUTING" as const,
+      },
+      run: {
+        id: taskRun.friendlyId,
+        payload: taskRun.payload,
+        payloadType: taskRun.payloadType,
+        context: taskRun.context,
+        createdAt: taskRun.createdAt,
+        startedAt: taskRun.startedAt ?? taskRun.createdAt,
+        tags: taskRun.tags.map((tag) => tag.name),
+        isTest: taskRun.isTest,
+        idempotencyKey: taskRun.idempotencyKey ?? undefined,
+        durationMs: taskRun.usageDurationMs,
+        costInCents: taskRun.costInCents,
+        baseCostInCents: taskRun.baseCostInCents,
+        metadata,
+        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
+      },
+      queue: {
+        id: queue.friendlyId,
+        name: queue.name,
+      },
+      environment: {
+        id: attempt.runtimeEnvironment.id,
+        slug: attempt.runtimeEnvironment.slug,
+        type: attempt.runtimeEnvironment.type,
+      },
+      organization: {
+        id: attempt.runtimeEnvironment.organization.id,
+        slug: attempt.runtimeEnvironment.organization.slug,
+        name: attempt.runtimeEnvironment.organization.title,
+      },
+      project: {
+        id: attempt.runtimeEnvironment.project.id,
+        ref: attempt.runtimeEnvironment.project.externalRef,
+        slug: attempt.runtimeEnvironment.project.slug,
+        name: attempt.runtimeEnvironment.project.name,
+      },
+      batch:
+        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
+          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+          : undefined,
+      worker: {
+        id: attempt.backgroundWorkerId,
+        contentHash: attempt.backgroundWorker.contentHash,
+        version: attempt.backgroundWorker.version,
+      },
+      machine: machinePreset,
+    };
+
+    return execution;
+  }
+
   async getCompletionPayloadFromAttempt(id: string): Promise<TaskRunExecutionResult | undefined> {
     const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
@@ -1030,26 +1181,7 @@ class SharedQueueTasks {
       return;
     }
 
-    const ok = attempt.status === "COMPLETED";
-
-    if (ok) {
-      const success: TaskRunSuccessfulExecutionResult = {
-        ok,
-        id: attempt.taskRun.friendlyId,
-        output: attempt.output ?? undefined,
-        outputType: attempt.outputType,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
-      };
-      return success;
-    } else {
-      const failure: TaskRunFailedExecutionResult = {
-        ok,
-        id: attempt.taskRun.friendlyId,
-        error: attempt.error as TaskRunError,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
-      };
-      return failure;
-    }
+    return this._completionPayloadFromAttempt(attempt);
   }
 
   async getExecutionPayloadFromAttempt({
@@ -1162,78 +1294,10 @@ class SharedQueueTasks {
         },
       });
     }
-
-    const { backgroundWorkerTask, taskRun, queue } = attempt;
+    const { backgroundWorkerTask, taskRun } = attempt;
 
     const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
-
-    const metadata = await parsePacket({
-      data: taskRun.metadata ?? undefined,
-      dataType: taskRun.metadataType,
-    });
-
-    const execution: ProdTaskRunExecution = {
-      task: {
-        id: backgroundWorkerTask.slug,
-        filePath: backgroundWorkerTask.filePath,
-        exportName: backgroundWorkerTask.exportName,
-      },
-      attempt: {
-        id: attempt.friendlyId,
-        number: attempt.number,
-        startedAt: attempt.startedAt ?? attempt.createdAt,
-        backgroundWorkerId: attempt.backgroundWorkerId,
-        backgroundWorkerTaskId: attempt.backgroundWorkerTaskId,
-        status: "EXECUTING" as const,
-      },
-      run: {
-        id: taskRun.friendlyId,
-        payload: taskRun.payload,
-        payloadType: taskRun.payloadType,
-        context: taskRun.context,
-        createdAt: taskRun.createdAt,
-        startedAt: taskRun.startedAt ?? taskRun.createdAt,
-        tags: taskRun.tags.map((tag) => tag.name),
-        isTest: taskRun.isTest,
-        idempotencyKey: taskRun.idempotencyKey ?? undefined,
-        durationMs: taskRun.usageDurationMs,
-        costInCents: taskRun.costInCents,
-        baseCostInCents: taskRun.baseCostInCents,
-        metadata,
-        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
-      },
-      queue: {
-        id: queue.friendlyId,
-        name: queue.name,
-      },
-      environment: {
-        id: attempt.runtimeEnvironment.id,
-        slug: attempt.runtimeEnvironment.slug,
-        type: attempt.runtimeEnvironment.type,
-      },
-      organization: {
-        id: attempt.runtimeEnvironment.organization.id,
-        slug: attempt.runtimeEnvironment.organization.slug,
-        name: attempt.runtimeEnvironment.organization.title,
-      },
-      project: {
-        id: attempt.runtimeEnvironment.project.id,
-        ref: attempt.runtimeEnvironment.project.externalRef,
-        slug: attempt.runtimeEnvironment.project.slug,
-        name: attempt.runtimeEnvironment.project.name,
-      },
-      batch:
-        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
-          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
-          : undefined,
-      worker: {
-        id: attempt.backgroundWorkerId,
-        contentHash: attempt.backgroundWorker.contentHash,
-        version: attempt.backgroundWorker.version,
-      },
-      machine: machinePreset,
-    };
-
+    const execution = await this._executionFromAttempt(attempt, machinePreset);
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
       taskRun.id,
@@ -1250,6 +1314,64 @@ class SharedQueueTasks {
     };
 
     return payload;
+  }
+
+  async getResumePayload(attemptId: string): Promise<
+    | {
+        execution: ProdTaskRunExecution;
+        completion: TaskRunExecutionResult;
+      }
+    | undefined
+  > {
+    const attempt = await prisma.taskRunAttempt.findFirst({
+      where: {
+        id: attemptId,
+      },
+      include: {
+        backgroundWorker: true,
+        backgroundWorkerTask: true,
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
+        taskRun: {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                organization: true,
+                project: true,
+              },
+            },
+            tags: true,
+            batchItems: {
+              include: {
+                batchTaskRun: {
+                  select: {
+                    friendlyId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        queue: true,
+      },
+    });
+
+    if (!attempt) {
+      logger.error("getExecutionPayloadFromAttempt: No attempt found", { id: attemptId });
+      return;
+    }
+
+    const execution = await this._executionFromAttempt(attempt);
+    const completion = this._completionPayloadFromAttempt(attempt);
+
+    return {
+      execution,
+      completion,
+    };
   }
 
   async getLatestExecutionPayloadFromRun(
