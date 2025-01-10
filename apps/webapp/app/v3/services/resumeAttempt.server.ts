@@ -9,7 +9,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
-import { TaskRunAttempt } from "@trigger.dev/database";
+import { Prisma, TaskRunAttempt } from "@trigger.dev/database";
 import { FINAL_ATTEMPT_STATUSES, FINAL_RUN_STATUSES, isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
@@ -19,6 +19,16 @@ export class ResumeAttemptService extends BaseService {
     params: InferSocketMessageSchema<typeof CoordinatorToPlatformMessages, "READY_FOR_RESUME">
   ): Promise<void> {
     this._logger.debug(`ResumeAttemptService.call()`, params);
+
+    const latestAttemptSelect = {
+      orderBy: {
+        number: "desc",
+      },
+      take: 1,
+      select: {
+        id: true,
+      },
+    } satisfies Prisma.TaskRunInclude["attempts"];
 
     const attempt = await this._prisma.taskRunAttempt.findFirst({
       where: {
@@ -30,15 +40,7 @@ export class ResumeAttemptService extends BaseService {
           include: {
             taskRun: {
               include: {
-                attempts: {
-                  orderBy: {
-                    number: "desc",
-                  },
-                  take: 1,
-                  select: {
-                    id: true,
-                  },
-                },
+                attempts: latestAttemptSelect,
               },
             },
           },
@@ -53,15 +55,7 @@ export class ResumeAttemptService extends BaseService {
               include: {
                 taskRun: {
                   include: {
-                    attempts: {
-                      orderBy: {
-                        number: "desc",
-                      },
-                      take: 1,
-                      select: {
-                        id: true,
-                      },
-                    },
+                    attempts: latestAttemptSelect,
                   },
                 },
               },
