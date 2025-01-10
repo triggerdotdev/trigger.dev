@@ -164,6 +164,9 @@ export async function startDevSession({
   async function runBundle() {
     eventBus.emit("buildStarted", "dev");
 
+    // Use glob to find initial entryPoints
+    // Use chokidar to watch for entryPoints changes (e.g. added or removed?)
+    // When there is a change, update entryPoints and start a new build with watch: true
     const bundleResult = await bundleWorker({
       target: "dev",
       cwd: rawConfig.workingDir,

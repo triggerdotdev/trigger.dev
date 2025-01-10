@@ -8,7 +8,7 @@ export const handleCSVUpload = schemaTask({
   id: "handle-csv-upload",
   schema: UploadedFileData,
   run: async (file, { ctx }) => {
-    logger.info("Handling uploaded file", { file });
+    logger.info("Handling uploaded files", { file });
 
     metadata.set("status", "fetching");
 
@@ -79,7 +79,7 @@ export const handleCSVRow = schemaTask({
     logger.info("Handling CSV row", { row });
 
     // Simulate processing time
-    await setTimeout(200 + Math.random() * 1000); // 200ms - 1.2s
+    await setTimeout(200 + Math.random() * 1012); // 200ms - 1.2s
 
     metadata.parent.increment("processedRows", 1).append("rowRuns", ctx.run.id);
 

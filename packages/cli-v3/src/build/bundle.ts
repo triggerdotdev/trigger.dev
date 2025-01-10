@@ -17,6 +17,7 @@ import {
   telemetryEntryPoint,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { createEntryPointManager } from "./entryPoints.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -45,12 +46,30 @@ export type BundleResult = {
 export async function bundleWorker(options: BundleOptions): Promise<BundleResult> {
   const { resolvedConfig } = options;
 
-  // We need to add the package entry points here somehow
-  // Then we need to get them out of the build result into the build manifest
-  // taskhero/dist/esm/workers/dev.js
-  // taskhero/dist/esm/telemetry/loader.js
-  const entryPoints = await getEntryPoints(options.target, resolvedConfig);
-  const $buildPlugins = await buildPlugins(options.target, resolvedConfig);
+  let currentContext: esbuild.BuildContext | undefined;
+
+  const entryPointManager = await createEntryPointManager(
+    resolvedConfig.dirs,
+    resolvedConfig,
+    options.target,
+    typeof options.watch === "boolean" ? options.watch : false,
+    async (newEntryPoints) => {
+      if (currentContext) {
+        // Rebuild with new entry points
+        await currentContext.cancel();
+        await currentContext.dispose();
+        const buildOptions = await createBuildOptions({
+          ...options,
+          entryPoints: newEntryPoints,
+        });
+
+        logger.debug("Rebuilding worker with options", buildOptions);
+
+        currentContext = await esbuild.context(buildOptions);
+        await currentContext.watch();
+      }
+    }
+  );
 
   let initialBuildResult: (result: esbuild.BuildResult) => void;
   const initialBuildResultPromise = new Promise<esbuild.BuildResult>(
@@ -63,12 +82,63 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     },
   };
 
+  const buildOptions = await createBuildOptions({
+    ...options,
+    entryPoints: entryPointManager.entryPoints,
+    buildResultPlugin,
+  });
+
+  let result: esbuild.BuildResult<typeof buildOptions>;
+  let stop: BundleResult["stop"];
+
+  logger.debug("Building worker with options", buildOptions);
+
+  if (options.watch) {
+    currentContext = await esbuild.context(buildOptions);
+    await currentContext.watch();
+    result = await initialBuildResultPromise;
+    if (result.errors.length > 0) {
+      throw new Error("Failed to build");
+    }
+
+    stop = async function () {
+      await entryPointManager.stop();
+      await currentContext?.dispose();
+    };
+  } else {
+    result = await esbuild.build(buildOptions);
+
+    stop = async function () {
+      await entryPointManager.stop();
+    };
+  }
+
+  const bundleResult = await getBundleResultFromBuild(
+    options.target,
+    options.cwd,
+    options.resolvedConfig,
+    result
+  );
+
+  if (!bundleResult) {
+    throw new Error("Failed to get bundle result");
+  }
+
+  return { ...bundleResult, stop };
+}
+
+// Helper function to create build options
+async function createBuildOptions(
+  options: BundleOptions & { entryPoints: string[]; buildResultPlugin?: esbuild.Plugin }
+): Promise<esbuild.BuildOptions & { metafile: true }> {
   const customConditions = options.resolvedConfig.build?.conditions ?? [];
 
   const conditions = [...customConditions, "trigger.dev", "module", "node"];
 
-  const buildOptions: esbuild.BuildOptions & { metafile: true } = {
-    entryPoints,
+  const $buildPlugins = await buildPlugins(options.target, options.resolvedConfig);
+
+  return {
+    entryPoints: options.entryPoints,
     outdir: options.destination,
     absWorkingDir: options.cwd,
     bundle: true,
@@ -93,7 +163,11 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     inject: [...shims], // TODO: copy this into the working dir to work with Yarn PnP
     jsx: options.jsxAutomatic ? "automatic" : undefined,
     jsxDev: options.jsxAutomatic && options.target === "dev" ? true : undefined,
-    plugins: [...$buildPlugins, ...(options.plugins ?? []), buildResultPlugin],
+    plugins: [
+      ...$buildPlugins,
+      ...(options.plugins ?? []),
+      ...(options.buildResultPlugin ? [options.buildResultPlugin] : []),
+    ],
     ...(options.jsxFactory && { jsxFactory: options.jsxFactory }),
     ...(options.jsxFragment && { jsxFragment: options.jsxFragment }),
     logLevel: "silent",
@@ -101,42 +175,6 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
       "empty-glob": "silent",
     },
   };
-
-  let result: esbuild.BuildResult<typeof buildOptions>;
-  let stop: BundleResult["stop"];
-
-  logger.debug("Building worker with options", buildOptions);
-
-  if (options.watch) {
-    const ctx = await esbuild.context(buildOptions);
-    await ctx.watch();
-    result = await initialBuildResultPromise;
-    if (result.errors.length > 0) {
-      throw new Error("Failed to build");
-    }
-
-    stop = async function () {
-      await ctx.dispose();
-    };
-  } else {
-    result = await esbuild.build(buildOptions);
-    // Even when we're not watching, we still want some way of cleaning up the
-    // temporary directory when we don't need it anymore
-    stop = async function () {};
-  }
-
-  const bundleResult = await getBundleResultFromBuild(
-    options.target,
-    options.cwd,
-    options.resolvedConfig,
-    result
-  );
-
-  if (!bundleResult) {
-    throw new Error("Failed to get bundle result");
-  }
-
-  return { ...bundleResult, stop };
 }
 
 export async function getBundleResultFromBuild(
