@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 3.3.10
+
+### Patch Changes
+
+- Support ignoring test/spec files inside trigger dirs (fixes #1593) ([#1596](https://github.com/triggerdotdev/trigger.dev/pull/1596))
+- cleanup deprecated background worker files (fixes #1572) ([#1595](https://github.com/triggerdotdev/trigger.dev/pull/1595))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.10`
+  - `@trigger.dev/build@3.3.10`
+
 ## 3.3.9
 
 ### Patch Changes

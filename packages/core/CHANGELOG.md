@@ -1,5 +1,11 @@
 # internal-platform
 
+## 3.3.10
+
+### Patch Changes
+
+- Handle errors thrown by requests in Realtime react hooks ([#1599](https://github.com/triggerdotdev/trigger.dev/pull/1599))
+
 ## 3.3.9
 
 ### Patch Changes
