@@ -1000,7 +1000,7 @@ export class SharedQueueConsumer {
 
 class SharedQueueTasks {
   async getCompletionPayloadFromAttempt(id: string): Promise<TaskRunExecutionResult | undefined> {
-    const attempt = await prisma.taskRunAttempt.findUnique({
+    const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
         id,
         status: {
@@ -1063,7 +1063,7 @@ class SharedQueueTasks {
     isRetrying?: boolean;
     skipStatusChecks?: boolean;
   }): Promise<ProdTaskRunExecutionPayload | undefined> {
-    const attempt = await prisma.taskRunAttempt.findUnique({
+    const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
         id,
       },

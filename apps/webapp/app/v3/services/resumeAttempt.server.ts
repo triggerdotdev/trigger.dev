@@ -22,7 +22,7 @@ export class ResumeAttemptService extends BaseService {
     this._logger.debug(`ResumeAttemptService.call()`, params);
 
     await $transaction(this._prisma, async (tx) => {
-      const attempt = await tx.taskRunAttempt.findUnique({
+      const attempt = await tx.taskRunAttempt.findFirst({
         where: {
           friendlyId: params.attemptFriendlyId,
         },
@@ -169,7 +169,7 @@ export class ResumeAttemptService extends BaseService {
     const executions: TaskRunExecution[] = [];
 
     for (const completedAttemptId of completedAttemptIds) {
-      const completedAttempt = await tx.taskRunAttempt.findUnique({
+      const completedAttempt = await tx.taskRunAttempt.findFirst({
         where: {
           id: completedAttemptId,
           taskRun: {
