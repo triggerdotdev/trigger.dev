@@ -211,14 +211,6 @@ export class ResumeAttemptService extends BaseService {
       const updatedAttempt = await this._prisma.taskRunAttempt.update({
         where: {
           id: attempt.id,
-          status: {
-            notIn: FINAL_ATTEMPT_STATUSES,
-          },
-          taskRun: {
-            status: {
-              notIn: FINAL_RUN_STATUSES,
-            },
-          },
         },
         data: {
           status: "EXECUTING",
