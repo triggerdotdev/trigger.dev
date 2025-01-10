@@ -16,8 +16,8 @@ import { setTimeout } from "node:timers/promises";
 
 export const batchParentTask = task({
   id: "batch-parent-task",
-  run: async () => {
-    const items = Array.from({ length: 10 }, (_, i) => ({
+  run: async (payload: { size?: number; wait?: boolean }) => {
+    const items = Array.from({ length: payload.size ?? 10 }, (_, i) => ({
       payload: {
         id: `item${i}`,
         name: `Item Name ${i}`,
@@ -44,7 +44,9 @@ export const batchParentTask = task({
       },
     }));
 
-    return await batchChildTask.batchTrigger(items);
+    return payload.wait
+      ? await batchChildTask.batchTriggerAndWait(items.map((i) => ({ payload: i.payload })))
+      : await batchChildTask.batchTrigger(items);
   },
 });
 
