@@ -66,6 +66,7 @@ export type RunShapeStreamOptions = {
   closeOnComplete?: boolean;
   signal?: AbortSignal;
   client?: ApiClient;
+  onFetchError?: (e: Error) => void;
 };
 
 export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
@@ -111,6 +112,9 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
   const runStreamInstance = zodShapeStream(SubscribeRunRawShape, url, {
     ...options,
     signal: abortController.signal,
+    onError: (e) => {
+      options?.onFetchError?.(e);
+    },
   });
 
   const $options: RunSubscriptionOptions = {
