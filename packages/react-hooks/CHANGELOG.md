@@ -1,5 +1,14 @@
 # @trigger.dev/react-hooks
 
+## 3.3.10
+
+### Patch Changes
+
+- Make sure useRealtimeRun onComplete hook fires at the correct time ([#1599](https://github.com/triggerdotdev/trigger.dev/pull/1599))
+- Handle errors thrown by requests in Realtime react hooks ([#1599](https://github.com/triggerdotdev/trigger.dev/pull/1599))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.10`
+
 ## 3.3.9
 
 ### Patch Changes
