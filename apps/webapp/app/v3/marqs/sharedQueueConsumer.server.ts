@@ -1361,7 +1361,7 @@ class SharedQueueTasks {
     });
 
     if (!attempt) {
-      logger.error("getExecutionPayloadFromAttempt: No attempt found", { id: attemptId });
+      logger.error("getResumePayload: No attempt found", { id: attemptId });
       return;
     }
 
