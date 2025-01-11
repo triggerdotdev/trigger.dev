@@ -4,6 +4,7 @@ import { streamText, type TextStreamPart } from "ai";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import OpenAI from "openai";
+import { AISDKExporter } from "langsmith/vercel";
 
 const openaiSDK = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -98,13 +99,14 @@ export const openaiStreaming = schemaTask({
   run: async ({ model, prompt }) => {
     logger.info("Running OpenAI model", { model, prompt });
 
+    const telemetrySettings = AISDKExporter.getSettings();
+
+    logger.info("Telemetry settings", { telemetrySettings });
+
     const result = streamText({
       model: openai(model),
       prompt,
-      tools: {
-        getWeather: weatherTask.tool,
-      },
-      maxSteps: 10,
+      experimental_telemetry: telemetrySettings,
     });
 
     const stream = await metadata.stream("openai", result.fullStream);

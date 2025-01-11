@@ -85,6 +85,7 @@ export type TracingSDKConfig = {
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
   instrumentations?: Instrumentation[];
+  exporters?: SpanExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
 
@@ -152,6 +153,10 @@ export class TracingSDK {
           : new SimpleSpanProcessor(spanExporter)
       )
     );
+
+    for (const exporter of config.exporters ?? []) {
+      traceProvider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    }
 
     traceProvider.register();
 

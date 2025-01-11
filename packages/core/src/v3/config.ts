@@ -56,6 +56,8 @@ export type TriggerConfig = {
    */
   instrumentations?: Array<Instrumentation>;
 
+  exporters?: Array<any>;
+
   /**
    * Specify a custom path to your tsconfig file. This is useful if you have a custom tsconfig file that you want to use.
    */
