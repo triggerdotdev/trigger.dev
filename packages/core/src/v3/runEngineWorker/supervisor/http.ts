@@ -77,10 +77,10 @@ export class SupervisorHttpClient {
     );
   }
 
-  async dequeueFromVersion(deploymentId: string) {
+  async dequeueFromVersion(deploymentId: string, maxRunCount = 1) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
-      `${this.apiUrl}/api/v1/worker-actions/deployments/${deploymentId}/dequeue`,
+      `${this.apiUrl}/api/v1/worker-actions/deployments/${deploymentId}/dequeue?maxRunCount=${maxRunCount}`,
       {
         headers: {
           ...this.defaultHeaders,

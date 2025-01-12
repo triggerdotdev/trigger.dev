@@ -10,8 +10,15 @@ export const loader = createLoaderWorkerApiRoute(
     params: z.object({
       deploymentFriendlyId: z.string(),
     }),
+    searchParams: z.object({
+      maxRunCount: z.number().optional(),
+    }),
   },
-  async ({ authenticatedWorker, params }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
+  async ({
+    authenticatedWorker,
+    params,
+    searchParams,
+  }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
     const deployment = await $replica.workerDeployment.findUnique({
       where: {
         friendlyId: params.deploymentFriendlyId,
@@ -34,7 +41,10 @@ export const loader = createLoaderWorkerApiRoute(
           deployment.worker.id,
           deployment.environmentId
         )
-      : await authenticatedWorker.dequeueFromVersion(deployment.worker.id);
+      : await authenticatedWorker.dequeueFromVersion(
+          deployment.worker.id,
+          searchParams.maxRunCount
+        );
 
     return json(dequeuedMessages);
   }
