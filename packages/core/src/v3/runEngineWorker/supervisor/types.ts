@@ -12,3 +12,5 @@ export type PreDequeueFn = () => Promise<{
   maxResources?: MachineResources;
   skipDequeue?: boolean;
 }>;
+
+export type PreSkipFn = () => Promise<void>;

@@ -1,5 +1,5 @@
 import { SupervisorHttpClient } from "./http.js";
-import { PreDequeueFn, SupervisorClientCommonOptions } from "./types.js";
+import { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
 import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
 import { RunQueueConsumer } from "./queueConsumer.js";
 import { WorkerEvents } from "./events.js";
@@ -14,6 +14,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   heartbeatIntervalSeconds?: number;
   dequeueIntervalMs?: number;
   preDequeue?: PreDequeueFn;
+  preSkip?: PreSkipFn;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -32,6 +33,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.queueConsumer = new RunQueueConsumer({
       client: this.httpClient,
       preDequeue: opts.preDequeue,
+      preSkip: opts.preSkip,
       onDequeue: this.onDequeue.bind(this),
       intervalMs: opts.dequeueIntervalMs,
     });

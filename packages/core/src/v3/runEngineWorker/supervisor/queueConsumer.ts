@@ -1,17 +1,19 @@
 import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody } from "./schemas.js";
-import { PreDequeueFn } from "./types.js";
+import { PreDequeueFn, PreSkipFn } from "./types.js";
 
 type RunQueueConsumerOptions = {
   client: SupervisorHttpClient;
   intervalMs?: number;
   preDequeue?: PreDequeueFn;
+  preSkip?: PreSkipFn;
   onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 };
 
 export class RunQueueConsumer {
   private readonly client: SupervisorHttpClient;
   private readonly preDequeue?: PreDequeueFn;
+  private readonly preSkip?: PreSkipFn;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
 
   private intervalMs: number;
@@ -64,6 +66,14 @@ export class RunQueueConsumer {
       preDequeueResult?.maxResources?.cpu === 0 ||
       preDequeueResult?.maxResources?.memory === 0
     ) {
+      if (this.preSkip) {
+        try {
+          await this.preSkip();
+        } catch (preSkipError) {
+          console.error("[RunQueueConsumer] preSkip error", { error: preSkipError });
+        }
+      }
+
       return this.scheduleNextDequeue();
     }
 
