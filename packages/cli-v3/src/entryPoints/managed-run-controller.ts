@@ -42,6 +42,7 @@ const Env = z.object({
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
+  TRIGGER_WORKER_INSTANCE_NAME: z.string(),
 });
 
 const env = Env.parse(stdEnv);
@@ -363,6 +364,7 @@ class ManagedRunController {
             "x-trigger-deployment-version": env.TRIGGER_DEPLOYMENT_VERSION,
             "x-trigger-machine-cpu": env.TRIGGER_MACHINE_CPU,
             "x-trigger-machine-memory": env.TRIGGER_MACHINE_MEMORY,
+            "x-trigger-worker-instance-name": env.TRIGGER_WORKER_INSTANCE_NAME,
           },
         },
         {
