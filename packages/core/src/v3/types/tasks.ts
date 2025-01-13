@@ -6,6 +6,7 @@ import { RunTags } from "../schemas/api.js";
 import {
   MachineCpu,
   MachineMemory,
+  MachinePresetName,
   RetryOptions,
   TaskMetadata,
   TaskRunContext,
@@ -775,6 +776,11 @@ export type TriggerOptions = {
    * Minimum value is 5 seconds
    */
   maxDuration?: number;
+
+  /**
+   * The machine preset to use for this run. This will override the task's machine preset and any defaults.
+   */
+  machinePreset?: MachinePresetName;
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;

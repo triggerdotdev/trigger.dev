@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import {
   FlushedRunMetadata,
+  MachinePresetName,
   RunMetadataChangeOperation,
   SerializedError,
   TaskRunError,
@@ -91,6 +92,7 @@ export const TriggerTaskRequestBody = z.object({
       metadata: z.any(),
       metadataType: z.string().optional(),
       maxDuration: z.number().optional(),
+      machinePreset: MachinePresetName.optional(),
     })
     .optional(),
 });
@@ -131,6 +133,7 @@ export const BatchTriggerTaskItem = z.object({
       metadataType: z.string().optional(),
       maxDuration: z.number().optional(),
       parentAttempt: z.string().optional(),
+      machinePreset: MachinePresetName.optional(),
     })
     .optional(),
 });

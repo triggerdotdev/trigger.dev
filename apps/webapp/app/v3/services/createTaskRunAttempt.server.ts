@@ -6,7 +6,7 @@ import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
-import { machinePresetFromConfig } from "../machinePresets.server";
+import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
@@ -173,7 +173,9 @@ export class CreateTaskRunAttemptService extends BaseService {
         });
       }
 
-      const machinePreset = machinePresetFromConfig(taskRun.lockedBy.machineConfig ?? {});
+      const machinePreset =
+        machinePresetFromRun(taskRun) ??
+        machinePresetFromConfig(taskRun.lockedBy.machineConfig ?? {});
 
       const metadata = await parsePacket({
         data: taskRun.metadata ?? undefined,

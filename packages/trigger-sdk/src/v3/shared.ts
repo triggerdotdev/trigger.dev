@@ -613,6 +613,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              machinePreset: item.options?.machinePreset,
             },
           };
         })
@@ -786,6 +787,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  machinePreset: item.options?.machinePreset,
                 },
               };
             })
@@ -947,6 +949,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              machinePreset: item.options?.machinePreset,
             },
           };
         })
@@ -1122,6 +1125,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  machinePreset: item.options?.machinePreset,
                 },
               };
             })
@@ -1200,6 +1204,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         parentAttempt: taskContext.ctx?.attempt.id,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
+        machinePreset: options?.machinePreset,
       },
     },
     {
@@ -1259,6 +1264,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              machinePreset: item.options?.machinePreset,
             },
           };
         })
@@ -1352,6 +1358,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxAttempts: options?.maxAttempts,
             metadata: options?.metadata,
             maxDuration: options?.maxDuration,
+            machinePreset: options?.machinePreset,
           },
         },
         {},
@@ -1428,6 +1435,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  machinePreset: item.options?.machinePreset,
                 },
               };
             })

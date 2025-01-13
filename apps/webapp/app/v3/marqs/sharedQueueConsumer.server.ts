@@ -43,7 +43,7 @@ import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
-import { machinePresetFromConfig } from "../machinePresets.server";
+import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import { env } from "~/env.server";
 import {
   FINAL_ATTEMPT_STATUSES,
@@ -413,7 +413,9 @@ export class SharedQueueConsumer {
             cliVersion: deployment.worker.cliVersion,
             startedAt: existingTaskRun.startedAt ?? new Date(),
             baseCostInCents: env.CENTS_PER_RUN,
-            machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
+            machinePreset:
+              existingTaskRun.machinePreset ??
+              machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
             maxDurationInSeconds: getMaxDuration(
               existingTaskRun.maxDurationInSeconds,
               backgroundTask.maxDurationInSeconds
@@ -542,8 +544,9 @@ export class SharedQueueConsumer {
 
             // Retries for workers with disabled retry checkpoints will be handled just like normal attempts
           } else {
-            const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
-            const machine = machinePresetFromConfig(machineConfig ?? {});
+            const machine =
+              machinePresetFromRun(lockedTaskRun) ??
+              machinePresetFromConfig(lockedTaskRun.lockedBy?.machineConfig ?? {});
 
             await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
               backgroundWorkerId: deployment.worker.friendlyId,
@@ -1077,7 +1080,9 @@ class SharedQueueTasks {
     const { backgroundWorkerTask, taskRun, queue } = attempt;
 
     if (!machinePreset) {
-      machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+      machinePreset =
+        machinePresetFromRun(attempt.taskRun) ??
+        machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
     }
 
     const metadata = await parsePacket({
@@ -1294,9 +1299,13 @@ class SharedQueueTasks {
         },
       });
     }
+
     const { backgroundWorkerTask, taskRun } = attempt;
 
-    const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+    const machinePreset =
+      machinePresetFromRun(attempt.taskRun) ??
+      machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+
     const execution = await this._executionFromAttempt(attempt, machinePreset);
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
@@ -1432,6 +1441,7 @@ class SharedQueueTasks {
             machineConfig: true,
           },
         },
+        machinePreset: true,
       },
     });
 
@@ -1451,7 +1461,8 @@ class SharedQueueTasks {
       attemptCount,
     });
 
-    const machinePreset = machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
+    const machinePreset =
+      machinePresetFromRun(run) ?? machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
 
     const variables = await this.#buildEnvironmentVariables(environment, run.id, machinePreset);
 
