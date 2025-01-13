@@ -329,13 +329,16 @@ export class DevQueueConsumer {
         env: this.env,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "Failed to parse message.data with MessageBody schema in DevQueueConsumer"
+      );
 
       setTimeout(() => this.#doWork(), 100);
       return;
     }
 
-    const existingTaskRun = await prisma.taskRun.findUnique({
+    const existingTaskRun = await prisma.taskRun.findFirst({
       where: {
         id: message.messageId,
       },
@@ -346,7 +349,10 @@ export class DevQueueConsumer {
         messageId: message.messageId,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "Failed to find task run in DevQueueConsumer"
+      );
       setTimeout(() => this.#doWork(), 100);
       return;
     }
@@ -365,7 +371,10 @@ export class DevQueueConsumer {
         latestWorker: this.#getLatestBackgroundWorker(),
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "Failed to find background worker in DevQueueConsumer"
+      );
       setTimeout(() => this.#doWork(), 100);
       return;
     }
@@ -382,7 +391,10 @@ export class DevQueueConsumer {
         taskSlugs: backgroundWorker.tasks.map((task) => task.slug),
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "No matching background task found in DevQueueConsumer"
+      );
 
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -416,7 +428,10 @@ export class DevQueueConsumer {
         messageId: message.messageId,
       });
 
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "Failed to lock task run in DevQueueConsumer"
+      );
 
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -515,7 +530,10 @@ export class DevQueueConsumer {
         messageId: message.messageId,
         backgroundWorker,
       });
-      await marqs?.acknowledgeMessage(message.messageId);
+      await marqs?.acknowledgeMessage(
+        message.messageId,
+        "Non-lazy attempts are no longer supported in DevQueueConsumer"
+      );
 
       setTimeout(() => this.#doWork(), 100);
     }

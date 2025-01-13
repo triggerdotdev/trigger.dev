@@ -307,7 +307,10 @@ export class CreateCheckpointService extends BaseService {
         checkpointId: checkpoint.id,
         params,
       });
-      await marqs?.acknowledgeMessage(attempt.taskRunId);
+      await marqs?.acknowledgeMessage(
+        attempt.taskRunId,
+        "No checkpoint event in CreateCheckpointService"
+      );
 
       return {
         success: false,
