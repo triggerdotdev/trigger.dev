@@ -110,6 +110,10 @@ export const openaiStreaming = schemaTask({
     });
 
     const stream = await metadata.stream("openai", result.fullStream);
+
+    for await (const chunk of stream) {
+      logger.log("Received chunk", { chunk });
+    }
   },
 });
 

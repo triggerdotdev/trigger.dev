@@ -154,8 +154,23 @@ export class TracingSDK {
       )
     );
 
+    const externalTraceId = crypto.randomUUID();
+
     for (const exporter of config.exporters ?? []) {
-      traceProvider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+      traceProvider.addSpanProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
+      );
     }
 
     traceProvider.register();

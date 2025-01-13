@@ -53,10 +53,26 @@ export type TriggerConfig = {
    * Instrumentations to use for OpenTelemetry. This is useful if you want to add custom instrumentations to your tasks.
    *
    * @see https://trigger.dev/docs/config/config-file#instrumentations
+   *
+   * @deprecated Use the `telemetry.instrumentations` option instead.
    */
   instrumentations?: Array<Instrumentation>;
 
-  exporters?: Array<any>;
+  telemetry?: {
+    /**
+     * Instrumentations to use for OpenTelemetry. This is useful if you want to add custom instrumentations to your tasks.
+     *
+     * @see https://trigger.dev/docs/config/config-file#instrumentations
+     */
+    instrumentations?: Array<Instrumentation>;
+
+    /**
+     * Exporters to use for OpenTelemetry. This is useful if you want to add custom exporters to your tasks.
+     *
+     * @see https://trigger.dev/docs/config/config-file#exporters
+     */
+    exporters?: Array<SpanExporter>;
+  };
 
   /**
    * Specify a custom path to your tsconfig file. This is useful if you have a custom tsconfig file that you want to use.
