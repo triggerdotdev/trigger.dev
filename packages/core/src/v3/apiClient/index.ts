@@ -4,8 +4,6 @@ import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
@@ -20,7 +18,7 @@ import {
   ListScheduleOptions,
   ReplayRunResponse,
   RescheduleRunRequestBody,
-  RetrieveBatchResponse,
+  RetrieveBatchV2Response,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -44,9 +42,9 @@ import {
 } from "./core.js";
 import { ApiError } from "./errors.js";
 import {
+  AnyRealtimeRun,
   AnyRunShape,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -97,10 +95,10 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type {
+  AnyRealtimeRun,
   AnyRunShape,
   ApiRequestOptions,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -675,8 +673,8 @@ export class ApiClient {
 
   retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      RetrieveBatchResponse,
-      `${this.baseUrl}/api/v1/batches/${batchId}`,
+      RetrieveBatchV2Response,
+      `${this.baseUrl}/api/v2/batches/${batchId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

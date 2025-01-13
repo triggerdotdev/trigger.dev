@@ -819,6 +819,18 @@ export const RetrieveBatchResponse = z.object({
 
 export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;
 
+export const RetrieveBatchV2Response = z.object({
+  id: z.string(),
+  status: BatchStatus,
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  runCount: z.number(),
+  runs: z.array(z.string()),
+});
+
+export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;
+
 export const SubscribeRealtimeStreamChunkRawShape = z.object({
   id: z.string(),
   runId: z.string(),

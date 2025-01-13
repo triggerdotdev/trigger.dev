@@ -141,6 +141,9 @@ export const idempotencyBatch = task({
     );
     logger.log("Batch 1", { batch1 });
 
+    const b = await batch.retrieve(batch1.id);
+    logger.log("Batch retrieve", { ...b });
+
     const batch2 = await childTask.batchTriggerAndWait(
       [
         {
