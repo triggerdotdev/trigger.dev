@@ -74,6 +74,11 @@ export class DevQueueConsumer {
       return;
     }
 
+    logger.debug("[DevQueueConsumer] Deprecating background worker", {
+      backgroundWorker: backgroundWorker.id,
+      env: this.env.id,
+    });
+
     this._deprecatedWorkers.set(id, backgroundWorker);
     this._backgroundWorkers.delete(id);
   }
@@ -96,9 +101,10 @@ export class DevQueueConsumer {
 
     this._backgroundWorkers.set(backgroundWorker.id, backgroundWorker);
 
-    logger.debug("Registered background worker", {
+    logger.debug("[DevQueueConsumer] Registered background worker", {
       backgroundWorker: backgroundWorker.id,
       inProgressRuns,
+      env: this.env.id,
     });
 
     const subscriber = await devPubSub.subscribe(`backgroundWorker:${backgroundWorker.id}:*`);
@@ -138,6 +144,7 @@ export class DevQueueConsumer {
     logger.debug("[DevQueueConsumer] taskAttemptCompleted()", {
       taskRunCompletion: completion,
       execution,
+      env: this.env.id,
     });
 
     const service = new CompleteAttemptService();
@@ -151,7 +158,7 @@ export class DevQueueConsumer {
   public async taskRunFailed(workerId: string, completion: TaskRunFailedExecutionResult) {
     this._taskFailures++;
 
-    logger.debug("[DevQueueConsumer] taskRunFailed()", { completion });
+    logger.debug("[DevQueueConsumer] taskRunFailed()", { completion, env: this.env.id });
 
     this._inProgressRuns.delete(completion.id);
 
@@ -188,7 +195,7 @@ export class DevQueueConsumer {
       return;
     }
 
-    logger.debug("Stopping dev queue consumer", { env: this.env });
+    logger.debug("[DevQueueConsumer] Stopping dev queue consumer", { env: this.env });
 
     this._enabled = false;
 
@@ -335,6 +342,10 @@ export class DevQueueConsumer {
     });
 
     if (!existingTaskRun) {
+      logger.debug("Failed to find existing task run, acking", {
+        messageId: message.messageId,
+      });
+
       await marqs?.acknowledgeMessage(message.messageId);
       setTimeout(() => this.#doWork(), 100);
       return;
@@ -346,6 +357,14 @@ export class DevQueueConsumer {
       : this.#getLatestBackgroundWorker();
 
     if (!backgroundWorker) {
+      logger.debug("Failed to find background worker, acking", {
+        messageId: message.messageId,
+        lockedToVersionId: existingTaskRun.lockedToVersionId,
+        deprecatedWorkers: Array.from(this._deprecatedWorkers.keys()),
+        backgroundWorkers: Array.from(this._backgroundWorkers.keys()),
+        latestWorker: this.#getLatestBackgroundWorker(),
+      });
+
       await marqs?.acknowledgeMessage(message.messageId);
       setTimeout(() => this.#doWork(), 100);
       return;
