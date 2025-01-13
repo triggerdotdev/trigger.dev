@@ -51,4 +51,5 @@ export const SemanticInternalAttributes = {
   RATE_LIMIT_LIMIT: "response.rateLimit.limit",
   RATE_LIMIT_REMAINING: "response.rateLimit.remaining",
   RATE_LIMIT_RESET: "response.rateLimit.reset",
+  SPAN_ATTEMPT: "$span.attempt",
 };

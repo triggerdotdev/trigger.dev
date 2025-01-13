@@ -317,8 +317,10 @@ function adaptResolveEnvVarsToSyncEnvVarsExtension(
 function getInstrumentedPackageNames(config: ResolvedConfig): Array<string> {
   const packageNames = [];
 
-  if (config.instrumentations) {
-    for (const instrumentation of config.instrumentations) {
+  if (config.instrumentations ?? config.telemetry?.instrumentations) {
+    for (const instrumentation of config.telemetry?.instrumentations ??
+      config.instrumentations ??
+      []) {
       const moduleDefinitions = (
         instrumentation as any
       ).getModuleDefinitions?.() as Array<InstrumentationModuleDefinition>;
