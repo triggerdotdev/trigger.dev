@@ -61,7 +61,7 @@ export class FinalizeTaskRunService extends BaseService {
       expiredAt,
       completedAt,
     });
-    await marqs?.acknowledgeMessage(id);
+    await marqs?.acknowledgeMessage(id, "FinalTaskRunService call");
 
     logger.debug("Finalizing run updating run status", {
       id,

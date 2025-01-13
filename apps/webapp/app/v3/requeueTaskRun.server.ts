@@ -71,7 +71,10 @@ export class RequeueTaskRunService extends BaseService {
       case "WAITING_FOR_DEPLOY": {
         logger.debug("[RequeueTaskRunService] Removing task run from queue", { taskRun });
 
-        await marqs?.acknowledgeMessage(taskRun.id);
+        await marqs?.acknowledgeMessage(
+          taskRun.id,
+          "Run is either DELAYED or WAITING_FOR_DEPLOY so we cannot requeue it in RequeueTaskRunService"
+        );
 
         break;
       }
@@ -93,7 +96,10 @@ export class RequeueTaskRunService extends BaseService {
       case "CANCELED": {
         logger.debug("[RequeueTaskRunService] Task run is completed", { taskRun });
 
-        await marqs?.acknowledgeMessage(taskRun.id);
+        await marqs?.acknowledgeMessage(
+          taskRun.id,
+          "Task run is already completed in RequeueTaskRunService"
+        );
 
         try {
           if (taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
