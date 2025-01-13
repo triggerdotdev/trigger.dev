@@ -978,7 +978,7 @@ export class SharedQueueConsumer {
   }
 
   async #ackAndDoMoreWork(messageId: string, intervalInMs?: number) {
-    await marqs?.acknowledgeMessage(messageId);
+    await marqs?.acknowledgeMessage(messageId, "Acking and doing more work in SharedQueueConsumer");
     this.#doMoreWork(intervalInMs);
   }
 

@@ -172,7 +172,10 @@ export class ResumeAttemptService extends BaseService {
 
       if (!completedAttempt) {
         this._logger.error("Completed attempt not found", { completedAttemptId });
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqs?.acknowledgeMessage(
+          attempt.taskRunId,
+          "Cannot find completed attempt in ResumeAttemptService"
+        );
         return;
       }
 
@@ -186,7 +189,10 @@ export class ResumeAttemptService extends BaseService {
 
       if (!resumePayload) {
         logger.error("Failed to get resume payload");
-        await marqs?.acknowledgeMessage(attempt.taskRunId);
+        await marqs?.acknowledgeMessage(
+          attempt.taskRunId,
+          "Failed to get resume payload in ResumeAttemptService"
+        );
         return;
       }
 
