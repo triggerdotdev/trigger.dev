@@ -178,6 +178,25 @@ export type UpdateEventOptions = {
   events?: SpanEvents;
 };
 
+type TaskEventSummary = Pick<
+  TaskEvent,
+  | "id"
+  | "spanId"
+  | "parentId"
+  | "runId"
+  | "idempotencyKey"
+  | "message"
+  | "style"
+  | "startTime"
+  | "duration"
+  | "isError"
+  | "isPartial"
+  | "isCancelled"
+  | "level"
+  | "events"
+  | "environmentType"
+>;
+
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
@@ -383,32 +402,28 @@ export class EventRepository {
 
   public async getTraceSummary(traceId: string): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
-      const events = await this.readReplica.taskEvent.findMany({
-        select: {
-          id: true,
-          spanId: true,
-          parentId: true,
-          runId: true,
-          idempotencyKey: true,
-          message: true,
-          style: true,
-          startTime: true,
-          duration: true,
-          isError: true,
-          isPartial: true,
-          isCancelled: true,
-          level: true,
-          events: true,
-          environmentType: true,
-        },
-        where: {
-          traceId,
-        },
-        orderBy: {
-          startTime: "asc",
-        },
-        take: env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT,
-      });
+      const events = await this.readReplica.$queryRaw<TaskEventSummary[]>`
+        SELECT 
+          id,
+          "spanId",
+          "parentId",
+          "runId",
+          "idempotencyKey",
+          LEFT(message, 256) as message,
+          style,
+          "startTime",
+          duration,
+          "isError",
+          "isPartial",
+          "isCancelled",
+          level,
+          events,
+          "environmentType"
+        FROM "TaskEvent"
+        WHERE "traceId" = ${traceId}
+        ORDER BY "startTime" ASC
+        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+      `;
 
       let preparedEvents: Array<PreparedEvent> = [];
       let rootSpanId: string | undefined;
