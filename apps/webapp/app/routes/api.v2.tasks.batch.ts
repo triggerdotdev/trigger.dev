@@ -1,7 +1,5 @@
 import { json } from "@remix-run/server-runtime";
 import {
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   generateJWT,
@@ -10,7 +8,6 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
@@ -52,8 +49,6 @@ const { action, loader } = createActionApiRoute(
     }
 
     const {
-      "idempotency-key": idempotencyKey,
-      "idempotency-key-ttl": idempotencyKeyTTL,
       "trigger-version": triggerVersion,
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
@@ -67,8 +62,6 @@ const { action, loader } = createActionApiRoute(
     const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
     logger.debug("Batch trigger request", {
-      idempotencyKey,
-      idempotencyKeyTTL,
       triggerVersion,
       spanParentAsLink,
       isFromWorker,
@@ -83,17 +76,10 @@ const { action, loader } = createActionApiRoute(
         ? { traceparent, tracestate }
         : undefined;
 
-    // By default, the idempotency key expires in 30 days
-    const idempotencyKeyExpiresAt =
-      resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
-      new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
-
     const service = new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
-        idempotencyKey: idempotencyKey ?? undefined,
-        idempotencyKeyExpiresAt,
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,

@@ -118,36 +118,48 @@ export const idempotencyBatch = task({
     const successfulKey = await idempotencyKeys.create("a", { scope: "global" });
     const failureKey = await idempotencyKeys.create("b", { scope: "global" });
     const anotherKey = await idempotencyKeys.create("c", { scope: "global" });
+    const batchKey = await idempotencyKeys.create("batch", { scope: "global" });
 
-    const batch1 = await childTask.batchTriggerAndWait([
+    const batch1 = await childTask.batchTriggerAndWait(
+      [
+        {
+          payload: { message: "Hello, world!" },
+          options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
+        },
+        {
+          payload: { message: "Hello, world 2!" },
+          options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
+        },
+        {
+          payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
+        },
+      ],
       {
-        payload: { message: "Hello, world!" },
-        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
-      },
-      {
-        payload: { message: "Hello, world 2!" },
-        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
-      },
-      {
-        payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
-      },
-    ]);
+        idempotencyKey: batchKey,
+        idempotencyKeyTTL: "120s",
+      }
+    );
     logger.log("Batch 1", { batch1 });
 
-    const batch2 = await childTask.batchTriggerAndWait([
+    const batch2 = await childTask.batchTriggerAndWait(
+      [
+        {
+          payload: { message: "Hello, world!" },
+          options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
+        },
+        {
+          payload: { message: "Hello, world 2!" },
+          options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
+        },
+        {
+          payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
+        },
+      ],
       {
-        payload: { message: "Hello, world!" },
-        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
-      },
-      {
-        payload: { message: "Hello, world 2!" },
-        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
-      },
-      {
-        payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
-        options: { idempotencyKey: anotherKey, idempotencyKeyTTL: "120s" },
-      },
-    ]);
+        idempotencyKey: batchKey,
+        idempotencyKeyTTL: "120s",
+      }
+    );
     logger.log("Batch 1", { batch1 });
 
     await childTask.batchTrigger([
@@ -158,6 +170,15 @@ export const idempotencyBatch = task({
       {
         payload: { message: "Hello, world 2!" },
         options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
+      },
+    ]);
+
+    await childTask.batchTrigger([
+      {
+        payload: { message: "Hello, world!" },
+      },
+      {
+        payload: { message: "Hello, world 2!" },
       },
     ]);
 

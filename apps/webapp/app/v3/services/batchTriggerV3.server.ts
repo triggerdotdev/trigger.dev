@@ -18,7 +18,6 @@ import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.
 import { startActiveSpan } from "../tracer.server";
 import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { guardQueueSizeLimitsForEnv } from "./triggerTaskV2.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -40,8 +39,6 @@ export const BatchProcessingOptions = z.object({
 export type BatchProcessingOptions = z.infer<typeof BatchProcessingOptions>;
 
 export type BatchTriggerTaskServiceOptions = {
-  idempotencyKey?: string;
-  idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
   traceContext?: Record<string, string | undefined>;
   spanParentAsLink?: boolean;
@@ -73,61 +70,6 @@ export class BatchTriggerV3Service extends WithRunEngine {
         "call()",
         environment,
         async (span) => {
-          const existingBatch = options.idempotencyKey
-            ? await this._prisma.batchTaskRun.findUnique({
-                where: {
-                  runtimeEnvironmentId_idempotencyKey: {
-                    runtimeEnvironmentId: environment.id,
-                    idempotencyKey: options.idempotencyKey,
-                  },
-                },
-              })
-            : undefined;
-
-          if (existingBatch) {
-            if (
-              existingBatch.idempotencyKeyExpiresAt &&
-              existingBatch.idempotencyKeyExpiresAt < new Date()
-            ) {
-              logger.debug("[BatchTriggerV3][call] Idempotency key has expired", {
-                idempotencyKey: options.idempotencyKey,
-                batch: {
-                  id: existingBatch.id,
-                  friendlyId: existingBatch.friendlyId,
-                  runCount: existingBatch.runCount,
-                  idempotencyKeyExpiresAt: existingBatch.idempotencyKeyExpiresAt,
-                  idempotencyKey: existingBatch.idempotencyKey,
-                },
-              });
-
-              // Update the existing batch to remove the idempotency key
-              await this._prisma.batchTaskRun.update({
-                where: { id: existingBatch.id },
-                data: { idempotencyKey: null },
-              });
-
-              // Don't return, just continue with the batch trigger
-            } else {
-              span.setAttribute("batchId", existingBatch.friendlyId);
-
-              //block the parent with all of the children
-              if (body.resumeParentOnCompletion && body.parentRunId) {
-                await this.#blockParentRun({
-                  parentRunId: body.parentRunId,
-                  childFriendlyIds: existingBatch.runIds,
-                  environment,
-                });
-              }
-
-              return {
-                id: existingBatch.friendlyId,
-                idempotencyKey: existingBatch.idempotencyKey ?? undefined,
-                isCached: true,
-                runCount: existingBatch.runCount,
-              };
-            }
-          }
-
           const { id, friendlyId } = BatchId.generate();
 
           span.setAttribute("batchId", friendlyId);
@@ -212,8 +154,6 @@ export class BatchTriggerV3Service extends WithRunEngine {
           id: BatchId.fromFriendlyId(batchId),
           friendlyId: batchId,
           runtimeEnvironmentId: environment.id,
-          idempotencyKey: options.idempotencyKey,
-          idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
           runCount: body.items.length,
           runIds: [],
           payload: payloadPacket.data,
@@ -305,8 +245,6 @@ export class BatchTriggerV3Service extends WithRunEngine {
             id: BatchId.fromFriendlyId(batchId),
             friendlyId: batchId,
             runtimeEnvironmentId: environment.id,
-            idempotencyKey: options.idempotencyKey,
-            idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
             runCount: body.items.length,
             runIds: [],
             payload: payloadPacket.data,
@@ -726,42 +664,6 @@ export class BatchTriggerV3Service extends WithRunEngine {
         data: filename,
         dataType: "application/store",
       };
-    });
-  }
-
-  //todo what if the idempotent batch hasn't finished creating all the runs yet?!
-  async #blockParentRun({
-    parentRunId,
-    childFriendlyIds,
-    environment,
-  }: {
-    parentRunId: string;
-    childFriendlyIds: string[];
-    environment: AuthenticatedEnvironment;
-  }) {
-    const runsWithAssociatedWaitpoints = await this._prisma.taskRun.findMany({
-      where: {
-        id: {
-          in: childFriendlyIds.map((r) => RunId.fromFriendlyId(r)),
-        },
-      },
-      select: {
-        associatedWaitpoint: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
-
-    await this._engine.blockRunWithWaitpoint({
-      runId: RunId.fromFriendlyId(parentRunId),
-      waitpoints: runsWithAssociatedWaitpoints.flatMap((r) => {
-        if (!r.associatedWaitpoint) return [];
-        return [r.associatedWaitpoint.id];
-      }),
-      environmentId: environment.id,
-      projectId: environment.projectId,
     });
   }
 }
