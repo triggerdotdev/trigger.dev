@@ -187,6 +187,29 @@ export const BatchTriggerTaskV2Response = z.object({
 
 export type BatchTriggerTaskV2Response = z.infer<typeof BatchTriggerTaskV2Response>;
 
+export const BatchTriggerTaskV3RequestBody = z.object({
+  items: BatchTriggerTaskItem.array(),
+  /**
+   * RunEngine v2
+   * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+   */
+  parentRunId: z.string().optional(),
+  /**
+   * RunEngine v2
+   * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+   */
+  resumeParentOnCompletion: z.boolean().optional(),
+});
+
+export type BatchTriggerTaskV3RequestBody = z.infer<typeof BatchTriggerTaskV3RequestBody>;
+
+export const BatchTriggerTaskV3Response = z.object({
+  id: z.string(),
+  runCount: z.number(),
+});
+
+export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
+
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
   runs: z.string().array(),

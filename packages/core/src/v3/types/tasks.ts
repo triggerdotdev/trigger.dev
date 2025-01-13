@@ -396,9 +396,7 @@ export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
 export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    isCached: boolean;
-    idempotencyKey?: string;
-    runs: Array<BatchedRunHandle<TTaskIdentifier, TPayload, TOutput>>;
+    runCount: number;
     publicAccessToken: string;
   },
   TOutput,

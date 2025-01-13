@@ -65,17 +65,18 @@ export class ManagedRuntimeManager implements RuntimeManager {
 
   async waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    if (!params.runs.length) {
+    if (!params.runCount) {
       return Promise.resolve({ id: params.id, items: [] });
     }
 
     const promise = Promise.all(
-      params.runs.map((runId) => {
+      Array.from({ length: params.runCount }, (_, index) => {
+        const resolverId = `${params.id}_${index}`;
         return new Promise<CompletedWaitpoint>((resolve, reject) => {
-          this.resolversByWaitId.set(runId, resolve);
+          this.resolversByWaitId.set(resolverId, resolve);
         });
       })
     );
@@ -99,8 +100,20 @@ export class ManagedRuntimeManager implements RuntimeManager {
   private completeWaitpoint(waitpoint: CompletedWaitpoint): void {
     console.log("completeWaitpoint", waitpoint);
 
-    const waitId =
-      waitpoint.completedByTaskRun?.friendlyId ?? this.resolversByWaitpoint.get(waitpoint.id);
+    let waitId: string | undefined;
+
+    if (waitpoint.completedByTaskRun) {
+      if (waitpoint.completedByTaskRun.batch) {
+        waitId = `${waitpoint.completedByTaskRun.batch.friendlyId}_${waitpoint.index}`;
+      } else {
+        waitId = waitpoint.completedByTaskRun.friendlyId;
+      }
+    } else if (waitpoint.completedByBatch) {
+      //no waitpoint resolves associated with batch completions
+      //a batch completion isn't when all the runs from a batch are completed
+    } else {
+      waitId = this.resolversByWaitpoint.get(waitpoint.id);
+    }
 
     if (!waitId) {
       // TODO: Handle failures better
@@ -124,10 +137,12 @@ export class ManagedRuntimeManager implements RuntimeManager {
   }
 
   private waitpointToTaskRunExecutionResult(waitpoint: CompletedWaitpoint): TaskRunExecutionResult {
+    if (!waitpoint.completedByTaskRun?.friendlyId) throw new Error("Missing completedByTaskRun");
+
     if (waitpoint.outputIsError) {
       return {
         ok: false,
-        id: waitpoint.id,
+        id: waitpoint.completedByTaskRun.friendlyId,
         error: waitpoint.output
           ? JSON.parse(waitpoint.output)
           : {
@@ -138,7 +153,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
     } else {
       return {
         ok: true,
-        id: waitpoint.id,
+        id: waitpoint.completedByTaskRun.friendlyId,
         output: waitpoint.output,
         outputType: waitpoint.outputType ?? "application/json",
       } satisfies TaskRunSuccessfulExecutionResult;

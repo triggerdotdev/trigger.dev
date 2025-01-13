@@ -2,6 +2,8 @@ import { json } from "@remix-run/server-runtime";
 import {
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
+  BatchTriggerTaskV3RequestBody,
+  BatchTriggerTaskV3Response,
   generateJWT,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
@@ -12,8 +14,8 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
-  BatchTriggerV2Service,
-} from "~/v3/services/batchTriggerV2.server";
+  BatchTriggerV3Service,
+} from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
@@ -22,7 +24,7 @@ const { action, loader } = createActionApiRoute(
     headers: HeadersSchema.extend({
       "batch-processing-strategy": BatchProcessingStrategy.nullish(),
     }),
-    body: BatchTriggerTaskV2RequestBody,
+    body: BatchTriggerTaskV3RequestBody,
     allowJWT: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
@@ -86,7 +88,7 @@ const { action, loader } = createActionApiRoute(
       resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
-    const service = new BatchTriggerV2Service(batchProcessingStrategy ?? undefined);
+    const service = new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
@@ -130,7 +132,7 @@ const { action, loader } = createActionApiRoute(
 );
 
 async function responseHeaders(
-  batch: BatchTriggerTaskV2Response,
+  batch: BatchTriggerTaskV3Response,
   environment: AuthenticatedEnvironment,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {

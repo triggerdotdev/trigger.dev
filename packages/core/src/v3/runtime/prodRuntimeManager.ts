@@ -80,34 +80,36 @@ export class ProdRuntimeManager implements RuntimeManager {
 
   async waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    if (!params.runs.length) {
-      return Promise.resolve({ id: params.id, items: [] });
-    }
+    throw new Error("Method not implemented.");
 
-    const promise = Promise.all(
-      params.runs.map((runId) => {
-        return new Promise<TaskRunExecutionResult>((resolve, reject) => {
-          this._taskWaits.set(runId, { resolve });
-        });
-      })
-    );
+    // if (!params.runs.length) {
+    //   return Promise.resolve({ id: params.id, items: [] });
+    // }
 
-    await this.ipc.send("WAIT_FOR_BATCH", {
-      batchFriendlyId: params.id,
-      runFriendlyIds: params.runs,
-    });
+    // const promise = Promise.all(
+    //   params.runs.map((runId) => {
+    //     return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+    //       this._taskWaits.set(runId, { resolve });
+    //     });
+    //   })
+    // );
 
-    const results = await promise;
+    // await this.ipc.send("WAIT_FOR_BATCH", {
+    //   batchFriendlyId: params.id,
+    //   runFriendlyIds: params.runs,
+    // });
 
-    clock.reset();
+    // const results = await promise;
 
-    return {
-      id: params.id,
-      items: results,
-    };
+    // clock.reset();
+
+    // return {
+    //   id: params.id,
+    //   items: results,
+    // };
   }
 
   resumeTask(completion: TaskRunExecutionResult): void {

@@ -326,6 +326,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         assertNonNullable(completedWaitpoint0);
         expect(completedWaitpoint0.id).toBe(child1Waitpoint!.waitpointId);
         expect(completedWaitpoint0.completedByTaskRun?.id).toBe(child1.id);
+        expect(completedWaitpoint0.completedByTaskRun?.batch?.id).toBe(batch.id);
         expect(completedWaitpoint0.output).toBe('{"foo":"bar"}');
         expect(completedWaitpoint0.index).toBe(0);
 
@@ -336,15 +337,16 @@ describe("RunEngine batchTriggerAndWait", () => {
         assertNonNullable(completedWaitpoint1);
         expect(completedWaitpoint1.id).toBe(child2Waitpoint!.waitpointId);
         expect(completedWaitpoint1.completedByTaskRun?.id).toBe(child2.id);
-        expect(completedWaitpoint1.output).toBe('{"baz":"qux"}');
+        expect(completedWaitpoint1.completedByTaskRun?.batch?.id).toBe(batch.id);
         expect(completedWaitpoint1.index).toBe(1);
+        expect(completedWaitpoint1.output).toBe('{"baz":"qux"}');
 
         const batchWaitpointAfter =
           parentExecutionDataAfterSecondChildComplete.completedWaitpoints.find(
             (w) => w.type === "BATCH"
           );
         expect(batchWaitpointAfter?.id).toBe(batchWaitpoint?.waitpointId);
-        expect(batchWaitpointAfter?.completedByBatchId).toBe(batch.id);
+        expect(batchWaitpointAfter?.completedByBatch?.id).toBe(batch.id);
         expect(batchWaitpointAfter?.index).toBeUndefined();
 
         const batchAfter = await prisma.batchTaskRun.findUnique({

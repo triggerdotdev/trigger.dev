@@ -40,27 +40,29 @@ export class UnmanagedRuntimeManager implements RuntimeManager {
 
   async waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    if (!params.runs.length) {
-      return Promise.resolve({ id: params.id, items: [] });
-    }
+    throw new Error("Method not implemented.");
 
-    const promise = Promise.all(
-      params.runs.map((runId) => {
-        return new Promise<TaskRunExecutionResult>((resolve, reject) => {
-          this._taskWaits.set(runId, { resolve });
-        });
-      })
-    );
+    // if (!params.runs.length) {
+    //   return Promise.resolve({ id: params.id, items: [] });
+    // }
 
-    const results = await promise;
+    // const promise = Promise.all(
+    //   params.runs.map((runId) => {
+    //     return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+    //       this._taskWaits.set(runId, { resolve });
+    //     });
+    //   })
+    // );
 
-    return {
-      id: params.id,
-      items: results,
-    };
+    // const results = await promise;
+
+    // return {
+    //   id: params.id,
+    //   items: results,
+    // };
   }
 
   async completeWaitpoints(waitpoints: Waitpoint[]): Promise<void> {

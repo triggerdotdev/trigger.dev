@@ -11,7 +11,7 @@ export interface RuntimeManager {
   waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult>;
   waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult>;
 }

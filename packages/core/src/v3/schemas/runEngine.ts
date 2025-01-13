@@ -60,12 +60,24 @@ export const CompletedWaitpoint = z.object({
     .object({
       id: z.string(),
       friendlyId: z.string(),
+      /** If the run has an associated batch */
+      batch: z
+        .object({
+          id: z.string(),
+          friendlyId: z.string(),
+        })
+        .optional(),
     })
     .optional(),
   /** For type === "DATETIME" */
   completedAfter: z.coerce.date().optional(),
   /** For type === "BATCH" */
-  completedByBatchId: z.string().optional(),
+  completedByBatch: z
+    .object({
+      id: z.string(),
+      friendlyId: z.string(),
+    })
+    .optional(),
   output: z.string().optional(),
   outputType: z.string().optional(),
   outputIsError: z.boolean(),
