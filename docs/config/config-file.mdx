@@ -117,7 +117,9 @@ import { OpenAIInstrumentation } from "@traceloop/instrumentation-openai";
 export default defineConfig({
   project: "<project ref>",
   // Your other config settings...
-  instrumentations: [new PrismaInstrumentation(), new OpenAIInstrumentation()],
+  telemetry: {
+    instrumentations: [new PrismaInstrumentation(), new OpenAIInstrumentation()],
+  },
 });
 ```
 
