@@ -14,6 +14,7 @@
     "@ai-sdk/openai": "^1.0.1",
     "@fal-ai/serverless-client": "^0.15.0",
     "@fast-csv/parse": "^5.0.2",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@radix-ui/react-dialog": "^1.0.3",
     "@radix-ui/react-icons": "^1.3.0",
     "@radix-ui/react-progress": "^1.1.1",

@@ -20,6 +20,7 @@ import {
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
+  ReadableSpan,
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
@@ -112,6 +113,8 @@ export class TracingSDK {
       .merge(
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
+          [SemanticResourceAttributes.SERVICE_NAME]:
+            getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
         })
@@ -255,4 +258,50 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
   }
 
   diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
+}
+
+class ExternalSpanExporterWrapper {
+  constructor(
+    private underlyingExporter: SpanExporter,
+    private externalTraceId: string
+  ) {}
+
+  private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
+    if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
+      // Skip partial spans
+      return;
+    }
+
+    const spanContext = span.spanContext();
+
+    return {
+      ...span,
+      spanContext: () => ({ ...spanContext, traceId: this.externalTraceId }),
+      parentSpanId: span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT]
+        ? undefined
+        : span.parentSpanId,
+    };
+  }
+
+  export(spans: any[], resultCallback: (result: any) => void): void {
+    try {
+      const modifiedSpans = spans.map(this.transformSpan.bind(this));
+      this.underlyingExporter.export(
+        modifiedSpans.filter(Boolean) as ReadableSpan[],
+        resultCallback
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  shutdown(): Promise<void> {
+    return this.underlyingExporter.shutdown();
+  }
+
+  forceFlush?(): Promise<void> {
+    return this.underlyingExporter.forceFlush
+      ? this.underlyingExporter.forceFlush()
+      : Promise.resolve();
+  }
 }

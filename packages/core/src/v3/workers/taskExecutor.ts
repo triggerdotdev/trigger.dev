@@ -231,6 +231,7 @@ export class TaskExecutor {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
         },
       },
       this._tracer.extractContext(traceContext),

@@ -1,4 +1,5 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
+import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { BuildExtension } from "./build/extensions.js";
 import type { MachinePresetName } from "./schemas/common.js";
 import type { LogLevel } from "./logger/taskLogger.js";
