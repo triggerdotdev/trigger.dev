@@ -1662,7 +1662,9 @@ export class RunEngine {
       id: waitpoint.id,
       output: { value: "Batch waitpoint completed", isError: false },
     });
+  }
 
+  async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     await this.worker.enqueue({
       //this will debounce the call
       id: `tryCompleteBatch:${batchId}`,
@@ -3187,14 +3189,7 @@ export class RunEngine {
    */
   async #finalizeRun({ id, batchId }: { id: string; batchId: string | null }) {
     if (batchId) {
-      await this.worker.enqueue({
-        //this will debounce the call
-        id: `tryCompleteBatch:${batchId}`,
-        job: "tryCompleteBatch",
-        payload: { batchId: batchId },
-        //2s in the future
-        availableAt: new Date(Date.now() + 2_000),
-      });
+      await this.tryCompleteBatch({ batchId });
     }
   }
 

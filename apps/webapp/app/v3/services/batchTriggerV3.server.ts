@@ -567,17 +567,21 @@ export class BatchTriggerV3Service extends WithRunEngine {
       return { status: "INCOMPLETE", workingIndex };
     }
 
-    if (
-      parentRunId &&
-      resumeParentOnCompletion &&
-      updatedBatch.runIds.length === updatedBatch.runCount
-    ) {
-      await this._engine.unblockRunForCreatedBatch({
-        runId: RunId.fromFriendlyId(parentRunId),
-        batchId: batch.id,
-        environmentId: environment.id,
-        projectId: environment.projectId,
-      });
+    //triggered all the runs
+    if (updatedBatch.runIds.length === updatedBatch.runCount) {
+      //unblock the parent run from the batch
+      //this prevents the parent continuing before all the runs are created
+      if (parentRunId && resumeParentOnCompletion) {
+        await this._engine.unblockRunForCreatedBatch({
+          runId: RunId.fromFriendlyId(parentRunId),
+          batchId: batch.id,
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
+      }
+
+      //if all the runs were idempotent, it's possible the batch is already completed
+      await this._engine.tryCompleteBatch({ batchId: batch.id });
     }
 
     return { status: "COMPLETE" };

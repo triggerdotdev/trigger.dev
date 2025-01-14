@@ -245,3 +245,40 @@ export const idempotencyBatch = task({
     logger.log("Results 4", { results4 });
   },
 });
+
+export const idempotencyTriggerByTaskAndWait = task({
+  id: "idempotency-trigger-by-task-and-wait",
+  maxDuration: 60,
+  run: async () => {
+    const successfulKey = await idempotencyKeys.create("a", { scope: "global" });
+    const failureKey = await idempotencyKeys.create("b", { scope: "global" });
+
+    const results1 = await batch.triggerByTaskAndWait([
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+      },
+      {
+        task: childTask,
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+      },
+    ]);
+    logger.log("Results 1", { results1 });
+
+    const results2 = await batch.triggerByTaskAndWait([
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+        options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "60s" },
+      },
+      {
+        task: childTask,
+        payload: { message: "Hello, world 2!" },
+        options: { idempotencyKey: failureKey, idempotencyKeyTTL: "60s" },
+      },
+    ]);
+    logger.log("Results 2", { results2 });
+  },
+});
