@@ -11,7 +11,7 @@ export const loader = createLoaderWorkerApiRoute(
       deploymentFriendlyId: z.string(),
     }),
     searchParams: z.object({
-      maxRunCount: z.number().optional(),
+      maxRunCount: z.coerce.number().optional(),
     }),
   },
   async ({
