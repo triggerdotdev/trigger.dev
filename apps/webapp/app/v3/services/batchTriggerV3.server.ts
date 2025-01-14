@@ -1,5 +1,6 @@
 import {
   BatchTriggerTaskV2RequestBody,
+  BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   IOPacket,
   packetRequiresOffloading,
@@ -62,7 +63,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
 
   public async call(
     environment: AuthenticatedEnvironment,
-    body: BatchTriggerTaskV2RequestBody,
+    body: BatchTriggerTaskV3RequestBody,
     options: BatchTriggerTaskServiceOptions = {}
   ): Promise<BatchTriggerTaskV3Response> {
     try {

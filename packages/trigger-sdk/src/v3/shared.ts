@@ -1249,6 +1249,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           };
         })
       ),
+      parentRunId: ctx?.run.id,
     },
     {
       spanParentAsLink: true,
