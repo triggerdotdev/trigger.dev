@@ -164,7 +164,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
         },
       });
 
-      if (body.parentRunId) {
+      if (body.parentRunId && body.resumeParentOnCompletion) {
         await this._engine.blockRunWithCreatedBatch({
           runId: RunId.fromFriendlyId(body.parentRunId),
           batchId: batch.id,
@@ -255,7 +255,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
           },
         });
 
-        if (body.parentRunId) {
+        if (body.parentRunId && body.resumeParentOnCompletion) {
           await this._engine.blockRunWithCreatedBatch({
             runId: RunId.fromFriendlyId(body.parentRunId),
             batchId: batch.id,
@@ -566,7 +566,11 @@ export class BatchTriggerV3Service extends WithRunEngine {
       return { status: "INCOMPLETE", workingIndex };
     }
 
-    if (parentRunId && updatedBatch.runIds.length === updatedBatch.runCount) {
+    if (
+      parentRunId &&
+      resumeParentOnCompletion &&
+      updatedBatch.runIds.length === updatedBatch.runCount
+    ) {
       await this._engine.unblockRunForCreatedBatch({
         runId: RunId.fromFriendlyId(parentRunId),
         batchId: batch.id,
