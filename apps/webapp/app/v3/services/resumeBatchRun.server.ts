@@ -51,8 +51,25 @@ export class ResumeBatchRunService extends BaseService {
       return "ERROR";
     }
 
+    if (batchRun.batchVersion === "v2") {
+      // Make sure batchRun.items.length is equal to or greater than batchRun.runCount
+      if (batchRun.items.length < batchRun.runCount) {
+        logger.debug("ResumeBatchRunService: All items aren't yet completed [v2]", {
+          batchRunId: batchRun.id,
+          batchRun: {
+            id: batchRun.id,
+            status: batchRun.status,
+            itemsLength: batchRun.items.length,
+            runCount: batchRun.runCount,
+          },
+        });
+
+        return "PENDING";
+      }
+    }
+
     if (batchRun.items.some((item) => !finishedBatchRunStatuses.includes(item.status))) {
-      logger.debug("ResumeBatchRunService: All items aren't yet completed", {
+      logger.debug("ResumeBatchRunService: All items aren't yet completed [v1]", {
         batchRunId: batchRun.id,
         batchRun: {
           id: batchRun.id,
