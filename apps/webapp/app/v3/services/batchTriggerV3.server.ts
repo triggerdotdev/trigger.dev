@@ -261,6 +261,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
             batchId: batch.id,
             environmentId: environment.id,
             projectId: environment.projectId,
+            tx,
           });
         }
 
@@ -389,6 +390,8 @@ export class BatchTriggerV3Service extends WithRunEngine {
       batchSize: options.range.count,
       items: $payload,
       options: $options,
+      parentRunId: options.parentRunId,
+      resumeParentOnCompletion: options.resumeParentOnCompletion,
     });
 
     switch (result.status) {
@@ -549,7 +552,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
     }
 
     //add the run ids to the batch
-    await this._prisma.batchTaskRun.update({
+    const updatedBatch = await this._prisma.batchTaskRun.update({
       where: { id: batch.id },
       data: {
         runIds: {
@@ -563,7 +566,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
       return { status: "INCOMPLETE", workingIndex };
     }
 
-    if (parentRunId) {
+    if (parentRunId && updatedBatch.runIds.length === updatedBatch.runCount) {
       await this._engine.unblockRunForCreatedBatch({
         runId: RunId.fromFriendlyId(parentRunId),
         batchId: batch.id,
