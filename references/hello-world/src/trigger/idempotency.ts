@@ -114,11 +114,16 @@ export const idempotency = task({
 export const idempotencyBatch = task({
   id: "idempotency-batch",
   maxDuration: 60,
-  run: async (payload: any) => {
+  run: async ({ additionalItems }: { additionalItems?: 2 }) => {
     const successfulKey = await idempotencyKeys.create("a", { scope: "global" });
     const failureKey = await idempotencyKeys.create("b", { scope: "global" });
     const anotherKey = await idempotencyKeys.create("c", { scope: "global" });
     const batchKey = await idempotencyKeys.create("batch", { scope: "global" });
+
+    const moreItems = Array.from({ length: additionalItems ?? 0 }, (_, i) => ({
+      payload: { message: `Hello, world ${i}!` },
+      options: { idempotencyKey: `key-${i}`, idempotencyKeyTTL: "120s" },
+    }));
 
     const batch1 = await childTask.batchTriggerAndWait(
       [
@@ -133,6 +138,7 @@ export const idempotencyBatch = task({
         {
           payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
         },
+        ...moreItems,
       ],
       {
         idempotencyKey: batchKey,
@@ -157,6 +163,7 @@ export const idempotencyBatch = task({
         {
           payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
         },
+        ...moreItems,
       ],
       {
         idempotencyKey: batchKey,
