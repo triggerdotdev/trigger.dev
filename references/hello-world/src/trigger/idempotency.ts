@@ -138,6 +138,16 @@ export const idempotencyBatch = task({
         {
           payload: { message: "Hello, world 3", duration: 500, failureChance: 0 },
         },
+        // Include runs in the same batch with the same idempotencyKeys
+        // I'm sure people will do this, even though it doesn't make sense
+        {
+          payload: { message: "Hello, world!" },
+          options: { idempotencyKey: successfulKey, idempotencyKeyTTL: "120s" },
+        },
+        {
+          payload: { message: "Hello, world 2!" },
+          options: { idempotencyKey: failureKey, idempotencyKeyTTL: "120s" },
+        },
         ...moreItems,
       ],
       {
