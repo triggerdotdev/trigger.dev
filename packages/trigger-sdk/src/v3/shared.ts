@@ -63,7 +63,6 @@ import type {
   TaskOutputHandle,
   TaskPayload,
   TaskRunResult,
-  TaskRunResultFromTask,
   TaskSchema,
   TaskWithSchema,
   TaskWithSchemaOptions,
@@ -75,6 +74,7 @@ import type {
   TriggerOptions,
   AnyTaskRunResult,
   BatchTriggerAndWaitOptions,
+  BatchTriggerTaskV2RequestBody,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -613,9 +613,9 @@ export async function batchTriggerById<TTask extends AnyTask>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
-              machinePreset: item.options?.machinePreset,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
     },
@@ -787,9 +787,9 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
-                  machinePreset: item.options?.machinePreset,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           dependentAttempt: ctx.attempt.id,
@@ -949,9 +949,9 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
-              machinePreset: item.options?.machinePreset,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
     },
@@ -1125,9 +1125,9 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
-                  machinePreset: item.options?.machinePreset,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           dependentAttempt: ctx.attempt.id,
@@ -1204,7 +1204,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         parentAttempt: taskContext.ctx?.attempt.id,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
-        machinePreset: options?.machinePreset,
+        machine: options?.machine,
       },
     },
     {
@@ -1264,9 +1264,9 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
-              machinePreset: item.options?.machinePreset,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
     },
@@ -1358,7 +1358,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxAttempts: options?.maxAttempts,
             metadata: options?.metadata,
             maxDuration: options?.maxDuration,
-            machinePreset: options?.machinePreset,
+            machine: options?.machine,
           },
         },
         {},
@@ -1435,9 +1435,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
-                  machinePreset: item.options?.machinePreset,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           dependentAttempt: ctx.attempt.id,

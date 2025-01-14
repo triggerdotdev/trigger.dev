@@ -92,7 +92,7 @@ export const TriggerTaskRequestBody = z.object({
       metadata: z.any(),
       metadataType: z.string().optional(),
       maxDuration: z.number().optional(),
-      machinePreset: MachinePresetName.optional(),
+      machine: MachinePresetName.optional(),
     })
     .optional(),
 });
@@ -133,7 +133,7 @@ export const BatchTriggerTaskItem = z.object({
       metadataType: z.string().optional(),
       maxDuration: z.number().optional(),
       parentAttempt: z.string().optional(),
-      machinePreset: MachinePresetName.optional(),
+      machine: MachinePresetName.optional(),
     })
     .optional(),
 });

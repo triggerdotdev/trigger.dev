@@ -780,7 +780,7 @@ export type TriggerOptions = {
   /**
    * The machine preset to use for this run. This will override the task's machine preset and any defaults.
    */
-  machinePreset?: MachinePresetName;
+  machine?: MachinePresetName;
 };
 
 export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
