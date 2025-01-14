@@ -376,10 +376,18 @@ export const batchV2TestTask = task({
 
       for await (const liveRun0 of runs.subscribeToRun(response1.runs[0].id)) {
         logger.debug("subscribed to run0", { liveRun0 });
+
+        if (liveRun0.finishedAt) {
+          break;
+        }
       }
 
       for await (const liveRun1 of runs.subscribeToRun(response1.runs[1].id)) {
         logger.debug("subscribed to run1", { liveRun1 });
+
+        if (liveRun1.finishedAt) {
+          break;
+        }
       }
     });
 
