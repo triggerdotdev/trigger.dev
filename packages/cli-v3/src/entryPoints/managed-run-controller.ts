@@ -5,9 +5,12 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { readJSONFile } from "../utilities/fileSystem.js";
 import {
+  CompleteRunAttemptResult,
   DequeuedMessage,
   HeartbeatService,
   RunExecutionData,
+  TaskRunExecutionResult,
+  TaskRunFailedExecutionResult,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
@@ -105,6 +108,7 @@ class ManagedRunController {
 
   private enterWarmStartPhase() {
     this.state = { phase: "WARM_START" };
+    this.snapshotPollService.stop();
   }
 
   private get runFriendlyId() {
@@ -321,17 +325,17 @@ class ManagedRunController {
         updatedSnapshotId: this.snapshotFriendlyId,
       });
 
+      const completion = {
+        id: execution.run.id,
+        ok: false,
+        retry: undefined,
+        error: TaskRunProcess.parseExecuteError(error),
+      } satisfies TaskRunFailedExecutionResult;
+
       const completionResult = await this.httpClient.completeRunAttempt(
         this.runFriendlyId,
         this.snapshotFriendlyId,
-        {
-          completion: {
-            id: execution.run.id,
-            ok: false,
-            retry: undefined,
-            error: TaskRunProcess.parseExecuteError(error),
-          },
-        }
+        { completion }
       );
 
       if (!completionResult.success) {
@@ -342,10 +346,19 @@ class ManagedRunController {
       }
 
       logger.log("Attempt completion submitted after error", completionResult.data.result);
+
+      try {
+        await this.handleCompletionResult(completion, completionResult.data.result);
+      } catch (error) {
+        console.error("Failed to handle completion result after error", { error });
+        process.exit(1);
+      }
     }
   }
 
   private async waitForNextRun() {
+    logger.debug("[ManagedRunController] Waiting for next run");
+
     this.enterWarmStartPhase();
 
     try {
@@ -448,6 +461,8 @@ class ManagedRunController {
     envVars,
     execution,
   }: WorkloadRunAttemptStartResponseBody) {
+    this.snapshotPollService.start();
+
     this.taskRunProcess = new TaskRunProcess({
       workerManifest: this.workerManifest,
       env: envVars,
@@ -510,7 +525,21 @@ class ManagedRunController {
 
     logger.log("Attempt completion submitted", completionResult.data.result);
 
-    const { attemptStatus, snapshot: completionSnapshot } = completionResult.data.result;
+    try {
+      await this.handleCompletionResult(completion, completionResult.data.result);
+    } catch (error) {
+      console.error("Failed to handle completion result", { error });
+      process.exit(1);
+    }
+  }
+
+  private async handleCompletionResult(
+    completion: TaskRunExecutionResult,
+    result: CompleteRunAttemptResult
+  ) {
+    logger.debug("[ManagedRunController] Handling completion result", { completion, result });
+
+    const { attemptStatus, snapshot: completionSnapshot } = result;
 
     this.updateSnapshot(completionSnapshot);
 
@@ -603,7 +632,6 @@ class ManagedRunController {
     this.createSocket();
 
     this.startAndExecuteRunAttempt();
-    this.snapshotPollService.start();
   }
 
   async stop() {
@@ -614,6 +642,8 @@ class ManagedRunController {
     }
 
     this.heartbeatService.stop();
+    this.snapshotPollService.stop();
+
     this.socket?.close();
   }
 }
@@ -661,6 +691,8 @@ const longPoll = async <T = any>(
       error: string;
     }
 > => {
+  logger.debug("Long polling", { url, requestInit, timeoutMs, totalDurationMs });
+
   const endTime = Date.now() + totalDurationMs;
 
   while (Date.now() < endTime) {
@@ -690,7 +722,7 @@ const longPoll = async <T = any>(
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        console.log("Request timed out, retrying...");
+        console.log("Long poll request timed out, retrying...");
         continue;
       } else {
         console.error("Error during fetch, retrying...", error);
