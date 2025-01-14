@@ -204,7 +204,7 @@ export function createTask<
     description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: params.machine,
+    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
@@ -350,7 +350,7 @@ export function createSchemaTask<
     description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: params.machine,
+    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
