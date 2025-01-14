@@ -2120,7 +2120,9 @@ model TaskRunWaitpoint {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([taskRunId, waitpointId])
+  /// There are two constraints, the one below and also one that Prisma doesn't support
+  /// The second one implemented in SQL only prevents a TaskRun + Waitpoint with a null batchIndex
+  @@unique([taskRunId, waitpointId, batchIndex])
   @@index([taskRunId])
   @@index([waitpointId])
 }
