@@ -111,6 +111,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
     } else if (waitpoint.completedByBatch) {
       //no waitpoint resolves associated with batch completions
       //a batch completion isn't when all the runs from a batch are completed
+      return;
     } else {
       waitId = this.resolversByWaitpoint.get(waitpoint.id);
     }
