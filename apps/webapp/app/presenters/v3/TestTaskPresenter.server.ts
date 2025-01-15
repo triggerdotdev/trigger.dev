@@ -3,7 +3,10 @@ import { BackgroundWorkerTask, RuntimeEnvironmentType, TaskRunStatus } from "@tr
 import { PrismaClient, prisma, sqlDatabaseSchema } from "~/db.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { getUsername } from "~/utils/username";
-import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
+import {
+  BackgroundWorkerTaskSlim,
+  findCurrentWorkerDeployment,
+} from "~/v3/models/workerDeployment.server";
 
 type TestTaskOptions = {
   userId: string;
@@ -113,7 +116,7 @@ export class TestTaskPresenter {
       },
     });
 
-    let task: BackgroundWorkerTask | null = null;
+    let task: BackgroundWorkerTaskSlim | null = null;
     if (environment.type !== "DEVELOPMENT") {
       const deployment = await findCurrentWorkerDeployment(environment.id);
       if (deployment) {
