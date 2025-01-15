@@ -21,12 +21,10 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
 export async function findCurrentWorkerDeployment(
   environmentId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label: CURRENT_DEPLOYMENT_LABEL,
-      },
+      environmentId,
+      label: CURRENT_DEPLOYMENT_LABEL,
     },
     include: {
       deployment: {
@@ -66,7 +64,7 @@ export async function findCurrentWorkerFromEnvironment(
 export async function getWorkerDeploymentFromWorker(
   workerId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const worker = await prisma.backgroundWorker.findUnique({
+  const worker = await prisma.backgroundWorker.findFirst({
     where: {
       id: workerId,
     },
@@ -91,7 +89,7 @@ export async function getWorkerDeploymentFromWorker(
 export async function getWorkerDeploymentFromWorkerTask(
   workerTaskId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const workerTask = await prisma.backgroundWorkerTask.findUnique({
+  const workerTask = await prisma.backgroundWorkerTask.findFirst({
     where: {
       id: workerTaskId,
     },
