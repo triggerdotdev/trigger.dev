@@ -446,7 +446,7 @@ export default defineConfig({
 });
 ```
 
-If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated:
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
 
 <CodeGroup>
 
@@ -467,6 +467,10 @@ generator kysely {
   output       = "../../src/kysely"
   enumFileName = "enums.ts"
   fileName     = "types.ts"
+}
+
+generator json {
+  provider = "prisma-json-types-generator"
 }
 ```
 
