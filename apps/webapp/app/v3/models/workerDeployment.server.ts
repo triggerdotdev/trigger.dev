@@ -9,9 +9,18 @@ export type CurrentWorkerDeployment = Prettify<
 >;
 
 type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
-  include: {
+  select: {
+    id: true;
+    imageReference: true;
+    version: true;
     worker: {
-      include: {
+      select: {
+        id: true;
+        friendlyId: true;
+        version: true;
+        sdkVersion: true;
+        cliVersion: true;
+        supportsLazyAttempts: true;
         tasks: true;
       };
     };
@@ -26,11 +35,20 @@ export async function findCurrentWorkerDeployment(
       environmentId,
       label: CURRENT_DEPLOYMENT_LABEL,
     },
-    include: {
+    select: {
       deployment: {
-        include: {
+        select: {
+          id: true,
+          imageReference: true,
+          version: true,
           worker: {
-            include: {
+            select: {
+              id: true,
+              friendlyId: true,
+              version: true,
+              sdkVersion: true,
+              cliVersion: true,
+              supportsLazyAttempts: true,
               tasks: true,
             },
           },
@@ -44,7 +62,10 @@ export async function findCurrentWorkerDeployment(
 
 export async function findCurrentWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">
-): Promise<BackgroundWorker | null> {
+): Promise<Pick<
+  BackgroundWorker,
+  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
+> | null> {
   if (environment.type === "DEVELOPMENT") {
     const latestDevWorker = await prisma.backgroundWorker.findFirst({
       where: {
