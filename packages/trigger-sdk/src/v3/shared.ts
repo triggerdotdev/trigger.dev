@@ -1,4 +1,4 @@
-import { SpanKind } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
@@ -24,6 +24,7 @@ import {
   TaskRunExecutionResult,
   TaskRunPromise,
   TaskFromIdentifier,
+  flattenIdempotencyKey,
 } from "@trigger.dev/core/v3";
 import { PollOptions, runs } from "./runs.js";
 import { tracer } from "./tracer.js";
@@ -584,10 +585,10 @@ export async function batchTriggerById<TTask extends AnyTask>(
 ): Promise<BatchRunHandleFromTypes<InferRunTypes<TTask>>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  const response = await apiClient.batchTriggerV2(
+  const response = await apiClient.batchTriggerV3(
     {
       items: await Promise.all(
-        items.map(async (item) => {
+        items.map(async (item, index) => {
           const taskMetadata = taskCatalog.getTask(item.id);
 
           const parsedPayload = taskMetadata?.fns.parsePayload
@@ -595,6 +596,10 @@ export async function batchTriggerById<TTask extends AnyTask>(
             : item.payload;
 
           const payloadPacket = await stringifyIO(parsedPayload);
+
+          const batchItemIdempotencyKey = await makeIdempotencyKey(
+            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+          );
 
           return {
             task: item.id,
@@ -604,15 +609,15 @@ export async function batchTriggerById<TTask extends AnyTask>(
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
-              parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              idempotencyKey:
+                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
             },
           };
         })
@@ -621,8 +626,6 @@ export async function batchTriggerById<TTask extends AnyTask>(
     },
     {
       spanParentAsLink: true,
-      idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
-      idempotencyKeyTTL: options?.idempotencyKeyTTL,
       processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
@@ -635,20 +638,8 @@ export async function batchTriggerById<TTask extends AnyTask>(
             span.setAttribute("batchId", body.id);
           }
 
-          if ("runs" in body && Array.isArray(body.runs)) {
-            span.setAttribute("runCount", body.runs.length);
-          }
-
-          if ("isCached" in body && typeof body.isCached === "boolean") {
-            if (body.isCached) {
-              console.warn(`Result is a cached response because the request was idempotent.`);
-            }
-
-            span.setAttribute("isCached", body.isCached);
-          }
-
-          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
-            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          if ("runCount" in body && typeof body.runCount === "number") {
+            span.setAttribute("runCount", body.runCount);
           }
         }
       },
@@ -658,9 +649,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
 
   const handle = {
     batchId: response.id,
-    isCached: response.isCached,
-    idempotencyKey: response.idempotencyKey,
-    runs: response.runs,
+    runCount: response.runCount,
     publicAccessToken: response.publicAccessToken,
   };
 
@@ -760,10 +749,10 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
   return await tracer.startActiveSpan(
     "batch.triggerAndWait()",
     async (span) => {
-      const response = await apiClient.batchTriggerV2(
+      const response = await apiClient.batchTriggerV3(
         {
           items: await Promise.all(
-            items.map(async (item) => {
+            items.map(async (item, index) => {
               const taskMetadata = taskCatalog.getTask(item.id);
 
               const parsedPayload = taskMetadata?.fns.parsePayload
@@ -771,6 +760,10 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                 : item.payload;
 
               const payloadPacket = await stringifyIO(parsedPayload);
+
+              const batchItemIdempotencyKey = await makeIdempotencyKey(
+                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+              );
 
               return {
                 task: item.id,
@@ -787,11 +780,14 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  idempotencyKey:
+                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
+                    batchItemIdempotencyKey,
+                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                 },
               };
             })
           ),
-          dependentAttempt: ctx.attempt.id,
           parentRunId: ctx.run.id,
           resumeParentOnCompletion: true,
         },
@@ -802,20 +798,11 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
       );
 
       span.setAttribute("batchId", response.id);
-      span.setAttribute("runCount", response.runs.length);
-      span.setAttribute("isCached", response.isCached);
-
-      if (response.isCached) {
-        console.warn(`Result is a cached response because the request was idempotent.`);
-      }
-
-      if (response.idempotencyKey) {
-        span.setAttribute("idempotencyKey", response.idempotencyKey);
-      }
+      span.setAttribute("runCount", response.runCount);
 
       const result = await runtime.waitForBatch({
         id: response.id,
-        runs: response.runs.map((run) => run.id),
+        runCount: response.runCount,
         ctx,
       });
 
@@ -921,10 +908,10 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
 ): Promise<BatchTasksRunHandleFromTypes<TTasks>> {
   const apiClient = apiClientManager.clientOrThrow();
 
-  const response = await apiClient.batchTriggerV2(
+  const response = await apiClient.batchTriggerV3(
     {
       items: await Promise.all(
-        items.map(async (item) => {
+        items.map(async (item, index) => {
           const taskMetadata = taskCatalog.getTask(item.task.id);
 
           const parsedPayload = taskMetadata?.fns.parsePayload
@@ -932,6 +919,10 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             : item.payload;
 
           const payloadPacket = await stringifyIO(parsedPayload);
+
+          const batchItemIdempotencyKey = await makeIdempotencyKey(
+            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+          );
 
           return {
             task: item.task.id,
@@ -941,15 +932,15 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
-              parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
+              idempotencyKey:
+                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
             },
           };
         })
@@ -958,8 +949,6 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
     },
     {
       spanParentAsLink: true,
-      idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
-      idempotencyKeyTTL: options?.idempotencyKeyTTL,
       processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
@@ -972,20 +961,8 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             span.setAttribute("batchId", body.id);
           }
 
-          if ("runs" in body && Array.isArray(body.runs)) {
-            span.setAttribute("runCount", body.runs.length);
-          }
-
-          if ("isCached" in body && typeof body.isCached === "boolean") {
-            if (body.isCached) {
-              console.warn(`Result is a cached response because the request was idempotent.`);
-            }
-
-            span.setAttribute("isCached", body.isCached);
-          }
-
-          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
-            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          if ("runCount" in body && typeof body.runCount === "number") {
+            span.setAttribute("runCount", body.runCount);
           }
         }
       },
@@ -995,9 +972,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
 
   const handle = {
     batchId: response.id,
-    isCached: response.isCached,
-    idempotencyKey: response.idempotencyKey,
-    runs: response.runs,
+    runCount: response.runCount,
     publicAccessToken: response.publicAccessToken,
   };
 
@@ -1099,10 +1074,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
   return await tracer.startActiveSpan(
     "batch.triggerByTaskAndWait()",
     async (span) => {
-      const response = await apiClient.batchTriggerV2(
+      const response = await apiClient.batchTriggerV3(
         {
           items: await Promise.all(
-            items.map(async (item) => {
+            items.map(async (item, index) => {
               const taskMetadata = taskCatalog.getTask(item.task.id);
 
               const parsedPayload = taskMetadata?.fns.parsePayload
@@ -1110,6 +1085,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                 : item.payload;
 
               const payloadPacket = await stringifyIO(parsedPayload);
+
+              const batchItemIdempotencyKey = await makeIdempotencyKey(
+                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+              );
 
               return {
                 task: item.task.id,
@@ -1126,11 +1105,14 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  idempotencyKey:
+                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
+                    batchItemIdempotencyKey,
+                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                 },
               };
             })
           ),
-          dependentAttempt: ctx.attempt.id,
           parentRunId: ctx.run.id,
           resumeParentOnCompletion: true,
         },
@@ -1141,20 +1123,11 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
       );
 
       span.setAttribute("batchId", response.id);
-      span.setAttribute("runCount", response.runs.length);
-      span.setAttribute("isCached", response.isCached);
-
-      if (response.isCached) {
-        console.warn(`Result is a cached response because the request was idempotent.`);
-      }
-
-      if (response.idempotencyKey) {
-        span.setAttribute("idempotencyKey", response.idempotencyKey);
-      }
+      span.setAttribute("runCount", response.runCount);
 
       const result = await runtime.waitForBatch({
         id: response.id,
-        runs: response.runs.map((run) => run.id),
+        runCount: response.runCount,
         ctx,
       });
 
@@ -1203,7 +1176,6 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         ttl: options?.ttl,
         tags: options?.tags,
         maxAttempts: options?.maxAttempts,
-        parentAttempt: taskContext.ctx?.attempt.id,
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
         parentRunId: taskContext.ctx?.run.id,
@@ -1243,13 +1215,17 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 
   const ctx = taskContext.ctx;
 
-  const response = await apiClient.batchTriggerV2(
+  const response = await apiClient.batchTriggerV3(
     {
       items: await Promise.all(
-        items.map(async (item) => {
+        items.map(async (item, index) => {
           const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
 
           const payloadPacket = await stringifyIO(parsedPayload);
+
+          const batchItemIdempotencyKey = await makeIdempotencyKey(
+            flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+          );
 
           return {
             task: taskIdentifier,
@@ -1259,25 +1235,24 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               concurrencyKey: item.options?.concurrencyKey,
               test: taskContext.ctx?.run.isTest,
               payloadType: payloadPacket.dataType,
-              idempotencyKey: await makeIdempotencyKey(item.options?.idempotencyKey),
-              idempotencyKeyTTL: item.options?.idempotencyKeyTTL,
               delay: item.options?.delay,
               ttl: item.options?.ttl,
               tags: item.options?.tags,
               maxAttempts: item.options?.maxAttempts,
-              parentAttempt: taskContext.ctx?.attempt.id,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
               parentRunId: ctx?.run.id,
+              idempotencyKey:
+                (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+              idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
             },
           };
         })
       ),
+      parentRunId: ctx?.run.id,
     },
     {
       spanParentAsLink: true,
-      idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
-      idempotencyKeyTTL: options?.idempotencyKeyTTL,
       processingStrategy: options?.triggerSequentially ? "sequential" : undefined,
     },
     {
@@ -1290,20 +1265,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             span.setAttribute("batchId", body.id);
           }
 
-          if ("runs" in body && Array.isArray(body.runs)) {
-            span.setAttribute("runCount", body.runs.length);
-          }
-
-          if ("isCached" in body && typeof body.isCached === "boolean") {
-            if (body.isCached) {
-              console.warn(`Result is a cached response because the request was idempotent.`);
-            }
-
-            span.setAttribute("isCached", body.isCached);
-          }
-
-          if ("idempotencyKey" in body && typeof body.idempotencyKey === "string") {
-            span.setAttribute("idempotencyKey", body.idempotencyKey);
+          if ("runCount" in body && Array.isArray(body.runCount)) {
+            span.setAttribute("runCount", body.runCount);
           }
         }
       },
@@ -1313,9 +1276,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
 
   const handle = {
     batchId: response.id,
-    isCached: response.isCached,
-    idempotencyKey: response.idempotencyKey,
-    runs: response.runs,
+    runCount: response.runCount,
     publicAccessToken: response.publicAccessToken,
   };
 
@@ -1364,6 +1325,8 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             maxDuration: options?.maxDuration,
             resumeParentOnCompletion: true,
             parentRunId: ctx.run.id,
+            idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
+            idempotencyKeyTTL: options?.idempotencyKeyTTL,
           },
         },
         {},
@@ -1417,13 +1380,17 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
   return await tracer.startActiveSpan(
     name,
     async (span) => {
-      const response = await apiClient.batchTriggerV2(
+      const response = await apiClient.batchTriggerV3(
         {
           items: await Promise.all(
-            items.map(async (item) => {
+            items.map(async (item, index) => {
               const parsedPayload = parsePayload ? await parsePayload(item.payload) : item.payload;
 
               const payloadPacket = await stringifyIO(parsedPayload);
+
+              const batchItemIdempotencyKey = await makeIdempotencyKey(
+                flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
+              );
 
               return {
                 task: id,
@@ -1440,11 +1407,14 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                   maxAttempts: item.options?.maxAttempts,
                   metadata: item.options?.metadata,
                   maxDuration: item.options?.maxDuration,
+                  idempotencyKey:
+                    (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
+                    batchItemIdempotencyKey,
+                  idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
                 },
               };
             })
           ),
-          dependentAttempt: ctx.attempt.id,
           resumeParentOnCompletion: true,
           parentRunId: ctx.run.id,
         },
@@ -1455,20 +1425,11 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
       );
 
       span.setAttribute("batchId", response.id);
-      span.setAttribute("runCount", response.runs.length);
-      span.setAttribute("isCached", response.isCached);
-
-      if (response.isCached) {
-        console.warn(`Result is a cached response because the request was idempotent.`);
-      }
-
-      if (response.idempotencyKey) {
-        span.setAttribute("idempotencyKey", response.idempotencyKey);
-      }
+      span.setAttribute("runCount", response.runCount);
 
       const result = await runtime.waitForBatch({
         id: response.id,
-        runs: response.runs.map((run) => run.id),
+        runCount: response.runCount,
         ctx,
       });
 

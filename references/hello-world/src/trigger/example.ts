@@ -50,7 +50,10 @@ export const batchParentTask = task({
     logger.log("Results 3", { results3 });
 
     const results4 = await batch.triggerByTaskAndWait([
-      { task: childTask, payload: { message: "Hello, world !" } },
+      {
+        task: childTask,
+        payload: { message: "Hello, world !" },
+      },
       { task: childTask, payload: { message: "Hello, world 2!" } },
     ]);
     logger.log("Results 4", { results4 });

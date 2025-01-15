@@ -1,19 +1,18 @@
 import { json } from "@remix-run/server-runtime";
 import {
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
+  BatchTriggerTaskV3RequestBody,
+  BatchTriggerTaskV3Response,
   generateJWT,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
-  BatchTriggerV2Service,
-} from "~/v3/services/batchTriggerV2.server";
+  BatchTriggerV3Service,
+} from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
@@ -22,7 +21,7 @@ const { action, loader } = createActionApiRoute(
     headers: HeadersSchema.extend({
       "batch-processing-strategy": BatchProcessingStrategy.nullish(),
     }),
-    body: BatchTriggerTaskV2RequestBody,
+    body: BatchTriggerTaskV3RequestBody,
     allowJWT: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
@@ -50,8 +49,6 @@ const { action, loader } = createActionApiRoute(
     }
 
     const {
-      "idempotency-key": idempotencyKey,
-      "idempotency-key-ttl": idempotencyKeyTTL,
       "trigger-version": triggerVersion,
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
@@ -65,8 +62,6 @@ const { action, loader } = createActionApiRoute(
     const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
     logger.debug("Batch trigger request", {
-      idempotencyKey,
-      idempotencyKeyTTL,
       triggerVersion,
       spanParentAsLink,
       isFromWorker,
@@ -81,17 +76,10 @@ const { action, loader } = createActionApiRoute(
         ? { traceparent, tracestate }
         : undefined;
 
-    // By default, the idempotency key expires in 30 days
-    const idempotencyKeyExpiresAt =
-      resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
-      new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
-
-    const service = new BatchTriggerV2Service(batchProcessingStrategy ?? undefined);
+    const service = new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
-        idempotencyKey: idempotencyKey ?? undefined,
-        idempotencyKeyExpiresAt,
         triggerVersion: triggerVersion ?? undefined,
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
@@ -130,7 +118,7 @@ const { action, loader } = createActionApiRoute(
 );
 
 async function responseHeaders(
-  batch: BatchTriggerTaskV2Response,
+  batch: BatchTriggerTaskV3Response,
   environment: AuthenticatedEnvironment,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {

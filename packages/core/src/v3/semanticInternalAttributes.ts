@@ -12,6 +12,7 @@ export const SemanticInternalAttributes = {
   ATTEMPT_NUMBER: "ctx.attempt.number",
   RUN_ID: "ctx.run.id",
   RUN_IS_TEST: "ctx.run.isTest",
+  ORIGINAL_RUN_ID: "$original_run_id",
   BATCH_ID: "ctx.batch.id",
   TASK_SLUG: "ctx.task.id",
   TASK_PATH: "ctx.task.filePath",

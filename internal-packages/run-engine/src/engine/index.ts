@@ -22,6 +22,7 @@ import {
   WaitForDurationResult,
 } from "@trigger.dev/core/v3";
 import {
+  BatchId,
   getMaxDuration,
   parseNaturalLanguageDuration,
   QueueId,
@@ -237,7 +238,7 @@ export class RunEngine {
       tags,
       parentTaskRunId,
       rootTaskRunId,
-      batchId,
+      batch,
       resumeParentOnCompletion,
       depth,
       metadata,
@@ -252,7 +253,7 @@ export class RunEngine {
     const prisma = tx ?? this.prisma;
 
     return this.#trace(
-      "createRunAttempt",
+      "trigger",
       {
         friendlyId,
         environmentId: environment.id,
@@ -268,67 +269,97 @@ export class RunEngine {
         }
 
         //create run
-        const taskRun = await prisma.taskRun.create({
-          data: {
-            id: RunId.fromFriendlyId(friendlyId),
-            engine: "V2",
-            status,
-            number,
-            friendlyId,
-            runtimeEnvironmentId: environment.id,
-            projectId: environment.project.id,
-            idempotencyKey,
-            idempotencyKeyExpiresAt,
-            taskIdentifier,
-            payload,
-            payloadType,
-            context,
-            traceContext,
-            traceId,
-            spanId,
-            parentSpanId,
-            lockedToVersionId,
-            taskVersion,
-            sdkVersion,
-            cliVersion,
-            concurrencyKey,
-            queue: queueName,
-            masterQueue,
-            secondaryMasterQueue,
-            isTest,
-            delayUntil,
-            queuedAt,
-            maxAttempts,
-            priorityMs,
-            ttl,
-            tags:
-              tags.length === 0
-                ? undefined
-                : {
-                    connect: tags,
-                  },
-            runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
-            oneTimeUseToken,
-            parentTaskRunId,
-            rootTaskRunId,
-            batchId,
-            resumeParentOnCompletion,
-            depth,
-            metadata,
-            metadataType,
-            seedMetadata,
-            seedMetadataType,
-            maxDurationInSeconds,
-            executionSnapshots: {
-              create: {
-                engine: "V2",
-                executionStatus: "RUN_CREATED",
-                description: "Run was created",
-                runStatus: status,
+        let taskRun: TaskRun;
+        try {
+          taskRun = await prisma.taskRun.create({
+            data: {
+              id: RunId.fromFriendlyId(friendlyId),
+              engine: "V2",
+              status,
+              number,
+              friendlyId,
+              runtimeEnvironmentId: environment.id,
+              projectId: environment.project.id,
+              idempotencyKey,
+              idempotencyKeyExpiresAt,
+              taskIdentifier,
+              payload,
+              payloadType,
+              context,
+              traceContext,
+              traceId,
+              spanId,
+              parentSpanId,
+              lockedToVersionId,
+              taskVersion,
+              sdkVersion,
+              cliVersion,
+              concurrencyKey,
+              queue: queueName,
+              masterQueue,
+              secondaryMasterQueue,
+              isTest,
+              delayUntil,
+              queuedAt,
+              maxAttempts,
+              priorityMs,
+              ttl,
+              tags:
+                tags.length === 0
+                  ? undefined
+                  : {
+                      connect: tags,
+                    },
+              runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
+              oneTimeUseToken,
+              parentTaskRunId,
+              rootTaskRunId,
+              batchId: batch?.id,
+              resumeParentOnCompletion,
+              depth,
+              metadata,
+              metadataType,
+              seedMetadata,
+              seedMetadataType,
+              maxDurationInSeconds,
+              executionSnapshots: {
+                create: {
+                  engine: "V2",
+                  executionStatus: "RUN_CREATED",
+                  description: "Run was created",
+                  runStatus: status,
+                },
               },
             },
-          },
-        });
+          });
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            this.logger.debug("engine.trigger(): Prisma transaction error", {
+              code: error.code,
+              message: error.message,
+              meta: error.meta,
+              idempotencyKey,
+              environmentId: environment.id,
+            });
+
+            if (error.code === "P2002") {
+              this.logger.debug("engine.trigger(): throwing RunDuplicateIdempotencyKeyError", {
+                code: error.code,
+                message: error.message,
+                meta: error.meta,
+                idempotencyKey,
+                environmentId: environment.id,
+              });
+
+              //this happens if a unique constraint failed, i.e. duplicate idempotency
+              throw new RunDuplicateIdempotencyKeyError(
+                `Run with idempotency key ${idempotencyKey} already exists`
+              );
+            }
+          }
+
+          throw error;
+        }
 
         span.setAttribute("runId", taskRun.id);
 
@@ -345,9 +376,10 @@ export class RunEngine {
             //this will block the parent run from continuing until this waitpoint is completed (and removed)
             await this.blockRunWithWaitpoint({
               runId: parentTaskRunId,
-              waitpointId: associatedWaitpoint.id,
+              waitpoints: associatedWaitpoint.id,
               environmentId: associatedWaitpoint.environmentId,
               projectId: associatedWaitpoint.projectId,
+              batch,
               tx: prisma,
             });
 
@@ -546,7 +578,7 @@ export class RunEngine {
                     "Tried to dequeue a run that is not in a valid state to be dequeued.",
                 },
                 checkpointId: snapshot.checkpointId ?? undefined,
-                completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
+                completedWaitpoints: snapshot.completedWaitpoints,
                 error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
               });
 
@@ -767,7 +799,7 @@ export class RunEngine {
                 description: "Run was dequeued for execution",
               },
               checkpointId: snapshot.checkpointId ?? undefined,
-              completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
+              completedWaitpoints: snapshot.completedWaitpoints,
             });
 
             return {
@@ -1040,6 +1072,7 @@ export class RunEngine {
               data: {
                 status: "EXECUTING",
                 attemptNumber: nextAttemptNumber,
+                firstAttemptStartedAt: taskRun.attemptNumber === null ? new Date() : undefined,
               },
               include: {
                 tags: true,
@@ -1280,7 +1313,7 @@ export class RunEngine {
       //block the run
       const blockResult = await this.blockRunWithWaitpoint({
         runId,
-        waitpointId: waitpoint.id,
+        waitpoints: waitpoint.id,
         environmentId: waitpoint.environmentId,
         projectId: waitpoint.projectId,
         tx: prisma,
@@ -1549,6 +1582,110 @@ export class RunEngine {
     });
   }
 
+  /** This block a run with a BATCH waitpoint.
+   * The waitpoint will be created, and it will block the parent run.
+   */
+  async blockRunWithCreatedBatch({
+    runId,
+    batchId,
+    environmentId,
+    projectId,
+    tx,
+  }: {
+    runId: string;
+    batchId: string;
+    environmentId: string;
+    projectId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<Waitpoint | null> {
+    const prisma = tx ?? this.prisma;
+
+    try {
+      const waitpoint = await prisma.waitpoint.create({
+        data: {
+          ...WaitpointId.generate(),
+          type: "BATCH",
+          idempotencyKey: batchId,
+          userProvidedIdempotencyKey: false,
+          completedByBatchId: batchId,
+          environmentId,
+          projectId,
+        },
+      });
+
+      await this.blockRunWithWaitpoint({
+        runId,
+        waitpoints: waitpoint.id,
+        environmentId,
+        projectId,
+        batch: { id: batchId },
+        tx: prisma,
+      });
+
+      return waitpoint;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // duplicate idempotency key
+        if (error.code === "P2002") {
+          return null;
+        } else {
+          throw error;
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * This is called when all the runs for a batch have been created.
+   * This does NOT mean that all the runs for the batch are completed.
+   */
+  async unblockRunForCreatedBatch({
+    runId,
+    batchId,
+    environmentId,
+    projectId,
+    tx,
+  }: {
+    runId: string;
+    batchId: string;
+    environmentId: string;
+    projectId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<void> {
+    const prisma = tx ?? this.prisma;
+
+    const waitpoint = await prisma.waitpoint.findFirst({
+      where: {
+        completedByBatchId: batchId,
+      },
+    });
+
+    if (!waitpoint) {
+      this.logger.error("RunEngine.unblockRunForBatch(): Waitpoint not found", {
+        runId,
+        batchId,
+      });
+      throw new ServiceValidationError("Waitpoint not found for batch", 404);
+    }
+
+    await this.completeWaitpoint({
+      id: waitpoint.id,
+      output: { value: "Batch waitpoint completed", isError: false },
+    });
+  }
+
+  async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
+    await this.worker.enqueue({
+      //this will debounce the call
+      id: `tryCompleteBatch:${batchId}`,
+      job: "tryCompleteBatch",
+      payload: { batchId: batchId },
+      //2s in the future
+      availableAt: new Date(Date.now() + 2_000),
+    });
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
@@ -1585,21 +1722,25 @@ export class RunEngine {
    */
   async blockRunWithWaitpoint({
     runId,
-    waitpointId,
+    waitpoints,
     projectId,
     failAfter,
+    spanIdToComplete,
+    batch,
     tx,
   }: {
     runId: string;
-    waitpointId: string | string[];
+    waitpoints: string | string[];
     environmentId: string;
     projectId: string;
     failAfter?: Date;
+    spanIdToComplete?: string;
+    batch?: { id: string; index?: number };
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
 
-    let waitpointIds = typeof waitpointId === "string" ? [waitpointId] : waitpointId;
+    let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.runLock.lock([runId], 5000, async (signal) => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
@@ -1607,16 +1748,19 @@ export class RunEngine {
       //block the run with the waitpoints, returning how many waitpoints are pending
       const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
         WITH inserted AS (
-          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt")
+          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
           SELECT
             gen_random_uuid(),
             ${runId},
             w.id,
             ${projectId},
             NOW(),
-            NOW()
+            NOW(),
+            ${spanIdToComplete ?? null},
+            ${batch?.id ?? null},
+            ${batch?.index ?? null}
           FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join(waitpointIds)})
+          WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
           RETURNING "waitpointId"
         )
@@ -1647,15 +1791,16 @@ export class RunEngine {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
           },
+          batchId: batch?.id ?? snapshot.batchId ?? undefined,
         });
       }
 
       if (failAfter) {
-        for (const waitpointId of waitpointIds) {
+        for (const waitpoint of $waitpoints) {
           await this.worker.enqueue({
-            id: `finishWaitpoint.${waitpointId}`,
+            id: `finishWaitpoint.${waitpoint}`,
             job: "finishWaitpoint",
-            payload: { waitpointId, error: "Waitpoint timed out" },
+            payload: { waitpointId: waitpoint, error: "Waitpoint timed out" },
             availableAt: failAfter,
           });
         }
@@ -1705,7 +1850,7 @@ export class RunEngine {
         // 1. Find the TaskRuns blocked by this waitpoint
         const affectedTaskRuns = await tx.taskRunWaitpoint.findMany({
           where: { waitpointId: id },
-          select: { taskRunId: true },
+          select: { taskRunId: true, spanIdToComplete: true },
         });
 
         if (affectedTaskRuns.length === 0) {
@@ -1748,6 +1893,15 @@ export class RunEngine {
         //50ms in the future
         availableAt: new Date(Date.now() + 50),
       });
+
+      // emit an event to complete associated cached runs
+      if (run.spanIdToComplete) {
+        this.eventBus.emit("cachedRunCompleted", {
+          time: new Date(),
+          spanId: run.spanIdToComplete,
+          hasError: output?.isError ?? false,
+        });
+      }
     }
 
     return result.updatedWaitpoint;
@@ -1865,6 +2019,12 @@ export class RunEngine {
           status: snapshot.runStatus,
           attemptNumber: snapshot.attemptNumber ?? undefined,
         },
+        batch: snapshot.batchId
+          ? {
+              id: snapshot.batchId,
+              friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+            }
+          : undefined,
         checkpoint: snapshot.checkpoint
           ? {
               id: snapshot.checkpoint.id,
@@ -2482,6 +2642,8 @@ export class RunEngine {
     const blockingWaitpoints = await this.prisma.taskRunWaitpoint.findMany({
       where: { taskRunId: runId },
       select: {
+        batchId: true,
+        batchIndex: true,
         waitpoint: {
           select: { id: true, status: true },
         },
@@ -2531,7 +2693,11 @@ export class RunEngine {
             executionStatus: "EXECUTING",
             description: "Run was continued, whilst still executing.",
           },
-          completedWaitpointIds: blockingWaitpoints.map((b) => b.waitpoint.id),
+          batchId: snapshot.batchId ?? undefined,
+          completedWaitpoints: blockingWaitpoints.map((b) => ({
+            id: b.waitpoint.id,
+            index: b.batchIndex ?? undefined,
+          })),
         });
 
         //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
@@ -2545,7 +2711,11 @@ export class RunEngine {
             executionStatus: "QUEUED",
             description: "Run is QUEUED, because all waitpoints are completed.",
           },
-          completedWaitpointIds: blockingWaitpoints.map((b) => b.waitpoint.id),
+          batchId: snapshot.batchId ?? undefined,
+          completedWaitpoints: blockingWaitpoints.map((b) => ({
+            id: b.waitpoint.id,
+            index: b.batchIndex ?? undefined,
+          })),
         });
 
         //put it back in the queue, with the original timestamp (w/ priority)
@@ -2751,8 +2921,9 @@ export class RunEngine {
     {
       run,
       snapshot,
+      batchId,
       checkpointId,
-      completedWaitpointIds,
+      completedWaitpoints,
       error,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
@@ -2760,8 +2931,12 @@ export class RunEngine {
         executionStatus: TaskRunExecutionStatus;
         description: string;
       };
+      batchId?: string;
       checkpointId?: string;
-      completedWaitpointIds?: string[];
+      completedWaitpoints?: {
+        id: string;
+        index?: number;
+      }[];
       error?: string;
     }
   ) {
@@ -2773,12 +2948,17 @@ export class RunEngine {
         runId: run.id,
         runStatus: run.status,
         attemptNumber: run.attemptNumber ?? undefined,
-        checkpointId: checkpointId ?? undefined,
+        batchId,
+        checkpointId,
         completedWaitpoints: {
-          connect: completedWaitpointIds?.map((id) => ({ id })),
+          connect: completedWaitpoints?.map((w) => ({ id: w.id })),
         },
+        completedWaitpointOrder: completedWaitpoints
+          ?.filter((c) => c.index !== undefined)
+          .sort((a, b) => a.index! - b.index!)
+          .map((w) => w.id),
         isValid: error ? false : true,
-        error: error ?? undefined,
+        error,
       },
       include: {
         checkpoint: true,
@@ -2801,7 +2981,7 @@ export class RunEngine {
       },
       snapshot: {
         ...newSnapshot,
-        completedWaitpointIds: completedWaitpointIds ?? [],
+        completedWaitpointIds: completedWaitpoints?.map((w) => w.id) ?? [],
       },
     });
 
@@ -3020,14 +3200,7 @@ export class RunEngine {
    */
   async #finalizeRun({ id, batchId }: { id: string; batchId: string | null }) {
     if (batchId) {
-      await this.worker.enqueue({
-        //this will debounce the call
-        id: `tryCompleteBatch:${batchId}`,
-        job: "tryCompleteBatch",
-        payload: { batchId: batchId },
-        //2s in the future
-        availableAt: new Date(Date.now() + 2_000),
-      });
+      await this.tryCompleteBatch({ batchId });
     }
   }
 
@@ -3162,10 +3335,16 @@ export class ServiceValidationError extends Error {
   }
 }
 
-//todo temporary during development
 class NotImplementedError extends Error {
   constructor(message: string) {
-    console.error("NOT IMPLEMENTED YET", { message });
+    console.error("This isn't implemented", { message });
     super(message);
+  }
+}
+
+export class RunDuplicateIdempotencyKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RunDuplicateIdempotencyKeyError";
   }
 }

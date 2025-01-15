@@ -1,4 +1,4 @@
-import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
+import { Attributes, AttributeValue, Link, TraceFlags } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -603,6 +603,11 @@ export class EventRepository {
         spanEvent.environmentType === "DEVELOPMENT"
       );
 
+      const originalRun = rehydrateAttribute<string>(
+        spanEvent.properties,
+        SemanticInternalAttributes.ORIGINAL_RUN_ID
+      );
+
       return {
         ...spanEvent,
         ...span.data,
@@ -612,6 +617,7 @@ export class EventRepository {
         events: spanEvents,
         show,
         links,
+        originalRun,
       };
     });
   }
@@ -754,7 +760,10 @@ export class EventRepository {
     });
   }
 
-  public async recordEvent(message: string, options: TraceEventOptions & { duration?: number }) {
+  public async recordEvent(
+    message: string,
+    options: TraceEventOptions & { duration?: number; parentId?: string }
+  ) {
     const propagatedContext = extractContextFromCarrier(options.context ?? {});
 
     const startTime = options.startTime ?? getNowInNanoseconds();
@@ -763,7 +772,7 @@ export class EventRepository {
       (options.endTime ? calculateDurationFromStart(startTime, options.endTime) : 100);
 
     const traceId = propagatedContext?.traceparent?.traceId ?? this.generateTraceId();
-    const parentId = propagatedContext?.traceparent?.spanId;
+    const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
     const tracestate = propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
       ? this.#generateDeterministicSpanId(traceId, options.spanIdSeed)
@@ -847,7 +856,7 @@ export class EventRepository {
 
   public async traceEvent<TResult>(
     message: string,
-    options: TraceEventOptions & { incomplete?: boolean },
+    options: TraceEventOptions & { incomplete?: boolean; isError?: boolean },
     callback: (
       e: EventBuilder,
       traceContext: Record<string, string | undefined>,
@@ -944,6 +953,7 @@ export class EventRepository {
       tracestate,
       duration: options.incomplete ? 0 : duration,
       isPartial: options.incomplete,
+      isError: options.isError,
       message: message,
       serviceName: "api server",
       serviceNamespace: "trigger.dev",
@@ -1223,7 +1233,7 @@ function excludePartialEventsWithCorrespondingFullEvent(batch: CreatableEvent[])
   );
 }
 
-function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
+export function extractContextFromCarrier(carrier: Record<string, string | undefined>) {
   const traceparent = carrier["traceparent"];
   const tracestate = carrier["tracestate"];
 
@@ -1549,4 +1559,27 @@ function rehydrateShow(properties: Prisma.JsonValue): { actions?: boolean } | un
   }
 
   return;
+}
+
+function rehydrateAttribute<T extends AttributeValue>(
+  properties: Prisma.JsonValue,
+  key: string
+): T | undefined {
+  if (properties === null || properties === undefined) {
+    return;
+  }
+
+  if (typeof properties !== "object") {
+    return;
+  }
+
+  if (Array.isArray(properties)) {
+    return;
+  }
+
+  const value = properties[key];
+
+  if (!value) return;
+
+  return value as T;
 }

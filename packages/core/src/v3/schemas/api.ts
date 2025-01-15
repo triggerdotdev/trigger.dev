@@ -119,6 +119,7 @@ export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
 export const TriggerTaskResponse = z.object({
   id: z.string(),
+  isCached: z.boolean().optional(),
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;
@@ -190,6 +191,29 @@ export const BatchTriggerTaskV2Response = z.object({
 });
 
 export type BatchTriggerTaskV2Response = z.infer<typeof BatchTriggerTaskV2Response>;
+
+export const BatchTriggerTaskV3RequestBody = z.object({
+  items: BatchTriggerTaskItem.array(),
+  /**
+   * RunEngine v2
+   * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+   */
+  parentRunId: z.string().optional(),
+  /**
+   * RunEngine v2
+   * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+   */
+  resumeParentOnCompletion: z.boolean().optional(),
+});
+
+export type BatchTriggerTaskV3RequestBody = z.infer<typeof BatchTriggerTaskV3RequestBody>;
+
+export const BatchTriggerTaskV3Response = z.object({
+  id: z.string(),
+  runCount: z.number(),
+});
+
+export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
 
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
@@ -806,6 +830,18 @@ export const RetrieveBatchResponse = z.object({
 });
 
 export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;
+
+export const RetrieveBatchV2Response = z.object({
+  id: z.string(),
+  status: BatchStatus,
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  runCount: z.number(),
+  runs: z.array(z.string()),
+});
+
+export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;
 
 export const SubscribeRealtimeStreamChunkRawShape = z.object({
   id: z.string(),

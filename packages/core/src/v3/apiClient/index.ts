@@ -4,8 +4,8 @@ import { generateJWT } from "../jwt.js";
 import {
   AddTagsRequestBody,
   BatchTaskRunExecutionResult,
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
+  BatchTriggerTaskV3RequestBody,
+  BatchTriggerTaskV3Response,
   CanceledRunResponse,
   CreateEnvironmentVariableRequestBody,
   CreateScheduleOptions,
@@ -18,7 +18,7 @@ import {
   ListScheduleOptions,
   ReplayRunResponse,
   RescheduleRunRequestBody,
-  RetrieveBatchResponse,
+  RetrieveBatchV2Response,
   RetrieveRunResponse,
   ScheduleObject,
   TaskRunExecutionResult,
@@ -42,9 +42,9 @@ import {
 } from "./core.js";
 import { ApiError } from "./errors.js";
 import {
+  AnyRealtimeRun,
   AnyRunShape,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -75,8 +75,6 @@ export type ClientTriggerOptions = {
 };
 
 export type ClientBatchTriggerOptions = ClientTriggerOptions & {
-  idempotencyKey?: string;
-  idempotencyKeyTTL?: string;
   processingStrategy?: "parallel" | "sequential";
 };
 
@@ -100,10 +98,10 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
 
 export { isRequestOptions };
 export type {
+  AnyRealtimeRun,
   AnyRunShape,
   ApiRequestOptions,
   RealtimeRun,
-  AnyRealtimeRun,
   RunShape,
   RunStreamCallback,
   RunSubscription,
@@ -234,19 +232,17 @@ export class ApiClient {
       });
   }
 
-  batchTriggerV2(
-    body: BatchTriggerTaskV2RequestBody,
+  batchTriggerV3(
+    body: BatchTriggerTaskV3RequestBody,
     clientOptions?: ClientBatchTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
     return zodfetch(
-      BatchTriggerTaskV2Response,
-      `${this.baseUrl}/api/v1/tasks/batch`,
+      BatchTriggerTaskV3Response,
+      `${this.baseUrl}/api/v2/tasks/batch`,
       {
         method: "POST",
         headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false, {
-          "idempotency-key": clientOptions?.idempotencyKey,
-          "idempotency-key-ttl": clientOptions?.idempotencyKeyTTL,
           "batch-processing-strategy": clientOptions?.processingStrategy,
         }),
         body: JSON.stringify(body),
@@ -713,8 +709,8 @@ export class ApiClient {
 
   retrieveBatch(batchId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      RetrieveBatchResponse,
-      `${this.baseUrl}/api/v1/batches/${batchId}`,
+      RetrieveBatchV2Response,
+      `${this.baseUrl}/api/v2/batches/${batchId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

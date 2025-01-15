@@ -1,5 +1,5 @@
 import { CompletedWaitpoint, ExecutionResult } from "@trigger.dev/core/v3";
-import { RunId, SnapshotId } from "@trigger.dev/core/v3/apps";
+import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/apps";
 import {
   PrismaClientOrTransaction,
   TaskRunCheckpoint,
@@ -35,10 +35,24 @@ export async function getLatestExecutionSnapshot(
     ...snapshot,
     friendlyId: SnapshotId.toFriendlyId(snapshot.id),
     runFriendlyId: RunId.toFriendlyId(snapshot.runId),
-    completedWaitpoints: snapshot.completedWaitpoints.map(
-      (w) =>
-        ({
+    completedWaitpoints: snapshot.completedWaitpoints.flatMap((w) => {
+      //get all indexes of the waitpoint in the completedWaitpointOrder
+      //we do this because the same run can be in a batch multiple times (i.e. same idempotencyKey)
+      let indexes: (number | undefined)[] = [];
+      for (let i = 0; i < snapshot.completedWaitpointOrder.length; i++) {
+        if (snapshot.completedWaitpointOrder[i] === w.id) {
+          indexes.push(i);
+        }
+      }
+
+      if (indexes.length === 0) {
+        indexes.push(undefined);
+      }
+
+      return indexes.map((index) => {
+        return {
           id: w.id,
+          index: index === -1 ? undefined : index,
           friendlyId: w.friendlyId,
           type: w.type,
           completedAt: w.completedAt ?? new Date(),
@@ -50,14 +64,27 @@ export async function getLatestExecutionSnapshot(
             ? {
                 id: w.completedByTaskRunId,
                 friendlyId: RunId.toFriendlyId(w.completedByTaskRunId),
+                batch: snapshot.batchId
+                  ? {
+                      id: snapshot.batchId,
+                      friendlyId: BatchId.toFriendlyId(snapshot.batchId),
+                    }
+                  : undefined,
               }
             : undefined,
           completedAfter: w.completedAfter ?? undefined,
+          completedByBatch: w.completedByBatchId
+            ? {
+                id: w.completedByBatchId,
+                friendlyId: BatchId.toFriendlyId(w.completedByBatchId),
+              }
+            : undefined,
           output: w.output ?? undefined,
           outputType: w.outputType,
           outputIsError: w.outputIsError,
-        }) satisfies CompletedWaitpoint
-    ),
+        } satisfies CompletedWaitpoint;
+      });
+    }),
   };
 }
 

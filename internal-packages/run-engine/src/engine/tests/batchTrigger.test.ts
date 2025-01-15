@@ -79,7 +79,7 @@ describe("RunEngine batchTrigger", () => {
             queueName: "task/test-task",
             isTest: false,
             tags: [],
-            batchId: batch.id,
+            batch: { id: batch.id, index: 0 },
           },
           prisma
         );
@@ -100,7 +100,7 @@ describe("RunEngine batchTrigger", () => {
             queueName: "task/test-task",
             isTest: false,
             tags: [],
-            batchId: batch.id,
+            batch: { id: batch.id, index: 1 },
           },
           prisma
         );

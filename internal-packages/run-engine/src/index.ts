@@ -1,1 +1,1 @@
-export { RunEngine } from "./engine/index";
+export { RunEngine, RunDuplicateIdempotencyKeyError } from "./engine/index";
