@@ -1595,6 +1595,18 @@ components:
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
               items:
                 type: string
+            machine:
+              type: string
+              enum:
+                - micro
+                - small-1x
+                - small-2x
+                - medium-1x
+                - medium-2x
+                - large-1x
+                - large-2x
+              example: "small-2x"
+              description: The machine preset to use for this run. This will override the task's machine preset and any defaults.
     TTL:
       type:
         - string

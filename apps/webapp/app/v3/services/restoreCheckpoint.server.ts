@@ -1,7 +1,7 @@
 import { type Checkpoint } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
-import { machinePresetFromConfig } from "../machinePresets.server";
+import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import { BaseService } from "./baseService.server";
 import { CreateCheckpointRestoreEventService } from "./createCheckpointRestoreEvent.server";
 import { isRestorableAttemptStatus, isRestorableRunStatus } from "../taskStatus";
@@ -24,6 +24,7 @@ export class RestoreCheckpointService extends BaseService {
             run: {
               select: {
                 status: true,
+                machinePreset: true,
               },
             },
             attempt: {
@@ -69,8 +70,9 @@ export class RestoreCheckpointService extends BaseService {
       return;
     }
 
-    const { machineConfig } = checkpoint.attempt.backgroundWorkerTask;
-    const machine = machinePresetFromConfig(machineConfig ?? {});
+    const machine =
+      machinePresetFromRun(checkpoint.run) ??
+      machinePresetFromConfig(checkpoint.attempt.backgroundWorkerTask.machineConfig ?? {});
 
     const restoreEvent = await this._prisma.checkpointRestoreEvent.findFirst({
       where: {

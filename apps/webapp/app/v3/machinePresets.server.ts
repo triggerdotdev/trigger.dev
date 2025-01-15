@@ -31,6 +31,16 @@ export function machinePresetFromName(name: MachinePresetName): MachinePreset {
   };
 }
 
+export function machinePresetFromRun(run: { machinePreset: string | null }): MachinePreset | null {
+  const presetName = MachinePresetName.safeParse(run.machinePreset).data;
+
+  if (!presetName) {
+    return null;
+  }
+
+  return machinePresetFromName(presetName);
+}
+
 // Finds the smallest machine preset name that satisfies the given CPU and memory requirements
 function derivePresetNameFromValues(cpu: number, memory: number): MachinePresetName {
   for (const [name, preset] of Object.entries(machines)) {
