@@ -8,6 +8,19 @@ export type CurrentWorkerDeployment = Prettify<
   NonNullable<Awaited<ReturnType<typeof findCurrentWorkerDeployment>>>
 >;
 
+export type BackgroundWorkerTaskSlim = Prisma.BackgroundWorkerTaskGetPayload<{
+  select: {
+    id: true;
+    friendlyId: true;
+    slug: true;
+    filePath: true;
+    exportName: true;
+    triggerSource: true;
+    machineConfig: true;
+    maxDurationInSeconds: true;
+  };
+}>;
+
 type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
   select: {
     id: true;
@@ -21,7 +34,18 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
         sdkVersion: true;
         cliVersion: true;
         supportsLazyAttempts: true;
-        tasks: true;
+        tasks: {
+          select: {
+            id: true;
+            friendlyId: true;
+            slug: true;
+            filePath: true;
+            exportName: true;
+            triggerSource: true;
+            machineConfig: true;
+            maxDurationInSeconds: true;
+          };
+        };
       };
     };
   };
