@@ -9,6 +9,8 @@ import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { RunId } from "@trigger.dev/core/v3/apps";
+import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -254,6 +256,31 @@ export function registerRunEngineEventBusHandlers() {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
         orgId: organization.id,
+      });
+    }
+  });
+
+  engine.eventBus.on("runMetadataUpdated", async ({ time, run }) => {
+    const env = await findEnvironmentFromRun(run.id);
+
+    if (!env) {
+      logger.error("[runMetadataUpdated] Failed to find environment", { runId: run.id });
+      return;
+    }
+
+    try {
+      await updateMetadataService.call(env, run.id, run.metadata);
+    } catch (e) {
+      logger.error("[runMetadataUpdated] Failed to update metadata", {
+        taskRun: run.id,
+        error:
+          e instanceof Error
+            ? {
+                name: e.name,
+                message: e.message,
+                stack: e.stack,
+              }
+            : e,
       });
     }
   });

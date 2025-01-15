@@ -400,7 +400,7 @@ function BatchIdDropdown({
               disabled={error !== undefined || !batchId}
               variant="secondary/small"
               shortcut={{
-                modifiers: ["meta"],
+                modifiers: ["mod"],
                 key: "Enter",
                 enabledOnInputElements: true,
               }}

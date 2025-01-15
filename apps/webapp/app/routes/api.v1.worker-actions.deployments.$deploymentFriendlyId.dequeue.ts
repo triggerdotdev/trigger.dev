@@ -1,6 +1,6 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
-import { WorkerApiDequeueResponseBody } from "@trigger.dev/worker";
+import { WorkerApiDequeueResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";

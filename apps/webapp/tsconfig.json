@@ -3,7 +3,7 @@
   "include": ["remix.env.d.ts", "global.d.ts", "**/*.ts", "**/*.tsx"],
   "compilerOptions": {
     "types": ["vitest/globals"],
-    "lib": ["DOM", "DOM.Iterable", "ES2019"],
+    "lib": ["DOM", "DOM.Iterable", "DOM.AsyncIterable", "ES2019"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -31,8 +31,6 @@
       "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
       "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
       "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
-      "@trigger.dev/worker": ["../../packages/worker/src/index"],
-      "@trigger.dev/worker/*": ["../../packages/worker/src/*"],
       "emails": ["../../internal-packages/emails/src/index"],
       "emails/*": ["../../internal-packages/emails/src/*"],
       "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],

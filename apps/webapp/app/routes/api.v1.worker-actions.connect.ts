@@ -1,5 +1,5 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WorkerApiConnectRequestBody, WorkerApiConnectResponseBody } from "@trigger.dev/worker";
+import { WorkerApiConnectRequestBody, WorkerApiConnectResponseBody } from "@trigger.dev/core/v3/workers";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(

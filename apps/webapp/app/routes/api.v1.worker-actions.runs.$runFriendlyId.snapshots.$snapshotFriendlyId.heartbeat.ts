@@ -1,5 +1,5 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WorkloadHeartbeatResponseBody } from "@trigger.dev/worker";
+import { WorkloadHeartbeatResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 

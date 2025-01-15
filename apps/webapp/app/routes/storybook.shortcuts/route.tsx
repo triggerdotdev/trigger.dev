@@ -7,11 +7,13 @@ import { ShortcutDefinition } from "~/hooks/useShortcutKeys";
 const shortcuts: ShortcutDefinition[] = [
   { key: "esc" },
   { key: "f" },
-  { key: "f", modifiers: ["meta"] },
-  { key: "k", modifiers: ["meta"] },
+  { key: "f", modifiers: ["mod"] },
+  { key: "k", modifiers: ["mod"] },
   { key: "del", modifiers: ["ctrl", "alt"] },
-  { key: "enter", modifiers: ["meta"] },
+  { key: "f", modifiers: ["shift"] },
   { key: "enter", modifiers: ["mod"] },
+  { key: "enter", modifiers: ["mod"] },
+  { key: "g", modifiers: ["meta"] },
 ];
 
 export default function Story() {
@@ -31,6 +33,7 @@ function Collection({ platform }: { platform: "mac" | "windows" }) {
         <div key={index} className="flex items-center gap-x-2">
           <ShortcutKey shortcut={shortcut} variant="small" />
           <ShortcutKey shortcut={shortcut} variant="medium" />
+          <ShortcutKey shortcut={shortcut} variant="medium/bright" />
           <Button variant="primary/small" shortcut={shortcut}>
             Primary small
           </Button>

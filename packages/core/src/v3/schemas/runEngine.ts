@@ -213,3 +213,9 @@ export const WaitForDurationResult = z
   })
   .and(ExecutionResult);
 export type WaitForDurationResult = z.infer<typeof WaitForDurationResult>;
+
+export const MachineResources = z.object({
+  cpu: z.number(),
+  memory: z.number(),
+});
+export type MachineResources = z.infer<typeof MachineResources>;

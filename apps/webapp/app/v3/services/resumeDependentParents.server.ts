@@ -21,28 +21,43 @@ type Output =
       error: string;
     };
 
-type Dependency = Prisma.TaskRunDependencyGetPayload<{
-  include: {
-    taskRun: true;
-    dependentAttempt: true;
-    dependentBatchRun: true;
-  };
-}>;
+const taskRunDependencySelect = {
+  select: {
+    id: true,
+    taskRunId: true,
+    taskRun: {
+      select: {
+        id: true,
+        status: true,
+        friendlyId: true,
+        runtimeEnvironment: {
+          select: {
+            type: true,
+          },
+        },
+      },
+    },
+    dependentAttempt: {
+      select: {
+        id: true,
+      },
+    },
+    dependentBatchRun: {
+      select: {
+        id: true,
+      },
+    },
+  },
+} as const;
+
+type Dependency = Prisma.TaskRunDependencyGetPayload<typeof taskRunDependencySelect>;
 
 /** This will resume a dependent (parent) run if there is one and it makes sense. */
 export class ResumeDependentParentsService extends BaseService {
   public async call({ id }: { id: string }): Promise<Output> {
     try {
       const dependency = await this._prisma.taskRunDependency.findFirst({
-        include: {
-          taskRun: {
-            include: {
-              runtimeEnvironment: true,
-            },
-          },
-          dependentAttempt: true,
-          dependentBatchRun: true,
-        },
+        ...taskRunDependencySelect,
         where: {
           taskRunId: id,
         },
@@ -65,6 +80,13 @@ export class ResumeDependentParentsService extends BaseService {
         };
       }
 
+      if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+        return {
+          success: true,
+          action: "dev",
+        };
+      }
+
       if (!isFinalRunStatus(dependency.taskRun.status)) {
         logger.debug(
           "ResumeDependentParentsService: run not finished yet, can't resume parent yet",
@@ -78,18 +100,6 @@ export class ResumeDependentParentsService extends BaseService {
         return {
           success: true,
           action: "not-finished",
-        };
-      }
-
-      if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
-        logger.debug("ResumeDependentParentsService: runs are resumed on device for DEV runs.", {
-          runId: id,
-          dependency,
-        });
-
-        return {
-          success: true,
-          action: "dev",
         };
       }
 

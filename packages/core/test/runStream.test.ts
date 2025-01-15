@@ -31,11 +31,7 @@ class TestStreamSubscriptionFactory implements StreamSubscriptionFactory {
     this.streams.set(`${runId}:${streamKey}`, chunks);
   }
 
-  createSubscription(
-    metadata: Record<string, unknown>,
-    runId: string,
-    streamKey: string
-  ): StreamSubscription {
+  createSubscription(runId: string, streamKey: string): StreamSubscription {
     const chunks = this.streams.get(`${runId}:${streamKey}`) ?? [];
     return new TestStreamSubscription(chunks);
   }
@@ -285,13 +281,9 @@ describe("RunSubscription", () => {
 
     // Override createSubscription to count calls
     const originalCreate = streamFactory.createSubscription.bind(streamFactory);
-    streamFactory.createSubscription = (
-      metadata: Record<string, unknown>,
-      runId: string,
-      streamKey: string
-    ) => {
+    streamFactory.createSubscription = (runId: string, streamKey: string) => {
       streamCreationCount++;
-      return originalCreate(metadata, runId, streamKey);
+      return originalCreate(runId, streamKey);
     };
 
     // Set up test chunks

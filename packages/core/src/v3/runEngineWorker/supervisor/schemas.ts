@@ -1,12 +1,13 @@
 import { z } from "zod";
+import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
-  CompleteRunAttemptResult,
+  MachineResources,
   DequeuedMessage,
-  RunExecutionData,
   StartRunAttemptResult,
-  TaskRunExecutionResult,
+  CompleteRunAttemptResult,
+  RunExecutionData,
   WaitForDurationResult,
-} from "@trigger.dev/core/v3";
+} from "../../schemas/runEngine.js";
 
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({
@@ -39,6 +40,11 @@ export const WorkerApiConnectResponseBody = z.object({
   }),
 });
 export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectResponseBody>;
+
+export const WorkerApiDequeueRequestBody = z.object({
+  maxResources: MachineResources.optional(),
+});
+export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequestBody>;
 
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();
 export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueResponseBody>;

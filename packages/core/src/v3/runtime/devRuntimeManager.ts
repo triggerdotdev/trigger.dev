@@ -1,3 +1,4 @@
+import { runMetadata } from "../run-metadata-api.js";
 import {
   BatchTaskRunExecutionResult,
   TaskRunContext,
@@ -41,6 +42,8 @@ export class DevRuntimeManager implements RuntimeManager {
       this._taskWaits.set(params.id, { resolve });
     });
 
+    await this.#tryFlushMetadata();
+
     return await promise;
   }
 
@@ -72,6 +75,9 @@ export class DevRuntimeManager implements RuntimeManager {
     //     });
     //   })
     // );
+    // await this.#tryFlushMetadata();
+
+    // const results = await promise;
 
     // const results = await promise;
 
@@ -94,5 +100,11 @@ export class DevRuntimeManager implements RuntimeManager {
     wait.resolve(completion);
 
     this._taskWaits.delete(runId);
+  }
+
+  async #tryFlushMetadata() {
+    try {
+      await runMetadata.flush();
+    } catch (err) {}
   }
 }

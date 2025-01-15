@@ -50,6 +50,7 @@ import {
   RunSubscription,
   TaskRunShape,
   runShapeStream,
+  SSEStreamSubscriptionFactory,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -59,12 +60,14 @@ import {
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 } from "./types.js";
+import type { AsyncIterableStream } from "./stream.js";
 
 export type {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
+  AsyncIterableStream,
 };
 
 export type ClientTriggerOptions = {
@@ -619,9 +622,25 @@ export class ApiClient {
     );
   }
 
-  subscribeToRun<TRunTypes extends AnyRunTypes>(runId: string, options?: { signal?: AbortSignal }) {
+  getRunMetadata(runId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      UpdateMetadataResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/metadata`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  subscribeToRun<TRunTypes extends AnyRunTypes>(
+    runId: string,
+    options?: { signal?: AbortSignal; closeOnComplete?: boolean }
+  ) {
     return runShapeStream<TRunTypes>(`${this.baseUrl}/realtime/v1/runs/${runId}`, {
-      closeOnComplete: true,
+      closeOnComplete:
+        typeof options?.closeOnComplete === "boolean" ? options.closeOnComplete : true,
       headers: this.#getRealtimeHeaders(),
       client: this,
       signal: options?.signal,
@@ -657,6 +676,23 @@ export class ApiClient {
       client: this,
       signal: options?.signal,
     });
+  }
+
+  async fetchStream<T>(
+    runId: string,
+    streamKey: string,
+    options?: { signal?: AbortSignal; baseUrl?: string }
+  ): Promise<AsyncIterableStream<T>> {
+    const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
+      headers: this.getHeaders(),
+      signal: options?.signal,
+    });
+
+    const subscription = streamFactory.createSubscription(runId, streamKey);
+
+    const stream = await subscription.subscribe();
+
+    return stream as AsyncIterableStream<T>;
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {

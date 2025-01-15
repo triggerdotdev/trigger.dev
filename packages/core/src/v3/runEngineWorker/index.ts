@@ -1,4 +1,3 @@
-export { VERSION as WORKER_VERSION } from "./version.js";
 export * from "./consts.js";
 export * from "./supervisor/http.js";
 export * from "./supervisor/schemas.js";

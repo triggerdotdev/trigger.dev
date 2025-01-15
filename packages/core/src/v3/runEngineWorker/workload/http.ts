@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import {
   WorkloadHeartbeatRequestBody,
   WorkloadHeartbeatResponseBody,
@@ -14,6 +13,7 @@ import {
 } from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
+import { ApiError, zodfetch } from "../../zodfetch.js";
 
 type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 

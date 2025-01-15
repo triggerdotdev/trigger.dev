@@ -1,8 +1,5 @@
-import {
-  DequeuedMessage,
-  StartRunAttemptResult,
-  TaskRunExecutionResult,
-} from "@trigger.dev/core/v3";
+import { TaskRunExecutionResult } from "../../schemas/common.js";
+import { DequeuedMessage, StartRunAttemptResult } from "../../schemas/runEngine.js";
 
 export type WorkerEvents = {
   runQueueMessage: [
