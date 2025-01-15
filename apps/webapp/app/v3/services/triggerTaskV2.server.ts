@@ -1,5 +1,4 @@
-import { RunEngine } from "@internal/run-engine";
-import { RunDuplicateIdempotencyKeyError } from "@internal/run-engine/engine";
+import { RunEngine, RunDuplicateIdempotencyKeyError } from "@internal/run-engine";
 import {
   IOPacket,
   packetRequiresOffloading,
