@@ -12,16 +12,12 @@ import { usage } from "../usage-api.js";
 
 const NOOP_RUNTIME_MANAGER = new NoopRuntimeManager();
 
-const concurrentWaitErrorMessage =
-  "Parallel waits are not supported, e.g. using Promise.all() around our wait functions.";
-
 /**
  * All state must be inside the RuntimeManager, do NOT store it on this class.
  * This is because of the "dual package hazard", this can be bundled multiple times.
  */
 export class RuntimeAPI {
   private static _instance?: RuntimeAPI;
-  private isExecutingWait = false;
 
   private constructor() {}
 
@@ -34,21 +30,15 @@ export class RuntimeAPI {
   }
 
   public waitForDuration(ms: number): Promise<void> {
-    return this.#preventConcurrentWaits(() =>
-      usage.pauseAsync(() => this.#getRuntimeManager().waitForDuration(ms))
-    );
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForDuration(ms));
   }
 
   public waitUntil(date: Date): Promise<void> {
-    return this.#preventConcurrentWaits(() =>
-      usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date))
-    );
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitUntil(date));
   }
 
   public waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    return this.#preventConcurrentWaits(() =>
-      usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params))
-    );
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForTask(params));
   }
 
   public waitForBatch(params: {
@@ -56,9 +46,7 @@ export class RuntimeAPI {
     runs: string[];
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    return this.#preventConcurrentWaits(() =>
-      usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params))
-    );
+    return usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params));
   }
 
   public setGlobalRuntimeManager(runtimeManager: RuntimeManager): boolean {
@@ -72,20 +60,5 @@ export class RuntimeAPI {
 
   #getRuntimeManager(): RuntimeManager {
     return getGlobal(API_NAME) ?? NOOP_RUNTIME_MANAGER;
-  }
-
-  async #preventConcurrentWaits<T>(cb: () => Promise<T>): Promise<T> {
-    if (this.isExecutingWait) {
-      console.error(concurrentWaitErrorMessage);
-      throw new Error(concurrentWaitErrorMessage);
-    }
-
-    this.isExecutingWait = true;
-
-    try {
-      return await cb();
-    } finally {
-      this.isExecutingWait = false;
-    }
   }
 }
