@@ -294,6 +294,10 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
   RUN_ENGINE_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(100),
+  RUN_ENGINE_TIMEOUT_PENDING_EXECUTING: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

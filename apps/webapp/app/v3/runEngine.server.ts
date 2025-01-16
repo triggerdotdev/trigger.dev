@@ -35,6 +35,12 @@ function createRunEngine() {
       defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
     },
     tracer,
+    heartbeatTimeoutsMs: {
+      PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
+      PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,
+      EXECUTING: env.RUN_ENGINE_TIMEOUT_EXECUTING,
+      EXECUTING_WITH_WAITPOINTS: env.RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS,
+    },
   });
 
   return engine;
