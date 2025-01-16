@@ -54,10 +54,10 @@ export class HttpReply {
       .end(text.endsWith("\n") ? text : `${text}\n`);
   }
 
-  json(value: any, pretty?: boolean) {
+  json(value: any, pretty?: boolean, status?: number) {
     return this.text(
       JSON.stringify(value, undefined, pretty ? 2 : undefined),
-      200,
+      status ?? 200,
       "application/json"
     );
   }
