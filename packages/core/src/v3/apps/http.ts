@@ -45,21 +45,37 @@ export class HttpReply {
   constructor(private response: Parameters<RequestListener>[1]) {}
 
   empty(status?: number) {
+    if (this.alreadyReplied) {
+      return;
+    }
+
     return this.response.writeHead(status ?? 200).end();
   }
 
   text(text: string, status?: number, contentType?: string) {
+    if (this.alreadyReplied) {
+      return;
+    }
+
     return this.response
       .writeHead(status ?? 200, { "Content-Type": contentType || "text/plain" })
       .end(text.endsWith("\n") ? text : `${text}\n`);
   }
 
   json(value: any, pretty?: boolean, status?: number) {
+    if (this.alreadyReplied) {
+      return;
+    }
+
     return this.text(
       JSON.stringify(value, undefined, pretty ? 2 : undefined),
       status ?? 200,
       "application/json"
     );
+  }
+
+  private get alreadyReplied() {
+    return this.response.headersSent;
   }
 }
 
