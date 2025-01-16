@@ -253,6 +253,10 @@ class ManagedRunController {
         console.log("Run is finished, shutting down shortly");
         return;
       }
+      case "SUSPENDED": {
+        console.log("Run is suspended, shutting down", { run, snapshot });
+        process.exit(0);
+      }
       default: {
         console.log("Status change not handled yet", { status: snapshot.executionStatus });
         // assertExhaustive(snapshot.executionStatus);
