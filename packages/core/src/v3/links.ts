@@ -12,6 +12,9 @@ export const links = {
     upgrade: {
       beta: "https://trigger.dev/docs/upgrading-beta",
     },
+    troubleshooting: {
+      concurrentWaits: "https://trigger.dev/docs/troubleshooting#parallel-waits-are-not-supported",
+    },
   },
   site: {
     home: "https://trigger.dev",
