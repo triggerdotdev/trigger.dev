@@ -3,6 +3,7 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 export default defineConfig({
   runtime: "bun",
   project: "proj_uxbxncnbsyamyxeqtucu",
+  maxDuration: 3600,
   machine: "small-2x",
   retries: {
     enabledInDev: true,

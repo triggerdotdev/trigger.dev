@@ -6,4 +6,5 @@ export default defineConfig({
   build: {
     external: ["mupdf"],
   },
+  maxDuration: 3600,
 });
