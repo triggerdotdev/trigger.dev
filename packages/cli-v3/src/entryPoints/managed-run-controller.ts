@@ -43,6 +43,8 @@ const Env = z.object({
   TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is only useful for cold starts
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
   TRIGGER_WARM_START_URL: z.string().optional(),
+  TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
+  TRIGGER_WARM_START_TOTAL_DURATION_MS: z.coerce.number().default(300_000),
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
@@ -381,8 +383,8 @@ class ManagedRunController {
           },
         },
         {
-          timeoutMs: 10_000,
-          totalDurationMs: 60_000,
+          timeoutMs: env.TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS,
+          totalDurationMs: env.TRIGGER_WARM_START_TOTAL_DURATION_MS,
         }
       );
 
