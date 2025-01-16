@@ -58,7 +58,7 @@ import {
   isFinalAttemptStatus,
   isFinalRunStatus,
 } from "../taskStatus";
-import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
+import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
 
@@ -120,25 +120,26 @@ export type SharedQueueConsumerOptions = {
   interval?: number;
 };
 
+type HandleMessageAction = "ack_and_do_more_work" | "nack" | "nack_and_do_more_work" | "noop";
+
 type DoWorkInternalResult =
   | {
       reason: string;
       attrs?: Record<string, string | number | boolean | undefined>;
       error?: Error | string;
       interval?: number;
+      action?: HandleMessageAction;
     }
   | undefined;
 
-type HandleMessageResult =
-  | {
-      action: "ack_and_do_more_work" | "nack" | "nack_and_do_more_work" | "noop";
-      interval?: number;
-      retryInMs?: number;
-      reason?: string;
-      attrs?: Record<string, string | number | boolean | undefined>;
-      error?: Error | string;
-    }
-  | undefined;
+type HandleMessageResult = {
+  action: HandleMessageAction;
+  interval?: number;
+  retryInMs?: number;
+  reason?: string;
+  attrs?: Record<string, string | number | boolean | undefined>;
+  error?: Error | string;
+};
 
 export class SharedQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
@@ -149,6 +150,7 @@ export class SharedQueueConsumer {
   private _traceStartedAt: Date | undefined;
   private _currentSpanContext: Context | undefined;
   private _reasonStats: Record<string, number> = {};
+  private _actionStats: Record<string, number> = {};
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
@@ -243,6 +245,7 @@ export class SharedQueueConsumer {
     this._perTraceCountdown = this._options.maximumItemsPerTrace;
     this._traceStartedAt = new Date();
     this._reasonStats = {};
+    this._actionStats = {};
 
     this.#doWork().finally(() => {});
   }
@@ -250,7 +253,11 @@ export class SharedQueueConsumer {
   #endCurrentSpan() {
     if (this._currentSpan) {
       for (const [reason, count] of Object.entries(this._reasonStats)) {
-        this._currentSpan.setAttribute(`reasons.${reason}`, count);
+        this._currentSpan.setAttribute(`reasons_${reason}`, count);
+      }
+
+      for (const [action, count] of Object.entries(this._actionStats)) {
+        this._currentSpan.setAttribute(`actions_${action}`, count);
       }
 
       this._currentSpan.end();
@@ -310,6 +317,7 @@ export class SharedQueueConsumer {
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
       this._traceStartedAt = new Date();
       this._reasonStats = {};
+      this._actionStats = {};
       this._iterationsCount = 0;
       this._runningDurationInMs = 0;
       this._endSpanInNextIteration = false;
@@ -332,6 +340,10 @@ export class SharedQueueConsumer {
 
           if (result) {
             this._reasonStats[result.reason] = (this._reasonStats[result.reason] ?? 0) + 1;
+
+            if (result.action) {
+              this._actionStats[result.action] = (this._actionStats[result.action] ?? 0) + 1;
+            }
 
             span.setAttribute("reason", result.reason);
 
@@ -357,6 +369,7 @@ export class SharedQueueConsumer {
             span.setAttribute("reason", "no_result");
 
             this._reasonStats["no_result"] = (this._reasonStats["no_result"] ?? 0) + 1;
+            this._actionStats["no_result"] = (this._actionStats["no_result"] ?? 0) + 1;
           }
         } catch (error) {
           if (error instanceof Error) {
@@ -436,13 +449,6 @@ export class SharedQueueConsumer {
 
     const messageResult = await this.#handleMessage(message, messageBody.data);
 
-    if (!messageResult) {
-      return {
-        reason: "no_message_result",
-        attrs: hydrateAttributes({}),
-      };
-    }
-
     switch (messageResult.action) {
       case "noop": {
         return {
@@ -450,6 +456,7 @@ export class SharedQueueConsumer {
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
+          action: "noop",
         };
       }
       case "ack_and_do_more_work": {
@@ -460,6 +467,7 @@ export class SharedQueueConsumer {
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
+          action: "ack_and_do_more_work",
         };
       }
       case "nack_and_do_more_work": {
@@ -470,6 +478,7 @@ export class SharedQueueConsumer {
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
+          action: "nack_and_do_more_work",
         };
       }
       case "nack": {
@@ -479,6 +488,7 @@ export class SharedQueueConsumer {
           reason: messageResult.reason ?? "none_specified",
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
+          action: "nack",
         };
       }
     }
@@ -609,7 +619,6 @@ export class SharedQueueConsumer {
         action: "ack_and_do_more_work",
         reason: "missing_image_reference",
         attrs: {
-          run_id: existingTaskRun.id,
           deployment_id: deployment.id,
         },
       };
@@ -710,7 +719,7 @@ export class SharedQueueConsumer {
       });
 
       return {
-        action: "nack_and_do_more_work",
+        action: "ack_and_do_more_work",
         reason: "failed_to_lock_task_run",
         attrs: {
           run_id: existingTaskRun.id,
@@ -791,11 +800,18 @@ export class SharedQueueConsumer {
             attrs: {
               run_status: lockedTaskRun.status,
               is_retry: isRetry,
+              checkpoint_event_id: data.checkpointEventId,
             },
           };
         }
 
-        return;
+        return {
+          action: "noop",
+          reason: "restored_checkpoint",
+          attrs: {
+            checkpoint_event_id: data.checkpointEventId,
+          },
+        };
       }
 
       if (!worker.supportsLazyAttempts) {
@@ -806,7 +822,7 @@ export class SharedQueueConsumer {
             setToExecuting: false,
           });
         } catch (error) {
-          logger.error("Failed to create task run attempt for outdate worker", {
+          logger.error("Failed to create task run attempt for outdated worker", {
             error,
             taskRun: lockedTaskRun.id,
           });
@@ -818,7 +834,7 @@ export class SharedQueueConsumer {
 
           return {
             action: "ack_and_do_more_work",
-            reason: "failed_to_create_attempt",
+            reason: "failed_to_create_attempt_for_outdated_worker",
             attrs: {
               message_id: message.messageId,
               run_id: lockedTaskRun.id,
@@ -931,6 +947,9 @@ export class SharedQueueConsumer {
         return {
           action: "noop",
           reason: "restored_checkpoint",
+          attrs: {
+            checkpoint_event_id: data.checkpointEventId,
+          },
         };
       } catch (e) {
         return {
@@ -992,7 +1011,7 @@ export class SharedQueueConsumer {
 
       return {
         action: "ack_and_do_more_work",
-        reason: "attempt_not_found",
+        reason: "resumable_attempt_not_found",
         attrs: {
           attempt_id: data.resumableAttemptId,
         },
@@ -1215,6 +1234,9 @@ export class SharedQueueConsumer {
             return {
               action: "noop",
               reason: "restored_checkpoint",
+              attrs: {
+                checkpoint_event_id: data.checkpointEventId,
+              },
             };
           } else {
             logger.debug(
