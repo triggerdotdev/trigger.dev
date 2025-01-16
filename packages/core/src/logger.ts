@@ -109,6 +109,11 @@ export class Logger {
         currentSpan && currentSpan.isRecording() ? currentSpan?.spanContext().spanId : undefined,
     };
 
+    // If the span is not recording, and it's a debug log, don't log it
+    if (currentSpan && !currentSpan.isRecording() && level === "debug") {
+      return;
+    }
+
     loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
 }

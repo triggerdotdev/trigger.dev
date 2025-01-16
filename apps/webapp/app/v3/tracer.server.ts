@@ -130,17 +130,14 @@ function getTracer() {
   });
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
+    const headers = env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
+      ? (JSON.parse(env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS) as Record<string, string>)
+      : undefined;
+
     const exporter = new OTLPTraceExporter({
       url: env.INTERNAL_OTEL_TRACE_EXPORTER_URL,
       timeoutMillis: 15_000,
-      headers:
-        env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME &&
-        env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE
-          ? {
-              [env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_NAME]:
-                env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADER_VALUE,
-            }
-          : undefined,
+      headers: headers,
     });
 
     provider.addSpanProcessor(
