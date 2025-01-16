@@ -31,7 +31,7 @@ export class InternalError extends Error {
     skipRetrying?: boolean;
   }) {
     super(`${code}: ${message ?? "No message"}`);
-    this.name = "InternalError";
+    this.name = "TriggerInternalError";
     this.code = code;
     this.message = message ?? "InternalError";
 
@@ -41,6 +41,10 @@ export class InternalError extends Error {
 
     this.skipRetrying = skipRetrying;
   }
+}
+
+export function isInternalError(error: unknown): error is InternalError {
+  return error instanceof Error && error.name === "TriggerInternalError";
 }
 
 export class AbortTaskRunError extends Error {
@@ -63,7 +67,7 @@ export class TaskPayloadParsedError extends Error {
 }
 
 export function parseError(error: unknown): TaskRunError {
-  if (error instanceof InternalError) {
+  if (isInternalError(error)) {
     return {
       type: "INTERNAL_ERROR",
       code: error.code,
