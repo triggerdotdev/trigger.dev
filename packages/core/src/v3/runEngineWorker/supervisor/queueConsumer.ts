@@ -23,6 +23,7 @@ export class RunQueueConsumer {
     this.isEnabled = false;
     this.intervalMs = opts.intervalMs ?? 5_000;
     this.preDequeue = opts.preDequeue;
+    this.preSkip = opts.preSkip;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
   }
@@ -54,6 +55,8 @@ export class RunQueueConsumer {
 
     let preDequeueResult: Awaited<ReturnType<PreDequeueFn>> | undefined;
     if (this.preDequeue) {
+      console.debug("[RunQueueConsumer] preDequeue()");
+
       try {
         preDequeueResult = await this.preDequeue();
       } catch (preDequeueError) {
@@ -61,12 +64,16 @@ export class RunQueueConsumer {
       }
     }
 
+    console.debug("[RunQueueConsumer] preDequeueResult", { preDequeueResult });
+
     if (
       preDequeueResult?.skipDequeue ||
       preDequeueResult?.maxResources?.cpu === 0 ||
       preDequeueResult?.maxResources?.memory === 0
     ) {
       if (this.preSkip) {
+        console.debug("[RunQueueConsumer] preSkip()");
+
         try {
           await this.preSkip();
         } catch (preSkipError) {
