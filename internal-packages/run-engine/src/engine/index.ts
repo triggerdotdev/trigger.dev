@@ -1775,7 +1775,7 @@ export class RunEngine {
 
       const pendingCount = Number(insert.at(0)?.pending_count ?? 0);
 
-      let newStatus: TaskRunExecutionStatus = "BLOCKED_BY_WAITPOINTS";
+      let newStatus: TaskRunExecutionStatus = "SUSPENDED";
       if (
         snapshot.executionStatus === "EXECUTING" ||
         snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS"
@@ -3164,10 +3164,10 @@ export class RunEngine {
           });
           break;
         }
-        case "BLOCKED_BY_WAITPOINTS": {
+        case "SUSPENDED": {
           //todo should we do a periodic check here for whether waitpoints are actually still blocking?
           //we could at least log some things out if a run has been in this state for a long time
-          throw new NotImplementedError("Not implemented BLOCKED_BY_WAITPOINTS");
+          throw new NotImplementedError("Not implemented SUSPENDED");
         }
         case "PENDING_CANCEL": {
           //if the run is waiting to cancel but the worker hasn't confirmed that,

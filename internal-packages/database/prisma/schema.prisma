@@ -1986,8 +1986,8 @@ enum TaskRunExecutionStatus {
   EXECUTING
   /// Run is executing on a worker but is waiting for waitpoints to complete
   EXECUTING_WITH_WAITPOINTS
-  /// Run is not executing and is waiting for waitpoints to complete
-  BLOCKED_BY_WAITPOINTS
+  /// Run has been suspended and may be waiting for waitpoints to complete before resuming
+  SUSPENDED
   /// Run has been scheduled for cancellation
   PENDING_CANCEL
   /// Run is finished (success of failure)
