@@ -171,6 +171,7 @@ export const TaskRunInternalError = z.object({
     "POD_EVICTED",
     "POD_UNKNOWN_ERROR",
     "OUTDATED_SDK_VERSION",
+    "TASK_DID_CONCURRENT_WAIT",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -179,6 +180,7 @@ export const TaskRunInternalError = z.object({
 export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
 
 export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
+export type TaskRunErrorCodes = TaskRunInternalError["code"];
 
 export const TaskRunError = z.discriminatedUnion("type", [
   TaskRunBuiltInError,

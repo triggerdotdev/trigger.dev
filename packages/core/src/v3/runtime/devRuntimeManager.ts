@@ -6,6 +6,7 @@ import {
 } from "../schemas/index.js";
 import { unboundedTimeout } from "../utils/timers.js";
 import { RuntimeManager } from "./manager.js";
+import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
 export class DevRuntimeManager implements RuntimeManager {
   _taskWaits: Map<string, { resolve: (value: TaskRunExecutionResult) => void }> = new Map();
@@ -17,12 +18,14 @@ export class DevRuntimeManager implements RuntimeManager {
 
   _pendingCompletionNotifications: Map<string, TaskRunExecutionResult> = new Map();
 
+  _preventMultipleWaits = preventMultipleWaits();
+
   disable(): void {
     // do nothing
   }
 
   async waitForDuration(ms: number): Promise<void> {
-    await unboundedTimeout(ms);
+    await this._preventMultipleWaits(() => unboundedTimeout(ms));
   }
 
   async waitUntil(date: Date): Promise<void> {
@@ -30,21 +33,23 @@ export class DevRuntimeManager implements RuntimeManager {
   }
 
   async waitForTask(params: { id: string; ctx: TaskRunContext }): Promise<TaskRunExecutionResult> {
-    const pendingCompletion = this._pendingCompletionNotifications.get(params.id);
+    return this._preventMultipleWaits(async () => {
+      const pendingCompletion = this._pendingCompletionNotifications.get(params.id);
 
-    if (pendingCompletion) {
-      this._pendingCompletionNotifications.delete(params.id);
+      if (pendingCompletion) {
+        this._pendingCompletionNotifications.delete(params.id);
 
-      return pendingCompletion;
-    }
+        return pendingCompletion;
+      }
 
-    const promise = new Promise<TaskRunExecutionResult>((resolve) => {
-      this._taskWaits.set(params.id, { resolve });
+      const promise = new Promise<TaskRunExecutionResult>((resolve) => {
+        this._taskWaits.set(params.id, { resolve });
+      });
+
+      await this.#tryFlushMetadata();
+
+      return await promise;
     });
-
-    await this.#tryFlushMetadata();
-
-    return await promise;
   }
 
   async waitForBatch(params: {
@@ -52,36 +57,38 @@ export class DevRuntimeManager implements RuntimeManager {
     runs: string[];
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    if (!params.runs.length) {
-      return Promise.resolve({ id: params.id, items: [] });
-    }
+    return this._preventMultipleWaits(async () => {
+      if (!params.runs.length) {
+        return Promise.resolve({ id: params.id, items: [] });
+      }
 
-    const promise = Promise.all(
-      params.runs.map((runId) => {
-        return new Promise<TaskRunExecutionResult>((resolve, reject) => {
-          const pendingCompletion = this._pendingCompletionNotifications.get(runId);
+      const promise = Promise.all(
+        params.runs.map((runId) => {
+          return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+            const pendingCompletion = this._pendingCompletionNotifications.get(runId);
 
-          if (pendingCompletion) {
-            this._pendingCompletionNotifications.delete(runId);
+            if (pendingCompletion) {
+              this._pendingCompletionNotifications.delete(runId);
 
-            resolve(pendingCompletion);
+              resolve(pendingCompletion);
 
-            return;
-          }
+              return;
+            }
 
-          this._taskWaits.set(runId, { resolve });
-        });
-      })
-    );
+            this._taskWaits.set(runId, { resolve });
+          });
+        })
+      );
 
-    await this.#tryFlushMetadata();
+      await this.#tryFlushMetadata();
 
-    const results = await promise;
+      const results = await promise;
 
-    return {
-      id: params.id,
-      items: results,
-    };
+      return {
+        id: params.id,
+        items: results,
+      };
+    });
   }
 
   resumeTask(completion: TaskRunExecutionResult, runId: string): void {

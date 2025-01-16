@@ -12,6 +12,10 @@ import { usage } from "../usage-api.js";
 
 const NOOP_RUNTIME_MANAGER = new NoopRuntimeManager();
 
+/**
+ * All state must be inside the RuntimeManager, do NOT store it on this class.
+ * This is because of the "dual package hazard", this can be bundled multiple times.
+ */
 export class RuntimeAPI {
   private static _instance?: RuntimeAPI;
 
