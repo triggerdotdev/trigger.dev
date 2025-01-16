@@ -130,14 +130,12 @@ function getTracer() {
   });
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
-    const headers = env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
-      ? (JSON.parse(env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS) as Record<string, string>)
-      : undefined;
+    const headers = parseInternalTraceHeaders() ?? {};
 
     const exporter = new OTLPTraceExporter({
       url: env.INTERNAL_OTEL_TRACE_EXPORTER_URL,
       timeoutMillis: 15_000,
-      headers: headers,
+      headers,
     });
 
     provider.addSpanProcessor(
@@ -205,4 +203,14 @@ export function attributesFromAuthenticatedEnv(env: AuthenticatedEnvironment): A
     [SemanticEnvResources.PROJECT_NAME]: env.project.name,
     [SemanticEnvResources.USER_ID]: env.orgMember?.userId,
   };
+}
+
+function parseInternalTraceHeaders(): Record<string, string> | undefined {
+  try {
+    return env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS
+      ? (JSON.parse(env.INTERNAL_OTEL_TRACE_EXPORTER_AUTH_HEADERS) as Record<string, string>)
+      : undefined;
+  } catch {
+    return;
+  }
 }
