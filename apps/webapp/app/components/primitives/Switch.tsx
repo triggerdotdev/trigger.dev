@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as SwitchPrimitives from "@radix-ui/react-switch";
 import { cn } from "~/utils/cn";
+import { ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 
 const variations = {
   large: {
@@ -23,14 +24,34 @@ const variations = {
 type SwitchProps = React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> & {
   label?: React.ReactNode;
   variant: keyof typeof variations;
+  shortcut?: ShortcutDefinition;
 };
 
 export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.Root>, SwitchProps>(
   ({ className, variant, label, ...props }, ref) => {
+    const innerRef = React.useRef<HTMLButtonElement>(null);
+    React.useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
+
     const { container, root, thumb, text } = variations[variant];
 
+    if (props.shortcut) {
+      useShortcutKeys({
+        shortcut: props.shortcut,
+        action: () => {
+          if (innerRef.current) {
+            innerRef.current.click();
+          }
+        },
+        disabled: props.disabled,
+      });
+    }
+
     return (
-      <SwitchPrimitives.Root className={cn("group", container, className)} {...props} ref={ref}>
+      <SwitchPrimitives.Root
+        className={cn("group", container, className)}
+        {...props}
+        ref={innerRef}
+      >
         {label ? (
           <label className={cn("whitespace-nowrap", text)}>
             {typeof label === "string" ? <span>{label}</span> : label}

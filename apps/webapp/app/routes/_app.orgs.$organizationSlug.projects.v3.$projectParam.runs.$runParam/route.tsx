@@ -514,6 +514,7 @@ function TasksTreeView({
           <Switch
             variant="small"
             label="Debug"
+            shortcut={{ key: "D" }}
             checked={showDebug}
             onCheckedChange={(e) => setShowDebug(e.valueOf())}
           />
