@@ -2,7 +2,7 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import { parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
+import { InternalError, parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
 import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
@@ -538,9 +538,9 @@ export class TaskExecutor {
       error instanceof Error &&
       (error.name === "AbortTaskRunError" ||
         error.name === "TaskPayloadParsedError" ||
-        error.name === "ConcurrentWaitError")
+        ("skipRetrying" in error && error.skipRetrying === true))
     ) {
-      return { status: "skipped" };
+      return { status: "skipped", error: error instanceof InternalError ? error : undefined };
     }
 
     if (execution.run.maxAttempts) {
