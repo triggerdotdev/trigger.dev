@@ -21,6 +21,9 @@ export function preventMultipleWaits() {
     isExecutingWait = true;
 
     try {
+      //delay calling the callback by one tick
+      //(to ensure the first wait doesn't checkpoint before the second is called)
+      await Promise.resolve();
       return await cb();
     } finally {
       isExecutingWait = false;
