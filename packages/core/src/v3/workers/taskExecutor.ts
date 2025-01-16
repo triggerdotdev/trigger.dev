@@ -536,7 +536,9 @@ export class TaskExecutor {
 
     if (
       error instanceof Error &&
-      (error.name === "AbortTaskRunError" || error.name === "TaskPayloadParsedError")
+      (error.name === "AbortTaskRunError" ||
+        error.name === "TaskPayloadParsedError" ||
+        error.name === "ConcurrentWaitError")
     ) {
       return { status: "skipped" };
     }

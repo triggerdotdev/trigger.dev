@@ -31,6 +31,13 @@ export class TaskPayloadParsedError extends Error {
   }
 }
 
+export class ConcurrentWaitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConcurrentWaitError";
+  }
+}
+
 export function parseError(error: unknown): TaskRunError {
   if (error instanceof Error) {
     return {
