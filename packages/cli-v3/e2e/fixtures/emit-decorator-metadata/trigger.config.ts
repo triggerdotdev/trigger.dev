@@ -7,4 +7,5 @@ export default defineConfig({
   build: {
     extensions: [emitDecoratorMetadata()],
   },
+  maxDuration: 3600,
 });

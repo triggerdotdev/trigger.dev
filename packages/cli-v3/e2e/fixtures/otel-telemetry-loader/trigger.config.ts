@@ -5,4 +5,5 @@ export default defineConfig({
   project: "<fixture project>",
   dirs: ["./src/trigger"],
   instrumentations: [new OpenAIInstrumentation()],
+  maxDuration: 3600,
 });

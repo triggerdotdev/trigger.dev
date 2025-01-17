@@ -11,4 +11,5 @@ export default defineConfig({
   build: {
     extensions: [rscExtension({ reactDomEnvironment: "worker" })],
   },
+  maxDuration: 3600,
 });

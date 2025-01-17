@@ -289,6 +289,12 @@ function validateConfig(config: TriggerConfig, warn = true) {
     config.build.extensions.push(adaptResolveEnvVarsToSyncEnvVarsExtension(resolveEnvVarsFn));
   }
 
+  if (!config.maxDuration) {
+    throw new Error(
+      `The "maxDuration" trigger.config option is now required, and must be at least 5 seconds.`
+    );
+  }
+
   if (config.runtime && config.runtime === "bun") {
     warn &&
       prettyWarning(

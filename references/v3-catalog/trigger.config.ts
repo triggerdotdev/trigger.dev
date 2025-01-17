@@ -17,8 +17,7 @@ export default defineConfig({
   machine: "medium-1x",
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
-  // Set the maxDuration to 300s for all tasks. See https://trigger.dev/docs/runs/max-duration
-  // maxDuration: 300,
+  maxDuration: 3600,
   retries: {
     enabledInDev: true,
     default: {
