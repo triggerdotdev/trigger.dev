@@ -366,6 +366,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                     maxDurationInSeconds: body.options?.maxDuration
                       ? clampMaxDuration(body.options.maxDuration)
                       : undefined,
+                    machine: body.options?.machine,
                   },
                   this._prisma
                 );

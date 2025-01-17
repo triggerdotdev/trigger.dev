@@ -3,15 +3,26 @@ import { Logger } from "@trigger.dev/core/logger";
 
 const logger = new Logger("machinePresetFromConfig");
 
-export function machinePresetFromConfig({
+export function getMachinePreset({
   defaultMachine,
   machines,
   config,
+  run,
 }: {
   defaultMachine: MachinePresetName;
   machines: Record<string, MachinePreset>;
   config: unknown;
+  run: { machinePreset: string | null };
 }): MachinePreset {
+  if (run.machinePreset) {
+    const preset = MachinePresetName.safeParse(run.machinePreset);
+    if (preset.error) {
+      logger.error("Failed to parse machine preset", { machinePreset: run.machinePreset });
+      return machinePresetFromName(machines, defaultMachine);
+    }
+    return machinePresetFromName(machines, preset.data);
+  }
+
   const parsedConfig = MachineConfig.safeParse(config);
 
   if (!parsedConfig.success) {

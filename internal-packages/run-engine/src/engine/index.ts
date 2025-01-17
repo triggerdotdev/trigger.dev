@@ -56,7 +56,7 @@ import { runStatusFromError } from "./errors";
 import { EventBusEvents } from "./eventBus";
 import { executionResultFromSnapshot, getLatestExecutionSnapshot } from "./executionSnapshots";
 import { RunLocker } from "./locking";
-import { machinePresetFromConfig } from "./machinePresets";
+import { getMachinePreset } from "./machinePresets";
 import {
   isCheckpointable,
   isDequeueableExecutionStatus,
@@ -247,6 +247,7 @@ export class RunEngine {
       seedMetadataType,
       oneTimeUseToken,
       maxDurationInSeconds,
+      machine,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -322,6 +323,7 @@ export class RunEngine {
               seedMetadata,
               seedMetadataType,
               maxDurationInSeconds,
+              machinePreset: machine,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -670,10 +672,11 @@ export class RunEngine {
               }
             }
 
-            const machinePreset = machinePresetFromConfig({
+            const machinePreset = getMachinePreset({
               machines: this.options.machines.machines,
               defaultMachine: this.options.machines.defaultMachine,
               config: result.task.machineConfig ?? {},
+              run: result.run,
             });
 
             //increment the consumed resources
@@ -1124,10 +1127,11 @@ export class RunEngine {
 
         const { run, snapshot } = result;
 
-        const machinePreset = machinePresetFromConfig({
+        const machinePreset = getMachinePreset({
           machines: this.options.machines.machines,
           defaultMachine: this.options.machines.defaultMachine,
           config: taskRun.lockedBy.machineConfig ?? {},
+          run: taskRun,
         });
 
         const metadata = await parsePacket({

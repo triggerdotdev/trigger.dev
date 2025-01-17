@@ -77,4 +77,5 @@ export type TriggerParams = {
   seedMetadataType?: string;
   oneTimeUseToken?: string;
   maxDurationInSeconds?: number;
+  machine?: MachinePresetName;
 };
