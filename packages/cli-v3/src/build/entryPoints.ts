@@ -3,7 +3,13 @@ import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as chokidar from "chokidar";
 import { glob } from "tinyglobby";
 import { logger } from "../utilities/logger.js";
-import { deployEntryPoints, devEntryPoints, telemetryEntryPoint } from "./packageModules.js";
+import {
+  deployEntryPoints,
+  devEntryPoints,
+  managedEntryPoints,
+  telemetryEntryPoint,
+  unmanagedEntryPoints,
+} from "./packageModules.js";
 
 type EntryPointManager = {
   entryPoints: string[];
@@ -52,10 +58,22 @@ export async function createEntryPointManager(
       entryPoints.push(config.configFile);
     }
 
-    if (target === "dev") {
-      entryPoints.push(...devEntryPoints);
-    } else {
-      entryPoints.push(...deployEntryPoints);
+    switch (target) {
+      case "dev": {
+        entryPoints.push(...devEntryPoints);
+        break;
+      }
+      case "managed": {
+        entryPoints.push(...managedEntryPoints);
+        break;
+      }
+      case "unmanaged": {
+        entryPoints.push(...unmanagedEntryPoints);
+        break;
+      }
+      default: {
+        entryPoints.push(...deployEntryPoints);
+      }
     }
 
     if (config.instrumentedPackageNames?.length ?? 0 > 0) {

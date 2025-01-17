@@ -265,42 +265,6 @@ export async function getBundleResultFromBuild(
   };
 }
 
-async function getEntryPoints(target: BuildTarget, config: ResolvedConfig) {
-  const projectEntryPoints = config.dirs.flatMap((dir) => dirToEntryPointGlob(dir));
-
-  if (config.configFile) {
-    projectEntryPoints.push(config.configFile);
-  }
-
-  switch (target) {
-    case "dev": {
-      projectEntryPoints.push(...devEntryPoints);
-      break;
-    }
-    case "deploy": {
-      projectEntryPoints.push(...deployEntryPoints);
-      break;
-    }
-    case "managed": {
-      projectEntryPoints.push(...managedEntryPoints);
-      break;
-    }
-    case "unmanaged": {
-      projectEntryPoints.push(...unmanagedEntryPoints);
-      break;
-    }
-    default: {
-      assertExhaustive(target);
-    }
-  }
-
-  if (config.instrumentedPackageNames?.length ?? 0 > 0) {
-    projectEntryPoints.push(telemetryEntryPoint);
-  }
-
-  return projectEntryPoints;
-}
-
 // Converts a directory to a glob that matches all the entry points in that
 function dirToEntryPointGlob(dir: string): string[] {
   return [
