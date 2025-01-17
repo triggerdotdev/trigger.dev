@@ -1,5 +1,12 @@
 # @trigger.dev/rsc
 
+## 3.3.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.11`
+
 ## 3.3.10
 
 ### Patch Changes
