@@ -292,6 +292,8 @@ export class MarQS {
             orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(messageQueue),
             messageId: messageData.messageId,
           });
+
+          return;
         }
 
         await this.options.visibilityTimeoutStrategy.heartbeat(
@@ -412,7 +414,7 @@ export class MarQS {
     );
   }
 
-  public async acknowledgeMessage(messageId: string) {
+  public async acknowledgeMessage(messageId: string, reason: string = "unknown") {
     return this.#trace(
       "acknowledgeMessage",
       async (span) => {
@@ -422,6 +424,7 @@ export class MarQS {
           logger.log(`[${this.name}].acknowledgeMessage() message not found`, {
             messageId,
             service: this.name,
+            reason,
           });
           return;
         }
@@ -431,6 +434,7 @@ export class MarQS {
           [SemanticAttributes.MESSAGE_ID]: message.messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
           [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+          ["marqs.reason"]: reason,
         });
 
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);

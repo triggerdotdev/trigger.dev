@@ -1,11 +1,10 @@
-import type { Schema as AISchema } from "ai";
-import { z } from "zod";
 import { SerializableJson } from "../../schemas/json.js";
 import { TriggerApiRequestOptions } from "../apiClient/index.js";
 import { RunTags } from "../schemas/api.js";
 import {
   MachineCpu,
   MachineMemory,
+  MachinePresetName,
   RetryOptions,
   TaskMetadata,
   TaskRunContext,
@@ -220,41 +219,36 @@ type CommonTaskOptions<
     });
    * ```
   */
-  machine?: {
-    /** vCPUs. The default is 0.5.
-     *
-     * Possible values:
-     * - 0.25
-     * - 0.5
-     * - 1
-     * - 2
-     * - 4
-     * @deprecated use preset instead
-     */
-    cpu?: MachineCpu;
-    /** In GBs of RAM. The default is 1.
-     *
-     * Possible values:
-     * - 0.25
-     * - 0.5
-     * - 1
-     * - 2
-     * - 4
-     * - 8
-     * * @deprecated use preset instead
-     */
-    memory?: MachineMemory;
+  machine?:
+    | {
+        /** vCPUs. The default is 0.5.
+         *
+         * Possible values:
+         * - 0.25
+         * - 0.5
+         * - 1
+         * - 2
+         * - 4
+         * @deprecated use preset instead
+         */
+        cpu?: MachineCpu;
+        /** In GBs of RAM. The default is 1.
+         *
+         * Possible values:
+         * - 0.25
+         * - 0.5
+         * - 1
+         * - 2
+         * - 4
+         * - 8
+         * * @deprecated use preset instead
+         */
+        memory?: MachineMemory;
 
-    /** Preset to use for the machine. Defaults to small-1x */
-    preset?:
-      | "micro"
-      | "small-1x"
-      | "small-2x"
-      | "medium-1x"
-      | "medium-2x"
-      | "large-1x"
-      | "large-2x";
-  };
+        /** Preset to use for the machine. Defaults to small-1x */
+        preset?: MachinePresetName;
+      }
+    | MachinePresetName;
 
   /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
@@ -761,7 +755,7 @@ export type TriggerOptions = {
   tags?: RunTags;
 
   /**
-   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 4KB.
+   * Metadata to attach to the run. Metadata can be used to store additional information about the run. Limited to 256KB.
    */
   metadata?: Record<string, SerializableJson>;
 
@@ -773,6 +767,11 @@ export type TriggerOptions = {
    * Minimum value is 5 seconds
    */
   maxDuration?: number;
+
+  /**
+   * The machine preset to use for this run. This will override the task's machine preset and any defaults.
+   */
+  machine?: MachinePresetName;
 };
 
 export type TriggerAndWaitOptions = TriggerOptions;

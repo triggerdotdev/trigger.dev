@@ -14,6 +14,7 @@ export type ZodShapeStreamOptions = {
   headers?: Record<string, string>;
   fetchClient?: typeof fetch;
   signal?: AbortSignal;
+  onError?: (e: Error) => void;
 };
 
 export type ZodShapeStreamInstance<TShapeSchema extends z.ZodTypeAny> = {
@@ -44,6 +45,9 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
     },
     fetchClient: options?.fetchClient,
     signal: abortController.signal,
+    onError: (e) => {
+      options?.onError?.(e);
+    },
   });
 
   const readableShape = new ReadableShapeStream(shapeStream);

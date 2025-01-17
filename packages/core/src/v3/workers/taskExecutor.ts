@@ -2,7 +2,13 @@ import { SpanKind } from "@opentelemetry/api";
 import { VERSION } from "../../version.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
-import { parseError, sanitizeError, TaskPayloadParsedError } from "../errors.js";
+import {
+  InternalError,
+  isInternalError,
+  parseError,
+  sanitizeError,
+  TaskPayloadParsedError,
+} from "../errors.js";
 import { runMetadata, TriggerConfig, waitUntil } from "../index.js";
 import { recordSpanException, TracingSDK } from "../otel/index.js";
 import {
@@ -231,6 +237,7 @@ export class TaskExecutor {
         kind: SpanKind.CONSUMER,
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "attempt",
+          [SemanticInternalAttributes.SPAN_ATTEMPT]: true,
         },
       },
       this._tracer.extractContext(traceContext),
@@ -538,6 +545,10 @@ export class TaskExecutor {
       (error.name === "AbortTaskRunError" || error.name === "TaskPayloadParsedError")
     ) {
       return { status: "skipped" };
+    }
+
+    if (isInternalError(error) && error.skipRetrying) {
+      return { status: "skipped", error };
     }
 
     if (execution.run.maxAttempts) {

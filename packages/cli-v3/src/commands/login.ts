@@ -24,6 +24,10 @@ import { isLinuxServer } from "../utilities/linux.js";
 import { VERSION } from "../version.js";
 import { env } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
+import {
+  isPersonalAccessToken,
+  NotPersonalAccessTokenError,
+} from "../utilities/isPersonalAccessToken.js";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
@@ -85,6 +89,12 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       const accessTokenFromEnv = env.TRIGGER_ACCESS_TOKEN;
 
       if (accessTokenFromEnv) {
+        if (!isPersonalAccessToken(accessTokenFromEnv)) {
+          throw new NotPersonalAccessTokenError(
+            "Your TRIGGER_ACCESS_TOKEN is not a Personal Access Token, they start with 'tr_pat_'. You can generate one here: https://cloud.trigger.dev/account/tokens"
+          );
+        }
+
         const auth = {
           accessToken: accessTokenFromEnv,
           apiUrl: env.TRIGGER_API_URL ?? opts.defaultApiUrl ?? CLOUD_API_URL,
@@ -293,6 +303,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
       span.end();
 
       if (options?.embedded) {
+        if (e instanceof NotPersonalAccessTokenError) {
+          throw e;
+        }
+
         return {
           ok: false as const,
           error: e instanceof Error ? e.message : String(e),

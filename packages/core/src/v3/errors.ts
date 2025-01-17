@@ -12,6 +12,41 @@ import { links } from "./links.js";
 import { ExceptionEventProperties } from "./schemas/openTelemetry.js";
 import { assertExhaustive } from "../utils.js";
 
+/**
+ * If you throw this, it will get converted into an INTERNAL_ERROR
+ */
+export class InternalError extends Error {
+  public readonly code: TaskRunErrorCodes;
+  public readonly skipRetrying: boolean;
+
+  constructor({
+    code,
+    message,
+    showStackTrace = true,
+    skipRetrying = false,
+  }: {
+    code: TaskRunErrorCodes;
+    message?: string;
+    showStackTrace?: boolean;
+    skipRetrying?: boolean;
+  }) {
+    super(`${code}: ${message ?? "No message"}`);
+    this.name = "TriggerInternalError";
+    this.code = code;
+    this.message = message ?? "InternalError";
+
+    if (!showStackTrace) {
+      this.stack = undefined;
+    }
+
+    this.skipRetrying = skipRetrying;
+  }
+}
+
+export function isInternalError(error: unknown): error is InternalError {
+  return error instanceof Error && error.name === "TriggerInternalError";
+}
+
 export class AbortTaskRunError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,6 +67,15 @@ export class TaskPayloadParsedError extends Error {
 }
 
 export function parseError(error: unknown): TaskRunError {
+  if (isInternalError(error)) {
+    return {
+      type: "INTERNAL_ERROR",
+      code: error.code,
+      message: error.message,
+      stackTrace: error.stack ?? "",
+    };
+  }
+
   if (error instanceof Error) {
     return {
       type: "BUILT_IN_ERROR",
@@ -168,6 +212,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "DISK_SPACE_EXCEEDED":
         case "OUTDATED_SDK_VERSION":
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
+        case "TASK_DID_CONCURRENT_WAIT":
         // run engine errors
         case "TASK_DEQUEUED_INVALID_STATE":
         case "TASK_DEQUEUED_QUEUE_NOT_FOUND":
@@ -444,6 +489,14 @@ const prettyInternalErrors: Partial<
     link: {
       name: "Beta upgrade guide",
       href: links.docs.upgrade.beta,
+    },
+  },
+  TASK_DID_CONCURRENT_WAIT: {
+    message:
+      "Parallel waits are not supported, e.g. using Promise.all() around our wait functions.",
+    link: {
+      name: "Read the docs for solutions",
+      href: links.docs.troubleshooting.concurrentWaits,
     },
   },
 };

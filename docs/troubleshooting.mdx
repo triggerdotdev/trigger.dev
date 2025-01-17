@@ -80,6 +80,21 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/config-file#prisma).
 
+### `Parallel waits are not supported`
+
+In the current version, you can't perform more that one "wait" in parallel.
+
+Waits include:
+- `wait.for()`
+- `wait.until()`
+- `task.triggerAndWait()`
+- `task.batchTriggerAndWait()`
+- And any of our functions with `wait` in the name.
+
+This restriction exists because we suspend the task server after a wait, and resume it when the wait is done. At the moment, if you do more than one wait, the run will never continue when deployed, so we throw this error instead.
+
+The most common situation this happens is if you're using `Promise.all` around some of our wait functions. Instead of doing this use our built-in functions for [triggering tasks](/triggering#triggering-from-inside-another-task). We have functions that allow you to trigger different tasks in parallel.
+
 ### When triggering subtasks the parent task finishes too soon
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.

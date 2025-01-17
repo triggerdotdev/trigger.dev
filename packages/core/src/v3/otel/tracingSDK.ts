@@ -20,6 +20,7 @@ import {
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
+  ReadableSpan,
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
@@ -85,6 +86,7 @@ export type TracingSDKConfig = {
   forceFlushTimeoutMillis?: number;
   resource?: IResource;
   instrumentations?: Instrumentation[];
+  exporters?: SpanExporter[];
   diagLogLevel?: TracingDiagnosticLogLevel;
 };
 
@@ -111,6 +113,8 @@ export class TracingSDK {
       .merge(
         new Resource({
           [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
+          [SemanticResourceAttributes.SERVICE_NAME]:
+            getEnvVar("OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
         })
@@ -152,6 +156,25 @@ export class TracingSDK {
           : new SimpleSpanProcessor(spanExporter)
       )
     );
+
+    const externalTraceId = crypto.randomUUID();
+
+    for (const exporter of config.exporters ?? []) {
+      traceProvider.addSpanProcessor(
+        getEnvVar("OTEL_BATCH_PROCESSING_ENABLED") === "1"
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+              maxExportBatchSize: parseInt(getEnvVar("OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
+      );
+    }
 
     traceProvider.register();
 
@@ -235,4 +258,50 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
   }
 
   diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
+}
+
+class ExternalSpanExporterWrapper {
+  constructor(
+    private underlyingExporter: SpanExporter,
+    private externalTraceId: string
+  ) {}
+
+  private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
+    if (span.attributes[SemanticInternalAttributes.SPAN_PARTIAL]) {
+      // Skip partial spans
+      return;
+    }
+
+    const spanContext = span.spanContext();
+
+    return {
+      ...span,
+      spanContext: () => ({ ...spanContext, traceId: this.externalTraceId }),
+      parentSpanId: span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT]
+        ? undefined
+        : span.parentSpanId,
+    };
+  }
+
+  export(spans: any[], resultCallback: (result: any) => void): void {
+    try {
+      const modifiedSpans = spans.map(this.transformSpan.bind(this));
+      this.underlyingExporter.export(
+        modifiedSpans.filter(Boolean) as ReadableSpan[],
+        resultCallback
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  shutdown(): Promise<void> {
+    return this.underlyingExporter.shutdown();
+  }
+
+  forceFlush?(): Promise<void> {
+    return this.underlyingExporter.forceFlush
+      ? this.underlyingExporter.forceFlush()
+      : Promise.resolve();
+  }
 }

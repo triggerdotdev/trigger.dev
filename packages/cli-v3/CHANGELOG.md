@@ -1,5 +1,35 @@
 # trigger.dev
 
+## 3.3.11
+
+### Patch Changes
+
+- Add otel exporter support ([#1602](https://github.com/triggerdotdev/trigger.dev/pull/1602))
+- Require maxDuration config and have a better error for bad CI tokens ([#1620](https://github.com/triggerdotdev/trigger.dev/pull/1620))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.11`
+  - `@trigger.dev/build@3.3.11`
+
+## 3.3.10
+
+### Patch Changes
+
+- Support ignoring test/spec files inside trigger dirs (fixes #1593) ([#1596](https://github.com/triggerdotdev/trigger.dev/pull/1596))
+- cleanup deprecated background worker files (fixes #1572) ([#1595](https://github.com/triggerdotdev/trigger.dev/pull/1595))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.10`
+  - `@trigger.dev/build@3.3.10`
+
+## 3.3.9
+
+### Patch Changes
+
+- Increase the number of active streams from 2 to 5, total streams from 5 to 10 ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+- Adding ability to update parent run metadata from child runs/tasks ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.9`
+  - `@trigger.dev/build@3.3.9`
+
 ## 3.3.8
 
 ### Patch Changes

@@ -167,7 +167,9 @@ function convertLogsToCreateableEvents(resourceLog: ResourceLogs): Array<Creatab
           traceId: binaryToHex(log.traceId),
           spanId: eventRepository.generateSpanId(),
           parentId: binaryToHex(log.spanId),
-          message: isStringValue(log.body) ? log.body.stringValue : `${log.severityText} log`,
+          message: isStringValue(log.body)
+            ? log.body.stringValue.slice(0, 4096)
+            : `${log.severityText} log`,
           isPartial: false,
           kind: "INTERNAL" as const,
           level: logLevelToEventLevel(log.severityNumber),

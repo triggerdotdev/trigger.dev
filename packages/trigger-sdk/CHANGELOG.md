@@ -1,5 +1,57 @@
 # @trigger.dev/sdk
 
+## 3.3.11
+
+### Patch Changes
+
+- Add support for specifying machine preset at trigger time. Works with any trigger function: ([#1608](https://github.com/triggerdotdev/trigger.dev/pull/1608))
+
+  ```ts
+  // Same as usual, will use the machine preset on childTask, defaults to "small-1x"
+  await childTask.trigger({ message: "Hello, world!" });
+
+  // This will override the task's machine preset and any defaults. Works with all trigger functions.
+  await childTask.trigger({ message: "Hello, world!" }, { machine: "small-2x" });
+  await childTask.triggerAndWait({ message: "Hello, world!" }, { machine: "small-2x" });
+
+  await childTask.batchTrigger([
+    { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
+    { payload: { message: "Hello, world!" }, options: { machine: "large-1x" } },
+  ]);
+  await childTask.batchTriggerAndWait([
+    { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
+    { payload: { message: "Hello, world!" }, options: { machine: "large-1x" } },
+  ]);
+
+  await tasks.trigger<typeof childTask>(
+    "child",
+    { message: "Hello, world!" },
+    { machine: "small-2x" }
+  );
+  await tasks.batchTrigger<typeof childTask>("child", [
+    { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
+    { payload: { message: "Hello, world!" }, options: { machine: "large-1x" } },
+  ]);
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.11`
+
+## 3.3.10
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.10`
+
+## 3.3.9
+
+### Patch Changes
+
+- Adding ability to update parent run metadata from child runs/tasks ([#1563](https://github.com/triggerdotdev/trigger.dev/pull/1563))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.9`
+
 ## 3.3.8
 
 ### Patch Changes

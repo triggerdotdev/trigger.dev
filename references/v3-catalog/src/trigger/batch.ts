@@ -16,8 +16,8 @@ import { setTimeout } from "node:timers/promises";
 
 export const batchParentTask = task({
   id: "batch-parent-task",
-  run: async () => {
-    const items = Array.from({ length: 10 }, (_, i) => ({
+  run: async (payload: { size?: number; wait?: boolean }) => {
+    const items = Array.from({ length: payload.size ?? 10 }, (_, i) => ({
       payload: {
         id: `item${i}`,
         name: `Item Name ${i}`,
@@ -44,7 +44,9 @@ export const batchParentTask = task({
       },
     }));
 
-    return await batchChildTask.batchTrigger(items);
+    return payload.wait
+      ? await batchChildTask.batchTriggerAndWait(items.map((i) => ({ payload: i.payload })))
+      : await batchChildTask.batchTrigger(items);
   },
 });
 
@@ -374,10 +376,18 @@ export const batchV2TestTask = task({
 
       for await (const liveRun0 of runs.subscribeToRun(response1.runs[0].id)) {
         logger.debug("subscribed to run0", { liveRun0 });
+
+        if (liveRun0.finishedAt) {
+          break;
+        }
       }
 
       for await (const liveRun1 of runs.subscribeToRun(response1.runs[1].id)) {
         logger.debug("subscribed to run1", { liveRun1 });
+
+        if (liveRun1.finishedAt) {
+          break;
+        }
       }
     });
 

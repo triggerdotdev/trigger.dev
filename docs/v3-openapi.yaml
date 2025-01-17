@@ -1297,19 +1297,17 @@ paths:
             response = requests.post(url, headers=headers, json=data)
             print(response.json())
 
-  "/api/v1/tasks/{taskIdentifier}/batch":
-    parameters:
-      - $ref: "#/components/parameters/taskIdentifier"
+  "/api/v1/tasks/batch":
     post:
       operationId: batch_trigger_task_v1
-      summary: Batch trigger a task
-      description: Batch trigger a task with up to 100 payloads.
+      summary: Batch trigger tasks
+      description: Batch trigger tasks with up to 500 payloads.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/BatchTriggerRequestBody"
+              "$ref": "#/components/schemas/BatchTriggerV2RequestBody"
       responses:
         "200":
           description: Task batch triggered successfully
@@ -1352,29 +1350,28 @@ paths:
             });
 
             // Somewhere else in your code
-            await myTask.batchTrigger({
-              items: [
-                {
-                  payload: { message: "Hello, world!" },
-                  options: {
-                    idempotencyKey: "unique-key-123",
-                    concurrencyKey: "user-123-task",
-                    queue: {
-                      name: "my-task-queue",
-                      concurrencyLimit: 5
-                    }
+            await myTask.batchTrigger([
+              {
+                payload: { message: "Hello, world!" },
+                options: {
+                  idempotencyKey: "unique-key-123",
+                  concurrencyKey: "user-123-task",
+                  queue: {
+                    name: "my-task-queue",
+                    concurrencyLimit: 5
                   }
                 }
-              ]
-            });
+              }
+            ]);
         - lang: curl
           source: |-
-            curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
+            curl -X POST "https://api.trigger.dev/api/v1/tasks/batch" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer tr_dev_1234" \
               -d '{
                     "items": [
                       {
+                        "task": "my-task",
                         "payload": {
                           "message": "Hello, world!"
                         },
@@ -1547,6 +1544,15 @@ components:
             "$ref": "#/components/schemas/TriggerTaskRequestBody"
           description: An array of payloads to trigger the task with
       required: ["items"]
+    BatchTriggerV2RequestBody:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BatchTriggerTaskRequestBodyItem"
+          description: An array of payloads to trigger the task with
+      required: ["items"]
     BatchTriggerTaskResponse:
       type: object
       required: ["batchId", "runs"]
@@ -1560,6 +1566,17 @@ components:
           items:
             type: string
           description: An array of run IDs that were triggered
+    BatchTriggerTaskRequestBodyItem:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/TriggerTaskRequestBody"
+        - type: object
+          properties:
+            task:
+              type: string
+              description: The task identifier to trigger. This is the `id` set in your `task()` functions.
+          required:
+            - task
     TriggerTaskRequestBody:
       type: object
       properties:
@@ -1595,6 +1612,18 @@ components:
                 We recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.
               items:
                 type: string
+            machine:
+              type: string
+              enum:
+                - micro
+                - small-1x
+                - small-2x
+                - medium-1x
+                - medium-2x
+                - large-1x
+                - large-2x
+              example: "small-2x"
+              description: The machine preset to use for this run. This will override the task's machine preset and any defaults.
     TTL:
       type:
         - string

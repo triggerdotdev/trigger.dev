@@ -1,0 +1,49 @@
+---
+title: "Next.js Batch LLM Evaluator"
+sidebarTitle: "Batch LLM Evaluator"
+description: "This example Next.js project evaluates multiple LLM models using the Vercel AI SDK and streams updates to the frontend using Trigger.dev Realtime."
+---
+
+import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
+
+## Overview
+
+This demo is a full stack example that uses the following:
+
+- A [Next.js](https://nextjs.org/) app with [Prisma](https://www.prisma.io/) for the database.
+- Trigger.dev [Realtime](https://trigger.dev/launchweek/0/realtime) to stream updates to the frontend.
+- Work with multiple LLM models using the Vercel [AI SDK](https://sdk.vercel.ai/docs/introduction). (OpenAI, Anthropic, XAI)
+- Distribute tasks across multiple tasks using the new [`batch.triggerByTaskAndWait`](https://trigger.dev/docs/triggering#batch-triggerbytaskandwait) method.
+
+## GitHub repo
+
+<Card
+  title="View the Batch LLM Evaluator repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/batch-llm-evaluator"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://content.trigger.dev/batch-llm-evaluator.mp4"
+></video>
+
+## Relevant code
+
+- View the Trigger.dev task code in the [src/trigger/batch.ts](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/trigger/batch.ts) file.
+- The `evaluateModels` task uses the `batch.triggerByTaskAndWait` method to distribute the task to the different LLM models.
+- It then passes the results through to a `summarizeEvals` task that calculates some dummy "tags" for each LLM response.
+- We use a [useRealtimeRunsWithTag](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerunswithtag) hook to subscribe to the different evaluation tasks runs in the [src/components/llm-evaluator.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/llm-evaluator.tsx) file.
+- We then pass the relevant run down into three different components for the different models:
+  - The `AnthropicEval` component: [src/components/evals/Anthropic.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/Anthropic.tsx)
+  - The `XAIEval` component: [src/components/evals/XAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/XAI.tsx)
+  - The `OpenAIEval` component: [src/components/evals/OpenAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/OpenAI.tsx)
+- Each of these components then uses [useRealtimeRunWithStreams](https://trigger.dev/docs/frontend/react-hooks/realtime#userealtimerunwithstreams) to subscribe to the different LLM responses.
+
+<RealtimeLearnMore />

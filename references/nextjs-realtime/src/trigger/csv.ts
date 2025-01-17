@@ -8,7 +8,7 @@ export const handleCSVUpload = schemaTask({
   id: "handle-csv-upload",
   schema: UploadedFileData,
   run: async (file, { ctx }) => {
-    logger.info("Handling uploaded file", { file });
+    logger.info("Handling uploaded files", { file });
 
     metadata.set("status", "fetching");
 
@@ -62,16 +62,6 @@ export const handleCSVUpload = schemaTask({
     const successfulRows = results.runs.filter((r) => r.ok);
     const failedRows = results.runs.filter((r) => !r.ok);
 
-    const firstSuccessfulRow = successfulRows[0];
-
-    if (firstSuccessfulRow) {
-      const stream = await metadata.fetchStream<string>(firstSuccessfulRow.id);
-
-      for await (const value of stream) {
-        logger.info(`Stream value from ${firstSuccessfulRow.id}`, { value });
-      }
-    }
-
     return {
       file,
       rows,
@@ -89,17 +79,9 @@ export const handleCSVRow = schemaTask({
     logger.info("Handling CSV row", { row });
 
     // Simulate processing time
-    await setTimeout(200 + Math.random() * 1000); // 200ms - 1.2s
+    await setTimeout(200 + Math.random() * 1012); // 200ms - 1.2s
 
     metadata.parent.increment("processedRows", 1).append("rowRuns", ctx.run.id);
-
-    await metadata.parent.stream(
-      ctx.run.id,
-      (async function* () {
-        yield "hello";
-        yield "world";
-      })()
-    );
 
     return row;
   },

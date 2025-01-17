@@ -1,5 +1,6 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as esbuild from "esbuild";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { CliApiClient } from "../apiClient.js";
 import {
   BundleResult,
@@ -19,7 +20,7 @@ import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/e
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
+import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./workerRuntime.js";
 
@@ -32,6 +33,7 @@ export type DevSessionOptions = {
   rawArgs: DevCommandOptions;
   client: CliApiClient;
   onErr?: (error: Error) => void;
+  keepTmpFiles: boolean;
 };
 
 export type DevSessionInstance = {
@@ -44,8 +46,10 @@ export async function startDevSession({
   rawArgs,
   client,
   dashboardUrl,
+  keepTmpFiles,
 }: DevSessionOptions): Promise<DevSessionInstance> {
-  const destination = getTmpDir(rawConfig.workingDir, "build");
+  clearTmpDirs(rawConfig.workingDir);
+  const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
 
   const runtime = await startWorkerRuntime({
     name,
@@ -93,7 +97,7 @@ export async function startDevSession({
     try {
       logger.debug("Updated bundle", { bundle, buildManifest });
 
-      await runtime.initializeWorker(buildManifest);
+      await runtime.initializeWorker(buildManifest, workerDir?.remove ?? (() => {}));
     } catch (error) {
       if (error instanceof Error) {
         eventBus.emit("backgroundWorkerIndexingError", buildManifest, error);
@@ -121,6 +125,14 @@ export async function startDevSession({
         if (bundled) {
           eventBus.emit("rebuildStarted", "dev");
         }
+
+        const outdir = b.initialOptions.outdir;
+        if (outdir && existsSync(outdir)) {
+          logger.debug("Removing outdir", { outdir });
+
+          rmSync(outdir, { recursive: true, force: true });
+          mkdirSync(outdir, { recursive: true });
+        }
       });
       b.onEnd(async (result: esbuild.BuildResult) => {
         const errors = result.errors;
@@ -138,7 +150,7 @@ export async function startDevSession({
           // First bundle, no need to update bundle
           bundled = true;
         } else {
-          const workerDir = getTmpDir(rawConfig.workingDir, "build");
+          const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
 
           await updateBuild(result, workerDir);
         }
@@ -149,6 +161,9 @@ export async function startDevSession({
   async function runBundle() {
     eventBus.emit("buildStarted", "dev");
 
+    // Use glob to find initial entryPoints
+    // Use chokidar to watch for entryPoints changes (e.g. added or removed?)
+    // When there is a change, update entryPoints and start a new build with watch: true
     const bundleResult = await bundleWorker({
       target: "dev",
       cwd: rawConfig.workingDir,

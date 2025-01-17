@@ -47,6 +47,33 @@ The config file handles a lot of things, like:
   imports used inside build config with be tree-shaken out.
 </Note>
 
+## Dirs
+
+You can specify the directories where your tasks are located using the `dirs` option:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  dirs: ["./trigger"],
+});
+```
+
+If you omit the `dirs` option, we will automatically detect directories that are named `trigger` in your project, but we recommend specifying the directories explicitly. The `dirs` option is an array of strings, so you can specify multiple directories if you have tasks in multiple locations.
+
+We will search for TypeScript and JavaScript files in the specified directories and include them in the build process. We automatically exclude files that have `.test` or `.spec` in the name, but you can customize this by specifying glob patterns in the `ignorePatterns` option:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk/v3";
+
+export default defineConfig({
+  project: "<project ref>",
+  dirs: ["./trigger"],
+  ignorePatterns: ["**/*.my-test.ts"],
+});
+```
+
 ## Lifecycle functions
 
 You can add lifecycle functions to get notified when any task starts, succeeds, or fails using `onStart`, `onSuccess` and `onFailure`:
@@ -419,7 +446,7 @@ export default defineConfig({
 });
 ```
 
-If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated:
+If you have multiple `generator` statements defined in your schema file, you can pass in the `clientGenerator` option to specify the `prisma-client-js` generator, which will prevent other generators from being generated. Some examples where you may need to do this include when using the `prisma-kysely` or `prisma-json-types-generator` generators.
 
 <CodeGroup>
 
@@ -440,6 +467,10 @@ generator kysely {
   output       = "../../src/kysely"
   enumFileName = "enums.ts"
   fileName     = "types.ts"
+}
+
+generator json {
+  provider = "prisma-json-types-generator"
 }
 ```
 

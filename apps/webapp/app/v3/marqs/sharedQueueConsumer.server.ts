@@ -1,4 +1,13 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
+import {
+  Context,
+  ROOT_CONTEXT,
+  Span,
+  SpanKind,
+  SpanOptions,
+  SpanStatusCode,
+  context,
+  trace,
+} from "@opentelemetry/api";
 import {
   MachinePreset,
   ProdTaskRunExecution,
@@ -17,13 +26,14 @@ import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
+  Prisma,
   RuntimeEnvironment,
-  TaskRun,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
@@ -31,6 +41,7 @@ import { resolveVariablesForEnvironment } from "../environmentVariables/environm
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
+import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
 import {
   findCurrentWorkerDeployment,
   getWorkerDeploymentFromWorker,
@@ -40,9 +51,7 @@ import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
 import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
-import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
-import { machinePresetFromConfig } from "../machinePresets.server";
 import { env } from "~/env.server";
 import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 import {
@@ -51,34 +60,53 @@ import {
   isFinalAttemptStatus,
   isFinalRunStatus,
 } from "../taskStatus";
+import { MessagePayload } from "./types";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
 
+export const SharedQueueExecuteMessageBody = WithTraceContext.extend({
+  type: z.literal("EXECUTE"),
+  taskIdentifier: z.string(),
+  checkpointEventId: z.string().optional(),
+  retryCheckpointsDisabled: z.boolean().optional(),
+});
+
+export type SharedQueueExecuteMessageBody = z.infer<typeof SharedQueueExecuteMessageBody>;
+
+export const SharedQueueResumeMessageBody = WithTraceContext.extend({
+  type: z.literal("RESUME"),
+  completedAttemptIds: z.string().array(),
+  resumableAttemptId: z.string(),
+  checkpointEventId: z.string().optional(),
+});
+
+export type SharedQueueResumeMessageBody = z.infer<typeof SharedQueueResumeMessageBody>;
+
+export const SharedQueueResumeAfterDurationMessageBody = WithTraceContext.extend({
+  type: z.literal("RESUME_AFTER_DURATION"),
+  resumableAttemptId: z.string(),
+  checkpointEventId: z.string(),
+});
+
+export type SharedQueueResumeAfterDurationMessageBody = z.infer<
+  typeof SharedQueueResumeAfterDurationMessageBody
+>;
+
+export const SharedQueueFailMessageBody = WithTraceContext.extend({
+  type: z.literal("FAIL"),
+  reason: z.string(),
+});
+
+export type SharedQueueFailMessageBody = z.infer<typeof SharedQueueFailMessageBody>;
+
 export const SharedQueueMessageBody = z.discriminatedUnion("type", [
-  WithTraceContext.extend({
-    type: z.literal("EXECUTE"),
-    taskIdentifier: z.string(),
-    checkpointEventId: z.string().optional(),
-    retryCheckpointsDisabled: z.boolean().optional(),
-  }),
-  WithTraceContext.extend({
-    type: z.literal("RESUME"),
-    completedAttemptIds: z.string().array(),
-    resumableAttemptId: z.string(),
-    checkpointEventId: z.string().optional(),
-  }),
-  WithTraceContext.extend({
-    type: z.literal("RESUME_AFTER_DURATION"),
-    resumableAttemptId: z.string(),
-    checkpointEventId: z.string(),
-  }),
-  WithTraceContext.extend({
-    type: z.literal("FAIL"),
-    reason: z.string(),
-  }),
+  SharedQueueExecuteMessageBody,
+  SharedQueueResumeMessageBody,
+  SharedQueueResumeAfterDurationMessageBody,
+  SharedQueueFailMessageBody,
 ]);
 
 export type SharedQueueMessageBody = z.infer<typeof SharedQueueMessageBody>;
@@ -92,23 +120,50 @@ export type SharedQueueConsumerOptions = {
   interval?: number;
 };
 
+type HandleMessageAction = "ack_and_do_more_work" | "nack" | "nack_and_do_more_work" | "noop";
+
+type DoWorkInternalResult =
+  | {
+      reason: string;
+      attrs?: Record<string, string | number | boolean | undefined>;
+      error?: Error | string;
+      interval?: number;
+      action?: HandleMessageAction;
+    }
+  | undefined;
+
+type HandleMessageResult = {
+  action: HandleMessageAction;
+  interval?: number;
+  retryInMs?: number;
+  reason?: string;
+  attrs?: Record<string, string | number | boolean | undefined>;
+  error?: Error | string;
+};
+
 export class SharedQueueConsumer {
   private _backgroundWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _deprecatedWorkers: Map<string, BackgroundWorkerWithTasks> = new Map();
   private _enabled = false;
   private _options: Required<SharedQueueConsumerOptions>;
   private _perTraceCountdown: number | undefined;
-  private _lastNewTrace: Date | undefined;
+  private _traceStartedAt: Date | undefined;
   private _currentSpanContext: Context | undefined;
-  private _taskFailures: number = 0;
-  private _taskSuccesses: number = 0;
+  private _reasonStats: Record<string, number> = {};
+  private _actionStats: Record<string, number> = {};
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
   private _id: string;
+  private _connectedAt: Date;
+  private _iterationsCount = 0;
+  private _totalIterationsCount = 0;
+  private _runningDurationInMs = 0;
+  private _currentMessage: MessagePayload | undefined;
+  private _currentMessageData: SharedQueueMessageBody | undefined;
 
   constructor(
-    private _sender: ZodMessageSender<typeof serverWebsocketMessages>,
+    private _providerSender: ZodMessageSender<typeof serverWebsocketMessages>,
     options: SharedQueueConsumerOptions = {}
   ) {
     this._options = {
@@ -119,6 +174,7 @@ export class SharedQueueConsumer {
     };
 
     this._id = generateFriendlyId("shared-queue", 6);
+    this._connectedAt = new Date();
   }
 
   // This method is called when a background worker is deprecated and will no longer be used unless a run is locked to it
@@ -141,7 +197,7 @@ export class SharedQueueConsumer {
       return;
     }
 
-    const backgroundWorker = await prisma.backgroundWorker.findUnique({
+    const backgroundWorker = await prisma.backgroundWorker.findFirst({
       where: {
         friendlyId: id,
         runtimeEnvironmentId: envId,
@@ -187,17 +243,23 @@ export class SharedQueueConsumer {
 
     this._enabled = true;
     this._perTraceCountdown = this._options.maximumItemsPerTrace;
-    this._lastNewTrace = new Date();
-    this._taskFailures = 0;
-    this._taskSuccesses = 0;
+    this._traceStartedAt = new Date();
+    this._reasonStats = {};
+    this._actionStats = {};
 
     this.#doWork().finally(() => {});
   }
 
   #endCurrentSpan() {
     if (this._currentSpan) {
-      this._currentSpan.setAttribute("tasks.period.failures", this._taskFailures);
-      this._currentSpan.setAttribute("tasks.period.successes", this._taskSuccesses);
+      for (const [reason, count] of Object.entries(this._reasonStats)) {
+        this._currentSpan.setAttribute(`reasons_${reason}`, count);
+      }
+
+      for (const [action, count] of Object.entries(this._actionStats)) {
+        this._currentSpan.setAttribute(`actions_${action}`, count);
+      }
+
       this._currentSpan.end();
     }
   }
@@ -211,11 +273,18 @@ export class SharedQueueConsumer {
     // Check if the trace has expired
     if (
       this._perTraceCountdown === 0 ||
-      Date.now() - this._lastNewTrace!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
+      Date.now() - this._traceStartedAt!.getTime() > this._options.traceTimeoutSeconds * 1000 ||
       this._currentSpanContext === undefined ||
       this._endSpanInNextIteration
     ) {
       this.#endCurrentSpan();
+
+      const traceDurationInMs = this._traceStartedAt
+        ? Date.now() - this._traceStartedAt.getTime()
+        : undefined;
+      const iterationsPerSecond = traceDurationInMs
+        ? this._iterationsCount / (traceDurationInMs / 1000)
+        : undefined;
 
       // Create a new trace
       this._currentSpan = tracer.startSpan(
@@ -223,7 +292,20 @@ export class SharedQueueConsumer {
         {
           kind: SpanKind.CONSUMER,
           attributes: {
-            [SEMINTATTRS_FORCE_RECORDING]: true,
+            id: this._id,
+            iterations: this._iterationsCount,
+            total_iterations: this._totalIterationsCount,
+            options_maximumItemsPerTrace: this._options.maximumItemsPerTrace,
+            options_nextTickInterval: this._options.nextTickInterval,
+            options_interval: this._options.interval,
+            connected_at: this._connectedAt.toISOString(),
+            consumer_age_in_seconds: (Date.now() - this._connectedAt.getTime()) / 1000,
+            do_work_internal_per_second: this._iterationsCount / (this._runningDurationInMs / 1000),
+            running_duration_ms: this._runningDurationInMs,
+            trace_timeout_in_seconds: this._options.traceTimeoutSeconds,
+            trace_duration_ms: traceDurationInMs,
+            iterations_per_second: iterationsPerSecond,
+            iterations_per_minute: iterationsPerSecond ? iterationsPerSecond * 60 : undefined,
           },
         },
         ROOT_CONTEXT
@@ -233,19 +315,87 @@ export class SharedQueueConsumer {
       this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
       this._perTraceCountdown = this._options.maximumItemsPerTrace;
-      this._lastNewTrace = new Date();
-      this._taskFailures = 0;
-      this._taskSuccesses = 0;
+      this._traceStartedAt = new Date();
+      this._reasonStats = {};
+      this._actionStats = {};
+      this._iterationsCount = 0;
+      this._runningDurationInMs = 0;
       this._endSpanInNextIteration = false;
     }
 
     return context.with(this._currentSpanContext ?? ROOT_CONTEXT, async () => {
-      await this.#doWorkInternal();
-      this._perTraceCountdown = this._perTraceCountdown! - 1;
+      await tracer.startActiveSpan("doWorkInternal()", async (span) => {
+        let nextInterval = this._options.interval;
+
+        span.setAttributes({
+          id: this._id,
+          total_iterations: this._totalIterationsCount,
+          iterations: this._iterationsCount,
+        });
+
+        const startAt = performance.now();
+
+        try {
+          const result = await this.#doWorkInternal();
+
+          if (result) {
+            this._reasonStats[result.reason] = (this._reasonStats[result.reason] ?? 0) + 1;
+
+            if (result.action) {
+              this._actionStats[result.action] = (this._actionStats[result.action] ?? 0) + 1;
+            }
+
+            span.setAttribute("reason", result.reason);
+
+            if (result.attrs) {
+              for (const [key, value] of Object.entries(result.attrs)) {
+                if (value) {
+                  span.setAttribute(key, value);
+                }
+              }
+            }
+
+            if (result.error) {
+              span.recordException(result.error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+            }
+
+            if (typeof result.interval === "number") {
+              nextInterval = Math.max(result.interval, 0); // Cannot be negative
+            }
+
+            span.setAttribute("nextInterval", nextInterval);
+          } else {
+            span.setAttribute("reason", "no_result");
+
+            this._reasonStats["no_result"] = (this._reasonStats["no_result"] ?? 0) + 1;
+            this._actionStats["no_result"] = (this._actionStats["no_result"] ?? 0) + 1;
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            this._currentSpan?.recordException(error);
+          } else {
+            this._currentSpan?.recordException(new Error(String(error)));
+          }
+
+          this._endSpanInNextIteration = true;
+        } finally {
+          this._runningDurationInMs = this._runningDurationInMs + (performance.now() - startAt);
+          this._iterationsCount++;
+          this._totalIterationsCount++;
+          this._perTraceCountdown = this._perTraceCountdown! - 1;
+
+          span.end();
+
+          setTimeout(() => {
+            this.#doWork().finally(() => {});
+          }, nextInterval);
+        }
+      });
     });
   }
 
-  async #doWorkInternal() {
+  async #doWorkInternal(): Promise<DoWorkInternalResult> {
     // Attempt to dequeue a message from the shared queue
     // If no message is available, reschedule the worker to run again in 1 second
     // If a message is available, find the BackgroundWorkerTask that matches the message's taskIdentifier
@@ -256,11 +406,13 @@ export class SharedQueueConsumer {
     // When the task run completes, ack the message
     // Using a heartbeat mechanism, if the client keeps responding with a heartbeat, we'll keep the message processing and increase the visibility timeout.
 
+    this._currentMessage = undefined;
+    this._currentMessageData = undefined;
+
     const message = await marqs?.dequeueMessageInSharedQueue(this._id);
 
     if (!message) {
-      this.#doMoreWork(this._options.nextTickInterval);
-      return;
+      return { reason: "no_message_dequeued", interval: this._options.nextTickInterval };
     }
 
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
@@ -273,715 +425,958 @@ export class SharedQueueConsumer {
         error: messageBody.error,
       });
 
-      await this.#ackAndDoMoreWork(message.messageId);
-      return;
+      await this.#ack(message.messageId);
+
+      return {
+        reason: "failed_to_parse_message",
+        attrs: { message_id: message.messageId, message_version: message.version },
+        error: messageBody.error,
+      };
     }
 
-    // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
+    const hydrateAttributes = (attrs: Record<string, string | number | boolean | undefined>) => {
+      return {
+        ...attrs,
+        message_id: message.messageId,
+        message_version: message.version,
+        run_id: message.messageId,
+        message_type: messageBody.data.type,
+      };
+    };
 
-    switch (messageBody.data.type) {
-      // MARK: EXECUTE
-      case "EXECUTE": {
-        const existingTaskRun = await prisma.taskRun.findUnique({
-          where: {
-            id: message.messageId,
-          },
-        });
+    this._currentMessage = message;
+    this._currentMessageData = messageBody.data;
 
-        if (!existingTaskRun) {
-          logger.error("No existing task run", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
+    const messageResult = await this.#handleMessage(message, messageBody.data);
 
-          // INFO: There used to be a race condition where tasks could be triggered, but execute messages could be dequeued before the run finished being created in the DB
-          //       This should not be happening anymore. In case it does, consider reqeueuing here with a brief delay while limiting total retries.
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        const retryingFromCheckpoint = !!messageBody.data.checkpointEventId;
-
-        const EXECUTABLE_RUN_STATUSES = {
-          fromCheckpoint: ["WAITING_TO_RESUME"] satisfies TaskRunStatus[],
-          withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"] satisfies TaskRunStatus[],
+    switch (messageResult.action) {
+      case "noop": {
+        return {
+          reason: messageResult.reason ?? "none_specified",
+          attrs: hydrateAttributes(messageResult.attrs ?? {}),
+          error: messageResult.error,
+          interval: messageResult.interval,
+          action: "noop",
         };
+      }
+      case "ack_and_do_more_work": {
+        await this.#ack(message.messageId);
 
-        if (
-          (retryingFromCheckpoint &&
-            !EXECUTABLE_RUN_STATUSES.fromCheckpoint.includes(existingTaskRun.status)) ||
-          (!retryingFromCheckpoint &&
-            !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
-        ) {
-          logger.error("Task run has invalid status for execution. Going to ack", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            taskRun: existingTaskRun.id,
-            status: existingTaskRun.status,
-            retryingFromCheckpoint,
-          });
+        return {
+          reason: messageResult.reason ?? "none_specified",
+          attrs: hydrateAttributes(messageResult.attrs ?? {}),
+          error: messageResult.error,
+          interval: messageResult.interval,
+          action: "ack_and_do_more_work",
+        };
+      }
+      case "nack_and_do_more_work": {
+        await this.#nack(message.messageId, messageResult.retryInMs);
 
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
+        return {
+          reason: messageResult.reason ?? "none_specified",
+          attrs: hydrateAttributes(messageResult.attrs ?? {}),
+          error: messageResult.error,
+          interval: messageResult.interval,
+          action: "nack_and_do_more_work",
+        };
+      }
+      case "nack": {
+        await marqs?.nackMessage(message.messageId);
+
+        return {
+          reason: messageResult.reason ?? "none_specified",
+          attrs: hydrateAttributes(messageResult.attrs ?? {}),
+          error: messageResult.error,
+          action: "nack",
+        };
+      }
+    }
+  }
+
+  async #handleMessage(
+    message: MessagePayload,
+    data: SharedQueueMessageBody
+  ): Promise<HandleMessageResult> {
+    return await this.#startActiveSpan("handleMessage()", async (span) => {
+      // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
+      switch (data.type) {
+        // MARK: EXECUTE
+        case "EXECUTE": {
+          return await this.#handleExecuteMessage(message, data);
         }
-
-        // Check if the task run is locked to a specific worker, if not, use the current worker deployment
-        const deployment = existingTaskRun.lockedById
-          ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
-          : existingTaskRun.lockedToVersionId
-          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
-          : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
-
-        if (!deployment || !deployment.worker) {
-          logger.error("No matching deployment found for task run", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-
-          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
+        // MARK: DEP RESUME
+        // Resume after dependency completed with no remaining retries
+        case "RESUME": {
+          return await this.#handleResumeMessage(message, data);
         }
-
-        if (!deployment.imageReference) {
-          logger.error("Deployment is missing an image reference", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            deployment: deployment.id,
-          });
-
-          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
+        // MARK: DURATION RESUME
+        // Resume after duration-based wait
+        case "RESUME_AFTER_DURATION": {
+          return await this.#handleResumeAfterDurationMessage(message, data);
         }
+        // MARK: FAIL
+        // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
+        case "FAIL": {
+          return await this.#handleFailMessage(message, data);
+        }
+      }
+    });
+  }
 
-        const backgroundTask = deployment.worker.tasks.find(
-          (task) => task.slug === existingTaskRun.taskIdentifier
-        );
+  async #handleExecuteMessage(
+    message: MessagePayload,
+    data: SharedQueueExecuteMessageBody
+  ): Promise<HandleMessageResult> {
+    const existingTaskRun = await prisma.taskRun.findFirst({
+      where: {
+        id: message.messageId,
+      },
+    });
 
-        if (!backgroundTask) {
-          const nonCurrentTask = await prisma.backgroundWorkerTask.findFirst({
-            where: {
-              slug: existingTaskRun.taskIdentifier,
-              projectId: existingTaskRun.projectId,
-              runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
-            },
+    if (!existingTaskRun) {
+      logger.error("No existing task run", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+      });
+
+      // INFO: There used to be a race condition where tasks could be triggered, but execute messages could be dequeued before the run finished being created in the DB
+      //       This should not be happening anymore. In case it does, consider reqeueuing here with a brief delay while limiting total retries.
+      return { action: "ack_and_do_more_work", reason: "no_existing_task_run" };
+    }
+
+    const retryingFromCheckpoint = !!data.checkpointEventId;
+
+    const EXECUTABLE_RUN_STATUSES = {
+      fromCheckpoint: ["WAITING_TO_RESUME"] satisfies TaskRunStatus[],
+      withoutCheckpoint: ["PENDING", "RETRYING_AFTER_FAILURE"] satisfies TaskRunStatus[],
+    };
+
+    if (
+      (retryingFromCheckpoint &&
+        !EXECUTABLE_RUN_STATUSES.fromCheckpoint.includes(existingTaskRun.status)) ||
+      (!retryingFromCheckpoint &&
+        !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
+    ) {
+      logger.error("Task run has invalid status for execution. Going to ack", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+        taskRun: existingTaskRun.id,
+        status: existingTaskRun.status,
+        retryingFromCheckpoint,
+      });
+
+      return {
+        action: "ack_and_do_more_work",
+        reason: "invalid_run_status",
+        attrs: { status: existingTaskRun.status, retryingFromCheckpoint },
+      };
+    }
+
+    // Check if the task run is locked to a specific worker, if not, use the current worker deployment
+    const deployment = await this.#startActiveSpan("findCurrentWorkerDeployment", async (span) => {
+      return existingTaskRun.lockedById
+        ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
+        : existingTaskRun.lockedToVersionId
+        ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+        : await findCurrentWorkerDeployment(existingTaskRun.runtimeEnvironmentId);
+    });
+
+    const worker = deployment?.worker;
+
+    if (!deployment || !worker) {
+      logger.error("No matching deployment found for task run", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+      });
+
+      await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+      return {
+        action: "ack_and_do_more_work",
+        reason: "no_matching_deployment",
+        attrs: {
+          run_id: existingTaskRun.id,
+          locked_by_id: existingTaskRun.lockedById ?? undefined,
+          locked_to_version_id: existingTaskRun.lockedToVersionId ?? undefined,
+          environment_id: existingTaskRun.runtimeEnvironmentId,
+        },
+      };
+    }
+
+    const imageReference = deployment.imageReference;
+
+    if (!imageReference) {
+      logger.error("Deployment is missing an image reference", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+        deployment: deployment.id,
+      });
+
+      await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+      return {
+        action: "ack_and_do_more_work",
+        reason: "missing_image_reference",
+        attrs: {
+          deployment_id: deployment.id,
+        },
+      };
+    }
+
+    const backgroundTask = worker.tasks.find(
+      (task) => task.slug === existingTaskRun.taskIdentifier
+    );
+
+    if (!backgroundTask) {
+      const nonCurrentTask = await prisma.backgroundWorkerTask.findFirst({
+        where: {
+          slug: existingTaskRun.taskIdentifier,
+          projectId: existingTaskRun.projectId,
+          runtimeEnvironmentId: existingTaskRun.runtimeEnvironmentId,
+        },
+        include: {
+          worker: {
             include: {
-              worker: {
-                include: {
-                  deployment: {
-                    include: {},
-                  },
-                },
+              deployment: {
+                include: {},
               },
             },
+          },
+        },
+      });
+
+      if (nonCurrentTask) {
+        logger.warn("Task for this run exists but is not part of the current deploy", {
+          taskRun: existingTaskRun.id,
+          taskIdentifier: existingTaskRun.taskIdentifier,
+        });
+      } else {
+        logger.warn("Task for this run has never been deployed", {
+          taskRun: existingTaskRun.id,
+          taskIdentifier: existingTaskRun.taskIdentifier,
+        });
+      }
+
+      await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
+
+      // If this task is ever deployed, a new message will be enqueued after successful indexing
+      return {
+        action: "ack_and_do_more_work",
+        reason: "task_not_deployed",
+        attrs: {
+          run_id: existingTaskRun.id,
+          task_identifier: existingTaskRun.taskIdentifier,
+        },
+      };
+    }
+
+    const lockedTaskRun = await prisma.taskRun.update({
+      where: {
+        id: message.messageId,
+      },
+      data: {
+        lockedAt: new Date(),
+        lockedById: backgroundTask.id,
+        lockedToVersionId: worker.id,
+        taskVersion: worker.version,
+        sdkVersion: worker.sdkVersion,
+        cliVersion: worker.cliVersion,
+        startedAt: existingTaskRun.startedAt ?? new Date(),
+        baseCostInCents: env.CENTS_PER_RUN,
+        machinePreset:
+          existingTaskRun.machinePreset ??
+          machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
+        maxDurationInSeconds: getMaxDuration(
+          existingTaskRun.maxDurationInSeconds,
+          backgroundTask.maxDurationInSeconds
+        ),
+      },
+      include: {
+        runtimeEnvironment: true,
+        attempts: {
+          take: 1,
+          orderBy: { number: "desc" },
+        },
+        tags: true,
+        checkpoints: {
+          take: 1,
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+        lockedBy: true,
+      },
+    });
+
+    if (!lockedTaskRun) {
+      logger.warn("Failed to lock task run", {
+        taskRun: existingTaskRun.id,
+        taskIdentifier: existingTaskRun.taskIdentifier,
+        deployment: deployment.id,
+        backgroundWorker: worker.id,
+        messageId: message.messageId,
+      });
+
+      return {
+        action: "ack_and_do_more_work",
+        reason: "failed_to_lock_task_run",
+        attrs: {
+          run_id: existingTaskRun.id,
+          task_identifier: existingTaskRun.taskIdentifier,
+          deployment_id: deployment.id,
+          background_worker_id: worker.id,
+          message_id: message.messageId,
+        },
+      };
+    }
+
+    const queue = await prisma.taskQueue.findFirst({
+      where: {
+        runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+        name: sanitizeQueueName(lockedTaskRun.queue),
+      },
+    });
+
+    if (!queue) {
+      logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+        queueMessage: message,
+        taskRunQueue: lockedTaskRun.queue,
+        runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
+      });
+
+      return {
+        action: "nack_and_do_more_work",
+        reason: "queue_not_found",
+        attrs: {
+          queue_name: sanitizeQueueName(lockedTaskRun.queue),
+          runtime_environment_id: lockedTaskRun.runtimeEnvironmentId,
+        },
+        interval: this._options.nextTickInterval,
+      };
+    }
+
+    if (!this._enabled) {
+      logger.debug("SharedQueueConsumer not enabled, so nacking message", {
+        queueMessage: message,
+      });
+
+      return {
+        action: "nack",
+        reason: "not_enabled",
+        attrs: {
+          message_id: message.messageId,
+        },
+      };
+    }
+
+    const nextAttemptNumber = lockedTaskRun.attempts[0] ? lockedTaskRun.attempts[0].number + 1 : 1;
+
+    const isRetry =
+      nextAttemptNumber > 1 &&
+      (lockedTaskRun.status === "WAITING_TO_RESUME" ||
+        lockedTaskRun.status === "RETRYING_AFTER_FAILURE");
+
+    try {
+      if (data.checkpointEventId) {
+        const restoreService = new RestoreCheckpointService();
+
+        const checkpoint = await restoreService.call({
+          eventId: data.checkpointEventId,
+          isRetry,
+        });
+
+        if (!checkpoint) {
+          logger.error("Failed to restore checkpoint", {
+            queueMessage: message.data,
+            messageId: message.messageId,
+            runStatus: lockedTaskRun.status,
+            isRetry,
           });
 
-          if (nonCurrentTask) {
-            logger.warn("Task for this run exists but is not part of the current deploy", {
-              taskRun: existingTaskRun.id,
-              taskIdentifier: existingTaskRun.taskIdentifier,
-            });
-          } else {
-            logger.warn("Task for this run has never been deployed", {
-              taskRun: existingTaskRun.id,
-              taskIdentifier: existingTaskRun.taskIdentifier,
-            });
-          }
-
-          await this.#markRunAsWaitingForDeploy(existingTaskRun.id);
-
-          // If this task is ever deployed, a new message will be enqueued after successful indexing
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
+          return {
+            action: "ack_and_do_more_work",
+            reason: "failed_to_restore_checkpoint",
+            attrs: {
+              run_status: lockedTaskRun.status,
+              is_retry: isRetry,
+              checkpoint_event_id: data.checkpointEventId,
+            },
+          };
         }
 
-        const lockedTaskRun = await prisma.taskRun.update({
+        return {
+          action: "noop",
+          reason: "restored_checkpoint",
+          attrs: {
+            checkpoint_event_id: data.checkpointEventId,
+          },
+        };
+      }
+
+      if (!worker.supportsLazyAttempts) {
+        try {
+          const service = new CreateTaskRunAttemptService();
+          await service.call({
+            runId: lockedTaskRun.id,
+            setToExecuting: false,
+          });
+        } catch (error) {
+          logger.error("Failed to create task run attempt for outdated worker", {
+            error,
+            taskRun: lockedTaskRun.id,
+          });
+
+          const service = new CrashTaskRunService();
+          await service.call(lockedTaskRun.id, {
+            errorCode: TaskRunErrorCodes.OUTDATED_SDK_VERSION,
+          });
+
+          return {
+            action: "ack_and_do_more_work",
+            reason: "failed_to_create_attempt_for_outdated_worker",
+            attrs: {
+              message_id: message.messageId,
+              run_id: lockedTaskRun.id,
+            },
+            error: error instanceof Error ? error : String(error),
+          };
+        }
+      }
+
+      if (isRetry && !data.retryCheckpointsDisabled) {
+        socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
+          version: "v1",
+          runId: lockedTaskRun.id,
+        });
+
+        // Retries for workers with disabled retry checkpoints will be handled just like normal attempts
+        return {
+          action: "noop",
+          reason: "retry_checkpoints_disabled",
+        };
+      } else {
+        const machine =
+          machinePresetFromRun(lockedTaskRun) ??
+          machinePresetFromConfig(lockedTaskRun.lockedBy?.machineConfig ?? {});
+
+        await this.#startActiveSpan("scheduleAttemptOnProvider", async (span) => {
+          await this._providerSender.send("BACKGROUND_WORKER_MESSAGE", {
+            backgroundWorkerId: worker.friendlyId,
+            data: {
+              type: "SCHEDULE_ATTEMPT",
+              image: imageReference,
+              version: deployment.version,
+              machine,
+              nextAttemptNumber,
+              // identifiers
+              id: "placeholder", // TODO: Remove this completely in a future release
+              envId: lockedTaskRun.runtimeEnvironment.id,
+              envType: lockedTaskRun.runtimeEnvironment.type,
+              orgId: lockedTaskRun.runtimeEnvironment.organizationId,
+              projectId: lockedTaskRun.runtimeEnvironment.projectId,
+              runId: lockedTaskRun.id,
+            },
+          });
+        });
+
+        return {
+          action: "noop",
+          reason: "scheduled_attempt",
+          attrs: {
+            next_attempt_number: nextAttemptNumber,
+          },
+        };
+      }
+    } catch (e) {
+      // We now need to unlock the task run and delete the task run attempt
+      await prisma.$transaction([
+        prisma.taskRun.update({
           where: {
-            id: message.messageId,
+            id: lockedTaskRun.id,
           },
           data: {
-            lockedAt: new Date(),
-            lockedById: backgroundTask.id,
-            lockedToVersionId: deployment.worker.id,
-            taskVersion: deployment.worker.version,
-            sdkVersion: deployment.worker.sdkVersion,
-            cliVersion: deployment.worker.cliVersion,
-            startedAt: existingTaskRun.startedAt ?? new Date(),
-            baseCostInCents: env.CENTS_PER_RUN,
-            machinePreset: machinePresetFromConfig(backgroundTask.machineConfig ?? {}).name,
-            maxDurationInSeconds: getMaxDuration(
-              existingTaskRun.maxDurationInSeconds,
-              backgroundTask.maxDurationInSeconds
-            ),
+            lockedAt: null,
+            lockedById: null,
+            status: lockedTaskRun.status,
+            startedAt: existingTaskRun.startedAt,
           },
-          include: {
-            runtimeEnvironment: true,
-            attempts: {
-              take: 1,
-              orderBy: { number: "desc" },
-            },
-            tags: true,
-            checkpoints: {
-              take: 1,
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
-            lockedBy: true,
-          },
+        }),
+      ]);
+
+      logger.error("SharedQueueConsumer errored, so nacking message", {
+        queueMessage: message,
+        error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+      });
+
+      return {
+        action: "nack_and_do_more_work",
+        reason: "failed_to_schedule_attempt",
+        error: e instanceof Error ? e : String(e),
+      };
+    }
+  }
+
+  async #handleResumeMessage(
+    message: MessagePayload,
+    data: SharedQueueResumeMessageBody
+  ): Promise<HandleMessageResult> {
+    if (data.checkpointEventId) {
+      try {
+        const restoreService = new RestoreCheckpointService();
+
+        const checkpoint = await restoreService.call({
+          eventId: data.checkpointEventId,
         });
 
-        if (!lockedTaskRun) {
-          logger.warn("Failed to lock task run", {
-            taskRun: existingTaskRun.id,
-            taskIdentifier: existingTaskRun.taskIdentifier,
-            deployment: deployment.id,
-            backgroundWorker: deployment.worker.id,
+        if (!checkpoint) {
+          logger.error("Failed to restore checkpoint", {
+            queueMessage: message.data,
             messageId: message.messageId,
           });
 
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        const queue = await prisma.taskQueue.findUnique({
-          where: {
-            runtimeEnvironmentId_name: {
-              runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-              name: sanitizeQueueName(lockedTaskRun.queue),
+          return {
+            action: "ack_and_do_more_work",
+            reason: "failed_to_restore_checkpoint",
+            attrs: {
+              checkpoint_event_id: data.checkpointEventId,
             },
+          };
+        }
+
+        return {
+          action: "noop",
+          reason: "restored_checkpoint",
+          attrs: {
+            checkpoint_event_id: data.checkpointEventId,
           },
-        });
-
-        if (!queue) {
-          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
-            queueMessage: message,
-            taskRunQueue: lockedTaskRun.queue,
-            runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
-          return;
-        }
-
-        if (!this._enabled) {
-          logger.debug("SharedQueueConsumer not enabled, so nacking message", {
-            queueMessage: message,
-          });
-
-          await marqs?.nackMessage(message.messageId);
-          return;
-        }
-
-        const nextAttemptNumber = lockedTaskRun.attempts[0]
-          ? lockedTaskRun.attempts[0].number + 1
-          : 1;
-
-        const isRetry =
-          nextAttemptNumber > 1 &&
-          (lockedTaskRun.status === "WAITING_TO_RESUME" ||
-            lockedTaskRun.status === "RETRYING_AFTER_FAILURE");
-
-        try {
-          if (messageBody.data.checkpointEventId) {
-            const restoreService = new RestoreCheckpointService();
-
-            const checkpoint = await restoreService.call({
-              eventId: messageBody.data.checkpointEventId,
-              isRetry,
-            });
-
-            if (!checkpoint) {
-              logger.error("Failed to restore checkpoint", {
-                queueMessage: message.data,
-                messageId: message.messageId,
-                runStatus: lockedTaskRun.status,
-                isRetry,
-              });
-
-              await this.#ackAndDoMoreWork(message.messageId);
-              return;
-            }
-
-            break;
-          }
-
-          if (!deployment.worker.supportsLazyAttempts) {
-            try {
-              const service = new CreateTaskRunAttemptService();
-              await service.call({
-                runId: lockedTaskRun.id,
-                setToExecuting: false,
-              });
-            } catch (error) {
-              logger.error("Failed to create task run attempt for outdate worker", {
-                error,
-                taskRun: lockedTaskRun.id,
-              });
-
-              const service = new CrashTaskRunService();
-              await service.call(lockedTaskRun.id, {
-                errorCode: TaskRunErrorCodes.OUTDATED_SDK_VERSION,
-              });
-
-              await this.#ackAndDoMoreWork(message.messageId);
-              return;
-            }
-          }
-
-          if (isRetry && !messageBody.data.retryCheckpointsDisabled) {
-            socketIo.coordinatorNamespace.emit("READY_FOR_RETRY", {
-              version: "v1",
-              runId: lockedTaskRun.id,
-            });
-
-            // Retries for workers with disabled retry checkpoints will be handled just like normal attempts
-          } else {
-            const machineConfig = lockedTaskRun.lockedBy?.machineConfig;
-            const machine = machinePresetFromConfig(machineConfig ?? {});
-
-            await this._sender.send("BACKGROUND_WORKER_MESSAGE", {
-              backgroundWorkerId: deployment.worker.friendlyId,
-              data: {
-                type: "SCHEDULE_ATTEMPT",
-                image: deployment.imageReference,
-                version: deployment.version,
-                machine,
-                nextAttemptNumber,
-                // identifiers
-                id: "placeholder", // TODO: Remove this completely in a future release
-                envId: lockedTaskRun.runtimeEnvironment.id,
-                envType: lockedTaskRun.runtimeEnvironment.type,
-                orgId: lockedTaskRun.runtimeEnvironment.organizationId,
-                projectId: lockedTaskRun.runtimeEnvironment.projectId,
-                runId: lockedTaskRun.id,
-              },
-            });
-          }
-        } catch (e) {
-          if (e instanceof Error) {
-            this._currentSpan?.recordException(e);
-          } else {
-            this._currentSpan?.recordException(new Error(String(e)));
-          }
-
-          this._endSpanInNextIteration = true;
-
-          // We now need to unlock the task run and delete the task run attempt
-          await prisma.$transaction([
-            prisma.taskRun.update({
-              where: {
-                id: lockedTaskRun.id,
-              },
-              data: {
-                lockedAt: null,
-                lockedById: null,
-                status: lockedTaskRun.status,
-                startedAt: existingTaskRun.startedAt,
-              },
-            }),
-          ]);
-
-          logger.error("SharedQueueConsumer errored, so nacking message", {
-            queueMessage: message,
-            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        break;
+        };
+      } catch (e) {
+        return {
+          action: "nack_and_do_more_work",
+          reason: "failed_to_restore_checkpoint",
+          error: e instanceof Error ? e : String(e),
+        };
       }
-      // MARK: DEP RESUME
-      // Resume after dependency completed with no remaining retries
-      case "RESUME": {
-        if (messageBody.data.checkpointEventId) {
-          try {
-            const restoreService = new RestoreCheckpointService();
+    }
 
-            const checkpoint = await restoreService.call({
-              eventId: messageBody.data.checkpointEventId,
-            });
+    const resumableRun = await prisma.taskRun.findFirst({
+      where: {
+        id: message.messageId,
+        status: {
+          notIn: FINAL_RUN_STATUSES,
+        },
+      },
+    });
 
-            if (!checkpoint) {
-              logger.error("Failed to restore checkpoint", {
-                queueMessage: message.data,
-                messageId: message.messageId,
-              });
+    if (!resumableRun) {
+      logger.error("Resumable run not found", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+      });
 
-              await this.#ackAndDoMoreWork(message.messageId);
-              return;
-            }
-          } catch (e) {
-            if (e instanceof Error) {
-              this._currentSpan?.recordException(e);
-            } else {
-              this._currentSpan?.recordException(new Error(String(e)));
-            }
+      return {
+        action: "ack_and_do_more_work",
+        reason: "run_not_found",
+      };
+    }
 
-            this._endSpanInNextIteration = true;
+    if (resumableRun.status !== "EXECUTING") {
+      logger.warn("Run is not executing, will try to resume anyway", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+        runStatus: resumableRun.status,
+      });
+    }
 
-            await this.#nackAndDoMoreWork(message.messageId);
-            return;
-          }
+    const resumableAttempt = await prisma.taskRunAttempt.findFirst({
+      where: {
+        id: data.resumableAttemptId,
+      },
+      include: {
+        checkpoints: {
+          take: 1,
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
 
-          this.#doMoreWork();
-          return;
-        }
+    if (!resumableAttempt) {
+      logger.error("Resumable attempt not found", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+      });
 
-        const resumableRun = await prisma.taskRun.findUnique({
-          where: {
-            id: message.messageId,
-            status: {
-              notIn: FINAL_RUN_STATUSES,
+      return {
+        action: "ack_and_do_more_work",
+        reason: "resumable_attempt_not_found",
+        attrs: {
+          attempt_id: data.resumableAttemptId,
+        },
+      };
+    }
+
+    const queue = await prisma.taskQueue.findFirst({
+      where: {
+        runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
+        name: sanitizeQueueName(resumableRun.queue),
+      },
+    });
+
+    if (!queue) {
+      logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+        queueName: sanitizeQueueName(resumableRun.queue),
+        attempt: resumableAttempt,
+      });
+
+      return {
+        action: "nack_and_do_more_work",
+        reason: "queue_not_found",
+        attrs: {
+          queue_name: sanitizeQueueName(resumableRun.queue),
+        },
+        interval: this._options.nextTickInterval,
+      };
+    }
+
+    if (!this._enabled) {
+      return {
+        action: "nack",
+        reason: "not_enabled",
+        attrs: {
+          message_id: message.messageId,
+        },
+      };
+    }
+
+    const completions: TaskRunExecutionResult[] = [];
+    const executions: TaskRunExecution[] = [];
+
+    for (const completedAttemptId of data.completedAttemptIds) {
+      const completedAttempt = await prisma.taskRunAttempt.findFirst({
+        where: {
+          id: completedAttemptId,
+          taskRun: {
+            lockedAt: {
+              not: null,
+            },
+            lockedById: {
+              not: null,
             },
           },
+        },
+      });
+
+      if (!completedAttempt) {
+        logger.error("Completed attempt not found", {
+          queueMessage: message.data,
+          messageId: message.messageId,
         });
 
-        if (!resumableRun) {
-          logger.error("Resumable run not found", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        if (resumableRun.status !== "EXECUTING") {
-          logger.warn("Run is not executing, will try to resume anyway", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-            runStatus: resumableRun.status,
-          });
-        }
-
-        const resumableAttempt = await prisma.taskRunAttempt.findUnique({
-          where: {
-            id: messageBody.data.resumableAttemptId,
+        return {
+          action: "ack_and_do_more_work",
+          reason: "completed_attempt_not_found",
+          attrs: {
+            completed_attempt_id: completedAttemptId,
           },
-          include: {
-            checkpoints: {
-              take: 1,
-              orderBy: {
-                createdAt: "desc",
-              },
-            },
+        };
+      }
+
+      const completion = await this.#startActiveSpan(
+        "getCompletionPayloadFromAttempt",
+        async (span) => {
+          return await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
+        }
+      );
+
+      if (!completion) {
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_get_completion_payload",
+          attrs: {
+            completed_attempt_id: completedAttemptId,
           },
-        });
+        };
+      }
 
-        if (!resumableAttempt) {
-          logger.error("Resumable attempt not found", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
+      completions.push(completion);
 
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        const queue = await prisma.taskQueue.findUnique({
-          where: {
-            runtimeEnvironmentId_name: {
-              runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-              name: sanitizeQueueName(resumableRun.queue),
-            },
-          },
-        });
-
-        if (!queue) {
-          logger.debug("SharedQueueConsumer queue not found, so nacking message", {
-            queueName: sanitizeQueueName(resumableRun.queue),
-            attempt: resumableAttempt,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval);
-          return;
-        }
-
-        if (!this._enabled) {
-          await marqs?.nackMessage(message.messageId);
-          return;
-        }
-
-        const completions: TaskRunExecutionResult[] = [];
-        const executions: TaskRunExecution[] = [];
-
-        for (const completedAttemptId of messageBody.data.completedAttemptIds) {
-          const completedAttempt = await prisma.taskRunAttempt.findUnique({
-            where: {
-              id: completedAttemptId,
-              taskRun: {
-                lockedAt: {
-                  not: null,
-                },
-                lockedById: {
-                  not: null,
-                },
-              },
-            },
-          });
-
-          if (!completedAttempt) {
-            logger.error("Completed attempt not found", {
-              queueMessage: message.data,
-              messageId: message.messageId,
-            });
-
-            await this.#ackAndDoMoreWork(message.messageId);
-            return;
-          }
-
-          const completion = await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
-
-          if (!completion) {
-            await this.#ackAndDoMoreWork(message.messageId);
-            return;
-          }
-
-          completions.push(completion);
-
-          const executionPayload = await this._tasks.getExecutionPayloadFromAttempt({
+      const executionPayload = await this.#startActiveSpan(
+        "getExecutionPayloadFromAttempt",
+        async (span) => {
+          return await this._tasks.getExecutionPayloadFromAttempt({
             id: completedAttempt.id,
           });
-
-          if (!executionPayload) {
-            await this.#ackAndDoMoreWork(message.messageId);
-            return;
-          }
-
-          executions.push(executionPayload.execution);
         }
+      );
 
-        try {
-          const resumeMessage = {
-            version: "v1" as const,
-            runId: resumableAttempt.taskRunId,
-            attemptId: resumableAttempt.id,
-            attemptFriendlyId: resumableAttempt.friendlyId,
-            completions,
-            executions,
-          };
+      if (!executionPayload) {
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_get_execution_payload",
+          attrs: {
+            completed_attempt_id: completedAttemptId,
+          },
+        };
+      }
 
-          logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", {
-            resumeMessage,
-            message,
-            resumableRun,
-          });
+      executions.push(executionPayload.execution);
+    }
 
-          // The attempt should still be running so we can broadcast to all coordinators to resume immediately
-          const responses = await socketIo.coordinatorNamespace
+    try {
+      const resumeMessage = {
+        version: "v1" as const,
+        runId: resumableAttempt.taskRunId,
+        attemptId: resumableAttempt.id,
+        attemptFriendlyId: resumableAttempt.friendlyId,
+        completions,
+        executions,
+      };
+
+      logger.debug("Broadcasting RESUME_AFTER_DEPENDENCY_WITH_ACK", {
+        resumeMessage,
+        message,
+        resumableRun,
+      });
+
+      // The attempt should still be running so we can broadcast to all coordinators to resume immediately
+      const responses = await this.#startActiveSpan(
+        "emitResumeAfterDependencyWithAck",
+        async () => {
+          return await socketIo.coordinatorNamespace
             .timeout(10_000)
             .emitWithAck("RESUME_AFTER_DEPENDENCY_WITH_ACK", resumeMessage);
-
-          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK received", {
-            resumeMessage,
-            responses,
-            message,
-          });
-
-          if (responses.length === 0) {
-            logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK no response", {
-              resumeMessage,
-              message,
-            });
-            await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
-            return;
-          }
-
-          const hasSuccess = responses.some((response) => response.success);
-
-          if (hasSuccess) {
-            this.#doMoreWork();
-            return;
-          }
-
-          // No coordinator was able to resume the run
-          logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
-            resumeMessage,
-            responses,
-            message,
-          });
-
-          // Let's check if the run is frozen
-          if (resumableRun.status === "WAITING_TO_RESUME") {
-            logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK run is waiting to be restored", {
-              queueMessage: message.data,
-              messageId: message.messageId,
-            });
-
-            try {
-              const restoreService = new RestoreCheckpointService();
-
-              const checkpointEvent = await restoreService.getLastCheckpointEventIfUnrestored(
-                resumableRun.id
-              );
-
-              if (checkpointEvent) {
-                // The last checkpoint hasn't been restored yet, so restore it
-                const checkpoint = await restoreService.call({
-                  eventId: checkpointEvent.id,
-                });
-
-                if (!checkpoint) {
-                  logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK failed to restore checkpoint", {
-                    queueMessage: message.data,
-                    messageId: message.messageId,
-                  });
-
-                  await this.#ackAndDoMoreWork(message.messageId);
-                  return;
-                }
-
-                logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK restored checkpoint", {
-                  queueMessage: message.data,
-                  messageId: message.messageId,
-                  checkpoint,
-                });
-
-                this.#doMoreWork();
-                return;
-              } else {
-                logger.debug(
-                  "RESUME_AFTER_DEPENDENCY_WITH_ACK run is frozen without last checkpoint event",
-                  {
-                    queueMessage: message.data,
-                    messageId: message.messageId,
-                  }
-                );
-              }
-            } catch (e) {
-              if (e instanceof Error) {
-                this._currentSpan?.recordException(e);
-              } else {
-                this._currentSpan?.recordException(new Error(String(e)));
-              }
-
-              this._endSpanInNextIteration = true;
-
-              await this.#nackAndDoMoreWork(
-                message.messageId,
-                this._options.nextTickInterval,
-                5_000
-              );
-              return;
-            }
-          }
-
-          logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK retrying", {
-            queueMessage: message.data,
-            messageId: message.messageId,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
-          return;
-        } catch (e) {
-          if (e instanceof Error) {
-            this._currentSpan?.recordException(e);
-          } else {
-            this._currentSpan?.recordException(new Error(String(e)));
-          }
-
-          this._endSpanInNextIteration = true;
-
-          logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK threw, nacking with delay", {
-            message,
-            error: e,
-          });
-
-          await this.#nackAndDoMoreWork(message.messageId, this._options.nextTickInterval, 5_000);
-          return;
         }
+      );
 
-        break;
+      logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK received", {
+        resumeMessage,
+        responses,
+        message,
+      });
+
+      if (responses.length === 0) {
+        logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK no response", {
+          resumeMessage,
+          message,
+        });
+
+        return {
+          action: "nack_and_do_more_work",
+          reason: "resume_after_dependency_with_ack_no_response",
+          attrs: {
+            resume_message: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
+          },
+          interval: this._options.nextTickInterval,
+          retryInMs: 5_000,
+        };
       }
-      // MARK: DURATION RESUME
-      // Resume after duration-based wait
-      case "RESUME_AFTER_DURATION": {
+
+      const hasSuccess = responses.some((response) => response.success);
+
+      if (hasSuccess) {
+        return {
+          action: "noop",
+          reason: "resume_after_dependency_with_ack_success",
+        };
+      }
+
+      // No coordinator was able to resume the run
+      logger.warn("RESUME_AFTER_DEPENDENCY_WITH_ACK failed", {
+        resumeMessage,
+        responses,
+        message,
+      });
+
+      // Let's check if the run is frozen
+      if (resumableRun.status === "WAITING_TO_RESUME") {
+        logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK run is waiting to be restored", {
+          queueMessage: message.data,
+          messageId: message.messageId,
+        });
+
         try {
           const restoreService = new RestoreCheckpointService();
 
-          const checkpoint = await restoreService.call({
-            eventId: messageBody.data.checkpointEventId,
-          });
+          const checkpointEvent = await restoreService.getLastCheckpointEventIfUnrestored(
+            resumableRun.id
+          );
 
-          if (!checkpoint) {
-            logger.error("Failed to restore checkpoint", {
-              queueMessage: message.data,
-              messageId: message.messageId,
+          if (checkpointEvent) {
+            // The last checkpoint hasn't been restored yet, so restore it
+            const checkpoint = await restoreService.call({
+              eventId: checkpointEvent.id,
             });
 
-            await this.#ackAndDoMoreWork(message.messageId);
-            return;
+            if (!checkpoint) {
+              logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK failed to restore checkpoint", {
+                queueMessage: message.data,
+                messageId: message.messageId,
+              });
+
+              return {
+                action: "ack_and_do_more_work",
+                reason: "failed_to_restore_checkpoint",
+                attrs: {
+                  checkpoint_event_id: checkpointEvent.id,
+                },
+              };
+            }
+
+            logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK restored checkpoint", {
+              queueMessage: message.data,
+              messageId: message.messageId,
+              checkpoint,
+            });
+
+            return {
+              action: "noop",
+              reason: "restored_checkpoint",
+              attrs: {
+                checkpoint_event_id: data.checkpointEventId,
+              },
+            };
+          } else {
+            logger.debug(
+              "RESUME_AFTER_DEPENDENCY_WITH_ACK run is frozen without last checkpoint event",
+              {
+                queueMessage: message.data,
+                messageId: message.messageId,
+              }
+            );
+
+            return {
+              action: "noop",
+              reason: "resume_after_dependency_with_ack_frozen",
+            };
           }
         } catch (e) {
-          if (e instanceof Error) {
-            this._currentSpan?.recordException(e);
-          } else {
-            this._currentSpan?.recordException(new Error(String(e)));
-          }
-
-          this._endSpanInNextIteration = true;
-
-          await this.#nackAndDoMoreWork(message.messageId);
-          return;
+          return {
+            action: "nack_and_do_more_work",
+            reason: "waiting_to_resume_threw",
+            error: e instanceof Error ? e : String(e),
+            interval: this._options.nextTickInterval,
+            retryInMs: 5_000,
+          };
         }
-
-        break;
       }
-      // MARK: FAIL
-      // Fail for whatever reason, usually runs that have been resumed but stopped heartbeating
-      case "FAIL": {
-        const existingTaskRun = await prisma.taskRun.findUnique({
-          where: {
-            id: message.messageId,
+
+      logger.debug("RESUME_AFTER_DEPENDENCY_WITH_ACK retrying", {
+        queueMessage: message.data,
+        messageId: message.messageId,
+      });
+
+      return {
+        action: "nack_and_do_more_work",
+        reason: "resume_after_dependency_with_ack_retrying",
+        attrs: {
+          message_id: message.messageId,
+        },
+        interval: this._options.nextTickInterval,
+        retryInMs: 5_000,
+      };
+    } catch (e) {
+      logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK threw, nacking with delay", {
+        message,
+        error: e,
+      });
+
+      return {
+        action: "nack_and_do_more_work",
+        reason: "resume_after_dependency_with_ack_threw",
+        error: e instanceof Error ? e : String(e),
+        interval: this._options.nextTickInterval,
+        retryInMs: 5_000,
+      };
+    }
+  }
+
+  async #handleResumeAfterDurationMessage(
+    message: MessagePayload,
+    data: SharedQueueResumeAfterDurationMessageBody
+  ): Promise<HandleMessageResult> {
+    try {
+      const restoreService = new RestoreCheckpointService();
+
+      const checkpoint = await restoreService.call({
+        eventId: data.checkpointEventId,
+      });
+
+      if (!checkpoint) {
+        logger.error("Failed to restore checkpoint", {
+          queueMessage: message.data,
+          messageId: message.messageId,
+        });
+
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_restore_checkpoint",
+          attrs: {
+            checkpoint_event_id: data.checkpointEventId,
           },
-        });
-
-        if (!existingTaskRun) {
-          logger.error("No existing task run to fail", {
-            queueMessage: messageBody,
-            messageId: message.messageId,
-          });
-
-          await this.#ackAndDoMoreWork(message.messageId);
-          return;
-        }
-
-        // TODO: Consider failing the attempt and retrying instead. This may not be a good idea, as dequeued FAIL messages tend to point towards critical, persistent errors.
-        const service = new CrashTaskRunService();
-        await service.call(existingTaskRun.id, {
-          crashAttempts: true,
-          reason: messageBody.data.reason,
-        });
-
-        await this.#ackAndDoMoreWork(message.messageId);
-        return;
+        };
       }
+
+      return {
+        action: "noop",
+        reason: "restored_checkpoint",
+        attrs: {
+          checkpoint_event_id: data.checkpointEventId,
+        },
+      };
+    } catch (e) {
+      return {
+        action: "nack_and_do_more_work",
+        reason: "restoring_checkpoint_threw",
+        error: e instanceof Error ? e : String(e),
+      };
+    }
+  }
+
+  async #handleFailMessage(
+    message: MessagePayload,
+    data: SharedQueueFailMessageBody
+  ): Promise<HandleMessageResult> {
+    const existingTaskRun = await prisma.taskRun.findFirst({
+      where: {
+        id: message.messageId,
+      },
+    });
+
+    if (!existingTaskRun) {
+      logger.error("No existing task run to fail", {
+        queueMessage: data,
+        messageId: message.messageId,
+      });
+
+      return {
+        action: "ack_and_do_more_work",
+        reason: "no_existing_task_run",
+      };
     }
 
-    this.#doMoreWork();
-    return;
+    // TODO: Consider failing the attempt and retrying instead. This may not be a good idea, as dequeued FAIL messages tend to point towards critical, persistent errors.
+    const service = new CrashTaskRunService();
+    await service.call(existingTaskRun.id, {
+      crashAttempts: true,
+      reason: data.reason,
+    });
+
+    return {
+      action: "ack_and_do_more_work",
+      reason: "message_failed",
+    };
   }
 
-  #doMoreWork(intervalInMs = this._options.interval) {
-    setTimeout(() => this.#doWork(), intervalInMs);
+  async #ack(messageId: string) {
+    await marqs?.acknowledgeMessage(messageId, "Acking and doing more work in SharedQueueConsumer");
   }
 
-  async #ackAndDoMoreWork(messageId: string, intervalInMs?: number) {
-    await marqs?.acknowledgeMessage(messageId);
-    this.#doMoreWork(intervalInMs);
-  }
-
-  async #nackAndDoMoreWork(messageId: string, queueIntervalInMs?: number, nackRetryInMs?: number) {
+  async #nack(messageId: string, nackRetryInMs?: number) {
     const retryAt = nackRetryInMs ? Date.now() + nackRetryInMs : undefined;
     await marqs?.nackMessage(messageId, retryAt);
-    this.#doMoreWork(queueIntervalInMs);
   }
 
   async #markRunAsWaitingForDeploy(runId: string) {
@@ -996,11 +1391,197 @@ export class SharedQueueConsumer {
       },
     });
   }
+
+  async #startActiveSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    options?: SpanOptions
+  ): Promise<T> {
+    return await tracer.startActiveSpan(name, options ?? {}, async (span) => {
+      if (this._currentMessage) {
+        span.setAttribute("message_id", this._currentMessage.messageId);
+        span.setAttribute("run_id", this._currentMessage.messageId);
+        span.setAttribute("message_version", this._currentMessage.version);
+      }
+
+      if (this._currentMessageData) {
+        span.setAttribute("message_type", this._currentMessageData.type);
+      }
+
+      try {
+        return await fn(span);
+      } catch (error) {
+        if (error instanceof Error) {
+          span.recordException(error);
+        } else {
+          span.recordException(String(error));
+        }
+
+        span.setStatus({ code: SpanStatusCode.ERROR });
+
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  }
 }
 
+type AttemptForCompletion = Prisma.TaskRunAttemptGetPayload<{
+  include: {
+    backgroundWorker: true;
+    backgroundWorkerTask: true;
+    taskRun: {
+      include: {
+        runtimeEnvironment: {
+          include: {
+            organization: true;
+            project: true;
+          };
+        };
+        tags: true;
+      };
+    };
+    queue: true;
+  };
+}>;
+
+type AttemptForExecution = Prisma.TaskRunAttemptGetPayload<{
+  include: {
+    backgroundWorker: true;
+    backgroundWorkerTask: true;
+    runtimeEnvironment: {
+      include: {
+        organization: true;
+        project: true;
+      };
+    };
+    taskRun: {
+      include: {
+        tags: true;
+        batchItems: {
+          include: {
+            batchTaskRun: {
+              select: {
+                friendlyId: true;
+              };
+            };
+          };
+        };
+      };
+    };
+    queue: true;
+  };
+}>;
+
 class SharedQueueTasks {
+  private _completionPayloadFromAttempt(attempt: AttemptForCompletion): TaskRunExecutionResult {
+    const ok = attempt.status === "COMPLETED";
+
+    if (ok) {
+      const success: TaskRunSuccessfulExecutionResult = {
+        ok,
+        id: attempt.taskRun.friendlyId,
+        output: attempt.output ?? undefined,
+        outputType: attempt.outputType,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
+      };
+      return success;
+    } else {
+      const failure: TaskRunFailedExecutionResult = {
+        ok,
+        id: attempt.taskRun.friendlyId,
+        error: attempt.error as TaskRunError,
+        taskIdentifier: attempt.taskRun.taskIdentifier,
+      };
+      return failure;
+    }
+  }
+
+  private async _executionFromAttempt(
+    attempt: AttemptForExecution,
+    machinePreset?: MachinePreset
+  ): Promise<ProdTaskRunExecution> {
+    const { backgroundWorkerTask, taskRun, queue } = attempt;
+
+    if (!machinePreset) {
+      machinePreset =
+        machinePresetFromRun(attempt.taskRun) ??
+        machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+    }
+
+    const metadata = await parsePacket({
+      data: taskRun.metadata ?? undefined,
+      dataType: taskRun.metadataType,
+    });
+
+    const execution: ProdTaskRunExecution = {
+      task: {
+        id: backgroundWorkerTask.slug,
+        filePath: backgroundWorkerTask.filePath,
+        exportName: backgroundWorkerTask.exportName,
+      },
+      attempt: {
+        id: attempt.friendlyId,
+        number: attempt.number,
+        startedAt: attempt.startedAt ?? attempt.createdAt,
+        backgroundWorkerId: attempt.backgroundWorkerId,
+        backgroundWorkerTaskId: attempt.backgroundWorkerTaskId,
+        status: "EXECUTING" as const,
+      },
+      run: {
+        id: taskRun.friendlyId,
+        payload: taskRun.payload,
+        payloadType: taskRun.payloadType,
+        context: taskRun.context,
+        createdAt: taskRun.createdAt,
+        startedAt: taskRun.startedAt ?? taskRun.createdAt,
+        tags: taskRun.tags.map((tag) => tag.name),
+        isTest: taskRun.isTest,
+        idempotencyKey: taskRun.idempotencyKey ?? undefined,
+        durationMs: taskRun.usageDurationMs,
+        costInCents: taskRun.costInCents,
+        baseCostInCents: taskRun.baseCostInCents,
+        metadata,
+        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
+      },
+      queue: {
+        id: queue.friendlyId,
+        name: queue.name,
+      },
+      environment: {
+        id: attempt.runtimeEnvironment.id,
+        slug: attempt.runtimeEnvironment.slug,
+        type: attempt.runtimeEnvironment.type,
+      },
+      organization: {
+        id: attempt.runtimeEnvironment.organization.id,
+        slug: attempt.runtimeEnvironment.organization.slug,
+        name: attempt.runtimeEnvironment.organization.title,
+      },
+      project: {
+        id: attempt.runtimeEnvironment.project.id,
+        ref: attempt.runtimeEnvironment.project.externalRef,
+        slug: attempt.runtimeEnvironment.project.slug,
+        name: attempt.runtimeEnvironment.project.name,
+      },
+      batch:
+        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
+          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
+          : undefined,
+      worker: {
+        id: attempt.backgroundWorkerId,
+        contentHash: attempt.backgroundWorker.contentHash,
+        version: attempt.backgroundWorker.version,
+      },
+      machine: machinePreset,
+    };
+
+    return execution;
+  }
+
   async getCompletionPayloadFromAttempt(id: string): Promise<TaskRunExecutionResult | undefined> {
-    const attempt = await prisma.taskRunAttempt.findUnique({
+    const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
         id,
         status: {
@@ -1030,26 +1611,7 @@ class SharedQueueTasks {
       return;
     }
 
-    const ok = attempt.status === "COMPLETED";
-
-    if (ok) {
-      const success: TaskRunSuccessfulExecutionResult = {
-        ok,
-        id: attempt.taskRun.friendlyId,
-        output: attempt.output ?? undefined,
-        outputType: attempt.outputType,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
-      };
-      return success;
-    } else {
-      const failure: TaskRunFailedExecutionResult = {
-        ok,
-        id: attempt.taskRun.friendlyId,
-        error: attempt.error as TaskRunError,
-        taskIdentifier: attempt.taskRun.taskIdentifier,
-      };
-      return failure;
-    }
+    return this._completionPayloadFromAttempt(attempt);
   }
 
   async getExecutionPayloadFromAttempt({
@@ -1063,7 +1625,7 @@ class SharedQueueTasks {
     isRetrying?: boolean;
     skipStatusChecks?: boolean;
   }): Promise<ProdTaskRunExecutionPayload | undefined> {
-    const attempt = await prisma.taskRunAttempt.findUnique({
+    const attempt = await prisma.taskRunAttempt.findFirst({
       where: {
         id,
       },
@@ -1163,77 +1725,13 @@ class SharedQueueTasks {
       });
     }
 
-    const { backgroundWorkerTask, taskRun, queue } = attempt;
+    const { backgroundWorkerTask, taskRun } = attempt;
 
-    const machinePreset = machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
+    const machinePreset =
+      machinePresetFromRun(attempt.taskRun) ??
+      machinePresetFromConfig(backgroundWorkerTask.machineConfig ?? {});
 
-    const metadata = await parsePacket({
-      data: taskRun.metadata ?? undefined,
-      dataType: taskRun.metadataType,
-    });
-
-    const execution: ProdTaskRunExecution = {
-      task: {
-        id: backgroundWorkerTask.slug,
-        filePath: backgroundWorkerTask.filePath,
-        exportName: backgroundWorkerTask.exportName,
-      },
-      attempt: {
-        id: attempt.friendlyId,
-        number: attempt.number,
-        startedAt: attempt.startedAt ?? attempt.createdAt,
-        backgroundWorkerId: attempt.backgroundWorkerId,
-        backgroundWorkerTaskId: attempt.backgroundWorkerTaskId,
-        status: "EXECUTING" as const,
-      },
-      run: {
-        id: taskRun.friendlyId,
-        payload: taskRun.payload,
-        payloadType: taskRun.payloadType,
-        context: taskRun.context,
-        createdAt: taskRun.createdAt,
-        startedAt: taskRun.startedAt ?? taskRun.createdAt,
-        tags: taskRun.tags.map((tag) => tag.name),
-        isTest: taskRun.isTest,
-        idempotencyKey: taskRun.idempotencyKey ?? undefined,
-        durationMs: taskRun.usageDurationMs,
-        costInCents: taskRun.costInCents,
-        baseCostInCents: taskRun.baseCostInCents,
-        metadata,
-        maxDuration: taskRun.maxDurationInSeconds ?? undefined,
-      },
-      queue: {
-        id: queue.friendlyId,
-        name: queue.name,
-      },
-      environment: {
-        id: attempt.runtimeEnvironment.id,
-        slug: attempt.runtimeEnvironment.slug,
-        type: attempt.runtimeEnvironment.type,
-      },
-      organization: {
-        id: attempt.runtimeEnvironment.organization.id,
-        slug: attempt.runtimeEnvironment.organization.slug,
-        name: attempt.runtimeEnvironment.organization.title,
-      },
-      project: {
-        id: attempt.runtimeEnvironment.project.id,
-        ref: attempt.runtimeEnvironment.project.externalRef,
-        slug: attempt.runtimeEnvironment.project.slug,
-        name: attempt.runtimeEnvironment.project.name,
-      },
-      batch:
-        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
-          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
-          : undefined,
-      worker: {
-        id: attempt.backgroundWorkerId,
-        contentHash: attempt.backgroundWorker.contentHash,
-        version: attempt.backgroundWorker.version,
-      },
-      machine: machinePreset,
-    };
-
+    const execution = await this._executionFromAttempt(attempt, machinePreset);
     const variables = await this.#buildEnvironmentVariables(
       attempt.runtimeEnvironment,
       taskRun.id,
@@ -1252,12 +1750,70 @@ class SharedQueueTasks {
     return payload;
   }
 
+  async getResumePayload(attemptId: string): Promise<
+    | {
+        execution: ProdTaskRunExecution;
+        completion: TaskRunExecutionResult;
+      }
+    | undefined
+  > {
+    const attempt = await prisma.taskRunAttempt.findFirst({
+      where: {
+        id: attemptId,
+      },
+      include: {
+        backgroundWorker: true,
+        backgroundWorkerTask: true,
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
+        },
+        taskRun: {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                organization: true,
+                project: true,
+              },
+            },
+            tags: true,
+            batchItems: {
+              include: {
+                batchTaskRun: {
+                  select: {
+                    friendlyId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        queue: true,
+      },
+    });
+
+    if (!attempt) {
+      logger.error("getResumePayload: No attempt found", { id: attemptId });
+      return;
+    }
+
+    const execution = await this._executionFromAttempt(attempt);
+    const completion = this._completionPayloadFromAttempt(attempt);
+
+    return {
+      execution,
+      completion,
+    };
+  }
+
   async getLatestExecutionPayloadFromRun(
     id: string,
     setToExecuting?: boolean,
     isRetrying?: boolean
   ): Promise<ProdTaskRunExecutionPayload | undefined> {
-    const run = await prisma.taskRun.findUnique({
+    const run = await prisma.taskRun.findFirst({
       where: {
         id,
       },
@@ -1310,6 +1866,7 @@ class SharedQueueTasks {
             machineConfig: true,
           },
         },
+        machinePreset: true,
       },
     });
 
@@ -1329,7 +1886,8 @@ class SharedQueueTasks {
       attemptCount,
     });
 
-    const machinePreset = machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
+    const machinePreset =
+      machinePresetFromRun(run) ?? machinePresetFromConfig(run.lockedBy?.machineConfig ?? {});
 
     const variables = await this.#buildEnvironmentVariables(environment, run.id, machinePreset);
 
@@ -1349,7 +1907,7 @@ class SharedQueueTasks {
   async taskHeartbeat(attemptFriendlyId: string) {
     logger.debug("[SharedQueueConsumer] taskHeartbeat()", { id: attemptFriendlyId });
 
-    const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
+    const taskRunAttempt = await prisma.taskRunAttempt.findFirst({
       where: { friendlyId: attemptFriendlyId },
     });
 

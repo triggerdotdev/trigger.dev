@@ -64,7 +64,6 @@ import type {
   TaskOutputHandle,
   TaskPayload,
   TaskRunResult,
-  TaskRunResultFromTask,
   TaskSchema,
   TaskWithSchema,
   TaskWithSchemaOptions,
@@ -76,6 +75,7 @@ import type {
   TriggerOptions,
   AnyTaskRunResult,
   BatchTriggerAndWaitOptions,
+  BatchTriggerTaskV2RequestBody,
 } from "@trigger.dev/core/v3";
 
 export type {
@@ -205,7 +205,7 @@ export function createTask<
     description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: params.machine,
+    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
@@ -351,7 +351,7 @@ export function createSchemaTask<
     description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
-    machine: params.machine,
+    machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     maxDuration: params.maxDuration,
     fns: {
       run: params.run,
@@ -618,8 +618,9 @@ export async function batchTriggerById<TTask extends AnyTask>(
               idempotencyKey:
                 (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
       parentRunId: taskContext.ctx?.run.id,
@@ -784,8 +785,9 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
                     (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
                     batchItemIdempotencyKey,
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           parentRunId: ctx.run.id,
@@ -941,8 +943,9 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
               idempotencyKey:
                 (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
       parentRunId: taskContext.ctx?.run.id,
@@ -1109,8 +1112,9 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
                     (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
                     batchItemIdempotencyKey,
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           parentRunId: ctx.run.id,
@@ -1179,6 +1183,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
         parentRunId: taskContext.ctx?.run.id,
+        machine: options?.machine,
       },
     },
     {
@@ -1241,12 +1246,12 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
               maxAttempts: item.options?.maxAttempts,
               metadata: item.options?.metadata,
               maxDuration: item.options?.maxDuration,
-              parentRunId: ctx?.run.id,
               idempotencyKey:
                 (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
               idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+              machine: item.options?.machine,
             },
-          };
+          } satisfies BatchTriggerTaskV2RequestBody["items"][0];
         })
       ),
       parentRunId: ctx?.run.id,
@@ -1327,6 +1332,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             parentRunId: ctx.run.id,
             idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
             idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            machine: options?.machine,
           },
         },
         {},
@@ -1411,8 +1417,9 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
                     (await makeIdempotencyKey(item.options?.idempotencyKey)) ??
                     batchItemIdempotencyKey,
                   idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+                  machine: item.options?.machine,
                 },
-              };
+              } satisfies BatchTriggerTaskV2RequestBody["items"][0];
             })
           ),
           resumeParentOnCompletion: true,

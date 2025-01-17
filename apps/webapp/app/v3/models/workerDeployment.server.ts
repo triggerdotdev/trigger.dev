@@ -11,11 +11,44 @@ export type CurrentWorkerDeployment = Prettify<
   NonNullable<Awaited<ReturnType<typeof findCurrentWorkerDeployment>>>
 >;
 
+export type BackgroundWorkerTaskSlim = Prisma.BackgroundWorkerTaskGetPayload<{
+  select: {
+    id: true;
+    friendlyId: true;
+    slug: true;
+    filePath: true;
+    exportName: true;
+    triggerSource: true;
+    machineConfig: true;
+    maxDurationInSeconds: true;
+  };
+}>;
+
 type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
-  include: {
+  select: {
+    id: true;
+    imageReference: true;
+    version: true;
     worker: {
-      include: {
-        tasks: true;
+      select: {
+        id: true;
+        friendlyId: true;
+        version: true;
+        sdkVersion: true;
+        cliVersion: true;
+        supportsLazyAttempts: true;
+        tasks: {
+          select: {
+            id: true;
+            friendlyId: true;
+            slug: true;
+            filePath: true;
+            exportName: true;
+            triggerSource: true;
+            machineConfig: true;
+            maxDurationInSeconds: true;
+          };
+        };
       };
     };
   };
@@ -25,18 +58,25 @@ export async function findCurrentWorkerDeployment(
   environmentId: string,
   label = CURRENT_DEPLOYMENT_LABEL
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const promotion = await prisma.workerDeploymentPromotion.findUnique({
+  const promotion = await prisma.workerDeploymentPromotion.findFirst({
     where: {
-      environmentId_label: {
-        environmentId,
-        label,
-      },
+      environmentId,
+      label,
     },
-    include: {
+    select: {
       deployment: {
-        include: {
+        select: {
+          id: true,
+          imageReference: true,
+          version: true,
           worker: {
-            include: {
+            select: {
+              id: true,
+              friendlyId: true,
+              version: true,
+              sdkVersion: true,
+              cliVersion: true,
+              supportsLazyAttempts: true,
               tasks: true,
             },
           },
@@ -76,7 +116,10 @@ export async function findCurrentUnmanagedWorkerDeployment(
 export async function findCurrentWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">,
   label = CURRENT_DEPLOYMENT_LABEL
-): Promise<BackgroundWorker | null> {
+): Promise<Pick<
+  BackgroundWorker,
+  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
+> | null> {
   if (environment.type === "DEVELOPMENT") {
     const latestDevWorker = await prisma.backgroundWorker.findFirst({
       where: {
@@ -95,7 +138,10 @@ export async function findCurrentWorkerFromEnvironment(
 
 export async function findCurrentUnmanagedWorkerFromEnvironment(
   environment: Pick<AuthenticatedEnvironment, "id" | "type">
-): Promise<BackgroundWorker | null> {
+): Promise<Pick<
+  BackgroundWorker,
+  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
+> | null> {
   if (environment.type === "DEVELOPMENT") {
     return null;
   }
@@ -106,7 +152,7 @@ export async function findCurrentUnmanagedWorkerFromEnvironment(
 export async function getWorkerDeploymentFromWorker(
   workerId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const worker = await prisma.backgroundWorker.findUnique({
+  const worker = await prisma.backgroundWorker.findFirst({
     where: {
       id: workerId,
     },
@@ -131,7 +177,7 @@ export async function getWorkerDeploymentFromWorker(
 export async function getWorkerDeploymentFromWorkerTask(
   workerTaskId: string
 ): Promise<WorkerDeploymentWithWorkerTasks | undefined> {
-  const workerTask = await prisma.backgroundWorkerTask.findUnique({
+  const workerTask = await prisma.backgroundWorkerTask.findFirst({
     where: {
       id: workerTaskId,
     },
