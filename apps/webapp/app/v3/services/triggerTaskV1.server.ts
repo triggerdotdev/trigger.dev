@@ -399,6 +399,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       : undefined,
                     runTags: bodyTags,
                     oneTimeUseToken: options.oneTimeUseToken,
+                    machinePreset: body.options?.machine,
                   },
                 });
 
