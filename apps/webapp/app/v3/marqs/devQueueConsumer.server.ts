@@ -280,7 +280,6 @@ export class DevQueueConsumer {
           kind: SpanKind.CONSUMER,
           attributes: {
             ...attributesFromAuthenticatedEnv(this.env),
-            [SEMINTATTRS_FORCE_RECORDING]: true,
           },
         },
         ROOT_CONTEXT

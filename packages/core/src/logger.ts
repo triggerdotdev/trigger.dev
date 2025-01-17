@@ -109,6 +109,11 @@ export class Logger {
         currentSpan && currentSpan.isRecording() ? currentSpan?.spanContext().spanId : undefined,
     };
 
+    // If the span is not recording, and it's a debug log, mark it so we can filter it out when we forward it
+    if (currentSpan && !currentSpan.isRecording() && level === "debug") {
+      structuredLog.skipForwarding = true;
+    }
+
     loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
 }

@@ -5,7 +5,7 @@ import { getUsername } from "~/utils/username";
 export type { RuntimeEnvironment };
 
 export async function findEnvironmentByApiKey(apiKey: string) {
-  const environment = await prisma.runtimeEnvironment.findUnique({
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       apiKey,
     },
@@ -25,7 +25,7 @@ export async function findEnvironmentByApiKey(apiKey: string) {
 }
 
 export async function findEnvironmentByPublicApiKey(apiKey: string) {
-  const environment = await prisma.runtimeEnvironment.findUnique({
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       pkApiKey: apiKey,
     },
@@ -45,7 +45,7 @@ export async function findEnvironmentByPublicApiKey(apiKey: string) {
 }
 
 export async function findEnvironmentById(id: string) {
-  const environment = await prisma.runtimeEnvironment.findUnique({
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id,
     },
@@ -85,7 +85,7 @@ export async function createNewSession(environment: RuntimeEnvironment, ipAddres
 }
 
 export async function disconnectSession(environmentId: string) {
-  const environment = await prisma.runtimeEnvironment.findUnique({
+  const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
       id: environmentId,
     },
