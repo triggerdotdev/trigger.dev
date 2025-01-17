@@ -254,8 +254,18 @@ class ManagedRunController {
         return;
       }
       case "SUSPENDED": {
-        console.log("Run is suspended, shutting down", { run, snapshot });
-        process.exit(0);
+        console.log("Run was suspended, kill the process and wait for more runs", {
+          run,
+          snapshot,
+        });
+
+        // Kill the run process
+        await this.taskRunProcess?.kill("SIGKILL");
+
+        // Warm start
+        this.waitForNextRun();
+
+        break;
       }
       default: {
         console.log("Status change not handled yet", { status: snapshot.executionStatus });
