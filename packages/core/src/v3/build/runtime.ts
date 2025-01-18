@@ -48,7 +48,12 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
 
       const conditions = options.customConditions?.map((condition) => `--conditions=${condition}`);
 
-      return [importEntryPoint, conditions, process.env.NODE_OPTIONS]
+      return [
+        importEntryPoint,
+        conditions,
+        process.env.NODE_OPTIONS,
+        "--experimental-global-webcrypto",
+      ]
         .filter(Boolean)
         .flat()
         .join(" ");
