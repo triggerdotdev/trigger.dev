@@ -52,7 +52,7 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
         importEntryPoint,
         conditions,
         process.env.NODE_OPTIONS,
-        "--experimental-global-webcrypto",
+        nodeRuntimeNeedsGlobalWebCryptoFlag() ? "--experimental-global-webcrypto" : undefined,
       ]
         .filter(Boolean)
         .flat()
