@@ -48,7 +48,12 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
 
       const conditions = options.customConditions?.map((condition) => `--conditions=${condition}`);
 
-      return [importEntryPoint, conditions, process.env.NODE_OPTIONS]
+      return [
+        importEntryPoint,
+        conditions,
+        process.env.NODE_OPTIONS,
+        nodeRuntimeNeedsGlobalWebCryptoFlag() ? "--experimental-global-webcrypto" : undefined,
+      ]
         .filter(Boolean)
         .flat()
         .join(" ");
@@ -56,5 +61,14 @@ export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOption
     case "bun": {
       return "";
     }
+  }
+}
+
+// Detect if we are using node v18, since we don't support lower than 18, and we only need to enable the flag for v18
+function nodeRuntimeNeedsGlobalWebCryptoFlag(): boolean {
+  try {
+    return process.versions.node.startsWith("18.");
+  } catch {
+    return false;
   }
 }
