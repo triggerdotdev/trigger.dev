@@ -2,11 +2,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "url";
 import { BuildRuntime } from "../schemas/build.js";
 
-export const DEFAULT_RUNTIME: BuildRuntime = "node";
+export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
+    case "node-22":
       return "node";
     case "bun":
       return "bun";
@@ -18,6 +19,7 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
 export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
+    case "node-22":
       return process.execPath;
     case "bun":
       if (typeof process.env.BUN_INSTALL === "string") {
@@ -41,7 +43,8 @@ export type ExecOptions = {
 
 export function execOptionsForRuntime(runtime: BuildRuntime, options: ExecOptions): string {
   switch (runtime) {
-    case "node": {
+    case "node":
+    case "node-22": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;

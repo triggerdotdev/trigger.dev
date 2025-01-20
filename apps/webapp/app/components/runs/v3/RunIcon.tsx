@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { cn } from "~/utils/cn";
 
@@ -41,6 +42,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   switch (name) {
     case "task":
       return <TaskIcon className={cn(className, "text-blue-500")} />;
+    case "task-cached":
+      return <TaskCachedIcon className={cn(className, "text-blue-500")} />;
     case "scheduled":
       return <ClockIcon className={cn(className, "text-sun-500")} />;
     case "attempt":

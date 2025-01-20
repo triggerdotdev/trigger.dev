@@ -8,7 +8,7 @@ import {
   SharedQueueToClientMessages,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Server } from "socket.io";
+import { Namespace, Server, Socket } from "socket.io";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { SharedSocketConnection } from "./sharedSocketConnection";
@@ -25,6 +25,8 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
+import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
+import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "@trigger.dev/core/v3/workers";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -38,12 +40,14 @@ function initalizeIoServer() {
   const coordinatorNamespace = createCoordinatorNamespace(io);
   const providerNamespace = createProviderNamespace(io);
   const sharedQueueConsumerNamespace = createSharedQueueConsumerNamespace(io);
+  const workerNamespace = createWorkerNamespace(io);
 
   return {
     io,
     coordinatorNamespace,
     providerNamespace,
     sharedQueueConsumerNamespace,
+    workerNamespace,
   };
 }
 
@@ -366,4 +370,153 @@ function createSharedQueueConsumerNamespace(io: Server) {
   });
 
   return sharedQueue.namespace;
+}
+
+function headersFromHandshake(handshake: Socket["handshake"]) {
+  const headers = new Headers();
+
+  for (const [key, value] of Object.entries(handshake.headers)) {
+    if (typeof value !== "string") continue;
+    headers.append(key, value);
+  }
+
+  return headers;
+}
+
+function createWorkerNamespace(io: Server) {
+  const worker: Namespace<WorkerClientToServerEvents, WorkerServerToClientEvents> =
+    io.of("/worker");
+
+  worker.use(async (socket, next) => {
+    try {
+      const headers = headersFromHandshake(socket.handshake);
+
+      logger.debug("Worker authentication", {
+        socketId: socket.id,
+        headers: Object.fromEntries(headers),
+      });
+
+      const request = new Request("https://example.com", {
+        headers,
+      });
+
+      const tokenService = new WorkerGroupTokenService();
+      const authenticatedInstance = await tokenService.authenticate(request);
+
+      if (!authenticatedInstance) {
+        throw new Error("unauthorized");
+      }
+
+      next();
+    } catch (error) {
+      logger.error("Worker authentication failed", {
+        error: error instanceof Error ? error.message : error,
+      });
+
+      socket.disconnect(true);
+    }
+  });
+
+  worker.on("connection", async (socket) => {
+    logger.debug("worker connected", { socketId: socket.id });
+
+    const rooms = new Set<string>();
+
+    const interval = setInterval(() => {
+      logger.debug("Rooms for socket", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    }, 5000);
+
+    socket.on("disconnect", (reason, description) => {
+      logger.debug("worker disconnected", {
+        socketId: socket.id,
+        reason,
+        description,
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("disconnecting", (reason, description) => {
+      logger.debug("worker disconnecting", {
+        socketId: socket.id,
+        reason,
+        description,
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("error", (error) => {
+      logger.error("worker error", {
+        socketId: socket.id,
+        error: JSON.parse(JSON.stringify(error)),
+      });
+      clearInterval(interval);
+    });
+
+    socket.on("run:subscribe", async ({ version, runFriendlyIds }) => {
+      logger.debug("run:subscribe", { version, runFriendlyIds });
+
+      const settledResult = await Promise.allSettled(
+        runFriendlyIds.map((friendlyId) => {
+          const room = roomFromFriendlyRunId(friendlyId);
+
+          logger.debug("Joining room", { room });
+
+          socket.join(room);
+          rooms.add(room);
+        })
+      );
+
+      for (const result of settledResult) {
+        if (result.status === "rejected") {
+          logger.error("Error joining room", {
+            runFriendlyIds,
+            error: result.reason instanceof Error ? result.reason.message : result.reason,
+          });
+        }
+      }
+
+      logger.debug("Rooms for socket after subscribe", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    });
+
+    socket.on("run:unsubscribe", async ({ version, runFriendlyIds }) => {
+      logger.debug("run:unsubscribe", { version, runFriendlyIds });
+
+      const settledResult = await Promise.allSettled(
+        runFriendlyIds.map((friendlyId) => {
+          const room = roomFromFriendlyRunId(friendlyId);
+
+          logger.debug("Leaving room", { room });
+
+          socket.leave(room);
+          rooms.delete(room);
+        })
+      );
+
+      for (const result of settledResult) {
+        if (result.status === "rejected") {
+          logger.error("Error leaving room", {
+            runFriendlyIds,
+            error: result.reason instanceof Error ? result.reason.message : result.reason,
+          });
+        }
+      }
+
+      logger.debug("Rooms for socket after unsubscribe", {
+        socketId: socket.id,
+        rooms: Array.from(rooms),
+      });
+    });
+  });
+
+  return worker;
+}
+
+export function roomFromFriendlyRunId(id: string) {
+  return `room:${id}`;
 }

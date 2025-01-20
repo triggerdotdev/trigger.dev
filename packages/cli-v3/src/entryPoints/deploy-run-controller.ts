@@ -879,7 +879,10 @@ class ProdWorker {
           this._taskRunProcess = new TaskRunProcess({
             workerManifest: this.workerManifest,
             env,
-            serverWorker: execution.worker,
+            serverWorker: {
+              ...execution.worker,
+              engine: "V1",
+            },
             payload: createAttempt.result.executionPayload,
             messageId: message.lazyPayload.messageId,
           });

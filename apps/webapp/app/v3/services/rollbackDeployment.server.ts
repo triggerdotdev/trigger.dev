@@ -1,13 +1,21 @@
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
-import { WorkerDeployment } from "@trigger.dev/database";
-import { CURRENT_DEPLOYMENT_LABEL } from "~/consts";
+import { WorkerDeployment, WorkerInstanceGroupType } from "@trigger.dev/database";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/apps";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 
 export class RollbackDeploymentService extends BaseService {
   public async call(deployment: WorkerDeployment) {
     if (deployment.status !== "DEPLOYED") {
       logger.error("Can't roll back to unsuccessful deployment", { id: deployment.id });
+      return;
+    }
+
+    if (deployment.type !== WorkerInstanceGroupType.MANAGED) {
+      logger.error("Can only roll back managed deployments", {
+        id: deployment.id,
+        type: deployment.type,
+      });
       return;
     }
 

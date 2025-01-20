@@ -33,6 +33,7 @@ import {
 } from "./types";
 import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
 import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
+export { sanitizeQueueName } from "@trigger.dev/core/v3/apps";
 
 const KEY_PREFIX = "marqs:";
 
@@ -1664,7 +1665,7 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit }
       `,
     });
 
@@ -1693,7 +1694,7 @@ local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) o
 local concurrencyLimit = redis.call('GET', concurrencyLimitKey)
 
 -- Return current capacity and concurrency limits for the queue, env, org
-return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit } 
+return { currentConcurrency, concurrencyLimit, currentEnvConcurrency, envConcurrencyLimit, currentOrgConcurrency, orgConcurrencyLimit }
       `,
     });
 
@@ -1911,9 +1912,4 @@ function getMarQSClient() {
       );
     }
   }
-}
-
-// Only allow alphanumeric characters, underscores, hyphens, and slashes (and only the first 128 characters)
-export function sanitizeQueueName(queueName: string) {
-  return queueName.replace(/[^a-zA-Z0-9_\-\/]/g, "").substring(0, 128);
 }

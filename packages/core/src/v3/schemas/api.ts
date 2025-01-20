@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { coerce, date, z } from "zod";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import {
   FlushedRunMetadata,
@@ -74,10 +74,30 @@ export const TriggerTaskRequestBody = z.object({
   context: z.any(),
   options: z
     .object({
+      /** @deprecated engine v1 only */
       dependentAttempt: z.string().optional(),
+      /** @deprecated engine v1 only */
       parentAttempt: z.string().optional(),
+      /** @deprecated engine v1 only */
       dependentBatch: z.string().optional(),
+      /**
+       * If triggered in a batch, this is the BatchTaskRun id
+       */
       parentBatch: z.string().optional(),
+      /**
+       * RunEngine v2
+       * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+       */
+      parentRunId: z.string().optional(),
+      /**
+       * RunEngine v2
+       * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+       */
+      resumeParentOnCompletion: z.boolean().optional(),
+      /**
+       * Locks the version to the passed value.
+       * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
+       */
       lockToVersion: z.string().optional(),
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
@@ -101,6 +121,7 @@ export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
 export const TriggerTaskResponse = z.object({
   id: z.string(),
+  isCached: z.boolean().optional(),
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;
@@ -142,7 +163,18 @@ export type BatchTriggerTaskItem = z.infer<typeof BatchTriggerTaskItem>;
 
 export const BatchTriggerTaskV2RequestBody = z.object({
   items: BatchTriggerTaskItem.array(),
+  /** @deprecated engine v1 only */
   dependentAttempt: z.string().optional(),
+  /**
+   * RunEngine v2
+   * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+   */
+  parentRunId: z.string().optional(),
+  /**
+   * RunEngine v2
+   * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+   */
+  resumeParentOnCompletion: z.boolean().optional(),
 });
 
 export type BatchTriggerTaskV2RequestBody = z.infer<typeof BatchTriggerTaskV2RequestBody>;
@@ -162,6 +194,29 @@ export const BatchTriggerTaskV2Response = z.object({
 });
 
 export type BatchTriggerTaskV2Response = z.infer<typeof BatchTriggerTaskV2Response>;
+
+export const BatchTriggerTaskV3RequestBody = z.object({
+  items: BatchTriggerTaskItem.array(),
+  /**
+   * RunEngine v2
+   * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+   */
+  parentRunId: z.string().optional(),
+  /**
+   * RunEngine v2
+   * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+   */
+  resumeParentOnCompletion: z.boolean().optional(),
+});
+
+export type BatchTriggerTaskV3RequestBody = z.infer<typeof BatchTriggerTaskV3RequestBody>;
+
+export const BatchTriggerTaskV3Response = z.object({
+  id: z.string(),
+  runCount: z.number(),
+});
+
+export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
 
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
@@ -252,6 +307,7 @@ export const InitializeDeploymentRequestBody = z.object({
   registryHost: z.string().optional(),
   selfHosted: z.boolean().optional(),
   namespace: z.string().optional(),
+  type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
 });
 
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
@@ -311,9 +367,44 @@ export const GetDeploymentResponseBody = z.object({
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
 
+export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
+  worker: true,
+});
+export type GetLatestDeploymentResponseBody = z.infer<typeof GetLatestDeploymentResponseBody>;
+
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
 });
+
+export const WorkersListResponseBody = z
+  .object({
+    type: z.string(),
+    name: z.string(),
+    description: z.string().nullish(),
+    latestVersion: z.string().nullish(),
+    lastHeartbeatAt: z.string().nullish(),
+    isDefault: z.boolean(),
+    updatedAt: z.coerce.date(),
+  })
+  .array();
+export type WorkersListResponseBody = z.infer<typeof WorkersListResponseBody>;
+
+export const WorkersCreateRequestBody = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+});
+export type WorkersCreateRequestBody = z.infer<typeof WorkersCreateRequestBody>;
+
+export const WorkersCreateResponseBody = z.object({
+  workerGroup: z.object({
+    name: z.string(),
+    description: z.string().nullish(),
+  }),
+  token: z.object({
+    plaintext: z.string(),
+  }),
+});
+export type WorkersCreateResponseBody = z.infer<typeof WorkersCreateResponseBody>;
 
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 
@@ -742,6 +833,18 @@ export const RetrieveBatchResponse = z.object({
 });
 
 export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;
+
+export const RetrieveBatchV2Response = z.object({
+  id: z.string(),
+  status: BatchStatus,
+  idempotencyKey: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  runCount: z.number(),
+  runs: z.array(z.string()),
+});
+
+export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;
 
 export const SubscribeRealtimeStreamChunkRawShape = z.object({
   id: z.string(),

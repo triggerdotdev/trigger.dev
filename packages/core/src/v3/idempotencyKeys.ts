@@ -8,6 +8,28 @@ export function isIdempotencyKey(
   return typeof value === "string" && value.length === 64;
 }
 
+export function flattenIdempotencyKey(
+  idempotencyKey?:
+    | IdempotencyKey
+    | string
+    | string[]
+    | (undefined | IdempotencyKey | string | string[])[]
+): IdempotencyKey | string | string[] | undefined {
+  if (!idempotencyKey) {
+    return;
+  }
+
+  if (Array.isArray(idempotencyKey)) {
+    return idempotencyKey.flatMap((key) => {
+      const k = flattenIdempotencyKey(key);
+      if (!k) return [];
+      return [k];
+    }) as string[];
+  }
+
+  return idempotencyKey;
+}
+
 export async function makeIdempotencyKey(
   idempotencyKey?: IdempotencyKey | string | string[]
 ): Promise<IdempotencyKey | undefined> {

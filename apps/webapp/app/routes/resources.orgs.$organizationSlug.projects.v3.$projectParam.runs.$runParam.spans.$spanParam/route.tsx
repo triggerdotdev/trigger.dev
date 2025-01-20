@@ -44,11 +44,11 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { Span, SpanPresenter, SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -57,7 +57,6 @@ import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3BatchPath,
-  v3BatchRunsPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
@@ -415,6 +414,7 @@ function RunBody({
 }) {
   const organization = useOrganization();
   const project = useProject();
+  const isAdmin = useHasAdminAccess();
   const { value, replace } = useSearchParams();
   const tab = value("tab");
 
@@ -425,12 +425,15 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={"task"}
+            name={run.isCached ? "task-cached" : "task"}
             spanName={run.taskIdentifier}
             className="h-4 min-h-4 w-4 min-w-4"
           />
           <Header2 className={cn("overflow-x-hidden text-blue-500")}>
-            <span className="truncate">{run.taskIdentifier}</span>
+            <span className="truncate">
+              {run.taskIdentifier}
+              {run.isCached ? " (cached)" : null}
+            </span>
           </Header2>
         </div>
         {runParam && closePanel && (
@@ -601,6 +604,22 @@ function RunBody({
                   </Property.Item>
                 )}
                 <Property.Item>
+                  <Property.Label>Idempotency</Property.Label>
+                  <Property.Value>
+                    <div className="break-all">{run.idempotencyKey ? run.idempotencyKey : "–"}</div>
+                    {run.idempotencyKey && (
+                      <div>
+                        Expires:{" "}
+                        {run.idempotencyKeyExpiresAt ? (
+                          <DateTime date={run.idempotencyKeyExpiresAt} />
+                        ) : (
+                          "–"
+                        )}
+                      </div>
+                    )}
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>Version</Property.Label>
                   <Property.Value>
                     {run.version ? (
@@ -632,6 +651,22 @@ function RunBody({
                     )}
                   </Property.Value>
                 </Property.Item>
+                <Property.Item>
+                  <Property.Label>Engine version</Property.Label>
+                  <Property.Value>{run.engine}</Property.Value>
+                </Property.Item>
+                {isAdmin && (
+                  <>
+                    <Property.Item>
+                      <Property.Label>Primary master queue</Property.Label>
+                      <Property.Value>{run.masterQueue}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Secondary master queue</Property.Label>
+                      <Property.Value>{run.secondaryMasterQueue}</Property.Value>
+                    </Property.Item>
+                  </>
+                )}
                 <Property.Item>
                   <Property.Label>Test run</Property.Label>
                   <Property.Value>
@@ -769,12 +804,13 @@ function RunBody({
               </div>
               <RunTimeline run={run} />
 
+              {run.error && <RunError error={run.error} />}
+
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
               )}
-              {run.error !== undefined ? (
-                <RunError error={run.error} />
-              ) : run.output !== undefined ? (
+
+              {run.error === undefined && run.output !== undefined ? (
                 <PacketDisplay data={run.output} dataType={run.outputType} title="Output" />
               ) : null}
             </div>
@@ -785,12 +821,17 @@ function RunBody({
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
-              to={v3RunSpanPath(organization, project, { friendlyId: run.friendlyId }, { spanId })}
+              to={v3RunSpanPath(
+                organization,
+                project,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
               variant="minimal/medium"
               LeadingIcon={QueueListIcon}
               shortcut={{ key: "f" }}
             >
-              Focus on run
+              {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
         </div>

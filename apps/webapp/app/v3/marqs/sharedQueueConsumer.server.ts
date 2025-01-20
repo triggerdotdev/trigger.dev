@@ -32,14 +32,12 @@ import {
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
-import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
-import { EnvironmentVariable } from "../environmentVariables/repository";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -52,14 +50,16 @@ import {
 import { CrashTaskRunService } from "../services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "../services/createTaskRunAttempt.server";
 import { RestoreCheckpointService } from "../services/restoreCheckpoint.server";
+import { SEMINTATTRS_FORCE_RECORDING, tracer } from "../tracer.server";
+import { EnvironmentVariable } from "../environmentVariables/repository";
+import { env } from "~/env.server";
+import { getMaxDuration } from "@trigger.dev/core/v3/apps";
 import {
   FINAL_ATTEMPT_STATUSES,
   FINAL_RUN_STATUSES,
   isFinalAttemptStatus,
   isFinalRunStatus,
 } from "../taskStatus";
-import { tracer } from "../tracer.server";
-import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
 
 const WithTraceContext = z.object({

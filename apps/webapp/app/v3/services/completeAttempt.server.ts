@@ -28,7 +28,6 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 

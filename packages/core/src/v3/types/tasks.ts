@@ -390,9 +390,7 @@ export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
 export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
-    isCached: boolean;
-    idempotencyKey?: string;
-    runs: Array<BatchedRunHandle<TTaskIdentifier, TPayload, TOutput>>;
+    runCount: number;
     publicAccessToken: string;
   },
   TOutput,
@@ -776,7 +774,7 @@ export type TriggerOptions = {
   machine?: MachinePresetName;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
+export type TriggerAndWaitOptions = TriggerOptions;
 
 export type BatchTriggerOptions = {
   idempotencyKey?: IdempotencyKey | string | string[];
@@ -795,19 +793,7 @@ export type BatchTriggerOptions = {
   triggerSequentially?: boolean;
 };
 
-export type BatchTriggerAndWaitOptions = {
-  /**
-   * When true, triggers tasks sequentially in batch order. This ensures ordering but may be slower,
-   * especially for large batches.
-   *
-   * When false (default), triggers tasks in parallel for better performance, but order is not guaranteed.
-   *
-   * Note: This only affects the order of run creation, not the actual task execution.
-   *
-   * @default false
-   */
-  triggerSequentially?: boolean;
-};
+export type BatchTriggerAndWaitOptions = BatchTriggerOptions;
 
 export type TaskMetadataWithFunctions = TaskMetadata & {
   fns: {

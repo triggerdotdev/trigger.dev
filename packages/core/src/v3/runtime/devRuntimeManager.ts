@@ -54,41 +54,43 @@ export class DevRuntimeManager implements RuntimeManager {
 
   async waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
-    return this._preventMultipleWaits(async () => {
-      if (!params.runs.length) {
-        return Promise.resolve({ id: params.id, items: [] });
-      }
+    throw new Error("Method not implemented.");
 
-      const promise = Promise.all(
-        params.runs.map((runId) => {
-          return new Promise<TaskRunExecutionResult>((resolve, reject) => {
-            const pendingCompletion = this._pendingCompletionNotifications.get(runId);
+    // return this._preventMultipleWaits(async () => {
+    //   if (!params.runs.length) {
+    //     return Promise.resolve({ id: params.id, items: [] });
+    //   }
 
-            if (pendingCompletion) {
-              this._pendingCompletionNotifications.delete(runId);
+    //   const promise = Promise.all(
+    //     params.runs.map((runId) => {
+    //       return new Promise<TaskRunExecutionResult>((resolve, reject) => {
+    //         const pendingCompletion = this._pendingCompletionNotifications.get(runId);
 
-              resolve(pendingCompletion);
+    //         if (pendingCompletion) {
+    //           this._pendingCompletionNotifications.delete(runId);
 
-              return;
-            }
+    //           resolve(pendingCompletion);
 
-            this._taskWaits.set(runId, { resolve });
-          });
-        })
-      );
+    //           return;
+    //         }
 
-      await this.#tryFlushMetadata();
+    //         this._taskWaits.set(runId, { resolve });
+    //       });
+    //     })
+    //   );
 
-      const results = await promise;
+    //   await this.#tryFlushMetadata();
 
-      return {
-        id: params.id,
-        items: results,
-      };
-    });
+    //   const results = await promise;
+
+    //   return {
+    //     id: params.id,
+    //     items: results,
+    //   };
+    // });
   }
 
   resumeTask(completion: TaskRunExecutionResult, runId: string): void {

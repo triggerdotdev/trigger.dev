@@ -38,6 +38,9 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...
 
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
       - name: 🔧 Build v3 cli monorepo dependencies
         run: pnpm run build --filter trigger.dev^...
 

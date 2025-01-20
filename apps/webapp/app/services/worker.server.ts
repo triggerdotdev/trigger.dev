@@ -56,6 +56,10 @@ import {
 } from "~/v3/services/cancelDevSessionRuns.server";
 import { logger } from "./logger.server";
 import { BatchProcessingOptions, BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
+import {
+  BatchProcessingOptions as BatchProcessingOptionsV3,
+  BatchTriggerV3Service,
+} from "~/v3/services/batchTriggerV3.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -199,6 +203,7 @@ const workerCatalog = {
   }),
   "v3.cancelDevSessionRuns": CancelDevSessionRunsServiceOptions,
   "v3.processBatchTaskRun": BatchProcessingOptions,
+  "v3.processBatchTaskRunV3": BatchProcessingOptionsV3,
 };
 
 const executionWorkerCatalog = {
@@ -734,6 +739,15 @@ function getWorkerQueue() {
         maxAttempts: 5,
         handler: async (payload, job) => {
           const service = new BatchTriggerV2Service(payload.strategy);
+
+          await service.processBatchTaskRun(payload);
+        },
+      },
+      "v3.processBatchTaskRunV3": {
+        priority: 0,
+        maxAttempts: 5,
+        handler: async (payload, job) => {
+          const service = new BatchTriggerV3Service(payload.strategy);
 
           await service.processBatchTaskRun(payload);
         },

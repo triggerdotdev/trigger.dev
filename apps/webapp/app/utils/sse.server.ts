@@ -22,8 +22,8 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     return new Response("SSE disabled", { status: 200 });
   }
 
-  let pinger: NodeJS.Timer | undefined = undefined;
-  let updater: NodeJS.Timer | undefined = undefined;
+  let pinger: NodeJS.Timeout | undefined = undefined;
+  let updater: NodeJS.Timeout | undefined = undefined;
   let timeout: NodeJS.Timeout | undefined = undefined;
 
   const abort = () => {

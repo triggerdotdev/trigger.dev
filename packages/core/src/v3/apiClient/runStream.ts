@@ -509,23 +509,25 @@ const isSafari = () => {
  */
 
 if (isSafari()) {
-  // @ts-expect-error
   ReadableStream.prototype.values ??= function ({ preventCancel = false } = {}) {
     const reader = this.getReader();
     return {
-      async next() {
+      async next(): Promise<IteratorResult<any>> {
         try {
           const result = await reader.read();
           if (result.done) {
             reader.releaseLock();
           }
-          return result;
+          return {
+            done: result.done,
+            value: result.value,
+          };
         } catch (e) {
           reader.releaseLock();
           throw e;
         }
       },
-      async return(value: unknown) {
+      async return(value: any): Promise<IteratorResult<any>> {
         if (!preventCancel) {
           const cancelPromise = reader.cancel(value);
           reader.releaseLock();
@@ -541,6 +543,5 @@ if (isSafari()) {
     };
   };
 
-  // @ts-expect-error
   ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
 }

@@ -32,7 +32,7 @@ export class NoopRuntimeManager implements RuntimeManager {
 
   waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
     return Promise.resolve({

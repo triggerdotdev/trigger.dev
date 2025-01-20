@@ -43,7 +43,7 @@ export class RuntimeAPI {
 
   public waitForBatch(params: {
     id: string;
-    runs: string[];
+    runCount: number;
     ctx: TaskRunContext;
   }): Promise<BatchTaskRunExecutionResult> {
     return usage.pauseAsync(() => this.#getRuntimeManager().waitForBatch(params));
