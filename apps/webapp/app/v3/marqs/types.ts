@@ -54,22 +54,6 @@ export type PriorityStrategyChoice = string | { abort: true };
 
 export interface MarQSQueuePriorityStrategy {
   /**
-   * chooseQueue is called to select the next queue to process a message from
-   *
-   * @param queues
-   * @param parentQueue
-   * @param consumerId
-   *
-   * @returns The queue to process the message from, or an object with `abort: true` if no queue is available
-   */
-  chooseQueue(
-    queues: Array<QueueWithScores>,
-    parentQueue: string,
-    consumerId: string,
-    previousRange: QueueRange
-  ): { choice: PriorityStrategyChoice; nextRange: QueueRange };
-
-  /**
    * This function is called to get the next candidate selection for the queue
    * The `range` is used to select the set of queues that will be considered for the next selection (passed to chooseQueue)
    * The `selectionId` is used to identify the selection and should be passed to chooseQueue
@@ -80,6 +64,15 @@ export interface MarQSQueuePriorityStrategy {
    * @returns The scores and the selectionId for the next candidate selection
    */
   nextCandidateSelection(parentQueue: string, consumerId: string): Promise<{ range: QueueRange }>;
+
+  distributeQueues(queues: Array<QueueWithScores>): Array<string>;
+
+  moveToNextRange(
+    parentQueue: string,
+    consumerId: string,
+    currentRange: QueueRange,
+    queueSize: number
+  ): QueueRange;
 }
 
 export const MessagePayload = z.object({

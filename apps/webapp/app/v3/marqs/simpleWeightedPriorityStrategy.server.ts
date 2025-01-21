@@ -26,41 +26,67 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
     );
   }
 
-  chooseQueue(
-    queues: QueueWithScores[],
+  moveToNextRange(
     parentQueue: string,
     consumerId: string,
-    previousRange: QueueRange
-  ): { choice: PriorityStrategyChoice; nextRange: QueueRange } {
-    const filteredQueues = filterQueuesAtCapacity(queues);
+    currentRange: QueueRange,
+    parentQueueSize: number
+  ): QueueRange {
+    const nextRange: QueueRange = {
+      offset: currentRange.offset + currentRange.count,
+      count: currentRange.count,
+    };
 
-    if (queues.length === this.options.queueSelectionCount) {
-      const nextRange: QueueRange = {
-        offset: previousRange.offset + this.options.queueSelectionCount,
-        count: this.options.queueSelectionCount,
-      };
-
-      // If all queues are at capacity, and we were passed the max number of queues, then we will slide the window "to the right"
+    // if the nextRange is within the parentQueueSize, set it on the this._nextRangesByParentQueue map and return it
+    // if the nextRange is outside the parentQueueSize, reset the range to the beginning by deleting the entry from the map
+    if (nextRange.offset < parentQueueSize) {
       this._nextRangesByParentQueue.set(`${consumerId}:${parentQueue}`, nextRange);
+      return nextRange;
     } else {
       this._nextRangesByParentQueue.delete(`${consumerId}:${parentQueue}`);
+      return { offset: 0, count: this.options.queueSelectionCount };
     }
+  }
+
+  distributeQueues(queues: QueueWithScores[]): Array<string> {
+    const filteredQueues = filterQueuesAtCapacity(queues);
 
     if (filteredQueues.length === 0) {
-      return {
-        choice: { abort: true },
-        nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
-      };
+      return [];
     }
 
     const queueWeights = this.#calculateQueueWeights(filteredQueues);
 
-    const choice = weightedRandomChoice(queueWeights);
+    // Sort queues by weight in descending order
+    const sortedQueues = [...queueWeights].sort((a, b) => b.totalWeight - a.totalWeight);
 
-    return {
-      choice,
-      nextRange: this.nextRangeForParentQueue(parentQueue, consumerId),
-    };
+    // Convert weights to probabilities
+    const totalQueueWeight = sortedQueues.reduce((sum, queue) => sum + queue.totalWeight, 0);
+    const weightedQueues = sortedQueues.map(({ queue, totalWeight }) => ({
+      queue,
+      probability: totalWeight / totalQueueWeight,
+    }));
+
+    // Apply some randomization while maintaining general weight order
+    // This helps prevent all consumers from always picking the same highest-weight queue
+    const shuffledWeightedQueues = weightedQueues
+      .map((queueInfo, index) => ({
+        ...queueInfo,
+        // Add some controlled randomness while maintaining general weight order
+        randomFactor: Math.random() * 0.2 - 0.1, // ±10% random adjustment
+        originalIndex: index,
+      }))
+      .sort((a, b) => {
+        // If probability difference is significant (>20%), maintain order
+        if (Math.abs(a.probability - b.probability) > 0.2) {
+          return b.probability - a.probability;
+        }
+        // Otherwise, allow some randomization while keeping similar weights roughly together
+        return b.probability + b.randomFactor - (a.probability + a.randomFactor);
+      })
+      .map(({ queue }) => queue);
+
+    return shuffledWeightedQueues;
   }
 
   async nextCandidateSelection(
@@ -104,32 +130,21 @@ function filterQueuesAtCapacity(queues: QueueWithScores[]) {
   );
 }
 
-function weightedRandomChoice(queues: Array<{ queue: string; totalWeight: number }>) {
-  const totalWeight = queues.reduce((acc, queue) => acc + queue.totalWeight, 0);
-  let randomNum = Math.random() * totalWeight;
-
-  for (const queue of queues) {
-    if (randomNum < queue.totalWeight) {
-      return queue.queue;
-    }
-
-    randomNum -= queue.totalWeight;
-  }
-
-  // If we get here, we should just return a random queue
-  return queues[Math.floor(Math.random() * queues.length)].queue;
-}
-
 export class NoopWeightedChoiceStrategy implements MarQSQueuePriorityStrategy {
-  chooseQueue(
-    queues: QueueWithScores[],
-    parentQueue: string,
-    selectionId: string
-  ): { choice: PriorityStrategyChoice; nextRange: QueueRange } {
-    return { choice: { abort: true }, nextRange: { offset: 0, count: 0 } };
-  }
-
   nextCandidateSelection(parentQueue: string): Promise<{ range: QueueRange; selectionId: string }> {
     return Promise.resolve({ range: { offset: 0, count: 0 }, selectionId: nanoid(24) });
+  }
+
+  distributeQueues(queues: Array<QueueWithScores>): Array<string> {
+    return [];
+  }
+
+  moveToNextRange(
+    parentQueue: string,
+    consumerId: string,
+    currentRange: QueueRange,
+    queueSize: number
+  ): QueueRange {
+    return { offset: 0, count: 0 };
   }
 }

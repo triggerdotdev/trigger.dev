@@ -18,13 +18,9 @@ import { resolveVariablesForEnvironment } from "../environmentVariables/environm
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
-import {
-  SEMINTATTRS_FORCE_RECORDING,
-  attributesFromAuthenticatedEnv,
-  tracer,
-} from "../tracer.server";
-import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
+import { DevSubscriber, devPubSub } from "./devPubSub.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
