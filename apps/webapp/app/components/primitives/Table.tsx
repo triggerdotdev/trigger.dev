@@ -61,10 +61,9 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
 type TableHeaderProps = {
   className?: string;
   children: ReactNode;
-  variant?: TableVariant;
 };
 
-export const TableHeader = forwardRef<HTMLTableSectionElement, Omit<TableHeaderProps, "variant">>(
+export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>(
   ({ className, children }, ref) => {
     const { variant } = useContext(TableContext);
     return (
@@ -102,10 +101,9 @@ type TableRowProps = {
   children: ReactNode;
   disabled?: boolean;
   isSelected?: boolean;
-  variant?: TableVariant;
 };
 
-export const TableRow = forwardRef<HTMLTableRowElement, Omit<TableRowProps, "variant">>(
+export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
   ({ className, disabled, isSelected, children }, ref) => {
     const { variant } = useContext(TableContext);
     return (
@@ -184,11 +182,10 @@ type TableCellProps = TableCellBasicProps & {
   rowHoverStyle?: string;
   isSelected?: boolean;
   isTabbableCell?: boolean;
-  variant?: TableVariant;
   children?: ReactNode;
 };
 
-export const TableCell = forwardRef<HTMLTableCellElement, Omit<TableCellProps, "variant">>(
+export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
   (
     {
       className,
@@ -294,7 +291,7 @@ export const TableCellChevron = forwardRef<
 
 export const TableCellMenu = forwardRef<
   HTMLTableCellElement,
-  Omit<TableCellProps, "variant"> & {
+  TableCellProps & {
     className?: string;
     isSticky?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
@@ -303,7 +300,6 @@ export const TableCellMenu = forwardRef<
     popoverContent?: ReactNode;
     children?: ReactNode;
     isSelected?: boolean;
-    variant?: TableVariant;
   }
 >(
   (
