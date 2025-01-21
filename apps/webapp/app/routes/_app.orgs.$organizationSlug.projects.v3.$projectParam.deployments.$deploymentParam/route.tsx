@@ -220,8 +220,10 @@ export default function Page() {
             <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
               <Table variant="bright">
                 <TableHeader>
-                  <TableHeaderCell className="px-2">Task</TableHeaderCell>
-                  <TableHeaderCell className="px-2">File path</TableHeaderCell>
+                  <TableRow>
+                    <TableHeaderCell className="px-2">Task</TableHeaderCell>
+                    <TableHeaderCell className="px-2">File path</TableHeaderCell>
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
                   {deployment.tasks.map((t) => {

@@ -214,13 +214,15 @@ export default function Page() {
           )}
           <Table containerClassName={cn(environmentVariables.length === 0 && "border-t-0")}>
             <TableHeader>
-              <TableHeaderCell>Key</TableHeaderCell>
-              {environments.map((environment) => (
-                <TableHeaderCell key={environment.id}>
-                  <EnvironmentLabel environment={environment} />
-                </TableHeaderCell>
-              ))}
-              <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
+              <TableRow>
+                <TableHeaderCell>Key</TableHeaderCell>
+                {environments.map((environment) => (
+                  <TableHeaderCell key={environment.id}>
+                    <EnvironmentLabel environment={environment} />
+                  </TableHeaderCell>
+                ))}
+                <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
+              </TableRow>
             </TableHeader>
             <TableBody>
               {environmentVariables.length > 0 ? (
