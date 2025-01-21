@@ -65,6 +65,7 @@ export type MarQSOptions = {
   queuePriorityStrategy: MarQSQueuePriorityStrategy;
   envQueuePriorityStrategy: MarQSQueuePriorityStrategy;
   visibilityTimeoutStrategy: VisibilityTimeoutStrategy;
+  maximumNackCount: number;
   enableRebalancing?: boolean;
   verbose?: boolean;
   subscriber?: MessageQueueSubscriber;
@@ -299,7 +300,6 @@ export class MarQS {
           const messageData = await this.#callDequeueMessage({
             messageQueue,
             parentQueue,
-            visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
             concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
             currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
             envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -335,7 +335,6 @@ export class MarQS {
               parentQueue,
               messageKey: this.keys.messageKey(messageData.messageId),
               messageQueue: messageQueue,
-              visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
               concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
               envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue),
               orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(messageQueue),
@@ -409,7 +408,6 @@ export class MarQS {
             const messageData = await this.#callDequeueMessage({
               messageQueue,
               parentQueue,
-              visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
               concurrencyLimitKey: this.keys.concurrencyLimitKeyFromQueue(messageQueue),
               currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(messageQueue),
               envConcurrencyLimitKey: this.keys.envConcurrencyLimitKeyFromQueue(messageQueue),
@@ -496,7 +494,6 @@ export class MarQS {
           parentQueue: message.parentQueue,
           messageKey: this.keys.messageKey(messageId),
           messageQueue: message.queue,
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
@@ -565,7 +562,6 @@ export class MarQS {
           parentQueue: oldMessage.parentQueue,
           messageKey: this.keys.messageKey(messageId),
           messageQueue: oldMessage.queue,
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(oldMessage.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(oldMessage.queue),
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(oldMessage.queue),
@@ -717,12 +713,31 @@ export class MarQS {
         const message = await this.readMessage(messageId);
 
         if (!message) {
-          logger.log(`[${this.name}].nackMessage() message not found`, {
+          logger.debug(`[${this.name}].nackMessage() message not found`, {
             messageId,
             retryAt,
             updates,
             service: this.name,
           });
+          return;
+        }
+
+        const nackCount = await this.#getNackCount(messageId);
+
+        span.setAttribute("nack_count", nackCount);
+
+        if (nackCount >= this.options.maximumNackCount) {
+          logger.debug(`[${this.name}].nackMessage() maximum nack count reached`, {
+            messageId,
+            retryAt,
+            updates,
+            service: this.name,
+          });
+
+          span.setAttribute("maximum_nack_count_reached", true);
+
+          // If we have reached the maximum nack count, we will ack the message
+          await this.acknowledgeMessage(messageId, "maximum nack count reached");
           return;
         }
 
@@ -746,7 +761,7 @@ export class MarQS {
           concurrencyKey: this.keys.currentConcurrencyKeyFromQueue(message.queue),
           envConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
           orgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(message.queue),
-          visibilityQueue: constants.MESSAGE_VISIBILITY_TIMEOUT_QUEUE,
+          nackCounterKey: this.keys.nackCounterKey(messageId),
           messageId,
           messageScore: retryAt,
         });
@@ -762,6 +777,12 @@ export class MarQS {
         },
       }
     );
+  }
+
+  async #getNackCount(messageId: string): Promise<number> {
+    const result = await this.redis.get(this.keys.nackCounterKey(messageId));
+
+    return result ? Number(result) : 0;
   }
 
   // This should increment by the number of seconds, but with a max value of Date.now() + visibilityTimeoutInMs
@@ -1234,7 +1255,6 @@ export class MarQS {
   async #callDequeueMessage({
     messageQueue,
     parentQueue,
-    visibilityQueue,
     concurrencyLimitKey,
     envConcurrencyLimitKey,
     orgConcurrencyLimitKey,
@@ -1244,7 +1264,6 @@ export class MarQS {
   }: {
     messageQueue: string;
     parentQueue: string;
-    visibilityQueue: string;
     concurrencyLimitKey: string;
     envConcurrencyLimitKey: string;
     orgConcurrencyLimitKey: string;
@@ -1303,7 +1322,6 @@ export class MarQS {
     parentQueue,
     messageKey,
     messageQueue,
-    visibilityQueue,
     concurrencyKey,
     envConcurrencyKey,
     orgConcurrencyKey,
@@ -1312,7 +1330,6 @@ export class MarQS {
     parentQueue: string;
     messageKey: string;
     messageQueue: string;
-    visibilityQueue: string;
     concurrencyKey: string;
     envConcurrencyKey: string;
     orgConcurrencyKey: string;
@@ -1321,7 +1338,6 @@ export class MarQS {
     logger.debug("Calling acknowledgeMessage", {
       messageKey,
       messageQueue,
-      visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
@@ -1334,7 +1350,6 @@ export class MarQS {
       parentQueue,
       messageKey,
       messageQueue,
-      visibilityQueue,
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
@@ -1351,7 +1366,7 @@ export class MarQS {
     concurrencyKey,
     envConcurrencyKey,
     orgConcurrencyKey,
-    visibilityQueue,
+    nackCounterKey,
     messageId,
     messageScore,
   }: {
@@ -1361,7 +1376,7 @@ export class MarQS {
     concurrencyKey: string;
     envConcurrencyKey: string;
     orgConcurrencyKey: string;
-    visibilityQueue: string;
+    nackCounterKey: string;
     messageId: string;
     messageScore: number;
   }) {
@@ -1372,7 +1387,7 @@ export class MarQS {
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
-      visibilityQueue,
+      nackCounterKey,
       messageId,
       messageScore,
       service: this.name,
@@ -1385,8 +1400,8 @@ export class MarQS {
       concurrencyKey,
       envConcurrencyKey,
       orgConcurrencyKey,
-      visibilityQueue,
       this.keys.envQueueKeyFromQueue(messageQueue),
+      nackCounterKey,
       messageQueue,
       messageId,
       String(Date.now()),
@@ -1604,17 +1619,16 @@ redis.call('SET', messageKey, messageData, 'GET')
     });
 
     this.redis.defineCommand("acknowledgeMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 7,
       lua: `
--- Keys: parentQueue, messageKey, messageQueue, visibilityQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
+-- Keys: parentQueue, messageKey, messageQueue, concurrencyKey, envCurrentConcurrencyKey, orgCurrentConcurrencyKey
 local parentQueue = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueue = KEYS[3]
-local visibilityQueue = KEYS[4]
-local concurrencyKey = KEYS[5]
-local envCurrentConcurrencyKey = KEYS[6]
-local orgCurrentConcurrencyKey = KEYS[7]
-local envQueueKey = KEYS[8]
+local concurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local orgCurrentConcurrencyKey = KEYS[6]
+local envQueueKey = KEYS[7]
 
 -- Args: messageId, messageQueueName
 local messageId = ARGV[1]
@@ -1637,9 +1651,6 @@ else
     redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueName)
 end
 
--- Remove the message from the timeout queue (deprecated, will eventually remove this)
-redis.call('ZREM', visibilityQueue, messageId)
-
 -- Update the concurrency keys
 redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
@@ -1650,15 +1661,14 @@ redis.call('SREM', orgCurrentConcurrencyKey, messageId)
     this.redis.defineCommand("nackMessage", {
       numberOfKeys: 8,
       lua: `
--- Keys: childQueueKey, parentQueueKey, visibilityQueue, concurrencyKey, envConcurrencyKey, orgConcurrencyKey, messageId
 local messageKey = KEYS[1]
 local childQueueKey = KEYS[2]
 local parentQueueKey = KEYS[3]
 local concurrencyKey = KEYS[4]
 local envConcurrencyKey = KEYS[5]
 local orgConcurrencyKey = KEYS[6]
-local visibilityQueue = KEYS[7]
-local envQueueKey = KEYS[8]
+local envQueueKey = KEYS[7]
+local nackCounterKey = KEYS[8]
 
 -- Args: childQueueName, messageId, currentTime, messageScore
 local childQueueName = ARGV[1]
@@ -1671,19 +1681,15 @@ redis.call('SREM', concurrencyKey, messageId)
 redis.call('SREM', envConcurrencyKey, messageId)
 redis.call('SREM', orgConcurrencyKey, messageId)
 
--- Check to see if the message is still in the visibilityQueue
-local messageVisibility = tonumber(redis.call('ZSCORE', visibilityQueue, messageId)) or 0
-
-if messageVisibility > 0 then
--- Remove the message from the timeout queue (deprecated, will eventually remove this)
-    redis.call('ZREM', visibilityQueue, messageId)
-end
-
 -- Enqueue the message into the queue
 redis.call('ZADD', childQueueKey, messageScore, messageId)
 
 -- Enqueue the message into the env queue
 redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Increment the nack counter with an expiry of 30 days
+redis.call('INCR', nackCounterKey)
+redis.call('EXPIRE', nackCounterKey, 2592000)
 
 -- Rebalance the parent queue
 local earliestMessage = redis.call('ZRANGE', childQueueKey, 0, 0, 'WITHSCORES')
@@ -1711,36 +1717,6 @@ end
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', orgCurrentConcurrencyKey, messageId)
 `,
-    });
-
-    this.redis.defineCommand("heartbeatMessage", {
-      numberOfKeys: 1,
-      lua: `
--- Keys: visibilityQueue
-local visibilityQueue = KEYS[1]
-
--- Args: messageId, milliseconds, maxVisibilityTimeout
-local messageId = ARGV[1]
-local milliseconds = tonumber(ARGV[2])
-local maxVisibilityTimeout = tonumber(ARGV[3])
-
--- Get the current visibility timeout
-local zscoreResult = redis.call('ZSCORE', visibilityQueue, messageId)
-
--- If there's no currentVisibilityTimeout, return and do not execute ZADD
-if zscoreResult == false then
-    return
-end
-
-local currentVisibilityTimeout = tonumber(zscoreResult)
-
-
--- Calculate the new visibility timeout
-local newVisibilityTimeout = math.min(currentVisibilityTimeout + milliseconds * 1000, maxVisibilityTimeout)
-
--- Update the visibility timeout
-redis.call('ZADD', visibilityQueue, newVisibilityTimeout, messageId)
-      `,
     });
 
     this.redis.defineCommand("calculateQueueCurrentConcurrencies", {
@@ -1854,7 +1830,6 @@ declare module "ioredis" {
       parentQueue: string,
       messageKey: string,
       messageQueue: string,
-      visibilityQueue: string,
       concurrencyKey: string,
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
@@ -1871,8 +1846,8 @@ declare module "ioredis" {
       concurrencyKey: string,
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
-      visibilityQueue: string,
       envQueueKey: string,
+      nackCounterKey: string,
       childQueueName: string,
       messageId: string,
       currentTime: string,
@@ -1885,14 +1860,6 @@ declare module "ioredis" {
       envConcurrencyKey: string,
       orgConcurrencyKey: string,
       messageId: string,
-      callback?: Callback<void>
-    ): Result<void, Context>;
-
-    heartbeatMessage(
-      visibilityQueue: string,
-      messageId: string,
-      milliseconds: string,
-      maxVisibilityTimeout: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1953,6 +1920,7 @@ function getMarQSClient() {
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: env.MARQS_VISIBILITY_TIMEOUT_MS,
         enableRebalancing: !env.MARQS_DISABLE_REBALANCING,
+        maximumNackCount: env.MARQS_MAXIMUM_NACK_COUNT,
         subscriber: concurrencyTracker,
       });
     } else {

@@ -47,6 +47,7 @@ export interface MarQSKeyProducer {
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
   messageKey(messageId: string): string;
+  nackCounterKey(messageId: string): string;
   stripKeyPrefix(key: string): string;
 }
 

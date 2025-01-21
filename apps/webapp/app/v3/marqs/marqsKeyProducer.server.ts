@@ -142,6 +142,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${constants.MESSAGE_PART}:${messageId}`;
   }
 
+  nackCounterKey(messageId: string): string {
+    return `${constants.MESSAGE_PART}:${messageId}:nacks`;
+  }
+
   private shortId(id: string) {
     // Return the last 12 characters of the id
     return id.slice(-12);

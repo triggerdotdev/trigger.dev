@@ -223,6 +223,8 @@ const EnvironmentSchema = z.object({
     .default(60 * 1000 * 15),
   MARQS_SHARED_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
   MARQS_DEV_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(12),
+  MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
+
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
