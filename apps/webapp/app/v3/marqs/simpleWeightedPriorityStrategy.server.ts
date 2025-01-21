@@ -64,7 +64,7 @@ export class SimpleWeightedChoiceStrategy implements MarQSQueuePriorityStrategy 
     const totalQueueWeight = sortedQueues.reduce((sum, queue) => sum + queue.totalWeight, 0);
     const weightedQueues = sortedQueues.map(({ queue, totalWeight }) => ({
       queue,
-      probability: totalWeight / totalQueueWeight,
+      probability: totalQueueWeight > 0 ? totalWeight / totalQueueWeight : 1.0,
     }));
 
     // Apply some randomization while maintaining general weight order
