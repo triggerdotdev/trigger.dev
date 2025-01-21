@@ -9,9 +9,11 @@ import {
   trace,
 } from "@opentelemetry/api";
 import {
+  AckCallbackResult,
   MachinePreset,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  QueueOptions,
   TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -27,7 +29,7 @@ import {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
-  RuntimeEnvironment,
+  TaskQueue,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
@@ -37,8 +39,12 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
-import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
+import { marqs } from "~/v3/marqs/index.server";
+import {
+  RuntimeEnvironmentForEnvRepo,
+  RuntimeEnvironmentForEnvRepoPayload,
+  resolveVariablesForEnvironment,
+} from "../environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariable } from "../environmentVariables/repository";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -61,6 +67,7 @@ import {
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -122,15 +129,14 @@ export type SharedQueueConsumerOptions = {
 
 type HandleMessageAction = "ack_and_do_more_work" | "nack" | "nack_and_do_more_work" | "noop";
 
-type DoWorkInternalResult =
-  | {
-      reason: string;
-      attrs?: Record<string, string | number | boolean | undefined>;
-      error?: Error | string;
-      interval?: number;
-      action?: HandleMessageAction;
-    }
-  | undefined;
+type DoWorkInternalResult = {
+  reason: string;
+  outcome: "execution" | "retry_with_nack" | "fail_with_ack" | "noop";
+  attrs?: Record<string, string | number | boolean | undefined>;
+  error?: Error | string;
+  interval?: number;
+  action?: HandleMessageAction;
+};
 
 type HandleMessageResult = {
   action: HandleMessageAction;
@@ -151,6 +157,7 @@ export class SharedQueueConsumer {
   private _currentSpanContext: Context | undefined;
   private _reasonStats: Record<string, number> = {};
   private _actionStats: Record<string, number> = {};
+  private _outcomeStats: Record<string, number> = {};
   private _currentSpan: Span | undefined;
   private _endSpanInNextIteration = false;
   private _tasks = sharedQueueTasks;
@@ -246,6 +253,7 @@ export class SharedQueueConsumer {
     this._traceStartedAt = new Date();
     this._reasonStats = {};
     this._actionStats = {};
+    this._outcomeStats = {};
 
     this.#doWork().finally(() => {});
   }
@@ -258,6 +266,10 @@ export class SharedQueueConsumer {
 
       for (const [action, count] of Object.entries(this._actionStats)) {
         this._currentSpan.setAttribute(`actions_${action}`, count);
+      }
+
+      for (const [outcome, count] of Object.entries(this._outcomeStats)) {
+        this._currentSpan.setAttribute(`outcomes_${outcome}`, count);
       }
 
       this._currentSpan.end();
@@ -318,6 +330,7 @@ export class SharedQueueConsumer {
       this._traceStartedAt = new Date();
       this._reasonStats = {};
       this._actionStats = {};
+      this._outcomeStats = {};
       this._iterationsCount = 0;
       this._runningDurationInMs = 0;
       this._endSpanInNextIteration = false;
@@ -338,39 +351,33 @@ export class SharedQueueConsumer {
         try {
           const result = await this.#doWorkInternal();
 
-          if (result) {
-            this._reasonStats[result.reason] = (this._reasonStats[result.reason] ?? 0) + 1;
+          this._reasonStats[result.reason] = (this._reasonStats[result.reason] ?? 0) + 1;
+          this._outcomeStats[result.outcome] = (this._outcomeStats[result.outcome] ?? 0) + 1;
 
-            if (result.action) {
-              this._actionStats[result.action] = (this._actionStats[result.action] ?? 0) + 1;
-            }
+          if (result.action) {
+            this._actionStats[result.action] = (this._actionStats[result.action] ?? 0) + 1;
+          }
 
-            span.setAttribute("reason", result.reason);
+          span.setAttribute("reason", result.reason);
 
-            if (result.attrs) {
-              for (const [key, value] of Object.entries(result.attrs)) {
-                if (value) {
-                  span.setAttribute(key, value);
-                }
+          if (result.attrs) {
+            for (const [key, value] of Object.entries(result.attrs)) {
+              if (value) {
+                span.setAttribute(key, value);
               }
             }
-
-            if (result.error) {
-              span.recordException(result.error);
-              span.setStatus({ code: SpanStatusCode.ERROR });
-            }
-
-            if (typeof result.interval === "number") {
-              nextInterval = Math.max(result.interval, 0); // Cannot be negative
-            }
-
-            span.setAttribute("nextInterval", nextInterval);
-          } else {
-            span.setAttribute("reason", "no_result");
-
-            this._reasonStats["no_result"] = (this._reasonStats["no_result"] ?? 0) + 1;
-            this._actionStats["no_result"] = (this._actionStats["no_result"] ?? 0) + 1;
           }
+
+          if (result.error) {
+            span.recordException(result.error);
+            span.setStatus({ code: SpanStatusCode.ERROR });
+          }
+
+          if (typeof result.interval === "number") {
+            nextInterval = Math.max(result.interval, 0); // Cannot be negative
+          }
+
+          span.setAttribute("nextInterval", nextInterval);
         } catch (error) {
           if (error instanceof Error) {
             this._currentSpan?.recordException(error);
@@ -412,7 +419,11 @@ export class SharedQueueConsumer {
     const message = await marqs?.dequeueMessageInSharedQueue(this._id);
 
     if (!message) {
-      return { reason: "no_message_dequeued", interval: this._options.nextTickInterval };
+      return {
+        reason: "no_message_dequeued",
+        outcome: "noop",
+        interval: this._options.nextTickInterval,
+      };
     }
 
     logger.log("dequeueMessageInSharedQueue()", { queueMessage: message });
@@ -429,6 +440,7 @@ export class SharedQueueConsumer {
 
       return {
         reason: "failed_to_parse_message",
+        outcome: "fail_with_ack",
         attrs: { message_id: message.messageId, message_version: message.version },
         error: messageBody.error,
       };
@@ -453,6 +465,7 @@ export class SharedQueueConsumer {
       case "noop": {
         return {
           reason: messageResult.reason ?? "none_specified",
+          outcome: "execution",
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
@@ -464,6 +477,7 @@ export class SharedQueueConsumer {
 
         return {
           reason: messageResult.reason ?? "none_specified",
+          outcome: "fail_with_ack",
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
@@ -475,6 +489,7 @@ export class SharedQueueConsumer {
 
         return {
           reason: messageResult.reason ?? "none_specified",
+          outcome: "retry_with_nack",
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           interval: messageResult.interval,
@@ -486,6 +501,7 @@ export class SharedQueueConsumer {
 
         return {
           reason: messageResult.reason ?? "none_specified",
+          outcome: "retry_with_nack",
           attrs: hydrateAttributes(messageResult.attrs ?? {}),
           error: messageResult.error,
           action: "nack",
@@ -731,12 +747,12 @@ export class SharedQueueConsumer {
       };
     }
 
-    const queue = await prisma.taskQueue.findFirst({
-      where: {
-        runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-        name: sanitizeQueueName(lockedTaskRun.queue),
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      lockedTaskRun.queue,
+      lockedTaskRun.runtimeEnvironmentId,
+      lockedTaskRun.lockedById ?? undefined,
+      backgroundTask
+    );
 
     if (!queue) {
       logger.debug("SharedQueueConsumer queue not found, so nacking message", {
@@ -746,7 +762,7 @@ export class SharedQueueConsumer {
       });
 
       return {
-        action: "nack_and_do_more_work",
+        action: "ack_and_do_more_work",
         reason: "queue_not_found",
         attrs: {
           queue_name: sanitizeQueueName(lockedTaskRun.queue),
@@ -1018,12 +1034,11 @@ export class SharedQueueConsumer {
       };
     }
 
-    const queue = await prisma.taskQueue.findFirst({
-      where: {
-        runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-        name: sanitizeQueueName(resumableRun.queue),
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      resumableRun.queue,
+      resumableRun.runtimeEnvironmentId,
+      resumableRun.lockedById ?? undefined
+    );
 
     if (!queue) {
       logger.debug("SharedQueueConsumer queue not found, so nacking message", {
@@ -1032,7 +1047,7 @@ export class SharedQueueConsumer {
       });
 
       return {
-        action: "nack_and_do_more_work",
+        action: "ack_and_do_more_work",
         reason: "queue_not_found",
         attrs: {
           queue_name: sanitizeQueueName(resumableRun.queue),
@@ -1051,81 +1066,11 @@ export class SharedQueueConsumer {
       };
     }
 
-    const completions: TaskRunExecutionResult[] = [];
-    const executions: TaskRunExecution[] = [];
-
-    for (const completedAttemptId of data.completedAttemptIds) {
-      const completedAttempt = await prisma.taskRunAttempt.findFirst({
-        where: {
-          id: completedAttemptId,
-          taskRun: {
-            lockedAt: {
-              not: null,
-            },
-            lockedById: {
-              not: null,
-            },
-          },
-        },
-      });
-
-      if (!completedAttempt) {
-        logger.error("Completed attempt not found", {
-          queueMessage: message.data,
-          messageId: message.messageId,
-        });
-
-        return {
-          action: "ack_and_do_more_work",
-          reason: "completed_attempt_not_found",
-          attrs: {
-            completed_attempt_id: completedAttemptId,
-          },
-        };
-      }
-
-      const completion = await this.#startActiveSpan(
-        "getCompletionPayloadFromAttempt",
-        async (span) => {
-          return await this._tasks.getCompletionPayloadFromAttempt(completedAttempt.id);
-        }
-      );
-
-      if (!completion) {
-        return {
-          action: "ack_and_do_more_work",
-          reason: "failed_to_get_completion_payload",
-          attrs: {
-            completed_attempt_id: completedAttemptId,
-          },
-        };
-      }
-
-      completions.push(completion);
-
-      const executionPayload = await this.#startActiveSpan(
-        "getExecutionPayloadFromAttempt",
-        async (span) => {
-          return await this._tasks.getExecutionPayloadFromAttempt({
-            id: completedAttempt.id,
-          });
-        }
-      );
-
-      if (!executionPayload) {
-        return {
-          action: "ack_and_do_more_work",
-          reason: "failed_to_get_execution_payload",
-          attrs: {
-            completed_attempt_id: completedAttemptId,
-          },
-        };
-      }
-
-      executions.push(executionPayload.execution);
-    }
-
     try {
+      const { completions, executions } = await this.#resolveCompletedAttemptsForResumeMessage(
+        data.completedAttemptIds
+      );
+
       const resumeMessage = {
         version: "v1" as const,
         runId: resumableAttempt.taskRunId,
@@ -1144,10 +1089,54 @@ export class SharedQueueConsumer {
       // The attempt should still be running so we can broadcast to all coordinators to resume immediately
       const responses = await this.#startActiveSpan(
         "emitResumeAfterDependencyWithAck",
-        async () => {
-          return await socketIo.coordinatorNamespace
-            .timeout(10_000)
-            .emitWithAck("RESUME_AFTER_DEPENDENCY_WITH_ACK", resumeMessage);
+        async (span) => {
+          try {
+            const sockets = await this.#startActiveSpan("getCoordinatorSockets", async (span) => {
+              const sockets = await socketIo.coordinatorNamespace.fetchSockets();
+
+              span.setAttribute("socket_count", sockets.length);
+
+              return sockets;
+            });
+
+            span.setAttribute("socket_count", sockets.length);
+            span.setAttribute("attempt_id", resumableAttempt.id);
+            span.setAttribute(
+              "timeout_in_ms",
+              env.SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS
+            );
+
+            const responses = await socketIo.coordinatorNamespace
+              .timeout(env.SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS)
+              .emitWithAck("RESUME_AFTER_DEPENDENCY_WITH_ACK", resumeMessage);
+
+            span.setAttribute("response_count", responses.length);
+
+            const hasSuccess = responses.some((response) => response.success);
+
+            span.setAttribute("has_success", hasSuccess);
+            span.setAttribute("is_timeout", false);
+
+            return responses;
+          } catch (e) {
+            if (e instanceof Error && "responses" in e && Array.isArray(e.responses)) {
+              span.setAttribute("is_timeout", false);
+
+              const responses = e.responses as AckCallbackResult[];
+
+              span.setAttribute("response_count", responses.length);
+
+              const hasSuccess = responses.some(
+                (response) => "success" in response && response.success
+              );
+
+              span.setAttribute("has_success", hasSuccess);
+
+              return responses;
+            }
+
+            throw e;
+          }
         }
       );
 
@@ -1278,6 +1267,32 @@ export class SharedQueueConsumer {
         retryInMs: 5_000,
       };
     } catch (e) {
+      if (e instanceof ResumePayloadAttemptsNotFoundError) {
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_get_resume_payloads_for_attempts",
+          attrs: {
+            attempt_ids: e.attemptIds.join(","),
+          },
+        };
+      } else if (e instanceof ResumePayloadExecutionNotFoundError) {
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_get_resume_payloads_missing_execution",
+          attrs: {
+            attempt_id: e.attemptId,
+          },
+        };
+      } else if (e instanceof ResumePayloadCompletionNotFoundError) {
+        return {
+          action: "ack_and_do_more_work",
+          reason: "failed_to_get_resume_payloads_missing_completion",
+          attrs: {
+            attempt_id: e.attemptId,
+          },
+        };
+      }
+
       logger.error("RESUME_AFTER_DEPENDENCY_WITH_ACK threw, nacking with delay", {
         message,
         error: e,
@@ -1392,6 +1407,57 @@ export class SharedQueueConsumer {
     });
   }
 
+  async #resolveCompletedAttemptsForResumeMessage(
+    completedAttemptIds: string[]
+  ): Promise<{ completions: TaskRunExecutionResult[]; executions: TaskRunExecution[] }> {
+    return await this.#startActiveSpan("resolveCompletedAttemptsForResumeMessage", async (span) => {
+      span.setAttribute("completed_attempt_count", completedAttemptIds.length);
+
+      // Chunk the completedAttemptIds into chunks of 10
+      const chunkedCompletedAttemptIds = chunk(
+        completedAttemptIds,
+        env.SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE
+      );
+
+      span.setAttribute("chunk_count", chunkedCompletedAttemptIds.length);
+      span.setAttribute("chunk_size", env.SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE);
+
+      const allResumePayloads = await this.#startActiveSpan(
+        "resolveAllResumePayloads",
+        async (span) => {
+          span.setAttribute("chunk_count", chunkedCompletedAttemptIds.length);
+          span.setAttribute("chunk_size", env.SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE);
+          span.setAttribute("completed_attempt_count", completedAttemptIds.length);
+
+          return await Promise.all(
+            chunkedCompletedAttemptIds.map(async (attemptIds) => {
+              const payloads = await this.#startActiveSpan("getResumePayloads", async (span) => {
+                span.setAttribute("attempt_ids", attemptIds.join(","));
+                span.setAttribute("attempt_count", attemptIds.length);
+
+                const payloads = await this._tasks.getResumePayloads(attemptIds);
+
+                span.setAttribute("payload_count", payloads.length);
+
+                return payloads;
+              });
+
+              return {
+                completions: payloads.map((payload) => payload.completion),
+                executions: payloads.map((payload) => payload.execution),
+              };
+            })
+          );
+        }
+      );
+
+      return {
+        completions: allResumePayloads.flatMap((payload) => payload.completions),
+        executions: allResumePayloads.flatMap((payload) => payload.executions),
+      };
+    });
+  }
+
   async #startActiveSpan<T>(
     name: string,
     fn: (span: Span) => Promise<T>,
@@ -1427,52 +1493,125 @@ export class SharedQueueConsumer {
   }
 }
 
-type AttemptForCompletion = Prisma.TaskRunAttemptGetPayload<{
-  include: {
-    backgroundWorker: true;
-    backgroundWorkerTask: true;
-    taskRun: {
-      include: {
-        runtimeEnvironment: {
-          include: {
-            organization: true;
-            project: true;
-          };
-        };
-        tags: true;
-      };
-    };
-    queue: true;
-  };
-}>;
+class ResumePayloadAttemptsNotFoundError extends Error {
+  constructor(public readonly attemptIds: string[]) {
+    super(`Resume payload attempts not found for attempts ${attemptIds.join(", ")}`);
+  }
+}
 
-type AttemptForExecution = Prisma.TaskRunAttemptGetPayload<{
-  include: {
-    backgroundWorker: true;
-    backgroundWorkerTask: true;
-    runtimeEnvironment: {
-      include: {
-        organization: true;
-        project: true;
-      };
-    };
+class ResumePayloadExecutionNotFoundError extends Error {
+  constructor(public readonly attemptId: string) {
+    super(`Resume payload execution not found for attempt ${attemptId}`);
+  }
+}
+
+class ResumePayloadCompletionNotFoundError extends Error {
+  constructor(public readonly attemptId: string) {
+    super(`Resume payload completion not found for attempt ${attemptId}`);
+  }
+}
+
+function chunk<T>(arr: T[], chunkSize: number): T[][] {
+  return Array.from({ length: Math.ceil(arr.length / chunkSize) }, (_, i) =>
+    arr.slice(i * chunkSize, i * chunkSize + chunkSize)
+  );
+}
+
+export const AttemptForCompletionGetPayload = {
+  select: {
+    status: true,
+    output: true,
+    outputType: true,
+    error: true,
     taskRun: {
-      include: {
-        tags: true;
-        batchItems: {
-          include: {
-            batchTaskRun: {
-              select: {
-                friendlyId: true;
-              };
-            };
-          };
-        };
-      };
-    };
-    queue: true;
-  };
-}>;
+      select: {
+        taskIdentifier: true,
+        friendlyId: true,
+      },
+    },
+  },
+} as const;
+
+type AttemptForCompletion = Prisma.TaskRunAttemptGetPayload<typeof AttemptForCompletionGetPayload>;
+
+export const AttemptForExecutionGetPayload = {
+  select: {
+    id: true,
+    friendlyId: true,
+    taskRunId: true,
+    number: true,
+    startedAt: true,
+    createdAt: true,
+    backgroundWorkerId: true,
+    backgroundWorkerTaskId: true,
+    backgroundWorker: {
+      select: {
+        contentHash: true,
+        version: true,
+      },
+    },
+    backgroundWorkerTask: {
+      select: {
+        machineConfig: true,
+        slug: true,
+        filePath: true,
+        exportName: true,
+      },
+    },
+    status: true,
+    runtimeEnvironment: {
+      select: {
+        ...RuntimeEnvironmentForEnvRepoPayload.select,
+        organization: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            externalRef: true,
+            slug: true,
+            name: true,
+          },
+        },
+      },
+    },
+    taskRun: {
+      select: {
+        id: true,
+        status: true,
+        traceContext: true,
+        machinePreset: true,
+        friendlyId: true,
+        payload: true,
+        payloadType: true,
+        context: true,
+        createdAt: true,
+        startedAt: true,
+        isTest: true,
+        metadata: true,
+        metadataType: true,
+        idempotencyKey: true,
+        usageDurationMs: true,
+        costInCents: true,
+        baseCostInCents: true,
+        maxDurationInSeconds: true,
+        tags: true,
+      },
+    },
+    queue: {
+      select: {
+        name: true,
+        friendlyId: true,
+      },
+    },
+  },
+} as const;
+
+type AttemptForExecution = Prisma.TaskRunAttemptGetPayload<typeof AttemptForExecutionGetPayload>;
 
 class SharedQueueTasks {
   private _completionPayloadFromAttempt(attempt: AttemptForCompletion): TaskRunExecutionResult {
@@ -1565,10 +1704,7 @@ class SharedQueueTasks {
         slug: attempt.runtimeEnvironment.project.slug,
         name: attempt.runtimeEnvironment.project.name,
       },
-      batch:
-        taskRun.batchItems[0] && taskRun.batchItems[0].batchTaskRun
-          ? { id: taskRun.batchItems[0].batchTaskRun.friendlyId }
-          : undefined,
+      batch: undefined, // TODO: Removing this for now until we can do it more efficiently
       worker: {
         id: attempt.backgroundWorkerId,
         contentHash: attempt.backgroundWorker.contentHash,
@@ -1588,22 +1724,7 @@ class SharedQueueTasks {
           in: FINAL_ATTEMPT_STATUSES,
         },
       },
-      include: {
-        backgroundWorker: true,
-        backgroundWorkerTask: true,
-        taskRun: {
-          include: {
-            runtimeEnvironment: {
-              include: {
-                organization: true,
-                project: true,
-              },
-            },
-            tags: true,
-          },
-        },
-        queue: true,
-      },
+      ...AttemptForCompletionGetPayload,
     });
 
     if (!attempt) {
@@ -1629,31 +1750,7 @@ class SharedQueueTasks {
       where: {
         id,
       },
-      include: {
-        backgroundWorker: true,
-        backgroundWorkerTask: true,
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
-          },
-        },
-        taskRun: {
-          include: {
-            tags: true,
-            batchItems: {
-              include: {
-                batchTaskRun: {
-                  select: {
-                    friendlyId: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        queue: true,
-      },
+      ...AttemptForExecutionGetPayload,
     });
 
     if (!attempt) {
@@ -1761,36 +1858,17 @@ class SharedQueueTasks {
       where: {
         id: attemptId,
       },
-      include: {
-        backgroundWorker: true,
-        backgroundWorkerTask: true,
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
-          },
-        },
+      select: {
+        ...AttemptForExecutionGetPayload.select,
+        error: true,
+        output: true,
+        outputType: true,
         taskRun: {
-          include: {
-            runtimeEnvironment: {
-              include: {
-                organization: true,
-                project: true,
-              },
-            },
-            tags: true,
-            batchItems: {
-              include: {
-                batchTaskRun: {
-                  select: {
-                    friendlyId: true,
-                  },
-                },
-              },
-            },
+          select: {
+            ...AttemptForExecutionGetPayload.select.taskRun.select,
+            taskIdentifier: true,
           },
         },
-        queue: true,
       },
     });
 
@@ -1806,6 +1884,62 @@ class SharedQueueTasks {
       execution,
       completion,
     };
+  }
+
+  async getResumePayloads(attemptIds: string[]): Promise<
+    Array<{
+      execution: ProdTaskRunExecution;
+      completion: TaskRunExecutionResult;
+    }>
+  > {
+    const attempts = await prisma.taskRunAttempt.findMany({
+      where: {
+        id: {
+          in: attemptIds,
+        },
+      },
+      select: {
+        ...AttemptForExecutionGetPayload.select,
+        error: true,
+        output: true,
+        outputType: true,
+        taskRun: {
+          select: {
+            ...AttemptForExecutionGetPayload.select.taskRun.select,
+            taskIdentifier: true,
+          },
+        },
+      },
+    });
+
+    if (attempts.length !== attemptIds.length) {
+      logger.error("getResumePayloads: Not all attempts found", { attemptIds });
+
+      throw new ResumePayloadAttemptsNotFoundError(attemptIds);
+    }
+
+    const payloads = await Promise.all(
+      attempts.map(async (attempt) => {
+        const execution = await this._executionFromAttempt(attempt);
+
+        if (!execution) {
+          throw new ResumePayloadExecutionNotFoundError(attempt.id);
+        }
+
+        const completion = this._completionPayloadFromAttempt(attempt);
+
+        if (!completion) {
+          throw new ResumePayloadCompletionNotFoundError(attempt.id);
+        }
+
+        return {
+          execution,
+          completion,
+        };
+      })
+    );
+
+    return payloads;
   }
 
   async getLatestExecutionPayloadFromRun(
@@ -1993,7 +2127,7 @@ class SharedQueueTasks {
   }
 
   async #buildEnvironmentVariables(
-    environment: RuntimeEnvironment,
+    environment: RuntimeEnvironmentForEnvRepo,
     runId: string,
     machinePreset: MachinePreset
   ): Promise<Array<EnvironmentVariable>> {

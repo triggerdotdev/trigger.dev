@@ -654,9 +654,26 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
+export const RuntimeEnvironmentForEnvRepoPayload = {
+  select: {
+    id: true,
+    slug: true,
+    type: true,
+    projectId: true,
+    apiKey: true,
+    organizationId: true,
+  },
+} as const;
+
+export type RuntimeEnvironmentForEnvRepo = Prisma.RuntimeEnvironmentGetPayload<
+  typeof RuntimeEnvironmentForEnvRepoPayload
+>;
+
 export const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
-export async function resolveVariablesForEnvironment(runtimeEnvironment: RuntimeEnvironment) {
+export async function resolveVariablesForEnvironment(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+) {
   const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id
@@ -672,7 +689,9 @@ export async function resolveVariablesForEnvironment(runtimeEnvironment: Runtime
   return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
 }
 
-async function resolveOverridableTriggerVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveOverridableTriggerVariables(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_REALTIME_STREAM_VERSION",
@@ -683,7 +702,7 @@ async function resolveOverridableTriggerVariables(runtimeEnvironment: RuntimeEnv
   return result;
 }
 
-async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -745,7 +764,7 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
-async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_SECRET_KEY",
@@ -838,7 +857,7 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
 }
 
 async function resolveCommonBuiltInVariables(
-  runtimeEnvironment: RuntimeEnvironment
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ): Promise<Array<EnvironmentVariable>> {
   return [];
 }

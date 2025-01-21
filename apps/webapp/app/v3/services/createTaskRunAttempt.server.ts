@@ -10,6 +10,7 @@ import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { findQueueInEnvironment } from "~/models/taskQueue.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -95,18 +96,18 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Task run is cancelled", 400);
       }
 
-      if (!taskRun.lockedBy) {
+      const lockedBy = taskRun.lockedBy;
+
+      if (!lockedBy) {
         throw new ServiceValidationError("Task run is not locked", 400);
       }
 
-      const queue = await this._prisma.taskQueue.findUnique({
-        where: {
-          runtimeEnvironmentId_name: {
-            runtimeEnvironmentId: environment.id,
-            name: taskRun.queue,
-          },
-        },
-      });
+      const queue = await findQueueInEnvironment(
+        taskRun.queue,
+        environment.id,
+        lockedBy.id,
+        lockedBy
+      );
 
       if (!queue) {
         throw new ServiceValidationError("Queue not found", 404);
@@ -121,7 +122,7 @@ export class CreateTaskRunAttemptService extends BaseService {
       if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
         const service = new CrashTaskRunService(this._prisma);
         await service.call(taskRun.id, {
-          reason: taskRun.lockedBy.worker.supportsLazyAttempts
+          reason: lockedBy.worker.supportsLazyAttempts
             ? "Max attempts reached."
             : "Max attempts reached. Please upgrade your CLI and SDK.",
         });
@@ -136,8 +137,8 @@ export class CreateTaskRunAttemptService extends BaseService {
             friendlyId: generateFriendlyId("attempt"),
             taskRunId: taskRun.id,
             startedAt: new Date(),
-            backgroundWorkerId: taskRun.lockedBy!.worker.id,
-            backgroundWorkerTaskId: taskRun.lockedBy!.id,
+            backgroundWorkerId: lockedBy.worker.id,
+            backgroundWorkerTaskId: lockedBy.id,
             status: setToExecuting ? "EXECUTING" : "PENDING",
             queueId: queue.id,
             runtimeEnvironmentId: environment.id,
@@ -174,8 +175,7 @@ export class CreateTaskRunAttemptService extends BaseService {
       }
 
       const machinePreset =
-        machinePresetFromRun(taskRun) ??
-        machinePresetFromConfig(taskRun.lockedBy.machineConfig ?? {});
+        machinePresetFromRun(taskRun) ?? machinePresetFromConfig(lockedBy.machineConfig ?? {});
 
       const metadata = await parsePacket({
         data: taskRun.metadata ?? undefined,
@@ -184,16 +184,16 @@ export class CreateTaskRunAttemptService extends BaseService {
 
       const execution: TaskRunExecution = {
         task: {
-          id: taskRun.lockedBy.slug,
-          filePath: taskRun.lockedBy.filePath,
-          exportName: taskRun.lockedBy.exportName,
+          id: lockedBy.slug,
+          filePath: lockedBy.filePath,
+          exportName: lockedBy.exportName,
         },
         attempt: {
           id: taskRunAttempt.friendlyId,
           number: taskRunAttempt.number,
           startedAt: taskRunAttempt.startedAt ?? taskRunAttempt.createdAt,
-          backgroundWorkerId: taskRun.lockedBy.worker.id,
-          backgroundWorkerTaskId: taskRun.lockedBy.id,
+          backgroundWorkerId: lockedBy.worker.id,
+          backgroundWorkerTaskId: lockedBy.id,
           status: "EXECUTING" as const,
         },
         run: {
@@ -210,7 +210,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           costInCents: taskRun.costInCents,
           baseCostInCents: taskRun.baseCostInCents,
           maxAttempts: taskRun.maxAttempts ?? undefined,
-          version: taskRun.lockedBy.worker.version,
+          version: lockedBy.worker.version,
           metadata,
           maxDuration: taskRun.maxDurationInSeconds ?? undefined,
         },

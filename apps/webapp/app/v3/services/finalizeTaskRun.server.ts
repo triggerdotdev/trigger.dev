@@ -1,7 +1,7 @@
 import { FlushedRunMetadata, sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   FINAL_ATTEMPT_STATUSES,
@@ -17,6 +17,7 @@ import { socketIo } from "../handleSocketIo.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 
 type BaseInput = {
   id: string;
@@ -291,6 +292,7 @@ export class FinalizeTaskRunService extends BaseService {
         id: true,
         workerId: true,
         runtimeEnvironmentId: true,
+        queueConfig: true,
       },
       where: {
         id: run.lockedById,
@@ -302,14 +304,12 @@ export class FinalizeTaskRunService extends BaseService {
       return;
     }
 
-    const queue = await this._prisma.taskQueue.findUnique({
-      where: {
-        runtimeEnvironmentId_name: {
-          runtimeEnvironmentId: workerTask.runtimeEnvironmentId,
-          name: sanitizeQueueName(run.queue),
-        },
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      run.queue,
+      workerTask.runtimeEnvironmentId,
+      workerTask.id,
+      workerTask
+    );
 
     if (!queue) {
       logger.error("FinalizeTaskRunService: No queue found", { runId: run.id });
