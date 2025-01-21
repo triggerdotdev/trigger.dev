@@ -212,10 +212,10 @@ module.exports = {
         prod: prodEnv,
       },
       focusStyles: {
-        outline: "2px solid",
+        outline: "1px solid",
         outlineOffset: "0px",
         outlineColor: textLink,
-        borderRadius: "2px",
+        borderRadius: "3px",
       },
       borderRadius: {
         lg: radius,

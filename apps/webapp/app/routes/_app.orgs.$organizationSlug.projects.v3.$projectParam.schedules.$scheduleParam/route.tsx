@@ -220,11 +220,12 @@ export default function Page() {
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
+          className="pl-1"
         />
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="p-3">
-          <div className="space-y-3">
+        <div className="space-y-3">
+          <div className="p-3">
             <Property.Table>
               <Property.Item>
                 <Property.Label>Schedule ID</Property.Label>
@@ -282,61 +283,64 @@ export default function Page() {
                 </>
               )}
             </Property.Table>
-            <div className="flex flex-col gap-1">
-              <Header3>Last 5 runs</Header3>
-              <TaskRunsTable
-                total={schedule.runs.length}
-                hasFilters={false}
-                filters={{
-                  tasks: [],
-                  versions: [],
-                  statuses: [],
-                  environments: [],
-                  from: undefined,
-                  to: undefined,
-                }}
-                runs={schedule.runs}
-                isLoading={false}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Header3>Next 5 runs</Header3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
-                    <TableHeaderCell>UTC</TableHeaderCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {schedule.active ? (
-                    schedule.nextRuns.length ? (
-                      schedule.nextRuns.map((run, index) => (
-                        <TableRow key={index}>
-                          {!isUtc && (
-                            <TableCell>
-                              <DateTime date={run} timeZone={schedule.timezone} />
-                            </TableCell>
-                          )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <Header3 className="pb-1 pl-3">Last 5 runs</Header3>
+            <TaskRunsTable
+              total={schedule.runs.length}
+              hasFilters={false}
+              filters={{
+                tasks: [],
+                versions: [],
+                statuses: [],
+                environments: [],
+                from: undefined,
+                to: undefined,
+              }}
+              runs={schedule.runs}
+              isLoading={false}
+              variant="bright"
+            />
+          </div>
+          <div className="flex flex-col gap-1 pt-2">
+            <Header3 className="pb-1 pl-3">Next 5 runs</Header3>
+            <Table variant="bright">
+              <TableHeader>
+                <TableRow>
+                  {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
+                  <TableHeaderCell>UTC</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {schedule.active ? (
+                  schedule.nextRuns.length ? (
+                    schedule.nextRuns.map((run, index) => (
+                      <TableRow key={index}>
+                        {!isUtc && (
                           <TableCell>
-                            <DateTime date={run} timeZone="UTC" />
+                            <DateTime date={run} timeZone={schedule.timezone} />
                           </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableBlankRow colSpan={isUtc ? 1 : 2}>
-                        <PlaceholderText title="You found a bug" />
-                      </TableBlankRow>
-                    )
+                        )}
+                        <TableCell>
+                          <DateTime date={run} timeZone="UTC" />
+                        </TableCell>
+                      </TableRow>
+                    ))
                   ) : (
                     <TableBlankRow colSpan={isUtc ? 1 : 2}>
-                      <PlaceholderText title="Schedule disabled" />
+                      <PlaceholderText title="You found a bug" />
                     </TableBlankRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            {!isImperative && (
+                  )
+                ) : (
+                  <TableBlankRow colSpan={isUtc ? 1 : 2}>
+                    <PlaceholderText title="Schedule disabled" />
+                  </TableBlankRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {!isImperative && (
+            <div className="p-3">
               <InfoPanel
                 title="Editing declarative schedules"
                 icon={BookOpenIcon}
@@ -349,8 +353,8 @@ export default function Page() {
                 You can only edit a declarative schedule by updating your schedules.task and then
                 running the CLI dev and deploy commands.
               </InfoPanel>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
       {isImperative && (

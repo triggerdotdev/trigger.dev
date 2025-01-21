@@ -22,7 +22,7 @@ export function RunTag({ tag }: { tag: string }) {
         <span className="flex items-center border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed">
           {tagResult.key}
         </span>
-        <span className="flex items-center rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-750 px-1.5 text-text-dimmed">
+        <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-750 px-1.5 text-text-dimmed">
           {tagResult.value}
         </span>
       </span>

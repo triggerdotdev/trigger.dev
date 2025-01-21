@@ -195,7 +195,9 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
             const path = v3BatchRunsPath(organization, project, batch);
             return (
               <TableRow key={batch.id}>
-                <TableCell to={path}>{batch.friendlyId}</TableCell>
+                <TableCell to={path} isTabbableCell>
+                  {batch.friendlyId}
+                </TableCell>
                 <TableCell to={path}>
                   <EnvironmentLabel
                     environment={batch.environment}
@@ -209,7 +211,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                       disableHoverableContent
                       button={
                         <span className="flex items-center gap-1">
-                          <ExclamationCircleIcon className="size-4 text-slate-500" />
+                          <ExclamationCircleIcon className="size-4 text-text-dimmed" />
                           <span>Legacy batch</span>
                         </span>
                       }

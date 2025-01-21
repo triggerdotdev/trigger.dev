@@ -4,9 +4,9 @@ import { cn } from "~/utils/cn";
 
 const variations = {
   primary:
-    "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group",
+    "text-indigo-500 transition hover:text-indigo-400 inline-flex gap-0.5 items-center group focus-visible:focus-custom",
   secondary:
-    "text-text-dimmed transition underline underline-offset-2 decoration-dimmed/50 hover:decoration-dimmed inline-flex gap-0.5 items-center group",
+    "text-text-dimmed transition underline underline-offset-2 decoration-dimmed/50 hover:decoration-dimmed inline-flex gap-0.5 items-center group focus-visible:focus-custom",
 } as const;
 
 type TextLinkProps = {
@@ -34,14 +34,14 @@ export function TextLink({
     <Link to={to} className={cn(classes, className)} {...props}>
       {children}{" "}
       {trailingIcon && (
-        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
+        <NamedIcon name={trailingIcon} className={cn("size-4", trailingIconClassName)} />
       )}
     </Link>
   ) : href ? (
     <a href={href} className={cn(classes, className)} {...props}>
       {children}{" "}
       {trailingIcon && (
-        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
+        <NamedIcon name={trailingIcon} className={cn("size-4", trailingIconClassName)} />
       )}
     </a>
   ) : (
