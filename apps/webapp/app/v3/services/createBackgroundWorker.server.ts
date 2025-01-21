@@ -7,7 +7,7 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
@@ -16,6 +16,7 @@ import { RegisterNextTaskScheduleInstanceService } from "./registerNextTaskSched
 import cronstrue from "cronstrue";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { clampMaxDuration } from "../utils/maxDuration";
+import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(

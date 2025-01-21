@@ -13,6 +13,7 @@ import {
   MachinePreset,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
+  QueueOptions,
   TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -28,6 +29,7 @@ import {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
+  TaskQueue,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
@@ -37,7 +39,7 @@ import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import {
   RuntimeEnvironmentForEnvRepo,
   RuntimeEnvironmentForEnvRepoPayload,
@@ -65,6 +67,7 @@ import {
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -744,12 +747,12 @@ export class SharedQueueConsumer {
       };
     }
 
-    const queue = await prisma.taskQueue.findFirst({
-      where: {
-        runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
-        name: sanitizeQueueName(lockedTaskRun.queue),
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      lockedTaskRun.queue,
+      lockedTaskRun.runtimeEnvironmentId,
+      lockedTaskRun.lockedById ?? undefined,
+      backgroundTask
+    );
 
     if (!queue) {
       logger.debug("SharedQueueConsumer queue not found, so nacking message", {
@@ -759,7 +762,7 @@ export class SharedQueueConsumer {
       });
 
       return {
-        action: "nack_and_do_more_work",
+        action: "ack_and_do_more_work",
         reason: "queue_not_found",
         attrs: {
           queue_name: sanitizeQueueName(lockedTaskRun.queue),
@@ -1031,12 +1034,11 @@ export class SharedQueueConsumer {
       };
     }
 
-    const queue = await prisma.taskQueue.findFirst({
-      where: {
-        runtimeEnvironmentId: resumableAttempt.runtimeEnvironmentId,
-        name: sanitizeQueueName(resumableRun.queue),
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      resumableRun.queue,
+      resumableRun.runtimeEnvironmentId,
+      resumableRun.lockedById ?? undefined
+    );
 
     if (!queue) {
       logger.debug("SharedQueueConsumer queue not found, so nacking message", {
@@ -1045,7 +1047,7 @@ export class SharedQueueConsumer {
       });
 
       return {
-        action: "nack_and_do_more_work",
+        action: "ack_and_do_more_work",
         reason: "queue_not_found",
         attrs: {
           queue_name: sanitizeQueueName(resumableRun.queue),

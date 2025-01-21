@@ -30,3 +30,13 @@ export const queuesTest = task({
     await wait.for({ seconds: payload.waitSeconds ?? 1 });
   },
 });
+
+export const namedQueueTask = task({
+  id: "queues/named-queue",
+  queue: {
+    name: "named-queue",
+  },
+  run: async () => {
+    logger.info("named-queue");
+  },
+});
