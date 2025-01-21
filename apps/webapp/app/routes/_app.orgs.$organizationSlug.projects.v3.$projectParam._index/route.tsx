@@ -245,14 +245,16 @@ export default function Page() {
                     </div>
                     <Table containerClassName="max-h-full pb-[2.5rem]">
                       <TableHeader>
-                        <TableHeaderCell>Task ID</TableHeaderCell>
-                        <TableHeaderCell>Task</TableHeaderCell>
-                        <TableHeaderCell>Running</TableHeaderCell>
-                        <TableHeaderCell>Queued</TableHeaderCell>
-                        <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                        <TableHeaderCell>Avg. duration</TableHeaderCell>
-                        <TableHeaderCell>Environments</TableHeaderCell>
-                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                        <TableRow>
+                          <TableHeaderCell>Task ID</TableHeaderCell>
+                          <TableHeaderCell>Task</TableHeaderCell>
+                          <TableHeaderCell>Running</TableHeaderCell>
+                          <TableHeaderCell>Queued</TableHeaderCell>
+                          <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                          <TableHeaderCell>Avg. duration</TableHeaderCell>
+                          <TableHeaderCell>Environments</TableHeaderCell>
+                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                        </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredItems.length > 0 ? (

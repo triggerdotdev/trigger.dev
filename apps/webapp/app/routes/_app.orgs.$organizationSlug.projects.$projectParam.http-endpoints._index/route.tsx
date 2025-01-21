@@ -67,11 +67,13 @@ export default function Page() {
                 <div className="mb-8">
                   <Table fullWidth>
                     <TableHeader>
-                      <TableHeaderCell>ID</TableHeaderCell>
-                      <TableHeaderCell>Title</TableHeaderCell>
-                      <TableHeaderCell>Updated</TableHeaderCell>
-                      <TableHeaderCell alignment="right">Environments</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                      <TableRow>
+                        <TableHeaderCell>ID</TableHeaderCell>
+                        <TableHeaderCell>Title</TableHeaderCell>
+                        <TableHeaderCell>Updated</TableHeaderCell>
+                        <TableHeaderCell alignment="right">Environments</TableHeaderCell>
+                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                      </TableRow>
                     </TableHeader>
                     <TableBody>
                       {httpEndpoints.length > 0 ? (
