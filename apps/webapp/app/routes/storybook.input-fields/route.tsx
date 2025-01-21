@@ -1,7 +1,5 @@
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { TimeFrameFilter } from "~/components/runs/TimeFrameFilter";
 
 export default function Story() {
   return (
