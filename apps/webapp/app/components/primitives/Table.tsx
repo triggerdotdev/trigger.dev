@@ -112,7 +112,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, Omit<TableRowProps, "var
       <tr
         ref={ref}
         className={cn(
-          "group/table-row relative w-full cursor-pointer outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
           isSelected && variants[variant].rowSelected,
           disabled && "opacity-50",
           className
@@ -246,7 +246,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, Omit<TableCellProps, "
         {to ? (
           <Link
             to={to}
-            className={cn("focus:outline-none", flexClasses, actionClassName)}
+            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
             tabIndex={isTabbableCell ? 0 : -1}
           >
             {children}
@@ -254,7 +254,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, Omit<TableCellProps, "
         ) : onClick ? (
           <button
             onClick={onClick}
-            className={cn("focus:outline-none", flexClasses, actionClassName)}
+            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
             tabIndex={isTabbableCell ? 0 : -1}
           >
             {children}
