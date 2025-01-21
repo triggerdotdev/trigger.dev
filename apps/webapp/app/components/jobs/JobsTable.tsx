@@ -31,13 +31,15 @@ export function JobsTable({ jobs, noResultsText }: { jobs: ProjectJob[]; noResul
   return (
     <Table containerClassName="mb-4">
       <TableHeader>
-        <TableHeaderCell>Job</TableHeaderCell>
-        <TableHeaderCell>ID</TableHeaderCell>
-        <TableHeaderCell>Integrations</TableHeaderCell>
-        <TableHeaderCell>Properties</TableHeaderCell>
-        <TableHeaderCell>Last run</TableHeaderCell>
-        <TableHeaderCell>Status</TableHeaderCell>
-        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+        <TableRow>
+          <TableHeaderCell>Job</TableHeaderCell>
+          <TableHeaderCell>ID</TableHeaderCell>
+          <TableHeaderCell>Integrations</TableHeaderCell>
+          <TableHeaderCell>Properties</TableHeaderCell>
+          <TableHeaderCell>Last run</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+        </TableRow>
       </TableHeader>
       <TableBody>
         {jobs.length > 0 ? (

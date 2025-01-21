@@ -109,171 +109,173 @@ export function TaskRunsTable({
   return (
     <Table variant={variant} className="max-h-full overflow-y-auto">
       <TableHeader>
-        {allowSelection && (
-          <TableHeaderCell className="pl-3 pr-0">
-            {runs.length > 0 && (
-              <Checkbox
-                checked={hasAll(runs.map((r) => r.id))}
-                onChange={(element) => {
-                  const ids = runs.map((r) => r.id);
-                  const checked = element.currentTarget.checked;
-                  if (checked) {
-                    select(ids);
-                  } else {
-                    deselect(ids);
-                  }
-                }}
-                ref={(r) => {
-                  checkboxes.current[0] = r;
-                }}
-                onKeyDown={(event) => navigateCheckboxes(event, 0)}
-              />
-            )}
-          </TableHeaderCell>
-        )}
-        <TableHeaderCell alignment="right">Run #</TableHeaderCell>
-        <TableHeaderCell>Env</TableHeaderCell>
-        <TableHeaderCell>Task</TableHeaderCell>
-        <TableHeaderCell>Version</TableHeaderCell>
-        <TableHeaderCell
-          tooltip={
-            <div className="flex flex-col divide-y divide-grid-dimmed">
-              {filterableTaskRunStatuses.map((status) => (
-                <div
-                  key={status}
-                  className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
-                >
-                  <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
-                    <TaskRunStatusCombo status={status} />
+        <TableRow>
+          {allowSelection && (
+            <TableHeaderCell className="pl-3 pr-0">
+              {runs.length > 0 && (
+                <Checkbox
+                  checked={hasAll(runs.map((r) => r.id))}
+                  onChange={(element) => {
+                    const ids = runs.map((r) => r.id);
+                    const checked = element.currentTarget.checked;
+                    if (checked) {
+                      select(ids);
+                    } else {
+                      deselect(ids);
+                    }
+                  }}
+                  ref={(r) => {
+                    checkboxes.current[0] = r;
+                  }}
+                  onKeyDown={(event) => navigateCheckboxes(event, 0)}
+                />
+              )}
+            </TableHeaderCell>
+          )}
+          <TableHeaderCell alignment="right">Run #</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
+          <TableHeaderCell>Task</TableHeaderCell>
+          <TableHeaderCell>Version</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="flex flex-col divide-y divide-grid-dimmed">
+                {filterableTaskRunStatuses.map((status) => (
+                  <div
+                    key={status}
+                    className="grid grid-cols-[8rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                  >
+                    <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
+                      <TaskRunStatusCombo status={status} />
+                    </div>
+                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                      {descriptionForTaskRunStatus(status)}
+                    </Paragraph>
                   </div>
-                  <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
-                    {descriptionForTaskRunStatus(status)}
+                ))}
+              </div>
+            }
+          >
+            Status
+          </TableHeaderCell>
+          <TableHeaderCell>Started</TableHeaderCell>
+          <TableHeaderCell
+            colSpan={3}
+            tooltip={
+              <div className="flex max-w-xs flex-col gap-4 p-1">
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <RectangleStackIcon className="size-4 text-text-dimmed" />
+                    <Header3>Queued duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The amount of time from when the run was created to it starting to run.
                   </Paragraph>
                 </div>
-              ))}
-            </div>
-          }
-        >
-          Status
-        </TableHeaderCell>
-        <TableHeaderCell>Started</TableHeaderCell>
-        <TableHeaderCell
-          colSpan={3}
-          tooltip={
-            <div className="flex max-w-xs flex-col gap-4 p-1">
-              <div>
-                <div className="mb-0.5 flex items-center gap-1.5">
-                  <RectangleStackIcon className="size-4 text-text-dimmed" />
-                  <Header3>Queued duration</Header3>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The total amount of time from the run starting to it finishing. This includes
+                    all time spent waiting.
+                  </Paragraph>
                 </div>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                  The amount of time from when the run was created to it starting to run.
-                </Paragraph>
-              </div>
-              <div>
-                <div className="mb-0.5 flex items-center gap-1.5">
-                  <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
+                <div>
+                  <div className="mb-0.5 flex items-center gap-1.5">
+                    <CpuChipIcon className="size-4 text-success" />
+                    <Header3>Compute duration</Header3>
+                  </div>
+                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                    The amount of compute time used in the run. This does not include time spent
+                    waiting.
+                  </Paragraph>
                 </div>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                  The total amount of time from the run starting to it finishing. This includes all
-                  time spent waiting.
-                </Paragraph>
               </div>
-              <div>
-                <div className="mb-0.5 flex items-center gap-1.5">
-                  <CpuChipIcon className="size-4 text-success" />
-                  <Header3>Compute duration</Header3>
-                </div>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
-                  The amount of compute time used in the run. This does not include time spent
-                  waiting.
+            }
+          >
+            Duration
+          </TableHeaderCell>
+          {showCompute && (
+            <>
+              <TableHeaderCell>Compute</TableHeaderCell>
+            </>
+          )}
+          <TableHeaderCell>Test</TableHeaderCell>
+          <TableHeaderCell>Created at</TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  When you want to trigger a task now, but have it run at a later time, you can use
+                  the delay option.
                 </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  Runs that are delayed and have not been enqueued yet will display in the dashboard
+                  with a “Delayed” status.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="docs/small"
+                  LeadingIcon={BookOpenIcon}
+                  className="mt-3"
+                >
+                  Read docs
+                </LinkButton>
               </div>
-            </div>
-          }
-        >
-          Duration
-        </TableHeaderCell>
-        {showCompute && (
-          <>
-            <TableHeaderCell>Compute</TableHeaderCell>
-          </>
-        )}
-        <TableHeaderCell>Test</TableHeaderCell>
-        <TableHeaderCell>Created at</TableHeaderCell>
-        <TableHeaderCell
-          tooltip={
-            <div className="max-w-xs p-1">
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                When you want to trigger a task now, but have it run at a later time, you can use
-                the delay option.
-              </Paragraph>
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                Runs that are delayed and have not been enqueued yet will display in the dashboard
-                with a “Delayed” status.
-              </Paragraph>
-              <LinkButton
-                to={docsPath("v3/triggering")}
-                variant="docs/small"
-                LeadingIcon={BookOpenIcon}
-                className="mt-3"
-              >
-                Read docs
-              </LinkButton>
-            </div>
-          }
-        >
-          Delayed until
-        </TableHeaderCell>
-        <TableHeaderCell
-          tooltip={
-            <div className="max-w-xs p-1">
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                You can set a TTL (time to live) when triggering a task, which will automatically
-                expire the run if it hasn’t started within the specified time.
-              </Paragraph>
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                All runs in development have a default ttl of 10 minutes. You can disable this by
-                setting the ttl option.
-              </Paragraph>
-              <LinkButton
-                to={docsPath("v3/triggering")}
-                variant="docs/small"
-                LeadingIcon={BookOpenIcon}
-                className="mt-3"
-              >
-                Read docs
-              </LinkButton>
-            </div>
-          }
-        >
-          TTL
-        </TableHeaderCell>
-        <TableHeaderCell
-          tooltip={
-            <div className="max-w-xs p-1">
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                You can add tags to a run and then filter runs using them.
-              </Paragraph>
-              <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
-                You can add tags when triggering a run or inside the run function.
-              </Paragraph>
-              <LinkButton
-                to={docsPath("v3/tags")}
-                variant="docs/small"
-                LeadingIcon={BookOpenIcon}
-                className="mt-3"
-              >
-                Read docs
-              </LinkButton>
-            </div>
-          }
-        >
-          Tags
-        </TableHeaderCell>
-        <TableHeaderCell>
-          <span className="sr-only">Go to page</span>
-        </TableHeaderCell>
+            }
+          >
+            Delayed until
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can set a TTL (time to live) when triggering a task, which will automatically
+                  expire the run if it hasn’t started within the specified time.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  All runs in development have a default ttl of 10 minutes. You can disable this by
+                  setting the ttl option.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/triggering")}
+                  variant="docs/small"
+                  LeadingIcon={BookOpenIcon}
+                  className="mt-3"
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            TTL
+          </TableHeaderCell>
+          <TableHeaderCell
+            tooltip={
+              <div className="max-w-xs p-1">
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags to a run and then filter runs using them.
+                </Paragraph>
+                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                  You can add tags when triggering a run or inside the run function.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("v3/tags")}
+                  variant="docs/small"
+                  LeadingIcon={BookOpenIcon}
+                  className="mt-3"
+                >
+                  Read docs
+                </LinkButton>
+              </div>
+            }
+          >
+            Tags
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <span className="sr-only">Go to page</span>
+          </TableHeaderCell>
+        </TableRow>
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
