@@ -1,7 +1,7 @@
 import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData } from "@remix-run/react";
+import { Form, MetaFunction, useActionData } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -43,6 +43,14 @@ import {
   revokeInvitePath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Team | Trigger.dev`,
+    },
+  ];
+};
 
 const Params = z.object({
   organizationSlug: z.string(),

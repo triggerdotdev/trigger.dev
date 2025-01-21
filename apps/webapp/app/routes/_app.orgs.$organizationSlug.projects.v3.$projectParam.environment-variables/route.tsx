@@ -9,7 +9,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import {
   ActionFunctionArgs,
   LoaderFunctionArgs,
@@ -68,6 +68,14 @@ import {
   DeleteEnvironmentVariable,
   EditEnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Environment variables | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

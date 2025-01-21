@@ -3,7 +3,7 @@ import { parse } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher } from "@remix-run/react";
+import { Form, MetaFunction, useActionData, useFetcher } from "@remix-run/react";
 import { ActionFunction, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -44,6 +44,14 @@ import {
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Personal Access Tokens | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

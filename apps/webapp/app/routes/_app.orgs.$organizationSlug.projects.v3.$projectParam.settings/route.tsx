@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -23,6 +23,14 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUserId } from "~/services/session.server";
 import { v3ProjectPath } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Project settings | Trigger.dev`,
+    },
+  ];
+};
 
 export function createSchema(
   constraints: {

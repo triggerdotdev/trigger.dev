@@ -1,6 +1,6 @@
 import { ArrowPathIcon, StopCircleIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, MetaFunction, useNavigation } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconCircleX } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -52,6 +52,14 @@ import {
   v3TestPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Runs | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

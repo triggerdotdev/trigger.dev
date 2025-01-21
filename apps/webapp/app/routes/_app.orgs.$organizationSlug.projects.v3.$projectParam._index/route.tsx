@@ -8,7 +8,7 @@ import {
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
-import { json } from "@remix-run/node";
+import { json, type MetaFunction } from "@remix-run/node";
 import { Link, useRevalidator, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
@@ -88,6 +88,14 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Tasks | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

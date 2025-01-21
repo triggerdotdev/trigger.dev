@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
@@ -27,6 +27,14 @@ import { DeleteOrganizationService } from "~/services/deleteOrganization.server"
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { organizationPath, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Organization settings | Trigger.dev`,
+    },
+  ];
+};
 
 export function createSchema(
   constraints: {
