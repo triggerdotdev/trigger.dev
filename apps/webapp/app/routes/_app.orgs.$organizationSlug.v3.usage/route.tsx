@@ -207,12 +207,14 @@ export default function Page() {
                     <>
                       <Table>
                         <TableHeader>
-                          <TableHeaderCell>Task</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Runs</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
-                          <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                          <TableRow>
+                            <TableHeaderCell>Task</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Runs</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Average cost</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total duration</TableHeaderCell>
+                            <TableHeaderCell alignment="right">Total cost</TableHeaderCell>
+                          </TableRow>
                         </TableHeader>
                         <TableBody>
                           {tasks.length === 0 ? (
