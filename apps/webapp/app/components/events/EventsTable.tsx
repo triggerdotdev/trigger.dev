@@ -52,17 +52,19 @@ export function EventsTable({
   return (
     <Table>
       <TableHeader>
-        <TableHeaderCell>Event</TableHeaderCell>
-        <TableHeaderCell>Env</TableHeaderCell>
-        <TableHeaderCell>Received Time</TableHeaderCell>
-        <TableHeaderCell>Delivery Time</TableHeaderCell>
-        <TableHeaderCell>Delivered</TableHeaderCell>
-        <TableHeaderCell>Canceled Time</TableHeaderCell>
-        <TableHeaderCell>Test</TableHeaderCell>
-        <TableHeaderCell>Runs</TableHeaderCell>
-        <TableHeaderCell>
-          <span className="sr-only">Go to page</span>
-        </TableHeaderCell>
+        <TableRow>
+          <TableHeaderCell>Event</TableHeaderCell>
+          <TableHeaderCell>Env</TableHeaderCell>
+          <TableHeaderCell>Received Time</TableHeaderCell>
+          <TableHeaderCell>Delivery Time</TableHeaderCell>
+          <TableHeaderCell>Delivered</TableHeaderCell>
+          <TableHeaderCell>Canceled Time</TableHeaderCell>
+          <TableHeaderCell>Test</TableHeaderCell>
+          <TableHeaderCell>Runs</TableHeaderCell>
+          <TableHeaderCell>
+            <span className="sr-only">Go to page</span>
+          </TableHeaderCell>
+        </TableRow>
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (

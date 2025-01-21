@@ -76,7 +76,7 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, Omit<TableHeaderP
           className
         )}
       >
-        <tr tabIndex={-1}>{children}</tr>
+        {children}
       </thead>
     );
   }
