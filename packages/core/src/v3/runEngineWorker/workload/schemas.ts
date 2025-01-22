@@ -10,6 +10,7 @@ import {
   WorkerApiDequeueFromVersionResponseBody,
   WorkerApiWaitForDurationRequestBody,
   WorkerApiWaitForDurationResponseBody,
+  WorkerApiContinueRunExecutionRequestBody,
 } from "../supervisor/schemas.js";
 
 export const WorkloadHeartbeatRequestBody = WorkerApiRunHeartbeatRequestBody;
@@ -17,6 +18,22 @@ export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatReque
 
 export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
 export type WorkloadHeartbeatResponseBody = z.infer<typeof WorkloadHeartbeatResponseBody>;
+
+export const WorkloadSuspendRunResponseBody = z.discriminatedUnion("ok", [
+  z.object({
+    ok: z.literal(true),
+  }),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+export type WorkloadSuspendRunResponseBody = z.infer<typeof WorkloadSuspendRunResponseBody>;
+
+export const WorkloadContinueRunExecutionResponseBody = WorkerApiContinueRunExecutionRequestBody;
+export type WorkloadContinueRunExecutionResponseBody = z.infer<
+  typeof WorkloadContinueRunExecutionResponseBody
+>;
 
 export const WorkloadRunAttemptCompleteRequestBody = WorkerApiRunAttemptCompleteRequestBody;
 export type WorkloadRunAttemptCompleteRequestBody = z.infer<

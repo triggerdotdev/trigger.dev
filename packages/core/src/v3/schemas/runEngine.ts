@@ -195,6 +195,33 @@ export const CompleteRunAttemptResult = z
   .and(ExecutionResult);
 export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
 
+export const CheckpointTypeEnum = {
+  DOCKER: "DOCKER",
+  KUBERNETES: "KUBERNETES",
+} satisfies Enum<DB_TYPES.CheckpointType>;
+export type CheckpointTypeEnum = (typeof CheckpointTypeEnum)[keyof typeof CheckpointTypeEnum];
+
+export const CheckpointType = z.enum(Object.values(CheckpointTypeEnum) as [CheckpointTypeEnum]);
+export type CheckpointType = z.infer<typeof CheckpointType>;
+
+export const CheckpointInput = z.object({
+  type: CheckpointType,
+  location: z.string(),
+  imageRef: z.string(),
+  reason: z.string().nullish(),
+});
+
+export type CheckpointInput = z.infer<typeof CheckpointInput>;
+
+export const TaskRunCheckpoint = CheckpointInput.merge(
+  z.object({
+    id: z.string(),
+    friendlyId: z.string(),
+  })
+);
+
+export type TaskRunCheckpoint = z.infer<typeof TaskRunCheckpoint>;
+
 /** The response when a Worker asks for the latest execution state */
 export const RunExecutionData = z.object({
   version: z.literal("1"),
@@ -206,16 +233,7 @@ export const RunExecutionData = z.object({
       friendlyId: z.string(),
     })
     .optional(),
-  checkpoint: z
-    .object({
-      id: z.string(),
-      friendlyId: z.string(),
-      type: z.string(),
-      location: z.string(),
-      imageRef: z.string(),
-      reason: z.string().optional(),
-    })
-    .optional(),
+  checkpoint: TaskRunCheckpoint.optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
@@ -233,6 +251,21 @@ export const WaitForDurationResult = z
   })
   .and(ExecutionResult);
 export type WaitForDurationResult = z.infer<typeof WaitForDurationResult>;
+
+export const CreateCheckpointResult = z.discriminatedUnion("ok", [
+  z
+    .object({
+      ok: z.literal(true),
+      checkpoint: TaskRunCheckpoint,
+    })
+    .merge(ExecutionResult),
+  z.object({
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+export type CreateCheckpointResult = z.infer<typeof CreateCheckpointResult>;
 
 export const MachineResources = z.object({
   cpu: z.number(),

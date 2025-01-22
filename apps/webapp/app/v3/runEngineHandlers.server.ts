@@ -138,6 +138,36 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
+  engine.eventBus.on("runAttemptFailed", async ({ time, run }) => {
+    try {
+      const sanitizedError = sanitizeError(run.error);
+      const exception = createExceptionPropertiesFromError(sanitizedError);
+
+      const inProgressEvents = await eventRepository.queryIncompleteEvents({
+        runId: RunId.toFriendlyId(run.id),
+        spanId: {
+          not: run.spanId,
+        },
+      });
+
+      await Promise.all(
+        inProgressEvents.map((event) => {
+          return eventRepository.crashEvent({
+            event: event,
+            crashedAt: time,
+            exception,
+          });
+        })
+      );
+    } catch (error) {
+      logger.error("[runAttemptFailed] Failed to complete event", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+        spanId: run.spanId,
+      });
+    }
+  });
+
   engine.eventBus.on("cachedRunCompleted", async ({ time, spanId, hasError }) => {
     try {
       const completedEvent = await eventRepository.completeEvent(spanId, {
@@ -287,19 +317,7 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
     try {
-      const foundRun = await prisma.taskRun.findUnique({
-        where: {
-          id: run.id,
-        },
-        include: {
-          runtimeEnvironment: {
-            include: {
-              project: true,
-              organization: true,
-            },
-          },
-        },
-      });
+      const foundRun = await findRun(run.id);
 
       if (!foundRun) {
         logger.error("Failed to find run", { runId: run.id });
@@ -349,5 +367,63 @@ export function registerRunEngineEventBusHandlers() {
         runId: run.id,
       });
     }
+  });
+
+  engine.eventBus.on("incomingCheckpointDiscarded", async ({ time, run, snapshot, checkpoint }) => {
+    try {
+      const foundRun = await findRun(run.id);
+
+      if (!foundRun) {
+        logger.error("Failed to find run", { runId: run.id });
+        return;
+      }
+
+      await eventRepository.recordEvent(`Checkpoint discarded: ${checkpoint.discardReason}`, {
+        environment: foundRun.runtimeEnvironment,
+        taskSlug: foundRun.taskIdentifier,
+        context: foundRun.traceContext as Record<string, string | undefined>,
+        attributes: {
+          runId: foundRun.friendlyId,
+          isDebug: true,
+          properties: {
+            ...checkpoint.metadata,
+            snapshotId: snapshot.id,
+          },
+        },
+        duration: 0,
+        startTime: BigInt(time.getTime() * 1_000_000),
+      });
+    } catch (error) {
+      logger.error("[incomingCheckpointDiscarded] Failed to record event", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+      });
+    }
+  });
+}
+
+async function findRun(runId: string) {
+  return prisma.taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+    select: {
+      friendlyId: true,
+      taskIdentifier: true,
+      traceContext: true,
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          type: true,
+          organizationId: true,
+          projectId: true,
+          project: {
+            select: {
+              externalRef: true,
+            },
+          },
+        },
+      },
+    },
   });
 }

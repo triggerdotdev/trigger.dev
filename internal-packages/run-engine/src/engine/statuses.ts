@@ -13,6 +13,11 @@ export function isExecuting(status: TaskRunExecutionStatus): boolean {
   return executingExecutionStatuses.includes(status);
 }
 
+export function isPendingExecuting(status: TaskRunExecutionStatus): boolean {
+  const pendingExecutionStatuses: TaskRunExecutionStatus[] = ["PENDING_EXECUTING"];
+  return pendingExecutionStatuses.includes(status);
+}
+
 export function isCheckpointable(status: TaskRunExecutionStatus): boolean {
   const checkpointableStatuses: TaskRunExecutionStatus[] = [
     //will allow checkpoint starts

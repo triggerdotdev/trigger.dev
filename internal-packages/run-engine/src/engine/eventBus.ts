@@ -16,6 +16,18 @@ export type EventBusEvents = {
       };
     },
   ];
+  runAttemptFailed: [
+    {
+      time: Date;
+      run: {
+        id: string;
+        status: TaskRunStatus;
+        spanId: string;
+        error: TaskRunError;
+        attemptNumber: number;
+      };
+    },
+  ];
   runExpired: [
     {
       time: Date;
@@ -119,6 +131,22 @@ export type EventBusEvents = {
         completedWaitpointIds: string[];
         isValid: boolean;
         error: string | null;
+      };
+    },
+  ];
+  incomingCheckpointDiscarded: [
+    {
+      time: Date;
+      run: {
+        id: string;
+      };
+      snapshot: {
+        id: string;
+        executionStatus: TaskRunExecutionStatus;
+      };
+      checkpoint: {
+        metadata: Record<string, unknown>;
+        discardReason: string;
       };
     },
   ];

@@ -3,11 +3,14 @@ import { Attributes, Span, SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { assertExhaustive } from "@trigger.dev/core";
 import { Logger } from "@trigger.dev/core/logger";
 import {
+  CheckpointInput,
   CompleteRunAttemptResult,
+  CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
   MachineResources,
   parsePacket,
+  RetryOptions,
   RunExecutionData,
   sanitizeError,
   shouldRetryError,
@@ -23,6 +26,7 @@ import {
 } from "@trigger.dev/core/v3";
 import {
   BatchId,
+  CheckpointId,
   getMaxDuration,
   parseNaturalLanguageDuration,
   QueueId,
@@ -62,6 +66,7 @@ import {
   isDequeueableExecutionStatus,
   isExecuting,
   isFinalRunStatus,
+  isPendingExecuting,
 } from "./statuses";
 import { HeartbeatTimeouts, RunEngineOptions, TriggerParams } from "./types";
 
@@ -709,6 +714,67 @@ export class RunEngine {
               }
             }
 
+            // Check max attempts that can optionally be set when triggering a run
+            let maxAttempts: number | null | undefined = result.run.maxAttempts;
+
+            // If it's not set, we'll grab it from the task's retry config
+            if (!maxAttempts) {
+              const retryConfig = result.task.retryConfig;
+
+              this.logger.debug(
+                "RunEngine.dequeueFromMasterQueue(): maxAttempts not set, using task's retry config",
+                {
+                  runId,
+                  task: result.task.id,
+                  rawRetryConfig: retryConfig,
+                }
+              );
+
+              const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
+
+              if (!parsedConfig.success) {
+                this.logger.error("RunEngine.dequeueFromMasterQueue(): Invalid retry config", {
+                  runId,
+                  task: result.task.id,
+                  rawRetryConfig: retryConfig,
+                });
+
+                await this.#systemFailure({
+                  runId,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: "TASK_DEQUEUED_INVALID_RETRY_CONFIG",
+                    message: `Invalid retry config: ${retryConfig}`,
+                  },
+                  tx: prisma,
+                });
+
+                return null;
+              }
+
+              if (!parsedConfig.data) {
+                this.logger.error("RunEngine.dequeueFromMasterQueue(): No retry config", {
+                  runId,
+                  task: result.task.id,
+                  rawRetryConfig: retryConfig,
+                });
+
+                await this.#systemFailure({
+                  runId,
+                  error: {
+                    type: "INTERNAL_ERROR",
+                    code: "TASK_DEQUEUED_NO_RETRY_CONFIG",
+                    message: `No retry config found`,
+                  },
+                  tx: prisma,
+                });
+
+                return null;
+              }
+
+              maxAttempts = parsedConfig.data.maxAttempts;
+            }
+
             //update the run
             const lockedTaskRun = await prisma.taskRun.update({
               where: {
@@ -728,13 +794,10 @@ export class RunEngine {
                   result.run.maxDurationInSeconds,
                   result.task.maxDurationInSeconds
                 ),
+                maxAttempts: maxAttempts ?? undefined,
               },
               include: {
                 runtimeEnvironment: true,
-                attempts: {
-                  take: 1,
-                  orderBy: { number: "desc" },
-                },
                 tags: true,
               },
             });
@@ -789,13 +852,14 @@ export class RunEngine {
               return null;
             }
 
-            const currentAttemptNumber = lockedTaskRun.attempts.at(0)?.number ?? 0;
+            const currentAttemptNumber = lockedTaskRun.attemptNumber ?? 0;
             const nextAttemptNumber = currentAttemptNumber + 1;
 
             const newSnapshot = await this.#createExecutionSnapshot(prisma, {
               run: {
                 id: runId,
                 status: snapshot.runStatus,
+                attemptNumber: lockedTaskRun.attemptNumber,
               },
               snapshot: {
                 executionStatus: "PENDING_EXECUTING",
@@ -1390,9 +1454,24 @@ export class RunEngine {
             completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
             error,
           },
-          include: {
-            runtimeEnvironment: true,
-            associatedWaitpoint: true,
+          select: {
+            id: true,
+            friendlyId: true,
+            status: true,
+            attemptNumber: true,
+            spanId: true,
+            batchId: true,
+            completedAt: true,
+            runtimeEnvironment: {
+              select: {
+                organizationId: true,
+              },
+            },
+            associatedWaitpoint: {
+              select: {
+                id: true,
+              },
+            },
             childRuns: {
               select: {
                 id: true,
@@ -1797,6 +1876,9 @@ export class RunEngine {
           },
           batchId: batch?.id ?? snapshot.batchId ?? undefined,
         });
+
+        // Let the worker know immediately, so it can suspend the run
+        await this.#sendNotificationToWorker({ runId });
       }
 
       if (failAfter) {
@@ -1919,37 +2001,178 @@ export class RunEngine {
   }: {
     runId: string;
     snapshotId: string;
-    //todo
-    checkpoint: Record<string, unknown>;
+    checkpoint: CheckpointInput;
     tx?: PrismaClientOrTransaction;
-  }) {
+  }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.prisma;
 
     return await this.runLock.lock([runId], 5_000, async (signal) => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId);
       if (snapshot.id !== snapshotId) {
+        this.eventBus.emit("incomingCheckpointDiscarded", {
+          time: new Date(),
+          run: {
+            id: runId,
+          },
+          checkpoint: {
+            discardReason: "Not the latest snapshot",
+            metadata: checkpoint,
+          },
+          snapshot: {
+            id: snapshot.id,
+            executionStatus: snapshot.executionStatus,
+          },
+        });
+
         return {
           ok: false as const,
           error: "Not the latest snapshot",
         };
       }
 
-      //todo check the status is checkpointable
       if (!isCheckpointable(snapshot.executionStatus)) {
         this.logger.error("Tried to createCheckpoint on a run in an invalid state", {
           snapshot,
         });
 
-        //check if the server should already be shutting down, if so return a result saying it can shutdown but that there's no checkpoint
+        this.eventBus.emit("incomingCheckpointDiscarded", {
+          time: new Date(),
+          run: {
+            id: runId,
+          },
+          checkpoint: {
+            discardReason: `Status ${snapshot.executionStatus} is not checkpointable`,
+            metadata: checkpoint,
+          },
+          snapshot: {
+            id: snapshot.id,
+            executionStatus: snapshot.executionStatus,
+          },
+        });
 
-        //otherwise return a result saying it can't checkpoint with an error and execution status
-
-        return;
+        return {
+          ok: false as const,
+          error: `Status ${snapshot.executionStatus} is not checkpointable`,
+        };
       }
 
-      //create a new execution snapshot, with the checkpoint
+      // Get the run and update the status
+      const run = await this.prisma.taskRun.update({
+        where: {
+          id: runId,
+        },
+        data: {
+          status: "WAITING_TO_RESUME",
+        },
+        select: {
+          id: true,
+          status: true,
+          attemptNumber: true,
+          runtimeEnvironment: {
+            select: {
+              id: true,
+              projectId: true,
+            },
+          },
+        },
+      });
 
-      //todo return a Result, which will determine if the server is allowed to shutdown
+      if (!run) {
+        this.logger.error("Run not found for createCheckpoint", {
+          snapshot,
+        });
+
+        throw new ServiceValidationError("Run not found", 404);
+      }
+
+      // Create the checkpoint
+      const taskRunCheckpoint = await prisma.taskRunCheckpoint.create({
+        data: {
+          ...CheckpointId.generate(),
+          type: checkpoint.type,
+          location: checkpoint.location,
+          imageRef: checkpoint.imageRef,
+          reason: checkpoint.reason,
+          runtimeEnvironmentId: run.runtimeEnvironment.id,
+          projectId: run.runtimeEnvironment.projectId,
+        },
+      });
+
+      //create a new execution snapshot, with the checkpoint
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run,
+        snapshot: {
+          executionStatus: "SUSPENDED",
+          description: "Run was suspended after creating a checkpoint.",
+        },
+        checkpointId: taskRunCheckpoint.id,
+      });
+
+      return {
+        ok: true as const,
+        ...executionResultFromSnapshot(newSnapshot),
+        checkpoint: taskRunCheckpoint,
+      } satisfies CreateCheckpointResult;
+    });
+  }
+
+  async continueRunExecution({
+    runId,
+    snapshotId,
+    tx,
+  }: {
+    runId: string;
+    snapshotId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<ExecutionResult> {
+    const prisma = tx ?? this.prisma;
+
+    return await this.runLock.lock([runId], 5_000, async (signal) => {
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+      if (snapshot.id !== snapshotId) {
+        throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+      }
+
+      if (!isPendingExecuting(snapshot.executionStatus)) {
+        throw new ServiceValidationError("Snapshot is not in a valid state to continue", 400);
+      }
+
+      // Get the run and update the status
+      const run = await this.prisma.taskRun.update({
+        where: {
+          id: runId,
+        },
+        data: {
+          status: "EXECUTING",
+        },
+        select: {
+          id: true,
+          status: true,
+          attemptNumber: true,
+        },
+      });
+
+      if (!run) {
+        this.logger.error("Run not found for createCheckpoint", {
+          snapshot,
+        });
+
+        throw new ServiceValidationError("Run not found", 404);
+      }
+
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run,
+        snapshot: {
+          executionStatus: "EXECUTING",
+          description: "Run was continued after being suspended",
+        },
+        completedWaitpoints: snapshot.completedWaitpoints,
+      });
+
+      return {
+        ...executionResultFromSnapshot(newSnapshot),
+      } satisfies ExecutionResult;
     });
   }
 
@@ -2163,8 +2386,15 @@ export class RunEngine {
             },
           },
         },
-        include: {
-          associatedWaitpoint: true,
+        select: {
+          id: true,
+          spanId: true,
+          ttl: true,
+          associatedWaitpoint: {
+            select: {
+              id: true,
+            },
+          },
         },
       });
 
@@ -2199,6 +2429,11 @@ export class RunEngine {
           where: { id: runId },
           data: {
             status: "WAITING_FOR_DEPLOY",
+          },
+          select: {
+            id: true,
+            status: true,
+            attemptNumber: true,
           },
         });
 
@@ -2380,157 +2615,268 @@ export class RunEngine {
         const error = sanitizeError(completion.error);
         const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
 
-        if (
-          retriableError &&
-          completion.retry !== undefined &&
-          latestSnapshot.attemptNumber !== null &&
-          latestSnapshot.attemptNumber < MAX_TASK_RUN_ATTEMPTS
-        ) {
-          const retryAt = new Date(completion.retry.timestamp);
-
-          const run = await prisma.taskRun.update({
-            where: {
-              id: runId,
-            },
-            data: {
-              status: "RETRYING_AFTER_FAILURE",
-            },
-            include: {
-              runtimeEnvironment: {
-                include: {
-                  project: true,
-                  organization: true,
-                  orgMember: true,
-                },
+        const permanentlyFailRun = async (run?: { status: TaskRunStatus; spanId: string }) => {
+          // Emit and event so we can complete any spans of stalled executions
+          if (forceRequeue && run) {
+            this.eventBus.emit("runAttemptFailed", {
+              time: failedAt,
+              run: {
+                id: runId,
+                status: run.status,
+                spanId: run.spanId,
+                error,
+                attemptNumber: latestSnapshot.attemptNumber ?? 0,
               },
-            },
-          });
-
-          const nextAttemptNumber =
-            latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
-
-          this.eventBus.emit("runRetryScheduled", {
-            time: failedAt,
-            run: {
-              id: run.id,
-              friendlyId: run.friendlyId,
-              attemptNumber: nextAttemptNumber,
-              queue: run.queue,
-              taskIdentifier: run.taskIdentifier,
-              traceContext: run.traceContext as Record<string, string | undefined>,
-              baseCostInCents: run.baseCostInCents,
-              spanId: run.spanId,
-            },
-            organization: {
-              id: run.runtimeEnvironment.organizationId,
-            },
-            environment: run.runtimeEnvironment,
-            retryAt,
-          });
-
-          //todo anything special for DEV? Ideally not.
-
-          //if it's a long delay and we support checkpointing, put it back in the queue
-          if (
-            forceRequeue ||
-            (this.options.retryWarmStartThresholdMs !== undefined &&
-              completion.retry.delay >= this.options.retryWarmStartThresholdMs)
-          ) {
-            //we nack the message, requeuing it for later
-            const nackResult = await this.#tryNackAndRequeue({
-              run,
-              orgId: run.runtimeEnvironment.organizationId,
-              timestamp: retryAt.getTime(),
-              error: {
-                type: "INTERNAL_ERROR",
-                code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-                message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
-              },
-              tx: prisma,
             });
-
-            if (!nackResult.wasRequeued) {
-              return {
-                attemptStatus: "RUN_FINISHED",
-                ...nackResult,
-              };
-            } else {
-              return { attemptStatus: "RETRY_QUEUED", ...nackResult };
-            }
           }
 
-          //it will continue running because the retry delay is short
-          const newSnapshot = await this.#createExecutionSnapshot(prisma, {
-            run,
-            snapshot: {
-              executionStatus: "PENDING_EXECUTING",
-              description: "Attempt failed wth a short delay, starting a new attempt.",
-            },
+          return await this.#permanentlyFailRun({
+            runId,
+            snapshotId,
+            failedAt,
+            error,
           });
-          //the worker can fetch the latest snapshot and should create a new attempt
-          await this.#sendNotificationToWorker({ runId });
+        };
 
-          return {
-            attemptStatus: "RETRY_IMMEDIATELY",
-            ...executionResultFromSnapshot(newSnapshot),
-          };
+        // Error is not retriable, fail the run
+        if (!retriableError) {
+          return await permanentlyFailRun();
         }
 
-        const status = runStatusFromError(completion.error);
+        // No retry config attached to completion, fail the run
+        if (completion.retry === undefined) {
+          return await permanentlyFailRun();
+        }
 
-        //run permanently failed
+        // Run attempts have reached the global maximum, fail the run
+        if (
+          latestSnapshot.attemptNumber !== null &&
+          latestSnapshot.attemptNumber >= MAX_TASK_RUN_ATTEMPTS
+        ) {
+          return await permanentlyFailRun();
+        }
+
+        const minimalRun = await prisma.taskRun.findFirst({
+          where: {
+            id: runId,
+          },
+          select: {
+            status: true,
+            spanId: true,
+            maxAttempts: true,
+            runtimeEnvironment: {
+              select: {
+                organizationId: true,
+              },
+            },
+          },
+        });
+
+        if (!minimalRun) {
+          throw new ServiceValidationError("Run not found", 404);
+        }
+
+        // Run doesn't have any max attempts set which is required for retrying, fail the run
+        if (!minimalRun.maxAttempts) {
+          return await permanentlyFailRun(minimalRun);
+        }
+
+        // Run has reached the maximum configured number of attempts, fail the run
+        if (
+          latestSnapshot.attemptNumber !== null &&
+          latestSnapshot.attemptNumber >= minimalRun.maxAttempts
+        ) {
+          return await permanentlyFailRun(minimalRun);
+        }
+
+        // This error didn't come from user code, so we need to emit an event to complete any spans
+        if (forceRequeue) {
+          this.eventBus.emit("runAttemptFailed", {
+            time: failedAt,
+            run: {
+              id: runId,
+              status: minimalRun.status,
+              spanId: minimalRun.spanId,
+              error,
+              attemptNumber: latestSnapshot.attemptNumber ?? 0,
+            },
+          });
+        }
+
+        const retryAt = new Date(completion.retry.timestamp);
+
         const run = await prisma.taskRun.update({
           where: {
             id: runId,
           },
           data: {
-            status,
-            completedAt: failedAt,
-            error,
+            status: "RETRYING_AFTER_FAILURE",
           },
           include: {
-            runtimeEnvironment: true,
-            associatedWaitpoint: true,
+            runtimeEnvironment: {
+              include: {
+                project: true,
+                organization: true,
+                orgMember: true,
+              },
+            },
           },
         });
 
+        const nextAttemptNumber =
+          latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
+
+        this.eventBus.emit("runRetryScheduled", {
+          time: failedAt,
+          run: {
+            id: run.id,
+            friendlyId: run.friendlyId,
+            attemptNumber: nextAttemptNumber,
+            queue: run.queue,
+            taskIdentifier: run.taskIdentifier,
+            traceContext: run.traceContext as Record<string, string | undefined>,
+            baseCostInCents: run.baseCostInCents,
+            spanId: run.spanId,
+          },
+          organization: {
+            id: run.runtimeEnvironment.organizationId,
+          },
+          environment: run.runtimeEnvironment,
+          retryAt,
+        });
+
+        //todo anything special for DEV? Ideally not.
+
+        //if it's a long delay and we support checkpointing, put it back in the queue
+        if (
+          forceRequeue ||
+          (this.options.retryWarmStartThresholdMs !== undefined &&
+            completion.retry.delay >= this.options.retryWarmStartThresholdMs)
+        ) {
+          //we nack the message, requeuing it for later
+          const nackResult = await this.#tryNackAndRequeue({
+            run,
+            orgId: run.runtimeEnvironment.organizationId,
+            timestamp: retryAt.getTime(),
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+              message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
+            },
+            tx: prisma,
+          });
+
+          if (!nackResult.wasRequeued) {
+            return {
+              attemptStatus: "RUN_FINISHED",
+              ...nackResult,
+            };
+          } else {
+            return { attemptStatus: "RETRY_QUEUED", ...nackResult };
+          }
+        }
+
+        //it will continue running because the retry delay is short
         const newSnapshot = await this.#createExecutionSnapshot(prisma, {
           run,
           snapshot: {
-            executionStatus: "FINISHED",
-            description: "Run failed",
+            executionStatus: "PENDING_EXECUTING",
+            description: "Attempt failed with a short delay, starting a new attempt",
           },
         });
-
-        if (!run.associatedWaitpoint) {
-          throw new ServiceValidationError("No associated waitpoint found", 400);
-        }
-
-        await this.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: { value: JSON.stringify(error), isError: true },
-        });
-
-        await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
-
-        this.eventBus.emit("runFailed", {
-          time: failedAt,
-          run: {
-            id: runId,
-            status: run.status,
-            spanId: run.spanId,
-            error,
-          },
-        });
-
-        await this.#finalizeRun(run);
+        //the worker can fetch the latest snapshot and should create a new attempt
+        await this.#sendNotificationToWorker({ runId });
 
         return {
-          attemptStatus: "RUN_FINISHED",
-          snapshot: newSnapshot,
-          run,
+          attemptStatus: "RETRY_IMMEDIATELY",
+          ...executionResultFromSnapshot(newSnapshot),
         };
       });
+    });
+  }
+
+  async #permanentlyFailRun({
+    runId,
+    snapshotId,
+    failedAt,
+    error,
+  }: {
+    runId: string;
+    snapshotId: string;
+    failedAt: Date;
+    error: TaskRunError;
+  }): Promise<CompleteRunAttemptResult> {
+    const prisma = this.prisma;
+
+    return this.#trace("permanentlyFailRun", { runId, snapshotId }, async (span) => {
+      const status = runStatusFromError(error);
+
+      //run permanently failed
+      const run = await prisma.taskRun.update({
+        where: {
+          id: runId,
+        },
+        data: {
+          status,
+          completedAt: failedAt,
+          error,
+        },
+        select: {
+          id: true,
+          friendlyId: true,
+          status: true,
+          attemptNumber: true,
+          spanId: true,
+          batchId: true,
+          associatedWaitpoint: {
+            select: {
+              id: true,
+            },
+          },
+          runtimeEnvironment: {
+            select: {
+              organizationId: true,
+            },
+          },
+        },
+      });
+
+      const newSnapshot = await this.#createExecutionSnapshot(prisma, {
+        run,
+        snapshot: {
+          executionStatus: "FINISHED",
+          description: "Run failed",
+        },
+      });
+
+      if (!run.associatedWaitpoint) {
+        throw new ServiceValidationError("No associated waitpoint found", 400);
+      }
+
+      await this.completeWaitpoint({
+        id: run.associatedWaitpoint.id,
+        output: { value: JSON.stringify(error), isError: true },
+      });
+
+      await this.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId);
+
+      this.eventBus.emit("runFailed", {
+        time: failedAt,
+        run: {
+          id: runId,
+          status: run.status,
+          spanId: run.spanId,
+          error,
+        },
+      });
+
+      await this.#finalizeRun(run);
+
+      return {
+        attemptStatus: "RUN_FINISHED",
+        snapshot: newSnapshot,
+        run,
+      };
     });
   }
 
@@ -2542,11 +2888,24 @@ export class RunEngine {
     env,
     timestamp,
     tx,
+    snapshot,
+    batchId,
+    checkpointId,
+    completedWaitpoints,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
     timestamp: number;
     tx?: PrismaClientOrTransaction;
+    snapshot?: {
+      description?: string;
+    };
+    batchId?: string;
+    checkpointId?: string;
+    completedWaitpoints?: {
+      id: string;
+      index?: number;
+    }[];
   }) {
     const prisma = tx ?? this.prisma;
 
@@ -2555,8 +2914,11 @@ export class RunEngine {
         run: run,
         snapshot: {
           executionStatus: "QUEUED",
-          description: "Run was QUEUED",
+          description: snapshot?.description ?? "Run was QUEUED",
         },
+        batchId,
+        checkpointId,
+        completedWaitpoints,
       });
 
       const masterQueues = [run.masterQueue];
@@ -2707,20 +3069,12 @@ export class RunEngine {
         //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
         await this.runQueue.reacquireConcurrency(run.runtimeEnvironment.organization.id, runId);
 
-        await this.#sendNotificationToWorker({ runId: runId });
+        await this.#sendNotificationToWorker({ runId });
       } else {
-        const newSnapshot = await this.#createExecutionSnapshot(this.prisma, {
-          run,
-          snapshot: {
-            executionStatus: "QUEUED",
-            description: "Run is QUEUED, because all waitpoints are completed.",
-          },
-          batchId: snapshot.batchId ?? undefined,
-          completedWaitpoints: blockingWaitpoints.map((b) => ({
-            id: b.waitpoint.id,
-            index: b.batchIndex ?? undefined,
-          })),
-        });
+        if (!snapshot.checkpointId) {
+          // TODO: We're screwed, should probably fail the run immediately
+          throw new Error(`#continueRunIfUnblocked: run has no checkpoint: ${run.id}`);
+        }
 
         //put it back in the queue, with the original timestamp (w/ priority)
         //this prioritizes dequeuing waiting runs over new runs
@@ -2728,6 +3082,15 @@ export class RunEngine {
           run,
           env: run.runtimeEnvironment,
           timestamp: run.createdAt.getTime() - run.priorityMs,
+          snapshot: {
+            description: "Run was QUEUED, because all waitpoints are completed",
+          },
+          batchId: snapshot.batchId ?? undefined,
+          completedWaitpoints: blockingWaitpoints.map((b) => ({
+            id: b.waitpoint.id,
+            index: b.batchIndex ?? undefined,
+          })),
+          checkpointId: snapshot.checkpointId ?? undefined,
         });
       }
     });
@@ -3151,7 +3514,7 @@ export class RunEngine {
                   latestSnapshot.executionStatus === "EXECUTING"
                     ? "TASK_RUN_STALLED_EXECUTING"
                     : "TASK_RUN_STALLED_EXECUTING_WITH_WAITPOINTS",
-                message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
+                message: `Run stalled while executing. This can happen when the run becomes unresponsive, for example because the CPU is overloaded.`,
               },
               retry: {
                 //250ms in the future

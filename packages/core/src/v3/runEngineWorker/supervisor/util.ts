@@ -1,4 +1,4 @@
-import { WORKER_HEADER_NAME } from "../consts.js";
+import { WORKER_HEADERS } from "../consts.js";
 import { createHeaders } from "../util.js";
 import { SupervisorClientCommonOptions } from "./types.js";
 
@@ -7,9 +7,9 @@ export function getDefaultWorkerHeaders(
 ): Record<string, string> {
   return createHeaders({
     Authorization: `Bearer ${options.workerToken}`,
-    [WORKER_HEADER_NAME.WORKER_INSTANCE_NAME]: options.instanceName,
-    [WORKER_HEADER_NAME.WORKER_DEPLOYMENT_ID]: options.deploymentId,
-    [WORKER_HEADER_NAME.WORKER_MANAGED_SECRET]: options.managedWorkerSecret,
+    [WORKER_HEADERS.INSTANCE_NAME]: options.instanceName,
+    [WORKER_HEADERS.DEPLOYMENT_ID]: options.deploymentId,
+    [WORKER_HEADERS.MANAGED_SECRET]: options.managedWorkerSecret,
   });
 }
 

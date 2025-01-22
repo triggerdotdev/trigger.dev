@@ -10,6 +10,8 @@ import {
   WorkloadRunAttemptStartRequestBody,
   WorkloadWaitForDurationRequestBody,
   WorkloadWaitForDurationResponseBody,
+  WorkloadSuspendRunResponseBody,
+  WorkloadContinueRunExecutionResponseBody,
 } from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
@@ -47,6 +49,32 @@ export class WorkloadHttpClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async suspendRun(runId: string, snapshotId: string) {
+    return wrapZodFetch(
+      WorkloadSuspendRunResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
+  async continueRunExecution(runId: string, snapshotId: string) {
+    return wrapZodFetch(
+      WorkloadContinueRunExecutionResponseBody,
+      `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
       }
     );
   }

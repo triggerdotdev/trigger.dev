@@ -21,6 +21,7 @@ export interface WorkloadClientToServerEvents {
 
 export type WorkloadClientSocketData = {
   deploymentId: string;
+  runnerId: string;
   runFriendlyId?: string;
   snapshotId?: string;
 };

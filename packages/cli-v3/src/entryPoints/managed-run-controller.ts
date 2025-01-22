@@ -14,14 +14,14 @@ import {
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import {
-  WORKLOAD_HEADER_NAME,
+  WORKLOAD_HEADERS,
   WorkloadClientToServerEvents,
   WorkloadHttpClient,
   WorkloadServerToClientEvents,
   type WorkloadRunAttemptStartResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
-import { setTimeout as wait } from "timers/promises";
+import { setTimeout as sleep } from "timers/promises";
 import { io, Socket } from "socket.io-client";
 
 // All IDs are friendly IDs
@@ -48,6 +48,7 @@ const Env = z.object({
   TRIGGER_MACHINE_CPU: z.string().default("0"),
   TRIGGER_MACHINE_MEMORY: z.string().default("0"),
   TRIGGER_WORKER_INSTANCE_NAME: z.string(),
+  TRIGGER_RUNNER_ID: z.string(),
 });
 
 const env = Env.parse(stdEnv);
@@ -154,6 +155,7 @@ class ManagedRunController {
     this.httpClient = new WorkloadHttpClient({
       workerApiUrl: env.TRIGGER_WORKER_API_URL,
       deploymentId: env.TRIGGER_DEPLOYMENT_ID,
+      runnerId: env.TRIGGER_RUNNER_ID,
     });
 
     this.snapshotPollService = new HeartbeatService({
@@ -251,7 +253,57 @@ class ManagedRunController {
       }
       case "FINISHED": {
         console.log("Run is finished, shutting down shortly");
-        return;
+        break;
+      }
+      case "EXECUTING_WITH_WAITPOINTS": {
+        console.log("Run is executing with waitpoints", { snapshot });
+
+        try {
+          await this.taskRunProcess?.cleanup(false);
+        } catch (error) {
+          console.error("Failed to cleanup task run process", { error });
+        }
+
+        if (snapshot.friendlyId !== this.snapshotFriendlyId) {
+          console.debug("Snapshot changed after cleanup, abort", {
+            oldSnapshotId: snapshot.friendlyId,
+            newSnapshotId: this.snapshotFriendlyId,
+          });
+          break;
+        }
+
+        // TODO: Make this configurable and add wait debounce
+        await sleep(200);
+
+        if (snapshot.friendlyId !== this.snapshotFriendlyId) {
+          console.debug("Snapshot changed after suspend threshold, abort", {
+            oldSnapshotId: snapshot.friendlyId,
+            newSnapshotId: this.snapshotFriendlyId,
+          });
+          break;
+        }
+
+        if (!this.runFriendlyId || !this.snapshotFriendlyId) {
+          console.error("Missing run ID or snapshot ID after suspension, abort", {
+            runId: this.runFriendlyId,
+            snapshotId: this.snapshotFriendlyId,
+          });
+          break;
+        }
+
+        const suspendResult = await this.httpClient.suspendRun(
+          this.runFriendlyId,
+          this.snapshotFriendlyId
+        );
+
+        if (!suspendResult.success) {
+          console.error("Failed to suspend run, staying alive 🎶", { error: suspendResult.error });
+          break;
+        }
+
+        console.log("Suspending, any day now 🚬", { suspendResult: suspendResult.data });
+
+        break;
       }
       case "SUSPENDED": {
         console.log("Run was suspended, kill the process and wait for more runs", {
@@ -267,18 +319,59 @@ class ManagedRunController {
 
         break;
       }
+      case "PENDING_EXECUTING": {
+        console.log("Run is pending execution", { run, snapshot });
+
+        if (completedWaitpoints.length === 0) {
+          console.log("No waitpoints to complete, nothing to do");
+          break;
+        }
+
+        // There are waitpoints to complete so we've been restored after being suspended
+        // Let's reconnect the websocket first
+        // TODO: fix joining run notifications room on reconnect
+        this.socket?.disconnect();
+        this.socket?.connect();
+
+        await sleep(1000);
+
+        // We need to let the platform know we're ready to continue
+        const continuationResult = await this.httpClient.continueRunExecution(
+          run.friendlyId,
+          snapshot.friendlyId
+        );
+
+        if (!continuationResult.success) {
+          console.error("Failed to continue execution", { error: continuationResult.error });
+
+          // Kill the run process
+          await this.taskRunProcess?.kill("SIGKILL");
+
+          // Warm start
+          this.waitForNextRun();
+
+          break;
+        }
+
+        break;
+      }
+      case "EXECUTING": {
+        console.log("Run is now executing", { run, snapshot });
+
+        if (completedWaitpoints.length > 0) {
+          console.log("Processing completed waitpoints", { completedWaitpoints });
+          completedWaitpoints.forEach((waitpoint) => {
+            this.taskRunProcess?.waitpointCompleted(waitpoint);
+          });
+        }
+
+        break;
+      }
       default: {
         console.log("Status change not handled yet", { status: snapshot.executionStatus });
         // assertExhaustive(snapshot.executionStatus);
         break;
       }
-    }
-
-    if (completedWaitpoints.length > 0) {
-      console.log("Got completed waitpoints", { completedWaitpoints });
-      completedWaitpoints.forEach((waitpoint) => {
-        this.taskRunProcess?.waitpointCompleted(waitpoint);
-      });
     }
   }
 
@@ -427,7 +520,8 @@ class ManagedRunController {
     this.socket = io(wsUrl.href, {
       transports: ["websocket"],
       extraHeaders: {
-        [WORKLOAD_HEADER_NAME.WORKLOAD_DEPLOYMENT_ID]: env.TRIGGER_DEPLOYMENT_ID,
+        [WORKLOAD_HEADERS.DEPLOYMENT_ID]: env.TRIGGER_DEPLOYMENT_ID,
+        [WORKLOAD_HEADERS.RUNNER_ID]: env.TRIGGER_RUNNER_ID,
       },
     });
     this.socket.on("run:notify", async ({ version, run }) => {
@@ -461,13 +555,13 @@ class ManagedRunController {
       await this.handleSnapshotChange(latestSnapshot.data.execution);
     });
     this.socket.on("connect", () => {
-      console.log("[ManagedRunController] Connected to platform");
+      console.log("[ManagedRunController] Connected to supervisor");
     });
     this.socket.on("connect_error", (error) => {
       console.error("[ManagedRunController] Connection error", { error });
     });
     this.socket.on("disconnect", (reason, description) => {
-      console.log("[ManagedRunController] Disconnected from platform", { reason, description });
+      console.log("[ManagedRunController] Disconnected from supervisor", { reason, description });
     });
   }
 
@@ -585,7 +679,7 @@ class ManagedRunController {
         throw new Error("Should retry but missing retry params.");
       }
 
-      await wait(completion.retry.delay);
+      await sleep(completion.retry.delay);
 
       this.startAndExecuteRunAttempt();
       return;
@@ -744,7 +838,7 @@ const longPoll = async <T = any>(
         console.error("Error during fetch, retrying...", error);
 
         // TODO: exponential backoff
-        await wait(1000);
+        await sleep(1000);
         continue;
       }
     }

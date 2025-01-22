@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   WorkerApiConnectRequestBody,
   WorkerApiConnectResponseBody,
+  WorkerApiContinueRunExecutionRequestBody,
   WorkerApiDequeueRequestBody,
   WorkerApiDequeueResponseBody,
   WorkerApiHeartbeatRequestBody,
@@ -185,6 +186,28 @@ export class SupervisorHttpClient {
         body: JSON.stringify(body),
       }
     );
+  }
+
+  async continueRunExecution(runId: string, snapshotId: string) {
+    return wrapZodFetch(
+      WorkerApiContinueRunExecutionRequestBody,
+      `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+      {
+        method: "GET",
+        headers: {
+          ...this.defaultHeaders,
+        },
+      }
+    );
+  }
+
+  getSuspendCompletionUrl(runId: string, snapshotId: string) {
+    return {
+      url: `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
+      headers: {
+        ...this.defaultHeaders,
+      },
+    };
   }
 }
 

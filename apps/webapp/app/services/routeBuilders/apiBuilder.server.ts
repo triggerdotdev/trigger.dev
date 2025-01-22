@@ -22,10 +22,12 @@ import {
   WorkerGroupTokenService,
 } from "~/v3/services/worker/workerGroupTokenService.server";
 
+type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+
 type ApiKeyRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 > = {
   params?: TParamsSchema;
@@ -34,7 +36,9 @@ type ApiKeyRouteBuilderOptions<
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
   findResource: (
-    params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined,
     authentication: ApiAuthenticationResultSuccess
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
@@ -42,36 +46,48 @@ type ApiKeyRouteBuilderOptions<
     action: AuthorizationAction;
     resource: (
       resource: NonNullable<TResource>,
-      params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
-      searchParams: TSearchParamsSchema extends z.AnyZodObject
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TSearchParamsSchema>
         : undefined,
-      headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
 };
 
 type ApiKeyHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
   resource: NonNullable<TResource>;
 }) => Promise<Response>;
 
 export function createLoaderApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
   TResource = never
 >(
   options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
@@ -258,9 +274,9 @@ export function createLoaderApiRoute<
 }
 
 type PATRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -269,23 +285,29 @@ type PATRouteBuilderOptions<
 };
 
 type PATHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
   authentication: PersonalAccessTokenAuthenticationResult;
   request: Request;
 }) => Promise<Response>;
 
 export function createLoaderPATApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 >(
   options: PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: PATHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
@@ -391,10 +413,10 @@ export function createLoaderPATApiRoute<
 }
 
 type ApiKeyActionRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -405,12 +427,20 @@ type ApiKeyActionRouteBuilderOptions<
   authorization?: {
     action: AuthorizationAction;
     resource: (
-      params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined,
-      searchParams: TSearchParamsSchema extends z.AnyZodObject
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TSearchParamsSchema>
         : undefined,
-      headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined,
-      body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined,
+      body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TBodySchema>
+        : undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
@@ -419,26 +449,34 @@ type ApiKeyActionRouteBuilderOptions<
 };
 
 type ApiKeyActionHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
-  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
   authentication: ApiAuthenticationResultSuccess;
   request: Request;
 }) => Promise<Response>;
 
 export function createActionApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 >(
   options: ApiKeyActionRouteBuilderOptions<
     TParamsSchema,
@@ -686,9 +724,9 @@ async function wrapResponse(
 }
 
 type WorkerLoaderRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -696,23 +734,29 @@ type WorkerLoaderRouteBuilderOptions<
 };
 
 type WorkerLoaderHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
   authenticatedWorker: AuthenticatedWorkerInstance;
   request: Request;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
 }) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
 >(
   options: WorkerLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: WorkerLoaderHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
@@ -802,10 +846,10 @@ export function createLoaderWorkerApiRoute<
 }
 
 type WorkerActionRouteBuilderOptions<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = {
   params?: TParamsSchema;
   searchParams?: TSearchParamsSchema;
@@ -815,26 +859,34 @@ type WorkerActionRouteBuilderOptions<
 };
 
 type WorkerActionHandlerFunction<
-  TParamsSchema extends z.AnyZodObject | undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 > = (args: {
-  params: TParamsSchema extends z.AnyZodObject ? z.infer<TParamsSchema> : undefined;
-  searchParams: TSearchParamsSchema extends z.AnyZodObject
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
     ? z.infer<TSearchParamsSchema>
     : undefined;
   authenticatedWorker: AuthenticatedWorkerInstance;
   request: Request;
-  headers: THeadersSchema extends z.AnyZodObject ? z.infer<THeadersSchema> : undefined;
-  body: TBodySchema extends z.AnyZodObject ? z.infer<TBodySchema> : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
 }) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
-  TParamsSchema extends z.AnyZodObject | undefined = undefined,
-  TSearchParamsSchema extends z.AnyZodObject | undefined = undefined,
-  THeadersSchema extends z.AnyZodObject | undefined = undefined,
-  TBodySchema extends z.AnyZodObject | undefined = undefined
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined
 >(
   options: WorkerActionRouteBuilderOptions<
     TParamsSchema,

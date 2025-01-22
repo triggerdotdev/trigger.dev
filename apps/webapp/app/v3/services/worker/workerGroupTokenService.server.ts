@@ -9,7 +9,7 @@ import {
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { WORKER_HEADER_NAME } from "@trigger.dev/core/v3/workers";
+import { WORKER_HEADERS } from "@trigger.dev/core/v3/workers";
 import {
   TaskRunExecutionResult,
   DequeuedMessage,
@@ -19,6 +19,7 @@ import {
   MachinePreset,
   WaitForDurationResult,
   MachineResources,
+  CheckpointInput,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { $transaction } from "~/db.server";
@@ -136,7 +137,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    const instanceName = request.headers.get(WORKER_HEADER_NAME.WORKER_INSTANCE_NAME);
+    const instanceName = request.headers.get(WORKER_HEADERS.INSTANCE_NAME);
 
     if (!instanceName) {
       logger.error("[WorkerGroupTokenService] Instance name not found in request", {
@@ -153,7 +154,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
     }
 
     if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-      const managedWorkerSecret = request.headers.get(WORKER_HEADER_NAME.WORKER_MANAGED_SECRET);
+      const managedWorkerSecret = request.headers.get(WORKER_HEADERS.MANAGED_SECRET);
 
       if (!managedWorkerSecret) {
         logger.error("[WorkerGroupTokenService] Managed secret not found in request", {
@@ -187,7 +188,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
     const workerInstance = await this.getOrCreateWorkerInstance({
       workerGroup,
       instanceName,
-      deploymentId: request.headers.get(WORKER_HEADER_NAME.WORKER_DEPLOYMENT_ID) ?? undefined,
+      deploymentId: request.headers.get(WORKER_HEADERS.DEPLOYMENT_ID) ?? undefined,
     });
 
     if (!workerInstance) {
@@ -716,6 +717,35 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   async getLatestSnapshot({ runFriendlyId }: { runFriendlyId: string }) {
     return await this._engine.getRunExecutionData({
       runId: fromFriendlyId(runFriendlyId),
+    });
+  }
+
+  async createCheckpoint({
+    runFriendlyId,
+    snapshotFriendlyId,
+    checkpoint,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    checkpoint: CheckpointInput;
+  }) {
+    return await this._engine.createCheckpoint({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      checkpoint,
+    });
+  }
+
+  async continueRunExecution({
+    runFriendlyId,
+    snapshotFriendlyId,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+  }) {
+    return await this._engine.continueRunExecution({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
     });
   }
 

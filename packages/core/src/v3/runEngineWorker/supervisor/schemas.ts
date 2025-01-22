@@ -7,6 +7,8 @@ import {
   CompleteRunAttemptResult,
   RunExecutionData,
   WaitForDurationResult,
+  CheckpointInput,
+  ExecutionResult,
 } from "../../schemas/runEngine.js";
 
 export const WorkerApiHeartbeatRequestBody = z.object({
@@ -26,6 +28,28 @@ export const WorkerApiHeartbeatResponseBody = z.object({
   ok: z.literal(true),
 });
 export type WorkerApiHeartbeatResponseBody = z.infer<typeof WorkerApiHeartbeatResponseBody>;
+
+export const WorkerApiSuspendRunRequestBody = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    checkpoint: CheckpointInput,
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string(),
+  }),
+]);
+export type WorkerApiSuspendRunRequestBody = z.infer<typeof WorkerApiSuspendRunRequestBody>;
+
+export const WorkerApiSuspendRunResponseBody = z.object({
+  ok: z.literal(true),
+});
+export type WorkerApiSuspendRunResponseBody = z.infer<typeof WorkerApiSuspendRunResponseBody>;
+
+export const WorkerApiContinueRunExecutionRequestBody = ExecutionResult;
+export type WorkerApiContinueRunExecutionRequestBody = z.infer<
+  typeof WorkerApiContinueRunExecutionRequestBody
+>;
 
 export const WorkerApiConnectRequestBody = z.object({
   metadata: z.record(z.any()),
