@@ -3,9 +3,9 @@ import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { MatchedOrganization, useOrganization } from "~/hooks/useOrganizations";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
-import { LinkButton } from "../../primitives/Buttons";
-import { Icon } from "../../primitives/Icon";
-import { Paragraph } from "../../primitives/Paragraph";
+import { LinkButton } from "../primitives/Buttons";
+import { Icon } from "../primitives/Icon";
+import { Paragraph } from "../primitives/Paragraph";
 import { DateTime } from "~/components/primitives/DateTime";
 
 export function UpgradePrompt() {

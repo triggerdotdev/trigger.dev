@@ -251,29 +251,6 @@ export function NamedIcon({
   return <StopIcon className={className} />;
 }
 
-export function NamedIconInBox({
-  name,
-  className,
-  fallback,
-  iconClassName,
-}: {
-  name: string;
-  className?: string;
-  fallback?: JSX.Element;
-  iconClassName?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid place-content-center rounded-sm border border-charcoal-750 bg-charcoal-850",
-        className
-      )}
-    >
-      <NamedIcon name={name} fallback={fallback} className={cn("h-6 w-6", iconClassName)} />
-    </div>
-  );
-}
-
 export function TablerIcon({ name, className }: { name: string; className?: string }) {
   return (
     <svg className={cn("stroke-[1.5]", className)}>

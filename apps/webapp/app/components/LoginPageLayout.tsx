@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
-import { ATAndTLogo } from "~/assets/logos/ATAndTLogo";
 import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
 import { CalComLogo } from "~/assets/logos/CalComLogo";
-import { ShopifyLogo } from "~/assets/logos/ShopifyLogo";
-import { VerizonLogo } from "~/assets/logos/VerizonLogo";
+import { LyftLogo } from "~/assets/logos/LyftLogo";
+import { MiddayLogo } from "~/assets/logos/MiddayLogo";
+import { TldrawLogo } from "~/assets/logos/TldrawLogo";
+import { UnkeyLogo } from "~/assets/logos/UnkeyLogo";
 import { LogoType } from "./LogoType";
 import { LinkButton } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
-import { TldrawLogo } from "~/assets/logos/TldrawLogo";
-import { UnkeyLogo } from "~/assets/logos/UnkeyLogo";
-import { LyftLogo } from "~/assets/logos/LyftLogo";
-import { MiddayLogo } from "~/assets/logos/MiddayLogo";
 
 interface QuoteType {
   quote: string;

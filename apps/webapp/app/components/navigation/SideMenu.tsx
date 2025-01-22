@@ -62,7 +62,6 @@ import {
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { FreePlanUsage } from "../billing/v2/FreePlanUsage";
 import { Badge } from "../primitives/Badge";
 import { LinkButton } from "../primitives/Buttons";
 import { Header2 } from "../primitives/Headers";
@@ -79,6 +78,7 @@ import { TextLink } from "../primitives/TextLink";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { FreePlanUsage } from "../billing/FreePlanUsage";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
