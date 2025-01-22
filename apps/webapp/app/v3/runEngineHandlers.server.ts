@@ -269,7 +269,7 @@ export function registerRunEngineEventBusHandlers() {
     }
 
     try {
-      await updateMetadataService.call(env, run.id, run.metadata);
+      await updateMetadataService.call(run.id, run.metadata, env);
     } catch (e) {
       logger.error("[runMetadataUpdated] Failed to update metadata", {
         taskRun: run.id,
