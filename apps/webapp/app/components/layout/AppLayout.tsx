@@ -1,6 +1,6 @@
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
-import { useShowUpgradePrompt } from "../billing/v3/UpgradePrompt";
+import { useShowUpgradePrompt } from "../billing/UpgradePrompt";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
 export function AppContainer({ children }: { children: React.ReactNode }) {

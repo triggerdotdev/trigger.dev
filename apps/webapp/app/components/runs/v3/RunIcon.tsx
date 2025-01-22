@@ -7,8 +7,9 @@ import {
 } from "@heroicons/react/20/solid";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { cn } from "~/utils/cn";
+import { tablerIcons } from "~/utils/tablerIcons";
+import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 
 type TaskIconProps = {
   name: string | undefined;
@@ -27,13 +28,16 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
   const spanNameIcon = spanNameIcons.find(({ matcher }) => matcher.test(spanName));
 
   if (spanNameIcon) {
-    return (
-      <NamedIcon
-        name={spanNameIcon.iconName}
-        className={cn(className)}
-        fallback={<InformationCircleIcon className={cn(className, "text-text-dimmed")} />}
-      />
-    );
+    if (tablerIcons.has("tabler-" + spanNameIcon.iconName)) {
+      return <TablerIcon name={"tabler-" + spanNameIcon.iconName} className={className} />;
+    } else if (
+      spanNameIcon.iconName.startsWith("tabler-") &&
+      tablerIcons.has(spanNameIcon.iconName)
+    ) {
+      return <TablerIcon name={spanNameIcon.iconName} className={className} />;
+    }
+
+    <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
   }
 
   if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed")} />;
@@ -64,11 +68,13 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <HandRaisedIcon className={cn(className, "text-rose-800")} />;
   }
 
+  return <InformationCircleIcon className={cn(className, "text-text-dimmed")} />;
+}
+
+function TablerIcon({ name, className }: { name: string; className?: string }) {
   return (
-    <NamedIcon
-      name={name}
-      className={cn(className)}
-      fallback={<InformationCircleIcon className={cn(className, "text-text-dimmed")} />}
-    />
+    <svg className={cn("stroke-[1.5]", className)}>
+      <use xlinkHref={`${tablerSpritePath}#${name}`} />
+    </svg>
   );
 }

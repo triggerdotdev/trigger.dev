@@ -1,6 +1,7 @@
 import { Link } from "@remix-run/react";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
+import { ReactNode } from "react";
 import { cn } from "~/utils/cn";
+import { Icon, RenderIcon } from "./Icon";
 
 const variations = {
   primary:
@@ -13,7 +14,7 @@ type TextLinkProps = {
   href?: string;
   to?: string;
   className?: string;
-  trailingIcon?: IconNamesOrString;
+  trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   variant?: keyof typeof variations;
   children: React.ReactNode;
@@ -33,16 +34,12 @@ export function TextLink({
   return to ? (
     <Link to={to} className={cn(classes, className)} {...props}>
       {children}{" "}
-      {trailingIcon && (
-        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
-      )}
+      {trailingIcon && <Icon icon={trailingIcon} className={cn("size-4", trailingIconClassName)} />}
     </Link>
   ) : href ? (
     <a href={href} className={cn(classes, className)} {...props}>
       {children}{" "}
-      {trailingIcon && (
-        <NamedIcon name={trailingIcon} className={cn("h-4 w-4", trailingIconClassName)} />
-      )}
+      {trailingIcon && <Icon icon={trailingIcon} className={cn("size-4", trailingIconClassName)} />}
     </a>
   ) : (
     <span>Need to define a path or href</span>

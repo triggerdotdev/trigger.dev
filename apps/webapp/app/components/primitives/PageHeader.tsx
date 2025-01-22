@@ -1,7 +1,7 @@
 import { Link, useNavigation } from "@remix-run/react";
 import { ReactNode } from "react";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/v3/UpgradePrompt";
+import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";

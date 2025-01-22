@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
@@ -41,7 +42,7 @@ export default function Story() {
 
             <FormButtons
               confirmButton={
-                <Button type="submit" variant={"primary/small"} TrailingIcon="arrow-right">
+                <Button type="submit" variant={"primary/small"} TrailingIcon={ArrowRightIcon}>
                   Create
                 </Button>
               }

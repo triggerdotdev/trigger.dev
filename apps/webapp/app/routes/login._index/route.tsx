@@ -1,3 +1,4 @@
+import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import { GitHubDarkIcon } from "@trigger.dev/companyicons";
@@ -6,7 +7,6 @@ import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { Header1 } from "~/components/primitives/Headers";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported } from "~/services/auth.server";
@@ -100,7 +100,7 @@ export default function LoginPage() {
                 data-action="continue with email"
                 className="text-text-bright"
               >
-                <NamedIcon name={"envelope"} className={"mr-2 size-5 text-text-bright"} />
+                <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
                 Continue with Email
               </LinkButton>
             </div>

@@ -27,8 +27,6 @@
       "@trigger.dev/core/*": ["../../packages/core/src/*"],
       "@trigger.dev/database": ["../../internal-packages/database/src/index"],
       "@trigger.dev/database/*": ["../../internal-packages/database/src/*"],
-      "@trigger.dev/yalt": ["../../packages/yalt/src/index"],
-      "@trigger.dev/yalt/*": ["../../packages/yalt/src/*"],
       "@trigger.dev/otlp-importer": ["../../internal-packages/otlp-importer/src/index"],
       "@trigger.dev/otlp-importer/*": ["../../internal-packages/otlp-importer/src/*"],
       "emails": ["../../internal-packages/emails/src/index"],

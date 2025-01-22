@@ -7,12 +7,10 @@ import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
-import { HighlightInit } from "./components/HighlightInit";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { Toast } from "./components/primitives/Toast";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
-import { useHighlight } from "./hooks/useHighlight";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
 import { appEnvTitleTag } from "./utils";
@@ -91,7 +89,6 @@ export function ErrorBoundary() {
 function App() {
   const { posthogProjectKey } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
-  useHighlight();
 
   return (
     <>

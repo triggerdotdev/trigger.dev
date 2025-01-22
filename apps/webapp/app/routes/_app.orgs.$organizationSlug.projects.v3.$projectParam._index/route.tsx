@@ -18,6 +18,7 @@ import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { Feedback } from "~/components/Feedback";
 import {
@@ -378,13 +379,13 @@ export default function Page() {
                                   popoverContent={
                                     <>
                                       <PopoverMenuItem
-                                        icon="runs"
+                                        icon={RunsIcon}
                                         to={path}
                                         title="View runs"
                                         leadingIconClassName="text-teal-500"
                                       />
                                       <PopoverMenuItem
-                                        icon="beaker"
+                                        icon={BeakerIcon}
                                         to={testPath}
                                         title="Test task"
                                       />

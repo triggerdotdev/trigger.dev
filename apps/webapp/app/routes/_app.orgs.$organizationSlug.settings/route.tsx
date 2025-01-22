@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { TrashIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
@@ -16,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -217,7 +219,7 @@ export default function Page() {
                       type="submit"
                       variant={"primary/small"}
                       disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? "spinner-white" : undefined}
+                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                     >
                       Rename organization
                     </Button>
@@ -257,7 +259,7 @@ export default function Page() {
                     <Button
                       type="submit"
                       variant={"danger/small"}
-                      LeadingIcon={isDeleteLoading ? "spinner-white" : "trash-can"}
+                      LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
                       leadingIconClassName="text-white"
                       disabled={isDeleteLoading}
                     >

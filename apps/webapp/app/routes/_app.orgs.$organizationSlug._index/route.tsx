@@ -1,9 +1,9 @@
+import { FolderIcon } from "@heroicons/react/20/solid";
 import { Link, MetaFunction } from "@remix-run/react";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
-import { NamedIcon } from "~/components/primitives/NamedIcon";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -47,7 +47,7 @@ export default function Page() {
                     className="border-grid-bright-dimmed flex gap-4 rounded-md border p-4 transition hover:bg-charcoal-900 "
                     to={projectPath(organization, project)}
                   >
-                    <NamedIcon name="folder" className="h-10 w-10 flex-none" />
+                    <FolderIcon className="h-10 w-10 flex-none text-indigo-600" />
                     <div className="flex flex-col">
                       <Header3>{project.name}</Header3>
                       <Badge className="max-w-max">{project.version}</Badge>

@@ -18,6 +18,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -175,7 +176,7 @@ export default function Page() {
                       type="submit"
                       variant={"primary/small"}
                       disabled={isRenameLoading}
-                      LeadingIcon={isRenameLoading ? "spinner-white" : undefined}
+                      LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                     >
                       Rename project
                     </Button>

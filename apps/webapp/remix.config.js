@@ -14,7 +14,6 @@ module.exports = {
     "@trigger.dev/core",
     "@trigger.dev/sdk",
     "@trigger.dev/platform",
-    "@trigger.dev/yalt",
     "@unkey/cache",
     "@unkey/cache/stores",
     "emails",

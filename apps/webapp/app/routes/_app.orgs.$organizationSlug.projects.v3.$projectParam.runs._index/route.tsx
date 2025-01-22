@@ -27,7 +27,7 @@ import {
   SelectedItemsProvider,
   useSelectedItems,
 } from "~/components/primitives/SelectedItemsProvider";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
 import { RunsFilters, TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
@@ -352,7 +352,7 @@ function CancelRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             <Button
               type="submit"
               variant="danger/medium"
-              LeadingIcon={isLoading ? "spinner-white" : StopCircleIcon}
+              LeadingIcon={isLoading ? SpinnerWhite : StopCircleIcon}
               disabled={isLoading}
               shortcut={{ modifiers: ["mod"], key: "enter" }}
             >
@@ -409,7 +409,7 @@ function ReplayRuns({ onOpen }: { onOpen: (open: boolean) => void }) {
             <Button
               type="submit"
               variant="primary/medium"
-              LeadingIcon={isLoading ? "spinner-white" : ArrowPathIcon}
+              LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
               disabled={isLoading}
               shortcut={{ modifiers: ["mod"], key: "enter" }}
             >
