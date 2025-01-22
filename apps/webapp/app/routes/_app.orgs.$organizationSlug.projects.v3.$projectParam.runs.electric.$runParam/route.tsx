@@ -219,8 +219,8 @@ export default function Page() {
           {run.isFinished ? null : (
             <Dialog key={`cancel-${run.friendlyId}`}>
               <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={StopCircleIcon}>
-                  Cancel run
+                <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
+                  Cancel run…
                 </Button>
               </DialogTrigger>
               <CancelRunDialog
