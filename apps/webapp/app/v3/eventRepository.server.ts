@@ -10,6 +10,7 @@ import {
   SpanEvent,
   SpanEvents,
   SpanMessagingEvent,
+  TaskEventEnvironment,
   TaskEventStyle,
   TaskRunError,
   correctErrorStackTrace,
@@ -82,7 +83,7 @@ export type TraceEventOptions = {
   parentAsLinkType?: "trigger" | "replay";
   spanIdSeed?: string;
   attributes: TraceAttributes;
-  environment: AuthenticatedEnvironment;
+  environment: TaskEventEnvironment;
   taskSlug: string;
   startTime?: bigint;
   endTime?: Date;

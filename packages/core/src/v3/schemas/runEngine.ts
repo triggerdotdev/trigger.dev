@@ -48,6 +48,26 @@ export const WaitpointType = {
 
 export type WaitpointType = (typeof WaitpointType)[keyof typeof WaitpointType];
 
+export const RuntimeEnvironmentType = {
+  PRODUCTION: "PRODUCTION",
+  STAGING: "STAGING",
+  DEVELOPMENT: "DEVELOPMENT",
+  PREVIEW: "PREVIEW",
+} satisfies Enum<DB_TYPES.RuntimeEnvironmentType>;
+
+export type RuntimeEnvironmentType =
+  (typeof RuntimeEnvironmentType)[keyof typeof RuntimeEnvironmentType];
+
+export type TaskEventEnvironment = {
+  id: string;
+  type: RuntimeEnvironmentType;
+  organizationId: string;
+  projectId: string;
+  project: {
+    externalRef: string;
+  };
+};
+
 export const CompletedWaitpoint = z.object({
   id: z.string(),
   index: z.number().optional(),
