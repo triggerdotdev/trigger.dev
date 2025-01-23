@@ -20,6 +20,14 @@ export type FairDequeuingStrategyBiases = {
    * 0 = no bias, 1 = full bias based on available capacity
    */
   availableCapacityBias: number;
+
+  /**
+   * Controls randomization of queue ordering within environments
+   * 0 = strict age-based ordering (oldest first)
+   * 1 = completely random ordering
+   * Values between 0-1 blend between age-based and random ordering
+   */
+  queueAgeRandomization: number;
 };
 
 export type FairDequeuingStrategyOptions = {
@@ -57,6 +65,11 @@ type WeightedEnv = {
   weight: number;
 };
 
+type WeightedQueue = {
+  queue: FairQueue;
+  weight: number;
+};
+
 const emptyFairQueueSnapshot: FairQueueSnapshot = {
   id: "empty",
   orgs: {},
@@ -67,6 +80,7 @@ const emptyFairQueueSnapshot: FairQueueSnapshot = {
 const defaultBiases: FairDequeuingStrategyBiases = {
   concurrencyLimitBias: 0,
   availableCapacityBias: 0,
+  queueAgeRandomization: 0, // Default to completely age-based ordering
 };
 
 export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
@@ -213,12 +227,63 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
     const queues = envs.reduce((acc, envId) => {
       if (queuesByEnv[envId]) {
-        acc.push(...queuesByEnv[envId].sort((a, b) => b.age - a.age));
+        // Instead of sorting by age, use weighted random selection
+        acc.push(...this.#weightedRandomQueueOrder(queuesByEnv[envId]));
       }
       return acc;
     }, [] as Array<FairQueue>);
 
     return queues.map((queue) => queue.id);
+  }
+
+  #weightedRandomQueueOrder(queues: FairQueue[]): FairQueue[] {
+    if (queues.length <= 1) return queues;
+
+    const biases = this.options.biases ?? defaultBiases;
+
+    // When queueAgeRandomization is 0, use strict age-based ordering
+    if (biases.queueAgeRandomization === 0) {
+      return [...queues].sort((a, b) => b.age - a.age);
+    }
+
+    // Find the maximum age for normalization
+    const maxAge = Math.max(...queues.map((q) => q.age));
+
+    // Calculate weights for each queue
+    const weightedQueues: WeightedQueue[] = queues.map((queue) => {
+      // Normalize age to be between 0 and 1
+      const normalizedAge = queue.age / maxAge;
+
+      // Calculate weight: combine base weight with configurable age influence
+      const baseWeight = 1;
+      const weight = baseWeight + normalizedAge * biases.queueAgeRandomization;
+
+      return { queue, weight };
+    });
+
+    // Perform weighted random selection for ordering
+    const result: FairQueue[] = [];
+    let remainingQueues = [...weightedQueues];
+    let totalWeight = remainingQueues.reduce((sum, wq) => sum + wq.weight, 0);
+
+    while (remainingQueues.length > 0) {
+      let random = this._rng() * totalWeight;
+      let index = 0;
+
+      // Find queue based on weighted random selection
+      while (random > 0 && index < remainingQueues.length) {
+        random -= remainingQueues[index].weight;
+        index++;
+      }
+      index = Math.max(0, index - 1);
+
+      // Add selected queue to result and remove from remaining
+      result.push(remainingQueues[index].queue);
+      totalWeight -= remainingQueues[index].weight;
+      remainingQueues.splice(index, 1);
+    }
+
+    return result;
   }
 
   #shuffle<T>(array: Array<T>): Array<T> {

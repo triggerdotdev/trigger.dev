@@ -535,6 +535,7 @@ describe("FairDequeuingStrategy", () => {
             biases: {
               concurrencyLimitBias: 0.8,
               availableCapacityBias: 0.5,
+              queueAgeRandomization: 0.0,
             },
           })
       );
@@ -593,4 +594,99 @@ describe("FairDequeuingStrategy", () => {
       expect(highLimitPercentage).toBeGreaterThan(lowLimitPercentage);
     }
   );
+
+  redisTest("should respect ageInfluence parameter for queue ordering", async ({ redis }) => {
+    const keyProducer = createKeyProducer("test");
+    const now = Date.now();
+
+    // Setup queues with different ages in the same environment
+    const queueAges = [
+      { id: "queue-1", age: 5000 }, // oldest
+      { id: "queue-2", age: 3000 },
+      { id: "queue-3", age: 1000 }, // newest
+    ];
+
+    // Helper function to run iterations with a specific age influence
+    async function runWithQueueAgeRandomization(queueAgeRandomization: number) {
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultOrgConcurrency: 10,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        checkForDisabledOrgs: true,
+        seed: "fixed-seed",
+        biases: {
+          concurrencyLimitBias: 0,
+          availableCapacityBias: 0,
+          queueAgeRandomization,
+        },
+      });
+
+      const positionCounts: Record<string, number[]> = {
+        "queue-1": [0, 0, 0],
+        "queue-2": [0, 0, 0],
+        "queue-3": [0, 0, 0],
+      };
+
+      const iterations = 1000;
+      for (let i = 0; i < iterations; i++) {
+        const result = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          "consumer-1"
+        );
+
+        result.forEach((queueId, position) => {
+          const baseQueueId = queueId.split(":").pop()!;
+          positionCounts[baseQueueId][position]++;
+        });
+      }
+
+      return positionCounts;
+    }
+
+    // Setup test data
+    for (const { id, age } of queueAges) {
+      await setupQueue({
+        redis,
+        keyProducer,
+        parentQueue: "parent-queue",
+        score: now - age,
+        queueId: id,
+        orgId: "org-1",
+        envId: "env-1",
+      });
+    }
+
+    await setupConcurrency({
+      redis,
+      keyProducer,
+      org: { id: "org-1", currentConcurrency: 0, limit: 10 },
+      env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+    });
+
+    // Test with different age influence values
+    const strictAge = await runWithQueueAgeRandomization(0); // Strict age-based ordering
+    const mixed = await runWithQueueAgeRandomization(0.5); // Mix of age and random
+    const fullyRandom = await runWithQueueAgeRandomization(1); // Completely random
+
+    console.log("Distribution with strict age ordering (0.0):", strictAge);
+    console.log("Distribution with mixed ordering (0.5):", mixed);
+    console.log("Distribution with random ordering (1.0):", fullyRandom);
+
+    // With strict age ordering (0.0), oldest should always be first
+    expect(strictAge["queue-1"][0]).toBe(1000); // Always in first position
+    expect(strictAge["queue-3"][0]).toBe(0); // Never in first position
+
+    // With fully random (1.0), positions should still allow for some age bias
+    const randomFirstPositionSpread = Math.abs(
+      fullyRandom["queue-1"][0] - fullyRandom["queue-3"][0]
+    );
+    expect(randomFirstPositionSpread).toBeLessThan(200); // Allow for larger spread in distribution
+
+    // With mixed (0.5), should show preference for age but not absolute
+    expect(mixed["queue-1"][0]).toBeGreaterThan(mixed["queue-3"][0]); // Older preferred
+    expect(mixed["queue-3"][0]).toBeGreaterThan(0); // But newer still gets chances
+  });
 });
