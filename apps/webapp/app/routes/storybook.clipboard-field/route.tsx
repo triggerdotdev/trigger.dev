@@ -1,3 +1,4 @@
+import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Header2 } from "~/components/primitives/Headers";
@@ -42,7 +43,7 @@ export default function Story() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/small"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
         />
         <ClipboardField value="with iconButton" variant="primary/small" iconButton />
         <ClipboardField value="with iconButton" variant="secondary/small" iconButton />
@@ -58,7 +59,7 @@ export default function Story() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/medium"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
         />
         <ClipboardField value="with iconButton" variant="primary/medium" iconButton />
         <ClipboardField value="with iconButton" variant="secondary/medium" iconButton />
@@ -78,7 +79,7 @@ export default function Story() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/small"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
           secure={true}
         />
         <ClipboardField value="with iconButton" variant="primary/small" iconButton secure={true} />
@@ -102,7 +103,7 @@ export default function Story() {
         <ClipboardField
           value="with leadingIcon"
           variant="tertiary/medium"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
           secure={true}
         />
         <ClipboardField value="with iconButton" variant="primary/medium" iconButton secure={true} />
@@ -133,7 +134,7 @@ export default function Story() {
         <ClipboardField
           value="npx abcdefghi"
           variant="tertiary/small"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
           secure="npx ••••••••"
         />
         <ClipboardField
@@ -167,7 +168,7 @@ export default function Story() {
         <ClipboardField
           value="npx abcdefghi"
           variant="tertiary/medium"
-          icon={MagnifyingGlassIcon}
+          icon={<MagnifyingGlassIcon className="size-4" />}
           secure="npx ••••••••"
         />
         <ClipboardField

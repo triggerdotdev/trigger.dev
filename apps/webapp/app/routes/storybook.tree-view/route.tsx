@@ -1,4 +1,9 @@
-import { DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
+import {
+  DocumentIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/20/solid";
 import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";

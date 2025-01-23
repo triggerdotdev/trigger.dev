@@ -1,3 +1,4 @@
+import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Fieldset } from "~/components/primitives/Fieldset";
