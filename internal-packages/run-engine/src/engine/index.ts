@@ -1437,7 +1437,7 @@ export class RunEngine {
 
         //is pending cancellation and we're not finalizing, alert the worker again
         if (latestSnapshot.executionStatus === "PENDING_CANCEL" && !finalizeRun) {
-          await this.#sendNotificationToWorker({ runId });
+          await this.#sendNotificationToWorker({ runId, snapshot: latestSnapshot });
           return executionResultFromSnapshot(latestSnapshot);
         }
 
@@ -1494,7 +1494,7 @@ export class RunEngine {
           });
 
           //the worker needs to be notified so it can kill the run and complete the attempt
-          await this.#sendNotificationToWorker({ runId });
+          await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
           return executionResultFromSnapshot(newSnapshot);
         }
 
@@ -1878,7 +1878,7 @@ export class RunEngine {
         });
 
         // Let the worker know immediately, so it can suspend the run
-        await this.#sendNotificationToWorker({ runId });
+        await this.#sendNotificationToWorker({ runId, snapshot });
       }
 
       if (failAfter) {
@@ -2169,6 +2169,9 @@ export class RunEngine {
         },
         completedWaitpoints: snapshot.completedWaitpoints,
       });
+
+      // Let worker know about the new snapshot so it can continue the run
+      await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
 
       return {
         ...executionResultFromSnapshot(newSnapshot),
@@ -2785,7 +2788,7 @@ export class RunEngine {
           },
         });
         //the worker can fetch the latest snapshot and should create a new attempt
-        await this.#sendNotificationToWorker({ runId });
+        await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
 
         return {
           attemptStatus: "RETRY_IMMEDIATELY",
@@ -3069,7 +3072,7 @@ export class RunEngine {
         //we reacquire the concurrency if it's still running because we're not going to be dequeuing (which also does this)
         await this.runQueue.reacquireConcurrency(run.runtimeEnvironment.organization.id, runId);
 
-        await this.#sendNotificationToWorker({ runId });
+        await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
       } else {
         if (!snapshot.checkpointId) {
           // TODO: We're screwed, should probably fail the run immediately
@@ -3558,8 +3561,26 @@ export class RunEngine {
    * Sends a notification that a run has changed and we need to fetch the latest run state.
    * The worker will call `getRunExecutionData` via the API and act accordingly.
    */
-  async #sendNotificationToWorker({ runId }: { runId: string }) {
-    this.eventBus.emit("workerNotification", { time: new Date(), run: { id: runId } });
+  async #sendNotificationToWorker({
+    runId,
+    snapshot,
+  }: {
+    runId: string;
+    snapshot: {
+      id: string;
+      executionStatus: TaskRunExecutionStatus;
+    };
+  }) {
+    this.eventBus.emit("workerNotification", {
+      time: new Date(),
+      run: {
+        id: runId,
+      },
+      snapshot: {
+        id: snapshot.id,
+        executionStatus: snapshot.executionStatus,
+      },
+    });
   }
 
   /*

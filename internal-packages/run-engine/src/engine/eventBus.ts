@@ -113,6 +113,10 @@ export type EventBusEvents = {
       run: {
         id: string;
       };
+      snapshot: {
+        id: string;
+        executionStatus: TaskRunExecutionStatus;
+      };
     },
   ];
   executionSnapshotCreated: [

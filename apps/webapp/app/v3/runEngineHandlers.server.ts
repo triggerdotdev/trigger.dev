@@ -351,9 +351,10 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("workerNotification", async ({ time, run }) => {
-    logger.debug("[workerNotification] Notifying worker", { time, runId: run.id });
+  engine.eventBus.on("workerNotification", async ({ time, run, snapshot }) => {
+    logger.debug("[workerNotification] Notifying worker", { time, runId: run.id, snapshot });
 
+    // Notify the worker
     try {
       const runFriendlyId = RunId.toFriendlyId(run.id);
       const room = roomFromFriendlyRunId(runFriendlyId);
@@ -363,6 +364,38 @@ export function registerRunEngineEventBusHandlers() {
         .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
     } catch (error) {
       logger.error("[workerNotification] Failed to notify worker", {
+        error: error instanceof Error ? error.message : error,
+        runId: run.id,
+        snapshot,
+      });
+    }
+
+    // Record notification event
+    try {
+      const foundRun = await findRun(run.id);
+
+      if (!foundRun) {
+        logger.error("Failed to find run", { runId: run.id });
+        return;
+      }
+
+      await eventRepository.recordEvent(`Notify worker: ${snapshot.executionStatus}`, {
+        environment: foundRun.runtimeEnvironment,
+        taskSlug: foundRun.taskIdentifier,
+        context: foundRun.traceContext as Record<string, string | undefined>,
+        attributes: {
+          runId: foundRun.friendlyId,
+          isDebug: true,
+          properties: {
+            snapshotId: snapshot.id,
+            snapshotStatus: snapshot.executionStatus,
+          },
+        },
+        duration: 0,
+        startTime: BigInt(time.getTime() * 1_000_000),
+      });
+    } catch (error) {
+      logger.error("[executionSnapshotCreated] Failed to record event", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
       });
