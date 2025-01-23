@@ -14,6 +14,7 @@ import { RequeueV2Message } from "./requeueV2Message.server";
 import { VisibilityTimeoutStrategy } from "./types";
 import Redis from "ioredis";
 import { FairDequeuingStrategy, NoopFairDequeuingStrategy } from "./fairDequeuingStrategy.server";
+import { tracer } from "../tracer.server";
 
 const KEY_PREFIX = "marqsv2:";
 const SHARED_QUEUE_NAME = "sharedQueue";
@@ -74,8 +75,9 @@ function getMarQSClient() {
     visibilityTimeoutStrategy: new V2VisibilityTimeout(),
     keysProducer: new MarQSV2KeyProducer(KEY_PREFIX),
     queuePriorityStrategy: new FairDequeuingStrategy({
+      tracer,
       redis,
-      queueSelectionCount: env.V2_MARQS_QUEUE_SELECTION_COUNT,
+      parentQueueLimit: 100,
       keys: new MarQSV2KeyProducer(KEY_PREFIX),
       defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY,
       defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
