@@ -1,6 +1,6 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { LockOpenIcon } from "@heroicons/react/20/solid";
+import { LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -143,7 +143,7 @@ export default function Page() {
     <MainCenteredContainer>
       <div>
         <FormTitle
-          LeadingIcon="invite-member"
+          LeadingIcon={<UserPlusIcon className="size-6 text-indigo-500" />}
           title="Invite team members"
           description={`Invite new team members to ${organization.title}.`}
         />

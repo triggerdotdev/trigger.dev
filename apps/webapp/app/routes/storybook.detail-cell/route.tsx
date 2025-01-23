@@ -6,7 +6,7 @@ export default function Story() {
   return (
     <div className="flex max-w-xl flex-col items-start gap-y-8 p-8">
       <DetailCell
-        leadingIcon="integration"
+        leadingIcon={CodeBracketIcon}
         leadingIconClassName="text-text-dimmed"
         label="Learn how to create your own API Integrations"
         variant="base"

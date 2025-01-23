@@ -1,4 +1,4 @@
-import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
@@ -16,7 +16,7 @@ export default function Story() {
     <MainCenteredContainer>
       <div>
         <FormTitle
-          LeadingIcon="organization"
+          LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
           title="Create a new Organization"
           description="Organizations are a great way to group your Projects."
         />

@@ -1,3 +1,4 @@
+import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import crypto from "node:crypto";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -63,7 +64,10 @@ export default function Page() {
       <MainCenteredContainer className="max-w-[22rem]">
         {result.success ? (
           <div>
-            <FormTitle LeadingIcon="envelope" title="Unsubscribed" />
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              title="Unsubscribed"
+            />
             <Paragraph spacing>
               You have unsubscribed from onboarding emails, {result.email}.
             </Paragraph>
@@ -73,7 +77,10 @@ export default function Page() {
           </div>
         ) : (
           <div>
-            <FormTitle LeadingIcon="envelope" title="Unsubscribe failed" />
+            <FormTitle
+              LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
+              title="Unsubscribe failed"
+            />
             <Paragraph spacing>{result.message}</Paragraph>
             <Paragraph spacing>
               If you believe this is a bug, please{" "}
