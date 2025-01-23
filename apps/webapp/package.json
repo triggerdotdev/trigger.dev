@@ -65,6 +65,7 @@
     "@opentelemetry/sdk-trace-base": "1.25.1",
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
+    "@opentelemetry/api-logs": "0.52.1",
     "@popperjs/core": "^2.11.8",
     "@prisma/instrumentation": "^5.11.0",
     "@radix-ui/react-alert-dialog": "^1.0.4",

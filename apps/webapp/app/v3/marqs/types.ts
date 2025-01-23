@@ -1,31 +1,26 @@
 import { z } from "zod";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
-export type QueueCapacity = {
-  current: number;
-  limit: number;
-};
-
-export type QueueCapacities = {
-  queue: QueueCapacity;
-  env: QueueCapacity;
-  org: QueueCapacity;
-};
-
-export type QueueWithScores = {
-  queue: string;
-  capacities: QueueCapacities;
-  age: number;
-  size: number;
-};
-
 export type QueueRange = { offset: number; count: number };
 
 export interface MarQSKeyProducer {
   queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
+
+  envConcurrencyLimitKey(envId: string): string;
   envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+
+  orgConcurrencyLimitKey(orgId: string): string;
   orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+
+  orgCurrentConcurrencyKey(orgId: string): string;
+  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+
+  envCurrentConcurrencyKey(envId: string): string;
+  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+
+  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+
   envQueueKey(env: AuthenticatedEnvironment): string;
   envSharedQueueKey(env: AuthenticatedEnvironment): string;
   sharedQueueKey(): string;
@@ -38,42 +33,25 @@ export interface MarQSKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
+  disabledConcurrencyLimitKey(orgId: string): string;
   disabledConcurrencyLimitKeyFromQueue(queue: string): string;
   orgConcurrencyLimitKeyFromQueue(queue: string): string;
   orgCurrentConcurrencyKeyFromQueue(queue: string): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
-  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
   envQueueKeyFromQueue(queue: string): string;
   messageKey(messageId: string): string;
   nackCounterKey(messageId: string): string;
   stripKeyPrefix(key: string): string;
+  orgIdFromQueue(queue: string): string;
+  envIdFromQueue(queue: string): string;
 }
 
-export type PriorityStrategyChoice = string | { abort: true };
-
-export interface MarQSQueuePriorityStrategy {
-  /**
-   * This function is called to get the next candidate selection for the queue
-   * The `range` is used to select the set of queues that will be considered for the next selection (passed to chooseQueue)
-   * The `selectionId` is used to identify the selection and should be passed to chooseQueue
-   *
-   * @param parentQueue The parent queue that holds the candidate queues
-   * @param consumerId The consumerId that is making the request
-   *
-   * @returns The scores and the selectionId for the next candidate selection
-   */
-  nextCandidateSelection(parentQueue: string, consumerId: string): Promise<{ range: QueueRange }>;
-
-  distributeQueues(queues: Array<QueueWithScores>): Array<string>;
-
-  moveToNextRange(
+export interface MarQSFairDequeueStrategy {
+  distributeFairQueuesFromParentQueue(
     parentQueue: string,
-    consumerId: string,
-    currentRange: QueueRange,
-    queueSize: number
-  ): QueueRange;
+    consumerId: string
+  ): Promise<Array<string>>;
 }
 
 export const MessagePayload = z.object({

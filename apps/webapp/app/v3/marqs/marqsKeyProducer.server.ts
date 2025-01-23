@@ -36,22 +36,49 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
 
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment) {
-    return [this.envKeySection(env.id), constants.CONCURRENCY_LIMIT_PART].join(":");
-  }
-
-  orgConcurrencyLimitKey(env: AuthenticatedEnvironment) {
-    return [this.orgKeySection(env.organizationId), constants.CONCURRENCY_LIMIT_PART].join(":");
-  }
-
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string) {
+  envConcurrencyLimitKey(envId: string): string;
+  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(envOrId: AuthenticatedEnvironment | string): string {
     return [
-      this.orgKeySection(env.organizationId),
-      this.envKeySection(env.id),
-      this.queueSection(queue),
-    ]
-      .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
-      .join(":");
+      this.envKeySection(typeof envOrId === "string" ? envOrId : envOrId.id),
+      constants.CONCURRENCY_LIMIT_PART,
+    ].join(":");
+  }
+
+  orgConcurrencyLimitKey(orgId: string): string;
+  orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+  orgConcurrencyLimitKey(envOrOrgId: AuthenticatedEnvironment | string) {
+    return [
+      this.orgKeySection(typeof envOrOrgId === "string" ? envOrOrgId : envOrOrgId.organizationId),
+      constants.CONCURRENCY_LIMIT_PART,
+    ].join(":");
+  }
+
+  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
+  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueKey(
+    envOrOrgId: AuthenticatedEnvironment | string,
+    queueOrEnvId: string,
+    queueOrConcurrencyKey: string,
+    concurrencyKey?: string
+  ): string {
+    if (typeof envOrOrgId === "string") {
+      return [
+        this.orgKeySection(envOrOrgId),
+        this.envKeySection(queueOrEnvId),
+        this.queueSection(queueOrConcurrencyKey),
+      ]
+        .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
+        .join(":");
+    } else {
+      return [
+        this.orgKeySection(envOrOrgId.organizationId),
+        this.envKeySection(envOrOrgId.id),
+        this.queueSection(queueOrEnvId),
+      ]
+        .concat(queueOrConcurrencyKey ? this.concurrencyKeySection(queueOrConcurrencyKey) : [])
+        .join(":");
+    }
   }
 
   envSharedQueueKey(env: AuthenticatedEnvironment) {
@@ -93,6 +120,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
   disabledConcurrencyLimitKeyFromQueue(queue: string) {
     const orgId = this.normalizeQueue(queue).split(":")[1];
 
+    return this.disabledConcurrencyLimitKey(orgId);
+  }
+
+  disabledConcurrencyLimitKey(orgId: string) {
     return `${constants.ORG_PART}:${orgId}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
   }
 
@@ -120,12 +151,22 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
-  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
-    return [this.orgKeySection(env.organizationId), constants.CURRENT_CONCURRENCY_PART].join(":");
+  orgCurrentConcurrencyKey(orgId: string): string;
+  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  orgCurrentConcurrencyKey(envOrOrgId: AuthenticatedEnvironment | string): string {
+    return [
+      this.orgKeySection(typeof envOrOrgId === "string" ? envOrOrgId : envOrOrgId.organizationId),
+      constants.CURRENT_CONCURRENCY_PART,
+    ].join(":");
   }
 
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string {
-    return [this.envKeySection(env.id), constants.CURRENT_CONCURRENCY_PART].join(":");
+  envCurrentConcurrencyKey(envId: string): string;
+  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  envCurrentConcurrencyKey(envOrId: AuthenticatedEnvironment | string): string {
+    return [
+      this.envKeySection(typeof envOrId === "string" ? envOrId : envOrId.id),
+      constants.CURRENT_CONCURRENCY_PART,
+    ].join(":");
   }
 
   envQueueKeyFromQueue(queue: string) {
@@ -144,6 +185,14 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
   nackCounterKey(messageId: string): string {
     return `${constants.MESSAGE_PART}:${messageId}:nacks`;
+  }
+
+  orgIdFromQueue(queue: string) {
+    return this.normalizeQueue(queue).split(":")[1];
+  }
+
+  envIdFromQueue(queue: string) {
+    return this.normalizeQueue(queue).split(":")[3];
   }
 
   private shortId(id: string) {

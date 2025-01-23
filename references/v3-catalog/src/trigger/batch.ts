@@ -298,7 +298,13 @@ export const batchV2TestTask = task({
   retry: {
     maxAttempts: 1,
   },
-  run: async ({ triggerSequentially }: { triggerSequentially?: boolean }) => {
+  run: async ({
+    triggerSequentially,
+    largeBatchSize = 21,
+  }: {
+    triggerSequentially?: boolean;
+    largeBatchSize?: number;
+  }) => {
     // First lets try triggering with too many items
     try {
       await tasks.batchTrigger<typeof batchV2TestChild>(
@@ -604,7 +610,7 @@ export const batchV2TestTask = task({
 
     // Now batchTriggerAndWait with 21 items
     const response10 = await batchV2TestChild.batchTriggerAndWait(
-      Array.from({ length: 21 }, (_, i) => ({
+      Array.from({ length: largeBatchSize }, (_, i) => ({
         payload: { foo: `bar${i}` },
       })),
       {
@@ -615,7 +621,7 @@ export const batchV2TestTask = task({
     logger.debug("Response 10", { response10 });
 
     assert.match(response10.id, /^batch_[a-z0-9]{21}$/, "response10: Batch ID is invalid");
-    assert.equal(response10.runs.length, 21, "response10: Items length is invalid");
+    assert.equal(response10.runs.length, largeBatchSize, "response10: Items length is invalid");
 
     // Now repeat the first few tests using `tasks.batchTrigger`:
     const response11 = await tasks.batchTrigger<typeof batchV2TestChild>(

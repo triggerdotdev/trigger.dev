@@ -252,6 +252,9 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
+      '@opentelemetry/api-logs':
+        specifier: 0.52.1
+        version: 0.52.1
       '@opentelemetry/core':
         specifier: 1.25.1
         version: 1.25.1(@opentelemetry/api@1.9.0)

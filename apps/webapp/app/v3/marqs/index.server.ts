@@ -13,36 +13,26 @@ import {
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
 } from "@opentelemetry/semantic-conventions";
-import { flattenAttributes } from "@trigger.dev/core/v3";
-import Redis, { type Callback, type RedisOptions, type Result } from "ioredis";
+import Redis, { type Callback, type Result } from "ioredis";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { concurrencyTracker } from "../services/taskRunConcurrencyTracker.server";
-import { attributesFromAuthenticatedEnv } from "../tracer.server";
+import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { AsyncWorker } from "./asyncWorker.server";
+import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
-import { SimpleWeightedChoiceStrategy } from "./simpleWeightedPriorityStrategy.server";
 import {
+  MarQSFairDequeueStrategy,
   MarQSKeyProducer,
-  MarQSQueuePriorityStrategy,
   MessagePayload,
   MessageQueueSubscriber,
-  QueueCapacities,
-  QueueRange,
-  QueueWithScores,
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
-import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
 
 const KEY_PREFIX = "marqs:";
-
-const constants = {
-  MESSAGE_VISIBILITY_TIMEOUT_QUEUE: "msgVisibilityTimeout",
-} as const;
 
 const SemanticAttributes = {
   CONSUMER_ID: "consumer_id",
@@ -55,15 +45,15 @@ const SemanticAttributes = {
 export type MarQSOptions = {
   name: string;
   tracer: Tracer;
-  redis: RedisOptions;
+  redis: Redis;
   defaultEnvConcurrency: number;
   defaultOrgConcurrency: number;
   windowSize?: number;
   visibilityTimeoutInMs?: number;
   workers: number;
   keysProducer: MarQSKeyProducer;
-  queuePriorityStrategy: MarQSQueuePriorityStrategy;
-  envQueuePriorityStrategy: MarQSQueuePriorityStrategy;
+  queuePriorityStrategy: MarQSFairDequeueStrategy;
+  envQueuePriorityStrategy: MarQSFairDequeueStrategy;
   visibilityTimeoutStrategy: VisibilityTimeoutStrategy;
   maximumNackCount: number;
   enableRebalancing?: boolean;
@@ -79,48 +69,13 @@ export class MarQS {
   public keys: MarQSKeyProducer;
   #rebalanceWorkers: Array<AsyncWorker> = [];
 
-  private _cache: UnkeyCache<{
-    childQueueSize: number;
-    queueConcurrencyLimit: number;
-    envAndOrgConcurrencyLimit: number;
-    disabledConcurrency: boolean;
-  }>;
-
-  private _consumerQueues: Map<string, Array<{ value: string; score: number }>> = new Map();
-
   constructor(private readonly options: MarQSOptions) {
-    this.redis = new Redis(options.redis);
+    this.redis = options.redis;
 
     this.keys = options.keysProducer;
 
     this.#startRebalanceWorkers();
     this.#registerCommands();
-
-    const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({ persistentMap: new Map() });
-
-    this._cache = createCache({
-      childQueueSize: new Namespace<number>(ctx, {
-        stores: [memory],
-        fresh: 5000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
-        stale: 10_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
-      }),
-      queueConcurrencyLimit: new Namespace<number>(ctx, {
-        stores: [memory],
-        fresh: 5000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
-        stale: 10_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
-      }),
-      envAndOrgConcurrencyLimit: new Namespace<number>(ctx, {
-        stores: [memory],
-        fresh: 60_000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
-        stale: 180_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
-      }),
-      disabledConcurrency: new Namespace<boolean>(ctx, {
-        stores: [memory],
-        fresh: 30_000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
-        stale: 180_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
-      }),
-    });
   }
 
   get name() {
@@ -277,22 +232,12 @@ export class MarQS {
         span.setAttribute(SemanticAttributes.PARENT_QUEUE, parentQueue);
         span.setAttribute(SemanticAttributes.CONSUMER_ID, env.id);
 
-        const childQueues = await this.#allChildQueuesForConsumer(parentQueue, env.id);
-
-        span.setAttribute("parent_queue_length", childQueues.length);
-
-        if (childQueues.length === 0) {
-          return;
-        }
-
         // Get prioritized list of queues to try
-        const queues = await this.#getPrioritizedQueueCandidates(
-          parentQueue,
-          childQueues,
-          this.options.envQueuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: false }),
-          env.id
-        );
+        const queues =
+          await this.options.envQueuePriorityStrategy.distributeFairQueuesFromParentQueue(
+            parentQueue,
+            env.id
+          );
 
         span.setAttribute("queue_count", queues.length);
 
@@ -322,6 +267,8 @@ export class MarQS {
               [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
               [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
               attempted_queues: queues.indexOf(messageQueue) + 1, // How many queues we tried before success
+              message_timestamp: message.timestamp,
+              message_age: Date.now() - message.timestamp,
             });
 
             await this.options.subscriber?.messageDequeued(message);
@@ -379,20 +326,9 @@ export class MarQS {
 
         span.setAttribute(SemanticAttributes.PARENT_QUEUE, parentQueue);
 
-        const childQueues = await this.#allChildQueuesForConsumer(parentQueue, consumerId);
-
-        span.setAttribute("parent_queue_length", childQueues.length);
-
-        if (childQueues.length === 0) {
-          return;
-        }
-
         // Get prioritized list of queues to try
-        const queues = await this.#getPrioritizedQueueCandidates(
+        const queues = await this.options.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
           parentQueue,
-          childQueues,
-          this.options.queuePriorityStrategy,
-          (queue) => this.#calculateMessageQueueCapacities(queue, { checkForDisabled: true }),
           consumerId
         );
 
@@ -433,6 +369,8 @@ export class MarQS {
                 [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
                 age_in_seconds: ageOfMessageInMs / 1000,
                 attempted_queues: queues.indexOf(messageQueue) + 1, // How many queues we tried before success
+                message_timestamp: message.timestamp,
+                message_age: Date.now() - message.timestamp,
               });
 
               await this.options.subscriber?.messageDequeued(message);
@@ -827,243 +765,6 @@ export class MarQS {
         },
       }
     );
-  }
-
-  async #getPrioritizedQueueCandidates(
-    parentQueue: string,
-    childQueues: Array<{ value: string; score: number }>,
-    queuePriorityStrategy: MarQSQueuePriorityStrategy,
-    calculateCapacities: (queue: string) => Promise<QueueCapacities>,
-    consumerId: string
-  ) {
-    return this.#trace(
-      "getPrioritizedQueueCandidates",
-      async (span) => {
-        span.setAttribute(SemanticAttributes.CONSUMER_ID, consumerId);
-        span.setAttribute(SemanticAttributes.PARENT_QUEUE, parentQueue);
-
-        span.setAttribute("parent_queue_length", childQueues.length);
-
-        const { range } = await queuePriorityStrategy.nextCandidateSelection(
-          parentQueue,
-          consumerId
-        );
-
-        span.setAttribute("range_offset", range.offset);
-        span.setAttribute("range_count", range.count);
-
-        const queues = childQueues.slice(range.offset, range.offset + range.count);
-
-        span.setAttribute("queue_count", queues.length);
-
-        const queuesWithScores = await this.#calculateQueueScores(queues, calculateCapacities);
-
-        span.setAttribute("queues_with_scores_count", queuesWithScores.length);
-
-        // Get weighted distribution of queues instead of a single choice
-        const weightedQueues = queuePriorityStrategy.distributeQueues(queuesWithScores);
-
-        const nextRange = queuePriorityStrategy.moveToNextRange(
-          parentQueue,
-          consumerId,
-          range,
-          childQueues.length
-        );
-
-        span.setAttribute("next_range_offset", nextRange.offset);
-
-        // Next time we dequeue we will re-fetch the queues of the parent for this consumer
-        if (nextRange.offset === 0) {
-          this.#evictConsumerQueues(parentQueue, consumerId);
-        }
-
-        return weightedQueues;
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "receive",
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
-          [SemanticAttributes.PARENT_QUEUE]: parentQueue,
-        },
-      }
-    );
-  }
-
-  // Calculate the weights of the queues based on the age and the capacity
-  async #calculateQueueScores(
-    queues: Array<{ value: string; score: number }>,
-    calculateCapacities: (queue: string) => Promise<QueueCapacities>
-  ): Promise<Array<QueueWithScores>> {
-    return await this.#trace("calculateQueueScores", async (span) => {
-      const now = Date.now();
-
-      const values = await Promise.all(
-        queues.map(async (queue) => {
-          return {
-            queue: queue.value,
-            capacities: await calculateCapacities(queue.value),
-            age: now - queue.score,
-            size: await this.#getQueueSize(queue.value),
-          };
-        })
-      );
-
-      return values;
-    });
-  }
-
-  async #getQueueSize(queue: string) {
-    const result = await this._cache.childQueueSize.swr(queue, async () => {
-      return await this.redis.zcard(queue);
-    });
-
-    return result.val ?? 0;
-  }
-
-  async #calculateMessageQueueCapacities(
-    queue: string,
-    options?: { checkForDisabled?: boolean }
-  ): Promise<QueueCapacities> {
-    if (options?.checkForDisabled) {
-      const isDisabled = await this.#getConcurrencyDisabled(queue);
-
-      if (isDisabled) {
-        return {
-          queue: { current: 0, limit: 0 },
-          env: { current: 0, limit: 0 },
-          org: { current: 0, limit: 0 },
-        };
-      }
-    }
-
-    // Now we need to calculate the queue concurrency limits, using a cache
-    const [queueLimit, envLimit, orgLimit, currentConcurrencies] = await Promise.all([
-      this.#getQueueConcurrencyLimit(queue),
-      this.#getEnvConcurrencyLimit(queue),
-      this.#getOrgConcurrencyLimit(queue),
-      this.#callCalculateQueueCurrentConcurrencies({
-        currentConcurrencyKey: this.keys.currentConcurrencyKeyFromQueue(queue),
-        currentEnvConcurrencyKey: this.keys.envCurrentConcurrencyKeyFromQueue(queue),
-        currentOrgConcurrencyKey: this.keys.orgCurrentConcurrencyKeyFromQueue(queue),
-      }),
-    ]);
-
-    return {
-      queue: { current: currentConcurrencies.queue, limit: queueLimit },
-      env: { current: currentConcurrencies.env, limit: envLimit },
-      org: { current: currentConcurrencies.org, limit: orgLimit },
-    };
-  }
-
-  async #getConcurrencyDisabled(queue: string) {
-    const key = this.keys.disabledConcurrencyLimitKeyFromQueue(queue);
-
-    const result = await this._cache.disabledConcurrency.swr(key, async () => {
-      const value = await this.redis.exists(key);
-
-      return Boolean(value);
-    });
-
-    return typeof result.val === "boolean" ? result.val : false;
-  }
-
-  async #getOrgConcurrencyLimit(queue: string) {
-    const key = this.keys.orgConcurrencyLimitKeyFromQueue(queue);
-
-    const result = await this._cache.envAndOrgConcurrencyLimit.swr(key, async () => {
-      const value = await this.redis.get(key);
-
-      if (!value) {
-        return this.options.defaultOrgConcurrency;
-      }
-
-      return Number(value);
-    });
-
-    return result.val ?? this.options.defaultOrgConcurrency;
-  }
-
-  async #getEnvConcurrencyLimit(queue: string) {
-    const key = this.keys.envConcurrencyLimitKeyFromQueue(queue);
-
-    const result = await this._cache.envAndOrgConcurrencyLimit.swr(key, async () => {
-      const value = await this.redis.get(key);
-
-      if (!value) {
-        return this.options.defaultEnvConcurrency;
-      }
-
-      return Number(value);
-    });
-
-    return result.val ?? this.options.defaultEnvConcurrency;
-  }
-
-  async #getQueueConcurrencyLimit(queue: string) {
-    const key = this.keys.concurrencyLimitKeyFromQueue(queue);
-    const defaultValue = Math.min(
-      this.options.defaultEnvConcurrency,
-      this.options.defaultOrgConcurrency
-    );
-
-    const result = await this._cache.queueConcurrencyLimit.swr(key, async () => {
-      const value = await this.redis.get(key);
-
-      if (!value) {
-        return defaultValue;
-      }
-
-      return Number(value);
-    });
-
-    return result.val ?? defaultValue;
-  }
-
-  #evictConsumerQueues(parentQueue: string, consumerId: string) {
-    this._consumerQueues.delete([parentQueue, consumerId].join(":"));
-  }
-
-  async #allChildQueuesForConsumer(
-    key: string,
-    consumerId: string
-  ): Promise<Array<{ value: string; score: number }>> {
-    const cachedQueues = this._consumerQueues.get([key, consumerId].join(":"));
-
-    if (cachedQueues) {
-      return cachedQueues;
-    }
-
-    return await this.#trace("allChildQueuesForConsumer", async (span) => {
-      span.setAttribute(SemanticAttributes.CONSUMER_ID, consumerId);
-      span.setAttribute(SemanticAttributes.PARENT_QUEUE, key);
-
-      const valuesWithScores = await this.redis.zrangebyscore(
-        key,
-        "-inf",
-        Date.now(),
-        "WITHSCORES"
-      );
-
-      const result: Array<{ value: string; score: number }> = [];
-
-      for (let i = 0; i < valuesWithScores.length; i += 2) {
-        result.push({
-          value: valuesWithScores[i],
-          score: Number(valuesWithScores[i + 1]),
-        });
-      }
-
-      span.setAttribute("queue_count", result.length);
-
-      if (result.length === 0) {
-        return result;
-      }
-
-      this._consumerQueues.set([key, consumerId].join(":"), result);
-
-      return result;
-    });
   }
 
   #startRebalanceWorkers() {
@@ -1903,19 +1604,44 @@ function getMarQSClient() {
         ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
       };
 
+      const redis = new Redis(redisOptions);
+      const keysProducer = new MarQSShortKeyProducer(KEY_PREFIX);
+
       return new MarQS({
         name: "marqs",
         tracer: trace.getTracer("marqs"),
-        keysProducer: new MarQSShortKeyProducer(KEY_PREFIX),
+        keysProducer,
         visibilityTimeoutStrategy: new V3VisibilityTimeout(),
-        queuePriorityStrategy: new SimpleWeightedChoiceStrategy({
-          queueSelectionCount: env.MARQS_SHARED_QUEUE_SELECTION_COUNT,
+        queuePriorityStrategy: new FairDequeuingStrategy({
+          tracer: tracer,
+          redis,
+          parentQueueLimit: env.MARQS_SHARED_QUEUE_LIMIT,
+          keys: keysProducer,
+          defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+          defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
+          checkForDisabledOrgs: true,
+          biases: {
+            concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
+            availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
+            queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
+          },
         }),
-        envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({
-          queueSelectionCount: env.MARQS_DEV_QUEUE_SELECTION_COUNT,
+        envQueuePriorityStrategy: new FairDequeuingStrategy({
+          tracer: tracer,
+          redis,
+          parentQueueLimit: env.MARQS_DEV_QUEUE_LIMIT,
+          keys: keysProducer,
+          defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+          defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
+          checkForDisabledOrgs: false,
+          biases: {
+            concurrencyLimitBias: 0.0,
+            availableCapacityBias: 0.0,
+            queueAgeRandomization: 0.1,
+          },
         }),
         workers: 1,
-        redis: redisOptions,
+        redis,
         defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
         defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
         visibilityTimeoutInMs: env.MARQS_VISIBILITY_TIMEOUT_MS,

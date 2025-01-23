@@ -23,6 +23,15 @@
       "sourceMaps": true
     },
     {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug fairDequeuingStrategy.test.ts",
+      "command": "pnpm run test -t FairDequeuingStrategy",
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}/apps/webapp",
+      "sourceMaps": true
+    },
+    {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",
