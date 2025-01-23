@@ -17,6 +17,11 @@ export interface WorkloadClientToServerEvents {
     run: { friendlyId: string };
     snapshot: { friendlyId: string };
   }) => void;
+  "run:stop": (message: {
+    version: "1";
+    run: { friendlyId: string };
+    snapshot: { friendlyId: string };
+  }) => void;
 }
 
 export type WorkloadClientSocketData = {

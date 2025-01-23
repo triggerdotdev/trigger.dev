@@ -94,11 +94,19 @@ class ManagedRunController {
       };
 
   private enterIdlePhase() {
+    this.onExitCurrentPhase();
     this.state = { phase: "IDLE" };
   }
 
   private enterRunPhase(run: Run, snapshot: Snapshot) {
+    this.onExitCurrentPhase();
     this.state = { phase: "RUN", run, snapshot };
+  }
+
+  private enterWarmStartPhase() {
+    this.onExitCurrentPhase();
+    this.state = { phase: "WARM_START" };
+    this.snapshotPollService.stop();
   }
 
   private updateSnapshot(snapshot: Snapshot) {
@@ -109,9 +117,20 @@ class ManagedRunController {
     this.state.snapshot = snapshot;
   }
 
-  private enterWarmStartPhase() {
-    this.state = { phase: "WARM_START" };
-    this.snapshotPollService.stop();
+  private onExitCurrentPhase() {
+    if (this.state.phase !== "RUN") {
+      return;
+    }
+
+    this.socket?.emit("run:stop", {
+      version: "1",
+      run: {
+        friendlyId: this.state.run.friendlyId,
+      },
+      snapshot: {
+        friendlyId: this.state.snapshot.friendlyId,
+      },
+    });
   }
 
   private get runFriendlyId() {
