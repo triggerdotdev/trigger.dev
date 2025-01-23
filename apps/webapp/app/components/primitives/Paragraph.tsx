@@ -1,6 +1,4 @@
-import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
-import { IconNamesOrString, NamedIcon } from "./NamedIcon";
 
 const paragraphVariants = {
   base: {

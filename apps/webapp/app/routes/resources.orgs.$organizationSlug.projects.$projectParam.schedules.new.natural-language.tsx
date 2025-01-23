@@ -6,6 +6,7 @@ import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Label } from "~/components/primitives/Label";
+import { Spinner } from "~/components/primitives/Spinner";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -102,7 +103,7 @@ export function AIGeneratedCronField({ onSuccess }: AIGeneratedCronFieldProps) {
               type="button"
               variant="tertiary/small"
               disabled={isLoading}
-              LeadingIcon={isLoading ? "spinner" : AISparkleIcon}
+              LeadingIcon={isLoading ? Spinner : AISparkleIcon}
               onClick={() => submit(text)}
             >
               {isLoading ? "Generating" : "Generate"}

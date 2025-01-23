@@ -22,7 +22,7 @@ export class SelectBestProjectPresenter {
       }
     }
 
-    //failing that, we pick the project with the most jobs
+    //failing that, we pick the most recently modified project
     const projects = await this.#prismaClient.project.findMany({
       include: {
         organization: true,
@@ -34,9 +34,7 @@ export class SelectBestProjectPresenter {
         },
       },
       orderBy: {
-        jobs: {
-          _count: "desc",
-        },
+        updatedAt: "desc",
       },
       take: 1,
     });
