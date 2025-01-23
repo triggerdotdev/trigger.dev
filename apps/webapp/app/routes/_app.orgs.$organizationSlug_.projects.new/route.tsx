@@ -160,7 +160,7 @@ export default function Page() {
               <Input
                 {...conform.input(projectName, { type: "text" })}
                 placeholder="Your project name"
-                icon="folder"
+                icon={FolderIcon}
                 autoFocus
               />
               <FormError id={projectName.errorId}>{projectName.error}</FormError>

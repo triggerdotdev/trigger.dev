@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { EnvelopeIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -149,7 +150,7 @@ export default function Page() {
                 {...conform.input(name, { type: "text" })}
                 placeholder="Your full name"
                 defaultValue={user?.name ?? ""}
-                icon="account"
+                icon={UserCircleIcon}
               />
               <Hint>Your teammates will see this</Hint>
               <FormError id={name.errorId}>{name.error}</FormError>
@@ -160,7 +161,7 @@ export default function Page() {
                 {...conform.input(email, { type: "text" })}
                 placeholder="Your email"
                 defaultValue={user?.email ?? ""}
-                icon="envelope"
+                icon={EnvelopeIcon}
               />
               <FormError id={email.errorId}>{email.error}</FormError>
             </InputGroup>

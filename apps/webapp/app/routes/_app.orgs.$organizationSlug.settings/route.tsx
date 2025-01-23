@@ -1,6 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
@@ -208,7 +208,7 @@ export default function Page() {
                     {...conform.input(organizationName, { type: "text" })}
                     defaultValue={organization.title}
                     placeholder="Your organization name"
-                    icon="folder"
+                    icon={FolderIcon}
                     autoFocus
                   />
                   <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
@@ -243,7 +243,7 @@ export default function Page() {
                   <Input
                     {...conform.input(organizationSlug, { type: "text" })}
                     placeholder="Your organization slug"
-                    icon="warning"
+                    icon={ExclamationTriangleIcon}
                     autoFocus
                   />
                   <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>

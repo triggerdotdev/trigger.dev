@@ -13,7 +13,12 @@ export default function Story() {
           <Fieldset>
             <InputGroup>
               <Label>Medium search input</Label>
-              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
+              <Input
+                placeholder="Search"
+                required={true}
+                icon={MagnifyingGlassIcon}
+                shortcut="⌘K"
+              />
             </InputGroup>
             <InputGroup>
               <Label>Small search input</Label>
@@ -21,7 +26,7 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 variant="small"
-                icon="search"
+                icon={MagnifyingGlassIcon}
                 shortcut="⌘K"
                 fullWidth={false}
               />
@@ -32,21 +37,36 @@ export default function Story() {
                 placeholder="Search"
                 required={true}
                 variant="tertiary"
-                icon="search"
+                icon={MagnifyingGlassIcon}
                 fullWidth={false}
               />
             </InputGroup>
             <InputGroup>
               <Label variant="small">This is a small label</Label>
-              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
+              <Input
+                placeholder="Search"
+                required={true}
+                icon={MagnifyingGlassIcon}
+                shortcut="⌘K"
+              />
             </InputGroup>
             <InputGroup>
               <Label variant="medium">This is a medium label</Label>
-              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
+              <Input
+                placeholder="Search"
+                required={true}
+                icon={MagnifyingGlassIcon}
+                shortcut="⌘K"
+              />
             </InputGroup>
             <InputGroup>
               <Label variant="large">This is a large label</Label>
-              <Input placeholder="Search" required={true} icon="search" shortcut="⌘K" />
+              <Input
+                placeholder="Search"
+                required={true}
+                icon={MagnifyingGlassIcon}
+                shortcut="⌘K"
+              />
             </InputGroup>
           </Fieldset>
         </Form>

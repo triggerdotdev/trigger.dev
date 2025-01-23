@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
   LockOpenIcon,
+  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
@@ -1278,7 +1279,7 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     <Input
       placeholder="Search log"
       variant="tertiary"
-      icon="search"
+      icon={MagnifyingGlassIcon}
       fullWidth={true}
       value={value}
       onChange={(e) => updateValue(e.target.value)}

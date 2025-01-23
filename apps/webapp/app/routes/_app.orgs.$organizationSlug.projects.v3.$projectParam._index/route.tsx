@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   LightBulbIcon,
+  MagnifyingGlassIcon,
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
@@ -242,7 +243,7 @@ export default function Page() {
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
-                        icon="search"
+                        icon={MagnifyingGlassIcon}
                         fullWidth={true}
                         value={filterText}
                         onChange={(e) => setFilterText(e.target.value)}

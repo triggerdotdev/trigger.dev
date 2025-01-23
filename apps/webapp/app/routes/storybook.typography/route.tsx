@@ -1,3 +1,4 @@
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -45,7 +46,7 @@ export default function Story({
         </Paragraph>
         <Paragraph>
           Learn how to get{" "}
-          <TextLink href="#" trailingIcon="external-link">
+          <TextLink href="#" trailingIcon={ArrowTopRightOnSquareIcon}>
             started quickly
           </TextLink>{" "}
           using the included some example Jobs which are great as a quick start project. You can

@@ -129,7 +129,7 @@ export default function NewOrganizationPage() {
             <Input
               {...conform.input(orgName, { type: "text" })}
               placeholder="Your Organization name"
-              icon="organization"
+              icon={BuildingOffice2Icon}
               autoFocus
             />
             <Hint>E.g. your company name or your workspace name.</Hint>

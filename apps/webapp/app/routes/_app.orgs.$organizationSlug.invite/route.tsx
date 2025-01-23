@@ -1,6 +1,6 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -172,7 +172,7 @@ export default function Page() {
                   <Input
                     {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
-                    icon="envelope"
+                    icon={EnvelopeIcon}
                     autoFocus={index === 0}
                     onChange={(e) => {
                       fieldValues.current[index] = e.target.value;

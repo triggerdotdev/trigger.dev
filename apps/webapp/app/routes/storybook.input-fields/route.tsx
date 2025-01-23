@@ -24,28 +24,28 @@ function InputFieldSet({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           variant="large"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="medium"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="small"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
         <Input
           disabled={disabled}
           variant="tertiary"
           placeholder="Search"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           shortcut="⌘K"
         />
       </div>

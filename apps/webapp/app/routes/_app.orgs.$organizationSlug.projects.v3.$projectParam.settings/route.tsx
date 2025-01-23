@@ -1,5 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
+import { FolderIcon } from "@heroicons/react/20/solid";
 import { Form, MetaFunction, useActionData, useNavigation } from "@remix-run/react";
 import { ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -165,7 +166,7 @@ export default function Page() {
                     {...conform.input(projectName, { type: "text" })}
                     defaultValue={project.name}
                     placeholder="Your project name"
-                    icon="folder"
+                    icon={FolderIcon}
                     autoFocus
                   />
                   <FormError id={projectName.errorId}>{projectName.error}</FormError>

@@ -185,7 +185,7 @@ function TreeViewParent({
         <Input
           placeholder="Search log"
           variant="tertiary"
-          icon="search"
+          icon={MagnifyingGlassIcon}
           fullWidth={true}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
