@@ -199,6 +199,8 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 
+  INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
@@ -221,8 +223,8 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60 * 1000 * 15),
-  MARQS_SHARED_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
-  MARQS_DEV_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(12),
+  MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
   MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
 
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
