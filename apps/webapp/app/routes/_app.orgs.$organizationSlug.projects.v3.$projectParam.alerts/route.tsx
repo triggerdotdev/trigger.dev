@@ -222,7 +222,7 @@ export default function Page() {
                         />
                       ))}
                     </TableCell>
-                    <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
+                    <TableCell className={cn("py-1", alertChannel.enabled ? "" : "opacity-50")}>
                       <AlertChannelDetails alertChannel={alertChannel} />
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
@@ -466,6 +466,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           label={"Email"}
           description={alertChannel.properties.email}
           boxClassName="group-hover/table-row:bg-charcoal-800"
+          className="h-12"
         />
       );
     }

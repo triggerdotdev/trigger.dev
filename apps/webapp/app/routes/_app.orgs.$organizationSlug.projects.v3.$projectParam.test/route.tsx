@@ -281,6 +281,7 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
       </TableCell>
       <TableCell
         to={path}
+        isTabbableCell
         actionClassName="pl-1 pr-2 py-1.5"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >

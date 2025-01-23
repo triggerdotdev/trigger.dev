@@ -161,6 +161,8 @@ const EnvironmentSchema = z.object({
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
+  SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().default(1000),
+  SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE: z.coerce.number().int().default(25),
 
   // Development OTEL environment variables
   DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -218,6 +220,10 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60 * 1000 * 15),
+  MARQS_SHARED_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
+  MARQS_DEV_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(12),
+  MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
+
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),

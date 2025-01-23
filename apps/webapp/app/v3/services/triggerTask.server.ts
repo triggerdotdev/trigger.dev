@@ -9,7 +9,7 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { workerQueue } from "~/services/worker.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { eventRepository } from "../eventRepository.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { uploadPacketToObjectStore } from "../r2.server";
@@ -27,6 +27,7 @@ import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { Prisma } from "@trigger.dev/database";
+import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
