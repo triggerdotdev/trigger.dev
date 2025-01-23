@@ -1623,7 +1623,7 @@ function getMarQSClient() {
           biases: {
             concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
             availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
-            queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION,
+            queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
           },
         }),
         envQueuePriorityStrategy: new FairDequeuingStrategy({
