@@ -7,7 +7,6 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CreditCardIcon,
-  CursorArrowRaysIcon,
   FolderIcon,
   IdentificationIcon,
   KeyIcon,
@@ -20,6 +19,7 @@ import {
 import { UserGroupIcon, UserPlusIcon } from "@heroicons/react/24/solid";
 import { useNavigation } from "@remix-run/react";
 import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
@@ -34,20 +34,10 @@ import {
   logoutPath,
   newOrganizationPath,
   newProjectPath,
-  organizationBillingPath,
-  organizationIntegrationsPath,
   organizationPath,
   organizationSettingsPath,
   organizationTeamPath,
   personalAccessTokensPath,
-  projectEnvironmentsPath,
-  projectEventsPath,
-  projectHttpEndpointsPath,
-  projectPath,
-  projectRunsPath,
-  projectSettingsPath,
-  projectSetupPath,
-  projectTriggersPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
@@ -65,10 +55,7 @@ import {
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { LogoIcon } from "../LogoIcon";
 import { UserProfilePhoto } from "../UserProfilePhoto";
-import { Badge } from "../primitives/Badge";
-import { LinkButton } from "../primitives/Buttons";
-import { Header2 } from "../primitives/Headers";
-import { Paragraph } from "../primitives/Paragraph";
+import { FreePlanUsage } from "../billing/FreePlanUsage";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -77,12 +64,9 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "../primitives/Popover";
-import { TextLink } from "../primitives/TextLink";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
-import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 type SideMenuUser = Pick<User, "email" | "admin"> & { isImpersonating: boolean };
 type SideMenuProject = Pick<MatchedProject, "id" | "name" | "slug" | "version">;
@@ -250,7 +234,7 @@ function ProjectSelector({
                   return (
                     <PopoverMenuItem
                       key={p.id}
-                      to={projectPath(organization, p)}
+                      to={v3ProjectPath(organization, p)}
                       title={
                         <div className="flex w-full items-center justify-between text-text-bright">
                           <span className="grow truncate text-left">{p.name}</span>

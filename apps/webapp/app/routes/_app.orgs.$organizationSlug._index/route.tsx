@@ -7,7 +7,7 @@ import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { newProjectPath, projectPath } from "~/utils/pathBuilder";
+import { newProjectPath, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -45,7 +45,7 @@ export default function Page() {
                 <li key={project.id}>
                   <Link
                     className="border-grid-bright-dimmed flex gap-4 rounded-md border p-4 transition hover:bg-charcoal-900 "
-                    to={projectPath(organization, project)}
+                    to={v3ProjectPath(organization, project)}
                   >
                     <FolderIcon className="h-10 w-10 flex-none text-indigo-600" />
                     <div className="flex flex-col">
