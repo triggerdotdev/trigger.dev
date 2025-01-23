@@ -8,6 +8,20 @@ import seedrandom from "seedrandom";
 import { Tracer } from "@opentelemetry/api";
 import { startSpan } from "../tracing.server";
 
+export type FairDequeuingStrategyBiases = {
+  /**
+   * How much to bias towards environments with higher concurrency limits
+   * 0 = no bias, 1 = full bias based on limit differences
+   */
+  concurrencyLimitBias: number;
+
+  /**
+   * How much to bias towards environments with more available capacity
+   * 0 = no bias, 1 = full bias based on available capacity
+   */
+  availableCapacityBias: number;
+};
+
 export type FairDequeuingStrategyOptions = {
   redis: Redis;
   keys: MarQSKeyProducer;
@@ -17,6 +31,11 @@ export type FairDequeuingStrategyOptions = {
   checkForDisabledOrgs: boolean;
   tracer: Tracer;
   seed?: string;
+  /**
+   * Configure biasing for environment shuffling
+   * If not provided, no biasing will be applied (completely random shuffling)
+   */
+  biases?: FairDequeuingStrategyBiases;
 };
 
 type FairQueueConcurrency = {
@@ -33,11 +52,21 @@ type FairQueueSnapshot = {
   queues: Array<FairQueue>;
 };
 
+type WeightedEnv = {
+  envId: string;
+  weight: number;
+};
+
 const emptyFairQueueSnapshot: FairQueueSnapshot = {
   id: "empty",
   orgs: {},
   envs: {},
   queues: [],
+};
+
+const defaultBiases: FairDequeuingStrategyBiases = {
+  concurrencyLimitBias: 0,
+  availableCapacityBias: 0,
 };
 
 export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
@@ -107,30 +136,85 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     );
   }
 
-  // Now we need to:
-  // 1. Shuffle the environments
-  // 2. Sort the queues by their environment order in the shuffled list
-  // 3. Keep the queues sorted by their age inside their "environment" slice of the final array
   #shuffleQueuesByEnv(snapshot: FairQueueSnapshot): Array<string> {
     const envs = Object.keys(snapshot.envs);
+    const biases = this.options.biases ?? defaultBiases;
 
-    const shuffledEnvs = this.#shuffle(envs);
+    if (biases.concurrencyLimitBias === 0 && biases.availableCapacityBias === 0) {
+      const shuffledEnvs = this.#shuffle(envs);
+      return this.#orderQueuesByEnvs(shuffledEnvs, snapshot);
+    }
 
+    // Find the maximum concurrency limit for normalization
+    const maxLimit = Math.max(...envs.map((envId) => snapshot.envs[envId].concurrency.limit));
+
+    // Calculate weights for each environment
+    const weightedEnvs: WeightedEnv[] = envs.map((envId) => {
+      const env = snapshot.envs[envId];
+
+      // Start with base weight of 1
+      let weight = 1;
+
+      // Add normalized concurrency limit bias if configured
+      if (biases.concurrencyLimitBias > 0) {
+        const normalizedLimit = env.concurrency.limit / maxLimit;
+        // Square or cube the bias to make it more pronounced at higher values
+        weight *= 1 + Math.pow(normalizedLimit * biases.concurrencyLimitBias, 2);
+      }
+
+      // Add available capacity bias if configured
+      if (biases.availableCapacityBias > 0) {
+        const usedCapacityPercentage = env.concurrency.current / env.concurrency.limit;
+        const availableCapacityBonus = 1 - usedCapacityPercentage;
+        // Square or cube the bias to make it more pronounced at higher values
+        weight *= 1 + Math.pow(availableCapacityBonus * biases.availableCapacityBias, 2);
+      }
+
+      return { envId, weight };
+    });
+
+    const shuffledEnvs = this.#weightedShuffle(weightedEnvs);
+    return this.#orderQueuesByEnvs(shuffledEnvs, snapshot);
+  }
+
+  #weightedShuffle(weightedItems: WeightedEnv[]): string[] {
+    const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+    const result: string[] = [];
+    const items = [...weightedItems];
+
+    while (items.length > 0) {
+      let random = this._rng() * totalWeight;
+      let index = 0;
+
+      // Find item based on weighted random selection
+      while (random > 0 && index < items.length) {
+        random -= items[index].weight;
+        index++;
+      }
+      index = Math.max(0, index - 1);
+
+      // Add selected item to result and remove from items
+      result.push(items[index].envId);
+      items.splice(index, 1);
+    }
+
+    return result;
+  }
+
+  // Helper method to maintain DRY principle
+  #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<string> {
     const queuesByEnv = snapshot.queues.reduce((acc, queue) => {
       if (!acc[queue.env]) {
         acc[queue.env] = [];
       }
-
       acc[queue.env].push(queue);
-
       return acc;
     }, {} as Record<string, Array<FairQueue>>);
 
-    const queues = shuffledEnvs.reduce((acc, envId) => {
+    const queues = envs.reduce((acc, envId) => {
       if (queuesByEnv[envId]) {
         acc.push(...queuesByEnv[envId].sort((a, b) => b.age - a.age));
       }
-
       return acc;
     }, [] as Array<FairQueue>);
 

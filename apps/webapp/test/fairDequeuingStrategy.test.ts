@@ -463,4 +463,134 @@ describe("FairDequeuingStrategy", () => {
       }
     }
   );
+
+  redisTest(
+    "should bias shuffling based on concurrency limits and available capacity",
+    async ({ redis }) => {
+      const keyProducer = createKeyProducer("test");
+      const now = Date.now();
+
+      // Setup three environments with different concurrency settings
+      const envSetups = [
+        {
+          envId: "env-1",
+          limit: 100,
+          current: 20, // Lots of available capacity
+          queueCount: 3,
+        },
+        {
+          envId: "env-2",
+          limit: 50,
+          current: 40, // Less available capacity
+          queueCount: 3,
+        },
+        {
+          envId: "env-3",
+          limit: 10,
+          current: 5, // Some available capacity
+          queueCount: 3,
+        },
+      ];
+
+      // Setup queues and concurrency for each environment
+      for (const setup of envSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          org: { id: "org-1", currentConcurrency: 0, limit: 200 },
+          env: {
+            id: setup.envId,
+            currentConcurrency: setup.current,
+            limit: setup.limit,
+          },
+        });
+
+        for (let i = 0; i < setup.queueCount; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - 1000 * (i + 1),
+            queueId: `queue-${i}`,
+            orgId: "org-1",
+            envId: setup.envId,
+          });
+        }
+      }
+
+      // Create multiple strategies with different seeds
+      const numStrategies = 5;
+      const strategies = Array.from(
+        { length: numStrategies },
+        (_, i) =>
+          new FairDequeuingStrategy({
+            tracer,
+            redis,
+            keys: keyProducer,
+            defaultOrgConcurrency: 10,
+            defaultEnvConcurrency: 5,
+            parentQueueLimit: 100,
+            checkForDisabledOrgs: true,
+            seed: `test-seed-${i}`,
+            biases: {
+              concurrencyLimitBias: 0.8,
+              availableCapacityBias: 0.5,
+            },
+          })
+      );
+
+      // Run iterations across all strategies
+      const iterationsPerStrategy = 100;
+      const allResults: Record<string, number>[] = [];
+
+      for (const strategy of strategies) {
+        const firstPositionCounts: Record<string, number> = {};
+
+        for (let i = 0; i < iterationsPerStrategy; i++) {
+          const result = await strategy.distributeFairQueuesFromParentQueue(
+            "parent-queue",
+            `consumer-${i % 3}`
+          );
+
+          expect(result.length).toBeGreaterThan(0);
+
+          const firstEnv = keyProducer.envIdFromQueue(result[0]);
+          firstPositionCounts[firstEnv] = (firstPositionCounts[firstEnv] || 0) + 1;
+        }
+
+        allResults.push(firstPositionCounts);
+      }
+
+      // Calculate average distributions across all strategies
+      const avgDistribution: Record<string, number> = {};
+      const envIds = ["env-1", "env-2", "env-3"];
+
+      for (const envId of envIds) {
+        const sum = allResults.reduce((acc, result) => acc + (result[envId] || 0), 0);
+        avgDistribution[envId] = sum / numStrategies;
+      }
+
+      // Log individual strategy results and the average
+      console.log("\nResults by strategy:");
+      allResults.forEach((result, i) => {
+        console.log(`Strategy ${i + 1}:`, result);
+      });
+
+      console.log("\nAverage distribution:", avgDistribution);
+
+      // Calculate percentages from average distribution
+      const totalCount = Object.values(avgDistribution).reduce((sum, count) => sum + count, 0);
+      const highLimitPercentage = (avgDistribution["env-1"] / totalCount) * 100;
+      const lowLimitPercentage = (avgDistribution["env-3"] / totalCount) * 100;
+
+      console.log("\nPercentages:");
+      console.log("High limit percentage:", highLimitPercentage);
+      console.log("Low limit percentage:", lowLimitPercentage);
+
+      // Verify distribution across all strategies
+      expect(highLimitPercentage).toBeLessThan(60);
+      expect(lowLimitPercentage).toBeGreaterThan(10);
+      expect(highLimitPercentage).toBeGreaterThan(lowLimitPercentage);
+    }
+  );
 });

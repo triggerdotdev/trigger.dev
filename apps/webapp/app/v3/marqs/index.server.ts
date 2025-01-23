@@ -69,9 +69,6 @@ export class MarQS {
   public keys: MarQSKeyProducer;
   #rebalanceWorkers: Array<AsyncWorker> = [];
 
-  private _staleQueues: Set<string> = new Set();
-  private _staleQueueHits: Map<string, number> = new Map();
-
   constructor(private readonly options: MarQSOptions) {
     this.redis = options.redis;
 
@@ -372,6 +369,8 @@ export class MarQS {
                 [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
                 age_in_seconds: ageOfMessageInMs / 1000,
                 attempted_queues: queues.indexOf(messageQueue) + 1, // How many queues we tried before success
+                message_timestamp: message.timestamp,
+                message_age: Date.now() - message.timestamp,
               });
 
               await this.options.subscriber?.messageDequeued(message);
