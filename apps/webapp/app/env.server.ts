@@ -147,7 +147,10 @@ const EnvironmentSchema = z.object({
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
+  ENABLE_REGISTRY_PROXY: z.string().optional(),
   DEPLOY_REGISTRY_HOST: z.string().optional(),
+  DEPLOY_REGISTRY_USERNAME: z.string().optional(),
+  DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()

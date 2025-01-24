@@ -1,9 +1,10 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { StartDeploymentIndexingRequestBody } from "@trigger.dev/core/v3";
+import { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { StartDeploymentIndexing } from "~/v3/services/startDeploymentIndexing.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { FinalizeDeploymentV2Service } from "~/v3/services/finalizeDeploymentV2";
 
 const ParamsSchema = z.object({
   deploymentId: z.string(),
@@ -34,21 +35,31 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { deploymentId } = parsedParams.data;
 
   const rawBody = await request.json();
-  const body = StartDeploymentIndexingRequestBody.safeParse(rawBody);
+  const body = FinalizeDeploymentRequestBody.safeParse(rawBody);
 
   if (!body.success) {
     return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
   }
 
-  const service = new StartDeploymentIndexing();
+  try {
+    const service = new FinalizeDeploymentV2Service();
+    await service.call(authenticatedEnv, deploymentId, body.data);
 
-  const deployment = await service.call(authenticatedEnv, deploymentId, body.data);
-
-  return json(
-    {
-      id: deployment.friendlyId,
-      contentHash: deployment.contentHash,
-    },
-    { status: 200 }
-  );
+    return json(
+      {
+        id: deploymentId,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return json({ error: error.message }, { status: 400 });
+    } else if (error instanceof Error) {
+      logger.error("Error finalizing deployment", { error: error.message });
+      return json({ error: `Internal server error: ${error.message}` }, { status: 500 });
+    } else {
+      logger.error("Error finalizing deployment", { error: String(error) });
+      return json({ error: "Internal server error" }, { status: 500 });
+    }
+  }
 }

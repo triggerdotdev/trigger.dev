@@ -16,7 +16,7 @@ export class FinalizeDeploymentService extends BaseService {
     id: string,
     body: FinalizeDeploymentRequestBody
   ) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         friendlyId: id,
         environmentId: authenticatedEnv.id,
@@ -48,6 +48,12 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    let imageReference = body.imageReference;
+
+    if (registryProxy && body.selfHosted !== true && body.skipRegistryProxy !== true) {
+      imageReference = registryProxy.rewriteImageReference(body.imageReference);
+    }
+
     // Link the deployment with the background worker
     const finalizedDeployment = await this._prisma.workerDeployment.update({
       where: {
@@ -56,10 +62,7 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference:
-          registryProxy && body.selfHosted !== true
-            ? registryProxy.rewriteImageReference(body.imageReference)
-            : body.imageReference,
+        imageReference: imageReference,
       },
     });
 

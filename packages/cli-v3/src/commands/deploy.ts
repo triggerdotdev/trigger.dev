@@ -1,14 +1,13 @@
 import { intro, outro } from "@clack/prompts";
 import { prepareDeploymentError } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { BuildManifest, InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
+import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
-import { writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
-import { readPackageJSON, writePackageJSON } from "pkg-types";
+import { resolve } from "node:path";
+import { x } from "tinyexec";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
+import { resolveAlwaysExternal } from "../build/externals.js";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -17,7 +16,7 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
-import { buildImage, generateContainerfile } from "../deploy/buildImage.js";
+import { buildImage } from "../deploy/buildImage.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -25,10 +24,8 @@ import {
   printWarnings,
   saveLogs,
 } from "../deploy/logs.js";
-import { buildManifestToJSON } from "../utilities/buildManifest.js";
 import { chalkError, cliLink, isLinksSupported, prettyError } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
-import { writeJSONFile } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { getProjectClient } from "../utilities/session.js";
@@ -36,8 +33,6 @@ import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { resolveAlwaysExternal } from "../build/externals.js";
-import { x } from "tinyexec";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -429,7 +424,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${buildResult.image}${
         buildResult.digest ? `@${buildResult.digest}` : ""
       }`
-    : `${registryHost}/${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
+    : `${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
 
   const finalizeResponse = await projectClient.client.finalizeDeployment(deployment.id, {
     imageReference,
@@ -457,104 +452,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );
-}
-
-function rewriteBuildManifestPaths(
-  buildManifest: BuildManifest,
-  destinationDir: string
-): BuildManifest {
-  return {
-    ...buildManifest,
-    files: buildManifest.files.map((file) => ({
-      ...file,
-      entry: cleanEntryPath(file.entry),
-      out: rewriteOutputPath(destinationDir, file.out),
-    })),
-    outputPath: rewriteOutputPath(destinationDir, buildManifest.outputPath),
-    configPath: rewriteOutputPath(destinationDir, buildManifest.configPath),
-    runControllerEntryPoint: buildManifest.runControllerEntryPoint
-      ? rewriteOutputPath(destinationDir, buildManifest.runControllerEntryPoint)
-      : undefined,
-    runWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.runWorkerEntryPoint),
-    indexControllerEntryPoint: buildManifest.indexControllerEntryPoint
-      ? rewriteOutputPath(destinationDir, buildManifest.indexControllerEntryPoint)
-      : undefined,
-    indexWorkerEntryPoint: rewriteOutputPath(destinationDir, buildManifest.indexWorkerEntryPoint),
-    loaderEntryPoint: buildManifest.loaderEntryPoint
-      ? rewriteOutputPath(destinationDir, buildManifest.loaderEntryPoint)
-      : undefined,
-  };
-}
-
-async function writeProjectFiles(
-  buildManifest: BuildManifest,
-  resolvedConfig: ResolvedConfig,
-  outputPath: string
-) {
-  // Step 1. Read the package.json file
-  const packageJson = await readProjectPackageJson(resolvedConfig.packageJsonPath);
-
-  if (!packageJson) {
-    throw new Error("Could not read the package.json file");
-  }
-
-  const dependencies =
-    buildManifest.externals?.reduce(
-      (acc, external) => {
-        acc[external.name] = external.version;
-
-        return acc;
-      },
-      {} as Record<string, string>
-    ) ?? {};
-
-  // Step 3: Write the resolved dependencies to the package.json file
-  await writePackageJSON(join(outputPath, "package.json"), {
-    ...packageJson,
-    name: packageJson.name ?? "trigger-project",
-    dependencies: {
-      ...dependencies,
-    },
-    trustedDependencies: Object.keys(dependencies),
-    devDependencies: {},
-    peerDependencies: {},
-    scripts: {},
-  });
-
-  await writeJSONFile(join(outputPath, "build.json"), buildManifestToJSON(buildManifest));
-  await writeContainerfile(outputPath, buildManifest);
-}
-
-async function readProjectPackageJson(packageJsonPath: string) {
-  const packageJson = await readPackageJSON(packageJsonPath);
-
-  return packageJson;
-}
-
-// Remove any query parameters from the entry path
-// For example, src/trigger/ai.ts?sentryProxyModule=true -> src/trigger/ai.ts
-function cleanEntryPath(entry: string): string {
-  return entry.split("?")[0]!;
-}
-
-function rewriteOutputPath(destinationDir: string, filePath: string) {
-  return `/app/${relative(destinationDir, filePath)}`;
-}
-
-async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
-  if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
-    throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
-  }
-
-  const containerfile = await generateContainerfile({
-    runtime: buildManifest.runtime,
-    entrypoint: buildManifest.runControllerEntryPoint,
-    build: buildManifest.build,
-    image: buildManifest.image,
-    indexScript: buildManifest.indexControllerEntryPoint,
-  });
-
-  await writeFile(join(outputPath, "Containerfile"), containerfile);
 }
 
 export async function syncEnvVarsWithServer(
