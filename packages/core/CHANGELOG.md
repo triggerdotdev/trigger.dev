@@ -1,5 +1,12 @@
 # internal-platform
 
+## 3.3.12
+
+### Patch Changes
+
+- Add --experimental-global-webcrypto node option fix "crypto is not defined error" on Node.js 18 in dev ([#1623](https://github.com/triggerdotdev/trigger.dev/pull/1623))
+- Fix broken cloud deploys by using depot ephemeral registry ([#1637](https://github.com/triggerdotdev/trigger.dev/pull/1637))
+
 ## 3.3.11
 
 ### Patch Changes

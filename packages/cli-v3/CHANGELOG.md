@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 3.3.12
+
+### Patch Changes
+
+- Fix broken cloud deploys by using depot ephemeral registry ([#1637](https://github.com/triggerdotdev/trigger.dev/pull/1637))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.12`
+  - `@trigger.dev/build@3.3.12`
+
 ## 3.3.11
 
 ### Patch Changes
