@@ -54,7 +54,7 @@ RUN pnpm run build --filter=webapp...
 
 # Runner
 FROM node:20.11.1-bullseye-slim@sha256:5a5a92b3a8d392691c983719dbdc65d9f30085d6dcd65376e7a32e6fe9bf4cbe AS runner
-RUN apt-get update && apt-get install -y openssl netcat-openbsd
+RUN apt-get update && apt-get install -y openssl netcat-openbsd ca-certificates
 WORKDIR /triggerdotdev
 RUN corepack enable
 ENV NODE_ENV production
