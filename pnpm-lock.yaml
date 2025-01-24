@@ -228,6 +228,9 @@ importers:
       '@conform-to/zod':
         specifier: ^0.6.1
         version: 0.6.1(@conform-to/dom@0.6.1)(zod@3.23.8)
+      '@depot/cli':
+        specifier: 0.0.1-cli.2.80.0
+        version: 0.0.1-cli.2.80.0
       '@depot/sdk-node':
         specifier: ^1.0.0
         version: 1.0.0
@@ -1070,8 +1073,8 @@ importers:
         specifier: ^0.7.0
         version: 0.7.0
       '@depot/cli':
-        specifier: 0.0.1-cli.2.73.0
-        version: 0.0.1-cli.2.73.0
+        specifier: 0.0.1-cli.2.80.0
+        version: 0.0.1-cli.2.80.0
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
@@ -5477,8 +5480,8 @@ packages:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  /@depot/cli-darwin-arm64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-nXG6loMJxbfWnKoVvTvrw19GAX3TxsgUy2mnb7sKv06VjUeMvsvBueXAW4lxO5Cf89oim9b0/Agnj/B3IVD2Kg==}
+  /@depot/cli-darwin-arm64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-H7tQ0zWXVmdYXGFvt3d/v5fmquMlMM1I9JC8C2yiBZ9En9a20hzSbKoiym92RtcfqjKQFvhXL0DT6vQmJ8bgQA==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [darwin]
@@ -5486,8 +5489,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-darwin-x64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-AqkNIIOuzh/8hmwTwu1FIY5Lvez7h4/STO3oPjaalLajV+ZfHgV2xpmbtTwxPmgLVFPaE2e77wzvpRWuFarWwQ==}
+  /@depot/cli-darwin-x64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-3RDyybnCC2YSvbJCkHxXBYbKR7adUO7U00O9DHreX8EyS2E/C3kQgET+rFXR+iDdeG0h+h+At2rDng7AxvUhDw==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [darwin]
@@ -5495,8 +5498,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-arm64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-Rfiil6MAO/SkAK27vaEA1IOPOJq8DgCvm09sfasrXFvpldDYa700Hx7c+V1uuBYfIckVh2S/i7AQjGg535MDjg==}
+  /@depot/cli-linux-arm64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-Fc1+Guqdsl2WM+b+76FirRjjRvEoYZX0MI4uuIQF9c9gwp6UZSZ5o3U7lAUpdkclVMKXSAW5bsIpgcOfUiJX3w==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [linux]
@@ -5504,8 +5507,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-arm@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-/HspMwaVYYPErg372Bk4x7Gno7n8VuaLqaGm39wbZEb9C4S9YAP7r7T0wSywrUZBzJBxX7f+GoHbBic0IQoraQ==}
+  /@depot/cli-linux-arm@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-95kjKwKxP6RKkAhJoPlO6g3drEYpFWy9AC7QfvQMHDRnI3HXgbxA/BSTp4R3C4TTfp5JUPShVf8Js/NAcrUpUQ==}
     engines: {node: '>=14'}
     cpu: [arm]
     os: [linux]
@@ -5513,8 +5516,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-ia32@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-1GHDaNe6KXYjHWNoUrd2GutnseyYt3yrUKmRYKAR+/AU3BW/eQGcRAp50bSu9nntIaL+ByugkR+LjwKJIqRzmg==}
+  /@depot/cli-linux-ia32@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-2KoyIoYqnyIuynPN+mWbugoOB2APiNNvFLKERWOwPa0KYLSfcENT3sYxDW8tDuIw2dftHlmZN73uvXrGFeMcDQ==}
     engines: {node: '>=14'}
     cpu: [ia32]
     os: [linux]
@@ -5522,8 +5525,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-linux-x64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-CY4IwXT5l2btXbjCYl+85tfF/viz6zdyaWjiu7MUuxxAM+s9bMYl7HKBITHdflx9Z/dRfDGFX8tM1i2AsKBcqA==}
+  /@depot/cli-linux-x64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-B8xDlXFxhYHD2tUk0jUv7SKipLfWwJVlY7ZhDQixyQzatibXakahdqpvZJgE6FLZJd3lgFIEAVsKURZHa1l57A==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [linux]
@@ -5531,8 +5534,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-arm64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-mslCCUzlK53aYstJH6//mPOVTWa8vU2IemBGLFsntgB1f/0fqDdfAskyfu+RVx/ZNqjr2Ih2jtdlfyOA3XKZdw==}
+  /@depot/cli-win32-arm64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-CPJX691MKEhnKZX25xS+opWESgPQ73HKkEwkAvvVqdBzahndcHoqAeIxYLv2hoCqrDlkH3YCF+DJleLiEP3blA==}
     engines: {node: '>=14'}
     cpu: [arm64]
     os: [win32]
@@ -5540,8 +5543,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-ia32@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-/xsLWyIO7tAHTkFTFO0j9Csc78WnoENeEWROeUWsvAizFX6GF6Toir1xRZbM28yRRlGsOG+KWsFwULyEJkI1Wg==}
+  /@depot/cli-win32-ia32@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-6eewZ1zPEyNL3zcCwC01s3rZNMqMGVu1iv/EPywj3/uk4CNyUBaTlZ3StQ1BLFHPQnU0vk29yOzA5ZEuRLSyxA==}
     engines: {node: '>=14'}
     cpu: [ia32]
     os: [win32]
@@ -5549,8 +5552,8 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli-win32-x64@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-iC8FpHij2yrO1hNQPuRYgreYsyvXgC6xaBdBpfM5x7C7Uf+vOg4k5ERToj0WCfvRhkja+uguQdw2V3il6IhNeA==}
+  /@depot/cli-win32-x64@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-9CRcc7D0/x4UrBkDuc35WVPMQG5gKMD1JckGLEl6VREE0Ppdny6n+hunQ8prwVc8aqzKG134XCC2U4DUjYg18A==}
     engines: {node: '>=14'}
     cpu: [x64]
     os: [win32]
@@ -5558,21 +5561,21 @@ packages:
     dev: false
     optional: true
 
-  /@depot/cli@0.0.1-cli.2.73.0:
-    resolution: {integrity: sha512-pu5SKOj95jzCPG5H5SZvAN6Z+h4ACcjs6shv7S1lXqSGxNBVTvq7LlTiBFGpLcLo+EkSfbEjAdlNBdh1LRqrKA==}
+  /@depot/cli@0.0.1-cli.2.80.0:
+    resolution: {integrity: sha512-KvmOiQdpbamFziqnzzgqBm6RjfGhLJimBBYEOVriTxCPtVJuBIFm34xZllM36OQzPZIWpWBP+2/UnOyRG5smUg==}
     engines: {node: '>=14'}
     hasBin: true
     requiresBuild: true
     optionalDependencies:
-      '@depot/cli-darwin-arm64': 0.0.1-cli.2.73.0
-      '@depot/cli-darwin-x64': 0.0.1-cli.2.73.0
-      '@depot/cli-linux-arm': 0.0.1-cli.2.73.0
-      '@depot/cli-linux-arm64': 0.0.1-cli.2.73.0
-      '@depot/cli-linux-ia32': 0.0.1-cli.2.73.0
-      '@depot/cli-linux-x64': 0.0.1-cli.2.73.0
-      '@depot/cli-win32-arm64': 0.0.1-cli.2.73.0
-      '@depot/cli-win32-ia32': 0.0.1-cli.2.73.0
-      '@depot/cli-win32-x64': 0.0.1-cli.2.73.0
+      '@depot/cli-darwin-arm64': 0.0.1-cli.2.80.0
+      '@depot/cli-darwin-x64': 0.0.1-cli.2.80.0
+      '@depot/cli-linux-arm': 0.0.1-cli.2.80.0
+      '@depot/cli-linux-arm64': 0.0.1-cli.2.80.0
+      '@depot/cli-linux-ia32': 0.0.1-cli.2.80.0
+      '@depot/cli-linux-x64': 0.0.1-cli.2.80.0
+      '@depot/cli-win32-arm64': 0.0.1-cli.2.80.0
+      '@depot/cli-win32-ia32': 0.0.1-cli.2.80.0
+      '@depot/cli-win32-x64': 0.0.1-cli.2.80.0
     dev: false
 
   /@depot/sdk-node@1.0.0:

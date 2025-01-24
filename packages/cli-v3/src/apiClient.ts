@@ -254,7 +254,7 @@ export class CliApiClient {
 
     return wrapZodFetch(
       FailDeploymentResponseBody,
-      `${this.apiURL}/api/v1/deployments/${id}/finalize`,
+      `${this.apiURL}/api/v2/deployments/${id}/finalize`,
       {
         method: "POST",
         headers: {

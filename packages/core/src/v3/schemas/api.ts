@@ -222,6 +222,7 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   imageReference: z.string(),
   selfHosted: z.boolean().optional(),
+  skipRegistryProxy: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;

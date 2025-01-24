@@ -194,10 +194,8 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
-    "-t",
-    `${options.registryHost}/${options.imageTag}`,
     ".",
-    "--push",
+    "--save",
     options.loadImage ? "--load" : undefined,
   ].filter(Boolean) as string[];
 
@@ -249,7 +247,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 
     return {
       ok: true as const,
-      image: options.imageTag,
+      image: `registry.depot.dev/${options.buildProjectId}:${options.buildId}`,
       logs,
       digest,
     };
