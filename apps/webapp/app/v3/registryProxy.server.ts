@@ -106,6 +106,8 @@ export class RegistryProxy {
       headers: { ...request.headers },
     };
 
+    logger.debug("Building request", { options });
+
     delete options.headers["host"];
     // delete options.headers["connection"];
     // delete options.headers["accept-encoding"];
@@ -261,6 +263,12 @@ export class RegistryProxy {
 
       request.on("close", () => {
         logger.debug("Client closed the connection");
+
+        if (response.headersSent) {
+          cleanupTempFile();
+          return;
+        }
+
         proxyReq.destroy();
         cleanupTempFile();
       });
