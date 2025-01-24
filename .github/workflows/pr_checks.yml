@@ -33,7 +33,7 @@ jobs:
     name: Preview Release
     needs: [typecheck, units, e2e]
     if: github.repository == 'triggerdotdev/trigger.dev'
-    runs-on: buildjet-8vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
