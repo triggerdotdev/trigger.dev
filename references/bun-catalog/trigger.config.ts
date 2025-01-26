@@ -23,6 +23,7 @@ export default defineConfig({
       console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
     } catch (error) {
       console.log(error)
+       throw error; // Re-throw to fail the run
     }
   },
   onFailure: async (payload, error, { ctx }) => {
