@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { logger } from "../../packages/core/dist/commonjs/v3/logger-api.js";
 
 export default defineConfig({
   runtime: "bun",
@@ -18,7 +19,11 @@ export default defineConfig({
   enableConsoleLogging: false,
   logLevel: "info",
   onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    try {
+      console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    } catch (error) {
+      console.log(error)
+    }
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(`Task ${ctx.task.id} failed ${ctx.run.id}`);

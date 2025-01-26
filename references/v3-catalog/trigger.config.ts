@@ -31,7 +31,11 @@ export default defineConfig({
   enableConsoleLogging: false,
   logLevel: "info",
   onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    try {
+      console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    } catch (error) {
+      console.log(error)
+    }
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(
