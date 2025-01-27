@@ -45,6 +45,15 @@ export class HeartbeatService {
     this.#clearNextHeartbeat();
   }
 
+  resetCurrentInterval() {
+    if (!this._isHeartbeating) {
+      return;
+    }
+
+    this.#clearNextHeartbeat();
+    this.#scheduleNextHeartbeat();
+  }
+
   #doHeartbeat = async () => {
     this.#clearNextHeartbeat();
 

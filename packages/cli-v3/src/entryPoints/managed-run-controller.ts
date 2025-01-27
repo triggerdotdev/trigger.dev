@@ -564,6 +564,9 @@ class ManagedRunController {
         return;
       }
 
+      // Reset the (fallback) snapshot poll interval so we don't do unnecessary work
+      this.snapshotPollService.resetCurrentInterval();
+
       const latestSnapshot = await this.httpClient.getRunExecutionData(this.runFriendlyId);
 
       if (!latestSnapshot.success) {
