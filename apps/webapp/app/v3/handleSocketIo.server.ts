@@ -26,7 +26,14 @@ import { CrashTaskRunService } from "./services/crashTaskRun.server";
 import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
-import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "@trigger.dev/core/v3/workers";
+import type {
+  WorkerClientToServerEvents,
+  WorkerServerToClientEvents,
+} from "@trigger.dev/core/v3/workers";
+import { engine } from "./runEngine.server";
+import { EventBusEventArgs } from "@internal/run-engine/engine/eventBus";
+import { RunId } from "@trigger.dev/core/v3/apps";
+import { recordRunDebugLog } from "./eventRepository.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -422,6 +429,36 @@ function createWorkerNamespace(io: Server) {
 
     const rooms = new Set<string>();
 
+    async function onNotification({
+      time,
+      run,
+      snapshot,
+    }: EventBusEventArgs<"workerNotification">[0]) {
+      logger.debug("[handleSocketIo] Received worker notification", {
+        time,
+        runId: run.id,
+        snapshot,
+      });
+
+      // Record notification event
+      await recordRunDebugLog(
+        run.id,
+        `handleSocketIo worker notification: ${snapshot.executionStatus}`,
+        {
+          attributes: {
+            properties: {
+              snapshotId: snapshot.id,
+              snapshotStatus: snapshot.executionStatus,
+              rooms: Array.from(rooms),
+            },
+          },
+          startTime: time,
+        }
+      );
+    }
+
+    engine.eventBus.on("workerNotification", onNotification);
+
     const interval = setInterval(() => {
       logger.debug("Rooms for socket", {
         socketId: socket.id,
@@ -436,6 +473,8 @@ function createWorkerNamespace(io: Server) {
         description,
       });
       clearInterval(interval);
+
+      engine.eventBus.off("workerNotification", onNotification);
     });
 
     socket.on("disconnecting", (reason, description) => {
@@ -459,13 +498,22 @@ function createWorkerNamespace(io: Server) {
       logger.debug("run:subscribe", { version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
-        runFriendlyIds.map((friendlyId) => {
+        runFriendlyIds.map(async (friendlyId) => {
           const room = roomFromFriendlyRunId(friendlyId);
 
           logger.debug("Joining room", { room });
 
           socket.join(room);
           rooms.add(room);
+
+          await recordRunDebugLog(RunId.fromFriendlyId(friendlyId), `Joining room: ${room}`, {
+            attributes: {
+              properties: {
+                friendlyId,
+                runFriendlyIds,
+              },
+            },
+          });
         })
       );
 
@@ -488,13 +536,22 @@ function createWorkerNamespace(io: Server) {
       logger.debug("run:unsubscribe", { version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
-        runFriendlyIds.map((friendlyId) => {
+        runFriendlyIds.map(async (friendlyId) => {
           const room = roomFromFriendlyRunId(friendlyId);
 
           logger.debug("Leaving room", { room });
 
           socket.leave(room);
           rooms.delete(room);
+
+          await recordRunDebugLog(RunId.fromFriendlyId(friendlyId), `Leaving room: ${room}`, {
+            attributes: {
+              properties: {
+                friendlyId,
+                runFriendlyIds,
+              },
+            },
+          });
         })
       );
 

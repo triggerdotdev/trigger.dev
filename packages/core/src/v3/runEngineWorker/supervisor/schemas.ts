@@ -137,3 +137,21 @@ export const WorkerApiWaitForDurationResponseBody = WaitForDurationResult;
 export type WorkerApiWaitForDurationResponseBody = z.infer<
   typeof WorkerApiWaitForDurationResponseBody
 >;
+
+const AttributeValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string().nullable()),
+  z.array(z.number().nullable()),
+  z.array(z.boolean().nullable()),
+]);
+
+const Attributes = z.record(z.string(), AttributeValue.optional());
+
+export const WorkerApiDebugLogBody = z.object({
+  time: z.coerce.date(),
+  message: z.string(),
+  properties: Attributes.optional(),
+});
+export type WorkerApiDebugLogBody = z.infer<typeof WorkerApiDebugLogBody>;

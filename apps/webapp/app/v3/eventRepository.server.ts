@@ -28,7 +28,6 @@ import { Gauge } from "prom-client";
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
@@ -1599,4 +1598,117 @@ function rehydrateAttribute<T extends AttributeValue>(
   if (!value) return;
 
   return value as T;
+}
+
+export async function findRunForEventCreation(runId: string) {
+  return prisma.taskRun.findFirst({
+    where: {
+      id: runId,
+    },
+    select: {
+      friendlyId: true,
+      taskIdentifier: true,
+      traceContext: true,
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          type: true,
+          organizationId: true,
+          projectId: true,
+          project: {
+            select: {
+              externalRef: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function recordRunEvent(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  try {
+    const foundRun = await findRunForEventCreation(runId);
+
+    if (!foundRun) {
+      logger.error("Failed to find run for event creation", { runId });
+      return {
+        success: false,
+        code: "RUN_NOT_FOUND",
+      };
+    }
+
+    const { attributes, startTime, ...optionsRest } = options;
+
+    await eventRepository.recordEvent(message, {
+      environment: foundRun.runtimeEnvironment,
+      taskSlug: foundRun.taskIdentifier,
+      context: foundRun.traceContext as Record<string, string | undefined>,
+      attributes: {
+        runId: foundRun.friendlyId,
+        ...attributes,
+      },
+      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      ...optionsRest,
+    });
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    logger.error("Failed to record event for run", {
+      error: error instanceof Error ? error.message : error,
+      runId,
+    });
+
+    return {
+      success: false,
+      code: "FAILED_TO_RECORD_EVENT",
+      error,
+    };
+  }
+}
+
+export async function recordRunDebugLog(
+  runId: string,
+  message: string,
+  options: Omit<TraceEventOptions, "environment" | "taskSlug" | "startTime"> & {
+    duration?: number;
+    parentId?: string;
+    startTime?: Date;
+  }
+): Promise<
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      code: "RUN_NOT_FOUND" | "FAILED_TO_RECORD_EVENT";
+      error?: unknown;
+    }
+> {
+  return recordRunEvent(runId, message, {
+    ...options,
+    attributes: {
+      ...options?.attributes,
+      isDebug: true,
+    },
+  });
 }

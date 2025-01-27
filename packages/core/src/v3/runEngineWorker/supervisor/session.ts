@@ -82,6 +82,15 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     }
 
     this.socket.emit("run:subscribe", { version: "1", runFriendlyIds });
+
+    Promise.allSettled(
+      runFriendlyIds.map((runFriendlyId) =>
+        this.httpClient.sendDebugLog(runFriendlyId, {
+          time: new Date(),
+          message: "[WorkerSession] run:subscribe to run notifications",
+        })
+      )
+    );
   }
 
   unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
@@ -93,6 +102,18 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     }
 
     this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds });
+
+    Promise.allSettled(
+      runFriendlyIds.map((runFriendlyId) =>
+        this.httpClient.sendDebugLog(runFriendlyId, {
+          time: new Date(),
+          message: "[WorkerSession] run:unsubscribe from run notifications",
+          properties: {
+            runFriendlyIds,
+          },
+        })
+      )
+    );
   }
 
   private createSocket() {
@@ -106,6 +127,15 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.socket.on("run:notify", ({ version, run }) => {
       console.log("[WorkerSession][WS] Received run notification", { version, run });
       this.emit("runNotification", { time: new Date(), run });
+
+      this.httpClient
+        .sendDebugLog(run.friendlyId, {
+          time: new Date(),
+          message: "[WorkerSession] run:notify received",
+        })
+        .catch((error) => {
+          console.error("[WorkerSession] Failed to send debug log", { error });
+        });
     });
     this.socket.on("connect", () => {
       console.log("[WorkerSession][WS] Connected to platform");

@@ -1,5 +1,9 @@
 import { prisma } from "~/db.server";
-import { createExceptionPropertiesFromError, eventRepository } from "./eventRepository.server";
+import {
+  createExceptionPropertiesFromError,
+  eventRepository,
+  recordRunDebugLog,
+} from "./eventRepository.server";
 import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -316,37 +320,26 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
-    try {
-      const foundRun = await findRun(run.id);
-
-      if (!foundRun) {
-        logger.error("Failed to find run", { runId: run.id });
-        return;
-      }
-
-      await eventRepository.recordEvent(
-        `[ExecutionSnapshot] ${snapshot.executionStatus} - ${snapshot.description}`,
-        {
-          environment: foundRun.runtimeEnvironment,
-          taskSlug: foundRun.taskIdentifier,
-          context: foundRun.traceContext as Record<string, string | undefined>,
-          attributes: {
-            runId: foundRun.friendlyId,
-            isDebug: true,
-            properties: {
-              snapshotId: snapshot.id,
-              snapshotDescription: snapshot.description,
-              snapshotStatus: snapshot.executionStatus,
-            },
+    const eventResult = await recordRunDebugLog(
+      run.id,
+      `[ExecutionSnapshot] ${snapshot.executionStatus} - ${snapshot.description}`,
+      {
+        attributes: {
+          properties: {
+            snapshotId: snapshot.id,
+            snapshotDescription: snapshot.description,
+            snapshotStatus: snapshot.executionStatus,
           },
-          duration: 0,
-          startTime: BigInt(time.getTime() * 1_000_000),
-        }
-      );
-    } catch (error) {
+        },
+        startTime: time,
+      }
+    );
+
+    if (!eventResult.success) {
       logger.error("[executionSnapshotCreated] Failed to record event", {
-        error: error instanceof Error ? error.message : error,
         runId: run.id,
+        snapshot,
+        error: eventResult.error,
       });
     }
   });
@@ -371,92 +364,50 @@ export function registerRunEngineEventBusHandlers() {
     }
 
     // Record notification event
-    try {
-      const foundRun = await findRun(run.id);
-
-      if (!foundRun) {
-        logger.error("Failed to find run", { runId: run.id });
-        return;
-      }
-
-      await eventRepository.recordEvent(`Notify worker: ${snapshot.executionStatus}`, {
-        environment: foundRun.runtimeEnvironment,
-        taskSlug: foundRun.taskIdentifier,
-        context: foundRun.traceContext as Record<string, string | undefined>,
+    const eventResult = await recordRunDebugLog(
+      run.id,
+      `Worker notified: ${snapshot.executionStatus}`,
+      {
         attributes: {
-          runId: foundRun.friendlyId,
-          isDebug: true,
           properties: {
             snapshotId: snapshot.id,
             snapshotStatus: snapshot.executionStatus,
           },
         },
-        duration: 0,
-        startTime: BigInt(time.getTime() * 1_000_000),
-      });
-    } catch (error) {
-      logger.error("[executionSnapshotCreated] Failed to record event", {
-        error: error instanceof Error ? error.message : error,
+        startTime: time,
+      }
+    );
+
+    if (!eventResult.success) {
+      logger.error("[workerNotification] Failed to record event", {
         runId: run.id,
+        snapshot,
+        error: eventResult.error,
       });
     }
   });
 
   engine.eventBus.on("incomingCheckpointDiscarded", async ({ time, run, snapshot, checkpoint }) => {
-    try {
-      const foundRun = await findRun(run.id);
-
-      if (!foundRun) {
-        logger.error("Failed to find run", { runId: run.id });
-        return;
-      }
-
-      await eventRepository.recordEvent(`Checkpoint discarded: ${checkpoint.discardReason}`, {
-        environment: foundRun.runtimeEnvironment,
-        taskSlug: foundRun.taskIdentifier,
-        context: foundRun.traceContext as Record<string, string | undefined>,
+    const eventResult = await recordRunDebugLog(
+      run.id,
+      `Checkpoint discarded: ${checkpoint.discardReason}`,
+      {
         attributes: {
-          runId: foundRun.friendlyId,
-          isDebug: true,
           properties: {
-            ...checkpoint.metadata,
             snapshotId: snapshot.id,
+            ...checkpoint.metadata,
           },
         },
-        duration: 0,
-        startTime: BigInt(time.getTime() * 1_000_000),
-      });
-    } catch (error) {
+        startTime: time,
+      }
+    );
+
+    if (!eventResult.success) {
       logger.error("[incomingCheckpointDiscarded] Failed to record event", {
-        error: error instanceof Error ? error.message : error,
         runId: run.id,
+        snapshot,
+        error: eventResult.error,
       });
     }
-  });
-}
-
-async function findRun(runId: string) {
-  return prisma.taskRun.findFirst({
-    where: {
-      id: runId,
-    },
-    select: {
-      friendlyId: true,
-      taskIdentifier: true,
-      traceContext: true,
-      runtimeEnvironment: {
-        select: {
-          id: true,
-          type: true,
-          organizationId: true,
-          projectId: true,
-          project: {
-            select: {
-              externalRef: true,
-            },
-          },
-        },
-      },
-    },
   });
 }
