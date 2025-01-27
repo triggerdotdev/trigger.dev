@@ -2,6 +2,7 @@ import {
   BuildManifest,
   clientWebsocketMessages,
   CreateBackgroundWorkerRequestBody,
+  DevConfigResponseBody,
   SemanticInternalAttributes,
   serverWebsocketMessages,
   TaskManifest,
@@ -51,14 +52,15 @@ class DevSupervisor implements WorkerRuntime {
   async init(): Promise<void> {
     logger.debug("initialized worker runtime", { options: this.options });
 
-    //todo get the settings for dev
+    //get the settings for dev
     const settings = await this.options.client.devConfig();
     if (!settings.success) {
-      throw new Error(`Failed to connect to retrieve dev settings: ${settings.error}`);
+      throw new Error(
+        `Failed to connect to ${this.options.client.apiURL}. Couldn't retrieve settings: ${settings.error}`
+      );
     }
 
     logger.debug("Got dev settings", { settings: settings.data });
-
     this.config = settings.data;
 
     //todo start an SSE connection to the presence endpoint
