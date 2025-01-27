@@ -1,14 +1,9 @@
 import { json, TypedResponse } from "@remix-run/server-runtime";
 import { DevConfigResponseBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import {
-  createActionPATApiRoute,
-  createLoaderApiRoute,
-  createLoaderPATApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(
   {
@@ -17,7 +12,7 @@ export const loader = createLoaderApiRoute(
       "x-forwarded-for": z.string().optional(),
     }),
   },
-  async ({ params, headers, authentication }): Promise<TypedResponse<DevConfigResponseBody>> => {
+  async ({ authentication }): Promise<TypedResponse<DevConfigResponseBody>> => {
     logger.debug("Get dev settings", { environmentId: authentication.environment.id });
 
     try {
