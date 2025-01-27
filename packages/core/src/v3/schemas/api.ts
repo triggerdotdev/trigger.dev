@@ -406,6 +406,14 @@ export const WorkersCreateResponseBody = z.object({
 });
 export type WorkersCreateResponseBody = z.infer<typeof WorkersCreateResponseBody>;
 
+export const DevConfigResponseBody = z.object({
+  environmentId: z.string(),
+  dequeueIntervalWithRun: z.number(),
+  dequeueIntervalWithoutRun: z.number(),
+});
+
+export type DevConfigResponseBody = z.infer<typeof DevConfigResponseBody>;
+
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 
 export const ReplayRunResponse = z.object({

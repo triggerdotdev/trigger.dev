@@ -22,7 +22,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { clearTmpDirs, EphemeralDirectory, getTmpDir } from "../utilities/tempDirectories.js";
 import { startDevOutput } from "./devOutput.js";
-import { startWorkerRuntime } from "./workerRuntime.js";
+import { startWorkerRuntime } from "./devSupervisor.js";
 
 export type DevSessionOptions = {
   name: string | undefined;

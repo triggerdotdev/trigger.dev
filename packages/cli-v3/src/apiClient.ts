@@ -26,6 +26,7 @@ import {
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   GetLatestDeploymentResponseBody,
+  DevConfigResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 
@@ -320,6 +321,19 @@ export class CliApiClient {
         Accept: "application/json",
       },
       body: JSON.stringify(body ?? {}),
+    });
+  }
+
+  async devConfig() {
+    if (!this.accessToken) {
+      throw new Error("triggerTaskRun: No access token");
+    }
+
+    return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/api/v1/dev/config`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
     });
   }
 

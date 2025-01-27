@@ -298,6 +298,13 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+
+  /* How often should the CLI ping to say it's still active. Milliseconds */
+  DEV_ACTIVE_SESSION_POLL_INTERVAL: z.coerce.number().int().default(5_000),
+  /* How many ms to wait until dequeuing again, if there was a run last time */
+  DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(50),
+  /* How many ms to wait until dequeuing again, if there was no run last time */
+  DEV_DEQUEUE_INTERVAL_WITHOUT_RUN: z.coerce.number().int().default(250),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
