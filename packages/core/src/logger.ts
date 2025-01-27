@@ -96,12 +96,17 @@ export class Logger {
     // Get the current context from trace if it exists
     const currentSpan = trace.getSpan(context.active());
 
+    const structuredError = extractStructuredErrorFromArgs(...args);
+    const structuredMessage = extractStructuredMessageFromArgs(...args);
+
     const structuredLog = {
       ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
       ...this.#additionalFields(),
+      ...(structuredError ? { error: structuredError } : {}),
       timestamp: new Date(),
       name: this.#name,
       message,
+      ...(structuredMessage ? { $message: structuredMessage } : {}),
       level,
       traceId:
         currentSpan && currentSpan.isRecording() ? currentSpan?.spanContext().traceId : undefined,
@@ -116,6 +121,44 @@ export class Logger {
 
     loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));
   }
+}
+
+// Detect if args is an error object
+// Or if args contains an error object at the "error" key
+// In both cases, return the error object as a structured error
+function extractStructuredErrorFromArgs(...args: Array<Record<string, unknown> | undefined>) {
+  const error = args.find((arg) => arg instanceof Error) as Error | undefined;
+
+  if (error) {
+    return {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    };
+  }
+
+  const structuredError = args.find((arg) => arg?.error);
+
+  if (structuredError && structuredError.error instanceof Error) {
+    return {
+      message: structuredError.error.message,
+      stack: structuredError.error.stack,
+      name: structuredError.error.name,
+    };
+  }
+
+  return;
+}
+
+function extractStructuredMessageFromArgs(...args: Array<Record<string, unknown> | undefined>) {
+  // Check to see if there is a `message` key in the args, and if so, return it
+  const structuredMessage = args.find((arg) => arg?.message);
+
+  if (structuredMessage) {
+    return structuredMessage.message;
+  }
+
+  return;
 }
 
 function createReplacer(replacer?: (key: string, value: unknown) => unknown) {

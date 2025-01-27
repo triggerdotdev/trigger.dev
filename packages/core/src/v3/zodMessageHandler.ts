@@ -239,15 +239,25 @@ type ZodMessageSenderCallback<TMessageCatalog extends ZodMessageCatalogSchema> =
 export type ZodMessageSenderOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {
   schema: TMessageCatalog;
   sender: ZodMessageSenderCallback<TMessageCatalog>;
+  canSendMessage?: () => Promise<boolean> | boolean;
 };
 
 export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
   #schema: TMessageCatalog;
   #sender: ZodMessageSenderCallback<TMessageCatalog>;
+  #canSendMessage?: ZodMessageSenderOptions<TMessageCatalog>["canSendMessage"];
 
   constructor(options: ZodMessageSenderOptions<TMessageCatalog>) {
     this.#schema = options.schema;
     this.#sender = options.sender;
+    this.#canSendMessage = options.canSendMessage;
+  }
+
+  public async validateCanSendMessage(): Promise<boolean> {
+    if (!this.#canSendMessage) {
+      return true;
+    }
+    return await this.#canSendMessage();
   }
 
   public async send<K extends keyof TMessageCatalog>(
