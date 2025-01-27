@@ -13,7 +13,6 @@ import {
   MachinePreset,
   ProdTaskRunExecution,
   ProdTaskRunExecutionPayload,
-  QueueOptions,
   TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
@@ -29,13 +28,13 @@ import {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
-  TaskQueue,
   TaskRunStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
@@ -67,7 +66,6 @@ import {
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
 import { MessagePayload } from "./types";
-import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -323,6 +321,14 @@ export class SharedQueueConsumer {
         ROOT_CONTEXT
       );
 
+      logger.debug("SharedQueueConsumer starting new trace", {
+        reasonStats: this._reasonStats,
+        actionStats: this._actionStats,
+        outcomeStats: this._outcomeStats,
+        iterationCount: this._iterationsCount,
+        consumerId: this._id,
+      });
+
       // Get the span trace context
       this._currentSpanContext = trace.setSpan(ROOT_CONTEXT, this._currentSpan);
 
@@ -351,6 +357,10 @@ export class SharedQueueConsumer {
         try {
           const result = await this.#doWorkInternal();
 
+          if (result.reason !== "no_message_dequeued") {
+            logger.debug("SharedQueueConsumer doWorkInternal result", { result });
+          }
+
           this._reasonStats[result.reason] = (this._reasonStats[result.reason] ?? 0) + 1;
           this._outcomeStats[result.outcome] = (this._outcomeStats[result.outcome] ?? 0) + 1;
 
@@ -371,6 +381,9 @@ export class SharedQueueConsumer {
           if (result.error) {
             span.recordException(result.error);
             span.setStatus({ code: SpanStatusCode.ERROR });
+            this._currentSpan?.recordException(result.error);
+            this._currentSpan?.setStatus({ code: SpanStatusCode.ERROR });
+            this._endSpanInNextIteration = true;
           }
 
           if (typeof result.interval === "number") {
@@ -755,7 +768,7 @@ export class SharedQueueConsumer {
     );
 
     if (!queue) {
-      logger.debug("SharedQueueConsumer queue not found, so nacking message", {
+      logger.debug("SharedQueueConsumer queue not found, so acking message", {
         queueMessage: message,
         taskRunQueue: lockedTaskRun.queue,
         runtimeEnvironmentId: lockedTaskRun.runtimeEnvironmentId,
@@ -876,33 +889,49 @@ export class SharedQueueConsumer {
           machinePresetFromRun(lockedTaskRun) ??
           machinePresetFromConfig(lockedTaskRun.lockedBy?.machineConfig ?? {});
 
-        await this.#startActiveSpan("scheduleAttemptOnProvider", async (span) => {
-          await this._providerSender.send("BACKGROUND_WORKER_MESSAGE", {
-            backgroundWorkerId: worker.friendlyId,
-            data: {
-              type: "SCHEDULE_ATTEMPT",
-              image: imageReference,
-              version: deployment.version,
-              machine,
-              nextAttemptNumber,
-              // identifiers
-              id: "placeholder", // TODO: Remove this completely in a future release
-              envId: lockedTaskRun.runtimeEnvironment.id,
-              envType: lockedTaskRun.runtimeEnvironment.type,
-              orgId: lockedTaskRun.runtimeEnvironment.organizationId,
-              projectId: lockedTaskRun.runtimeEnvironment.projectId,
-              runId: lockedTaskRun.id,
-            },
+        return await this.#startActiveSpan("scheduleAttemptOnProvider", async (span) => {
+          span.setAttributes({
+            run_id: lockedTaskRun.id,
           });
-        });
 
-        return {
-          action: "noop",
-          reason: "scheduled_attempt",
-          attrs: {
-            next_attempt_number: nextAttemptNumber,
-          },
-        };
+          if (await this._providerSender.validateCanSendMessage()) {
+            await this._providerSender.send("BACKGROUND_WORKER_MESSAGE", {
+              backgroundWorkerId: worker.friendlyId,
+              data: {
+                type: "SCHEDULE_ATTEMPT",
+                image: imageReference,
+                version: deployment.version,
+                machine,
+                nextAttemptNumber,
+                // identifiers
+                id: "placeholder", // TODO: Remove this completely in a future release
+                envId: lockedTaskRun.runtimeEnvironment.id,
+                envType: lockedTaskRun.runtimeEnvironment.type,
+                orgId: lockedTaskRun.runtimeEnvironment.organizationId,
+                projectId: lockedTaskRun.runtimeEnvironment.projectId,
+                runId: lockedTaskRun.id,
+              },
+            });
+
+            return {
+              action: "noop",
+              reason: "scheduled_attempt",
+              attrs: {
+                next_attempt_number: nextAttemptNumber,
+              },
+            };
+          } else {
+            return {
+              action: "nack_and_do_more_work",
+              reason: "provider_not_connected",
+              attrs: {
+                run_id: lockedTaskRun.id,
+              },
+              interval: this._options.nextTickInterval,
+              retryInMs: 5_000,
+            };
+          }
+        });
       }
     } catch (e) {
       // We now need to unlock the task run and delete the task run attempt
@@ -929,6 +958,8 @@ export class SharedQueueConsumer {
         action: "nack_and_do_more_work",
         reason: "failed_to_schedule_attempt",
         error: e instanceof Error ? e : String(e),
+        interval: this._options.nextTickInterval,
+        retryInMs: 5_000,
       };
     }
   }

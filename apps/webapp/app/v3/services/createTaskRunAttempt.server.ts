@@ -254,9 +254,12 @@ async function getAuthenticatedEnvironmentFromRun(
   friendlyId: string,
   prismaClient?: PrismaClientOrTransaction
 ) {
-  const taskRun = await (prismaClient ?? prisma).taskRun.findUnique({
+  const isFriendlyId = friendlyId.startsWith("run_");
+
+  const taskRun = await (prismaClient ?? prisma).taskRun.findFirst({
     where: {
-      friendlyId,
+      id: !isFriendlyId ? friendlyId : undefined,
+      friendlyId: isFriendlyId ? friendlyId : undefined,
     },
     include: {
       runtimeEnvironment: {
