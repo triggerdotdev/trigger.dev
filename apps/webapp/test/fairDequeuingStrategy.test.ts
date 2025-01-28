@@ -203,6 +203,96 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toEqual([queue1, queue2]);
   });
 
+  redisTest("should reuse snapshots across calls for the same consumer", async ({ redis }) => {
+    const keyProducer = createKeyProducer("test");
+    const strategy = new FairDequeuingStrategy({
+      tracer,
+      redis,
+      keys: keyProducer,
+      defaultOrgConcurrency: 10,
+      defaultEnvConcurrency: 5,
+      parentQueueLimit: 10,
+      checkForDisabledOrgs: true,
+      seed: "test-seed-reuse-1",
+      reuseSnapshotCount: 1,
+    });
+
+    const now = Date.now();
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 3000,
+      queueId: "queue-1",
+      orgId: "org-1",
+      envId: "env-1",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 2000,
+      queueId: "queue-2",
+      orgId: "org-2",
+      envId: "env-2",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 1000,
+      queueId: "queue-3",
+      orgId: "org-3",
+      envId: "env-3",
+    });
+
+    const startDistribute1 = performance.now();
+
+    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
+
+    const distribute1Duration = performance.now() - startDistribute1;
+
+    console.log("First distribution took", distribute1Duration, "ms");
+
+    expect(result).toHaveLength(3);
+    // Should only get the two oldest queues
+    const queue1 = keyProducer.queueKey("org-1", "env-1", "queue-1");
+    const queue2 = keyProducer.queueKey("org-2", "env-2", "queue-2");
+    const queue3 = keyProducer.queueKey("org-3", "env-3", "queue-3");
+    expect(result).toEqual([queue2, queue1, queue3]);
+
+    const startDistribute2 = performance.now();
+
+    const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
+
+    const distribute2Duration = performance.now() - startDistribute2;
+
+    console.log("Second distribution took", distribute2Duration, "ms");
+
+    // Make sure the second call is more than 10 times faster than the first
+    expect(distribute2Duration).toBeLessThan(distribute1Duration / 10);
+
+    const startDistribute3 = performance.now();
+
+    const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
+
+    const distribute3Duration = performance.now() - startDistribute3;
+
+    console.log("Third distribution took", distribute3Duration, "ms");
+
+    // Make sure the third call is more than 4 times the second
+    expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 4);
+  });
+
   redisTest("should fairly distribute queues across environments over time", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({

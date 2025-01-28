@@ -44,6 +44,7 @@ export type FairDequeuingStrategyOptions = {
    * If not provided, no biasing will be applied (completely random shuffling)
    */
   biases?: FairDequeuingStrategyBiases;
+  reuseSnapshotCount?: number;
 };
 
 type FairQueueConcurrency = {
@@ -90,6 +91,10 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   }>;
 
   private _rng: seedrandom.PRNG;
+  private _reusedSnapshotForConsumer: Map<
+    string,
+    { snapshot: FairQueueSnapshot; reuseCount: number }
+  > = new Map();
 
   constructor(private options: FairDequeuingStrategyOptions) {
     const ctx = new DefaultStatefulContext();
@@ -310,6 +315,31 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("consumer_id", consumerId);
       span.setAttribute("parent_queue", parentQueue);
 
+      if (
+        typeof this.options.reuseSnapshotCount === "number" &&
+        this.options.reuseSnapshotCount > 0
+      ) {
+        const key = `${parentQueue}:${consumerId}`;
+        const reusedSnapshot = this._reusedSnapshotForConsumer.get(key);
+
+        if (reusedSnapshot) {
+          if (reusedSnapshot.reuseCount < this.options.reuseSnapshotCount) {
+            span.setAttribute("reused_snapshot", true);
+
+            this._reusedSnapshotForConsumer.set(key, {
+              snapshot: reusedSnapshot.snapshot,
+              reuseCount: reusedSnapshot.reuseCount + 1,
+            });
+
+            return reusedSnapshot.snapshot;
+          } else {
+            this._reusedSnapshotForConsumer.delete(key);
+          }
+        }
+      }
+
+      span.setAttribute("reused_snapshot", false);
+
       const now = Date.now();
 
       const queues = await this.#allChildQueuesByScore(parentQueue, consumerId, now);
@@ -341,10 +371,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         (org) => org.concurrency.current >= org.concurrency.limit
       );
 
-      span.setAttributes({
-        ...flattenAttributes(orgsAtFullConcurrency, "orgs_at_full_concurrency"),
-      });
-
       const orgIdsAtFullConcurrency = new Set(orgsAtFullConcurrency.map((org) => org.id));
 
       const orgsSnapshot = orgs.reduce((acc, org) => {
@@ -354,6 +380,12 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
         return acc;
       }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+
+      span.setAttributes({
+        org_count: orgs.length,
+        orgs_at_full_concurrency_count: orgsAtFullConcurrency.length,
+        orgs_snapshot_count: Object.keys(orgsSnapshot).length,
+      });
 
       if (Object.keys(orgsSnapshot).length === 0) {
         return emptyFairQueueSnapshot;
@@ -376,10 +408,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         (env) => env.concurrency.current >= env.concurrency.limit
       );
 
-      span.setAttributes({
-        ...flattenAttributes(envsAtFullConcurrency, "envs_at_full_concurrency"),
-      });
-
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
 
       const envsSnapshot = envs.reduce((acc, env) => {
@@ -389,6 +417,11 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
         return acc;
       }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+
+      span.setAttributes({
+        env_count: envs.length,
+        envs_at_full_concurrency_count: envsAtFullConcurrency.length,
+      });
 
       const queuesSnapshot = queues.filter(
         (queue) =>
@@ -401,6 +434,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         envs: envsSnapshot,
         queues: queuesSnapshot,
       };
+
+      if (
+        typeof this.options.reuseSnapshotCount === "number" &&
+        this.options.reuseSnapshotCount > 0
+      ) {
+        this._reusedSnapshotForConsumer.set(`${parentQueue}:${consumerId}`, {
+          snapshot,
+          reuseCount: 0,
+        });
+      }
 
       return snapshot;
     });
