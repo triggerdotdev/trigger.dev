@@ -44,6 +44,8 @@ export type FairDequeuingStrategyOptions = {
    * If not provided, no biasing will be applied (completely random shuffling)
    */
   biases?: FairDequeuingStrategyBiases;
+  reuseSnapshotCount?: number;
+  maximumOrgCount?: number;
 };
 
 type FairQueueConcurrency = {
@@ -90,6 +92,10 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   }>;
 
   private _rng: seedrandom.PRNG;
+  private _reusedSnapshotForConsumer: Map<
+    string,
+    { snapshot: FairQueueSnapshot; reuseCount: number }
+  > = new Map();
 
   constructor(private options: FairDequeuingStrategyOptions) {
     const ctx = new DefaultStatefulContext();
@@ -310,15 +316,52 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("consumer_id", consumerId);
       span.setAttribute("parent_queue", parentQueue);
 
+      if (
+        typeof this.options.reuseSnapshotCount === "number" &&
+        this.options.reuseSnapshotCount > 0
+      ) {
+        const key = `${parentQueue}:${consumerId}`;
+        const reusedSnapshot = this._reusedSnapshotForConsumer.get(key);
+
+        if (reusedSnapshot) {
+          if (reusedSnapshot.reuseCount < this.options.reuseSnapshotCount) {
+            span.setAttribute("reused_snapshot", true);
+
+            this._reusedSnapshotForConsumer.set(key, {
+              snapshot: reusedSnapshot.snapshot,
+              reuseCount: reusedSnapshot.reuseCount + 1,
+            });
+
+            return reusedSnapshot.snapshot;
+          } else {
+            this._reusedSnapshotForConsumer.delete(key);
+          }
+        }
+      }
+
+      span.setAttribute("reused_snapshot", false);
+
       const now = Date.now();
 
-      const queues = await this.#allChildQueuesByScore(parentQueue, consumerId, now);
+      let queues = await this.#allChildQueuesByScore(parentQueue, consumerId, now);
 
       span.setAttribute("parent_queue_count", queues.length);
 
       if (queues.length === 0) {
         return emptyFairQueueSnapshot;
       }
+
+      // Apply org selection if maximumOrgCount is specified
+      let selectedOrgIds: Set<string>;
+      if (this.options.maximumOrgCount && this.options.maximumOrgCount > 0) {
+        selectedOrgIds = this.#selectTopOrgs(queues, this.options.maximumOrgCount);
+        // Filter queues to only include selected orgs
+        queues = queues.filter((queue) => selectedOrgIds.has(queue.org));
+
+        span.setAttribute("selected_org_count", selectedOrgIds.size);
+      }
+
+      span.setAttribute("selected_queue_count", queues.length);
 
       const orgIds = new Set<string>();
       const envIds = new Set<string>();
@@ -341,10 +384,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         (org) => org.concurrency.current >= org.concurrency.limit
       );
 
-      span.setAttributes({
-        ...flattenAttributes(orgsAtFullConcurrency, "orgs_at_full_concurrency"),
-      });
-
       const orgIdsAtFullConcurrency = new Set(orgsAtFullConcurrency.map((org) => org.id));
 
       const orgsSnapshot = orgs.reduce((acc, org) => {
@@ -354,6 +393,12 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
         return acc;
       }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+
+      span.setAttributes({
+        org_count: orgs.length,
+        orgs_at_full_concurrency_count: orgsAtFullConcurrency.length,
+        orgs_snapshot_count: Object.keys(orgsSnapshot).length,
+      });
 
       if (Object.keys(orgsSnapshot).length === 0) {
         return emptyFairQueueSnapshot;
@@ -376,10 +421,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         (env) => env.concurrency.current >= env.concurrency.limit
       );
 
-      span.setAttributes({
-        ...flattenAttributes(envsAtFullConcurrency, "envs_at_full_concurrency"),
-      });
-
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
 
       const envsSnapshot = envs.reduce((acc, env) => {
@@ -389,6 +430,11 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
         return acc;
       }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+
+      span.setAttributes({
+        env_count: envs.length,
+        envs_at_full_concurrency_count: envsAtFullConcurrency.length,
+      });
 
       const queuesSnapshot = queues.filter(
         (queue) =>
@@ -402,8 +448,64 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
         queues: queuesSnapshot,
       };
 
+      if (
+        typeof this.options.reuseSnapshotCount === "number" &&
+        this.options.reuseSnapshotCount > 0
+      ) {
+        this._reusedSnapshotForConsumer.set(`${parentQueue}:${consumerId}`, {
+          snapshot,
+          reuseCount: 0,
+        });
+      }
+
       return snapshot;
     });
+  }
+
+  #selectTopOrgs(queues: FairQueue[], maximumOrgCount: number): Set<string> {
+    // Group queues by org
+    const queuesByOrg = queues.reduce((acc, queue) => {
+      if (!acc[queue.org]) {
+        acc[queue.org] = [];
+      }
+      acc[queue.org].push(queue);
+      return acc;
+    }, {} as Record<string, FairQueue[]>);
+
+    // Calculate average age for each org
+    const orgAverageAges = Object.entries(queuesByOrg).map(([orgId, orgQueues]) => {
+      const averageAge = orgQueues.reduce((sum, q) => sum + q.age, 0) / orgQueues.length;
+      return { orgId, averageAge };
+    });
+
+    // Perform weighted shuffle based on average ages
+    const maxAge = Math.max(...orgAverageAges.map((o) => o.averageAge));
+    const weightedOrgs = orgAverageAges.map((org) => ({
+      orgId: org.orgId,
+      weight: org.averageAge / maxAge, // Normalize weights
+    }));
+
+    // Select top N orgs using weighted shuffle
+    const selectedOrgs = new Set<string>();
+    let remainingOrgs = [...weightedOrgs];
+    let totalWeight = remainingOrgs.reduce((sum, org) => sum + org.weight, 0);
+
+    while (selectedOrgs.size < maximumOrgCount && remainingOrgs.length > 0) {
+      let random = this._rng() * totalWeight;
+      let index = 0;
+
+      while (random > 0 && index < remainingOrgs.length) {
+        random -= remainingOrgs[index].weight;
+        index++;
+      }
+      index = Math.max(0, index - 1);
+
+      selectedOrgs.add(remainingOrgs[index].orgId);
+      totalWeight -= remainingOrgs[index].weight;
+      remainingOrgs.splice(index, 1);
+    }
+
+    return selectedOrgs;
   }
 
   async #getOrgConcurrency(orgId: string): Promise<FairQueueConcurrency> {
