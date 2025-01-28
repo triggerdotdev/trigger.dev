@@ -132,6 +132,8 @@ export type EventBusEvents = {
         runStatus: string;
         attemptNumber: number | null;
         checkpointId: string | null;
+        workerId: string | null;
+        runnerId: string | null;
         completedWaitpointIds: string[];
         isValid: boolean;
         error: string | null;

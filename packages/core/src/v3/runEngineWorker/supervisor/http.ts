@@ -21,6 +21,8 @@ import {
 import { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 import { ApiError, zodfetch } from "../../zodfetch.js";
+import { createHeaders } from "../util.js";
+import { WORKER_HEADERS } from "../consts.js";
 
 type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 
@@ -79,13 +81,14 @@ export class SupervisorHttpClient {
     );
   }
 
-  async dequeueFromVersion(deploymentId: string, maxRunCount = 1) {
+  async dequeueFromVersion(deploymentId: string, maxRunCount = 1, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiDequeueResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/deployments/${deploymentId}/dequeue?maxRunCount=${maxRunCount}`,
       {
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
         },
       }
     );
@@ -106,7 +109,12 @@ export class SupervisorHttpClient {
     );
   }
 
-  async heartbeatRun(runId: string, snapshotId: string, body: WorkerApiRunHeartbeatRequestBody) {
+  async heartbeatRun(
+    runId: string,
+    snapshotId: string,
+    body: WorkerApiRunHeartbeatRequestBody,
+    runnerId?: string
+  ) {
     return wrapZodFetch(
       WorkerApiRunHeartbeatResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/heartbeat`,
@@ -114,6 +122,7 @@ export class SupervisorHttpClient {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -124,7 +133,8 @@ export class SupervisorHttpClient {
   async startRunAttempt(
     runId: string,
     snapshotId: string,
-    body: WorkerApiRunAttemptStartRequestBody
+    body: WorkerApiRunAttemptStartRequestBody,
+    runnerId?: string
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
@@ -133,6 +143,7 @@ export class SupervisorHttpClient {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
         },
         body: JSON.stringify(body),
       }
@@ -142,7 +153,8 @@ export class SupervisorHttpClient {
   async completeRunAttempt(
     runId: string,
     snapshotId: string,
-    body: WorkerApiRunAttemptCompleteRequestBody
+    body: WorkerApiRunAttemptCompleteRequestBody,
+    runnerId?: string
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptCompleteResponseBody,
@@ -151,13 +163,14 @@ export class SupervisorHttpClient {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
         },
         body: JSON.stringify(body),
       }
     );
   }
 
-  async getLatestSnapshot(runId: string) {
+  async getLatestSnapshot(runId: string, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiRunLatestSnapshotResponseBody,
       `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/latest`,
@@ -165,12 +178,13 @@ export class SupervisorHttpClient {
         method: "GET",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
         },
       }
     );
   }
 
-  async sendDebugLog(runId: string, body: WorkerApiDebugLogBody): Promise<void> {
+  async sendDebugLog(runId: string, body: WorkerApiDebugLogBody, runnerId?: string): Promise<void> {
     try {
       const res = await wrapZodFetch(
         z.unknown(),
@@ -179,6 +193,7 @@ export class SupervisorHttpClient {
           method: "POST",
           headers: {
             ...this.defaultHeaders,
+            ...this.runnerIdHeader(runnerId),
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
@@ -196,7 +211,8 @@ export class SupervisorHttpClient {
   async waitForDuration(
     runId: string,
     snapshotId: string,
-    body: WorkerApiWaitForDurationRequestBody
+    body: WorkerApiWaitForDurationRequestBody,
+    runnerId?: string
   ) {
     return wrapZodFetch(
       WorkerApiWaitForDurationResponseBody,
@@ -205,6 +221,7 @@ export class SupervisorHttpClient {
         method: "POST",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -212,7 +229,7 @@ export class SupervisorHttpClient {
     );
   }
 
-  async continueRunExecution(runId: string, snapshotId: string) {
+  async continueRunExecution(runId: string, snapshotId: string, runnerId?: string) {
     return wrapZodFetch(
       WorkerApiContinueRunExecutionRequestBody,
       `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
@@ -220,18 +237,26 @@ export class SupervisorHttpClient {
         method: "GET",
         headers: {
           ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
         },
       }
     );
   }
 
-  getSuspendCompletionUrl(runId: string, snapshotId: string) {
+  getSuspendCompletionUrl(runId: string, snapshotId: string, runnerId?: string) {
     return {
       url: `${this.apiUrl}/api/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend`,
       headers: {
         ...this.defaultHeaders,
+        ...this.runnerIdHeader(runnerId),
       },
     };
+  }
+
+  private runnerIdHeader(runnerId?: string): Record<string, string> {
+    return createHeaders({
+      [WORKER_HEADERS.RUNNER_ID]: runnerId,
+    });
   }
 }
 

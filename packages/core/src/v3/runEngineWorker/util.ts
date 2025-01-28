@@ -1,5 +1,5 @@
 /** Will ignore headers with falsey values */
-export function createHeaders(headersInit: Record<string, string | undefined>) {
+export function createHeaders(headersInit: Record<string, string | undefined | null>) {
   const headers = new Headers();
 
   for (const [key, value] of Object.entries(headersInit)) {

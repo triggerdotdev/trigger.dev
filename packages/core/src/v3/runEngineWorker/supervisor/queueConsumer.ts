@@ -55,7 +55,7 @@ export class RunQueueConsumer {
 
     let preDequeueResult: Awaited<ReturnType<PreDequeueFn>> | undefined;
     if (this.preDequeue) {
-      console.debug("[RunQueueConsumer] preDequeue()");
+      // console.debug("[RunQueueConsumer] preDequeue()");
 
       try {
         preDequeueResult = await this.preDequeue();
@@ -64,7 +64,7 @@ export class RunQueueConsumer {
       }
     }
 
-    console.debug("[RunQueueConsumer] preDequeueResult", { preDequeueResult });
+    // console.debug("[RunQueueConsumer] preDequeueResult", { preDequeueResult });
 
     if (
       preDequeueResult?.skipDequeue ||

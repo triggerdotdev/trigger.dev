@@ -253,6 +253,8 @@ export class RunEngine {
       oneTimeUseToken,
       maxDurationInSeconds,
       machine,
+      workerId,
+      runnerId,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
@@ -335,6 +337,8 @@ export class RunEngine {
                   executionStatus: "RUN_CREATED",
                   description: "Run was created",
                   runStatus: status,
+                  workerId,
+                  runnerId,
                 },
               },
             },
@@ -387,6 +391,8 @@ export class RunEngine {
               environmentId: associatedWaitpoint.environmentId,
               projectId: associatedWaitpoint.projectId,
               batch,
+              workerId,
+              runnerId,
               tx: prisma,
             });
 
@@ -510,6 +516,8 @@ export class RunEngine {
               run: taskRun,
               env: environment,
               timestamp: Date.now() - taskRun.priorityMs,
+              workerId,
+              runnerId,
               tx: prisma,
             });
           }
@@ -532,6 +540,8 @@ export class RunEngine {
     maxRunCount,
     maxResources,
     backgroundWorkerId,
+    workerId,
+    runnerId,
     tx,
   }: {
     consumerId: string;
@@ -539,6 +549,8 @@ export class RunEngine {
     maxRunCount: number;
     maxResources?: MachineResources;
     backgroundWorkerId?: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
     const prisma = tx ?? this.prisma;
@@ -587,6 +599,8 @@ export class RunEngine {
                 checkpointId: snapshot.checkpointId ?? undefined,
                 completedWaitpoints: snapshot.completedWaitpoints,
                 error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
+                workerId,
+                runnerId,
               });
 
               //todo is there a way to recover this, so the run can be retried?
@@ -867,6 +881,8 @@ export class RunEngine {
               },
               checkpointId: snapshot.checkpointId ?? undefined,
               completedWaitpoints: snapshot.completedWaitpoints,
+              workerId,
+              runnerId,
             });
 
             return {
@@ -964,6 +980,8 @@ export class RunEngine {
     maxRunCount,
     maxResources,
     backgroundWorkerId,
+    workerId,
+    runnerId,
     tx,
   }: {
     consumerId: string;
@@ -971,6 +989,8 @@ export class RunEngine {
     maxRunCount: number;
     maxResources?: MachineResources;
     backgroundWorkerId: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
     return this.dequeueFromMasterQueue({
@@ -979,6 +999,8 @@ export class RunEngine {
       maxRunCount,
       maxResources,
       backgroundWorkerId,
+      workerId,
+      runnerId,
       tx,
     });
   }
@@ -988,12 +1010,16 @@ export class RunEngine {
     backgroundWorkerId,
     maxRunCount,
     maxResources,
+    workerId,
+    runnerId,
     tx,
   }: {
     consumerId: string;
     backgroundWorkerId: string;
     maxRunCount: number;
     maxResources?: MachineResources;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<DequeuedMessage[]> {
     return this.dequeueFromMasterQueue({
@@ -1002,6 +1028,8 @@ export class RunEngine {
       maxRunCount,
       maxResources,
       backgroundWorkerId,
+      workerId,
+      runnerId,
       tx,
     });
   }
@@ -1009,11 +1037,15 @@ export class RunEngine {
   async startRunAttempt({
     runId,
     snapshotId,
+    workerId,
+    runnerId,
     isWarmStart,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    workerId?: string;
+    runnerId?: string;
     isWarmStart?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
@@ -1157,6 +1189,8 @@ export class RunEngine {
                   isWarmStart ? " (warm start)" : ""
                 }`,
               },
+              workerId,
+              runnerId,
             });
 
             if (taskRun.ttl) {
@@ -1281,10 +1315,14 @@ export class RunEngine {
     runId,
     snapshotId,
     completion,
+    workerId,
+    runnerId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    workerId?: string;
+    runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
     if (completion.metadata) {
       this.eventBus.emit("runMetadataUpdated", {
@@ -1298,10 +1336,24 @@ export class RunEngine {
 
     switch (completion.ok) {
       case true: {
-        return this.#attemptSucceeded({ runId, snapshotId, completion, tx: this.prisma });
+        return this.#attemptSucceeded({
+          runId,
+          snapshotId,
+          completion,
+          tx: this.prisma,
+          workerId,
+          runnerId,
+        });
       }
       case false: {
-        return this.#attemptFailed({ runId, snapshotId, completion, tx: this.prisma });
+        return this.#attemptFailed({
+          runId,
+          snapshotId,
+          completion,
+          tx: this.prisma,
+          workerId,
+          runnerId,
+        });
       }
     }
   }
@@ -1312,6 +1364,8 @@ export class RunEngine {
     date,
     releaseConcurrency = true,
     idempotencyKey,
+    workerId,
+    runnerId,
     tx,
   }: {
     runId: string;
@@ -1319,6 +1373,8 @@ export class RunEngine {
     date: Date;
     releaseConcurrency?: boolean;
     idempotencyKey?: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<WaitForDurationResult> {
     const prisma = tx ?? this.prisma;
@@ -1384,6 +1440,8 @@ export class RunEngine {
         waitpoints: waitpoint.id,
         environmentId: waitpoint.environmentId,
         projectId: waitpoint.projectId,
+        workerId,
+        runnerId,
         tx: prisma,
       });
 
@@ -1412,12 +1470,16 @@ export class RunEngine {
   */
   async cancelRun({
     runId,
+    workerId,
+    runnerId,
     completedAt,
     reason,
     finalizeRun,
     tx,
   }: {
     runId: string;
+    workerId?: string;
+    runnerId?: string;
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
@@ -1491,6 +1553,8 @@ export class RunEngine {
               executionStatus: "PENDING_CANCEL",
               description: "Run was cancelled",
             },
+            workerId,
+            runnerId,
           });
 
           //the worker needs to be notified so it can kill the run and complete the attempt
@@ -1505,6 +1569,8 @@ export class RunEngine {
             executionStatus: "FINISHED",
             description: "Run was cancelled, not finished",
           },
+          workerId,
+          runnerId,
         });
 
         if (!run.associatedWaitpoint) {
@@ -1810,6 +1876,8 @@ export class RunEngine {
     failAfter,
     spanIdToComplete,
     batch,
+    workerId,
+    runnerId,
     tx,
   }: {
     runId: string;
@@ -1819,6 +1887,8 @@ export class RunEngine {
     failAfter?: Date;
     spanIdToComplete?: string;
     batch?: { id: string; index?: number };
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.prisma;
@@ -1875,6 +1945,8 @@ export class RunEngine {
             description: "Run was blocked by a waitpoint.",
           },
           batchId: batch?.id ?? snapshot.batchId ?? undefined,
+          workerId,
+          runnerId,
         });
 
         // Let the worker know immediately, so it can suspend the run
@@ -1997,11 +2069,15 @@ export class RunEngine {
     runId,
     snapshotId,
     checkpoint,
+    workerId,
+    runnerId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     checkpoint: CheckpointInput;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.prisma;
@@ -2106,6 +2182,8 @@ export class RunEngine {
           description: "Run was suspended after creating a checkpoint.",
         },
         checkpointId: taskRunCheckpoint.id,
+        workerId,
+        runnerId,
       });
 
       return {
@@ -2119,10 +2197,14 @@ export class RunEngine {
   async continueRunExecution({
     runId,
     snapshotId,
+    workerId,
+    runnerId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.prisma;
@@ -2168,6 +2250,8 @@ export class RunEngine {
           description: "Run was continued after being suspended",
         },
         completedWaitpoints: snapshot.completedWaitpoints,
+        workerId,
+        runnerId,
       });
 
       // Let worker know about the new snapshot so it can continue the run
@@ -2188,10 +2272,14 @@ export class RunEngine {
   async heartbeatRun({
     runId,
     snapshotId,
+    workerId,
+    runnerId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.prisma;
@@ -2199,14 +2287,26 @@ export class RunEngine {
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
     const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
     if (latestSnapshot.id !== snapshotId) {
-      this.logger.log("heartbeatRun no longer the latest snapshot, stopping the heartbeat.", {
+      this.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
         snapshotId,
-        latestSnapshot: latestSnapshot,
+        latestSnapshot,
+        workerId,
+        runnerId,
       });
 
       await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
       return executionResultFromSnapshot(latestSnapshot);
+    }
+
+    if (latestSnapshot.workerId !== workerId) {
+      this.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
+        runId,
+        snapshotId,
+        latestSnapshot,
+        workerId,
+        runnerId,
+      });
     }
 
     //update the snapshot heartbeat time
@@ -2417,10 +2517,14 @@ export class RunEngine {
   async #waitingForDeploy({
     orgId,
     runId,
+    workerId,
+    runnerId,
     tx,
   }: {
     orgId: string;
     runId: string;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -2447,6 +2551,8 @@ export class RunEngine {
             description:
               "The run doesn't have a background worker, so we're going to ack it for now.",
           },
+          workerId,
+          runnerId,
         });
 
         //we ack because when it's deployed it will be requeued
@@ -2460,11 +2566,15 @@ export class RunEngine {
     snapshotId,
     completion,
     tx,
+    workerId,
+    runnerId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
     tx: PrismaClientOrTransaction;
+    workerId?: string;
+    runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.prisma;
     return this.#trace("#completeRunAttemptSuccess", { runId, snapshotId }, async (span) => {
@@ -2492,6 +2602,8 @@ export class RunEngine {
                 description: "Task completed successfully",
                 runStatus: "COMPLETED_SUCCESSFULLY",
                 attemptNumber: latestSnapshot.attemptNumber,
+                workerId,
+                runnerId,
               },
             },
           },
@@ -2564,12 +2676,16 @@ export class RunEngine {
   async #attemptFailed({
     runId,
     snapshotId,
+    workerId,
+    runnerId,
     completion,
     forceRequeue,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    workerId?: string;
+    runnerId?: string;
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
     tx: PrismaClientOrTransaction;
@@ -2638,6 +2754,8 @@ export class RunEngine {
             snapshotId,
             failedAt,
             error,
+            workerId,
+            runnerId,
           });
         };
 
@@ -2786,6 +2904,8 @@ export class RunEngine {
             executionStatus: "PENDING_EXECUTING",
             description: "Attempt failed with a short delay, starting a new attempt",
           },
+          workerId,
+          runnerId,
         });
         //the worker can fetch the latest snapshot and should create a new attempt
         await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
@@ -2803,11 +2923,15 @@ export class RunEngine {
     snapshotId,
     failedAt,
     error,
+    workerId,
+    runnerId,
   }: {
     runId: string;
     snapshotId: string;
     failedAt: Date;
     error: TaskRunError;
+    workerId?: string;
+    runnerId?: string;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.prisma;
 
@@ -2850,6 +2974,8 @@ export class RunEngine {
           executionStatus: "FINISHED",
           description: "Run failed",
         },
+        workerId,
+        runnerId,
       });
 
       if (!run.associatedWaitpoint) {
@@ -2895,6 +3021,8 @@ export class RunEngine {
     batchId,
     checkpointId,
     completedWaitpoints,
+    workerId,
+    runnerId,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -2909,6 +3037,8 @@ export class RunEngine {
       id: string;
       index?: number;
     }[];
+    workerId?: string;
+    runnerId?: string;
   }) {
     const prisma = tx ?? this.prisma;
 
@@ -2922,6 +3052,8 @@ export class RunEngine {
         batchId,
         checkpointId,
         completedWaitpoints,
+        workerId,
+        runnerId,
       });
 
       const masterQueues = [run.masterQueue];
@@ -2953,12 +3085,16 @@ export class RunEngine {
     orgId,
     timestamp,
     error,
+    workerId,
+    runnerId,
     tx,
   }: {
     run: TaskRun;
     orgId: string;
     timestamp?: number;
     error: TaskRunInternalError;
+    workerId?: string;
+    runnerId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.prisma;
@@ -2986,6 +3122,8 @@ export class RunEngine {
           executionStatus: "QUEUED",
           description: "Requeued the run after a failure",
         },
+        workerId,
+        runnerId,
       });
 
       return {
@@ -3293,6 +3431,8 @@ export class RunEngine {
       snapshot,
       batchId,
       checkpointId,
+      workerId,
+      runnerId,
       completedWaitpoints,
       error,
     }: {
@@ -3303,6 +3443,8 @@ export class RunEngine {
       };
       batchId?: string;
       checkpointId?: string;
+      workerId?: string;
+      runnerId?: string;
       completedWaitpoints?: {
         id: string;
         index?: number;
@@ -3320,6 +3462,8 @@ export class RunEngine {
         attemptNumber: run.attemptNumber ?? undefined,
         batchId,
         checkpointId,
+        workerId,
+        runnerId,
         completedWaitpoints: {
           connect: completedWaitpoints?.map((w) => ({ id: w.id })),
         },

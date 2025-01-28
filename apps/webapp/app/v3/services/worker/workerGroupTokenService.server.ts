@@ -209,6 +209,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         workerInstanceId: workerInstance.id,
         masterQueue: workerGroup.masterQueue,
         environment: null,
+        runnerId: request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined,
       });
     }
 
@@ -487,6 +488,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   environmentId?: string;
   deploymentId?: string;
   backgroundWorkerId?: string;
+  runnerId?: string;
   environment: RuntimeEnvironment | null;
 }>;
 
@@ -495,6 +497,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly name: string;
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
+  readonly runnerId?: string;
   readonly masterQueue: string;
   readonly environment: RuntimeEnvironment | null;
   readonly deploymentId?: string;
@@ -514,6 +517,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.environment = opts.environment;
     this.deploymentId = opts.deploymentId;
     this.backgroundWorkerId = opts.backgroundWorkerId;
+    this.runnerId = opts.runnerId;
   }
 
   async connect(metadata: Record<string, any>): Promise<void> {
@@ -540,6 +544,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         masterQueue: this.masterQueue,
         maxRunCount,
         maxResources,
+        workerId: this.workerInstanceId,
+        runnerId: this.runnerId,
       });
     }
 
@@ -565,6 +571,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         environmentId: this.environment.id,
         maxRunCount,
         backgroundWorkerId: this.backgroundWorkerId,
+        workerId: this.workerInstanceId,
+        runnerId: this.runnerId,
       });
     }
 
@@ -572,6 +580,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       consumerId: this.workerInstanceId,
       backgroundWorkerId: this.backgroundWorkerId,
       maxRunCount,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -591,6 +601,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       consumerId: this.workerInstanceId,
       backgroundWorkerId,
       maxRunCount,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -612,6 +624,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       backgroundWorkerId,
       environmentId,
       maxRunCount,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -636,6 +650,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return await this._engine.heartbeatRun({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -656,6 +672,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
@@ -695,6 +713,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -711,6 +731,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       date,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -733,6 +755,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       checkpoint,
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 
@@ -746,6 +770,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     return await this._engine.continueRunExecution({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
+      workerId: this.workerInstanceId,
+      runnerId: this.runnerId,
     });
   }
 

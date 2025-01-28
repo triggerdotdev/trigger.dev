@@ -78,4 +78,6 @@ export type TriggerParams = {
   oneTimeUseToken?: string;
   maxDurationInSeconds?: number;
   machine?: MachinePresetName;
+  workerId?: string;
+  runnerId?: string;
 };

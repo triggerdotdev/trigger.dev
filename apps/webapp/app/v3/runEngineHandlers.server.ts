@@ -329,6 +329,8 @@ export function registerRunEngineEventBusHandlers() {
             snapshotId: snapshot.id,
             snapshotDescription: snapshot.description,
             snapshotStatus: snapshot.executionStatus,
+            workerId: snapshot.workerId ?? undefined,
+            runnerId: snapshot.runnerId ?? undefined,
           },
         },
         startTime: time,
