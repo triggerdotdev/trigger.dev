@@ -1626,6 +1626,7 @@ function getMarQSClient() {
             queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
           },
           reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
+          maximumOrgCount: env.MARQS_MAXIMUM_ORG_COUNT,
         }),
         envQueuePriorityStrategy: new FairDequeuingStrategy({
           tracer: tracer,

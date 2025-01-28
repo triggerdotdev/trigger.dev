@@ -45,6 +45,7 @@ export type FairDequeuingStrategyOptions = {
    */
   biases?: FairDequeuingStrategyBiases;
   reuseSnapshotCount?: number;
+  maximumOrgCount?: number;
 };
 
 type FairQueueConcurrency = {
@@ -342,13 +343,25 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
       const now = Date.now();
 
-      const queues = await this.#allChildQueuesByScore(parentQueue, consumerId, now);
+      let queues = await this.#allChildQueuesByScore(parentQueue, consumerId, now);
 
       span.setAttribute("parent_queue_count", queues.length);
 
       if (queues.length === 0) {
         return emptyFairQueueSnapshot;
       }
+
+      // Apply org selection if maximumOrgCount is specified
+      let selectedOrgIds: Set<string>;
+      if (this.options.maximumOrgCount && this.options.maximumOrgCount > 0) {
+        selectedOrgIds = this.#selectTopOrgs(queues, this.options.maximumOrgCount);
+        // Filter queues to only include selected orgs
+        queues = queues.filter((queue) => selectedOrgIds.has(queue.org));
+
+        span.setAttribute("selected_org_count", selectedOrgIds.size);
+      }
+
+      span.setAttribute("selected_queue_count", queues.length);
 
       const orgIds = new Set<string>();
       const envIds = new Set<string>();
@@ -447,6 +460,52 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
       return snapshot;
     });
+  }
+
+  #selectTopOrgs(queues: FairQueue[], maximumOrgCount: number): Set<string> {
+    // Group queues by org
+    const queuesByOrg = queues.reduce((acc, queue) => {
+      if (!acc[queue.org]) {
+        acc[queue.org] = [];
+      }
+      acc[queue.org].push(queue);
+      return acc;
+    }, {} as Record<string, FairQueue[]>);
+
+    // Calculate average age for each org
+    const orgAverageAges = Object.entries(queuesByOrg).map(([orgId, orgQueues]) => {
+      const averageAge = orgQueues.reduce((sum, q) => sum + q.age, 0) / orgQueues.length;
+      return { orgId, averageAge };
+    });
+
+    // Perform weighted shuffle based on average ages
+    const maxAge = Math.max(...orgAverageAges.map((o) => o.averageAge));
+    const weightedOrgs = orgAverageAges.map((org) => ({
+      orgId: org.orgId,
+      weight: org.averageAge / maxAge, // Normalize weights
+    }));
+
+    // Select top N orgs using weighted shuffle
+    const selectedOrgs = new Set<string>();
+    let remainingOrgs = [...weightedOrgs];
+    let totalWeight = remainingOrgs.reduce((sum, org) => sum + org.weight, 0);
+
+    while (selectedOrgs.size < maximumOrgCount && remainingOrgs.length > 0) {
+      let random = this._rng() * totalWeight;
+      let index = 0;
+
+      while (random > 0 && index < remainingOrgs.length) {
+        random -= remainingOrgs[index].weight;
+        index++;
+      }
+      index = Math.max(0, index - 1);
+
+      selectedOrgs.add(remainingOrgs[index].orgId);
+      totalWeight -= remainingOrgs[index].weight;
+      remainingOrgs.splice(index, 1);
+    }
+
+    return selectedOrgs;
   }
 
   async #getOrgConcurrency(orgId: string): Promise<FairQueueConcurrency> {

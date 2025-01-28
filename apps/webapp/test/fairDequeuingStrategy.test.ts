@@ -779,4 +779,135 @@ describe("FairDequeuingStrategy", () => {
     expect(mixed["queue-1"][0]).toBeGreaterThan(mixed["queue-3"][0]); // Older preferred
     expect(mixed["queue-3"][0]).toBeGreaterThan(0); // But newer still gets chances
   });
+
+  redisTest(
+    "should respect maximumOrgCount and select orgs based on queue ages",
+    async ({ redis }) => {
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultOrgConcurrency: 10,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        checkForDisabledOrgs: true,
+        seed: "test-seed-max-orgs",
+        maximumOrgCount: 2, // Only select top 2 orgs
+      });
+
+      const now = Date.now();
+
+      // Setup 4 orgs with different queue age profiles
+      const orgSetups = [
+        {
+          orgId: "org-1",
+          queues: [
+            { age: 1000 }, // Average age: 1000
+          ],
+        },
+        {
+          orgId: "org-2",
+          queues: [
+            { age: 5000 }, // Average age: 5000
+            { age: 5000 },
+          ],
+        },
+        {
+          orgId: "org-3",
+          queues: [
+            { age: 2000 }, // Average age: 2000
+            { age: 2000 },
+          ],
+        },
+        {
+          orgId: "org-4",
+          queues: [
+            { age: 500 }, // Average age: 500
+            { age: 500 },
+          ],
+        },
+      ];
+
+      // Setup queues and concurrency for each org
+      for (const setup of orgSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          org: { id: setup.orgId, currentConcurrency: 0, limit: 10 },
+          env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+        });
+
+        for (let i = 0; i < setup.queues.length; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - setup.queues[i].age,
+            queueId: `queue-${setup.orgId}-${i}`,
+            orgId: setup.orgId,
+            envId: "env-1",
+          });
+        }
+      }
+
+      // Run multiple iterations to verify consistent behavior
+      const iterations = 100;
+      const selectedOrgCounts: Record<string, number> = {};
+
+      for (let i = 0; i < iterations; i++) {
+        const result = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i}`
+        );
+
+        // Track which orgs were included in the result
+        const selectedOrgs = new Set(result.map((queueId) => keyProducer.orgIdFromQueue(queueId)));
+
+        // Verify we never get more than maximumOrgCount orgs
+        expect(selectedOrgs.size).toBeLessThanOrEqual(2);
+
+        for (const orgId of selectedOrgs) {
+          selectedOrgCounts[orgId] = (selectedOrgCounts[orgId] || 0) + 1;
+        }
+      }
+
+      console.log("Organization selection counts:", selectedOrgCounts);
+
+      // org-2 should be selected most often (highest average age)
+      expect(selectedOrgCounts["org-2"]).toBeGreaterThan(selectedOrgCounts["org-4"] || 0);
+
+      // org-4 should be selected least often (lowest average age)
+      const org4Count = selectedOrgCounts["org-4"] || 0;
+      expect(org4Count).toBeLessThan(selectedOrgCounts["org-2"]);
+
+      // Verify that orgs with higher average queue age are selected more frequently
+      const sortedOrgs = Object.entries(selectedOrgCounts).sort((a, b) => b[1] - a[1]);
+      console.log("Sorted organization frequencies:", sortedOrgs);
+
+      // The top 2 most frequently selected orgs should be org-2 and org-3
+      // as they have the highest average queue ages
+      const topTwoOrgs = new Set([sortedOrgs[0][0], sortedOrgs[1][0]]);
+      expect(topTwoOrgs).toContain("org-2"); // Highest average age
+      expect(topTwoOrgs).toContain("org-3"); // Second highest average age
+
+      // Calculate selection percentages
+      const totalSelections = Object.values(selectedOrgCounts).reduce((a, b) => a + b, 0);
+      const selectionPercentages = Object.entries(selectedOrgCounts).reduce(
+        (acc, [orgId, count]) => {
+          acc[orgId] = (count / totalSelections) * 100;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+      console.log("Organization selection percentages:", selectionPercentages);
+
+      // Verify that org-2 (highest average age) gets selected in at least 40% of iterations
+      expect(selectionPercentages["org-2"]).toBeGreaterThan(40);
+
+      // Verify that org-4 (lowest average age) gets selected in less than 20% of iterations
+      expect(selectionPercentages["org-4"] || 0).toBeLessThan(20);
+    }
+  );
 });
