@@ -1122,15 +1122,6 @@ export class SharedQueueConsumer {
         "emitResumeAfterDependencyWithAck",
         async (span) => {
           try {
-            const sockets = await this.#startActiveSpan("getCoordinatorSockets", async (span) => {
-              const sockets = await socketIo.coordinatorNamespace.fetchSockets();
-
-              span.setAttribute("socket_count", sockets.length);
-
-              return sockets;
-            });
-
-            span.setAttribute("socket_count", sockets.length);
             span.setAttribute("attempt_id", resumableAttempt.id);
             span.setAttribute(
               "timeout_in_ms",
