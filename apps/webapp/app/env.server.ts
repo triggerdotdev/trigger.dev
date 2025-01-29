@@ -298,6 +298,7 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_PENDING_CANCEL: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
+  RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
 
   /* How long should the presence ttl last */
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),

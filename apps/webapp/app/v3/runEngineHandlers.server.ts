@@ -15,6 +15,7 @@ import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAle
 import { RunId } from "@trigger.dev/core/v3/apps";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
+import { env } from "~/env.server";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run }) => {
@@ -322,7 +323,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("executionSnapshotCreated", async ({ time, run, snapshot }) => {
     const eventResult = await recordRunDebugLog(
       run.id,
-      `[ExecutionSnapshot] ${snapshot.executionStatus} - ${snapshot.description}`,
+      `${snapshot.executionStatus} - ${snapshot.description}`,
       {
         attributes: {
           properties: {
@@ -357,35 +358,63 @@ export function registerRunEngineEventBusHandlers() {
       socketIo.workerNamespace
         .to(room)
         .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
+
+      if (!env.RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS) {
+        return;
+      }
+
+      // Record notification event
+      const eventResult = await recordRunDebugLog(
+        run.id,
+        `run:notify platform -> supervisor: ${snapshot.executionStatus}`,
+        {
+          attributes: {
+            properties: {
+              snapshotId: snapshot.id,
+              snapshotStatus: snapshot.executionStatus,
+            },
+          },
+          startTime: time,
+        }
+      );
+
+      if (!eventResult.success) {
+        logger.error("[workerNotification] Failed to record event", {
+          runId: run.id,
+          snapshot,
+          error: eventResult.error,
+        });
+      }
     } catch (error) {
       logger.error("[workerNotification] Failed to notify worker", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
         snapshot,
       });
-    }
 
-    // Record notification event
-    const eventResult = await recordRunDebugLog(
-      run.id,
-      `Worker notified: ${snapshot.executionStatus}`,
-      {
-        attributes: {
-          properties: {
-            snapshotId: snapshot.id,
-            snapshotStatus: snapshot.executionStatus,
+      // Record notification event
+      const eventResult = await recordRunDebugLog(
+        run.id,
+        `run:notify ERROR platform -> supervisor: ${snapshot.executionStatus}`,
+        {
+          attributes: {
+            properties: {
+              snapshotId: snapshot.id,
+              snapshotStatus: snapshot.executionStatus,
+              error: error instanceof Error ? error.message : String(error),
+            },
           },
-        },
-        startTime: time,
-      }
-    );
+          startTime: time,
+        }
+      );
 
-    if (!eventResult.success) {
-      logger.error("[workerNotification] Failed to record event", {
-        runId: run.id,
-        snapshot,
-        error: eventResult.error,
-      });
+      if (!eventResult.success) {
+        logger.error("[workerNotification] Failed to record event", {
+          runId: run.id,
+          snapshot,
+          error: eventResult.error,
+        });
+      }
     }
   });
 

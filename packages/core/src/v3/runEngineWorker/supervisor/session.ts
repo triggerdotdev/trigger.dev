@@ -42,30 +42,30 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.heartbeatService = new HeartbeatService({
       heartbeat: async () => {
-        console.debug("[WorkerSession] Sending heartbeat");
+        console.debug("[SupervisorSession] Sending heartbeat");
 
         const body = this.getHeartbeatBody();
         const response = await this.httpClient.heartbeatWorker(body);
 
         if (!response.success) {
-          console.error("[WorkerSession] Heartbeat failed", { error: response.error });
+          console.error("[SupervisorSession] Heartbeat failed", { error: response.error });
         }
       },
       intervalMs: this.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[WorkerSession] Failed to send heartbeat", { error });
+        console.error("[SupervisorSession] Failed to send heartbeat", { error });
       },
     });
   }
 
   private async onDequeue(messages: WorkerApiDequeueResponseBody): Promise<void> {
     // Incredibly verbose logging for debugging purposes
-    // console.log("[WorkerSession] Dequeued messages", { count: messages.length });
-    // console.debug("[WorkerSession] Dequeued messages with contents", messages);
+    // console.log("[SupervisorSession] Dequeued messages", { count: messages.length });
+    // console.debug("[SupervisorSession] Dequeued messages with contents", messages);
 
     for (const message of messages) {
-      console.log("[WorkerSession] Emitting message", { message });
+      console.log("[SupervisorSession] Emitting message", { message });
       this.emit("runQueueMessage", {
         time: new Date(),
         message,
@@ -74,10 +74,10 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   }
 
   subscribeToRunNotifications(runFriendlyIds: string[]) {
-    console.log("[WorkerSession] Subscribing to run notifications", { runFriendlyIds });
+    console.log("[SupervisorSession] Subscribing to run notifications", { runFriendlyIds });
 
     if (!this.socket) {
-      console.error("[WorkerSession] Socket not connected");
+      console.error("[SupervisorSession] Socket not connected");
       return;
     }
 
@@ -87,17 +87,17 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       runFriendlyIds.map((runFriendlyId) =>
         this.httpClient.sendDebugLog(runFriendlyId, {
           time: new Date(),
-          message: "[WorkerSession] run:subscribe to run notifications",
+          message: "run:subscribe supervisor -> platform",
         })
       )
     );
   }
 
   unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
-    console.log("[WorkerSession] Unsubscribing from run notifications", { runFriendlyIds });
+    console.log("[SupervisorSession] Unsubscribing from run notifications", { runFriendlyIds });
 
     if (!this.socket) {
-      console.error("[WorkerSession] Socket not connected");
+      console.error("[SupervisorSession] Socket not connected");
       return;
     }
 
@@ -107,7 +107,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       runFriendlyIds.map((runFriendlyId) =>
         this.httpClient.sendDebugLog(runFriendlyId, {
           time: new Date(),
-          message: "[WorkerSession] run:unsubscribe from run notifications",
+          message: "run:unsubscribe supervisor -> platform",
           properties: {
             runFriendlyIds,
           },
@@ -125,26 +125,26 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
       extraHeaders: getDefaultWorkerHeaders(this.opts),
     });
     this.socket.on("run:notify", ({ version, run }) => {
-      console.log("[WorkerSession][WS] Received run notification", { version, run });
+      console.log("[SupervisorSession][WS] Received run notification", { version, run });
       this.emit("runNotification", { time: new Date(), run });
 
       this.httpClient
         .sendDebugLog(run.friendlyId, {
           time: new Date(),
-          message: "[WorkerSession] run:notify received",
+          message: "run:notify received by supervisor",
         })
         .catch((error) => {
-          console.error("[WorkerSession] Failed to send debug log", { error });
+          console.error("[SupervisorSession] Failed to send debug log", { error });
         });
     });
     this.socket.on("connect", () => {
-      console.log("[WorkerSession][WS] Connected to platform");
+      console.log("[SupervisorSession][WS] Connected to platform");
     });
     this.socket.on("connect_error", (error) => {
-      console.error("[WorkerSession][WS] Connection error", { error });
+      console.error("[SupervisorSession][WS] Connection error", { error });
     });
     this.socket.on("disconnect", (reason, description) => {
-      console.log("[WorkerSession][WS] Disconnected from platform", { reason, description });
+      console.log("[SupervisorSession][WS] Disconnected from platform", { reason, description });
     });
   }
 
@@ -156,13 +156,13 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
 
     if (!connect.success) {
-      console.error("[WorkerSession][HTTP] Failed to connect", { error: connect.error });
-      throw new Error("[WorkerSession][HTTP] Failed to connect");
+      console.error("[SupervisorSession][HTTP] Failed to connect", { error: connect.error });
+      throw new Error("[SupervisorSession][HTTP] Failed to connect");
     }
 
     const { workerGroup } = connect.data;
 
-    console.log("[WorkerSession][HTTP] Connected to platform", {
+    console.log("[SupervisorSession][HTTP] Connected to platform", {
       type: workerGroup.type,
       name: workerGroup.name,
     });

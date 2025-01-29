@@ -434,6 +434,10 @@ function createWorkerNamespace(io: Server) {
       run,
       snapshot,
     }: EventBusEventArgs<"workerNotification">[0]) {
+      if (!env.RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS) {
+        return;
+      }
+
       logger.debug("[handleSocketIo] Received worker notification", {
         time,
         runId: run.id,
@@ -441,20 +445,16 @@ function createWorkerNamespace(io: Server) {
       });
 
       // Record notification event
-      await recordRunDebugLog(
-        run.id,
-        `handleSocketIo worker notification: ${snapshot.executionStatus}`,
-        {
-          attributes: {
-            properties: {
-              snapshotId: snapshot.id,
-              snapshotStatus: snapshot.executionStatus,
-              rooms: Array.from(rooms),
-            },
+      await recordRunDebugLog(run.id, `run:notify workerNotification event`, {
+        attributes: {
+          properties: {
+            snapshotId: snapshot.id,
+            snapshotStatus: snapshot.executionStatus,
+            rooms: Array.from(rooms),
           },
-          startTime: time,
-        }
-      );
+        },
+        startTime: time,
+      });
     }
 
     engine.eventBus.on("workerNotification", onNotification);
@@ -506,14 +506,19 @@ function createWorkerNamespace(io: Server) {
           socket.join(room);
           rooms.add(room);
 
-          await recordRunDebugLog(RunId.fromFriendlyId(friendlyId), `Joining room: ${room}`, {
-            attributes: {
-              properties: {
-                friendlyId,
-                runFriendlyIds,
+          await recordRunDebugLog(
+            RunId.fromFriendlyId(friendlyId),
+            "run:subscribe received by platform",
+            {
+              attributes: {
+                properties: {
+                  friendlyId,
+                  runFriendlyIds,
+                  room,
+                },
               },
-            },
-          });
+            }
+          );
         })
       );
 
@@ -544,14 +549,19 @@ function createWorkerNamespace(io: Server) {
           socket.leave(room);
           rooms.delete(room);
 
-          await recordRunDebugLog(RunId.fromFriendlyId(friendlyId), `Leaving room: ${room}`, {
-            attributes: {
-              properties: {
-                friendlyId,
-                runFriendlyIds,
+          await recordRunDebugLog(
+            RunId.fromFriendlyId(friendlyId),
+            "run:unsubscribe received by platform",
+            {
+              attributes: {
+                properties: {
+                  friendlyId,
+                  runFriendlyIds,
+                  room,
+                },
               },
-            },
-          });
+            }
+          );
         })
       );
 
