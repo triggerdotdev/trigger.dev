@@ -18,6 +18,8 @@ export function createRedisClient(
   connectionName: string,
   options: RedisWithClusterOptions
 ): Redis | Cluster {
+  let redis: Redis | Cluster;
+
   if (options.clusterMode) {
     const nodes: ClusterNode[] = [
       {
@@ -32,7 +34,7 @@ export function createRedisClient(
       port: options.port,
     });
 
-    return new Redis.Cluster(nodes, {
+    redis = new Redis.Cluster(nodes, {
       ...options.clusterOptions,
       redisOptions: {
         connectionName,
@@ -59,7 +61,7 @@ export function createRedisClient(
       port: options.port,
     });
 
-    return new Redis({
+    redis = new Redis({
       connectionName,
       host: options.host,
       port: options.port,
@@ -69,4 +71,10 @@ export function createRedisClient(
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }
+
+  redis.on("error", (error) => {
+    logger.error("Redis client error", { connectionName, error });
+  });
+
+  return redis;
 }
