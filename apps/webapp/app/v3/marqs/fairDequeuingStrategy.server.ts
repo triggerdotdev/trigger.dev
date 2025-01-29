@@ -36,7 +36,6 @@ export type FairDequeuingStrategyOptions = {
   defaultOrgConcurrency: number;
   defaultEnvConcurrency: number;
   parentQueueLimit: number;
-  checkForDisabledOrgs: boolean;
   tracer: Tracer;
   seed?: string;
   /**
@@ -88,7 +87,6 @@ const defaultBiases: FairDequeuingStrategyBiases = {
 export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   private _cache: UnkeyCache<{
     concurrencyLimit: number;
-    disabledConcurrency: boolean;
   }>;
 
   private _rng: seedrandom.PRNG;
@@ -105,11 +103,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       concurrencyLimit: new Namespace<number>(ctx, {
         stores: [memory],
         fresh: 60_000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
-        stale: 180_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
-      }),
-      disabledConcurrency: new Namespace<boolean>(ctx, {
-        stores: [memory],
-        fresh: 30_000, // The time in milliseconds that a value is considered fresh. Cache hits within this time will return the cached value.
         stale: 180_000, // The time in milliseconds that a value is considered stale. Cache hits within this time will return the cached value and trigger a background refresh.
       }),
     });
@@ -512,16 +505,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     return await startSpan(this.options.tracer, "getOrgConcurrency", async (span) => {
       span.setAttribute("org_id", orgId);
 
-      if (this.options.checkForDisabledOrgs) {
-        const isDisabled = await this.#getConcurrencyDisabled(orgId);
-
-        if (isDisabled) {
-          span.setAttribute("disabled", true);
-
-          return { current: 0, limit: 0 };
-        }
-      }
-
       const [currentValue, limitValue] = await Promise.all([
         this.#getOrgCurrentConcurrency(orgId),
         this.#getOrgConcurrencyLimit(orgId),
@@ -584,22 +567,6 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("queue_count", result.length);
 
       return result;
-    });
-  }
-
-  async #getConcurrencyDisabled(orgId: string) {
-    return await startSpan(this.options.tracer, "getConcurrencyDisabled", async (span) => {
-      span.setAttribute("org_id", orgId);
-
-      const key = this.options.keys.disabledConcurrencyLimitKey(orgId);
-
-      const result = await this._cache.disabledConcurrency.swr(key, async () => {
-        const value = await this.options.redis.exists(key);
-
-        return Boolean(value);
-      });
-
-      return typeof result.val === "boolean" ? result.val : false;
     });
   }
 

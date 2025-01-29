@@ -1619,7 +1619,6 @@ function getMarQSClient() {
           keys: keysProducer,
           defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
           defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-          checkForDisabledOrgs: true,
           biases: {
             concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
             availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
@@ -1635,7 +1634,6 @@ function getMarQSClient() {
           keys: keysProducer,
           defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
           defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
-          checkForDisabledOrgs: false,
           biases: {
             concurrencyLimitBias: 0.0,
             availableCapacityBias: 0.0,
