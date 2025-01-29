@@ -350,9 +350,7 @@ export class CliApiClient {
           ...init,
           headers: {
             ...init?.headers,
-            Authorization: `Bearer ${this.accessToken}`,
-            "Content-Type": "application/json",
-          },
+            Authorization: `Bearer ${this.accessToken}`,          },
         }),
     });
 

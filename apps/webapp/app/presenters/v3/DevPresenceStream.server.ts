@@ -15,91 +15,12 @@ export class DevPresenceStream {
     this.#redis = redis;
   }
 
-  private getPresenceKey(environment: AuthenticatedEnvironment) {
-    return `${PRESENCE_KEY_PREFIX}${environment.id}`;
+  static getPresenceKey(environmentId: string) {
+    return `${PRESENCE_KEY_PREFIX}${environmentId}`;
   }
 
-  private getPresenceChannel(environment: AuthenticatedEnvironment) {
-    return `${PRESENCE_CHANNEL_PREFIX}${environment.id}`;
-  }
-
-  // This handles the CLI connection
-  public async handleCliConnection({
-    request,
-    environment,
-  }: {
-    request: Request;
-    environment: AuthenticatedEnvironment;
-  }) {
-    const presenceKey = this.getPresenceKey(environment);
-    const presenceChannel = this.getPresenceChannel(environment);
-
-    logger.debug("Start dev presence SSE session", {
-      environmentId: environment.id,
-      presenceKey,
-      presenceChannel,
-    });
-
-    // Set initial presence with more context
-    await this.#redis
-      .multi()
-      .hset(presenceKey, {
-        lastSeen: Date.now().toString(),
-        environmentId: environment.id,
-      })
-      .expire(presenceKey, env.DEV_PRESENCE_TTL_SECONDS)
-      .exec();
-
-    // Publish presence update
-    await this.#redis.publish(
-      presenceChannel,
-      JSON.stringify({
-        type: "connected",
-        environmentId: environment.id,
-        timestamp: Date.now(),
-      })
-    );
-
-    const redis = this.#redis;
-
-    return eventStream(request.signal, function setup(send) {
-      async function run() {
-        for await (let _ of interval(env.DEV_PRESENCE_REFRESH_INTERVAL_MS, {
-          signal: request.signal,
-        })) {
-          await redis
-            .multi()
-            .hset(presenceKey, {
-              lastSeen: Date.now().toString(),
-              environmentId: environment.id,
-            })
-            .expire(presenceKey, env.DEV_PRESENCE_TTL_SECONDS)
-            .exec();
-
-          send({ event: "time", data: new Date().toISOString() });
-        }
-      }
-
-      run();
-
-      return async () => {
-        logger.debug("Closing dev presence SSE session", {
-          environmentId: environment.id,
-          presenceKey,
-          presenceChannel,
-        });
-
-        // Publish disconnect event
-        await redis.publish(
-          presenceChannel,
-          JSON.stringify({
-            type: "disconnected",
-            environmentId: environment.id,
-            timestamp: Date.now(),
-          })
-        );
-      };
-    });
+  static getPresenceChannel(environmentId: string) {
+    return `${PRESENCE_CHANNEL_PREFIX}${environmentId}`;
   }
 
   //todo create a Redis client for each function call to subscribe
