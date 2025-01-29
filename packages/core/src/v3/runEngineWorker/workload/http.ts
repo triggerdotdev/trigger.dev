@@ -12,6 +12,7 @@ import {
   WorkloadWaitForDurationResponseBody,
   WorkloadSuspendRunResponseBody,
   WorkloadContinueRunExecutionResponseBody,
+  WorkloadDebugLogRequestBody,
 } from "./schemas.js";
 import { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
@@ -126,6 +127,29 @@ export class WorkloadHttpClient {
         },
       }
     );
+  }
+
+  async sendDebugLog(runId: string, body: WorkloadDebugLogRequestBody): Promise<void> {
+    try {
+      const res = await wrapZodFetch(
+        z.unknown(),
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/logs/debug`,
+        {
+          method: "POST",
+          headers: {
+            ...this.defaultHeaders,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      if (!res.success) {
+        console.error("Failed to send debug log", res);
+      }
+    } catch (error) {
+      console.error("Failed to send debug log", { error });
+    }
   }
 
   async waitForDuration(

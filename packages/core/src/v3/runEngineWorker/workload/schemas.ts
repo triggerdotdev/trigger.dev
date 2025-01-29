@@ -11,6 +11,7 @@ import {
   WorkerApiWaitForDurationRequestBody,
   WorkerApiWaitForDurationResponseBody,
   WorkerApiContinueRunExecutionRequestBody,
+  WorkerApiDebugLogBody,
 } from "../supervisor/schemas.js";
 
 export const WorkloadHeartbeatRequestBody = WorkerApiRunHeartbeatRequestBody;
@@ -57,6 +58,9 @@ export const WorkloadRunLatestSnapshotResponseBody = WorkerApiRunLatestSnapshotR
 export type WorkloadRunLatestSnapshotResponseBody = z.infer<
   typeof WorkloadRunLatestSnapshotResponseBody
 >;
+
+export const WorkloadDebugLogRequestBody = WorkerApiDebugLogBody;
+export type WorkloadDebugLogRequestBody = z.infer<typeof WorkloadDebugLogRequestBody>;
 
 export const WorkloadDequeueFromVersionResponseBody = WorkerApiDequeueFromVersionResponseBody;
 export type WorkloadDequeueFromVersionResponseBody = z.infer<
