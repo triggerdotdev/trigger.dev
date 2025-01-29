@@ -28,12 +28,12 @@ export class RateLimiter {
         redisClient ??
         createRedisRateLimitClient(
           redis ?? {
-            port: env.REDIS_PORT,
-            host: env.REDIS_HOST,
-            username: env.REDIS_USERNAME,
-            password: env.REDIS_PASSWORD,
+            port: env.RATE_LIMIT_REDIS_PORT,
+            host: env.RATE_LIMIT_REDIS_HOST,
+            username: env.RATE_LIMIT_REDIS_USERNAME,
+            password: env.RATE_LIMIT_REDIS_PASSWORD,
             enableAutoPipelining: true,
-            ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+            ...(env.RATE_LIMIT_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
           }
         ),
       limiter,

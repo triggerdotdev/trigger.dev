@@ -22,12 +22,12 @@ export const projectPubSub = singleton("projectPubSub", initializeProjectPubSub)
 function initializeProjectPubSub() {
   const pubSub = new ZodPubSub({
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
+      port: env.PUBSUB_REDIS_PORT,
+      host: env.PUBSUB_REDIS_HOST,
+      username: env.PUBSUB_REDIS_USERNAME,
+      password: env.PUBSUB_REDIS_PASSWORD,
       enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      ...(env.PUBSUB_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
     schema: messageCatalog,
   });

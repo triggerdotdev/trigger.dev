@@ -91,6 +91,93 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_TLS_DISABLED: z.string().optional(),
 
+  RATE_LIMIT_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RATE_LIMIT_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RATE_LIMIT_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RATE_LIMIT_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RATE_LIMIT_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RATE_LIMIT_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RATE_LIMIT_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  CACHE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  CACHE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  CACHE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  CACHE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  CACHE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  CACHE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  PUBSUB_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  PUBSUB_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  PUBSUB_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  PUBSUB_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  PUBSUB_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  PUBSUB_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
