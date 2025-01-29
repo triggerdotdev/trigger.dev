@@ -40,8 +40,17 @@ export function createRedisClient(
         username: options.username,
         password: options.password,
         enableAutoPipelining: true,
-        ...(options.tlsDisabled ? {} : { tls: {} }),
+        ...(options.tlsDisabled
+          ? {
+              checkServerIdentity: () => {
+                // disable TLS verification
+                return undefined;
+              },
+            }
+          : { tls: {} }),
       },
+      dnsLookup: (address, callback) => callback(null, address),
+      slotsRefreshTimeout: 10000,
     });
   } else {
     logger.debug("Creating a redis client", {
