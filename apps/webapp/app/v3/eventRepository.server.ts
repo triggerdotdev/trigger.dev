@@ -991,10 +991,10 @@ export class EventRepository {
   async subscribeToTrace(traceId: string) {
     const redis = new Redis(this._config.redis);
 
-    const channel = `events:${traceId}:*`;
+    const channel = `events:${traceId}`;
 
     // Subscribe to the channel.
-    await redis.psubscribe(channel);
+    await redis.subscribe(channel);
 
     // Increment the subscriber count.
     this._subscriberCount++;
@@ -1002,15 +1002,13 @@ export class EventRepository {
     const eventEmitter = new EventEmitter();
 
     // Define the message handler.
-    redis.on("pmessage", (pattern, channelReceived, message) => {
-      if (channelReceived.startsWith(`events:${traceId}:`)) {
-        eventEmitter.emit("message", message);
-      }
+    redis.on("message", (_, message) => {
+      eventEmitter.emit("message", message);
     });
 
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
-      await redis.punsubscribe(channel);
+      await redis.unsubscribe(channel);
       redis.quit();
       this._subscriberCount--;
     };
@@ -1101,10 +1099,13 @@ export class EventRepository {
 
   async #publishToRedis(events: CreatableEvent[]) {
     if (events.length === 0) return;
-    const uniqueTraceSpans = new Set(events.map((e) => `events:${e.traceId}:${e.spanId}`));
-    for (const id of uniqueTraceSpans) {
-      await this._redisPublishClient.publish(id, new Date().toISOString());
-    }
+    const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
+
+    await Promise.allSettled(
+      Array.from(uniqueTraces).map((traceId) =>
+        this._redisPublishClient.publish(traceId, new Date().toISOString())
+      )
+    );
   }
 
   public generateTraceId() {
@@ -1142,12 +1143,12 @@ function initializeEventRepo() {
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
+      port: env.PUBSUB_REDIS_PORT,
+      host: env.PUBSUB_REDIS_HOST,
+      username: env.PUBSUB_REDIS_USERNAME,
+      password: env.PUBSUB_REDIS_PASSWORD,
       enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      ...(env.PUBSUB_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
   });
 

@@ -39,12 +39,12 @@ function initializePlatformCache() {
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: "tr:cache:platform:v3",
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
+      port: env.CACHE_REDIS_PORT,
+      host: env.CACHE_REDIS_HOST,
+      username: env.CACHE_REDIS_USERNAME,
+      password: env.CACHE_REDIS_PASSWORD,
       enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      ...(env.CACHE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
   });
 

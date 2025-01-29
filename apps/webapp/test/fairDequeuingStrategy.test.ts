@@ -23,7 +23,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-1", // for deterministic shuffling
     });
 
@@ -53,7 +52,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 2,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-2",
     });
 
@@ -89,7 +87,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 2,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-3",
     });
 
@@ -114,40 +111,6 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toHaveLength(0);
   });
 
-  redisTest("should handle disabled orgs", async ({ redis }) => {
-    const keyProducer = createKeyProducer("test");
-    const strategy = new FairDequeuingStrategy({
-      tracer,
-      redis,
-      keys: keyProducer,
-      defaultOrgConcurrency: 10,
-      defaultEnvConcurrency: 5,
-      parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
-      seed: "test-seed-4",
-    });
-
-    await setupQueue({
-      redis,
-      keyProducer,
-      parentQueue: "parent-queue",
-      score: Date.now() - 1000,
-      queueId: "queue-1",
-      orgId: "org-1",
-      envId: "env-1",
-    });
-
-    await setupConcurrency({
-      redis,
-      keyProducer,
-      org: { id: "org-1", currentConcurrency: 0, isDisabled: true },
-      env: { id: "env-1", currentConcurrency: 0 },
-    });
-
-    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
-    expect(result).toHaveLength(0);
-  });
-
   redisTest("should respect parentQueueLimit", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -157,7 +120,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 2, // Only take 2 queues
-      checkForDisabledOrgs: true,
       seed: "test-seed-6",
     });
 
@@ -212,7 +174,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 10,
-      checkForDisabledOrgs: true,
       seed: "test-seed-reuse-1",
       reuseSnapshotCount: 1,
     });
@@ -302,7 +263,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-5",
     });
 
@@ -460,7 +420,6 @@ describe("FairDequeuingStrategy", () => {
         defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
-        checkForDisabledOrgs: true,
         seed: "fixed-seed",
       });
 
@@ -620,7 +579,6 @@ describe("FairDequeuingStrategy", () => {
             defaultOrgConcurrency: 10,
             defaultEnvConcurrency: 5,
             parentQueueLimit: 100,
-            checkForDisabledOrgs: true,
             seed: `test-seed-${i}`,
             biases: {
               concurrencyLimitBias: 0.8,
@@ -705,7 +663,6 @@ describe("FairDequeuingStrategy", () => {
         defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
-        checkForDisabledOrgs: true,
         seed: "fixed-seed",
         biases: {
           concurrencyLimitBias: 0,
@@ -791,7 +748,6 @@ describe("FairDequeuingStrategy", () => {
         defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
-        checkForDisabledOrgs: true,
         seed: "test-seed-max-orgs",
         maximumOrgCount: 2, // Only select top 2 orgs
       });
