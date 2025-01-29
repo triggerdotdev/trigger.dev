@@ -9,8 +9,8 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     host: env.RATE_LIMIT_REDIS_HOST,
     username: env.RATE_LIMIT_REDIS_USERNAME,
     password: env.RATE_LIMIT_REDIS_PASSWORD,
-    enableAutoPipelining: true,
-    ...(env.RATE_LIMIT_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+    clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
   },
   keyPrefix: "api",
   defaultLimiter: {

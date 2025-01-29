@@ -1,13 +1,13 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
-import Redis, { RedisOptions } from "ioredis";
 import { z } from "zod";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 
 export type ZodPubSubOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {
-  redis: RedisOptions;
+  redis: RedisWithClusterOptions;
   schema: TMessageCatalog;
 };
 
@@ -23,7 +23,7 @@ export interface ZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema> 
 class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
   implements ZodSubscriber<TMessageCatalog>
 {
-  private _subscriber: Redis;
+  private _subscriber: RedisClient;
   private _listeners: Map<string, (payload: unknown) => Promise<void>> = new Map();
   private _messageHandler: ZodMessageHandler<TMessageCatalog>;
 
@@ -36,7 +36,7 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
     private readonly _options: ZodPubSubOptions<TMessageCatalog>,
     private readonly _logger: Logger
   ) {
-    this._subscriber = new Redis(_options.redis);
+    this._subscriber = createRedisClient("trigger:zodSubscriber", _options.redis);
     this._messageHandler = new ZodMessageHandler({
       schema: _options.schema,
       logger: this._logger,
@@ -104,7 +104,7 @@ class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
 }
 
 export class ZodPubSub<TMessageCatalog extends ZodMessageCatalogSchema> {
-  private _publisher: Redis;
+  private _publisher: RedisClient;
   private _logger = logger.child({ module: "ZodPubSub" });
   private _subscriberCount = 0;
 
@@ -113,7 +113,7 @@ export class ZodPubSub<TMessageCatalog extends ZodMessageCatalogSchema> {
   }
 
   constructor(private _options: ZodPubSubOptions<TMessageCatalog>) {
-    this._publisher = new Redis(_options.redis);
+    this._publisher = createRedisClient("trigger:zodSubscriber", _options.redis);
   }
 
   public async publish<K extends keyof TMessageCatalog>(

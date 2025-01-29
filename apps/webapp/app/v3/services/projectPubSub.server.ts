@@ -26,8 +26,8 @@ function initializeProjectPubSub() {
       host: env.PUBSUB_REDIS_HOST,
       username: env.PUBSUB_REDIS_USERNAME,
       password: env.PUBSUB_REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.PUBSUB_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
     schema: messageCatalog,
   });

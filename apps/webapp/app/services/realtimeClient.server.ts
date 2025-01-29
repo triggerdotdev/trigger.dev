@@ -3,6 +3,7 @@ import Redis, { Callback, Result, type RedisOptions } from "ioredis";
 import { randomUUID } from "node:crypto";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -10,7 +11,7 @@ export interface CachedLimitProvider {
 
 export type RealtimeClientOptions = {
   electricOrigin: string;
-  redis: RedisOptions;
+  redis: RedisWithClusterOptions;
   cachedLimitProvider: CachedLimitProvider;
   keyPrefix: string;
   expiryTimeInSeconds?: number;
@@ -26,12 +27,12 @@ export type RealtimeRunsParams = {
 };
 
 export class RealtimeClient {
-  private redis: Redis;
+  private redis: RedisClient;
   private expiryTimeInSeconds: number;
   private cachedLimitProvider: CachedLimitProvider;
 
   constructor(private options: RealtimeClientOptions) {
-    this.redis = new Redis(options.redis);
+    this.redis = createRedisClient("trigger:realtime", options.redis);
     this.expiryTimeInSeconds = options.expiryTimeInSeconds ?? 60 * 5; // default to 5 minutes
     this.cachedLimitProvider = options.cachedLimitProvider;
     this.#registerCommands();

@@ -119,6 +119,7 @@ const EnvironmentSchema = z.object({
     .optional()
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   RATE_LIMIT_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   CACHE_REDIS_HOST: z
     .string()
@@ -148,6 +149,7 @@ const EnvironmentSchema = z.object({
     .optional()
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   PUBSUB_REDIS_HOST: z
     .string()
@@ -177,6 +179,7 @@ const EnvironmentSchema = z.object({
     .optional()
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
