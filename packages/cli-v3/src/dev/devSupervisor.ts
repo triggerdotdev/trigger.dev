@@ -46,6 +46,7 @@ export async function startWorkerRuntime(options: WorkerRuntimeOptions): Promise
 
 class DevSupervisor implements WorkerRuntime {
   private config: DevConfigResponseBody;
+  private disconnectPresence: (() => void) | undefined;
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -63,6 +64,8 @@ class DevSupervisor implements WorkerRuntime {
     logger.debug("Got dev settings", { settings: settings.data });
     this.config = settings.data;
 
+    this.disconnectPresence = await this.#startPresenceConnection();
+
     //todo start an SSE connection to the presence endpoint
     //that endpoint will periodically update a last seen value in Redis. Look at how to do presence Redis.
     //the dashboard will subscribe to Redis for this.
@@ -73,9 +76,40 @@ class DevSupervisor implements WorkerRuntime {
     // 2. If there are no messages we will wait for a longer period of time and dequeue again
   }
 
-  async shutdown(): Promise<void> {}
+  async shutdown(): Promise<void> {
+    this.disconnectPresence?.();
+  }
 
   async initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void> {}
+
+  async #startPresenceConnection() {
+    try {
+      const eventSource = await this.options.client.devPresenceConnection();
+
+      // Regular "ping" messages
+      eventSource.addEventListener("presence", (event: any) => {
+        logger.debug("Presence ping received");
+      });
+
+      // Connection was lost and successfully reconnected
+      eventSource.addEventListener("reconnect", (event: any) => {
+        logger.info("Presence connection restored");
+      });
+
+      // Handle messages that might have been missed during disconnection
+      eventSource.addEventListener("missed_events", (event: any) => {
+        logger.warn("Missed some presence events during disconnection");
+      });
+
+      // If you need to close it manually
+      return () => {
+        logger.info("Closing presence connection");
+        eventSource.close();
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 //todo ignore the dev queue pulling route in the rate limiter

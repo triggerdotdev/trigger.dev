@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EventSource } from "eventsource";
 import {
   CreateAuthorizationCodeResponseSchema,
   GetPersonalAccessTokenResponseSchema,
@@ -29,6 +30,7 @@ import {
   DevConfigResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
+import { logger } from "./utilities/logger.js";
 
 export class CliApiClient {
   constructor(
@@ -326,7 +328,7 @@ export class CliApiClient {
 
   async devConfig() {
     if (!this.accessToken) {
-      throw new Error("triggerTaskRun: No access token");
+      throw new Error("devConfig: No access token");
     }
 
     return wrapZodFetch(DevConfigResponseBody, `${this.apiURL}/api/v1/dev/config`, {
@@ -334,6 +336,45 @@ export class CliApiClient {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
       },
+    });
+  }
+
+  async devPresenceConnection(): Promise<EventSource> {
+    if (!this.accessToken) {
+      throw new Error("connectToPresence: No access token");
+    }
+
+    const eventSource = new EventSource(`${this.apiURL}/api/v1/dev/presence`, {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          headers: {
+            ...init?.headers,
+            Authorization: `Bearer ${this.accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }),
+    });
+
+    return new Promise((resolve, reject) => {
+      eventSource.onopen = () => {
+        logger.debug("Presence connection established");
+        resolve(eventSource);
+      };
+
+      eventSource.onerror = (error: any) => {
+        // The connection will automatically try to reconnect
+        logger.debug("Presence connection error, will automatically attempt to reconnect", {
+          error,
+          readyState: eventSource.readyState, // 0 = connecting, 1 = open, 2 = closed
+        });
+
+        // If you want to detect when it's permanently failed and not reconnecting
+        if (eventSource.readyState === EventSource.CLOSED) {
+          logger.debug("Presence connection permanently closed", { error });
+          reject(new Error(`Failed to connect to ${this.apiURL}`));
+        }
+      };
     });
   }
 

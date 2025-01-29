@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@epic-web/test-server": "^0.1.0",
+    "@types/eventsource": "^1.1.15",
     "@types/gradient-string": "^1.1.2",
     "@types/object-hash": "3.0.6",
     "@types/react": "^18.2.48",
@@ -96,6 +97,7 @@
     "defu": "^6.1.4",
     "dotenv": "^16.4.5",
     "esbuild": "^0.23.0",
+    "eventsource": "^3.0.2",
     "evt": "^2.4.13",
     "fast-npm-meta": "^0.2.2",
     "gradient-string": "^2.0.2",
