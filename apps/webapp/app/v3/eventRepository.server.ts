@@ -20,7 +20,6 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
@@ -32,6 +31,7 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { startActiveSpan } from "./tracer.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -97,7 +97,7 @@ export type EventBuilder = {
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
-  redis: RedisOptions;
+  redis: RedisWithClusterOptions;
   retentionInDays: number;
 };
 
@@ -200,7 +200,7 @@ type TaskEventSummary = Pick<
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
-  private _redisPublishClient: Redis;
+  private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
 
   get subscriberCount() {
@@ -218,7 +218,7 @@ export class EventRepository {
       callback: this.#flushBatch.bind(this),
     });
 
-    this._redisPublishClient = new Redis(this._config.redis);
+    this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
   }
 
   async insert(event: CreatableEvent) {
@@ -989,7 +989,7 @@ export class EventRepository {
   }
 
   async subscribeToTrace(traceId: string) {
-    const redis = new Redis(this._config.redis);
+    const redis = createRedisClient("trigger:eventRepoSubscriber", this._config.redis);
 
     const channel = `events:${traceId}`;
 
@@ -1147,8 +1147,8 @@ function initializeEventRepo() {
       host: env.PUBSUB_REDIS_HOST,
       username: env.PUBSUB_REDIS_USERNAME,
       password: env.PUBSUB_REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.PUBSUB_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
 

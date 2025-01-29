@@ -43,8 +43,8 @@ function initializePlatformCache() {
       host: env.CACHE_REDIS_HOST,
       username: env.CACHE_REDIS_USERNAME,
       password: env.CACHE_REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.CACHE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
 
