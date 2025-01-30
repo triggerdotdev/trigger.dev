@@ -213,7 +213,7 @@ export async function createBackgroundTasks(
           taskidentifier: task.id,
         });
         await marqs?.updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
-      } else if (concurrencyLimit === null) {
+      } else {
         logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
           workerId: worker.id,
           taskQueue,
