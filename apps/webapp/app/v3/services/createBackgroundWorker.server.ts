@@ -180,29 +180,29 @@ export async function createBackgroundTasks(
               ),
               0
             )
-          : null;
+          : task.queue?.concurrencyLimit;
 
-      const taskQueue = await prisma.taskQueue.upsert({
+      let taskQueue = await prisma.taskQueue.findFirst({
         where: {
-          runtimeEnvironmentId_name: {
-            runtimeEnvironmentId: worker.runtimeEnvironmentId,
-            name: queueName,
-          },
-        },
-        update: {
-          concurrencyLimit,
-        },
-        create: {
-          friendlyId: generateFriendlyId("queue"),
-          name: queueName,
-          concurrencyLimit,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
-          projectId: worker.projectId,
-          type: task.queue?.name ? "NAMED" : "VIRTUAL",
+          name: queueName,
         },
       });
 
-      if (typeof taskQueue.concurrencyLimit === "number") {
+      if (!taskQueue) {
+        taskQueue = await prisma.taskQueue.create({
+          data: {
+            friendlyId: generateFriendlyId("queue"),
+            name: queueName,
+            concurrencyLimit,
+            runtimeEnvironmentId: worker.runtimeEnvironmentId,
+            projectId: worker.projectId,
+            type: task.queue?.name ? "NAMED" : "VIRTUAL",
+          },
+        });
+      }
+
+      if (typeof concurrencyLimit === "number") {
         logger.debug("CreateBackgroundWorkerService: updating concurrency limit", {
           workerId: worker.id,
           taskQueue,
@@ -212,12 +212,8 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-        await marqs?.updateQueueConcurrencyLimits(
-          environment,
-          taskQueue.name,
-          taskQueue.concurrencyLimit
-        );
-      } else {
+        await marqs?.updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
+      } else if (concurrencyLimit === null) {
         logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
           workerId: worker.id,
           taskQueue,
@@ -227,6 +223,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
+
         await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
       }
     } catch (error) {

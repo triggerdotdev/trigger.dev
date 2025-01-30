@@ -11,16 +11,53 @@ export const queuesController = task({
     length?: number;
     waitSeconds?: number;
   }) => {
-    await queuesTest.batchTriggerAndWait(
-      Array.from({ length }, (_, i) => ({
-        payload: { waitSeconds },
-        options: {
+    await Promise.all([
+      queuesTest.trigger(
+        { waitSeconds },
+        {
           queue: {
-            name: `queue-${i % numberOfQueues}`,
+            name: "controller-3",
+            concurrencyLimit: 9,
           },
-        },
-      }))
-    );
+        }
+      ),
+      queuesTest.trigger(
+        { waitSeconds },
+        {
+          queue: {
+            name: "controller-3",
+            concurrencyLimit: 9,
+          },
+        }
+      ),
+      queuesTest.trigger(
+        { waitSeconds },
+        {
+          queue: {
+            name: "controller-3",
+            concurrencyLimit: 9,
+          },
+        }
+      ),
+      queuesTest.trigger(
+        { waitSeconds },
+        {
+          queue: {
+            name: "controller-3",
+            concurrencyLimit: 9,
+          },
+        }
+      ),
+      queuesTest.trigger(
+        { waitSeconds },
+        {
+          queue: {
+            name: "controller-3",
+            concurrencyLimit: 9,
+          },
+        }
+      ),
+    ]);
   },
 });
 
@@ -34,9 +71,10 @@ export const queuesTest = task({
 export const namedQueueTask = task({
   id: "queues/named-queue",
   queue: {
-    name: "named-queue",
+    name: "controller",
+    concurrencyLimit: 9,
   },
   run: async () => {
-    logger.info("named-queue");
+    logger.info("named-queue 2");
   },
 });
