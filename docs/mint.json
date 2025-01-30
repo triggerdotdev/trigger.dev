@@ -346,7 +346,8 @@
       "pages": [
         "guides/example-projects/realtime-fal-ai",
         "guides/example-projects/batch-llm-evaluator",
-        "guides/example-projects/realtime-csv-importer"
+        "guides/example-projects/realtime-csv-importer",
+        "guides/example-projects/vercel-ai-sdk-image-generator"
       ]
     },
     {
