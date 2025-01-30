@@ -96,7 +96,6 @@ export class ReplayTaskRunService extends BaseService {
             queue: taskQueue
               ? {
                   name: taskQueue.name,
-                  concurrencyLimit: taskQueue.concurrencyLimit ?? undefined,
                 }
               : undefined,
             concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
