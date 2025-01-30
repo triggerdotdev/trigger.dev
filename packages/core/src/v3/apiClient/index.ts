@@ -32,6 +32,7 @@ import {
 import { taskContext } from "../task-context-api.js";
 import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 import {
+  AnyZodFetchOptions,
   ApiRequestOptions,
   CursorPagePromise,
   ZodFetchOptions,
@@ -863,9 +864,9 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
 }
 
 export function mergeRequestOptions(
-  defaultOptions: ZodFetchOptions,
+  defaultOptions: AnyZodFetchOptions,
   options?: ApiRequestOptions
-): ZodFetchOptions {
+): AnyZodFetchOptions {
   if (!options) {
     return defaultOptions;
   }

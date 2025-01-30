@@ -26,14 +26,17 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
-export type ZodFetchOptions = {
+export type ZodFetchOptions<T = unknown> = {
   retry?: RetryOptions;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
   icon?: string;
   onResponseBody?: (body: unknown, span: Span) => void;
+  prepareData?: (data: T) => Promise<T> | T;
 };
+
+export type AnyZodFetchOptions = ZodFetchOptions<any>;
 
 export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
 
@@ -67,7 +70,7 @@ export function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
-  options?: ZodFetchOptions
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>>
 ): ApiPromise<z.output<TResponseBodySchema>> {
   return new ApiPromise(_doZodFetch(schema, url, requestInit, options));
 }
@@ -195,6 +198,10 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
 
     if (options?.onResponseBody && span) {
       options.onResponseBody(result.data, span);
+    }
+
+    if (options?.prepareData) {
+      result.data = await options.prepareData(result.data);
     }
 
     return result;
