@@ -300,14 +300,16 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
 
-  /* How long should the presence ttl last */
+  /** How long should the presence ttl last */
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),
   DEV_PRESENCE_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
   DEV_PRESENCE_RECONNECT_THRESHOLD_MS: z.coerce.number().int().default(2_000),
-  /* How many ms to wait until dequeuing again, if there was a run last time */
-  DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(50),
-  /* How many ms to wait until dequeuing again, if there was no run last time */
-  DEV_DEQUEUE_INTERVAL_WITHOUT_RUN: z.coerce.number().int().default(250),
+  /** How many ms to wait until dequeuing again, if there was a run last time */
+  DEV_DEQUEUE_INTERVAL_WITH_RUN: z.coerce.number().int().default(250),
+  /** How many ms to wait until dequeuing again, if there was no run last time */
+  DEV_DEQUEUE_INTERVAL_WITHOUT_RUN: z.coerce.number().int().default(1_000),
+  /** The max number of runs per API call that we'll dequeue in DEV */
+  DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

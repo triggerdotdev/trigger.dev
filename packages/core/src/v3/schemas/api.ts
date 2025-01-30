@@ -9,6 +9,7 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
+import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
@@ -411,8 +412,19 @@ export const DevConfigResponseBody = z.object({
   dequeueIntervalWithRun: z.number(),
   dequeueIntervalWithoutRun: z.number(),
 });
-
 export type DevConfigResponseBody = z.infer<typeof DevConfigResponseBody>;
+
+export const DevDequeueRequestBody = z.object({
+  currentWorker: z.string(),
+  oldWorkers: z.string().array(),
+  maxResources: MachineResources.optional(),
+});
+export type DevDequeueRequestBody = z.infer<typeof DevDequeueRequestBody>;
+
+export const DevDequeueResponseBody = z.object({
+  dequeuedMessages: DequeuedMessage.array(),
+});
+export type DevDequeueResponseBody = z.infer<typeof DevDequeueResponseBody>;
 
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 

@@ -28,6 +28,8 @@ import {
   TriggerTaskResponse,
   GetLatestDeploymentResponseBody,
   DevConfigResponseBody,
+  DevDequeueRequestBody,
+  DevDequeueResponseBody,
 } from "@trigger.dev/core/v3";
 import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
 import { logger } from "./utilities/logger.js";
@@ -350,7 +352,8 @@ export class CliApiClient {
           ...init,
           headers: {
             ...init?.headers,
-            Authorization: `Bearer ${this.accessToken}`,          },
+            Authorization: `Bearer ${this.accessToken}`,
+          },
         }),
     });
 
@@ -373,6 +376,21 @@ export class CliApiClient {
           reject(new Error(`Failed to connect to ${this.apiURL}`));
         }
       };
+    });
+  }
+
+  async devDequeue(body: DevDequeueRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("devConfig: No access token");
+    }
+
+    return wrapZodFetch(DevDequeueResponseBody, `${this.apiURL}/api/v1/dev/dequeue`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
     });
   }
 

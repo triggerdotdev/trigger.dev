@@ -1,188 +1,31 @@
 import {
-  BuildManifest,
-  CreateBackgroundWorkerResponse,
-  ServerBackgroundWorker,
-  TaskRunBuiltInError,
-  TaskRunExecution,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
-  TaskRunFailedExecutionResult,
-  WorkerManifest,
-  correctErrorStackTrace,
+    BuildManifest,
+    ServerBackgroundWorker,
+    TaskRunBuiltInError,
+    TaskRunExecutionPayload,
+    TaskRunExecutionResult,
+    WorkerManifest,
+    correctErrorStackTrace
 } from "@trigger.dev/core/v3";
-import { Evt } from "evt";
-
-import { join } from "node:path";
+import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 import { SigKillTimeoutProcessError } from "@trigger.dev/core/v3/errors";
+import { Evt } from "evt";
+import { join } from "node:path";
 import { TaskRunProcess, TaskRunProcessOptions } from "../executions/taskRunProcess.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { prettyError } from "../utilities/cliOutput.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
-import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 
-export type CurrentWorkers = BackgroundWorkerCoordinator["currentWorkers"];
-export class BackgroundWorkerCoordinator {
-  public onTaskCompleted: Evt<{
-    backgroundWorkerId: string;
-    completion: TaskRunExecutionResult;
-    worker: BackgroundWorker;
-    execution: TaskRunExecution;
-  }> = new Evt();
-  public onTaskFailedToRun: Evt<{
-    backgroundWorkerId: string;
-    worker: BackgroundWorker;
-    completion: TaskRunFailedExecutionResult;
-  }> = new Evt();
-  public onWorkerRegistered: Evt<{
-    worker: BackgroundWorker;
-    id: string;
-    record: CreateBackgroundWorkerResponse;
-  }> = new Evt();
-
-  /**
-   * @deprecated use onWorkerTaskRunHeartbeat instead
-   */
-  public onWorkerTaskHeartbeat: Evt<{
-    id: string;
-    backgroundWorkerId: string;
-    worker: BackgroundWorker;
-  }> = new Evt();
-  public onWorkerTaskRunHeartbeat: Evt<{
-    id: string;
-    backgroundWorkerId: string;
-    worker: BackgroundWorker;
-  }> = new Evt();
-  public onWorkerDeprecated: Evt<{ worker: BackgroundWorker; id: string }> = new Evt();
-  private _backgroundWorkers: Map<string, BackgroundWorker> = new Map();
-
-  constructor() {
-    this.onTaskCompleted.attach(async ({ completion }) => {
-      if (!completion.ok && typeof completion.retry !== "undefined") {
-        return;
-      }
-
-      await this.#notifyWorkersOfTaskCompletion(completion);
-    });
-
-    this.onTaskFailedToRun.attach(async ({ completion }) => {
-      await this.#notifyWorkersOfTaskCompletion(completion);
-    });
-  }
-
-  async #notifyWorkersOfTaskCompletion(completion: TaskRunExecutionResult) {
-    for (const worker of this._backgroundWorkers.values()) {
-      await worker.taskRunCompletedNotification(completion);
-    }
-  }
-
-  get currentWorkers() {
-    return Array.from(this._backgroundWorkers.entries()).map(([id, worker]) => ({
-      id,
-      worker,
-    }));
-  }
-
-  async cancelRun(id: string, taskRunId: string) {
-    const worker = this._backgroundWorkers.get(id);
-
-    if (!worker) {
-      logger.error(`Could not find worker ${id}`);
-      return;
-    }
-
-    await worker.cancelRun(taskRunId);
-  }
-
-  async registerWorker(worker: BackgroundWorker) {
-    if (!worker.serverWorker) {
-      return;
-    }
-
-    for (const [workerId, existingWorker] of this._backgroundWorkers.entries()) {
-      if (workerId === worker.serverWorker.id) {
-        continue;
-      }
-
-      existingWorker.deprecate();
-      this.onWorkerDeprecated.post({ worker: existingWorker, id: workerId });
-    }
-
-    this._backgroundWorkers.set(worker.serverWorker.id, worker);
-
-    this.onWorkerRegistered.post({
-      worker,
-      id: worker.serverWorker.id,
-      record: worker.serverWorker,
-    });
-
-    worker.onTaskRunHeartbeat.attach((id) => {
-      this.onWorkerTaskRunHeartbeat.post({
-        id,
-        backgroundWorkerId: worker.serverWorker!.id,
-        worker,
-      });
-    });
-  }
-
-  async executeTaskRun(id: string, payload: TaskRunExecutionPayload, messageId: string) {
-    const worker = this._backgroundWorkers.get(id);
-
-    if (!worker) {
-      logger.error(`Could not find worker ${id}`);
-      return;
-    }
-
-    try {
-      const completion = await worker.executeTaskRun(payload, messageId);
-
-      this.onTaskCompleted.post({
-        completion,
-        execution: payload.execution,
-        worker,
-        backgroundWorkerId: id,
-      });
-
-      return completion;
-    } catch (error) {
-      this.onTaskFailedToRun.post({
-        backgroundWorkerId: id,
-        worker,
-        completion: {
-          ok: false,
-          id: payload.execution.run.id,
-          retry: undefined,
-          error:
-            error instanceof Error
-              ? {
-                  type: "BUILT_IN_ERROR",
-                  name: error.name,
-                  message: error.message,
-                  stackTrace: error.stack ?? "",
-                }
-              : {
-                  type: "BUILT_IN_ERROR",
-                  name: "UnknownError",
-                  message: String(error),
-                  stackTrace: "",
-                },
-        },
-      });
-    }
-
-    return;
-  }
-}
-
-export type BackgroundWorkerOptions = {
+export type BackgroundWorkerEngine2Options = {
   env: Record<string, string>;
   cwd: string;
   stop: () => void;
 };
 
-export class BackgroundWorker {
+export class BackgroundWorkerEngine2 {
   public onTaskRunHeartbeat: Evt<string> = new Evt();
 
   public deprecated: boolean = false;
@@ -194,7 +37,7 @@ export class BackgroundWorker {
 
   constructor(
     public build: BuildManifest,
-    public params: BackgroundWorkerOptions
+    public params: BackgroundWorkerEngine2Options
   ) {}
 
   deprecate() {
@@ -430,7 +273,7 @@ export class BackgroundWorker {
       throw new Error("Worker not registered");
     }
 
-    // eventBus.emit("runStarted", this, payload);
+    eventBus.emit("runStarted", this, payload);
 
     const now = performance.now();
 
@@ -438,7 +281,7 @@ export class BackgroundWorker {
 
     const elapsed = performance.now() - now;
 
-    // eventBus.emit("runCompleted", this, payload, completion, elapsed);
+    eventBus.emit("runCompleted", this, payload, completion, elapsed);
 
     return completion;
   }

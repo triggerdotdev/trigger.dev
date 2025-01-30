@@ -225,7 +225,7 @@ class DevWorkerRuntime implements WorkerRuntime {
     this.backgroundWorkerCoordinator.registerWorker(backgroundWorker);
     this.lastBuild = manifest;
 
-    eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
+    // eventBus.emit("backgroundWorkerInitialized", backgroundWorker);
   }
 
   async #getEnvVars(): Promise<Record<string, string>> {
