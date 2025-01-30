@@ -59,9 +59,7 @@ const myQueue = queue({
 
 export const task1 = task({
   id: "task-1",
-  queue: {
-    name: "my-queue",
-  },
+  queue: myQueue,
   run: async (payload: { message: string }) => {
     // ...
   },
@@ -69,9 +67,7 @@ export const task1 = task({
 
 export const task2 = task({
   id: "task-2",
-  queue: {
-    name: "my-queue",
-  },
+  queue: myQueue,
   run: async (payload: { message: string }) => {
     // ...
   },
