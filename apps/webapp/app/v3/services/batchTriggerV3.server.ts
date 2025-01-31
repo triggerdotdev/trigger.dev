@@ -160,7 +160,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
           payload: payloadPacket.data,
           payloadType: payloadPacket.dataType,
           options,
-          batchVersion: "v2",
+          batchVersion: "runengine:v1",
           oneTimeUseToken: options.oneTimeUseToken,
         },
       });
@@ -251,7 +251,7 @@ export class BatchTriggerV3Service extends WithRunEngine {
             payload: payloadPacket.data,
             payloadType: payloadPacket.dataType,
             options,
-            batchVersion: "v2",
+            batchVersion: "runengine:v1",
             oneTimeUseToken: options.oneTimeUseToken,
           },
         });
