@@ -503,6 +503,7 @@ export class RunEngine {
                 id: `expireRun:${taskRun.id}`,
                 job: "expireRun",
                 payload: { runId: taskRun.id },
+                availableAt: expireAt,
               });
             }
           }
