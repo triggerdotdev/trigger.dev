@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { DequeuedMessage, DevDequeueRequestBody, MachineResources } from "@trigger.dev/core/v3";
+import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
 import { env } from "~/env.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
@@ -28,7 +29,7 @@ const { action } = createActionApiRoute(
       const latestResult = await engine.dequeueFromBackgroundWorkerMasterQueue({
         consumerId: authentication.environment.id,
         //specific version
-        backgroundWorkerId: worker,
+        backgroundWorkerId: BackgroundWorkerId.toId(worker),
         maxRunCount: maxDequeueCount,
         maxResources: availableResources,
       });
@@ -63,7 +64,7 @@ const { action } = createActionApiRoute(
         consumerId: authentication.environment.id,
         //current dev version (no specific version specified)
         environmentId: authentication.environment.id,
-        backgroundWorkerId: body.currentWorker,
+        backgroundWorkerId: BackgroundWorkerId.toId(body.currentWorker),
         maxRunCount: maxDequeueCount,
         maxResources: availableResources,
       });
