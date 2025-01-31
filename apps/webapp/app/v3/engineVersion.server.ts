@@ -1,13 +1,19 @@
 import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { findCurrentWorkerDeploymentWithoutTasks } from "./models/workerDeployment.server";
+import {
+  findCurrentWorkerDeploymentWithoutTasks,
+  findCurrentWorkerFromEnvironment,
+} from "./models/workerDeployment.server";
+import { $replica } from "~/db.server";
 
 export async function determineEngineVersion({
   environment,
-  version,
+  workerVersion,
+  engineVersion: version,
 }: {
   environment: AuthenticatedEnvironment;
-  version?: RunEngineVersion;
+  workerVersion?: string;
+  engineVersion?: RunEngineVersion;
 }): Promise<RunEngineVersion> {
   if (version) {
     return version;
@@ -18,49 +24,43 @@ export async function determineEngineVersion({
     return "V1";
   }
 
-  // For now, dev is always V1
-  if (environment.type === RuntimeEnvironmentType.DEVELOPMENT) {
-    return "V1";
-  }
-
   /**
-   * The project has V2 enabled and this isn't dev
+   * The project has V2 enabled so it *could* be V2.
    */
 
-  // Check the current deployment for this environment
+  // A specific worker version is requested
+  if (workerVersion) {
+    const worker = await $replica.backgroundWorker.findUnique({
+      select: {
+        engine: true,
+      },
+      where: {
+        projectId_runtimeEnvironmentId_version: {
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          version: workerVersion,
+        },
+      },
+    });
+
+    if (!worker) {
+      throw new Error(`Worker not found: environment: ${environment.id} version: ${workerVersion}`);
+    }
+
+    return worker.engine;
+  }
+
+  // Dev: use the latest BackgroundWorker
+  if (environment.type === "DEVELOPMENT") {
+    const backgroundWorker = await findCurrentWorkerFromEnvironment(environment);
+    return backgroundWorker?.engine ?? "V1";
+  }
+
+  // Deployed: use the latest deployed BackgroundWorker
   const currentDeployment = await findCurrentWorkerDeploymentWithoutTasks(environment.id);
   if (currentDeployment?.type === "V1") {
     return "V1";
   }
-
-  //todo we need to determine the version using the BackgroundWorker
-  //- triggerAndWait we can lookup the BackgroundWorker easily, and get the engine.
-  //- No locked version: lookup the BackgroundWorker via the Deployment/latest dev BW
-  // const workerWithTasks = workerId
-  //   ? await getWorkerDeploymentFromWorker(prisma, workerId)
-  //   : run.runtimeEnvironment.type === "DEVELOPMENT"
-  //   ? await getMostRecentWorker(prisma, run.runtimeEnvironmentId)
-  //   : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
-
-  //todo Additional checks
-  /*
-  - If the `triggerVersion` is 3.2 or higher AND the project has engine V2, we will use the run engine.
-  - Add an `engine` column to `Project` in the database.
-
-  Add `engine` to the trigger.config file. It would default to "V1" for now, but you can set it to V2.
-
-  You run `npx trigger.dev@latest deploy` with config v2.
-  - Create BackgroundWorker with `engine`: `v2`.
-  - Set the `project` `engine` column to `v2`.
-
-  You run `npx trigger.dev@latest dev`  with config v2
-  - Create BackgroundWorker with `engine`: `v2`.
-  - Set the `project` `engine` column to `v2`.
-
-  When triggering
-  - triggerAndWait we can lookup the BackgroundWorker easily, and get the engine.
-  - No locked version: lookup the BackgroundWorker via the Deployment/latest dev BW
-  */
 
   return "V2";
 }

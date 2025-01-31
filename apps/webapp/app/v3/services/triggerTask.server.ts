@@ -38,7 +38,11 @@ export class TriggerTaskService extends WithRunEngine {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
-      const v = await determineEngineVersion({ environment, version });
+      const v = await determineEngineVersion({
+        environment,
+        workerVersion: body.options?.lockToVersion,
+        engineVersion: version,
+      });
 
       switch (v) {
         case "V1": {
