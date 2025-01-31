@@ -648,6 +648,7 @@ export class RunEngine {
                   await this.#waitingForDeploy({
                     orgId,
                     runId,
+                    reason: result.message,
                     tx: prisma,
                   });
                   return null;
@@ -685,6 +686,7 @@ export class RunEngine {
                 await this.#waitingForDeploy({
                   orgId,
                   runId,
+                  reason: "No deployment or deployment image reference found for deployed run",
                   tx: prisma,
                 });
 
@@ -2520,12 +2522,14 @@ export class RunEngine {
     runId,
     workerId,
     runnerId,
+    reason,
     tx,
   }: {
     orgId: string;
     runId: string;
     workerId?: string;
     runnerId?: string;
+    reason?: string;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.prisma;
@@ -2550,6 +2554,7 @@ export class RunEngine {
           snapshot: {
             executionStatus: "RUN_CREATED",
             description:
+              reason ??
               "The run doesn't have a background worker, so we're going to ack it for now.",
           },
           workerId,
