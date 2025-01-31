@@ -45,8 +45,21 @@ export class CreateDeploymentBackgroundWorkerService extends BaseService {
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
           supportsLazyAttempts: body.supportsLazyAttempts,
+          engine: body.engine,
         },
       });
+
+      //upgrade the project to engine "V2" if it's not already
+      if (environment.project.engine === "V1" && body.engine === "V2") {
+        await this._prisma.project.update({
+          where: {
+            id: environment.project.id,
+          },
+          data: {
+            engine: "V2",
+          },
+        });
+      }
 
       try {
         const tasksToBackgroundFiles = await createBackgroundFiles(

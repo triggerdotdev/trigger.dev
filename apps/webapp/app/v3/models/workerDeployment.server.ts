@@ -37,6 +37,7 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
         sdkVersion: true;
         cliVersion: true;
         supportsLazyAttempts: true;
+        engine: true;
         tasks: {
           select: {
             id: true;
@@ -78,6 +79,7 @@ export async function findCurrentWorkerDeployment(
               cliVersion: true,
               supportsLazyAttempts: true,
               tasks: true,
+              engine: true,
             },
           },
         },
@@ -118,7 +120,7 @@ export async function findCurrentWorkerFromEnvironment(
   label = CURRENT_DEPLOYMENT_LABEL
 ): Promise<Pick<
   BackgroundWorker,
-  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts"
+  "id" | "friendlyId" | "version" | "sdkVersion" | "cliVersion" | "supportsLazyAttempts" | "engine"
 > | null> {
   if (environment.type === "DEVELOPMENT") {
     const latestDevWorker = await prisma.backgroundWorker.findFirst({

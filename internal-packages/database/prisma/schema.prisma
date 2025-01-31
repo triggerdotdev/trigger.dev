@@ -1572,6 +1572,8 @@ model BackgroundWorker {
 
   friendlyId String @unique
 
+  engine RunEngineVersion @default(V1)
+
   contentHash String
   sdkVersion  String @default("unknown")
   cliVersion  String @default("unknown")

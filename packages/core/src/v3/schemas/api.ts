@@ -11,6 +11,8 @@ import { BackgroundWorkerMetadata } from "./resources.js";
 import { QueueOptions } from "./schemas.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
 
+export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
+
 export const WhoAmIResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
@@ -51,6 +53,7 @@ export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 export const CreateBackgroundWorkerRequestBody = z.object({
   localOnly: z.boolean(),
   metadata: BackgroundWorkerMetadata,
+  engine: RunEngineVersion.optional(),
   supportsLazyAttempts: z.boolean().optional(),
 });
 

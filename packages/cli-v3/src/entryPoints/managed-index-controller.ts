@@ -97,6 +97,7 @@ async function indexDeployment({
         tasks: workerManifest.tasks,
         sourceFiles,
       },
+      engine: "V2",
       supportsLazyAttempts: true,
     };
 

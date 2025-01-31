@@ -113,6 +113,7 @@ class DevSupervisor implements WorkerRuntime {
         contentHash: manifest.contentHash,
         sourceFiles,
       },
+      engine: "V2",
       supportsLazyAttempts: true,
     };
 
