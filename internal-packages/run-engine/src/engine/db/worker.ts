@@ -88,11 +88,17 @@ export async function getRunWithBackgroundWorkerTasks(
   const workerId = run.lockedToVersionId ?? backgroundWorkerId;
 
   //get the relevant BackgroundWorker with tasks and deployment (if not DEV)
-  const workerWithTasks = workerId
-    ? await getWorkerDeploymentFromWorker(prisma, workerId)
-    : run.runtimeEnvironment.type === "DEVELOPMENT"
-    ? await getMostRecentWorker(prisma, run.runtimeEnvironmentId)
-    : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+  let workerWithTasks: WorkerDeploymentWithWorkerTasks | null = null;
+
+  if (run.runtimeEnvironment.type === "DEVELOPMENT") {
+    workerWithTasks = workerId
+      ? await getWorkerById(prisma, workerId)
+      : await getMostRecentWorker(prisma, run.runtimeEnvironmentId);
+  } else {
+    workerWithTasks = workerId
+      ? await getWorkerDeploymentFromWorker(prisma, workerId)
+      : await getWorkerFromCurrentlyPromotedDeployment(prisma, run.runtimeEnvironmentId);
+  }
 
   if (!workerWithTasks) {
     return {
@@ -129,6 +135,9 @@ export async function getRunWithBackgroundWorkerTasks(
       },
       include: {
         worker: true,
+      },
+      orderBy: {
+        createdAt: "desc",
       },
     });
 
@@ -192,6 +201,29 @@ export async function getMostRecentWorker(
   const worker = await prisma.backgroundWorker.findFirst({
     where: {
       runtimeEnvironmentId: environmentId,
+    },
+    include: {
+      tasks: true,
+    },
+    orderBy: {
+      id: "desc",
+    },
+  });
+
+  if (!worker) {
+    return null;
+  }
+
+  return { worker, tasks: worker.tasks, deployment: null };
+}
+
+export async function getWorkerById(
+  prisma: PrismaClientOrTransaction,
+  workerId: string
+): Promise<WorkerDeploymentWithWorkerTasks | null> {
+  const worker = await prisma.backgroundWorker.findFirst({
+    where: {
+      id: workerId,
     },
     include: {
       deployment: true,
