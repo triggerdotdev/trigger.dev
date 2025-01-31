@@ -26,7 +26,7 @@ import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, TaskRun } from "@trigger.dev/database";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export type TriggerTaskServiceOptions = {
@@ -49,15 +49,30 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
+export type TriggerTaskServiceResult = {
+  run: TaskRun;
+  isCached: boolean;
+};
+
+const MAX_ATTEMPTS = 2;
+
 export class TriggerTaskService extends BaseService {
   public async call(
     taskId: string,
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ) {
+    options: TriggerTaskServiceOptions = {},
+    attempt: number = 0
+  ): Promise<TriggerTaskServiceResult | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
+      span.setAttribute("attempt", attempt);
+
+      if (attempt > MAX_ATTEMPTS) {
+        throw new ServiceValidationError(
+          `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
+        );
+      }
 
       // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
@@ -74,13 +89,11 @@ export class TriggerTaskService extends BaseService {
           : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
 
       const existingRun = idempotencyKey
-        ? await this._prisma.taskRun.findUnique({
+        ? await this._prisma.taskRun.findFirst({
             where: {
-              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
-                runtimeEnvironmentId: environment.id,
-                idempotencyKey,
-                taskIdentifier: taskId,
-              },
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey,
+              taskIdentifier: taskId,
             },
           })
         : undefined;
@@ -103,7 +116,7 @@ export class TriggerTaskService extends BaseService {
         } else {
           span.setAttribute("runId", existingRun.friendlyId);
 
-          return existingRun;
+          return { run: existingRun, isCached: true };
         }
       }
 
@@ -572,7 +585,7 @@ export class TriggerTaskService extends BaseService {
               );
             }
 
-            return run;
+            return { run, isCached: false };
           }
         );
       } catch (error) {
@@ -608,6 +621,23 @@ export class TriggerTaskService extends BaseService {
               throw new Error(
                 `Failed to trigger ${taskId} as the queue could not be created do to a unique constraint error, please try again.`
               );
+            } else if (
+              Array.isArray(target) &&
+              target.length == 3 &&
+              typeof target[0] === "string" &&
+              typeof target[1] === "string" &&
+              typeof target[2] === "string" &&
+              target[0] == "runtimeEnvironmentId" &&
+              target[1] == "taskIdentifier" &&
+              target[2] == "idempotencyKey"
+            ) {
+              logger.debug("TriggerTask: Idempotency key violation, retrying...", {
+                taskId,
+                environmentId: environment.id,
+                idempotencyKey,
+              });
+              // We need to retry the task run creation as the idempotency key has been used
+              return await this.call(taskId, environment, body, options, attempt + 1);
             } else {
               throw new ServiceValidationError(
                 `Cannot trigger ${taskId} as it has already been triggered with the same idempotency key.`

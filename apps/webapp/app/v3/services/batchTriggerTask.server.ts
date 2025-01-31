@@ -104,7 +104,7 @@ export class BatchTriggerTaskService extends BaseService {
 
       for (const item of body.items) {
         try {
-          const run = await triggerTaskService.call(
+          const result = await triggerTaskService.call(
             taskId,
             environment,
             {
@@ -123,16 +123,16 @@ export class BatchTriggerTaskService extends BaseService {
             }
           );
 
-          if (run) {
+          if (result) {
             await this._prisma.batchTaskRunItem.create({
               data: {
                 batchTaskRunId: batch.id,
-                taskRunId: run.id,
-                status: batchTaskRunItemStatusForRunStatus(run.status),
+                taskRunId: result.run.id,
+                status: batchTaskRunItemStatusForRunStatus(result.run.status),
               },
             });
 
-            runs.push(run.friendlyId);
+            runs.push(result.run.friendlyId);
           }
 
           index++;

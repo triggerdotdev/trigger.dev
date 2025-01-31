@@ -72,12 +72,10 @@ export class BatchTriggerV2Service extends BaseService {
         environment,
         async (span) => {
           const existingBatch = options.idempotencyKey
-            ? await this._prisma.batchTaskRun.findUnique({
+            ? await this._prisma.batchTaskRun.findFirst({
                 where: {
-                  runtimeEnvironmentId_idempotencyKey: {
-                    runtimeEnvironmentId: environment.id,
-                    idempotencyKey: options.idempotencyKey,
-                  },
+                  runtimeEnvironmentId: environment.id,
+                  idempotencyKey: options.idempotencyKey,
                 },
               })
             : undefined;
@@ -769,7 +767,7 @@ export class BatchTriggerV2Service extends BaseService {
 
     const triggerTaskService = new TriggerTaskService();
 
-    const run = await triggerTaskService.call(
+    const result = await triggerTaskService.call(
       task.item.task,
       environment,
       {
@@ -790,15 +788,15 @@ export class BatchTriggerV2Service extends BaseService {
       }
     );
 
-    if (!run) {
+    if (!result) {
       throw new Error(`Failed to trigger run ${task.runId} for batch ${batch.friendlyId}`);
     }
 
     await this._prisma.batchTaskRunItem.create({
       data: {
         batchTaskRunId: batch.id,
-        taskRunId: run.id,
-        status: batchTaskRunItemStatusForRunStatus(run.status),
+        taskRunId: result.run.id,
+        status: batchTaskRunItemStatusForRunStatus(result.run.status),
       },
     });
   }
