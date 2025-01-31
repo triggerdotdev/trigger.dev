@@ -68,6 +68,7 @@ export function createRedisClient(
       username: options.username,
       password: options.password,
       enableAutoPipelining: true,
+      keyPrefix: options.keyPrefix,
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }
