@@ -853,6 +853,7 @@ export const RetrieveBatchResponse = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
   runCount: z.number(),
+  runs: z.array(z.string()),
 });
 
 export type RetrieveBatchResponse = z.infer<typeof RetrieveBatchResponse>;

@@ -34,6 +34,7 @@ export const loader = createLoaderApiRoute(
       createdAt: batch.createdAt,
       updatedAt: batch.updatedAt,
       runCount: batch.runCount,
+      runs: batch.runIds,
     });
   }
 );
