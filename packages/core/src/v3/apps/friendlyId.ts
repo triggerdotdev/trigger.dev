@@ -72,6 +72,15 @@ export class IdUtil {
   fromFriendlyId(friendlyId: string) {
     return fromFriendlyId(friendlyId);
   }
+
+  /** Will convert friendlyIds, and will leave ids as they are */
+  toId(value: string) {
+    if (value.startsWith(`${this.entityName}_`)) {
+      return fromFriendlyId(value);
+    }
+
+    return value;
+  }
 }
 
 export const BackgroundWorkerId = new IdUtil("worker");
