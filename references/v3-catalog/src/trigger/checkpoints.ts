@@ -1,8 +1,15 @@
-import { logger, queue, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, queue, schedules, task, wait } from "@trigger.dev/sdk/v3";
 
 type Payload = {
   count?: number;
 };
+
+export const checkpointBatchResumerTester = schedules.task({
+  id: "checkpoint-batch-resume-tester",
+  run: async () => {
+    await checkpointBatchResumer.triggerAndWait({ count: 1 });
+  },
+});
 
 /** Test that checkpoints and resuming works if the checkpoint isn't created before the resume */
 export const checkpointBatchResumer = task({
@@ -10,8 +17,8 @@ export const checkpointBatchResumer = task({
   run: async ({ count = 1 }: Payload) => {
     await noop.batchTriggerAndWait(Array.from({ length: count }, (_, i) => ({})));
     logger.info(`Successfully 1/1 resumed after ${count} runs`);
-    await noop.batchTriggerAndWait(Array.from({ length: count }, (_, i) => ({})));
-    logger.info(`Successfully 2/2 resumed after ${count} runs`);
+    // await noop.batchTriggerAndWait(Array.from({ length: count }, (_, i) => ({})));
+    // logger.info(`Successfully 2/2 resumed after ${count} runs`);
   },
 });
 

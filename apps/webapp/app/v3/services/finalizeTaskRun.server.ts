@@ -18,6 +18,8 @@ import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
+import { $transaction } from "~/db.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV2.server";
 
 type BaseInput = {
   id: string;
@@ -196,6 +198,7 @@ export class FinalizeTaskRunService extends BaseService {
           select: {
             id: true,
             dependentTaskAttemptId: true,
+            batchVersion: true,
           },
         },
       },
@@ -216,23 +219,29 @@ export class FinalizeTaskRunService extends BaseService {
 
     for (const item of batchItems) {
       // Don't do anything if this is a batchTriggerAndWait in a deployed task
+      // As that is being handled in resumeDependentParents and resumeTaskRunDependencies
       if (environment.type !== "DEVELOPMENT" && item.batchTaskRun.dependentTaskAttemptId) {
         continue;
       }
 
-      // Update the item to complete
-      await this._prisma.batchTaskRunItem.update({
-        where: {
-          id: item.id,
-        },
-        data: {
-          status: "COMPLETED",
-        },
-      });
+      if (item.batchTaskRun.batchVersion === "v3") {
+        await completeBatchTaskRunItemV3(item.id, item.batchTaskRunId, this._prisma);
+      } else {
+        // THIS IS DEPRECATED and only happens with batchVersion != v3
+        // Update the item to complete
+        await this._prisma.batchTaskRunItem.update({
+          where: {
+            id: item.id,
+          },
+          data: {
+            status: "COMPLETED",
+          },
+        });
 
-      // This won't resume because this batch does not have a dependent task attempt ID
-      // or is in development, but this service will mark the batch as completed
-      await ResumeBatchRunService.enqueue(item.batchTaskRunId, this._prisma);
+        // This won't resume because this batch does not have a dependent task attempt ID
+        // or is in development, but this service will mark the batch as completed
+        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false, this._prisma);
+      }
     }
   }
 

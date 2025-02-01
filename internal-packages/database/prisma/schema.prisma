@@ -2166,6 +2166,21 @@ model BatchTaskRun {
   options      Json?
   batchVersion String   @default("v1")
 
+  // This is for v3 batches
+  /// sealed is set to true once no more items can be added to the batch
+  sealed         Boolean   @default(false)
+  sealedAt       DateTime?
+  /// this is the expected number of items in the batch
+  expectedCount  Int       @default(0)
+  /// this is the completed number of items in the batch. once this reaches expectedCount, and the batch is sealed, the batch is considered completed
+  completedCount Int       @default(0)
+  completedAt    DateTime?
+  resumedAt      DateTime?
+
+  /// this is used to be able to "seal" this BatchTaskRun when all of the runs have been triggered asynchronously, and using the "parallel" processing strategy
+  processingJobsCount         Int @default(0)
+  processingJobsExpectedCount Int @default(0)
+
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
@@ -2202,8 +2217,9 @@ model BatchTaskRunItem {
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   taskRunAttemptId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
 
   @@unique([batchTaskRunId, taskRunId])
   @@index([taskRunAttemptId], map: "idx_batchtaskrunitem_taskrunattempt")

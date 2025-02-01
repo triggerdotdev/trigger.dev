@@ -5,6 +5,7 @@ import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 import { $transaction } from "~/db.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV2.server";
 
 type Output =
   | {
@@ -45,6 +46,7 @@ const taskRunDependencySelect = {
     dependentBatchRun: {
       select: {
         id: true,
+        batchVersion: true,
       },
     },
   },
@@ -242,22 +244,48 @@ export class ResumeDependentParentsService extends BaseService {
       }
     );
 
-    await $transaction(this._prisma, async (tx) => {
-      await tx.batchTaskRunItem.update({
+    if (dependency.dependentBatchRun!.batchVersion === "v3") {
+      const batchTaskRunItem = await this._prisma.batchTaskRunItem.findFirst({
         where: {
-          batchTaskRunId_taskRunId: {
-            batchTaskRunId: dependency.dependentBatchRun!.id,
-            taskRunId: dependency.taskRunId,
-          },
-        },
-        data: {
-          status: "COMPLETED",
-          taskRunAttemptId: lastAttempt.id,
+          batchTaskRunId: dependency.dependentBatchRun!.id,
+          taskRunId: dependency.taskRunId,
         },
       });
 
-      await ResumeBatchRunService.enqueue(dependency.dependentBatchRun!.id, tx);
-    });
+      if (batchTaskRunItem) {
+        await completeBatchTaskRunItemV3(
+          batchTaskRunItem.id,
+          batchTaskRunItem.batchTaskRunId,
+          this._prisma,
+          true
+        );
+      } else {
+        logger.debug(
+          "ResumeDependentParentsService.batchRunDependency() v3: batchTaskRunItem not found",
+          {
+            dependency,
+            lastAttempt,
+          }
+        );
+      }
+    } else {
+      await $transaction(this._prisma, async (tx) => {
+        await tx.batchTaskRunItem.update({
+          where: {
+            batchTaskRunId_taskRunId: {
+              batchTaskRunId: dependency.dependentBatchRun!.id,
+              taskRunId: dependency.taskRunId,
+            },
+          },
+          data: {
+            status: "COMPLETED",
+            taskRunAttemptId: lastAttempt.id,
+          },
+        });
+
+        await ResumeBatchRunService.enqueue(dependency.dependentBatchRun!.id, false, tx);
+      });
+    }
 
     return {
       success: true,

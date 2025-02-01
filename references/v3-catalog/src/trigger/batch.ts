@@ -300,7 +300,7 @@ export const batchV2TestTask = task({
   },
   run: async ({
     triggerSequentially,
-    largeBatchSize = 21,
+    largeBatchSize = 20,
   }: {
     triggerSequentially?: boolean;
     largeBatchSize?: number;
@@ -685,6 +685,42 @@ export const batchV2TestTask = task({
     logger.debug("All runs", { runsById: Object.fromEntries(runsById) });
 
     assert.equal(runsById.size, 100, "All runs were not received");
+  },
+});
+
+export const batchTriggerSequentiallyTask = task({
+  id: "batch-trigger-sequentially",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async ({
+    count = 20,
+    wait = false,
+    triggerSequentially = true,
+  }: {
+    count: number;
+    wait: boolean;
+    triggerSequentially: boolean;
+  }) => {
+    if (wait) {
+      return await batchV2TestChild.batchTriggerAndWait(
+        Array.from({ length: count }, (_, i) => ({
+          payload: { foo: `bar${i}` },
+        })),
+        {
+          triggerSequentially,
+        }
+      );
+    } else {
+      return await batchV2TestChild.batchTrigger(
+        Array.from({ length: count }, (_, i) => ({
+          payload: { foo: `bar${i}` },
+        })),
+        {
+          triggerSequentially,
+        }
+      );
+    }
   },
 });
 
