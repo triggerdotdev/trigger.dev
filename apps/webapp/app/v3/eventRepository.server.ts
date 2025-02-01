@@ -20,7 +20,6 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { Prisma, TaskEvent, TaskEventStatus, type TaskEventKind } from "@trigger.dev/database";
-import Redis, { RedisOptions } from "ioredis";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:stream";
 import { Gauge } from "prom-client";
@@ -32,6 +31,7 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { startActiveSpan } from "./tracer.server";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -97,7 +97,7 @@ export type EventBuilder = {
 export type EventRepoConfig = {
   batchSize: number;
   batchInterval: number;
-  redis: RedisOptions;
+  redis: RedisWithClusterOptions;
   retentionInDays: number;
 };
 
@@ -200,7 +200,7 @@ type TaskEventSummary = Pick<
 export class EventRepository {
   private readonly _flushScheduler: DynamicFlushScheduler<CreatableEvent>;
   private _randomIdGenerator = new RandomIdGenerator();
-  private _redisPublishClient: Redis;
+  private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
 
   get subscriberCount() {
@@ -218,7 +218,7 @@ export class EventRepository {
       callback: this.#flushBatch.bind(this),
     });
 
-    this._redisPublishClient = new Redis(this._config.redis);
+    this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
   }
 
   async insert(event: CreatableEvent) {
@@ -989,12 +989,12 @@ export class EventRepository {
   }
 
   async subscribeToTrace(traceId: string) {
-    const redis = new Redis(this._config.redis);
+    const redis = createRedisClient("trigger:eventRepoSubscriber", this._config.redis);
 
-    const channel = `events:${traceId}:*`;
+    const channel = `events:${traceId}`;
 
     // Subscribe to the channel.
-    await redis.psubscribe(channel);
+    await redis.subscribe(channel);
 
     // Increment the subscriber count.
     this._subscriberCount++;
@@ -1002,15 +1002,13 @@ export class EventRepository {
     const eventEmitter = new EventEmitter();
 
     // Define the message handler.
-    redis.on("pmessage", (pattern, channelReceived, message) => {
-      if (channelReceived.startsWith(`events:${traceId}:`)) {
-        eventEmitter.emit("message", message);
-      }
+    redis.on("message", (_, message) => {
+      eventEmitter.emit("message", message);
     });
 
     // Return a function that can be used to unsubscribe.
     const unsubscribe = async () => {
-      await redis.punsubscribe(channel);
+      await redis.unsubscribe(channel);
       redis.quit();
       this._subscriberCount--;
     };
@@ -1101,10 +1099,13 @@ export class EventRepository {
 
   async #publishToRedis(events: CreatableEvent[]) {
     if (events.length === 0) return;
-    const uniqueTraceSpans = new Set(events.map((e) => `events:${e.traceId}:${e.spanId}`));
-    for (const id of uniqueTraceSpans) {
-      await this._redisPublishClient.publish(id, new Date().toISOString());
-    }
+    const uniqueTraces = new Set(events.map((e) => `events:${e.traceId}`));
+
+    await Promise.allSettled(
+      Array.from(uniqueTraces).map((traceId) =>
+        this._redisPublishClient.publish(traceId, new Date().toISOString())
+      )
+    );
   }
 
   public generateTraceId() {
@@ -1142,12 +1143,12 @@ function initializeEventRepo() {
     batchInterval: env.EVENTS_BATCH_INTERVAL,
     retentionInDays: env.EVENTS_DEFAULT_LOG_RETENTION,
     redis: {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      port: env.PUBSUB_REDIS_PORT,
+      host: env.PUBSUB_REDIS_HOST,
+      username: env.PUBSUB_REDIS_USERNAME,
+      password: env.PUBSUB_REDIS_PASSWORD,
+      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
 

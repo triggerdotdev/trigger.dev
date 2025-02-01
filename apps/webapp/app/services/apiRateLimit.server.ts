@@ -5,12 +5,12 @@ import { Duration } from "./rateLimiter.server";
 
 export const apiRateLimiter = authorizationRateLimitMiddleware({
   redis: {
-    port: env.REDIS_PORT,
-    host: env.REDIS_HOST,
-    username: env.REDIS_USERNAME,
-    password: env.REDIS_PASSWORD,
-    enableAutoPipelining: true,
-    ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    port: env.RATE_LIMIT_REDIS_PORT,
+    host: env.RATE_LIMIT_REDIS_HOST,
+    username: env.RATE_LIMIT_REDIS_USERNAME,
+    password: env.RATE_LIMIT_REDIS_PASSWORD,
+    tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+    clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
   },
   keyPrefix: "api",
   defaultLimiter: {

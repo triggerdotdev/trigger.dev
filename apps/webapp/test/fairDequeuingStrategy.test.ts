@@ -23,7 +23,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-1", // for deterministic shuffling
     });
 
@@ -53,7 +52,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 2,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-2",
     });
 
@@ -89,7 +87,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 2,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-3",
     });
 
@@ -114,40 +111,6 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toHaveLength(0);
   });
 
-  redisTest("should handle disabled orgs", async ({ redis }) => {
-    const keyProducer = createKeyProducer("test");
-    const strategy = new FairDequeuingStrategy({
-      tracer,
-      redis,
-      keys: keyProducer,
-      defaultOrgConcurrency: 10,
-      defaultEnvConcurrency: 5,
-      parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
-      seed: "test-seed-4",
-    });
-
-    await setupQueue({
-      redis,
-      keyProducer,
-      parentQueue: "parent-queue",
-      score: Date.now() - 1000,
-      queueId: "queue-1",
-      orgId: "org-1",
-      envId: "env-1",
-    });
-
-    await setupConcurrency({
-      redis,
-      keyProducer,
-      org: { id: "org-1", currentConcurrency: 0, isDisabled: true },
-      env: { id: "env-1", currentConcurrency: 0 },
-    });
-
-    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
-    expect(result).toHaveLength(0);
-  });
-
   redisTest("should respect parentQueueLimit", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -157,7 +120,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 2, // Only take 2 queues
-      checkForDisabledOrgs: true,
       seed: "test-seed-6",
     });
 
@@ -203,6 +165,95 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toEqual([queue1, queue2]);
   });
 
+  redisTest("should reuse snapshots across calls for the same consumer", async ({ redis }) => {
+    const keyProducer = createKeyProducer("test");
+    const strategy = new FairDequeuingStrategy({
+      tracer,
+      redis,
+      keys: keyProducer,
+      defaultOrgConcurrency: 10,
+      defaultEnvConcurrency: 5,
+      parentQueueLimit: 10,
+      seed: "test-seed-reuse-1",
+      reuseSnapshotCount: 1,
+    });
+
+    const now = Date.now();
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 3000,
+      queueId: "queue-1",
+      orgId: "org-1",
+      envId: "env-1",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 2000,
+      queueId: "queue-2",
+      orgId: "org-2",
+      envId: "env-2",
+    });
+
+    await setupQueue({
+      redis,
+      keyProducer,
+      parentQueue: "parent-queue",
+      score: now - 1000,
+      queueId: "queue-3",
+      orgId: "org-3",
+      envId: "env-3",
+    });
+
+    const startDistribute1 = performance.now();
+
+    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
+
+    const distribute1Duration = performance.now() - startDistribute1;
+
+    console.log("First distribution took", distribute1Duration, "ms");
+
+    expect(result).toHaveLength(3);
+    // Should only get the two oldest queues
+    const queue1 = keyProducer.queueKey("org-1", "env-1", "queue-1");
+    const queue2 = keyProducer.queueKey("org-2", "env-2", "queue-2");
+    const queue3 = keyProducer.queueKey("org-3", "env-3", "queue-3");
+    expect(result).toEqual([queue2, queue1, queue3]);
+
+    const startDistribute2 = performance.now();
+
+    const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
+
+    const distribute2Duration = performance.now() - startDistribute2;
+
+    console.log("Second distribution took", distribute2Duration, "ms");
+
+    // Make sure the second call is more than 10 times faster than the first
+    expect(distribute2Duration).toBeLessThan(distribute1Duration / 10);
+
+    const startDistribute3 = performance.now();
+
+    const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
+
+    const distribute3Duration = performance.now() - startDistribute3;
+
+    console.log("Third distribution took", distribute3Duration, "ms");
+
+    // Make sure the third call is more than 4 times the second
+    expect(distribute3Duration).toBeGreaterThan(distribute2Duration * 4);
+  });
+
   redisTest("should fairly distribute queues across environments over time", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -212,7 +263,6 @@ describe("FairDequeuingStrategy", () => {
       defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
-      checkForDisabledOrgs: true,
       seed: "test-seed-5",
     });
 
@@ -370,7 +420,6 @@ describe("FairDequeuingStrategy", () => {
         defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
-        checkForDisabledOrgs: true,
         seed: "fixed-seed",
       });
 
@@ -530,7 +579,6 @@ describe("FairDequeuingStrategy", () => {
             defaultOrgConcurrency: 10,
             defaultEnvConcurrency: 5,
             parentQueueLimit: 100,
-            checkForDisabledOrgs: true,
             seed: `test-seed-${i}`,
             biases: {
               concurrencyLimitBias: 0.8,
@@ -615,7 +663,6 @@ describe("FairDequeuingStrategy", () => {
         defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
-        checkForDisabledOrgs: true,
         seed: "fixed-seed",
         biases: {
           concurrencyLimitBias: 0,
@@ -689,4 +736,134 @@ describe("FairDequeuingStrategy", () => {
     expect(mixed["queue-1"][0]).toBeGreaterThan(mixed["queue-3"][0]); // Older preferred
     expect(mixed["queue-3"][0]).toBeGreaterThan(0); // But newer still gets chances
   });
+
+  redisTest(
+    "should respect maximumOrgCount and select orgs based on queue ages",
+    async ({ redis }) => {
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultOrgConcurrency: 10,
+        defaultEnvConcurrency: 5,
+        parentQueueLimit: 100,
+        seed: "test-seed-max-orgs",
+        maximumOrgCount: 2, // Only select top 2 orgs
+      });
+
+      const now = Date.now();
+
+      // Setup 4 orgs with different queue age profiles
+      const orgSetups = [
+        {
+          orgId: "org-1",
+          queues: [
+            { age: 1000 }, // Average age: 1000
+          ],
+        },
+        {
+          orgId: "org-2",
+          queues: [
+            { age: 5000 }, // Average age: 5000
+            { age: 5000 },
+          ],
+        },
+        {
+          orgId: "org-3",
+          queues: [
+            { age: 2000 }, // Average age: 2000
+            { age: 2000 },
+          ],
+        },
+        {
+          orgId: "org-4",
+          queues: [
+            { age: 500 }, // Average age: 500
+            { age: 500 },
+          ],
+        },
+      ];
+
+      // Setup queues and concurrency for each org
+      for (const setup of orgSetups) {
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          org: { id: setup.orgId, currentConcurrency: 0, limit: 10 },
+          env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+        });
+
+        for (let i = 0; i < setup.queues.length; i++) {
+          await setupQueue({
+            redis,
+            keyProducer,
+            parentQueue: "parent-queue",
+            score: now - setup.queues[i].age,
+            queueId: `queue-${setup.orgId}-${i}`,
+            orgId: setup.orgId,
+            envId: "env-1",
+          });
+        }
+      }
+
+      // Run multiple iterations to verify consistent behavior
+      const iterations = 100;
+      const selectedOrgCounts: Record<string, number> = {};
+
+      for (let i = 0; i < iterations; i++) {
+        const result = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i}`
+        );
+
+        // Track which orgs were included in the result
+        const selectedOrgs = new Set(result.map((queueId) => keyProducer.orgIdFromQueue(queueId)));
+
+        // Verify we never get more than maximumOrgCount orgs
+        expect(selectedOrgs.size).toBeLessThanOrEqual(2);
+
+        for (const orgId of selectedOrgs) {
+          selectedOrgCounts[orgId] = (selectedOrgCounts[orgId] || 0) + 1;
+        }
+      }
+
+      console.log("Organization selection counts:", selectedOrgCounts);
+
+      // org-2 should be selected most often (highest average age)
+      expect(selectedOrgCounts["org-2"]).toBeGreaterThan(selectedOrgCounts["org-4"] || 0);
+
+      // org-4 should be selected least often (lowest average age)
+      const org4Count = selectedOrgCounts["org-4"] || 0;
+      expect(org4Count).toBeLessThan(selectedOrgCounts["org-2"]);
+
+      // Verify that orgs with higher average queue age are selected more frequently
+      const sortedOrgs = Object.entries(selectedOrgCounts).sort((a, b) => b[1] - a[1]);
+      console.log("Sorted organization frequencies:", sortedOrgs);
+
+      // The top 2 most frequently selected orgs should be org-2 and org-3
+      // as they have the highest average queue ages
+      const topTwoOrgs = new Set([sortedOrgs[0][0], sortedOrgs[1][0]]);
+      expect(topTwoOrgs).toContain("org-2"); // Highest average age
+      expect(topTwoOrgs).toContain("org-3"); // Second highest average age
+
+      // Calculate selection percentages
+      const totalSelections = Object.values(selectedOrgCounts).reduce((a, b) => a + b, 0);
+      const selectionPercentages = Object.entries(selectedOrgCounts).reduce(
+        (acc, [orgId, count]) => {
+          acc[orgId] = (count / totalSelections) * 100;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+      console.log("Organization selection percentages:", selectionPercentages);
+
+      // Verify that org-2 (highest average age) gets selected in at least 40% of iterations
+      expect(selectionPercentages["org-2"]).toBeGreaterThan(40);
+
+      // Verify that org-4 (lowest average age) gets selected in less than 20% of iterations
+      expect(selectionPercentages["org-4"] || 0).toBeLessThan(20);
+    }
+  );
 });

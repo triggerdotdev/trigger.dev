@@ -1,21 +1,20 @@
-import { Err, Ok, type Result } from "@unkey/error";
-import type { Entry, Store } from "@unkey/cache/stores";
-import type { RedisOptions } from "ioredis";
-import { Redis } from "ioredis";
 import { CacheError } from "@unkey/cache";
+import type { Entry, Store } from "@unkey/cache/stores";
+import { Err, Ok, type Result } from "@unkey/error";
+import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
 
 export type RedisCacheStoreConfig = {
-  connection: RedisOptions;
+  connection: RedisWithClusterOptions;
 };
 
 export class RedisCacheStore<TNamespace extends string, TValue = any>
   implements Store<TNamespace, TValue>
 {
   public readonly name = "redis";
-  private readonly redis: Redis;
+  private readonly redis: RedisClient;
 
   constructor(config: RedisCacheStoreConfig) {
-    this.redis = new Redis(config.connection);
+    this.redis = createRedisClient("trigger:cacheStore", config.connection);
   }
 
   private buildCacheKey(namespace: TNamespace, key: string): string {

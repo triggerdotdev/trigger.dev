@@ -14,9 +14,9 @@ import type {
   TaskRunShape,
   AnyBatchedRunHandle,
   AsyncIterableStream,
+  ApiPromise,
 } from "@trigger.dev/core/v3";
 import {
-  ApiPromise,
   CanceledRunResponse,
   CursorPagePromise,
   ListRunResponseItem,
@@ -187,15 +187,14 @@ function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask
           style: "codepath",
         }),
       },
+      prepareData: resolvePayloadAndOutputUrls,
     },
     requestOptions
   );
 
   const $runId = typeof runId === "string" ? runId : runId.id;
 
-  return apiClient.retrieveRun($runId, $requestOptions).then((retrievedRun) => {
-    return resolvePayloadAndOutputUrls(retrievedRun);
-  }) as ApiPromise<RetrieveRunResult<TRunId>>;
+  return apiClient.retrieveRun($runId, $requestOptions) as ApiPromise<RetrieveRunResult<TRunId>>;
 }
 
 async function resolvePayloadAndOutputUrls(run: AnyRetrieveRunResult) {

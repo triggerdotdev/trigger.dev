@@ -450,7 +450,7 @@ export class TriggerTaskService extends BaseService {
                           ),
                           0
                         )
-                      : null;
+                      : body.options.queue?.concurrencyLimit;
 
                   let taskQueue = await tx.taskQueue.findFirst({
                     where: {
@@ -459,59 +459,11 @@ export class TriggerTaskService extends BaseService {
                     },
                   });
 
-                  const existingConcurrencyLimit =
-                    typeof taskQueue?.concurrencyLimit === "number"
-                      ? taskQueue.concurrencyLimit
-                      : undefined;
-
-                  if (taskQueue) {
-                    if (existingConcurrencyLimit !== concurrencyLimit) {
-                      taskQueue = await tx.taskQueue.update({
-                        where: {
-                          id: taskQueue.id,
-                        },
-                        data: {
-                          concurrencyLimit:
-                            typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                        },
-                      });
-
-                      if (typeof taskQueue.concurrencyLimit === "number") {
-                        logger.debug("TriggerTaskService: updating concurrency limit", {
-                          runId: taskRun.id,
-                          friendlyId: taskRun.friendlyId,
-                          taskQueue,
-                          orgId: environment.organizationId,
-                          projectId: environment.projectId,
-                          existingConcurrencyLimit,
-                          concurrencyLimit,
-                          queueOptions: body.options?.queue,
-                        });
-                        await marqs?.updateQueueConcurrencyLimits(
-                          environment,
-                          taskQueue.name,
-                          taskQueue.concurrencyLimit
-                        );
-                      } else {
-                        logger.debug("TriggerTaskService: removing concurrency limit", {
-                          runId: taskRun.id,
-                          friendlyId: taskRun.friendlyId,
-                          taskQueue,
-                          orgId: environment.organizationId,
-                          projectId: environment.projectId,
-                          existingConcurrencyLimit,
-                          concurrencyLimit,
-                          queueOptions: body.options?.queue,
-                        });
-                        await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
-                      }
-                    }
-                  } else {
-                    const queueId = generateFriendlyId("queue");
-
+                  if (!taskQueue) {
+                    // handle conflicts with existing queues
                     taskQueue = await tx.taskQueue.create({
                       data: {
-                        friendlyId: queueId,
+                        friendlyId: generateFriendlyId("queue"),
                         name: queueName,
                         concurrencyLimit,
                         runtimeEnvironmentId: environment.id,
@@ -519,14 +471,35 @@ export class TriggerTaskService extends BaseService {
                         type: "NAMED",
                       },
                     });
+                  }
 
-                    if (typeof taskQueue.concurrencyLimit === "number") {
-                      await marqs?.updateQueueConcurrencyLimits(
-                        environment,
-                        taskQueue.name,
-                        taskQueue.concurrencyLimit
-                      );
-                    }
+                  if (typeof concurrencyLimit === "number") {
+                    logger.debug("TriggerTaskService: updating concurrency limit", {
+                      runId: taskRun.id,
+                      friendlyId: taskRun.friendlyId,
+                      taskQueue,
+                      orgId: environment.organizationId,
+                      projectId: environment.projectId,
+                      concurrencyLimit,
+                      queueOptions: body.options?.queue,
+                    });
+
+                    await marqs?.updateQueueConcurrencyLimits(
+                      environment,
+                      taskQueue.name,
+                      concurrencyLimit
+                    );
+                  } else if (concurrencyLimit === null) {
+                    logger.debug("TriggerTaskService: removing concurrency limit", {
+                      runId: taskRun.id,
+                      friendlyId: taskRun.friendlyId,
+                      taskQueue,
+                      orgId: environment.organizationId,
+                      projectId: environment.projectId,
+                      queueOptions: body.options?.queue,
+                    });
+
+                    await marqs?.removeQueueConcurrencyLimits(environment, taskQueue.name);
                   }
                 }
 
@@ -622,6 +595,18 @@ export class TriggerTaskService extends BaseService {
             ) {
               throw new ServiceValidationError(
                 `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
+              );
+            } else if (
+              Array.isArray(target) &&
+              target.length == 2 &&
+              typeof target[0] === "string" &&
+              typeof target[1] === "string" &&
+              target[0] == "runtimeEnvironmentId" &&
+              target[1] == "name" &&
+              error.message.includes("prisma.taskQueue.create")
+            ) {
+              throw new Error(
+                `Failed to trigger ${taskId} as the queue could not be created do to a unique constraint error, please try again.`
               );
             } else {
               throw new ServiceValidationError(
