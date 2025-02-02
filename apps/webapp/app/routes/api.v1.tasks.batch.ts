@@ -40,13 +40,24 @@ const { action, loader } = createActionApiRoute(
     }
 
     // Check the there are fewer than MAX_BATCH_V2_TRIGGER_ITEMS items
-    if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
-      return json(
-        {
-          error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
-        },
-        { status: 400 }
-      );
+    if (body.dependentAttempt) {
+      if (body.items.length > env.MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS) {
+        return json(
+          {
+            error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS} when batchTriggerAndWait.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
+        return json(
+          {
+            error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const {

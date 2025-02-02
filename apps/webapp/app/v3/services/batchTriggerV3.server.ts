@@ -5,7 +5,13 @@ import {
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
-import { BatchTaskRun, Prisma, TaskRunAttempt } from "@trigger.dev/database";
+import {
+  BatchTaskRun,
+  isUniqueConstraintError,
+  Prisma,
+  TaskRunAttempt,
+} from "@trigger.dev/database";
+import { z } from "zod";
 import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
@@ -20,9 +26,8 @@ import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { z } from "zod";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
+import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -819,20 +824,39 @@ export class BatchTriggerV3Service extends BaseService {
     }
 
     if (!result.isCached) {
-      await $transaction(this._prisma, async (tx) => {
-        await tx.batchTaskRunItem.create({
-          data: {
-            batchTaskRunId: batch.id,
-            taskRunId: result.run.id,
-            status: batchTaskRunItemStatusForRunStatus(result.run.status),
-          },
-        });
+      try {
+        await $transaction(this._prisma, async (tx) => {
+          // [batchTaskRunId, taskRunId] is a unique index
+          await tx.batchTaskRunItem.create({
+            data: {
+              batchTaskRunId: batch.id,
+              taskRunId: result.run.id,
+              status: batchTaskRunItemStatusForRunStatus(result.run.status),
+            },
+          });
 
-        await tx.batchTaskRun.update({
-          where: { id: batch.id },
-          data: { expectedCount: { increment: 1 } },
+          await tx.batchTaskRun.update({
+            where: { id: batch.id },
+            data: { expectedCount: { increment: 1 } },
+          });
         });
-      });
+      } catch (error) {
+        if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
+          // This means there is already a batchTaskRunItem for this batch and taskRun
+          logger.debug(
+            "[BatchTriggerV2][processBatchTaskRunItem] BatchTaskRunItem already exists",
+            {
+              batchId: batch.friendlyId,
+              runId: task.runId,
+              currentIndex,
+            }
+          );
+
+          return;
+        }
+
+        throw error;
+      }
     }
   }
 

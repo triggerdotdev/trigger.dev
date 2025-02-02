@@ -362,6 +362,7 @@ const EnvironmentSchema = z.object({
   MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+  MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
