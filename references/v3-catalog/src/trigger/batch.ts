@@ -792,3 +792,41 @@ export const batchAutoIdempotencyKeyChild = task({
     return payload;
   },
 });
+
+export const batchTriggerIdempotencyKeyTest = task({
+  id: "batch-trigger-idempotency-key-test",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async () => {
+    // Trigger a batch of 2 items with the same idempotency key
+    await batchV2TestChild.batchTrigger(
+      [
+        { payload: { foo: "bar" }, options: { idempotencyKey: "test-idempotency-key" } },
+        { payload: { foo: "baz" }, options: { idempotencyKey: "test-idempotency-key" } },
+      ],
+      {
+        triggerSequentially: true,
+      }
+    );
+
+    // Now trigger a batch of 21 items, with just the last one having an idempotency key
+    await batchV2TestChild.batchTrigger(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { foo: `bar${i}` },
+        options: {},
+      })).concat([
+        {
+          payload: { foo: "baz" },
+          options: { idempotencyKey: "test-idempotency-key-2" },
+        },
+      ]),
+      {
+        triggerSequentially: true,
+      }
+    );
+
+    // Now while that batch is being processed in the background, lets trigger the same task with that idempotency key
+    await batchV2TestChild.trigger({ foo: "baz" }, { idempotencyKey: "test-idempotency-key-2" });
+  },
+});

@@ -55,7 +55,7 @@ import {
   CancelDevSessionRunsServiceOptions,
 } from "~/v3/services/cancelDevSessionRuns.server";
 import { logger } from "./logger.server";
-import { BatchProcessingOptions, BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
+import { BatchProcessingOptions, BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -733,7 +733,7 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new BatchTriggerV2Service(payload.strategy);
+          const service = new BatchTriggerV3Service(payload.strategy);
 
           await service.processBatchTaskRun(payload);
         },

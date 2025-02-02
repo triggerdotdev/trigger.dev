@@ -9,7 +9,7 @@ import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
-import { completeBatchTaskRunItemV3 } from "./batchTriggerV2.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 
 export class ResumeTaskRunDependenciesService extends BaseService {
   public async call(attemptId: string) {

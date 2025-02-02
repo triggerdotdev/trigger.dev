@@ -57,7 +57,34 @@ type RunItemData = {
   taskIdentifier: string;
 };
 
-export class BatchTriggerV2Service extends BaseService {
+/**
+ * ### V3
+ *
+ * BatchTrigger v3 doesn't have any changes from v2, other than a different system for tracking if the
+ * batch is completed.
+ *
+ * v3 BatchTaskRun's now must be "sealed" before they could be considered completed. Being "sealed" means
+ * that all the items in the batch have been processed and the batch is ready to be considered completed.
+ *
+ * We also now track the expected count of items in the batch, and then as each BatchTaskRunItem is set to COMPLETED,
+ * we increment the BatchTaskRun's completed count. Once the completed count is equal to the expected count, and the
+ * batch is sealed, we can consider the batch completed.
+ *
+ * So now when the v3 batch is considered completed, we will enqueue the ResumeBatchRunService to resume the dependent
+ * task attempt if there is one. This is in contrast to v2 batches where every time a task was completed, we would schedule
+ * the ResumeBatchRunService to check if the batch was completed and set it to completed if it was.
+ *
+ * We've also introduced a new column "resumedAt" that will be set when the batch is resumed. Previously in v2 batches, the status == "COMPLETED" was overloaded
+ * to mean that the batch was completed and resumed. Now we have a separate column to track when the batch was resumed (and to make sure it's only resumed once).
+ *
+ * ### V2
+ *
+ * Batch v2 added the ability to trigger more than 100 tasks in a single batch. This was done by offloading the payload to the object store and
+ * then processing the batch in chunks of 50 tasks at a time in the background.
+ *
+ * The other main difference from v1 is that a single batch in v2 could trigger multiple different tasks, whereas in v1 a batch could only trigger a single task.
+ */
+export class BatchTriggerV3Service extends BaseService {
   private _batchProcessingStrategy: BatchProcessingStrategy;
 
   constructor(

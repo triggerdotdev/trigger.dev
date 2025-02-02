@@ -1,8 +1,12 @@
 import { FlushedRunMetadata, sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
+import { findQueueInEnvironment } from "~/models/taskQueue.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { socketIo } from "../handleSocketIo.server";
 import {
   FINAL_ATTEMPT_STATUSES,
   isFailedRunStatus,
@@ -11,15 +15,10 @@ import {
 } from "../taskStatus";
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
-import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import { socketIo } from "../handleSocketIo.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
-import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
-import { $transaction } from "~/db.server";
-import { completeBatchTaskRunItemV3 } from "./batchTriggerV2.server";
+import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 
 type BaseInput = {
   id: string;

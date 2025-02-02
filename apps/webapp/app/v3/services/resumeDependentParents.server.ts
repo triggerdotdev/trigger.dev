@@ -5,7 +5,7 @@ import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
 import { $transaction } from "~/db.server";
-import { completeBatchTaskRunItemV3 } from "./batchTriggerV2.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 
 type Output =
   | {
