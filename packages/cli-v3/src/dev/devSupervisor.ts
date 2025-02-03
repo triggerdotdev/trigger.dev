@@ -18,6 +18,7 @@ import { BackgroundWorkerEngine2 } from "./backgroundWorkerEngine2.js";
 import { WorkerRuntime } from "./workerRuntime.js";
 import { getVersions } from "fast-npm-meta";
 import { chalkTask } from "../utilities/cliOutput.js";
+import { DevRunController } from "../entryPoints/dev-run-controller.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -33,12 +34,25 @@ export async function startWorkerRuntime(options: WorkerRuntimeOptions): Promise
   return runtime;
 }
 
+/**
+ * The DevSupervisor is used when you run the `trigger.dev dev` command (with engine 2.0+)
+ * It's responsible for:
+ *   - Creating/registering BackgroundWorkers
+ *   - Pulling runs from the queue
+ *   - Delegating executing the runs to DevRunController
+ *   - Receiving snapshot update pings (via socket)
+ */
 class DevSupervisor implements WorkerRuntime {
   private config: DevConfigResponseBody;
   private disconnectPresence: (() => void) | undefined;
   private lastManifest?: BuildManifest;
   private latestWorkerId?: string;
+
+  /* Workers are versions of the code */
   private workers: Map<string, BackgroundWorkerEngine2> = new Map();
+
+  /* Map of run friendly id to run controller. They process runs from start to finish.  */
+  private runControllers: Map<string, DevRunController> = new Map();
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -46,7 +60,7 @@ class DevSupervisor implements WorkerRuntime {
     logger.debug("initialized worker runtime", { options: this.options });
 
     //get the settings for dev
-    const settings = await this.options.client.devConfig();
+    const settings = await this.options.client.dev.config();
     if (!settings.success) {
       throw new Error(
         `Failed to connect to ${this.options.client.apiURL}. Couldn't retrieve settings: ${settings.error}`
@@ -61,11 +75,6 @@ class DevSupervisor implements WorkerRuntime {
 
     //start dequeuing
     await this.#dequeueRuns();
-
-    //todo start dequeuing. Each time we dequeue:
-    // Before hitting the API we will see if there are enough resources to dequeue.
-    // 1. If there are messages we will wait a brief period of time and dequeue again
-    // 2. If there are no messages we will wait for a longer period of time and dequeue again
   }
 
   async shutdown(): Promise<void> {
@@ -146,6 +155,8 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
+    //todo handle deprecating worker versions
+
     //get relevant versions
     //ignore deprecated and the latest worker
     const oldWorkerIds = Array.from(this.workers.values())
@@ -154,12 +165,8 @@ class DevSupervisor implements WorkerRuntime {
       .filter((id): id is string => id !== undefined);
 
     try {
-      logger.debug(`Dequeue runs for versions`, {
-        oldWorkerIds,
-        latestWorkerId: this.latestWorkerId,
-      });
       //todo later we should track available resources and machines used, and pass them in here (it supports it)
-      const result = await this.options.client.devDequeue({
+      const result = await this.options.client.dev.dequeue({
         currentWorker: this.latestWorkerId,
         oldWorkers: oldWorkerIds,
       });
@@ -172,15 +179,76 @@ class DevSupervisor implements WorkerRuntime {
 
       //no runs, try again later
       if (result.data.dequeuedMessages.length === 0) {
-        logger.debug(`No runs dequeued`);
+        // logger.debug(`No dequeue runs for versions`, {
+        //   oldWorkerIds,
+        //   latestWorkerId: this.latestWorkerId,
+        // });
         setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
         return;
       }
 
-      logger.debug(`Dequeued runs`, { dequeuedMessages: result.data.dequeuedMessages });
+      logger.debug(`Dequeued runs`, {
+        dequeuedMessages: JSON.stringify(result.data.dequeuedMessages),
+      });
+
+      //start runs
+      for (const message of result.data.dequeuedMessages) {
+        const worker = this.workers.get(message.backgroundWorker.friendlyId);
+
+        if (!worker) {
+          logger.error(`Dequeued a run but there's no BackgroundWorker so we can't execute it`, {
+            run: message.run.id,
+            workerId: message.backgroundWorker.friendlyId,
+          });
+
+          //todo call the API to crash the run with a good message
+          continue;
+        }
+
+        let runController = this.runControllers.get(message.run.id);
+        if (runController) {
+          logger.error(`Dequeuing a run that already has a runController`, {
+            runController: message.run.id,
+          });
+
+          //todo, what do we do here?
+          //todo I think the run shouldn't exist and we should kill the process but TBC
+          continue;
+        }
+
+        if (!worker.serverWorker) {
+          logger.debug(`Worker doesn't have a serverWorker`, {
+            run: message.run.id,
+            worker,
+          });
+          continue;
+        }
+
+        if (!worker.manifest) {
+          logger.debug(`Worker doesn't have a manifest`, {
+            run: message.run.id,
+            worker,
+          });
+          continue;
+        }
+
+        //new run
+        runController = new DevRunController({
+          runFriendlyId: message.run.friendlyId,
+          workerManifest: worker.manifest,
+          buildManifest: worker.build,
+          envVars: worker.params.env,
+          version: worker.serverWorker.version,
+          httpClient: this.options.client,
+        });
+        this.runControllers.set(message.run.id, runController);
+
+        await runController.start(message);
+      }
 
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithRun);
     } catch (error) {
+      logger.error(`Failed to dequeue runs`, { error });
       //dequeue again
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
     }
@@ -188,7 +256,7 @@ class DevSupervisor implements WorkerRuntime {
 
   async #startPresenceConnection() {
     try {
-      const eventSource = await this.options.client.devPresenceConnection();
+      const eventSource = await this.options.client.dev.presenceConnection();
 
       // Regular "ping" messages
       eventSource.addEventListener("presence", (event: any) => {
@@ -304,11 +372,3 @@ function createDuplicateTaskIdOutputErrorMessage(
 
   return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
 }
-
-//todo ignore the dev queue pulling route in the rate limiter
-//todo the queue pull endpoint should just update the presence
-//todo ignore the dev presence
-//we will need to hit the presence endpoint if we aren't going to dequeue because of CPU/RAM
-
-//CLI hits an SSE endpoint, it will periodically update a last seen value in Redis. Look at how to do presence Redis.
-//Frontend will subscribe to Redis for this.

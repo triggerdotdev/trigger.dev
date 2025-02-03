@@ -104,19 +104,17 @@ export function startDevOutput(options: DevOutputOptions) {
     }
   };
 
-  const runStarted = (...[worker, payload]: EventBusEventArgs<"runStarted">) => {
+  const runStarted = (...[worker, execution]: EventBusEventArgs<"runStarted">) => {
     if (!worker.serverWorker) {
       return;
     }
-
-    const { execution } = payload;
 
     // ○ Mar 27 09:17:25.653 -> View logs | 20240326.20 | create-avatar | run_slufhjdfiv8ejnrkw9dsj.1
     const logsUrl = `${baseUrl}/runs/${execution.run.id}`;
     const pipe = chalkGrey("|");
     const bullet = chalkGrey("○");
     const link = chalkLink(cliLink("View logs", logsUrl));
-    let timestampPrefix = chalkGrey(prettyPrintDate(payload.execution.attempt.startedAt));
+    let timestampPrefix = chalkGrey(prettyPrintDate(execution.run.startedAt));
     const workerPrefix = chalkWorker(worker.serverWorker.version);
     const taskPrefix = chalkTask(execution.task.id);
     const runId = chalkRun(`${execution.run.id}.${execution.attempt.number}`);

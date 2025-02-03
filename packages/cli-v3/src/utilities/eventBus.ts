@@ -1,6 +1,7 @@
 import {
   BuildManifest,
   BuildTarget,
+  TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -13,7 +14,7 @@ export type EventBusEvents = {
   workerSkipped: [];
   backgroundWorkerInitialized: [BackgroundWorkerEngine2];
   backgroundWorkerIndexingError: [BuildManifest, Error];
-  runStarted: [BackgroundWorkerEngine2, TaskRunExecutionPayload];
+  runStarted: [BackgroundWorkerEngine2, TaskRunExecution];
   runCompleted: [BackgroundWorkerEngine2, TaskRunExecutionPayload, TaskRunExecutionResult, number];
 };
 
