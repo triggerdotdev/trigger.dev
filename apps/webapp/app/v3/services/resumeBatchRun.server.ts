@@ -9,9 +9,6 @@ const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
 
 type RetrieveBatchRunResult = NonNullable<Awaited<ReturnType<typeof retrieveBatchRun>>>;
 
-// {"batchRunId":"cm6l2qfs400d0dyiczcwiuwrp","dependentTaskAttempt":{"status":"PAUSED","id":"cm6l2qcqf00cydyicryir6xlu","taskRun":{"id":"cm6l2qaw200cudyicktkfh4k9","queue":"task/batch-trigger-sequentially","taskIdentifier":"batch-trigger-sequentially","concurrencyKey":null}},"checkpointEventId":"cm6l2qg7400dgdyicy6qx9s8u","timestamp":"2025-01-31T18:04:52.869Z","name":"webapp","message":"ResumeBatchRunService: Attempt is paused and has a checkpoint event","level":"debug","skipForwarding":true}
-// {"batchRunId":"cm6l2qfs400d0dyiczcwiuwrp","dependentTaskAttempt":{"status":"PAUSED","id":"cm6l2qcqf00cydyicryir6xlu","taskRun":{"id":"cm6l2qaw200cudyicktkfh4k9","queue":"task/batch-trigger-sequentially","taskIdentifier":"batch-trigger-sequentially","concurrencyKey":null}},"checkpointEventId":"cm6l2qg7400dgdyicy6qx9s8u","hasCheckpointEvent":true,"timestamp":"2025-01-31T18:04:52.871Z","name":"webapp","message":"ResumeBatchRunService: with checkpoint was already completed","level":"debug","skipForwarding":true}
-
 export class ResumeBatchRunService extends BaseService {
   public async call(batchRunId: string) {
     const batchRun = await this._prisma.batchTaskRun.findFirst({

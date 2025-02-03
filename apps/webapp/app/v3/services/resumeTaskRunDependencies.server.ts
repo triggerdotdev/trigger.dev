@@ -69,7 +69,13 @@ export class ResumeTaskRunDependenciesService extends BaseService {
     taskAttempt: TaskRunAttempt
   ) {
     if (batchTaskRun.batchVersion === "v3") {
-      await completeBatchTaskRunItemV3(batchItem.id, batchTaskRun.id, this._prisma, true);
+      await completeBatchTaskRunItemV3(
+        batchItem.id,
+        batchTaskRun.id,
+        this._prisma,
+        true,
+        taskAttempt.id
+      );
     } else {
       await $transaction(this._prisma, async (tx) => {
         await tx.batchTaskRunItem.update({
