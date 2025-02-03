@@ -29,7 +29,7 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     runFriendlyId: string;
   }) {
-    const project = await this._replica.project.findUnique({
+    const project = await this._replica.project.findFirst({
       where: {
         slug: projectSlug,
       },

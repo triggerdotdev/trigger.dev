@@ -6,7 +6,7 @@ import { CancelTaskRunService } from "./cancelTaskRun.server";
 
 export class CancelTaskAttemptDependenciesService extends BaseService {
   public async call(attemptId: string) {
-    const taskAttempt = await this._prisma.taskRunAttempt.findUnique({
+    const taskAttempt = await this._prisma.taskRunAttempt.findFirst({
       where: { id: attemptId },
       include: {
         dependencies: {

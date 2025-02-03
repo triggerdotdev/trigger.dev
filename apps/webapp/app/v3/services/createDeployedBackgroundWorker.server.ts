@@ -23,7 +23,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("projectRef", projectRef);
 
-      const deployment = await this._prisma.workerDeployment.findUnique({
+      const deployment = await this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId: deploymentId,
         },

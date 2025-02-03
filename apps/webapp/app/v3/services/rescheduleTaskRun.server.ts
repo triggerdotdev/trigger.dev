@@ -17,7 +17,7 @@ export class RescheduleTaskRunService extends BaseService {
       throw new ServiceValidationError(`Invalid delay: ${body.delay}`);
     }
 
-    return await $transaction(this._prisma, async (tx) => {
+    return await $transaction(this._prisma, "reschedule run", async (tx) => {
       const updatedRun = await tx.taskRun.update({
         where: {
           id: taskRun.id,

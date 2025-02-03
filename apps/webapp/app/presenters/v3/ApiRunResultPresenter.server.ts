@@ -9,7 +9,7 @@ export class ApiRunResultPresenter extends BasePresenter {
     env: AuthenticatedEnvironment
   ): Promise<TaskRunExecutionResult | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const taskRun = await this._prisma.taskRun.findUnique({
+      const taskRun = await this._prisma.taskRun.findFirst({
         where: {
           friendlyId,
           runtimeEnvironmentId: env.id,

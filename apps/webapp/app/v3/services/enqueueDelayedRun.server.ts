@@ -7,7 +7,7 @@ import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public async call(runId: string) {
-    const run = await this._prisma.taskRun.findUnique({
+    const run = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },
@@ -37,7 +37,7 @@ export class EnqueueDelayedRunService extends BaseService {
       return;
     }
 
-    await $transaction(this._prisma, async (tx) => {
+    await $transaction(this._prisma, "delayed run enqueue", async (tx) => {
       await tx.taskRun.update({
         where: {
           id: run.id,

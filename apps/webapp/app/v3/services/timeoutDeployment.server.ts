@@ -6,7 +6,7 @@ import { PrismaClientOrTransaction } from "~/db.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         id,
       },

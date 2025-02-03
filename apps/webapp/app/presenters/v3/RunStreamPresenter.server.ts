@@ -21,7 +21,7 @@ export class RunStreamPresenter {
     request: Request;
     runFriendlyId: TaskRun["friendlyId"];
   }) {
-    const run = await this.#prismaClient.taskRun.findUnique({
+    const run = await this.#prismaClient.taskRun.findFirst({
       where: {
         friendlyId: runFriendlyId,
       },

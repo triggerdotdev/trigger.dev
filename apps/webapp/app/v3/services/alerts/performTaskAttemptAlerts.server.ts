@@ -13,7 +13,7 @@ type FoundTaskAttempt = Prisma.Result<
 
 export class PerformTaskAttemptAlertsService extends BaseService {
   public async call(attemptId: string) {
-    const taskAttempt = await this._prisma.taskRunAttempt.findUnique({
+    const taskAttempt = await this._prisma.taskRunAttempt.findFirst({
       where: { id: attemptId },
       include: {
         taskRun: true,
@@ -46,7 +46,7 @@ export class PerformTaskAttemptAlertsService extends BaseService {
   }
 
   async #createAndSendAlert(alertChannel: ProjectAlertChannel, taskAttempt: FoundTaskAttempt) {
-    await $transaction(this._prisma, async (tx) => {
+    await $transaction(this._prisma, "create and send attempt alert", async (tx) => {
       const alert = await this._prisma.projectAlert.create({
         data: {
           friendlyId: generateFriendlyId("alert"),

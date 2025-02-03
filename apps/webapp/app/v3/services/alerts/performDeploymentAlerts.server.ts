@@ -7,7 +7,7 @@ import { DeliverAlertService } from "./deliverAlert.server";
 
 export class PerformDeploymentAlertsService extends BaseService {
   public async call(deploymentId: string) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: { id: deploymentId },
       include: {
         environment: true,
@@ -45,7 +45,7 @@ export class PerformDeploymentAlertsService extends BaseService {
     deployment: WorkerDeployment,
     alertType: ProjectAlertType
   ) {
-    await $transaction(this._prisma, async (tx) => {
+    await $transaction(this._prisma, "create and send deploy alert", async (tx) => {
       const alert = await this._prisma.projectAlert.create({
         data: {
           friendlyId: generateFriendlyId("alert"),
