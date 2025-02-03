@@ -1,9 +1,3 @@
-import { logger } from "../utilities/logger.js";
-import { OnWaitMessage, TaskRunProcess } from "../executions/taskRunProcess.js";
-import { env as stdEnv } from "std-env";
-import { z } from "zod";
-import { randomUUID } from "crypto";
-import { readJSONFile } from "../utilities/fileSystem.js";
 import {
   BuildManifest,
   CompleteRunAttemptResult,
@@ -14,17 +8,14 @@ import {
   TaskRunFailedExecutionResult,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
-import {
-  WORKLOAD_HEADERS,
-  WorkloadClientToServerEvents,
-  WorkloadHttpClient,
-  WorkloadServerToClientEvents,
-  type WorkloadRunAttemptStartResponseBody,
-} from "@trigger.dev/core/v3/workers";
-import { assertExhaustive } from "../utilities/assertExhaustive.js";
+import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
 import { CliApiClient } from "../apiClient.js";
+import { OnWaitMessage, TaskRunProcess } from "../executions/taskRunProcess.js";
+import { assertExhaustive } from "../utilities/assertExhaustive.js";
+import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
+import { join } from "node:path";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
@@ -439,6 +430,7 @@ export class DevRunController {
       env: {
         ...sanitizeEnvVars(envVars ?? {}),
         ...sanitizeEnvVars(this.envVars),
+        TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.buildManifest.outputPath, "index.json"),
       },
       serverWorker: {
         id: "unmanaged",
