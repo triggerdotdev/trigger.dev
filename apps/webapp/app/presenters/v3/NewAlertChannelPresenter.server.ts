@@ -8,7 +8,7 @@ import { WebClient } from "@slack/web-api";
 
 export class NewAlertChannelPresenter extends BasePresenter {
   public async call(projectId: string) {
-    const project = await this._prisma.project.findUniqueOrThrow({
+    const project = await this._prisma.project.findFirstOrThrow({
       where: {
         id: projectId,
       },

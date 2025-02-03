@@ -11,7 +11,7 @@ import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export class RequeueTaskRunService extends BaseService {
   public async call(runId: string) {
-    const taskRun = await this._prisma.taskRun.findUnique({
+    const taskRun = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },

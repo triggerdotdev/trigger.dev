@@ -19,7 +19,7 @@ export class ExpireEnqueuedRunService extends BaseService {
   }
 
   public async call(runId: string) {
-    const run = await this._prisma.taskRun.findUnique({
+    const run = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },

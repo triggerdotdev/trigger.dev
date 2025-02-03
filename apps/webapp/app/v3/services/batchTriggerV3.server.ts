@@ -159,7 +159,7 @@ export class BatchTriggerV3Service extends BaseService {
           span.setAttribute("batchId", batchId);
 
           const dependentAttempt = body?.dependentAttempt
-            ? await this._prisma.taskRunAttempt.findUnique({
+            ? await this._prisma.taskRunAttempt.findFirst({
                 where: { friendlyId: body.dependentAttempt },
                 include: {
                   taskRun: {
@@ -456,7 +456,7 @@ export class BatchTriggerV3Service extends BaseService {
 
       return batch;
     } else {
-      return await $transaction(this._prisma, async (tx) => {
+      return await $transaction(this._prisma, "create batch run", async (tx) => {
         const batch = await tx.batchTaskRun.create({
           data: {
             friendlyId: batchId,
@@ -906,7 +906,9 @@ export async function completeBatchTaskRunItemV3(
   tx: PrismaClientOrTransaction,
   scheduleResumeOnComplete = false
 ) {
-  await $transaction(tx, async (tx) => {
+  await $transaction(tx, "completeBatchTaskRunItemV3", async (tx, span) => {
+    span?.setAttribute("batch_id", batchTaskRunId);
+
     // Update the item to complete
     const updated = await tx.batchTaskRunItem.updateMany({
       where: {

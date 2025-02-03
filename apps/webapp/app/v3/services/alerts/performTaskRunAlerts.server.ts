@@ -45,7 +45,7 @@ export class PerformTaskRunAlertsService extends BaseService {
   }
 
   async #createAndSendAlert(alertChannel: ProjectAlertChannel, run: FoundRun) {
-    await $transaction(this._prisma, async (tx) => {
+    await $transaction(this._prisma, "create and send run alert", async (tx) => {
       const alert = await this._prisma.projectAlert.create({
         data: {
           friendlyId: generateFriendlyId("alert"),

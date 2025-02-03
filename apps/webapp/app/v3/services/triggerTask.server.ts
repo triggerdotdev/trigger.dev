@@ -174,7 +174,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentAttempt = body.options?.dependentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.dependentAttempt },
             include: {
               taskRun: {
@@ -211,7 +211,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentAttempt = body.options?.parentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.parentAttempt },
             include: {
               taskRun: {
@@ -228,7 +228,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentBatchRun = body.options?.dependentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.dependentBatch },
             include: {
               dependentTaskAttempt: {
@@ -272,7 +272,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentBatchRun = body.options?.parentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.parentBatch },
             include: {
               dependentTaskAttempt: {
@@ -320,13 +320,11 @@ export class TriggerTaskService extends BaseService {
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
                 const lockedToBackgroundWorker = body.options?.lockToVersion
-                  ? await tx.backgroundWorker.findUnique({
+                  ? await tx.backgroundWorker.findFirst({
                       where: {
-                        projectId_runtimeEnvironmentId_version: {
-                          projectId: environment.projectId,
-                          runtimeEnvironmentId: environment.id,
-                          version: body.options?.lockToVersion,
-                        },
+                        projectId: environment.projectId,
+                        runtimeEnvironmentId: environment.id,
+                        version: body.options?.lockToVersion,
                       },
                     })
                   : undefined;
@@ -669,12 +667,10 @@ export class TriggerTaskService extends BaseService {
       return defaultQueueName;
     }
 
-    const task = await this._prisma.backgroundWorkerTask.findUnique({
+    const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
-        workerId_slug: {
-          workerId: worker.id,
-          slug: taskId,
-        },
+        workerId: worker.id,
+        slug: taskId,
       },
     });
 

@@ -44,7 +44,7 @@ export class CreateTaskRunAttemptService extends BaseService {
         span.setAttribute("taskRunId", runId);
       }
 
-      const taskRun = await this._prisma.taskRun.findUnique({
+      const taskRun = await this._prisma.taskRun.findFirst({
         where: {
           id: !isFriendlyId ? runId : undefined,
           friendlyId: isFriendlyId ? runId : undefined,
@@ -130,7 +130,7 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Max attempts reached", 400);
       }
 
-      const taskRunAttempt = await $transaction(this._prisma, async (tx) => {
+      const taskRunAttempt = await $transaction(this._prisma, "create attempt", async (tx) => {
         const taskRunAttempt = await tx.taskRunAttempt.create({
           data: {
             number: nextAttemptNumber,

@@ -1583,6 +1583,7 @@ model BackgroundWorker {
   supportsLazyAttempts Boolean @default(false)
 
   @@unique([projectId, runtimeEnvironmentId, version])
+  @@index([runtimeEnvironmentId])
 }
 
 model BackgroundWorkerFile {
@@ -1646,6 +1647,7 @@ model BackgroundWorkerTask {
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
+  @@index([runtimeEnvironmentId, projectId])
 }
 
 enum TaskTriggerSource {
@@ -1912,6 +1914,9 @@ model TaskRunDependency {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([dependentAttemptId])
+  @@index([dependentBatchRunId])
 }
 
 /// deprecated, we hadn't included the project id in the unique constraint
@@ -2196,6 +2201,7 @@ model BatchTaskRun {
   @@unique([oneTimeUseToken])
   ///this is used for all engine versions
   @@unique([runtimeEnvironmentId, idempotencyKey])
+  @@index([dependentTaskAttemptId])
 }
 
 enum BatchTaskRunStatus {
@@ -2325,6 +2331,9 @@ model CheckpointRestoreEvent {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([checkpointId])
+  @@index([runId])
 }
 
 enum CheckpointRestoreEventType {

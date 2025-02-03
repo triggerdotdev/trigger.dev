@@ -30,7 +30,7 @@ export class CreateCheckpointService extends BaseService {
   > {
     logger.debug(`Creating checkpoint`, params);
 
-    const attempt = await this._prisma.taskRunAttempt.findUnique({
+    const attempt = await this._prisma.taskRunAttempt.findFirst({
       where: {
         friendlyId: params.attemptFriendlyId,
       },

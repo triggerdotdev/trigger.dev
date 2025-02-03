@@ -547,7 +547,7 @@ export class DeliverAlertService extends BaseService {
 
     // Get the org integration
     const integration = slackProperties.data.integrationId
-      ? await this._prisma.organizationIntegration.findUnique({
+      ? await this._prisma.organizationIntegration.findFirst({
           where: {
             id: slackProperties.data.integrationId,
             organizationId: alert.project.organizationId,

@@ -37,17 +37,15 @@ export class UpsertTaskScheduleService extends BaseService {
         : nanoid(24);
 
     const existingSchedule = schedule.friendlyId
-      ? await this._prisma.taskSchedule.findUnique({
+      ? await this._prisma.taskSchedule.findFirst({
           where: {
             friendlyId: schedule.friendlyId,
           },
         })
-      : await this._prisma.taskSchedule.findUnique({
+      : await this._prisma.taskSchedule.findFirst({
           where: {
-            projectId_deduplicationKey: {
-              projectId,
-              deduplicationKey,
-            },
+            projectId,
+            deduplicationKey,
           },
         });
 
@@ -94,50 +92,54 @@ export class UpsertTaskScheduleService extends BaseService {
     projectId: string,
     deduplicationKey: string
   ) {
-    return await $transaction(this._prisma, async (tx) => {
-      const scheduleRecord = await tx.taskSchedule.create({
-        data: {
-          projectId,
-          friendlyId: generateFriendlyId("sched"),
-          taskIdentifier: options.taskIdentifier,
-          deduplicationKey,
-          userProvidedDeduplicationKey:
-            options.deduplicationKey !== undefined && options.deduplicationKey !== "",
-          generatorExpression: options.cron,
-          generatorDescription: cronstrue.toString(options.cron),
-          timezone: options.timezone ?? "UTC",
-          externalId: options.externalId ? options.externalId : undefined,
-        },
-      });
-
-      const registerNextService = new RegisterNextTaskScheduleInstanceService(tx);
-
-      //create the instances (links to environments)
-
-      for (const environmentId of options.environments) {
-        const instance = await tx.taskScheduleInstance.create({
+    return await $transaction(
+      this._prisma,
+      "UpsertTaskSchedule.upsertNewSchedule",
+      async (tx, span) => {
+        const scheduleRecord = await tx.taskSchedule.create({
           data: {
-            taskScheduleId: scheduleRecord.id,
-            environmentId,
+            projectId,
+            friendlyId: generateFriendlyId("sched"),
+            taskIdentifier: options.taskIdentifier,
+            deduplicationKey,
+            userProvidedDeduplicationKey:
+              options.deduplicationKey !== undefined && options.deduplicationKey !== "",
+            generatorExpression: options.cron,
+            generatorDescription: cronstrue.toString(options.cron),
+            timezone: options.timezone ?? "UTC",
+            externalId: options.externalId ? options.externalId : undefined,
           },
-          include: {
-            environment: {
-              include: {
-                orgMember: {
-                  include: {
-                    user: true,
+        });
+
+        const registerNextService = new RegisterNextTaskScheduleInstanceService(tx);
+
+        //create the instances (links to environments)
+
+        for (const environmentId of options.environments) {
+          const instance = await tx.taskScheduleInstance.create({
+            data: {
+              taskScheduleId: scheduleRecord.id,
+              environmentId,
+            },
+            include: {
+              environment: {
+                include: {
+                  orgMember: {
+                    include: {
+                      user: true,
+                    },
                   },
                 },
               },
             },
-          },
-        });
+          });
 
-        await registerNextService.call(instance.id);
+          await registerNextService.call(instance.id);
+        }
+
+        return { scheduleRecord };
       }
-
-      return { scheduleRecord };
-    });
+    );
   }
 
   async #updateExistingSchedule(

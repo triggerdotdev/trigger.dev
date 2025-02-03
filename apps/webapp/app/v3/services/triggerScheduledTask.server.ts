@@ -12,7 +12,7 @@ export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
     const registerNextService = new RegisterNextTaskScheduleInstanceService();
 
-    const instance = await this._prisma.taskScheduleInstance.findUnique({
+    const instance = await this._prisma.taskScheduleInstance.findFirst({
       where: {
         id: instanceId,
       },

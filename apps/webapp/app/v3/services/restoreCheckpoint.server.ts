@@ -13,7 +13,7 @@ export class RestoreCheckpointService extends BaseService {
   }): Promise<Checkpoint | undefined> {
     logger.debug(`Restoring checkpoint`, params);
 
-    const checkpointEvent = await this._prisma.checkpointRestoreEvent.findUnique({
+    const checkpointEvent = await this._prisma.checkpointRestoreEvent.findFirst({
       where: {
         id: params.eventId,
         type: "CHECKPOINT",

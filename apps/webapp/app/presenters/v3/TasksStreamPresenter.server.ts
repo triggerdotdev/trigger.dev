@@ -33,7 +33,7 @@ export class TasksStreamPresenter {
     projectSlug: string;
     userId: string;
   }) {
-    const project = await this.#prismaClient.project.findUnique({
+    const project = await this.#prismaClient.project.findFirst({
       where: {
         slug: projectSlug,
         organization: {

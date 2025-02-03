@@ -23,7 +23,7 @@ export class DeploymentIndexFailed extends BaseService {
   ) {
     const isFriendlyId = maybeFriendlyId.startsWith("deployment_");
 
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: isFriendlyId
         ? {
             friendlyId: maybeFriendlyId,

@@ -606,7 +606,7 @@ export class CompleteAttemptService extends BaseService {
   }
 
   async #getEnvironment(id: string) {
-    return await this._prisma.runtimeEnvironment.findUniqueOrThrow({
+    return await this._prisma.runtimeEnvironment.findFirstOrThrow({
       where: {
         id,
       },
@@ -619,7 +619,7 @@ export class CompleteAttemptService extends BaseService {
 }
 
 async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: string) {
-  return prismaClient.taskRunAttempt.findUnique({
+  return prismaClient.taskRunAttempt.findFirst({
     where: { friendlyId },
     include: {
       taskRun: true,
