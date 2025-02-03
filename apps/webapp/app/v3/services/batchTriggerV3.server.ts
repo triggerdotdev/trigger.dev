@@ -904,7 +904,8 @@ export async function completeBatchTaskRunItemV3(
   itemId: string,
   batchTaskRunId: string,
   tx: PrismaClientOrTransaction,
-  scheduleResumeOnComplete = false
+  scheduleResumeOnComplete = false,
+  taskRunAttemptId?: string
 ) {
   await $transaction(tx, "completeBatchTaskRunItemV3", async (tx, span) => {
     span?.setAttribute("batch_id", batchTaskRunId);
@@ -917,6 +918,7 @@ export async function completeBatchTaskRunItemV3(
       },
       data: {
         status: "COMPLETED",
+        taskRunAttemptId,
       },
     });
 

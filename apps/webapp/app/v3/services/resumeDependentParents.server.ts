@@ -257,7 +257,8 @@ export class ResumeDependentParentsService extends BaseService {
           batchTaskRunItem.id,
           batchTaskRunItem.batchTaskRunId,
           this._prisma,
-          true
+          true,
+          lastAttempt.id
         );
       } else {
         logger.debug(
