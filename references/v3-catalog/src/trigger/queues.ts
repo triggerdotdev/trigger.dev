@@ -1,60 +1,58 @@
-import { logger, runs, task, wait } from "@trigger.dev/sdk/v3";
+import { logger, runs, task, wait, auth } from "@trigger.dev/sdk/v3";
 
 export const queuesController = task({
   id: "queues/controller",
-  run: async ({
-    numberOfQueues = 20,
-    length = 20,
-    waitSeconds = 3,
-  }: {
-    numberOfQueues?: number;
-    length?: number;
-    waitSeconds?: number;
-  }) => {
+  run: async (
+    {
+      numberOfQueues = 20,
+      length = 20,
+      waitSeconds = 3,
+    }: {
+      numberOfQueues?: number;
+      length?: number;
+      waitSeconds?: number;
+    },
+    { ctx }
+  ) => {
+    const publicToken = await auth.createPublicToken({
+      scopes: {
+        read: {
+          runs: true,
+        },
+      },
+    });
+
+    logger.debug("Public token", { publicToken });
+
     await Promise.all([
       queuesTest.trigger(
         { waitSeconds },
         {
-          queue: {
-            name: "controller-3",
-            concurrencyLimit: 9,
-          },
+          idempotencyKey: ctx.run.id,
         }
       ),
       queuesTest.trigger(
         { waitSeconds },
         {
-          queue: {
-            name: "controller-3",
-            concurrencyLimit: 9,
-          },
+          idempotencyKey: ctx.run.id,
         }
       ),
       queuesTest.trigger(
         { waitSeconds },
         {
-          queue: {
-            name: "controller-3",
-            concurrencyLimit: 9,
-          },
+          idempotencyKey: ctx.run.id,
         }
       ),
       queuesTest.trigger(
         { waitSeconds },
         {
-          queue: {
-            name: "controller-3",
-            concurrencyLimit: 9,
-          },
+          idempotencyKey: ctx.run.id,
         }
       ),
       queuesTest.trigger(
         { waitSeconds },
         {
-          queue: {
-            name: "controller-3",
-            concurrencyLimit: 9,
-          },
+          idempotencyKey: ctx.run.id,
         }
       ),
     ]);

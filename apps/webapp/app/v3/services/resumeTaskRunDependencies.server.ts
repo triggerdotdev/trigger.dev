@@ -1,18 +1,28 @@
-import { BatchTaskRunItem, TaskRunAttempt, TaskRunDependency } from "@trigger.dev/database";
+import {
+  BatchTaskRun,
+  BatchTaskRunItem,
+  TaskRunAttempt,
+  TaskRunDependency,
+} from "@trigger.dev/database";
 import { $transaction, PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 
 export class ResumeTaskRunDependenciesService extends BaseService {
   public async call(attemptId: string) {
-    const taskAttempt = await this._prisma.taskRunAttempt.findUnique({
+    const taskAttempt = await this._prisma.taskRunAttempt.findFirst({
       where: { id: attemptId },
       include: {
         taskRun: {
           include: {
-            batchItems: true,
+            batchItems: {
+              include: {
+                batchTaskRun: true,
+              },
+            },
             dependency: {
               include: {
                 dependentAttempt: true,
@@ -42,7 +52,7 @@ export class ResumeTaskRunDependenciesService extends BaseService {
 
     if (batchItems.length) {
       for (const batchItem of batchItems) {
-        await this.#resumeBatchItem(batchItem, taskAttempt);
+        await this.#resumeBatchItem(batchItem, batchItem.batchTaskRun, taskAttempt);
       }
       return;
     }
@@ -53,20 +63,28 @@ export class ResumeTaskRunDependenciesService extends BaseService {
     }
   }
 
-  async #resumeBatchItem(batchItem: BatchTaskRunItem, taskAttempt: TaskRunAttempt) {
-    await $transaction(this._prisma, async (tx) => {
-      await tx.batchTaskRunItem.update({
-        where: {
-          id: batchItem.id,
-        },
-        data: {
-          status: "COMPLETED",
-          taskRunAttemptId: taskAttempt.id,
-        },
-      });
+  async #resumeBatchItem(
+    batchItem: BatchTaskRunItem,
+    batchTaskRun: BatchTaskRun,
+    taskAttempt: TaskRunAttempt
+  ) {
+    if (batchTaskRun.batchVersion === "v3") {
+      await completeBatchTaskRunItemV3(batchItem.id, batchTaskRun.id, this._prisma, true);
+    } else {
+      await $transaction(this._prisma, async (tx) => {
+        await tx.batchTaskRunItem.update({
+          where: {
+            id: batchItem.id,
+          },
+          data: {
+            status: "COMPLETED",
+            taskRunAttemptId: taskAttempt.id,
+          },
+        });
 
-      await ResumeBatchRunService.enqueue(batchItem.batchTaskRunId, tx);
-    });
+        await ResumeBatchRunService.enqueue(batchItem.batchTaskRunId, false, tx);
+      });
+    }
   }
 
   async #resumeDependency(dependency: TaskRunDependency, taskAttempt: TaskRunAttempt) {

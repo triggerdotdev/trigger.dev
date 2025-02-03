@@ -56,3 +56,34 @@ export async function $transaction<R>(
     throw error;
   }
 }
+
+export function isUniqueConstraintError<T extends readonly string[]>(
+  error: unknown,
+  columns: T
+): boolean {
+  if (!isPrismaKnownError(error)) {
+    return false;
+  }
+
+  if (error.code !== "P2002") {
+    return false;
+  }
+
+  const target = error.meta?.target;
+
+  if (!Array.isArray(target)) {
+    return false;
+  }
+
+  if (target.length !== columns.length) {
+    return false;
+  }
+
+  for (let i = 0; i < columns.length; i++) {
+    if (target[i] !== columns[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}

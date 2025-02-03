@@ -12,8 +12,8 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   BatchProcessingStrategy,
-  BatchTriggerV2Service,
-} from "~/v3/services/batchTriggerV2.server";
+  BatchTriggerV3Service,
+} from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
@@ -40,13 +40,24 @@ const { action, loader } = createActionApiRoute(
     }
 
     // Check the there are fewer than MAX_BATCH_V2_TRIGGER_ITEMS items
-    if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
-      return json(
-        {
-          error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
-        },
-        { status: 400 }
-      );
+    if (body.dependentAttempt) {
+      if (body.items.length > env.MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS) {
+        return json(
+          {
+            error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS} when batchTriggerAndWait.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (body.items.length > env.MAX_BATCH_V2_TRIGGER_ITEMS) {
+        return json(
+          {
+            error: `Batch size of ${body.items.length} is too large. Maximum allowed batch size is ${env.MAX_BATCH_V2_TRIGGER_ITEMS}.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const {
@@ -85,7 +96,7 @@ const { action, loader } = createActionApiRoute(
       resolveIdempotencyKeyTTL(idempotencyKeyTTL) ??
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30);
 
-    const service = new BatchTriggerV2Service(batchProcessingStrategy ?? undefined);
+    const service = new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
@@ -118,7 +129,7 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: 422 });
       } else if (error instanceof Error) {
         return json(
-          { error: error.message },
+          { error: "Something went wrong" },
           { status: 500, headers: { "x-should-retry": "false" } }
         );
       }

@@ -94,7 +94,12 @@ export class CreateCheckpointService extends BaseService {
     }
 
     //sleep to test slow checkpoints
-    // await new Promise((resolve) => setTimeout(resolve, 60_000));
+    // Sleep a random value between 4 and 30 seconds
+    // await new Promise((resolve) => {
+    //   const waitSeconds = Math.floor(Math.random() * 26) + 4;
+    //   logger.log(`Sleep for ${waitSeconds} seconds`);
+    //   setTimeout(resolve, waitSeconds * 1000);
+    // });
 
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
@@ -246,6 +251,7 @@ export class CreateCheckpointService extends BaseService {
           const batchRun = await this._prisma.batchTaskRun.findFirst({
             select: {
               id: true,
+              batchVersion: true,
             },
             where: {
               friendlyId: reason.batchFriendlyId,
@@ -276,7 +282,11 @@ export class CreateCheckpointService extends BaseService {
             true
           );
 
-          await ResumeBatchRunService.enqueue(batchRun.id, this._prisma);
+          await ResumeBatchRunService.enqueue(
+            batchRun.id,
+            batchRun.batchVersion === "v3",
+            this._prisma
+          );
 
           return {
             success: true,

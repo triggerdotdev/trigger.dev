@@ -131,14 +131,14 @@ export class TriggerScheduledTaskService extends BaseService {
           payloadPacket,
         });
 
-        const run = await triggerTask.call(
+        const result = await triggerTask.call(
           instance.taskSchedule.taskIdentifier,
           instance.environment,
           { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
           { customIcon: "scheduled" }
         );
 
-        if (!run) {
+        if (!result) {
           logger.error("Failed to trigger task", {
             instanceId,
             scheduleId: instance.taskSchedule.friendlyId,
@@ -147,7 +147,7 @@ export class TriggerScheduledTaskService extends BaseService {
         } else {
           await this._prisma.taskRun.update({
             where: {
-              id: run.id,
+              id: result.run.id,
             },
             data: {
               scheduleId: instance.taskSchedule.id,
