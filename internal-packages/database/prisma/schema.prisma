@@ -1171,6 +1171,8 @@ model SecretStore {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
 }
 
 model TriggerSource {
