@@ -20,6 +20,11 @@ export function flattenIdempotencyKey(
   }
 
   if (Array.isArray(idempotencyKey)) {
+    //if any items are undefined, then return undefined for the entire key
+    if (idempotencyKey.some((i) => i === undefined)) {
+      return;
+    }
+
     return idempotencyKey.flatMap((key) => {
       const k = flattenIdempotencyKey(key);
       if (!k) return [];
