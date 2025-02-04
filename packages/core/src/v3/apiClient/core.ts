@@ -655,6 +655,10 @@ export class ZodFetchSSEResult<TMessageCatalog extends ZodFetchSSEMessageCatalog
     });
   }
 
+  public onConnectionError(handler: (error: Event) => void) {
+    this._eventSource.onerror = handler;
+  }
+
   public onMessage<T extends keyof TMessageCatalog>(
     type: T,
     handler: ZodFetchSSEMessageHandlers<TMessageCatalog>[T]

@@ -281,6 +281,13 @@ export class CliApiClient {
       },
     });
 
+    source.onConnectionError((error) => {
+      rejectPromise({
+        success: false,
+        error,
+      });
+    });
+
     source.onMessage("complete", (message) => {
       resolvePromise({
         success: true,
