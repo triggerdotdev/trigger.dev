@@ -18,6 +18,7 @@ export default defineConfig({
   instrumentations: [new OpenAIInstrumentation()],
   additionalFiles: ["wrangler/wrangler.toml"],
   maxDuration: 3600,
+  dirs: ["./src/trigger"],
   retries: {
     enabledInDev: true,
     default: {
