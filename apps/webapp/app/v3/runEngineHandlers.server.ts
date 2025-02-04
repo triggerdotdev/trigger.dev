@@ -355,7 +355,13 @@ export function registerRunEngineEventBusHandlers() {
       const runFriendlyId = RunId.toFriendlyId(run.id);
       const room = roomFromFriendlyRunId(runFriendlyId);
 
+      //send the notification to connected workers
       socketIo.workerNamespace
+        .to(room)
+        .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
+
+      //send the notification to connected dev workers
+      socketIo.devWorkerNamespace
         .to(room)
         .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
 

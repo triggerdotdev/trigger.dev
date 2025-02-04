@@ -19,6 +19,13 @@ import { WorkerRuntime } from "./workerRuntime.js";
 import { getVersions } from "fast-npm-meta";
 import { chalkTask } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
+import { io, Socket } from "socket.io-client";
+import {
+  WorkerClientToServerEvents,
+  WorkerServerToClientEvents,
+  WorkloadClientToServerEvents,
+  WorkloadServerToClientEvents,
+} from "@trigger.dev/core/v3/workers";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -48,11 +55,16 @@ class DevSupervisor implements WorkerRuntime {
   private lastManifest?: BuildManifest;
   private latestWorkerId?: string;
 
-  /* Workers are versions of the code */
+  /** Receive notifications when runs change state */
+  private socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+
+  /** Workers are versions of the code */
   private workers: Map<string, BackgroundWorkerEngine2> = new Map();
 
-  /* Map of run friendly id to run controller. They process runs from start to finish.  */
+  /** Map of run friendly id to run controller. They process runs from start to finish.  */
   private runControllers: Map<string, DevRunController> = new Map();
+
+  private socketConnections = new Set<string>();
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -69,6 +81,8 @@ class DevSupervisor implements WorkerRuntime {
 
     logger.debug("Got dev settings", { settings: settings.data });
     this.config = settings.data;
+
+    this.#createSocket();
 
     //start an SSE connection for presence
     this.disconnectPresence = await this.#startPresenceConnection();
@@ -197,7 +211,7 @@ class DevSupervisor implements WorkerRuntime {
 
         if (!worker) {
           logger.error(`Dequeued a run but there's no BackgroundWorker so we can't execute it`, {
-            run: message.run.id,
+            run: message.run.friendlyId,
             workerId: message.backgroundWorker.friendlyId,
           });
 
@@ -205,10 +219,10 @@ class DevSupervisor implements WorkerRuntime {
           continue;
         }
 
-        let runController = this.runControllers.get(message.run.id);
+        let runController = this.runControllers.get(message.run.friendlyId);
         if (runController) {
           logger.error(`Dequeuing a run that already has a runController`, {
-            runController: message.run.id,
+            runController: message.run.friendlyId,
           });
 
           //todo, what do we do here?
@@ -218,7 +232,7 @@ class DevSupervisor implements WorkerRuntime {
 
         if (!worker.serverWorker) {
           logger.debug(`Worker doesn't have a serverWorker`, {
-            run: message.run.id,
+            run: message.run.friendlyId,
             worker,
           });
           continue;
@@ -226,7 +240,7 @@ class DevSupervisor implements WorkerRuntime {
 
         if (!worker.manifest) {
           logger.debug(`Worker doesn't have a manifest`, {
-            run: message.run.id,
+            run: message.run.friendlyId,
             worker,
           });
           continue;
@@ -241,10 +255,19 @@ class DevSupervisor implements WorkerRuntime {
           version: worker.serverWorker.version,
           httpClient: this.options.client,
           onFinished: () => {
-            this.runControllers.delete(message.run.id);
+            logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
+            runController?.stop();
+            this.runControllers.delete(message.run.friendlyId);
+            this.#unsubscribeFromRunNotifications(message.run.friendlyId);
+          },
+          onSubscribeToRunNotifications: async (run, snapshot) => {
+            this.#subscribeToRunNotifications();
+          },
+          onUnsubscribeFromRunNotifications: async (run, snapshot) => {
+            this.#unsubscribeFromRunNotifications(run.friendlyId);
           },
         });
-        this.runControllers.set(message.run.id, runController);
+        this.runControllers.set(message.run.friendlyId, runController);
 
         await runController.start(message);
       }
@@ -328,6 +351,92 @@ class DevSupervisor implements WorkerRuntime {
     }
 
     this.workers.set(worker.serverWorker.id, worker);
+  }
+
+  #createSocket() {
+    const wsUrl = new URL(this.options.client.apiURL);
+    wsUrl.pathname = "/dev-worker";
+
+    this.socket = io(wsUrl.href, {
+      transports: ["websocket"],
+      extraHeaders: {
+        Authorization: `Bearer ${this.options.client.accessToken}`,
+      },
+    });
+    this.socket.on("run:notify", async ({ version, run }) => {
+      console.log("[DevSupervisor] Received run notification", { version, run });
+
+      this.options.client.dev.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: "run:notify received by runner",
+      });
+
+      const controller = this.runControllers.get(run.friendlyId);
+
+      if (!controller) {
+        logger.debug("[DevSupervisor] Ignoring notification, no local run ID", {
+          runId: run.friendlyId,
+        });
+        return;
+      }
+
+      await controller.getLatestSnapshot();
+    });
+    this.socket.on("connect", () => {
+      console.log("[DevSupervisor] Connected to supervisor");
+
+      for (const controller of this.runControllers.values()) {
+        controller.resubscribeToRunNotifications();
+      }
+    });
+    this.socket.on("connect_error", (error) => {
+      console.error("[DevSupervisor] Connection error", { error });
+    });
+    this.socket.on("disconnect", (reason, description) => {
+      console.log("[DevSupervisor] Disconnected from supervisor", { reason, description });
+    });
+
+    const interval = setInterval(() => {
+      logger.debug("[DevSupervisor] Socket connections", {
+        connections: Array.from(this.socketConnections),
+      });
+    }, 5000);
+  }
+
+  #subscribeToRunNotifications() {
+    const runFriendlyIds = Array.from(this.runControllers.keys());
+
+    if (!this.socket) {
+      console.error("[DevSupervisor] Socket not connected");
+      return;
+    }
+
+    for (const id of runFriendlyIds) {
+      this.socketConnections.add(id);
+    }
+
+    logger.debug("[DevSupervisor] Subscribing to run notifications", {
+      runFriendlyIds,
+      connections: Array.from(this.socketConnections),
+    });
+
+    this.socket.emit("run:subscribe", { version: "1", runFriendlyIds });
+  }
+
+  #unsubscribeFromRunNotifications(friendlyId: string) {
+    if (!this.socket) {
+      console.error("[DevSupervisor] Socket not connected");
+      return;
+    }
+
+    this.socketConnections.delete(friendlyId);
+
+    logger.debug("[DevSupervisor] Unsubscribing from run notifications", {
+      runFriendlyId: friendlyId,
+      connections: Array.from(this.socketConnections),
+    });
+
+    this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds: [friendlyId] });
   }
 }
 

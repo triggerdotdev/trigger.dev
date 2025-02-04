@@ -1,3 +1,5 @@
+import { EventBusEventArgs } from "@internal/run-engine/engine/eventBus";
+import { createAdapter } from "@socket.io/redis-adapter";
 import {
   ClientToSharedQueueMessages,
   CoordinatorSocketData,
@@ -7,33 +9,32 @@ import {
   ProviderToPlatformMessages,
   SharedQueueToClientMessages,
 } from "@trigger.dev/core/v3";
-import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
-import { Namespace, Server, Socket } from "socket.io";
-import { env } from "~/env.server";
-import { singleton } from "~/utils/singleton";
-import { SharedSocketConnection } from "./sharedSocketConnection";
-import { CreateCheckpointService } from "./services/createCheckpoint.server";
-import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
-import { CompleteAttemptService } from "./services/completeAttempt.server";
-import { logger } from "~/services/logger.server";
-import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
-import { ResumeAttemptService } from "./services/resumeAttempt.server";
-import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
-import { Redis } from "ioredis";
-import { createAdapter } from "@socket.io/redis-adapter";
-import { CrashTaskRunService } from "./services/crashTaskRun.server";
-import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
-import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
-import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
+import { RunId } from "@trigger.dev/core/v3/apps";
 import type {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
-import { engine } from "./runEngine.server";
-import { EventBusEventArgs } from "@internal/run-engine/engine/eventBus";
-import { RunId } from "@trigger.dev/core/v3/apps";
+import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
+import { Redis } from "ioredis";
+import { Namespace, Server, Socket } from "socket.io";
+import { env } from "~/env.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
+import { singleton } from "~/utils/singleton";
 import { recordRunDebugLog } from "./eventRepository.server";
+import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
+import { engine } from "./runEngine.server";
+import { CompleteAttemptService } from "./services/completeAttempt.server";
+import { CrashTaskRunService } from "./services/crashTaskRun.server";
+import { CreateCheckpointService } from "./services/createCheckpoint.server";
+import { CreateDeployedBackgroundWorkerService } from "./services/createDeployedBackgroundWorker.server";
+import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.server";
+import { DeploymentIndexFailed } from "./services/deploymentIndexFailed.server";
+import { ResumeAttemptService } from "./services/resumeAttempt.server";
+import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
+import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
+import { SharedSocketConnection } from "./sharedSocketConnection";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -47,7 +48,32 @@ function initalizeIoServer() {
   const coordinatorNamespace = createCoordinatorNamespace(io);
   const providerNamespace = createProviderNamespace(io);
   const sharedQueueConsumerNamespace = createSharedQueueConsumerNamespace(io);
-  const workerNamespace = createWorkerNamespace(io);
+  const workerNamespace = createWorkerNamespace({
+    io,
+    namespace: "/worker",
+    authenticate: async (request) => {
+      const tokenService = new WorkerGroupTokenService();
+      const authenticatedInstance = await tokenService.authenticate(request);
+      if (!authenticatedInstance) {
+        return false;
+      }
+      return true;
+    },
+  });
+  const devWorkerNamespace = createWorkerNamespace({
+    io,
+    namespace: "/dev-worker",
+    authenticate: async (request) => {
+      const authentication = await authenticateApiRequestWithFailure(request);
+      if (!authentication.ok) {
+        return false;
+      }
+      if (authentication.environment.type !== "DEVELOPMENT") {
+        return false;
+      }
+      return true;
+    },
+  });
 
   return {
     io,
@@ -55,6 +81,7 @@ function initalizeIoServer() {
     providerNamespace,
     sharedQueueConsumerNamespace,
     workerNamespace,
+    devWorkerNamespace,
   };
 }
 
@@ -390,15 +417,24 @@ function headersFromHandshake(handshake: Socket["handshake"]) {
   return headers;
 }
 
-function createWorkerNamespace(io: Server) {
+function createWorkerNamespace({
+  io,
+  namespace,
+  authenticate,
+}: {
+  io: Server;
+  namespace: string;
+  authenticate: (request: Request) => Promise<boolean>;
+}) {
   const worker: Namespace<WorkerClientToServerEvents, WorkerServerToClientEvents> =
-    io.of("/worker");
+    io.of(namespace);
 
   worker.use(async (socket, next) => {
     try {
       const headers = headersFromHandshake(socket.handshake);
 
       logger.debug("Worker authentication", {
+        namespace,
         socketId: socket.id,
         headers: Object.fromEntries(headers),
       });
@@ -407,16 +443,16 @@ function createWorkerNamespace(io: Server) {
         headers,
       });
 
-      const tokenService = new WorkerGroupTokenService();
-      const authenticatedInstance = await tokenService.authenticate(request);
+      const success = await authenticate(request);
 
-      if (!authenticatedInstance) {
+      if (!success) {
         throw new Error("unauthorized");
       }
 
       next();
     } catch (error) {
       logger.error("Worker authentication failed", {
+        namespace,
         error: error instanceof Error ? error.message : error,
       });
 
@@ -425,7 +461,7 @@ function createWorkerNamespace(io: Server) {
   });
 
   worker.on("connection", async (socket) => {
-    logger.debug("worker connected", { socketId: socket.id });
+    logger.debug("worker connected", { namespace, socketId: socket.id });
 
     const rooms = new Set<string>();
 
@@ -439,6 +475,7 @@ function createWorkerNamespace(io: Server) {
       }
 
       logger.debug("[handleSocketIo] Received worker notification", {
+        namespace,
         time,
         runId: run.id,
         snapshot,
@@ -461,6 +498,7 @@ function createWorkerNamespace(io: Server) {
 
     const interval = setInterval(() => {
       logger.debug("Rooms for socket", {
+        namespace,
         socketId: socket.id,
         rooms: Array.from(rooms),
       });
@@ -468,6 +506,7 @@ function createWorkerNamespace(io: Server) {
 
     socket.on("disconnect", (reason, description) => {
       logger.debug("worker disconnected", {
+        namespace,
         socketId: socket.id,
         reason,
         description,
@@ -479,6 +518,7 @@ function createWorkerNamespace(io: Server) {
 
     socket.on("disconnecting", (reason, description) => {
       logger.debug("worker disconnecting", {
+        namespace,
         socketId: socket.id,
         reason,
         description,
@@ -488,6 +528,7 @@ function createWorkerNamespace(io: Server) {
 
     socket.on("error", (error) => {
       logger.error("worker error", {
+        namespace,
         socketId: socket.id,
         error: JSON.parse(JSON.stringify(error)),
       });
@@ -495,13 +536,13 @@ function createWorkerNamespace(io: Server) {
     });
 
     socket.on("run:subscribe", async ({ version, runFriendlyIds }) => {
-      logger.debug("run:subscribe", { version, runFriendlyIds });
+      logger.debug("run:subscribe", { namespace, version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
         runFriendlyIds.map(async (friendlyId) => {
           const room = roomFromFriendlyRunId(friendlyId);
 
-          logger.debug("Joining room", { room });
+          logger.debug("Joining room", { namespace, room });
 
           socket.join(room);
           rooms.add(room);
@@ -525,6 +566,7 @@ function createWorkerNamespace(io: Server) {
       for (const result of settledResult) {
         if (result.status === "rejected") {
           logger.error("Error joining room", {
+            namespace,
             runFriendlyIds,
             error: result.reason instanceof Error ? result.reason.message : result.reason,
           });
@@ -532,19 +574,20 @@ function createWorkerNamespace(io: Server) {
       }
 
       logger.debug("Rooms for socket after subscribe", {
+        namespace,
         socketId: socket.id,
         rooms: Array.from(rooms),
       });
     });
 
     socket.on("run:unsubscribe", async ({ version, runFriendlyIds }) => {
-      logger.debug("run:unsubscribe", { version, runFriendlyIds });
+      logger.debug("run:unsubscribe", { namespace, version, runFriendlyIds });
 
       const settledResult = await Promise.allSettled(
         runFriendlyIds.map(async (friendlyId) => {
           const room = roomFromFriendlyRunId(friendlyId);
 
-          logger.debug("Leaving room", { room });
+          logger.debug("Leaving room", { namespace, room });
 
           socket.leave(room);
           rooms.delete(room);
@@ -568,6 +611,7 @@ function createWorkerNamespace(io: Server) {
       for (const result of settledResult) {
         if (result.status === "rejected") {
           logger.error("Error leaving room", {
+            namespace,
             runFriendlyIds,
             error: result.reason instanceof Error ? result.reason.message : result.reason,
           });
@@ -575,6 +619,7 @@ function createWorkerNamespace(io: Server) {
       }
 
       logger.debug("Rooms for socket after unsubscribe", {
+        namespace,
         socketId: socket.id,
         rooms: Array.from(rooms),
       });

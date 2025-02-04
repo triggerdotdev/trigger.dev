@@ -25,6 +25,8 @@ type DevRunControllerOptions = {
   version: string;
   httpClient: CliApiClient;
   heartbeatIntervalSeconds?: number;
+  onSubscribeToRunNotifications: (run: Run, snapshot: Snapshot) => void;
+  onUnsubscribeFromRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onFinished: () => void;
 };
 
@@ -252,11 +254,13 @@ export class DevRunController {
   }
 
   private subscribeToRunNotifications({ run, snapshot }: { run: Run; snapshot: Snapshot }) {
-    //todo
+    logger.debug("[DevRunController] Subscribing to run notifications", { run, snapshot });
+    this.opts.onSubscribeToRunNotifications(run, snapshot);
   }
 
   private unsubscribeFromRunNotifications({ run, snapshot }: { run: Run; snapshot: Snapshot }) {
-    //todo
+    logger.debug("[DevRunController] Unsubscribing from run notifications", { run, snapshot });
+    this.opts.onUnsubscribeFromRunNotifications(run, snapshot);
   }
 
   private get runFriendlyId() {
@@ -288,6 +292,9 @@ export class DevRunController {
     }
 
     this.handleSnapshotChangeLock = true;
+
+    // Reset the (fallback) snapshot poll interval so we don't do unnecessary work
+    this.snapshotPoller.resetCurrentInterval();
 
     try {
       if (!this.snapshotFriendlyId) {
@@ -471,6 +478,11 @@ export class DevRunController {
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
   }) {
+    this.subscribeToRunNotifications({
+      run: { friendlyId: runFriendlyId },
+      snapshot: { friendlyId: snapshotFriendlyId },
+    });
+
     const start = await this.httpClient.dev.startRunAttempt(runFriendlyId, snapshotFriendlyId);
 
     if (!start.success) {
@@ -733,8 +745,6 @@ export class DevRunController {
     // Kill the run process
     await this.taskRunProcess?.kill("SIGKILL");
 
-    //todo signal to the supervisor that this run failed
-
     this.runHeartbeat.stop();
     this.snapshotPoller.stop();
 
@@ -765,5 +775,30 @@ export class DevRunController {
 
     this.runHeartbeat.stop();
     this.snapshotPoller.stop();
+  }
+
+  async getLatestSnapshot() {
+    if (!this.runFriendlyId) {
+      return;
+    }
+
+    logger.debug("[DevRunController] Received notification, manually getting the latest snapshot.");
+
+    const response = await this.httpClient.dev.getRunExecutionData(this.runFriendlyId);
+
+    if (!response.success) {
+      console.error("Failed to get latest snapshot", { error: response.error });
+      return;
+    }
+
+    await this.handleSnapshotChange(response.data.execution);
+  }
+
+  resubscribeToRunNotifications() {
+    if (this.state.phase !== "RUN") {
+      return;
+    }
+
+    this.subscribeToRunNotifications(this.state);
   }
 }
