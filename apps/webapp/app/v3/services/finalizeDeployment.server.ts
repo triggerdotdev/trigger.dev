@@ -62,7 +62,7 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference: imageReference,
+        imageReference,
       },
     });
 
