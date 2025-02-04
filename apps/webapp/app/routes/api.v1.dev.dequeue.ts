@@ -23,8 +23,11 @@ const { action } = createActionApiRoute(
 
     let dequeuedMessages: DequeuedMessage[] = [];
 
+    //we need to check the current worker, because a run might have been locked to it
+    const workers = body.oldWorkers.concat(body.currentWorker);
+
     //first we want to clear out old runs
-    for (const worker of body.oldWorkers) {
+    for (const worker of workers) {
       //dequeue
       const latestResult = await engine.dequeueFromBackgroundWorkerMasterQueue({
         consumerId: authentication.environment.id,
