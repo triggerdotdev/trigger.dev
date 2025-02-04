@@ -103,17 +103,17 @@ export class FinalizeDeploymentService extends BaseService {
       logger.error("Failed to publish WORKER_CREATED event", { err });
     }
 
-    if (deployment.imageReference) {
+    if (finalizedDeployment.imageReference) {
       socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
         version: "v1",
-        imageRef: deployment.imageReference,
-        shortCode: deployment.shortCode,
+        imageRef: finalizedDeployment.imageReference,
+        shortCode: finalizedDeployment.shortCode,
         // identifiers
-        deploymentId: deployment.id,
+        deploymentId: finalizedDeployment.id,
         envId: authenticatedEnv.id,
         envType: authenticatedEnv.type,
         orgId: authenticatedEnv.organizationId,
-        projectId: deployment.projectId,
+        projectId: finalizedDeployment.projectId,
       });
     }
 
