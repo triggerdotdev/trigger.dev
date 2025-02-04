@@ -13,7 +13,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
     id: string,
-    body: FinalizeDeploymentRequestBody
+    body: FinalizeDeploymentRequestBody,
+    writer?: WritableStreamDefaultWriter
   ) {
     // if it's self hosted, lets just use the v1 finalize deployment service
     if (body.selfHosted) {
@@ -83,24 +84,27 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const pushResult = await executePushToRegistry({
-      depot: {
-        buildId: externalBuildData.data.buildId,
-        orgToken: env.DEPOT_TOKEN,
-        projectId: externalBuildData.data.projectId,
+    const pushResult = await executePushToRegistry(
+      {
+        depot: {
+          buildId: externalBuildData.data.buildId,
+          orgToken: env.DEPOT_TOKEN,
+          projectId: externalBuildData.data.projectId,
+        },
+        registry: {
+          host: env.DEPLOY_REGISTRY_HOST,
+          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
+          username: env.DEPLOY_REGISTRY_USERNAME,
+          password: env.DEPLOY_REGISTRY_PASSWORD,
+        },
+        deployment: {
+          version: deployment.version,
+          environmentSlug: deployment.environment.slug,
+          projectExternalRef: deployment.worker.project.externalRef,
+        },
       },
-      registry: {
-        host: env.DEPLOY_REGISTRY_HOST,
-        namespace: env.DEPLOY_REGISTRY_NAMESPACE,
-        username: env.DEPLOY_REGISTRY_USERNAME,
-        password: env.DEPLOY_REGISTRY_PASSWORD,
-      },
-      deployment: {
-        version: deployment.version,
-        environmentSlug: deployment.environment.slug,
-        projectExternalRef: deployment.worker.project.externalRef,
-      },
-    });
+      writer
+    );
 
     if (!pushResult.ok) {
       throw new ServiceValidationError(pushResult.error);
@@ -148,11 +152,10 @@ type ExecutePushResult =
       logs: string;
     };
 
-async function executePushToRegistry({
-  depot,
-  registry,
-  deployment,
-}: ExecutePushToRegistryOptions): Promise<ExecutePushResult> {
+async function executePushToRegistry(
+  { depot, registry, deployment }: ExecutePushToRegistryOptions,
+  writer?: WritableStreamDefaultWriter
+): Promise<ExecutePushResult> {
   // Step 1: We need to "login" to the digital ocean registry
   const configDir = await ensureLoggedIntoDockerRegistry(registry.host, {
     username: registry.username,
@@ -180,7 +183,7 @@ async function executePushToRegistry({
   try {
     const processCode = await new Promise<number | null>((res, rej) => {
       // For some reason everything is output on stderr, not stdout
-      childProcess.stderr?.on("data", (data: Buffer) => {
+      childProcess.stderr?.on("data", async (data: Buffer) => {
         const text = data.toString();
 
         // Emitted data chunks can contain multiple lines. Remove empty lines.
@@ -191,6 +194,13 @@ async function executePushToRegistry({
           imageTag,
           deployment,
         });
+
+        // Now we can write strings directly
+        if (writer) {
+          for (const line of lines) {
+            await writer.write(`event: log\ndata: ${JSON.stringify({ message: line })}\n\n`);
+          }
+        }
       });
 
       childProcess.on("error", (e) => rej(e));

@@ -43,6 +43,12 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment does not have a worker");
     }
 
+    if (deployment.status === "DEPLOYED") {
+      logger.debug("Worker deployment is already deployed", { id });
+
+      return deployment;
+    }
+
     if (deployment.status !== "DEPLOYING") {
       logger.error("Worker deployment is not in DEPLOYING status", { id });
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");

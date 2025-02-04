@@ -42,15 +42,54 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    const service = new FinalizeDeploymentV2Service();
-    await service.call(authenticatedEnv, deploymentId, body.data);
+    // Create a text stream chain
+    const stream = new TransformStream();
+    const encoder = new TextEncoderStream();
+    const writer = stream.writable.getWriter();
 
-    return json(
-      {
-        id: deploymentId,
+    const service = new FinalizeDeploymentV2Service();
+
+    // Chain the streams: stream -> encoder -> response
+    const response = new Response(stream.readable.pipeThrough(encoder), {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
       },
-      { status: 200 }
-    );
+    });
+
+    const pingInterval = setInterval(() => {
+      writer.write("event: ping\ndata: {}\n\n");
+    }, 10000); // 10 seconds
+
+    service
+      .call(authenticatedEnv, deploymentId, body.data, writer)
+      .then(async () => {
+        clearInterval(pingInterval);
+
+        await writer.write(`event: complete\ndata: ${JSON.stringify({ id: deploymentId })}\n\n`);
+        await writer.close();
+      })
+      .catch(async (error) => {
+        let errorMessage;
+
+        if (error instanceof ServiceValidationError) {
+          errorMessage = { error: error.message };
+        } else if (error instanceof Error) {
+          logger.error("Error finalizing deployment", { error: error.message });
+          errorMessage = { error: `Internal server error: ${error.message}` };
+        } else {
+          logger.error("Error finalizing deployment", { error: String(error) });
+          errorMessage = { error: "Internal server error" };
+        }
+
+        clearInterval(pingInterval);
+
+        await writer.write(`event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`);
+        await writer.close();
+      });
+
+    return response;
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 400 });
