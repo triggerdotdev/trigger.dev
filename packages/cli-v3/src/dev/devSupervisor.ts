@@ -69,7 +69,7 @@ class DevSupervisor implements WorkerRuntime {
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
-    logger.debug("initialized worker runtime", { options: this.options });
+    logger.debug("[DevSupervisor] initialized worker runtime", { options: this.options });
 
     //get the settings for dev
     const settings = await this.options.client.dev.config();
@@ -79,7 +79,7 @@ class DevSupervisor implements WorkerRuntime {
       );
     }
 
-    logger.debug("Got dev settings", { settings: settings.data });
+    logger.debug("[DevSupervisor] Got dev settings", { settings: settings.data });
     this.config = settings.data;
 
     this.#createSocket();
@@ -165,6 +165,7 @@ class DevSupervisor implements WorkerRuntime {
   async #dequeueRuns() {
     if (!this.latestWorkerId) {
       //try again later
+      logger.debug(`[DevSupervisor] dequeueRuns. No latest worker ID, trying again later`);
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
       return;
     }
@@ -186,7 +187,9 @@ class DevSupervisor implements WorkerRuntime {
       });
 
       if (!result.success) {
-        logger.error(`Failed to dequeue runs`, { error: result.error });
+        logger.error(`[DevSupervisor] dequeueRuns. Failed to dequeue runs`, {
+          error: result.error,
+        });
         setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
         return;
       }
@@ -201,7 +204,7 @@ class DevSupervisor implements WorkerRuntime {
         return;
       }
 
-      logger.debug(`Dequeued runs`, {
+      logger.debug(`[DevSupervisor] dequeueRuns. Results`, {
         dequeuedMessages: JSON.stringify(result.data.dequeuedMessages),
       });
 
@@ -210,10 +213,13 @@ class DevSupervisor implements WorkerRuntime {
         const worker = this.workers.get(message.backgroundWorker.friendlyId);
 
         if (!worker) {
-          logger.error(`Dequeued a run but there's no BackgroundWorker so we can't execute it`, {
-            run: message.run.friendlyId,
-            workerId: message.backgroundWorker.friendlyId,
-          });
+          logger.error(
+            `[DevSupervisor] dequeueRuns. Dequeued a run but there's no BackgroundWorker so we can't execute it`,
+            {
+              run: message.run.friendlyId,
+              workerId: message.backgroundWorker.friendlyId,
+            }
+          );
 
           //todo call the API to crash the run with a good message
           continue;
@@ -221,9 +227,12 @@ class DevSupervisor implements WorkerRuntime {
 
         let runController = this.runControllers.get(message.run.friendlyId);
         if (runController) {
-          logger.error(`Dequeuing a run that already has a runController`, {
-            runController: message.run.friendlyId,
-          });
+          logger.error(
+            `[DevSupervisor] dequeueRuns. Dequeuing a run that already has a runController`,
+            {
+              runController: message.run.friendlyId,
+            }
+          );
 
           //todo, what do we do here?
           //todo I think the run shouldn't exist and we should kill the process but TBC
@@ -231,7 +240,7 @@ class DevSupervisor implements WorkerRuntime {
         }
 
         if (!worker.serverWorker) {
-          logger.debug(`Worker doesn't have a serverWorker`, {
+          logger.debug(`[DevSupervisor] dequeueRuns. Worker doesn't have a serverWorker`, {
             run: message.run.friendlyId,
             worker,
           });
@@ -239,7 +248,7 @@ class DevSupervisor implements WorkerRuntime {
         }
 
         if (!worker.manifest) {
-          logger.debug(`Worker doesn't have a manifest`, {
+          logger.debug(`[DevSupervisor] dequeueRuns. Worker doesn't have a manifest`, {
             run: message.run.friendlyId,
             worker,
           });
@@ -269,12 +278,15 @@ class DevSupervisor implements WorkerRuntime {
         });
         this.runControllers.set(message.run.friendlyId, runController);
 
-        await runController.start(message);
+        //don't await for run completion, we want to dequeue more runs
+        runController.start(message).then(() => {
+          logger.debug("[DevSupervisor] Run started", { runId: message.run.friendlyId });
+        });
       }
 
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithRun);
     } catch (error) {
-      logger.error(`Failed to dequeue runs`, { error });
+      logger.error(`[DevSupervisor] dequeueRuns. Error thrown`, { error });
       //dequeue again
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
     }
@@ -291,17 +303,17 @@ class DevSupervisor implements WorkerRuntime {
 
       // Connection was lost and successfully reconnected
       eventSource.addEventListener("reconnect", (event: any) => {
-        logger.info("Presence connection restored");
+        logger.info("[DevSupervisor] Presence connection restored");
       });
 
       // Handle messages that might have been missed during disconnection
       eventSource.addEventListener("missed_events", (event: any) => {
-        logger.warn("Missed some presence events during disconnection");
+        logger.warn("[DevSupervisor] Missed some presence events during disconnection");
       });
 
       // If you need to close it manually
       return () => {
-        logger.info("Closing presence connection");
+        logger.info("[DevSupervisor] Closing presence connection");
         eventSource.close();
       };
     } catch (error) {
