@@ -572,7 +572,7 @@ export class CliApiClient {
   ) {
     return wrapZodFetch(
       WorkloadWaitForDurationResponseBody,
-      `${this.apiURL}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
+      `${this.apiURL}/api/v1/dev/runs/${runId}/snapshots/${snapshotId}/wait/duration`,
       {
         method: "POST",
         headers: {

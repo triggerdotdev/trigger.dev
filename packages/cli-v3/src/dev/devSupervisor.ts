@@ -240,6 +240,9 @@ class DevSupervisor implements WorkerRuntime {
           envVars: worker.params.env,
           version: worker.serverWorker.version,
           httpClient: this.options.client,
+          onFinished: () => {
+            this.runControllers.delete(message.run.id);
+          },
         });
         this.runControllers.set(message.run.id, runController);
 

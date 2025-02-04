@@ -25,6 +25,7 @@ type DevRunControllerOptions = {
   version: string;
   httpClient: CliApiClient;
   heartbeatIntervalSeconds?: number;
+  onFinished: () => void;
 };
 
 type Run = {
@@ -51,10 +52,23 @@ export class DevRunController {
 
   private readonly envVars: Record<string, string>;
 
-  private state: {
-    run: Run;
-    snapshot: Snapshot;
-  };
+  private state:
+    | {
+        phase: "RUN";
+        run: Run;
+        snapshot: Snapshot;
+      }
+    | {
+        phase: "IDLE" | "WARM_START";
+      } = { phase: "IDLE" };
+
+  private enterRunPhase(run: Run, snapshot: Snapshot) {
+    this.onExitRunPhase(run);
+    this.state = { phase: "RUN", run, snapshot };
+
+    this.runHeartbeat.start();
+    this.snapshotPoller.start();
+  }
 
   constructor(private readonly opts: DevRunControllerOptions) {
     logger.debug("[DevRunController] Creating controller", {
@@ -146,18 +160,118 @@ export class DevRunController {
     });
   }
 
-  private enterRunPhase(run: Run, snapshot: Snapshot) {
-    this.state = { run, snapshot };
+  // This should only be used when we're already executing a run. Attempt number changes are not allowed.
+  private updateRunPhase(run: Run, snapshot: Snapshot) {
+    if (this.state.phase !== "RUN") {
+      this.httpClient.dev.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: `updateRunPhase: Invalid phase for updating snapshot: ${this.state.phase}`,
+        properties: {
+          currentPhase: this.state.phase,
+          snapshotId: snapshot.friendlyId,
+        },
+      });
 
-    this.runHeartbeat.start();
-    this.snapshotPoller.start();
+      throw new Error(`Invalid phase for updating snapshot: ${this.state.phase}`);
+    }
+
+    if (this.state.run.friendlyId !== run.friendlyId) {
+      this.httpClient.dev.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: `updateRunPhase: Mismatched run IDs`,
+        properties: {
+          currentRunId: this.state.run.friendlyId,
+          newRunId: run.friendlyId,
+          currentSnapshotId: this.state.snapshot.friendlyId,
+          newSnapshotId: snapshot.friendlyId,
+        },
+      });
+
+      throw new Error("Mismatched run IDs");
+    }
+
+    if (this.state.snapshot.friendlyId === snapshot.friendlyId) {
+      logger.debug("updateRunPhase: Snapshot not changed", { run, snapshot });
+
+      this.httpClient.dev.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: `updateRunPhase: Snapshot not changed`,
+        properties: {
+          snapshotId: snapshot.friendlyId,
+        },
+      });
+
+      return;
+    }
+
+    if (this.state.run.attemptNumber !== run.attemptNumber) {
+      this.httpClient.dev.sendDebugLog(run.friendlyId, {
+        time: new Date(),
+        message: `updateRunPhase: Attempt number changed`,
+        properties: {
+          oldAttemptNumber: this.state.run.attemptNumber ?? undefined,
+          newAttemptNumber: run.attemptNumber ?? undefined,
+        },
+      });
+      throw new Error("Attempt number changed");
+    }
+
+    this.state = {
+      phase: "RUN",
+      run: {
+        friendlyId: run.friendlyId,
+        attemptNumber: run.attemptNumber,
+      },
+      snapshot: {
+        friendlyId: snapshot.friendlyId,
+      },
+    };
+  }
+
+  private onExitRunPhase(newRun: Run | undefined = undefined) {
+    // We're not in a run phase, nothing to do
+    if (this.state.phase !== "RUN") {
+      logger.debug("onExitRunPhase: Not in run phase, skipping", { phase: this.state.phase });
+      return;
+    }
+
+    // This is still the same run, so we're not exiting the phase
+    if (newRun?.friendlyId === this.state.run.friendlyId) {
+      logger.debug("onExitRunPhase: Same run, skipping", { newRun });
+      return;
+    }
+
+    logger.debug("onExitRunPhase: Exiting run phase", { newRun });
+
+    this.runHeartbeat.stop();
+    this.snapshotPoller.stop();
+
+    const { run, snapshot } = this.state;
+
+    this.unsubscribeFromRunNotifications({ run, snapshot });
+  }
+
+  private subscribeToRunNotifications({ run, snapshot }: { run: Run; snapshot: Snapshot }) {
+    //todo
+  }
+
+  private unsubscribeFromRunNotifications({ run, snapshot }: { run: Run; snapshot: Snapshot }) {
+    //todo
   }
 
   private get runFriendlyId() {
+    if (this.state.phase !== "RUN") {
+      return undefined;
+    }
+
     return this.state.run.friendlyId;
   }
 
   private get snapshotFriendlyId() {
+    if (this.state.phase !== "RUN") {
+      return;
+    }
+
     return this.state.snapshot.friendlyId;
   }
 
@@ -225,6 +339,19 @@ export class DevRunController {
           completedWaitpoints: completedWaitpoints.length,
         },
       });
+
+      try {
+        this.updateRunPhase(run, snapshot);
+      } catch (error) {
+        console.error("handleSnapshotChange: failed to update run phase", {
+          run,
+          snapshot,
+          error,
+        });
+
+        this.runFinished();
+        return;
+      }
 
       switch (snapshot.executionStatus) {
         case "PENDING_CANCEL": {
@@ -349,7 +476,7 @@ export class DevRunController {
     if (!start.success) {
       console.error("[DevRunController] Failed to start run", { error: start.error });
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
 
@@ -400,7 +527,7 @@ export class DevRunController {
 
         // TODO: Maybe we should keep retrying for a while longer
 
-        this.waitForNextRun();
+        this.runFinished();
         return;
       }
 
@@ -411,7 +538,7 @@ export class DevRunController {
       } catch (error) {
         console.error("Failed to handle completion result after error", { error });
 
-        this.waitForNextRun();
+        this.runFinished();
         return;
       }
     }
@@ -460,6 +587,7 @@ export class DevRunController {
 
     try {
       await this.taskRunProcess.cleanup(true);
+      this.taskRunProcess = undefined;
     } catch (error) {
       console.error("Failed to cleanup task run process, submitting completion anyway", {
         error,
@@ -472,7 +600,7 @@ export class DevRunController {
         snapshotId: this.snapshotFriendlyId,
       });
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
 
@@ -489,7 +617,7 @@ export class DevRunController {
         error: completionResult.error,
       });
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
 
@@ -500,7 +628,7 @@ export class DevRunController {
     } catch (error) {
       console.error("Failed to handle completion result", { error });
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
   }
@@ -513,10 +641,19 @@ export class DevRunController {
 
     const { attemptStatus, snapshot: completionSnapshot, run } = result;
 
+    try {
+      this.updateRunPhase(run, completionSnapshot);
+    } catch (error) {
+      console.error("Failed to update run phase after completion", { error });
+
+      this.runFinished();
+      return;
+    }
+
     if (attemptStatus === "RUN_FINISHED") {
       logger.debug("Run finished");
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
 
@@ -528,7 +665,7 @@ export class DevRunController {
     if (attemptStatus === "RETRY_QUEUED") {
       logger.debug("Retry queued");
 
-      this.waitForNextRun();
+      this.runFinished();
       return;
     }
 
@@ -592,11 +729,16 @@ export class DevRunController {
     }
   }
 
-  private async waitForNextRun() {
+  private async runFinished() {
     // Kill the run process
     await this.taskRunProcess?.kill("SIGKILL");
 
     //todo signal to the supervisor that this run failed
+
+    this.runHeartbeat.stop();
+    this.snapshotPoller.stop();
+
+    this.opts.onFinished();
   }
 
   async cancelAttempt(runId: string) {
@@ -608,15 +750,10 @@ export class DevRunController {
   async start(dequeueMessage: DequeuedMessage) {
     logger.debug("[DevRunController] Starting up");
 
-    this.state = {
-      run: dequeueMessage.run,
-      snapshot: dequeueMessage.snapshot,
-    };
-
-    this.startAndExecuteRunAttempt({
+    await this.startAndExecuteRunAttempt({
       runFriendlyId: dequeueMessage.run.friendlyId,
       snapshotFriendlyId: dequeueMessage.snapshot.friendlyId,
-    }).finally(() => {});
+    }).finally(async () => {});
   }
 
   async stop() {
@@ -630,72 +767,3 @@ export class DevRunController {
     this.snapshotPoller.stop();
   }
 }
-
-const longPoll = async <T = any>(
-  url: string,
-  requestInit: Omit<RequestInit, "signal">,
-  {
-    timeoutMs,
-    totalDurationMs,
-  }: {
-    timeoutMs: number;
-    totalDurationMs: number;
-  }
-): Promise<
-  | {
-      ok: true;
-      data: T;
-    }
-  | {
-      ok: false;
-      error: string;
-    }
-> => {
-  logger.debug("Long polling", { url, requestInit, timeoutMs, totalDurationMs });
-
-  const endTime = Date.now() + totalDurationMs;
-
-  while (Date.now() < endTime) {
-    try {
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      // TODO: Think about using a random timeout instead
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(url, { ...requestInit, signal });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        return {
-          ok: true,
-          data,
-        };
-      } else {
-        return {
-          ok: false,
-          error: `Server error: ${response.status}`,
-        };
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("Long poll request timed out, retrying...");
-        continue;
-      } else {
-        console.error("Error during fetch, retrying...", error);
-
-        // TODO: exponential backoff
-        await sleep(1000);
-        continue;
-      }
-    }
-  }
-
-  return {
-    ok: false,
-    error: "TotalDurationExceeded",
-  };
-};
