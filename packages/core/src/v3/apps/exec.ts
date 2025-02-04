@@ -1,5 +1,5 @@
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
-import { type Result, x } from "tinyexec";
+import { type Output, type Result, x } from "tinyexec";
 
 export class ExecResult {
   pid?: number;
@@ -44,7 +44,7 @@ export class Exec {
     command: string,
     args?: string[],
     opts?: { neverThrow?: boolean; ignoreAbort?: boolean }
-  ) {
+  ): Promise<Output> {
     const argsTrimmed = this.trimArgs ? args?.map((arg) => arg.trim()) : args;
 
     const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
@@ -104,3 +104,5 @@ export class Exec {
 
   static Result = ExecResult;
 }
+
+export { type Output };
