@@ -57,6 +57,10 @@ export class HeartbeatService {
   #doHeartbeat = async () => {
     this.#clearNextHeartbeat();
 
+    if (!this._isHeartbeating) {
+      return;
+    }
+
     try {
       await this._heartbeat();
     } catch (error) {
