@@ -30,13 +30,21 @@ export type PrismaTransactionOptions = {
   isolationLevel?: Prisma.TransactionIsolationLevel;
 
   swallowPrismaErrors?: boolean;
+
+  /**
+   * The maximum number of times the transaction will be retried in case of a serialization failure. The default value is 0.
+   *
+   * See https://www.prisma.io/docs/orm/prisma-client/queries/transactions#transaction-timing-issues
+   */
+  maxRetries?: number;
 };
 
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
   fn: (prisma: PrismaTransactionClient) => Promise<R>,
   prismaError: (error: Prisma.PrismaClientKnownRequestError) => void,
-  options?: PrismaTransactionOptions
+  options?: PrismaTransactionOptions,
+  attempt = 0
 ): Promise<R | undefined> {
   if (isTransactionClient(prisma)) {
     return fn(prisma);
@@ -46,6 +54,14 @@ export async function $transaction<R>(
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
     if (isPrismaKnownError(error)) {
+      if (
+        error.code === "P2034" &&
+        typeof options?.maxRetries === "number" &&
+        attempt < options.maxRetries
+      ) {
+        return $transaction(prisma, fn, prismaError, options, attempt + 1);
+      }
+
       prismaError(error);
 
       if (options?.swallowPrismaErrors) {
