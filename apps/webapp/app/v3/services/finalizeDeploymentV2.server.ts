@@ -84,24 +84,27 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const pushResult = await executePushToRegistry({
-      depot: {
-        buildId: externalBuildData.data.buildId,
-        orgToken: env.DEPOT_TOKEN,
-        projectId: externalBuildData.data.projectId,
+    const pushResult = await executePushToRegistry(
+      {
+        depot: {
+          buildId: externalBuildData.data.buildId,
+          orgToken: env.DEPOT_TOKEN,
+          projectId: externalBuildData.data.projectId,
+        },
+        registry: {
+          host: env.DEPLOY_REGISTRY_HOST,
+          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
+          username: env.DEPLOY_REGISTRY_USERNAME,
+          password: env.DEPLOY_REGISTRY_PASSWORD,
+        },
+        deployment: {
+          version: deployment.version,
+          environmentSlug: deployment.environment.slug,
+          projectExternalRef: deployment.worker.project.externalRef,
+        },
       },
-      registry: {
-        host: env.DEPLOY_REGISTRY_HOST,
-        namespace: env.DEPLOY_REGISTRY_NAMESPACE,
-        username: env.DEPLOY_REGISTRY_USERNAME,
-        password: env.DEPLOY_REGISTRY_PASSWORD,
-      },
-      deployment: {
-        version: deployment.version,
-        environmentSlug: deployment.environment.slug,
-        projectExternalRef: deployment.worker.project.externalRef,
-      },
-    });
+      writer
+    );
 
     if (!pushResult.ok) {
       throw new ServiceValidationError(pushResult.error);

@@ -58,9 +58,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
+    const pingInterval = setInterval(() => {
+      writer.write("event: ping\ndata: {}\n\n");
+    }, 10000); // 10 seconds
+
     service
       .call(authenticatedEnv, deploymentId, body.data, writer)
       .then(async () => {
+        clearInterval(pingInterval);
+
         await writer.write(`event: complete\ndata: ${JSON.stringify({ id: deploymentId })}\n\n`);
         await writer.close();
       })
@@ -76,6 +82,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
           logger.error("Error finalizing deployment", { error: String(error) });
           errorMessage = { error: "Internal server error" };
         }
+
+        clearInterval(pingInterval);
 
         await writer.write(`event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`);
         await writer.close();

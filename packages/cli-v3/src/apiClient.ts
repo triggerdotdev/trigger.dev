@@ -21,7 +21,7 @@ import {
   FailDeploymentResponseBody,
   FinalizeDeploymentRequestBody,
 } from "@trigger.dev/core/v3";
-import { zodfetch, ApiError } from "@trigger.dev/core/v3/zodfetch";
+import { zodfetch, ApiError, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
 
 export class CliApiClient {
   constructor(
@@ -247,23 +247,65 @@ export class CliApiClient {
     );
   }
 
-  async finalizeDeployment(id: string, body: FinalizeDeploymentRequestBody) {
+  async finalizeDeployment(
+    id: string,
+    body: FinalizeDeploymentRequestBody,
+    onLog?: (message: string) => void
+  ): Promise<ApiResult<FailDeploymentResponseBody>> {
     if (!this.accessToken) {
       throw new Error("finalizeDeployment: No access token");
     }
 
-    return wrapZodFetch(
-      FailDeploymentResponseBody,
-      `${this.apiURL}/api/v2/deployments/${id}/finalize`,
-      {
+    let resolvePromise: (value: ApiResult<FailDeploymentResponseBody>) => void;
+    let rejectPromise: (reason: any) => void;
+
+    const promise = new Promise<ApiResult<FailDeploymentResponseBody>>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+
+    const source = zodfetchSSE({
+      url: `${this.apiURL}/api/v3/deployments/${id}/finalize`,
+      request: {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-      }
-    );
+      },
+      messages: {
+        error: z.object({ error: z.string() }),
+        log: z.object({ message: z.string() }),
+        complete: FailDeploymentResponseBody,
+      },
+    });
+
+    source.onMessage("complete", (message) => {
+      resolvePromise({
+        success: true,
+        data: message,
+      });
+    });
+
+    source.onMessage("error", ({ error }) => {
+      rejectPromise({
+        success: false,
+        error,
+      });
+    });
+
+    if (onLog) {
+      source.onMessage("log", ({ message }) => {
+        onLog(message);
+      });
+    }
+
+    const result = await promise;
+
+    source.stop();
+
+    return result;
   }
 
   async startDeploymentIndexing(deploymentId: string, body: StartDeploymentIndexingRequestBody) {
