@@ -760,10 +760,21 @@ export class BatchTriggerV3Service extends BaseService {
     }));
 
     let workingIndex = currentIndex;
+    let expectedCount = 0;
 
     for (const item of itemsToProcess) {
       try {
-        await this.#processBatchTaskRunItem(batch, environment, item, workingIndex, options);
+        const created = await this.#processBatchTaskRunItem(
+          batch,
+          environment,
+          item,
+          workingIndex,
+          options
+        );
+
+        if (created) {
+          expectedCount++;
+        }
 
         workingIndex++;
       } catch (error) {
@@ -778,6 +789,17 @@ export class BatchTriggerV3Service extends BaseService {
           workingIndex,
         };
       }
+    }
+
+    if (expectedCount > 0) {
+      await this._prisma.batchTaskRun.update({
+        where: { id: batch.id },
+        data: {
+          expectedCount: {
+            increment: expectedCount,
+          },
+        },
+      });
     }
 
     return { workingIndex };
@@ -825,21 +847,15 @@ export class BatchTriggerV3Service extends BaseService {
 
     if (!result.isCached) {
       try {
-        await $transaction(this._prisma, async (tx) => {
-          // [batchTaskRunId, taskRunId] is a unique index
-          await tx.batchTaskRunItem.create({
-            data: {
-              batchTaskRunId: batch.id,
-              taskRunId: result.run.id,
-              status: batchTaskRunItemStatusForRunStatus(result.run.status),
-            },
-          });
-
-          await tx.batchTaskRun.update({
-            where: { id: batch.id },
-            data: { expectedCount: { increment: 1 } },
-          });
+        await this._prisma.batchTaskRunItem.create({
+          data: {
+            batchTaskRunId: batch.id,
+            taskRunId: result.run.id,
+            status: batchTaskRunItemStatusForRunStatus(result.run.status),
+          },
         });
+
+        return true;
       } catch (error) {
         if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
           // This means there is already a batchTaskRunItem for this batch and taskRun
@@ -852,12 +868,14 @@ export class BatchTriggerV3Service extends BaseService {
             }
           );
 
-          return;
+          return false;
         }
 
         throw error;
       }
     }
+
+    return false;
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
@@ -907,62 +925,69 @@ export async function completeBatchTaskRunItemV3(
   scheduleResumeOnComplete = false,
   taskRunAttemptId?: string
 ) {
-  await $transaction(tx, "completeBatchTaskRunItemV3", async (tx, span) => {
-    span?.setAttribute("batch_id", batchTaskRunId);
+  await $transaction(
+    tx,
+    "completeBatchTaskRunItemV3",
+    async (tx, span) => {
+      span?.setAttribute("batch_id", batchTaskRunId);
 
-    // Update the item to complete
-    const updated = await tx.batchTaskRunItem.updateMany({
-      where: {
-        id: itemId,
-        status: "PENDING",
-      },
-      data: {
-        status: "COMPLETED",
-        taskRunAttemptId,
-      },
-    });
-
-    if (updated.count === 0) {
-      return;
-    }
-
-    const updatedBatchRun = await tx.batchTaskRun.update({
-      where: {
-        id: batchTaskRunId,
-      },
-      data: {
-        completedCount: {
-          increment: 1,
+      // Update the item to complete
+      const updated = await tx.batchTaskRunItem.updateMany({
+        where: {
+          id: itemId,
+          status: "PENDING",
         },
-      },
-      select: {
-        sealed: true,
-        status: true,
-        completedCount: true,
-        expectedCount: true,
-        dependentTaskAttemptId: true,
-      },
-    });
+        data: {
+          status: "COMPLETED",
+          taskRunAttemptId,
+        },
+      });
 
-    if (
-      updatedBatchRun.status === "PENDING" &&
-      updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
-      updatedBatchRun.sealed
-    ) {
-      await tx.batchTaskRun.update({
+      if (updated.count === 0) {
+        return;
+      }
+
+      const updatedBatchRun = await tx.batchTaskRun.update({
         where: {
           id: batchTaskRunId,
         },
         data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
+          completedCount: {
+            increment: 1,
+          },
+        },
+        select: {
+          sealed: true,
+          status: true,
+          completedCount: true,
+          expectedCount: true,
+          dependentTaskAttemptId: true,
         },
       });
 
-      // We only need to resume the batch if it has a dependent task attempt ID
-      if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
-        await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
+      if (
+        updatedBatchRun.status === "PENDING" &&
+        updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
+        updatedBatchRun.sealed
+      ) {
+        await tx.batchTaskRun.update({
+          where: {
+            id: batchTaskRunId,
+          },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+          },
+        });
+
+        // We only need to resume the batch if it has a dependent task attempt ID
+        if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
+          await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
+        }
       }
+    },
+    {
+      timeout: 10000,
     }
-  });
+  );
 }
