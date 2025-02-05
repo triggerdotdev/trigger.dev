@@ -155,11 +155,11 @@ async function resolveConfig(
 
   let dirs = config.dirs ? config.dirs : await autoDetectDirs(workingDir);
 
-  dirs = dirs.map((dir) => (isAbsolute(dir) ? relative(workingDir, dir) : dir));
+  dirs = dirs.map((dir) => resolveTriggerDir(dir, workingDir));
 
   const mergedConfig = defu(
     {
-      workingDir: packageJsonPath ? dirname(packageJsonPath) : cwd,
+      workingDir,
       configFile: result.configFile,
       packageJsonPath,
       tsconfigPath,
@@ -187,9 +187,22 @@ async function resolveConfig(
 
   return {
     ...mergedConfig,
-    dirs: Array.from(new Set(mergedConfig.dirs)),
+    dirs: Array.from(new Set(dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
   };
+}
+
+function resolveTriggerDir(dir: string, workingDir: string): string {
+  if (isAbsolute(dir)) {
+    // If dir is `/trigger` or `/src/trigger`, we should add a `.` to make it relative to the working directory
+    if (dir === "/trigger" || dir === "/src/trigger") {
+      return `.${dir}`;
+    } else {
+      return relative(workingDir, dir);
+    }
+  }
+
+  return dir;
 }
 
 async function safeResolveTsConfig(cwd: string) {
