@@ -37,6 +37,8 @@ const UPTIME_MAX_PENDING_ERRORS = Number(process.env.UPTIME_MAX_PENDING_ERRORS |
 const POD_EPHEMERAL_STORAGE_SIZE_LIMIT = process.env.POD_EPHEMERAL_STORAGE_SIZE_LIMIT || "10Gi";
 const POD_EPHEMERAL_STORAGE_SIZE_REQUEST = process.env.POD_EPHEMERAL_STORAGE_SIZE_REQUEST || "2Gi";
 
+const PRE_PULL_DISABLED = process.env.PRE_PULL_DISABLED === "true";
+
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
 
@@ -301,6 +303,11 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   async prePullDeployment(opts: TaskOperationsPrePullDeploymentOptions) {
+    if (PRE_PULL_DISABLED) {
+      logger.debug("Pre-pull is disabled, skipping.", { opts });
+      return;
+    }
+
     const metaName = this.#getPrePullContainerName(opts.shortCode);
 
     const metaLabels = {
