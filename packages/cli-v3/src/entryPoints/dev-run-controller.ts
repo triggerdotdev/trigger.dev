@@ -149,10 +149,12 @@ export class DevRunController {
       },
     });
 
-    process.on("SIGTERM", async () => {
-      logger.debug("[DevRunController] Received SIGTERM, stopping worker");
-      await this.stop();
-    });
+    process.on("SIGTERM", this.sigterm);
+  }
+
+  private async sigterm() {
+    logger.debug("[DevRunController] Received SIGTERM, stopping worker");
+    await this.stop();
   }
 
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
@@ -789,6 +791,8 @@ export class DevRunController {
 
   async stop() {
     logger.debug("[DevRunController] Shutting down");
+
+    process.off("SIGTERM", this.sigterm);
 
     if (this.taskRunProcess) {
       await this.taskRunProcess.cleanup(true);
