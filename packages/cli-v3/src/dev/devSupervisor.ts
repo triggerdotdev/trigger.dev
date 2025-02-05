@@ -1,3 +1,4 @@
+import { setTimeout as awaitTimeout } from "node:timers/promises";
 import {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
@@ -171,8 +172,6 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
-    //todo handle deprecating worker versions
-
     //get relevant versions
     //ignore deprecated and the latest worker
     const oldWorkerIds = this.#getActiveOldWorkers();
@@ -268,17 +267,8 @@ class DevSupervisor implements WorkerRuntime {
             this.#unsubscribeFromRunNotifications(message.run.friendlyId);
 
             //stop the worker if it is deprecated and there are no more runs
-            if (
-              worker.deprecated &&
-              !this.#workerHasInProgressRuns(message.backgroundWorker.friendlyId)
-            ) {
-              logger.debug("[DevSupervisor] Stopping worker", {
-                workerId: message.backgroundWorker.friendlyId,
-                version: worker.serverWorker?.version,
-              });
-
-              this.workers.delete(message.backgroundWorker.friendlyId);
-              worker.stop();
+            if (worker.deprecated) {
+              this.#tryDeleteWorker(message.backgroundWorker.friendlyId).finally(() => {});
             }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
@@ -373,9 +363,7 @@ class DevSupervisor implements WorkerRuntime {
       }
 
       existingWorker.deprecate();
-      if (!this.#workerHasInProgressRuns(workerId)) {
-        existingWorker.stop();
-      }
+      this.#tryDeleteWorker(workerId).finally(() => {});
     }
 
     this.workers.set(worker.serverWorker.id, worker);
@@ -498,6 +486,30 @@ class DevSupervisor implements WorkerRuntime {
     }
 
     return false;
+  }
+
+  /** Deletes the worker if there are no active runs, after a delay */
+  async #tryDeleteWorker(friendlyId: string) {
+    await awaitTimeout(1_000);
+    this.#deleteWorker(friendlyId);
+  }
+
+  #deleteWorker(friendlyId: string) {
+    logger.debug("[DevSupervisor] Delete worker (if relevant)", {
+      workerId: friendlyId,
+    });
+
+    const worker = this.workers.get(friendlyId);
+    if (!worker) {
+      return;
+    }
+
+    if (this.#workerHasInProgressRuns(friendlyId)) {
+      return;
+    }
+
+    worker.stop();
+    this.workers.delete(friendlyId);
   }
 }
 
