@@ -149,11 +149,10 @@ export async function startDevSession({
         if (!bundled) {
           // First bundle, no need to update bundle
           bundled = true;
-        } else {
-          const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
-
-          await updateBuild(result, workerDir);
         }
+
+        const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
+        await updateBuild(result, workerDir);
       });
     },
   };
