@@ -127,10 +127,8 @@ export function startDevOutput(options: DevOutputOptions) {
   };
 
   const runCompleted = (
-    ...[worker, payload, completion, durationMs]: EventBusEventArgs<"runCompleted">
+    ...[worker, execution, completion, durationMs]: EventBusEventArgs<"runCompleted">
   ) => {
-    const { execution } = payload;
-
     const retryingText = chalkGrey(
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"

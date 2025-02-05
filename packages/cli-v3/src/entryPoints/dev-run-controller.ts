@@ -1,12 +1,12 @@
 import {
-  BuildManifest,
   CompleteRunAttemptResult,
   DequeuedMessage,
   HeartbeatService,
+  LogLevel,
   RunExecutionData,
+  TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
-  WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
@@ -16,14 +16,14 @@ import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
+import { BackgroundWorkerEngine2 } from "../dev/backgroundWorkerEngine2.js";
+import { eventBus } from "../utilities/eventBus.js";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
-  workerManifest: WorkerManifest;
-  buildManifest: BuildManifest;
-  envVars: Record<string, string>;
-  version: string;
+  worker: BackgroundWorkerEngine2;
   httpClient: CliApiClient;
+  logLevel: LogLevel;
   heartbeatIntervalSeconds?: number;
   onSubscribeToRunNotifications: (run: Run, snapshot: Snapshot) => void;
   onUnsubscribeFromRunNotifications: (run: Run, snapshot: Snapshot) => void;
@@ -41,18 +41,12 @@ type Snapshot = {
 
 export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
-
-  private workerManifest: WorkerManifest;
-
+  private readonly worker: BackgroundWorkerEngine2;
   private readonly httpClient: CliApiClient;
-
   private readonly runHeartbeat: HeartbeatService;
   private readonly heartbeatIntervalSeconds: number;
-
   private readonly snapshotPoller: HeartbeatService;
   private readonly snapshotPollIntervalSeconds: number;
-
-  private readonly envVars: Record<string, string>;
 
   private state:
     | {
@@ -74,15 +68,14 @@ export class DevRunController {
 
   constructor(private readonly opts: DevRunControllerOptions) {
     logger.debug("[DevRunController] Creating controller", {
-      w: this.workerManifest,
+      run: opts.runFriendlyId,
     });
 
-    this.workerManifest = opts.workerManifest;
+    this.worker = opts.worker;
     this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
     this.snapshotPollIntervalSeconds = 5;
 
     this.httpClient = opts.httpClient;
-    this.envVars = opts.envVars;
 
     this.snapshotPoller = new HeartbeatService({
       heartbeat: async () => {
@@ -91,7 +84,7 @@ export class DevRunController {
           return;
         }
 
-        console.debug("[DevRunController] Polling for latest snapshot");
+        logger.debug("[DevRunController] Polling for latest snapshot");
 
         this.httpClient.dev.sendDebugLog(this.runFriendlyId, {
           time: new Date(),
@@ -104,7 +97,7 @@ export class DevRunController {
         const response = await this.httpClient.dev.getRunExecutionData(this.runFriendlyId);
 
         if (!response.success) {
-          console.error("[DevRunController] Snapshot poll failed", { error: response.error });
+          logger.debug("[DevRunController] Snapshot poll failed", { error: response.error });
 
           this.httpClient.dev.sendDebugLog(this.runFriendlyId, {
             time: new Date(),
@@ -123,7 +116,7 @@ export class DevRunController {
       intervalMs: this.snapshotPollIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[DevRunController] Failed to poll for snapshot", { error });
+        logger.debug("[DevRunController] Failed to poll for snapshot", { error });
       },
     });
 
@@ -134,7 +127,7 @@ export class DevRunController {
           return;
         }
 
-        console.debug("[DevRunController] Sending heartbeat");
+        logger.debug("[DevRunController] Sending heartbeat");
 
         const response = await this.httpClient.dev.heartbeatRun(
           this.runFriendlyId,
@@ -146,13 +139,13 @@ export class DevRunController {
         );
 
         if (!response.success) {
-          console.error("[DevRunController] Heartbeat failed", { error: response.error });
+          logger.debug("[DevRunController] Heartbeat failed", { error: response.error });
         }
       },
       intervalMs: this.heartbeatIntervalSeconds * 1000,
       leadingEdge: false,
       onError: async (error) => {
-        console.error("[DevRunController] Failed to send heartbeat", { error });
+        logger.debug("[DevRunController] Failed to send heartbeat", { error });
       },
     });
 
@@ -279,6 +272,14 @@ export class DevRunController {
     return this.state.snapshot.friendlyId;
   }
 
+  get workerFriendlyId() {
+    if (!this.opts.worker.serverWorker) {
+      throw new Error("No version for dev worker");
+    }
+
+    return this.opts.worker.serverWorker.id;
+  }
+
   private handleSnapshotChangeLock = false;
 
   private async handleSnapshotChange({
@@ -287,7 +288,7 @@ export class DevRunController {
     completedWaitpoints,
   }: Pick<RunExecutionData, "run" | "snapshot" | "completedWaitpoints">) {
     if (this.handleSnapshotChangeLock) {
-      console.warn("handleSnapshotChange: already in progress");
+      logger.debug("handleSnapshotChange: already in progress");
       return;
     }
 
@@ -298,7 +299,7 @@ export class DevRunController {
 
     try {
       if (!this.snapshotFriendlyId) {
-        console.error("handleSnapshotChange: Missing snapshot ID", {
+        logger.debug("handleSnapshotChange: Missing snapshot ID", {
           runId: run.friendlyId,
           snapshotId: this.snapshotFriendlyId,
         });
@@ -316,7 +317,7 @@ export class DevRunController {
       }
 
       if (this.snapshotFriendlyId === snapshot.friendlyId) {
-        console.debug("handleSnapshotChange: snapshot not changed, skipping", { snapshot });
+        logger.debug("handleSnapshotChange: snapshot not changed, skipping", { snapshot });
 
         this.httpClient.dev.sendDebugLog(run.friendlyId, {
           time: new Date(),
@@ -330,7 +331,7 @@ export class DevRunController {
         return;
       }
 
-      console.log(`handleSnapshotChange: ${snapshot.executionStatus}`, {
+      logger.debug(`handleSnapshotChange: ${snapshot.executionStatus}`, {
         run,
         oldSnapshotId: this.snapshotFriendlyId,
         newSnapshot: snapshot,
@@ -350,7 +351,7 @@ export class DevRunController {
       try {
         this.updateRunPhase(run, snapshot);
       } catch (error) {
-        console.error("handleSnapshotChange: failed to update run phase", {
+        logger.debug("handleSnapshotChange: failed to update run phase", {
           run,
           snapshot,
           error,
@@ -365,7 +366,7 @@ export class DevRunController {
           try {
             await this.cancelAttempt(run.friendlyId);
           } catch (error) {
-            console.error("Failed to cancel attempt, shutting down", {
+            logger.debug("Failed to cancel attempt, shutting down", {
               error,
             });
 
@@ -377,20 +378,20 @@ export class DevRunController {
           return;
         }
         case "FINISHED": {
-          console.log("Run is finished, nothing to do");
+          logger.debug("Run is finished, nothing to do");
           return;
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          console.log("Run is executing with waitpoints", { snapshot });
+          logger.debug("Run is executing with waitpoints", { snapshot });
 
           try {
             await this.taskRunProcess?.cleanup(false);
           } catch (error) {
-            console.error("Failed to cleanup task run process", { error });
+            logger.debug("Failed to cleanup task run process", { error });
           }
 
           if (snapshot.friendlyId !== this.snapshotFriendlyId) {
-            console.debug("Snapshot changed after cleanup, abort", {
+            logger.debug("Snapshot changed after cleanup, abort", {
               oldSnapshotId: snapshot.friendlyId,
               newSnapshotId: this.snapshotFriendlyId,
             });
@@ -401,21 +402,21 @@ export class DevRunController {
           return;
         }
         case "SUSPENDED": {
-          console.error("Run shouldn't be suspended in DEV", {
+          logger.debug("Run shouldn't be suspended in DEV", {
             run,
             snapshot,
           });
           return;
         }
         case "PENDING_EXECUTING": {
-          console.log("Run is pending execution", { run, snapshot });
+          logger.debug("Run is pending execution", { run, snapshot });
 
           if (completedWaitpoints.length === 0) {
-            console.log("No waitpoints to complete, nothing to do");
+            logger.log("No waitpoints to complete, nothing to do");
             return;
           }
 
-          console.error("Run shouldn't be PENDING_EXECUTING with completedWaitpoints in DEV", {
+          logger.debug("Run shouldn't be PENDING_EXECUTING with completedWaitpoints in DEV", {
             run,
             snapshot,
           });
@@ -423,16 +424,16 @@ export class DevRunController {
           return;
         }
         case "EXECUTING": {
-          console.log("Run is now executing", { run, snapshot });
+          logger.debug("Run is now executing", { run, snapshot });
 
           if (completedWaitpoints.length === 0) {
             return;
           }
 
-          console.log("Processing completed waitpoints", { completedWaitpoints });
+          logger.debug("Processing completed waitpoints", { completedWaitpoints });
 
           if (!this.taskRunProcess) {
-            console.error("No task run process, ignoring completed waitpoints", {
+            logger.debug("No task run process, ignoring completed waitpoints", {
               completedWaitpoints,
             });
             return;
@@ -446,7 +447,7 @@ export class DevRunController {
         }
         case "RUN_CREATED":
         case "QUEUED": {
-          console.log("Status change not handled", { status: snapshot.executionStatus });
+          logger.debug("Status change not handled", { status: snapshot.executionStatus });
           return;
         }
         default: {
@@ -454,7 +455,7 @@ export class DevRunController {
         }
       }
     } catch (error) {
-      console.error("handleSnapshotChange: unexpected error", { error });
+      logger.debug("handleSnapshotChange: unexpected error", { error });
 
       this.httpClient.dev.sendDebugLog(run.friendlyId, {
         time: new Date(),
@@ -486,13 +487,15 @@ export class DevRunController {
     const start = await this.httpClient.dev.startRunAttempt(runFriendlyId, snapshotFriendlyId);
 
     if (!start.success) {
-      console.error("[DevRunController] Failed to start run", { error: start.error });
+      logger.debug("[DevRunController] Failed to start run", { error: start.error });
 
       this.runFinished();
       return;
     }
 
     const { run, snapshot, execution, envVars } = start.data;
+
+    eventBus.emit("runStarted", this.opts.worker, execution);
 
     logger.debug("[DevRunController] Started run", {
       runId: run.friendlyId,
@@ -509,11 +512,11 @@ export class DevRunController {
       // TODO: Handle the case where we're in the warm start phase or executing a new run
       // This can happen if we kill the run while it's still executing, e.g. after receiving an attempt number mismatch
 
-      console.error("Error while executing attempt", {
+      logger.debug("Error while executing attempt", {
         error,
       });
 
-      console.log("Submitting attempt completion", {
+      logger.debug("Submitting attempt completion", {
         runId: run.friendlyId,
         snapshotId: snapshot.friendlyId,
         updatedSnapshotId: this.snapshotFriendlyId,
@@ -533,7 +536,7 @@ export class DevRunController {
       );
 
       if (!completionResult.success) {
-        console.error("Failed to submit completion after error", {
+        logger.debug("Failed to submit completion after error", {
           error: completionResult.error,
         });
 
@@ -543,12 +546,12 @@ export class DevRunController {
         return;
       }
 
-      logger.log("Attempt completion submitted after error", completionResult.data.result);
+      logger.debug("Attempt completion submitted after error", completionResult.data.result);
 
       try {
-        await this.handleCompletionResult(completion, completionResult.data.result);
+        await this.handleCompletionResult(completion, completionResult.data.result, execution);
       } catch (error) {
-        console.error("Failed to handle completion result after error", { error });
+        logger.debug("Failed to handle completion result after error", { error });
 
         this.runFinished();
         return;
@@ -562,19 +565,28 @@ export class DevRunController {
     execution,
     envVars,
   }: WorkloadRunAttemptStartResponseBody) {
+    if (!this.opts.worker.serverWorker) {
+      throw new Error(`No server worker for Dev ${run.friendlyId}`);
+    }
+
+    if (!this.opts.worker.manifest) {
+      throw new Error(`No worker manifest for Dev ${run.friendlyId}`);
+    }
+
     this.snapshotPoller.start();
 
     this.taskRunProcess = new TaskRunProcess({
-      workerManifest: this.workerManifest,
+      workerManifest: this.opts.worker.manifest,
       env: {
         ...sanitizeEnvVars(envVars ?? {}),
-        ...sanitizeEnvVars(this.envVars),
-        TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.buildManifest.outputPath, "index.json"),
+        ...sanitizeEnvVars(this.opts.worker.params.env),
+        TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
+        RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
       },
       serverWorker: {
         id: "unmanaged",
-        contentHash: this.opts.buildManifest.contentHash,
-        version: this.opts.version,
+        contentHash: this.opts.worker.build.contentHash,
+        version: this.opts.worker.serverWorker?.version,
         engine: "V2",
       },
       payload: {
@@ -588,26 +600,26 @@ export class DevRunController {
 
     await this.taskRunProcess.initialize();
 
-    logger.log("executing task run process", {
+    logger.debug("executing task run process", {
       attemptId: execution.attempt.id,
       runId: execution.run.id,
     });
 
     const completion = await this.taskRunProcess.execute();
 
-    logger.log("Completed run", completion);
+    logger.debug("Completed run", completion);
 
     try {
       await this.taskRunProcess.cleanup(true);
       this.taskRunProcess = undefined;
     } catch (error) {
-      console.error("Failed to cleanup task run process, submitting completion anyway", {
+      logger.debug("Failed to cleanup task run process, submitting completion anyway", {
         error,
       });
     }
 
     if (!this.runFriendlyId || !this.snapshotFriendlyId) {
-      console.error("executeRun: Missing run ID or snapshot ID after execution", {
+      logger.debug("executeRun: Missing run ID or snapshot ID after execution", {
         runId: this.runFriendlyId,
         snapshotId: this.snapshotFriendlyId,
       });
@@ -625,7 +637,7 @@ export class DevRunController {
     );
 
     if (!completionResult.success) {
-      console.error("Failed to submit completion", {
+      logger.debug("Failed to submit completion", {
         error: completionResult.error,
       });
 
@@ -633,12 +645,12 @@ export class DevRunController {
       return;
     }
 
-    logger.log("Attempt completion submitted", completionResult.data.result);
+    logger.debug("Attempt completion submitted", completionResult.data.result);
 
     try {
-      await this.handleCompletionResult(completion, completionResult.data.result);
+      await this.handleCompletionResult(completion, completionResult.data.result, execution);
     } catch (error) {
-      console.error("Failed to handle completion result", { error });
+      logger.debug("Failed to handle completion result", { error });
 
       this.runFinished();
       return;
@@ -647,7 +659,8 @@ export class DevRunController {
 
   private async handleCompletionResult(
     completion: TaskRunExecutionResult,
-    result: CompleteRunAttemptResult
+    result: CompleteRunAttemptResult,
+    execution: TaskRunExecution
   ) {
     logger.debug("[DevRunController] Handling completion result", { completion, result });
 
@@ -656,21 +669,9 @@ export class DevRunController {
     try {
       this.updateRunPhase(run, completionSnapshot);
     } catch (error) {
-      console.error("Failed to update run phase after completion", { error });
+      logger.debug("Failed to update run phase after completion", { error });
 
       this.runFinished();
-      return;
-    }
-
-    if (attemptStatus === "RUN_FINISHED") {
-      logger.debug("Run finished");
-
-      this.runFinished();
-      return;
-    }
-
-    if (attemptStatus === "RUN_PENDING_CANCEL") {
-      logger.debug("Run pending cancel");
       return;
     }
 
@@ -703,6 +704,26 @@ export class DevRunController {
       return;
     }
 
+    if (attemptStatus === "RUN_PENDING_CANCEL") {
+      logger.debug("Run pending cancel");
+      return;
+    }
+
+    eventBus.emit(
+      "runCompleted",
+      this.opts.worker,
+      execution,
+      completion,
+      completion.usage?.durationMs ?? 0
+    );
+
+    if (attemptStatus === "RUN_FINISHED") {
+      logger.debug("Run finished");
+
+      this.runFinished();
+      return;
+    }
+
     assertExhaustive(attemptStatus);
   }
 
@@ -714,7 +735,7 @@ export class DevRunController {
 
     switch (wait.type) {
       case "DATETIME": {
-        logger.log("Waiting for duration", { wait });
+        logger.debug("Waiting for duration", { wait });
 
         const waitpoint = await this.httpClient.dev.waitForDuration(
           this.runFriendlyId,
@@ -725,18 +746,18 @@ export class DevRunController {
         );
 
         if (!waitpoint.success) {
-          console.error("Failed to wait for datetime", { error: waitpoint.error });
+          logger.debug("Failed to wait for datetime", { error: waitpoint.error });
           return;
         }
 
-        logger.log("Waitpoint created", { waitpointData: waitpoint.data });
+        logger.debug("Waitpoint created", { waitpointData: waitpoint.data });
 
         this.taskRunProcess?.waitpointCreated(wait.id, waitpoint.data.waitpoint.id);
 
         break;
       }
       default: {
-        console.error("Wait type not implemented", { wait });
+        logger.debug("Wait type not implemented", { wait });
       }
     }
   }
@@ -752,7 +773,7 @@ export class DevRunController {
   }
 
   async cancelAttempt(runId: string) {
-    logger.log("cancelling attempt", { runId });
+    logger.debug("cancelling attempt", { runId });
 
     await this.taskRunProcess?.cancel();
   }
@@ -787,7 +808,7 @@ export class DevRunController {
     const response = await this.httpClient.dev.getRunExecutionData(this.runFriendlyId);
 
     if (!response.success) {
-      console.error("Failed to get latest snapshot", { error: response.error });
+      logger.debug("Failed to get latest snapshot", { error: response.error });
       return;
     }
 

@@ -474,7 +474,7 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
   console.log(`Flushed runMetadata in ${duration}ms`);
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc);
+const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, true);
 
 runtime.setGlobalRuntimeManager(managedWorkerRuntime);
 

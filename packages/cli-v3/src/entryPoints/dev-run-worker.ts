@@ -53,7 +53,7 @@ sourceMapSupport.install({
 });
 
 process.on("uncaughtException", function (error, origin) {
-  console.error("Uncaught exception", { error, origin });
+  logError("Uncaught exception", { error, origin });
   if (error instanceof Error) {
     process.send &&
       process.send({
@@ -109,6 +109,7 @@ waitUntil.register({
 });
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
+const showInternalLogs = getEnvVar("RUN_WORKER_SHOW_LOGS") === "true";
 
 async function importConfig(
   configPath: string
@@ -190,10 +191,10 @@ const zodIpc = new ZodIpcConnection({
   process,
   handlers: {
     EXECUTE_TASK_RUN: async ({ execution, traceContext, metadata }, sender) => {
-      console.log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
+      log(`[${new Date().toISOString()}] Received EXECUTE_TASK_RUN`, execution);
 
       if (_isRunning) {
-        console.error("Worker is already running a task");
+        logError("Worker is already running a task");
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -223,7 +224,7 @@ const zodIpc = new ZodIpcConnection({
         const taskManifest = workerManifest.tasks.find((t) => t.id === execution.task.id);
 
         if (!taskManifest) {
-          console.error(`Could not find task ${execution.task.id}`);
+          logError(`Could not find task ${execution.task.id}`);
 
           await sender.send("TASK_RUN_COMPLETED", {
             execution,
@@ -250,11 +251,9 @@ const zodIpc = new ZodIpcConnection({
           await import(normalizeImportPath(taskManifest.entryPoint));
           const durationMs = performance.now() - beforeImport;
 
-          console.log(
-            `Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`
-          );
+          log(`Imported task ${execution.task.id} [${taskManifest.entryPoint}] in ${durationMs}ms`);
         } catch (err) {
-          console.error(`Failed to import task ${execution.task.id}`, err);
+          logError(`Failed to import task ${execution.task.id}`, err);
 
           await sender.send("TASK_RUN_COMPLETED", {
             execution,
@@ -283,7 +282,7 @@ const zodIpc = new ZodIpcConnection({
         const task = taskCatalog.getTask(execution.task.id);
 
         if (!task) {
-          console.error(`Could not find task ${execution.task.id}`);
+          logError(`Could not find task ${execution.task.id}`);
 
           await sender.send("TASK_RUN_COMPLETED", {
             execution,
@@ -383,7 +382,7 @@ const zodIpc = new ZodIpcConnection({
           _isRunning = false;
         }
       } catch (err) {
-        console.error("Failed to execute task", err);
+        logError("Failed to execute task", err);
 
         await sender.send("TASK_RUN_COMPLETED", {
           execution,
@@ -427,7 +426,7 @@ async function flushAll(timeoutInMs: number = 10_000) {
 
   const duration = performance.now() - now;
 
-  console.log(`Flushed all in ${duration}ms`);
+  log(`Flushed all in ${duration}ms`);
 }
 
 async function flushTracingSDK(timeoutInMs: number = 10_000) {
@@ -437,7 +436,7 @@ async function flushTracingSDK(timeoutInMs: number = 10_000) {
 
   const duration = performance.now() - now;
 
-  console.log(`Flushed tracingSDK in ${duration}ms`);
+  log(`Flushed tracingSDK in ${duration}ms`);
 }
 
 async function flushMetadata(timeoutInMs: number = 10_000) {
@@ -447,10 +446,10 @@ async function flushMetadata(timeoutInMs: number = 10_000) {
 
   const duration = performance.now() - now;
 
-  console.log(`Flushed runMetadata in ${duration}ms`);
+  log(`Flushed runMetadata in ${duration}ms`);
 }
 
-const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc);
+const managedWorkerRuntime = new ManagedRuntimeManager(zodIpc, showInternalLogs);
 runtime.setGlobalRuntimeManager(managedWorkerRuntime);
 
 process.title = "trigger-managed-worker";
@@ -462,9 +461,19 @@ for await (const _ of setInterval(heartbeatInterval)) {
     try {
       await zodIpc.send("TASK_HEARTBEAT", { id: _execution.attempt.id });
     } catch (err) {
-      console.error("Failed to send HEARTBEAT message", err);
+      logError("Failed to send HEARTBEAT message", err);
     }
   }
 }
 
-console.log(`[${new Date().toISOString()}] Executor started`);
+function log(message: string, ...args: any[]) {
+  if (!showInternalLogs) return;
+  console.log(`[${new Date().toISOString()}] ${message}`, args);
+}
+
+function logError(message: string, error?: any) {
+  if (!showInternalLogs) return;
+  console.error(`[${new Date().toISOString()}] ${message}`, error);
+}
+
+log(`Executor started`);

@@ -15,7 +15,7 @@ export type EventBusEvents = {
   backgroundWorkerInitialized: [BackgroundWorkerEngine2];
   backgroundWorkerIndexingError: [BuildManifest, Error];
   runStarted: [BackgroundWorkerEngine2, TaskRunExecution];
-  runCompleted: [BackgroundWorkerEngine2, TaskRunExecutionPayload, TaskRunExecutionResult, number];
+  runCompleted: [BackgroundWorkerEngine2, TaskRunExecution, TaskRunExecutionResult, number];
 };
 
 export type EventBusEventArgs<T extends keyof EventBusEvents> = EventBusEvents[T];

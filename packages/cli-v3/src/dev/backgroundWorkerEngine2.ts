@@ -1,6 +1,5 @@
 import { BuildManifest, ServerBackgroundWorker, WorkerManifest } from "@trigger.dev/core/v3";
 import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
-import { Evt } from "evt";
 import { join } from "node:path";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { prettyError } from "../utilities/cliOutput.js";
@@ -14,8 +13,6 @@ export type BackgroundWorkerEngine2Options = {
 };
 
 export class BackgroundWorkerEngine2 {
-  public onTaskRunHeartbeat: Evt<string> = new Evt();
-
   public deprecated: boolean = false;
   public manifest: WorkerManifest | undefined;
   public serverWorker: ServerBackgroundWorker | undefined;
@@ -26,20 +23,7 @@ export class BackgroundWorkerEngine2 {
   ) {}
 
   deprecate() {
-    if (this.deprecated) {
-      return;
-    }
-
     this.deprecated = true;
-
-    this.#tryStopWorker();
-  }
-
-  #tryStopWorker() {
-    if (this.deprecated) {
-      logger.debug("Worker deprecated, stopping", { outputPath: this.build.outputPath });
-      this.params.stop();
-    }
   }
 
   get workerManifestPath(): string {
@@ -48,6 +32,11 @@ export class BackgroundWorkerEngine2 {
 
   get buildManifestPath(): string {
     return join(this.build.outputPath, "build.json");
+  }
+
+  stop() {
+    logger.debug("Stopping worker", { build: this.build, params: this.params });
+    this.params.stop();
   }
 
   async initialize() {

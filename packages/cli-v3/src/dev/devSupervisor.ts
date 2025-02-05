@@ -16,15 +16,12 @@ import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorkerEngine2 } from "./backgroundWorkerEngine2.js";
 import { WorkerRuntime } from "./workerRuntime.js";
-import { getVersions } from "fast-npm-meta";
 import { chalkTask, cliLink, prettyError } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
 import { io, Socket } from "socket.io-client";
 import {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
-  WorkloadClientToServerEvents,
-  WorkloadServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 
 export type WorkerRuntimeOptions = {
@@ -178,10 +175,7 @@ class DevSupervisor implements WorkerRuntime {
 
     //get relevant versions
     //ignore deprecated and the latest worker
-    const oldWorkerIds = Array.from(this.workers.values())
-      .filter((worker) => !worker.deprecated && worker.serverWorker?.id !== this.latestWorkerId)
-      .map((worker) => worker.serverWorker?.id)
-      .filter((id): id is string => id !== undefined);
+    const oldWorkerIds = this.#getActiveOldWorkers();
 
     try {
       //todo later we should track available resources and machines used, and pass them in here (it supports it)
@@ -262,16 +256,28 @@ class DevSupervisor implements WorkerRuntime {
         //new run
         runController = new DevRunController({
           runFriendlyId: message.run.friendlyId,
-          workerManifest: worker.manifest,
-          buildManifest: worker.build,
-          envVars: worker.params.env,
-          version: worker.serverWorker.version,
+          worker: worker,
           httpClient: this.options.client,
+          logLevel: this.options.args.logLevel,
           onFinished: () => {
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
+
+            //stop the run controller, and remove it
             runController?.stop();
             this.runControllers.delete(message.run.friendlyId);
             this.#unsubscribeFromRunNotifications(message.run.friendlyId);
+
+            //stop the worker if it is deprecated and there are no more runs
+            if (
+              worker.deprecated &&
+              !this.#workerHasInProgressRuns(message.backgroundWorker.friendlyId)
+            ) {
+              logger.debug("[DevSupervisor] Stopping worker", {
+                workerId: message.backgroundWorker.friendlyId,
+              });
+              this.workers.delete(message.backgroundWorker.friendlyId);
+              // worker.stop();
+            }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
             this.#subscribeToRunNotifications();
@@ -280,6 +286,7 @@ class DevSupervisor implements WorkerRuntime {
             this.#unsubscribeFromRunNotifications(run.friendlyId);
           },
         });
+
         this.runControllers.set(message.run.friendlyId, runController);
 
         //don't await for run completion, we want to dequeue more runs
@@ -380,7 +387,7 @@ class DevSupervisor implements WorkerRuntime {
       },
     });
     this.socket.on("run:notify", async ({ version, run }) => {
-      console.log("[DevSupervisor] Received run notification", { version, run });
+      logger.debug("[DevSupervisor] Received run notification", { version, run });
 
       this.options.client.dev.sendDebugLog(run.friendlyId, {
         time: new Date(),
@@ -399,17 +406,17 @@ class DevSupervisor implements WorkerRuntime {
       await controller.getLatestSnapshot();
     });
     this.socket.on("connect", () => {
-      console.log("[DevSupervisor] Connected to supervisor");
+      logger.debug("[DevSupervisor] Connected to supervisor");
 
       for (const controller of this.runControllers.values()) {
         controller.resubscribeToRunNotifications();
       }
     });
     this.socket.on("connect_error", (error) => {
-      console.error("[DevSupervisor] Connection error", { error });
+      logger.debug("[DevSupervisor] Connection error", { error });
     });
     this.socket.on("disconnect", (reason, description) => {
-      console.log("[DevSupervisor] Disconnected from supervisor", { reason, description });
+      logger.debug("[DevSupervisor] Disconnected from supervisor", { reason, description });
     });
 
     const interval = setInterval(() => {
@@ -423,7 +430,7 @@ class DevSupervisor implements WorkerRuntime {
     const runFriendlyIds = Array.from(this.runControllers.keys());
 
     if (!this.socket) {
-      console.error("[DevSupervisor] Socket not connected");
+      logger.debug("[DevSupervisor] Socket not connected");
       return;
     }
 
@@ -441,7 +448,7 @@ class DevSupervisor implements WorkerRuntime {
 
   #unsubscribeFromRunNotifications(friendlyId: string) {
     if (!this.socket) {
-      console.error("[DevSupervisor] Socket not connected");
+      logger.debug("[DevSupervisor] Socket not connected");
       return;
     }
 
@@ -453,6 +460,39 @@ class DevSupervisor implements WorkerRuntime {
     });
 
     this.socket.emit("run:unsubscribe", { version: "1", runFriendlyIds: [friendlyId] });
+  }
+
+  #getActiveOldWorkers() {
+    return Array.from(this.workers.values())
+      .filter((worker) => {
+        //exclude the latest
+        if (worker.serverWorker?.id === this.latestWorkerId) {
+          return false;
+        }
+
+        //if it's deprecated AND there are no executing runs, then filter it out
+        if (worker.deprecated && worker.serverWorker?.id) {
+          return this.#workerHasInProgressRuns(worker.serverWorker.id);
+        }
+
+        return true;
+      })
+      .map((worker) => worker.serverWorker?.id)
+      .filter((id): id is string => id !== undefined);
+  }
+
+  #workerHasInProgressRuns(friendlyId: string) {
+    for (const controller of this.runControllers.values()) {
+      logger.debug("[DevSupervisor] Checking controller", {
+        controllerFriendlyId: controller.workerFriendlyId,
+        friendlyId,
+      });
+      if (controller.workerFriendlyId === friendlyId) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
 

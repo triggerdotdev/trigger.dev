@@ -18,9 +18,12 @@ export class ManagedRuntimeManager implements RuntimeManager {
   // Maps a waitpoint ID to a wait ID
   private readonly resolversByWaitpoint: Map<string, string> = new Map();
 
-  constructor(private ipc: ExecutorToWorkerProcessConnection) {
+  constructor(
+    private ipc: ExecutorToWorkerProcessConnection,
+    private showLogs: boolean
+  ) {
     setTimeout(() => {
-      console.log("Runtime status", {
+      this.log("Runtime status", {
         resolversbyWaitId: this.resolversByWaitId.keys(),
         resolversByWaitpoint: this.resolversByWaitpoint.keys(),
       });
@@ -98,7 +101,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
   }
 
   private completeWaitpoint(waitpoint: CompletedWaitpoint): void {
-    console.log("completeWaitpoint", waitpoint);
+    this.log("completeWaitpoint", waitpoint);
 
     let waitId: string | undefined;
 
@@ -118,7 +121,7 @@ export class ManagedRuntimeManager implements RuntimeManager {
 
     if (!waitId) {
       // TODO: Handle failures better
-      console.log("No waitId found for waitpoint", waitpoint);
+      this.log("No waitId found for waitpoint", waitpoint);
       return;
     }
 
@@ -126,11 +129,11 @@ export class ManagedRuntimeManager implements RuntimeManager {
 
     if (!resolve) {
       // TODO: Handle failures better
-      console.log("No resolver found for waitId", waitId);
+      this.log("No resolver found for waitId", waitId);
       return;
     }
 
-    console.log("Resolving waitpoint", waitpoint);
+    this.log("Resolving waitpoint", waitpoint);
 
     resolve(waitpoint);
 
@@ -159,5 +162,10 @@ export class ManagedRuntimeManager implements RuntimeManager {
         outputType: waitpoint.outputType ?? "application/json",
       } satisfies TaskRunSuccessfulExecutionResult;
     }
+  }
+
+  private log(message: string, ...args: any[]) {
+    if (!this.showLogs) return;
+    console.log(`[${new Date().toISOString()}] ${message}`, args);
   }
 }
