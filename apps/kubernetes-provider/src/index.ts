@@ -339,6 +339,22 @@ class KubernetesTaskOperations implements TaskOperations {
             spec: {
               ...this.#defaultPodSpec,
               restartPolicy: "Always",
+              affinity: {
+                nodeAffinity: {
+                  requiredDuringSchedulingIgnoredDuringExecution: {
+                    nodeSelectorTerms: [
+                      {
+                        matchExpressions: [
+                          {
+                            key: "trigger.dev/pre-pull-disabled",
+                            operator: "DoesNotExist",
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
               initContainers: [
                 {
                   name: "prepull",
