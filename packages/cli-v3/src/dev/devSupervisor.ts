@@ -274,9 +274,11 @@ class DevSupervisor implements WorkerRuntime {
             ) {
               logger.debug("[DevSupervisor] Stopping worker", {
                 workerId: message.backgroundWorker.friendlyId,
+                version: worker.serverWorker?.version,
               });
+
               this.workers.delete(message.backgroundWorker.friendlyId);
-              // worker.stop();
+              worker.stop();
             }
           },
           onSubscribeToRunNotifications: async (run, snapshot) => {
@@ -371,6 +373,9 @@ class DevSupervisor implements WorkerRuntime {
       }
 
       existingWorker.deprecate();
+      if (!this.#workerHasInProgressRuns(workerId)) {
+        existingWorker.stop();
+      }
     }
 
     this.workers.set(worker.serverWorker.id, worker);

@@ -766,7 +766,11 @@ export class DevRunController {
 
   private async runFinished() {
     // Kill the run process
-    await this.taskRunProcess?.kill("SIGKILL");
+    try {
+      await this.taskRunProcess?.kill("SIGKILL");
+    } catch (error) {
+      logger.debug("Failed to kill task run process", { error });
+    }
 
     this.runHeartbeat.stop();
     this.snapshotPoller.stop();
@@ -794,8 +798,12 @@ export class DevRunController {
 
     process.off("SIGTERM", this.sigterm);
 
-    if (this.taskRunProcess) {
-      await this.taskRunProcess.cleanup(true);
+    if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
+      try {
+        await this.taskRunProcess.cleanup(true);
+      } catch (error) {
+        logger.debug("Failed to cleanup task run process", { error });
+      }
     }
 
     this.runHeartbeat.stop();

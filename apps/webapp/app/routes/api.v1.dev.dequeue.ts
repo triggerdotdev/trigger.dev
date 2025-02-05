@@ -67,7 +67,6 @@ const { action } = createActionApiRoute(
         consumerId: authentication.environment.id,
         //current dev version (no specific version specified)
         environmentId: authentication.environment.id,
-        backgroundWorkerId: BackgroundWorkerId.toId(body.currentWorker),
         maxRunCount: maxDequeueCount,
         maxResources: availableResources,
       });

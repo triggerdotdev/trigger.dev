@@ -991,7 +991,7 @@ export class RunEngine {
     environmentId: string;
     maxRunCount: number;
     maxResources?: MachineResources;
-    backgroundWorkerId: string;
+    backgroundWorkerId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;

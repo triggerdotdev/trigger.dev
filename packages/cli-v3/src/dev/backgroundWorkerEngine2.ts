@@ -35,7 +35,10 @@ export class BackgroundWorkerEngine2 {
   }
 
   stop() {
-    logger.debug("Stopping worker", { build: this.build, params: this.params });
+    logger.debug("[BackgroundWorker] Stopping worker", {
+      version: this.serverWorker?.version,
+      outputPath: this.build.outputPath,
+    });
     this.params.stop();
   }
 
