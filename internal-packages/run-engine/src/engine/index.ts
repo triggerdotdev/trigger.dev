@@ -271,9 +271,20 @@ export class RunEngine {
       async (span) => {
         const status = delayUntil ? "DELAYED" : "PENDING";
 
-        let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
-        if (lockedToVersionId) {
-          secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
+        let secondaryMasterQueue: string | undefined = undefined;
+
+        if (environment.type === "DEVELOPMENT") {
+          // In dev we use the environment id as the master queue, or the locked worker id
+          masterQueue = this.#environmentMasterQueueKey(environment.id);
+          if (lockedToVersionId) {
+            masterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
+          }
+        } else {
+          // For deployed runs, we add the env/worker id as the secondary master queue
+          let secondaryMasterQueue = this.#environmentMasterQueueKey(environment.id);
+          if (lockedToVersionId) {
+            secondaryMasterQueue = this.#backgroundWorkerQueueKey(lockedToVersionId);
+          }
         }
 
         //create run
