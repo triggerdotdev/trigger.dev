@@ -1,3 +1,4 @@
+import { SpanKind, trace, Tracer } from "@opentelemetry/api";
 import { Logger } from "@trigger.dev/core/logger";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
@@ -8,12 +9,13 @@ import { z } from "zod";
 import { SimpleQueue } from "./queue.js";
 
 import Redis from "ioredis";
+import { startSpan } from "./telemetry.js";
 
-type WorkerCatalog = {
+export type WorkerCatalog = {
   [key: string]: {
     schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
     visibilityTimeoutMs: number;
-    retry: RetryOptions;
+    retry?: RetryOptions;
   };
 };
 
@@ -28,6 +30,11 @@ type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> = (param
   attempt: number;
 }) => Promise<void>;
 
+export type WorkerConcurrencyOptions = {
+  workers?: number;
+  tasksPerWorker?: number;
+};
+
 type WorkerOptions<TCatalog extends WorkerCatalog> = {
   name: string;
   redisOptions: RedisOptions;
@@ -35,16 +42,26 @@ type WorkerOptions<TCatalog extends WorkerCatalog> = {
   jobs: {
     [K in keyof TCatalog]: JobHandler<TCatalog, K>;
   };
-  concurrency?: {
-    workers?: number;
-    tasksPerWorker?: number;
-  };
+  concurrency?: WorkerConcurrencyOptions;
   pollIntervalMs?: number;
   logger?: Logger;
+  tracer?: Tracer;
+};
+
+// This results in attempt 12 being a delay of 1 hour
+const defaultRetrySettings = {
+  maxAttempts: 12,
+  factor: 2,
+  //one second
+  minTimeoutInMs: 1_000,
+  //one hour
+  maxTimeoutInMs: 3_600_000,
+  randomize: true,
 };
 
 class Worker<TCatalog extends WorkerCatalog> {
   private subscriber: Redis;
+  private tracer: Tracer;
 
   queue: SimpleQueue<QueueCatalogFromWorkerCatalog<TCatalog>>;
   private jobs: WorkerOptions<TCatalog>["jobs"];
@@ -55,6 +72,7 @@ class Worker<TCatalog extends WorkerCatalog> {
 
   constructor(private options: WorkerOptions<TCatalog>) {
     this.logger = options.logger ?? new Logger("Worker", "debug");
+    this.tracer = options.tracer ?? trace.getTracer(options.name);
 
     const schema: QueueCatalogFromWorkerCatalog<TCatalog> = Object.fromEntries(
       Object.entries(this.options.catalog).map(([key, value]) => [key, value.schema])
@@ -83,24 +101,68 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.setupSubscriber();
   }
 
+  /**
+   * Enqueues a job for processing.
+   * @param options - The enqueue options.
+   * @param options.id - Optional unique identifier for the job. If not provided, one will be generated. It prevents duplication.
+   * @param options.job - The job type from the worker catalog.
+   * @param options.payload - The job payload that matches the schema defined in the catalog.
+   * @param options.visibilityTimeoutMs - Optional visibility timeout in milliseconds. Defaults to value from catalog.
+   * @param options.availableAt - Optional date when the job should become available for processing. Defaults to now.
+   * @returns A promise that resolves when the job is enqueued.
+   */
   enqueue<K extends keyof TCatalog>({
     id,
     job,
     payload,
     visibilityTimeoutMs,
+    availableAt,
   }: {
     id?: string;
     job: K;
     payload: z.infer<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
+    availableAt?: Date;
   }) {
-    const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
-    return this.queue.enqueue({
-      id,
-      job,
-      item: payload,
-      visibilityTimeoutMs: timeout,
-    });
+    return startSpan(
+      this.tracer,
+      "enqueue",
+      async (span) => {
+        const timeout = visibilityTimeoutMs ?? this.options.catalog[job].visibilityTimeoutMs;
+
+        span.setAttribute("job_visibility_timeout_ms", timeout);
+
+        return this.queue.enqueue({
+          id,
+          job,
+          item: payload,
+          visibilityTimeoutMs: timeout,
+          availableAt,
+        });
+      },
+      {
+        kind: SpanKind.PRODUCER,
+        attributes: {
+          job_type: job as string,
+          job_id: id,
+        },
+      }
+    );
+  }
+
+  ack(id: string) {
+    return startSpan(
+      this.tracer,
+      "ack",
+      () => {
+        return this.queue.ack(id);
+      },
+      {
+        attributes: {
+          job_id: id,
+        },
+      }
+    );
   }
 
   private createWorker(tasksPerWorker: number) {
@@ -153,89 +215,120 @@ class Worker<TCatalog extends WorkerCatalog> {
         return;
       }
 
-      await Promise.all(
-        items.map(async ({ id, job, item, visibilityTimeoutMs, attempt }) => {
-          const catalogItem = this.options.catalog[job as any];
-          const handler = this.jobs[job as any];
-          if (!handler) {
-            this.logger.error(`No handler found for job type: ${job as string}`);
-            return;
-          }
-
-          try {
-            await handler({ id, payload: item, visibilityTimeoutMs, attempt });
-
-            //succeeded, acking the item
-            await this.queue.ack(id);
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error(`Error processing item, it threw an error:`, {
-              name: this.options.name,
-              id,
-              job,
-              item,
-              visibilityTimeoutMs,
-              error,
-              errorMessage,
-            });
-            // Requeue the failed item with a delay
-            try {
-              attempt = attempt + 1;
-
-              const retryDelay = calculateNextRetryDelay(catalogItem.retry, attempt);
-
-              if (!retryDelay) {
-                this.logger.error(
-                  `Failed item ${id} has reached max attempts, moving to the DLQ.`,
-                  {
-                    name: this.options.name,
-                    id,
-                    job,
-                    item,
-                    visibilityTimeoutMs,
-                    attempt,
-                    errorMessage,
-                  }
-                );
-
-                await this.queue.moveToDeadLetterQueue(id, errorMessage);
+      await startSpan(
+        this.tracer,
+        "processItems",
+        async (span) => {
+          await Promise.all(
+            items.map(async ({ id, job, item, visibilityTimeoutMs, attempt, timestamp }) => {
+              const catalogItem = this.options.catalog[job as any];
+              const handler = this.jobs[job as any];
+              if (!handler) {
+                this.logger.error(`No handler found for job type: ${job as string}`);
                 return;
               }
 
-              const retryDate = new Date(Date.now() + retryDelay);
-              this.logger.info(`Requeued failed item ${id} with delay`, {
-                name: this.options.name,
-                id,
-                job,
-                item,
-                retryDate,
-                retryDelay,
-                visibilityTimeoutMs,
-                attempt,
-              });
-              await this.queue.enqueue({
-                id,
-                job,
-                item,
-                availableAt: retryDate,
-                attempt,
-                visibilityTimeoutMs,
-              });
-            } catch (requeueError) {
-              this.logger.error(
-                `Failed to requeue item, threw error. Will automatically get rescheduled after the visilibity timeout.`,
-                {
+              try {
+                await startSpan(
+                  this.tracer,
+                  "processItem",
+                  async () => {
+                    await handler({ id, payload: item, visibilityTimeoutMs, attempt });
+                    //succeeded, acking the item
+                    await this.queue.ack(id);
+                  },
+                  {
+                    attributes: {
+                      job_id: id,
+                      job_type: job as string,
+                      attempt,
+                      job_timestamp: timestamp.getTime(),
+                      job_age_in_ms: Date.now() - timestamp.getTime(),
+                    },
+                  }
+                );
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                this.logger.error(`Error processing item, it threw an error:`, {
                   name: this.options.name,
                   id,
                   job,
                   item,
                   visibilityTimeoutMs,
-                  error: requeueError,
+                  error,
+                  errorMessage,
+                });
+                // Requeue the failed item with a delay
+                try {
+                  attempt = attempt + 1;
+
+                  const retrySettings = {
+                    ...defaultRetrySettings,
+                    ...catalogItem.retry,
+                  };
+
+                  const retryDelay = calculateNextRetryDelay(retrySettings, attempt);
+
+                  if (!retryDelay) {
+                    this.logger.error(
+                      `Failed item ${id} has reached max attempts, moving to the DLQ.`,
+                      {
+                        name: this.options.name,
+                        id,
+                        job,
+                        item,
+                        visibilityTimeoutMs,
+                        attempt,
+                        errorMessage,
+                      }
+                    );
+
+                    await this.queue.moveToDeadLetterQueue(id, errorMessage);
+                    return;
+                  }
+
+                  const retryDate = new Date(Date.now() + retryDelay);
+                  this.logger.info(`Requeued failed item ${id} with delay`, {
+                    name: this.options.name,
+                    id,
+                    job,
+                    item,
+                    retryDate,
+                    retryDelay,
+                    visibilityTimeoutMs,
+                    attempt,
+                  });
+                  await this.queue.enqueue({
+                    id,
+                    job,
+                    item,
+                    availableAt: retryDate,
+                    attempt,
+                    visibilityTimeoutMs,
+                  });
+                } catch (requeueError) {
+                  this.logger.error(
+                    `Failed to requeue item, threw error. Will automatically get rescheduled after the visilibity timeout.`,
+                    {
+                      name: this.options.name,
+                      id,
+                      job,
+                      item,
+                      visibilityTimeoutMs,
+                      error: requeueError,
+                    }
+                  );
                 }
-              );
-            }
-          }
-        })
+              }
+            })
+          );
+        },
+        {
+          attributes: {
+            worker_id: worker.threadId,
+            item_count: items.length,
+          },
+        }
       );
     } catch (error) {
       this.logger.error("Error dequeuing items:", { name: this.options.name, error });
@@ -262,7 +355,7 @@ class Worker<TCatalog extends WorkerCatalog> {
 
   private async handleRedriveMessage(channel: string, message: string) {
     try {
-      const { id } = JSON.parse(message);
+      const { id } = JSON.parse(message) as any;
       if (typeof id !== "string") {
         throw new Error("Invalid message format: id must be a string");
       }
@@ -283,9 +376,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.isShuttingDown = true;
     this.logger.log("Shutting down workers...");
 
-    for (const worker of this.workers) {
-      worker.terminate();
-    }
+    await Promise.all(this.workers.map((worker) => worker.terminate()));
 
     await this.subscriber.unsubscribe();
     await this.subscriber.quit();
@@ -301,8 +392,8 @@ class Worker<TCatalog extends WorkerCatalog> {
     }
   }
 
-  public stop() {
-    this.shutdown();
+  public async stop() {
+    await this.shutdown();
   }
 }
 

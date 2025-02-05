@@ -33,7 +33,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.name = name;
     this.redis = new Redis({
       ...redisOptions,
-      keyPrefix: `{queue:${name}:}`,
+      keyPrefix: `${redisOptions.keyPrefix ?? ""}{queue:${name}:}`,
       retryStrategy(times) {
         const delay = Math.min(times * 50, 1000);
         return delay;
@@ -114,6 +114,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
       visibilityTimeoutMs: number;
       attempt: number;
+      timestamp: Date;
     }>
   > {
     const now = Date.now();
@@ -127,12 +128,14 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
 
       const dequeuedItems = [];
 
-      for (const [id, serializedItem] of results) {
-        const parsedItem = JSON.parse(serializedItem);
+      for (const [id, serializedItem, score] of results) {
+        const parsedItem = JSON.parse(serializedItem) as any;
         if (typeof parsedItem.job !== "string") {
           this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
           continue;
         }
+
+        const timestamp = new Date(Number(score));
 
         const schema = this.schema[parsedItem.job];
 
@@ -142,6 +145,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             id,
             item: parsedItem,
             job: parsedItem.job,
+            timestamp,
           });
           continue;
         }
@@ -155,6 +159,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             item: parsedItem,
             errors: validatedItem.error,
             attempt: parsedItem.attempt,
+            timestamp,
           });
           continue;
         }
@@ -170,6 +175,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           item: validatedItem.data,
           visibilityTimeoutMs,
           attempt: parsedItem.attempt ?? 0,
+          timestamp,
         });
       }
 
@@ -336,7 +342,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             local invisibleUntil = now + visibilityTimeoutMs
 
             redis.call('ZADD', queue, invisibleUntil, id)
-            table.insert(dequeued, {id, serializedItem})
+            table.insert(dequeued, {id, serializedItem, score})
           end
         end
 
@@ -435,8 +441,8 @@ declare module "ioredis" {
       //args
       now: number,
       count: number,
-      callback?: Callback<Array<[string, string]>>
-    ): Result<Array<[string, string]>, Context>;
+      callback?: Callback<Array<[string, string, string]>>
+    ): Result<Array<[string, string, string]>, Context>;
 
     ackItem(
       queue: string,

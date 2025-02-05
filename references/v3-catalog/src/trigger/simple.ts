@@ -106,6 +106,8 @@ export const immediateReturn = task({
     console.info("some");
     console.warn("random");
     console.error("logs");
+
+    await new Promise((resolve) => setTimeout(resolve, 20000));
   },
 });
 

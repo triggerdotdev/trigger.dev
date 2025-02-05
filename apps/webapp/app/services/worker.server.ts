@@ -6,7 +6,6 @@ import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
-import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
 import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
@@ -658,11 +657,7 @@ function getWorkerQueue() {
       "v3.requeueTaskRun": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RequeueTaskRunService();
-
-          await service.call(payload.runId);
-        },
+        handler: async (payload, job) => {}, // This is now handled by redisWorker
       },
       "v3.retryAttempt": {
         priority: 0,
