@@ -14,7 +14,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
-import { BackgroundWorkerEngine2 } from "./backgroundWorkerEngine2.js";
+import { BackgroundWorker } from "./backgroundWorker.js";
 import { WorkerRuntime } from "./workerRuntime.js";
 import { chalkTask, cliLink, prettyError } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
@@ -56,7 +56,7 @@ class DevSupervisor implements WorkerRuntime {
   private socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
 
   /** Workers are versions of the code */
-  private workers: Map<string, BackgroundWorkerEngine2> = new Map();
+  private workers: Map<string, BackgroundWorker> = new Map();
 
   /** Map of run friendly id to run controller. They process runs from start to finish.  */
   private runControllers: Map<string, DevRunController> = new Map();
@@ -101,7 +101,7 @@ class DevSupervisor implements WorkerRuntime {
 
     const env = await this.#getEnvVars();
 
-    const backgroundWorker = new BackgroundWorkerEngine2(manifest, {
+    const backgroundWorker = new BackgroundWorker(manifest, {
       env,
       cwd: this.options.config.workingDir,
       stop,
@@ -361,7 +361,7 @@ class DevSupervisor implements WorkerRuntime {
     };
   }
 
-  async #registerWorker(worker: BackgroundWorkerEngine2) {
+  async #registerWorker(worker: BackgroundWorker) {
     if (!worker.serverWorker) {
       return;
     }

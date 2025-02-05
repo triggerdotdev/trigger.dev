@@ -1,22 +1,22 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
+  apiClientManager,
   clock,
+  ExecutorToWorkerMessageCatalog,
   type HandleErrorFunction,
   logger,
   LogLevel,
+  runMetadata,
   runtime,
   taskCatalog,
   TaskRunErrorCodes,
   TaskRunExecution,
-  WorkerToExecutorMessageCatalog,
-  TriggerConfig,
-  WorkerManifest,
-  ExecutorToWorkerMessageCatalog,
   timeout,
-  runMetadata,
+  TriggerConfig,
   waitUntil,
-  apiClientManager,
+  WorkerManifest,
+  WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -26,17 +26,16 @@ import {
   getEnvVar,
   getNumberEnvVar,
   logLevels,
+  ManagedRuntimeManager,
   OtelTaskLogger,
-  ProdUsageManager,
+  StandardMetadataManager,
   StandardTaskCatalog,
+  StandardWaitUntilManager,
   TaskExecutor,
   TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,
-  StandardMetadataManager,
-  StandardWaitUntilManager,
-  ManagedRuntimeManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";

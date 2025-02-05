@@ -2,20 +2,19 @@ import {
   BuildManifest,
   BuildTarget,
   TaskRunExecution,
-  TaskRunExecutionPayload,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { EventEmitter } from "node:events";
-import { BackgroundWorkerEngine2 } from "../dev/backgroundWorkerEngine2.js";
+import { BackgroundWorker } from "../dev/backgroundWorker.js";
 
 export type EventBusEvents = {
   rebuildStarted: [BuildTarget];
   buildStarted: [BuildTarget];
   workerSkipped: [];
-  backgroundWorkerInitialized: [BackgroundWorkerEngine2];
+  backgroundWorkerInitialized: [BackgroundWorker];
   backgroundWorkerIndexingError: [BuildManifest, Error];
-  runStarted: [BackgroundWorkerEngine2, TaskRunExecution];
-  runCompleted: [BackgroundWorkerEngine2, TaskRunExecution, TaskRunExecutionResult, number];
+  runStarted: [BackgroundWorker, TaskRunExecution];
+  runCompleted: [BackgroundWorker, TaskRunExecution, TaskRunExecutionResult, number];
 };
 
 export type EventBusEventArgs<T extends keyof EventBusEvents> = EventBusEvents[T];

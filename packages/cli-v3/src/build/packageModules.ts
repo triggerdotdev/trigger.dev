@@ -20,11 +20,6 @@ export const unmanagedIndexController = join(
 );
 export const unmanagedIndexWorker = join(sourceDir, "entryPoints", "unmanaged-index-worker.js");
 
-export const deployRunController = join(sourceDir, "entryPoints", "deploy-run-controller.js");
-export const deployRunWorker = join(sourceDir, "entryPoints", "deploy-run-worker.js");
-export const deployIndexController = join(sourceDir, "entryPoints", "deploy-index-controller.js");
-export const deployIndexWorker = join(sourceDir, "entryPoints", "deploy-index-worker.js");
-
 export const telemetryEntryPoint = join(sourceDir, "entryPoints", "loader.js");
 
 export const devEntryPoints = [devRunWorker, devIndexWorker];
@@ -39,12 +34,6 @@ export const unmanagedEntryPoints = [
   unmanagedRunWorker,
   unmanagedIndexController,
   unmanagedIndexWorker,
-];
-export const deployEntryPoints = [
-  deployRunController,
-  deployRunWorker,
-  deployIndexController,
-  deployIndexWorker,
 ];
 
 export const esmShimPath = join(sourceDir, "shims", "esm.js");
@@ -132,37 +121,6 @@ function isUnmanagedIndexWorker(entryPoint: string) {
 }
 
 // IMPORTANT: this may look like it should not work on Windows, but it does (and changing to using path.join will break stuff)
-function isDeployIndexController(entryPoint: string) {
-  return (
-    entryPoint.includes("dist/esm/entryPoints/deploy-index-controller.js") ||
-    entryPoint.includes("src/entryPoints/deploy-index-controller.ts")
-  );
-}
-
-// IMPORTANT: this may look like it should not work on Windows, but it does (and changing to using path.join will break stuff)
-function isDeployIndexWorker(entryPoint: string) {
-  return (
-    entryPoint.includes("dist/esm/entryPoints/deploy-index-worker.js") ||
-    entryPoint.includes("src/entryPoints/deploy-index-worker.ts")
-  );
-}
-
-function isDeployRunController(entryPoint: string) {
-  return (
-    entryPoint.includes("dist/esm/entryPoints/deploy-run-controller.js") ||
-    entryPoint.includes("src/entryPoints/deploy-run-controller.ts")
-  );
-}
-
-// IMPORTANT: this may look like it should not work on Windows, but it does (and changing to using path.join will break stuff)
-function isDeployRunWorker(entryPoint: string) {
-  return (
-    entryPoint.includes("dist/esm/entryPoints/deploy-run-worker.js") ||
-    entryPoint.includes("src/entryPoints/deploy-run-worker.ts")
-  );
-}
-
-// IMPORTANT: this may look like it should not work on Windows, but it does (and changing to using path.join will break stuff)
 export function isLoaderEntryPoint(entryPoint: string) {
   return (
     entryPoint.includes("dist/esm/entryPoints/loader.js") ||
@@ -175,8 +133,6 @@ export function isRunWorkerForTarget(entryPoint: string, target: BuildTarget) {
     case "dev":
       return isDevRunWorker(entryPoint);
     case "deploy":
-      return isDeployRunWorker(entryPoint);
-    case "managed":
       return isManagedRunWorker(entryPoint);
     case "unmanaged":
       return isUnmanagedRunWorker(entryPoint);
@@ -190,8 +146,6 @@ export function getRunWorkerForTarget(target: BuildTarget) {
     case "dev":
       return devRunWorker;
     case "deploy":
-      return deployRunWorker;
-    case "managed":
       return managedRunWorker;
     case "unmanaged":
       return unmanagedRunWorker;
@@ -205,8 +159,6 @@ export function isRunControllerForTarget(entryPoint: string, target: BuildTarget
     case "dev":
       return false;
     case "deploy":
-      return isDeployRunController(entryPoint);
-    case "managed":
       return isManagedRunController(entryPoint);
     case "unmanaged":
       return isUnmanagedRunController(entryPoint);
@@ -220,8 +172,6 @@ export function getRunControllerForTarget(target: BuildTarget) {
     case "dev":
       return undefined;
     case "deploy":
-      return deployRunController;
-    case "managed":
       return managedRunController;
     case "unmanaged":
       return unmanagedRunController;
@@ -235,8 +185,6 @@ export function isIndexWorkerForTarget(entryPoint: string, target: BuildTarget) 
     case "dev":
       return isDevIndexWorker(entryPoint);
     case "deploy":
-      return isDeployIndexWorker(entryPoint);
-    case "managed":
       return isManagedIndexWorker(entryPoint);
     case "unmanaged":
       return isUnmanagedIndexWorker(entryPoint);
@@ -250,8 +198,6 @@ export function getIndexWorkerForTarget(target: BuildTarget) {
     case "dev":
       return devIndexWorker;
     case "deploy":
-      return deployIndexWorker;
-    case "managed":
       return managedIndexWorker;
     case "unmanaged":
       return unmanagedIndexWorker;
@@ -265,8 +211,6 @@ export function isIndexControllerForTarget(entryPoint: string, target: BuildTarg
     case "dev":
       return false;
     case "deploy":
-      return isDeployIndexController(entryPoint);
-    case "managed":
       return isManagedIndexController(entryPoint);
     case "unmanaged":
       return isUnmanagedIndexController(entryPoint);
@@ -280,8 +224,6 @@ export function getIndexControllerForTarget(target: BuildTarget) {
     case "dev":
       return undefined;
     case "deploy":
-      return deployIndexController;
-    case "managed":
       return managedIndexController;
     case "unmanaged":
       return unmanagedIndexController;

@@ -16,12 +16,12 @@ import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
-import { BackgroundWorkerEngine2 } from "../dev/backgroundWorkerEngine2.js";
+import { BackgroundWorker } from "../dev/backgroundWorker.js";
 import { eventBus } from "../utilities/eventBus.js";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
-  worker: BackgroundWorkerEngine2;
+  worker: BackgroundWorker;
   httpClient: CliApiClient;
   logLevel: LogLevel;
   heartbeatIntervalSeconds?: number;
@@ -41,7 +41,7 @@ type Snapshot = {
 
 export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
-  private readonly worker: BackgroundWorkerEngine2;
+  private readonly worker: BackgroundWorker;
   private readonly httpClient: CliApiClient;
   private readonly runHeartbeat: HeartbeatService;
   private readonly heartbeatIntervalSeconds: number;

@@ -214,7 +214,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const { features } = resolvedConfig;
 
   const buildManifest = await buildWorker({
-    target: features.run_engine_v2 ? "managed" : "deploy",
+    target: "deploy",
     environment: options.env,
     destination: destination.path,
     resolvedConfig,

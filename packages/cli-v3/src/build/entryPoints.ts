@@ -4,7 +4,6 @@ import * as chokidar from "chokidar";
 import { glob } from "tinyglobby";
 import { logger } from "../utilities/logger.js";
 import {
-  deployEntryPoints,
   devEntryPoints,
   managedEntryPoints,
   telemetryEntryPoint,
@@ -63,7 +62,7 @@ export async function createEntryPointManager(
         entryPoints.push(...devEntryPoints);
         break;
       }
-      case "managed": {
+      case "deploy": {
         entryPoints.push(...managedEntryPoints);
         break;
       }
@@ -72,7 +71,7 @@ export async function createEntryPointManager(
         break;
       }
       default: {
-        entryPoints.push(...deployEntryPoints);
+        entryPoints.push(...managedEntryPoints);
       }
     }
 
