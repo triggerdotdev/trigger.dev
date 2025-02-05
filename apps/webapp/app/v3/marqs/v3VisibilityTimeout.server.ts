@@ -14,7 +14,7 @@ export class V3GraphileVisibilityTimeout implements VisibilityTimeoutStrategy {
 
 export class V3LegacyRunEngineWorkerVisibilityTimeout implements VisibilityTimeoutStrategy {
   async heartbeat(messageId: string, timeoutInMs: number): Promise<void> {
-    await legacyRunEngineWorker?.enqueue({
+    await legacyRunEngineWorker.enqueue({
       id: `heartbeat:${messageId}`,
       job: "runHeartbeat",
       payload: { runId: messageId },
@@ -23,6 +23,6 @@ export class V3LegacyRunEngineWorkerVisibilityTimeout implements VisibilityTimeo
   }
 
   async cancelHeartbeat(messageId: string): Promise<void> {
-    await legacyRunEngineWorker?.ack(`heartbeat:${messageId}`);
+    await legacyRunEngineWorker.ack(`heartbeat:${messageId}`);
   }
 }

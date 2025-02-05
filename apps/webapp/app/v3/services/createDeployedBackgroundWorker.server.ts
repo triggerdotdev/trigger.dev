@@ -148,7 +148,7 @@ export class CreateDeployedBackgroundWorkerService extends BaseService {
       }
 
       await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id, this._prisma);
-      await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+      await PerformDeploymentAlertsService.enqueue(deployment.id);
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
       return backgroundWorker;

@@ -4,6 +4,7 @@ import { workerQueue } from "~/services/worker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
+import { commonWorker } from "~/v3/commonWorker.server";
 
 type FoundRun = Prisma.Result<
   typeof prisma.taskRun,
@@ -45,34 +46,27 @@ export class PerformTaskRunAlertsService extends BaseService {
   }
 
   async #createAndSendAlert(alertChannel: ProjectAlertChannel, run: FoundRun) {
-    await $transaction(this._prisma, "create and send run alert", async (tx) => {
-      const alert = await this._prisma.projectAlert.create({
-        data: {
-          friendlyId: generateFriendlyId("alert"),
-          channelId: alertChannel.id,
-          projectId: run.projectId,
-          environmentId: run.runtimeEnvironmentId,
-          status: "PENDING",
-          type: "TASK_RUN",
-          taskRunId: run.id,
-        },
-      });
-
-      await DeliverAlertService.enqueue(alert.id, tx);
+    const alert = await this._prisma.projectAlert.create({
+      data: {
+        friendlyId: generateFriendlyId("alert"),
+        channelId: alertChannel.id,
+        projectId: run.projectId,
+        environmentId: run.runtimeEnvironmentId,
+        status: "PENDING",
+        type: "TASK_RUN",
+        taskRunId: run.id,
+      },
     });
+
+    await DeliverAlertService.enqueue(alert.id);
   }
 
-  static async enqueue(runId: string, tx: PrismaClientOrTransaction, runAt?: Date) {
-    return await workerQueue.enqueue(
-      "v3.performTaskRunAlerts",
-      {
-        runId,
-      },
-      {
-        tx,
-        runAt,
-        jobKey: `performTaskRunAlerts:${runId}`,
-      }
-    );
+  static async enqueue(runId: string, runAt?: Date) {
+    return await commonWorker.enqueue({
+      id: `performTaskRunAlerts:${runId}`,
+      job: "v3.performTaskRunAlerts",
+      payload: { runId },
+      availableAt: runAt,
+    });
   }
 }

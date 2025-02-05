@@ -28,6 +28,7 @@ import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
 import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
+import { commonWorker } from "~/v3/commonWorker.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -1092,22 +1093,13 @@ export class DeliverAlertService extends BaseService {
     return text;
   }
 
-  static async enqueue(
-    alertId: string,
-    tx: PrismaClientOrTransaction,
-    options?: { runAt?: Date; queueName?: string }
-  ) {
-    return await workerQueue.enqueue(
-      "v3.deliverAlert",
-      {
-        alertId,
-      },
-      {
-        tx,
-        runAt: options?.runAt,
-        jobKey: `deliverAlert:${alertId}`,
-      }
-    );
+  static async enqueue(alertId: string, runAt?: Date) {
+    return await commonWorker.enqueue({
+      id: `alert:${alertId}`,
+      job: "v3.deliverAlert",
+      payload: { alertId },
+      availableAt: runAt,
+    });
   }
 }
 

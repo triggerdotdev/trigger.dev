@@ -8,7 +8,6 @@ import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
-import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
 import { CancelTaskAttemptDependenciesService } from "~/v3/services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
@@ -155,9 +154,6 @@ const workerCatalog = {
   }),
   "v3.performTaskRunAlerts": z.object({
     runId: z.string(),
-  }),
-  "v3.performTaskAttemptAlerts": z.object({
-    attemptId: z.string(),
   }),
   "v3.deliverAlert": z.object({
     alertId: z.string(),
@@ -607,15 +603,6 @@ function getWorkerQueue() {
         handler: async (payload, job) => {
           const service = new PerformTaskRunAlertsService();
           return await service.call(payload.runId);
-        },
-      },
-      "v3.performTaskAttemptAlerts": {
-        priority: 0,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PerformTaskAttemptAlertsService();
-
-          return await service.call(payload.attemptId);
         },
       },
       "v3.deliverAlert": {

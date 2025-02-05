@@ -13,6 +13,25 @@ export type MessageCatalogValue<
   TKey extends MessageCatalogKey<TMessageCatalog>,
 > = z.infer<TMessageCatalog[TKey]>;
 
+export type AnyMessageCatalog = MessageCatalogSchema;
+export type QueueItem<TMessageCatalog extends MessageCatalogSchema> = {
+  id: string;
+  job: MessageCatalogKey<TMessageCatalog>;
+  item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+  visibilityTimeoutMs: number;
+  attempt: number;
+  timestamp: Date;
+};
+
+export type AnyQueueItem = {
+  id: string;
+  job: string;
+  item: any;
+  visibilityTimeoutMs: number;
+  attempt: number;
+  timestamp: Date;
+};
+
 export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   name: string;
   private redis: Redis;
@@ -107,16 +126,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       throw e;
     }
   }
-  async dequeue(count: number = 1): Promise<
-    Array<{
-      id: string;
-      job: MessageCatalogKey<TMessageCatalog>;
-      item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
-      visibilityTimeoutMs: number;
-      attempt: number;
-      timestamp: Date;
-    }>
-  > {
+  async dequeue(count: number = 1): Promise<Array<QueueItem<TMessageCatalog>>> {
     const now = Date.now();
 
     try {
@@ -382,10 +392,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local parsedItem = cjson.decode(item)
         parsedItem.errorMessage = errorMessage
 
+        local time = redis.call('TIME')
+        local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
         redis.call('ZREM', queue, id)
         redis.call('HDEL', items, id)
 
-        redis.call('ZADD', dlq, redis.call('TIME')[1], id)
+        redis.call('ZADD', dlq, now, id)
         redis.call('HSET', dlqItems, id, cjson.encode(parsedItem))
 
         return 1
@@ -409,10 +422,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local parsedItem = cjson.decode(item)
         parsedItem.errorMessage = nil
 
+        local time = redis.call('TIME')
+        local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
         redis.call('ZREM', dlq, id)
         redis.call('HDEL', dlqItems, id)
 
-        redis.call('ZADD', queue, redis.call('TIME')[1], id)
+        redis.call('ZADD', queue, now, id)
         redis.call('HSET', items, id, cjson.encode(parsedItem))
 
         return 1

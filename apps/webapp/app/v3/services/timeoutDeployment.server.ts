@@ -39,7 +39,7 @@ export class TimeoutDeploymentService extends BaseService {
       },
     });
 
-    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(deployment.id);
   }
 
   static async enqueue(

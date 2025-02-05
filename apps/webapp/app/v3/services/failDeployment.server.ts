@@ -49,7 +49,7 @@ export class FailDeploymentService extends BaseService {
       },
     });
 
-    await PerformDeploymentAlertsService.enqueue(failedDeployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(failedDeployment.id);
 
     return failedDeployment;
   }

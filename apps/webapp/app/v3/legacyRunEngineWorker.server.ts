@@ -5,30 +5,8 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
-import { tracer } from "./tracer.server";
-
-const workerCatalog = {
-  runHeartbeat: {
-    schema: z.object({
-      runId: z.string(),
-    }),
-    visibilityTimeoutMs: 10000,
-  },
-};
 
 function initializeWorker() {
-  if (env.WORKER_ENABLED !== "true") {
-    logger.debug("RedisWorker not initialized because WORKER_ENABLED is not set to true");
-    return;
-  }
-
-  if (!env.LEGACY_RUN_ENGINE_WORKER_REDIS_HOST || !env.LEGACY_RUN_ENGINE_WORKER_REDIS_PORT) {
-    logger.debug(
-      "RedisWorker not initialized because LEGACY_RUN_ENGINE_WORKER_REDIS_HOST or LEGACY_RUN_ENGINE_WORKER_REDIS_PORT is not set"
-    );
-    return;
-  }
-
   const redisOptions = {
     keyPrefix: "legacy-run-engine:worker:",
     host: env.LEGACY_RUN_ENGINE_WORKER_REDIS_HOST,
@@ -46,12 +24,24 @@ function initializeWorker() {
   const worker = new RedisWorker({
     name: "legacy-run-engine-worker",
     redisOptions,
-    catalog: workerCatalog,
+    catalog: {
+      runHeartbeat: {
+        schema: z.object({
+          runId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
+    },
     concurrency: {
       workers: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS,
       tasksPerWorker: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER,
+      limit: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT,
     },
     pollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL,
+    immediatePollIntervalMs: env.LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL,
     logger: new Logger("LegacyRunEngineWorker", "debug"),
     jobs: {
       runHeartbeat: async ({ payload }) => {
@@ -61,6 +51,14 @@ function initializeWorker() {
       },
     },
   });
+
+  if (env.WORKER_ENABLED === "true") {
+    logger.debug(
+      `👨‍🏭 Starting legacy run engine worker at host ${env.LEGACY_RUN_ENGINE_WORKER_REDIS_HOST}, pollInterval = ${env.LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL}, immediatePollInterval = ${env.LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL}, workers = ${env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS}, tasksPerWorker = ${env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER}, concurrencyLimit = ${env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT}`
+    );
+
+    worker.start();
+  }
 
   return worker;
 }
