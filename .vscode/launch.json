@@ -49,6 +49,14 @@
     {
       "type": "node-terminal",
       "request": "launch",
+      "name": "Debug V3 init dev CLI",
+      "command": "pnpm exec trigger dev",
+      "cwd": "${workspaceFolder}/references/init-shell",
+      "sourceMaps": true
+    },
+    {
+      "type": "node-terminal",
+      "request": "launch",
       "name": "Debug V3 Dev CLI",
       "command": "pnpm exec trigger dev",
       "cwd": "${workspaceFolder}/references/v3-catalog",
