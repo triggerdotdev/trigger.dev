@@ -101,7 +101,7 @@ export class FinalizeTaskRunService extends BaseService {
     });
 
     if (run.ttl) {
-      await ExpireEnqueuedRunService.dequeue(run.id);
+      await ExpireEnqueuedRunService.ack(run.id);
     }
 
     if (attemptStatus || error) {

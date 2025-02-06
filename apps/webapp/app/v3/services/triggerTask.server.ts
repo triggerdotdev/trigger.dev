@@ -28,6 +28,7 @@ import { clampMaxDuration } from "../utils/maxDuration";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { Prisma, TaskRun } from "@trigger.dev/database";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
+import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -515,18 +516,14 @@ export class TriggerTaskService extends BaseService {
                 }
 
                 if (taskRun.delayUntil) {
-                  await workerQueue.enqueue(
-                    "v3.enqueueDelayedRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-                  );
+                  await EnqueueDelayedRunService.enqueue(taskRun.id, taskRun.delayUntil);
                 }
 
                 if (!taskRun.delayUntil && taskRun.ttl) {
                   const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                   if (expireAt) {
-                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
+                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt);
                   }
                 }
 
