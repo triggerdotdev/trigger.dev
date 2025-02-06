@@ -54,14 +54,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       queue: true,
       concurrencyKey: true,
       //schedule
-      schedule: {
-        select: {
-          friendlyId: true,
-          generatorExpression: true,
-          timezone: true,
-          generatorDescription: true,
-        },
-      },
+      scheduleId: true,
       //usage
       baseCostInCents: true,
       costInCents: true,
@@ -212,14 +205,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     sdkVersion: run.lockedToVersion?.sdkVersion,
     isTest: run.isTest,
     environmentId: run.runtimeEnvironment.id,
-    schedule: run.schedule
-      ? {
-          friendlyId: run.schedule.friendlyId,
-          generatorExpression: run.schedule.generatorExpression,
-          description: run.schedule.generatorDescription,
-          timezone: run.schedule.timezone,
-        }
-      : undefined,
+    schedule: await resolveSchedule(run.scheduleId ?? undefined),
     queue: {
       name: run.queue,
       isCustomQueue: !run.queue.startsWith("task/"),
@@ -240,3 +226,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     context: JSON.stringify(context, null, 2),
   });
 };
+
+async function resolveSchedule(scheduleId?: string) {
+  if (!scheduleId) {
+    return;
+  }
+
+  const schedule = await $replica.taskSchedule.findFirst({
+    where: {
+      id: scheduleId,
+    },
+    select: {
+      friendlyId: true,
+      generatorExpression: true,
+      timezone: true,
+      generatorDescription: true,
+    },
+  });
+
+  if (!schedule) {
+    return;
+  }
+
+  return {
+    friendlyId: schedule.friendlyId,
+    generatorExpression: schedule.generatorExpression,
+    description: schedule.generatorDescription,
+    timezone: schedule.timezone,
+  };
+}

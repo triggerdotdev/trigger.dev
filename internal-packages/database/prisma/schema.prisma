@@ -1735,11 +1735,8 @@ model TaskRun {
 
   alerts ProjectAlert[]
 
-  scheduleInstance   TaskScheduleInstance? @relation(fields: [scheduleInstanceId], references: [id], onDelete: SetNull)
   scheduleInstanceId String?
-
-  schedule   TaskSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
-  scheduleId String?
+  scheduleId         String?
 
   sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRun")
   destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRun")
@@ -2452,8 +2449,6 @@ model TaskSchedule {
 
   active Boolean @default(true)
 
-  runs TaskRun[]
-
   @@unique([projectId, deduplicationKey])
 }
 
@@ -2485,8 +2480,6 @@ model TaskScheduleInstance {
 
   lastScheduledTimestamp DateTime?
   nextScheduledTimestamp DateTime?
-
-  runs TaskRun[]
 
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
