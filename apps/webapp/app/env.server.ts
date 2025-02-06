@@ -369,6 +369,7 @@ const EnvironmentSchema = z.object({
   BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
   BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
 
+  LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
   LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
@@ -407,6 +408,7 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
   COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
