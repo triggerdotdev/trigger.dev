@@ -13,6 +13,7 @@ const EnvironmentSchema = z.object({
     ),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
   DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
+  DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
   DIRECT_URL: z
     .string()
     .refine(

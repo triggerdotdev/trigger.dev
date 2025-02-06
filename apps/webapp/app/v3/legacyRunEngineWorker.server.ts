@@ -5,6 +5,8 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
+import { completeBatchTaskRunItemV3 } from "./services/batchTriggerV3.server";
+import { prisma } from "~/db.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -34,6 +36,19 @@ function initializeWorker() {
           maxAttempts: 3,
         },
       },
+      completeBatchTaskRunItem: {
+        schema: z.object({
+          itemId: z.string(),
+          batchTaskRunId: z.string(),
+          scheduleResumeOnComplete: z.boolean(),
+          taskRunAttemptId: z.string().optional(),
+          attempt: z.number().optional(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 10,
+        },
+      },
     },
     concurrency: {
       workers: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS,
@@ -48,6 +63,16 @@ function initializeWorker() {
         const service = new TaskRunHeartbeatFailedService();
 
         await service.call(payload.runId);
+      },
+      completeBatchTaskRunItem: async ({ payload, attempt }) => {
+        await completeBatchTaskRunItemV3(
+          payload.itemId,
+          payload.batchTaskRunId,
+          prisma,
+          payload.scheduleResumeOnComplete,
+          payload.taskRunAttemptId,
+          attempt
+        );
       },
     },
   });

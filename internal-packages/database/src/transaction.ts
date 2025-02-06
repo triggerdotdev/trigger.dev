@@ -13,10 +13,36 @@ function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is Prism
   return !("$transaction" in prisma);
 }
 
-function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+export function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
   return (
     typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
   );
+}
+
+/*
+•	P2024: Connection timeout errors
+•	P2028: Transaction timeout errors
+•	P2034: Transaction deadlock/conflict errors
+*/
+const retryCodes = ["P2024", "P2028", "P2034"];
+
+export function isPrismaRetriableError(error: unknown): boolean {
+  if (!isPrismaKnownError(error)) {
+    return false;
+  }
+
+  return retryCodes.includes(error.code);
+}
+
+/*
+•	P2025: Record not found errors (in race conditions) [not included for now]
+*/
+export function isPrismaRaceConditionError(error: unknown): boolean {
+  if (!isPrismaKnownError(error)) {
+    return false;
+  }
+
+  return error.code === "P2025";
 }
 
 export type PrismaTransactionOptions = {
@@ -55,7 +81,7 @@ export async function $transaction<R>(
   } catch (error) {
     if (isPrismaKnownError(error)) {
       if (
-        error.code === "P2034" &&
+        retryCodes.includes(error.code) &&
         typeof options?.maxRetries === "number" &&
         attempt < options.maxRetries
       ) {

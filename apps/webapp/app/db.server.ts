@@ -111,6 +111,7 @@ function getClient() {
   const databaseUrl = extendQueryParams(DATABASE_URL, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
   });
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -162,6 +163,7 @@ function getReplicaClient() {
   const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
   });
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
