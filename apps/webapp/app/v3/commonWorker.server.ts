@@ -7,6 +7,8 @@ import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import { ExpireEnqueuedRunService } from "./services/expireEnqueuedRun.server";
+import { EnqueueDelayedRunService } from "./services/enqueueDelayedRun.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -52,6 +54,24 @@ function initializeWorker() {
           maxAttempts: 3,
         },
       },
+      "v3.expireRun": {
+        schema: z.object({
+          runId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 6,
+        },
+      },
+      "v3.enqueueDelayedRun": {
+        schema: z.object({
+          runId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 6,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -65,16 +85,26 @@ function initializeWorker() {
       "v3.deliverAlert": async ({ payload }) => {
         const service = new DeliverAlertService();
 
-        return await service.call(payload.alertId);
+        await service.call(payload.alertId);
       },
       "v3.performDeploymentAlerts": async ({ payload }) => {
         const service = new PerformDeploymentAlertsService();
 
-        return await service.call(payload.deploymentId);
+        await service.call(payload.deploymentId);
       },
       "v3.performTaskRunAlerts": async ({ payload }) => {
         const service = new PerformTaskRunAlertsService();
-        return await service.call(payload.runId);
+        await service.call(payload.runId);
+      },
+      "v3.expireRun": async ({ payload }) => {
+        const service = new ExpireEnqueuedRunService();
+
+        await service.call(payload.runId);
+      },
+      "v3.enqueueDelayedRun": async ({ payload }) => {
+        const service = new EnqueueDelayedRunService();
+
+        await service.call(payload.runId);
       },
     },
   });

@@ -156,7 +156,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           });
 
           if (taskRun.ttl) {
-            await ExpireEnqueuedRunService.dequeue(taskRun.id, tx);
+            await ExpireEnqueuedRunService.ack(taskRun.id, tx);
           }
         }
 

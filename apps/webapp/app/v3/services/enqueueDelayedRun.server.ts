@@ -4,8 +4,34 @@ import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { commonWorker } from "../commonWorker.server";
+import { workerQueue } from "~/services/worker.server";
 
 export class EnqueueDelayedRunService extends BaseService {
+  public static async enqueue(runId: string, runAt?: Date) {
+    await commonWorker.enqueue({
+      job: "v3.enqueueDelayedRun",
+      payload: { runId },
+      availableAt: runAt,
+      id: `v3.enqueueDelayed:${runId}`,
+    });
+  }
+
+  public static async reschedule(runId: string, runAt?: Date) {
+    // We have to do this for now because it's possible that the workerQueue
+    // was used when the run was first delayed, and EnqueueDelayedRunService.reschedule
+    // is called from RescheduleTaskRunService, which allows the runAt to be changed
+    // so if we don't dequeue the old job, we might end up with multiple jobs
+    await workerQueue.dequeue(`v3.enqueueDelayedRun.${runId}`);
+
+    await commonWorker.enqueue({
+      job: "v3.enqueueDelayedRun",
+      payload: { runId },
+      availableAt: runAt,
+      id: `v3.enqueueDelayed:${runId}`,
+    });
+  }
+
   public async call(runId: string) {
     const run = await this._prisma.taskRun.findFirst({
       where: {
@@ -52,7 +78,7 @@ export class EnqueueDelayedRunService extends BaseService {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
 
         if (expireAt) {
-          await ExpireEnqueuedRunService.enqueue(run.id, expireAt, tx);
+          await ExpireEnqueuedRunService.enqueue(run.id, expireAt);
         }
       }
     });
