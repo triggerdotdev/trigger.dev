@@ -7,6 +7,7 @@ import {
 } from "@trigger.dev/core/v3";
 import {
   BatchTaskRun,
+  isPrismaRaceConditionError,
   isPrismaRetriableError,
   isUniqueConstraintError,
   Prisma,
@@ -1003,11 +1004,12 @@ export async function completeBatchTaskRunItemV3(
         }
       },
       {
-        timeout: 10000,
+        timeout: 10_000,
+        maxWait: 4_000,
       }
     );
   } catch (error) {
-    if (isPrismaRetriableError(error)) {
+    if (isPrismaRetriableError(error) || isPrismaRaceConditionError(error)) {
       logger.error("completeBatchTaskRunItemV3 failed with a Prisma Error, scheduling a retry", {
         itemId,
         batchTaskRunId,
