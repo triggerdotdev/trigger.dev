@@ -85,7 +85,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const service = new BatchTriggerV3Service("sequential", MAX_BATCH_TRIGGER_ITEMS);
+  const service = new BatchTriggerV3Service();
 
   const traceContext =
     traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
