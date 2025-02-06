@@ -366,7 +366,7 @@ export class DevRunController {
       switch (snapshot.executionStatus) {
         case "PENDING_CANCEL": {
           try {
-            await this.cancelAttempt(run.friendlyId);
+            await this.cancelAttempt();
           } catch (error) {
             logger.debug("Failed to cancel attempt, shutting down", {
               error,
@@ -778,8 +778,8 @@ export class DevRunController {
     this.opts.onFinished();
   }
 
-  async cancelAttempt(runId: string) {
-    logger.debug("cancelling attempt", { runId });
+  private async cancelAttempt() {
+    logger.debug("Cancelling attempt", { runId: this.runFriendlyId });
 
     await this.taskRunProcess?.cancel();
   }
