@@ -7,6 +7,7 @@ import {
 } from "@trigger.dev/core/v3";
 import {
   BatchTaskRun,
+  isPrismaRetriableError,
   isUniqueConstraintError,
   Prisma,
   TaskRunAttempt,
@@ -20,6 +21,7 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
@@ -923,71 +925,122 @@ export async function completeBatchTaskRunItemV3(
   batchTaskRunId: string,
   tx: PrismaClientOrTransaction,
   scheduleResumeOnComplete = false,
-  taskRunAttemptId?: string
+  taskRunAttemptId?: string,
+  retryAttempt?: number
 ) {
-  await $transaction(
-    tx,
-    "completeBatchTaskRunItemV3",
-    async (tx, span) => {
-      span?.setAttribute("batch_id", batchTaskRunId);
+  const isRetry = retryAttempt !== undefined;
 
-      // Update the item to complete
-      const updated = await tx.batchTaskRunItem.updateMany({
-        where: {
-          id: itemId,
-          status: "PENDING",
-        },
-        data: {
-          status: "COMPLETED",
-          taskRunAttemptId,
-        },
-      });
+  if (isRetry) {
+    logger.debug("completeBatchTaskRunItemV3 retrying", {
+      itemId,
+      batchTaskRunId,
+      scheduleResumeOnComplete,
+      taskRunAttemptId,
+      retryAttempt,
+    });
+  }
 
-      if (updated.count === 0) {
-        return;
-      }
+  try {
+    await $transaction(
+      tx,
+      "completeBatchTaskRunItemV3",
+      async (tx, span) => {
+        span?.setAttribute("batch_id", batchTaskRunId);
 
-      const updatedBatchRun = await tx.batchTaskRun.update({
-        where: {
-          id: batchTaskRunId,
-        },
-        data: {
-          completedCount: {
-            increment: 1,
+        // Update the item to complete
+        const updated = await tx.batchTaskRunItem.updateMany({
+          where: {
+            id: itemId,
+            status: "PENDING",
           },
-        },
-        select: {
-          sealed: true,
-          status: true,
-          completedCount: true,
-          expectedCount: true,
-          dependentTaskAttemptId: true,
-        },
-      });
+          data: {
+            status: "COMPLETED",
+            taskRunAttemptId,
+          },
+        });
 
-      if (
-        updatedBatchRun.status === "PENDING" &&
-        updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
-        updatedBatchRun.sealed
-      ) {
-        await tx.batchTaskRun.update({
+        if (updated.count === 0) {
+          return;
+        }
+
+        const updatedBatchRun = await tx.batchTaskRun.update({
           where: {
             id: batchTaskRunId,
           },
           data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
+            completedCount: {
+              increment: 1,
+            },
+          },
+          select: {
+            sealed: true,
+            status: true,
+            completedCount: true,
+            expectedCount: true,
+            dependentTaskAttemptId: true,
           },
         });
 
-        // We only need to resume the batch if it has a dependent task attempt ID
-        if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
-          await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
+        if (
+          updatedBatchRun.status === "PENDING" &&
+          updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
+          updatedBatchRun.sealed
+        ) {
+          await tx.batchTaskRun.update({
+            where: {
+              id: batchTaskRunId,
+            },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          });
+
+          // We only need to resume the batch if it has a dependent task attempt ID
+          if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
+            await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
+          }
         }
+      },
+      {
+        timeout: 10000,
       }
-    },
-    {
-      timeout: 10000,
+    );
+  } catch (error) {
+    if (isPrismaRetriableError(error)) {
+      logger.error("completeBatchTaskRunItemV3 failed with a Prisma Error, scheduling a retry", {
+        itemId,
+        batchTaskRunId,
+        error,
+        retryAttempt,
+        isRetry,
+      });
+
+      if (isRetry) {
+        //throwing this error will cause the Redis worker to retry the job
+        throw error;
+      } else {
+        //schedule a retry
+        await legacyRunEngineWorker.enqueue({
+          id: `completeBatchTaskRunItem:${itemId}`,
+          job: "completeBatchTaskRunItem",
+          payload: {
+            itemId,
+            batchTaskRunId,
+            scheduleResumeOnComplete,
+            taskRunAttemptId,
+          },
+          availableAt: new Date(Date.now() + 2_000),
+        });
+      }
+    } else {
+      logger.error("completeBatchTaskRunItemV3 failed with a non-retriable error", {
+        itemId,
+        batchTaskRunId,
+        error,
+        retryAttempt,
+        isRetry,
+      });
     }
-  );
+  }
 }
