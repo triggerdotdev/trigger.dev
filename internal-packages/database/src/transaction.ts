@@ -13,10 +13,18 @@ function isTransactionClient(prisma: PrismaClientOrTransaction): prisma is Prism
   return !("$transaction" in prisma);
 }
 
-function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+export function isPrismaKnownError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
   return (
     typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
   );
+}
+
+export function isPrismaRetriableError(error: unknown): boolean {
+  if (!isPrismaKnownError(error)) {
+    return false;
+  }
+
+  return retryCodes.includes(error.code);
 }
 
 export type PrismaTransactionOptions = {
@@ -39,6 +47,9 @@ export type PrismaTransactionOptions = {
   maxRetries?: number;
 };
 
+//retry these Prisma error codes
+const retryCodes = ["P2034", "P2028"];
+
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
   fn: (prisma: PrismaTransactionClient) => Promise<R>,
@@ -55,7 +66,7 @@ export async function $transaction<R>(
   } catch (error) {
     if (isPrismaKnownError(error)) {
       if (
-        error.code === "P2034" &&
+        retryCodes.includes(error.code) &&
         typeof options?.maxRetries === "number" &&
         attempt < options.maxRetries
       ) {
