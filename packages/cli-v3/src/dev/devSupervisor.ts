@@ -24,6 +24,7 @@ import {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
+import { debounce } from "@trigger.dev/core/debounce";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -64,6 +65,8 @@ class DevSupervisor implements WorkerRuntime {
 
   private socketConnections = new Set<string>();
 
+  private cancelAfterDelay = debounce(this.#cancelAllRunsIfDisconnected, 5_000);
+
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
@@ -91,6 +94,11 @@ class DevSupervisor implements WorkerRuntime {
 
   async shutdown(): Promise<void> {
     this.disconnectPresence?.();
+    try {
+      this.socket.close();
+    } catch (error) {
+      logger.debug("[DevSupervisor] shutdown, socket failed to close", { error });
+    }
   }
 
   async initializeWorker(manifest: BuildManifest, stop: () => void): Promise<void> {
@@ -409,7 +417,18 @@ class DevSupervisor implements WorkerRuntime {
       logger.debug("[DevSupervisor] Connection error", { error });
     });
     this.socket.on("disconnect", (reason, description) => {
-      logger.debug("[DevSupervisor] Disconnected from supervisor", { reason, description });
+      logger.debug("[DevSupervisor] socket was disconnected", {
+        reason,
+        description,
+        active: this.socket.active,
+      });
+
+      if (reason === "io server disconnect") {
+        // the disconnection was initiated by the server, you need to manually reconnect
+        this.socket.connect();
+      } else {
+        // the disconnection was a network error
+      }
     });
 
     const interval = setInterval(() => {
@@ -510,6 +529,13 @@ class DevSupervisor implements WorkerRuntime {
 
     worker.stop();
     this.workers.delete(friendlyId);
+  }
+
+  /** Debounce cancelling all runs because the socket has been disconnected for a while */
+  async #cancelAllRunsIfDisconnected() {
+    const runFriendlyIds = this.runControllers.keys();
+
+    //todo actually cancel them
   }
 }
 
