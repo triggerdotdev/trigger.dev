@@ -28,6 +28,7 @@
       "./replacements": "./src/replacements.ts",
       "./requestFilterMatches": "./src/requestFilterMatches.ts",
       "./retry": "./src/retry.ts",
+      "./debounce": "./src/debounce.ts",
       "./utils": "./src/utils.ts",
       "./schemas": "./src/schemas/index.ts",
       "./types": "./src/types.ts",
@@ -81,6 +82,9 @@
       ],
       "retry": [
         "dist/commonjs/retry.d.ts"
+      ],
+      "debounce": [
+        "dist/commonjs/debounce.d.ts"
       ],
       "utils": [
         "dist/commonjs/utils.d.ts"
@@ -307,6 +311,17 @@
       "require": {
         "types": "./dist/commonjs/retry.d.ts",
         "default": "./dist/commonjs/retry.js"
+      }
+    },
+    "./debounce": {
+      "import": {
+        "@triggerdotdev/source": "./src/debounce.ts",
+        "types": "./dist/esm/debounce.d.ts",
+        "default": "./dist/esm/debounce.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/debounce.d.ts",
+        "default": "./dist/commonjs/debounce.js"
       }
     },
     "./utils": {
