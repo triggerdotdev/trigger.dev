@@ -30,13 +30,16 @@ describe("SimpleQueue", () => {
       expect(await queue.size()).toBe(2);
 
       const [first] = await queue.dequeue(1);
-      expect(first).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(first).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(2);
 
@@ -44,13 +47,16 @@ describe("SimpleQueue", () => {
       expect(await queue.size({ includeFuture: true })).toBe(1);
 
       const [second] = await queue.dequeue(1);
-      expect(second).toEqual({
-        id: "2",
-        job: "test",
-        item: { value: 2 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(second).toEqual(
+        expect.objectContaining({
+          id: "2",
+          job: "test",
+          item: { value: 2 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       await queue.ack(second.id);
       expect(await queue.size({ includeFuture: true })).toBe(0);
@@ -81,13 +87,16 @@ describe("SimpleQueue", () => {
 
       await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 2000 });
       const [hitOne] = await queue.dequeue(1);
-      expect(hitOne).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(hitOne).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       const missTwo = await queue.dequeue(1);
       expect(missTwo).toEqual([]);
@@ -128,13 +137,16 @@ describe("SimpleQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const [first] = await queue.dequeue();
-      expect(first).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(first).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
     } finally {
       await queue.close();
     }
@@ -160,13 +172,16 @@ describe("SimpleQueue", () => {
       await queue.enqueue({ id: "1", job: "test", item: { value: 1 }, visibilityTimeoutMs: 1_000 });
 
       const [first] = await queue.dequeue();
-      expect(first).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 1_000,
-        attempt: 0,
-      });
+      expect(first).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 1_000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       const missImmediate = await queue.dequeue(1);
       expect(missImmediate).toEqual([]);
@@ -174,13 +189,16 @@ describe("SimpleQueue", () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
 
       const [second] = await queue.dequeue();
-      expect(second).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 1_000,
-        attempt: 0,
-      });
+      expect(second).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 1_000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
     } finally {
       await queue.close();
     }
@@ -211,20 +229,26 @@ describe("SimpleQueue", () => {
 
       const dequeued = await queue.dequeue(2);
       expect(dequeued).toHaveLength(2);
-      expect(dequeued[0]).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
-      expect(dequeued[1]).toEqual({
-        id: "2",
-        job: "test",
-        item: { value: 2 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(dequeued[0]).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
+      expect(dequeued[1]).toEqual(
+        expect.objectContaining({
+          id: "2",
+          job: "test",
+          item: { value: 2 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       expect(await queue.size()).toBe(1);
       expect(await queue.size({ includeFuture: true })).toBe(3);
@@ -235,13 +259,16 @@ describe("SimpleQueue", () => {
       expect(await queue.size({ includeFuture: true })).toBe(1);
 
       const [last] = await queue.dequeue(1);
-      expect(last).toEqual({
-        id: "3",
-        job: "test",
-        item: { value: 3 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(last).toEqual(
+        expect.objectContaining({
+          id: "3",
+          job: "test",
+          item: { value: 3 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       await queue.ack(last.id);
       expect(await queue.size({ includeFuture: true })).toBe(0);
@@ -288,13 +315,16 @@ describe("SimpleQueue", () => {
 
       // Dequeue the redriven item
       const [redrivenItem] = await queue.dequeue(1);
-      expect(redrivenItem).toEqual({
-        id: "1",
-        job: "test",
-        item: { value: 1 },
-        visibilityTimeoutMs: 2000,
-        attempt: 0,
-      });
+      expect(redrivenItem).toEqual(
+        expect.objectContaining({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+          attempt: 0,
+          timestamp: expect.any(Date),
+        })
+      );
 
       // Acknowledge the item
       await queue.ack(redrivenItem.id);

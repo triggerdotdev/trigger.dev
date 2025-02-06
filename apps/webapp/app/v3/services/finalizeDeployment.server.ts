@@ -124,7 +124,7 @@ export class FinalizeDeploymentService extends BaseService {
     }
 
     await ExecuteTasksWaitingForDeployService.enqueue(deployment.worker.id, this._prisma);
-    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(deployment.id);
 
     return finalizedDeployment;
   }

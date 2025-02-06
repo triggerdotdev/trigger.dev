@@ -30,7 +30,7 @@ import {
   MessageQueueSubscriber,
   VisibilityTimeoutStrategy,
 } from "./types";
-import { V3VisibilityTimeout } from "./v3VisibilityTimeout.server";
+import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -1611,7 +1611,7 @@ function getMarQSClient() {
         name: "marqs",
         tracer: trace.getTracer("marqs"),
         keysProducer,
-        visibilityTimeoutStrategy: new V3VisibilityTimeout(),
+        visibilityTimeoutStrategy: new V3LegacyRunEngineWorkerVisibilityTimeout(),
         queuePriorityStrategy: new FairDequeuingStrategy({
           tracer: tracer,
           redis,

@@ -129,7 +129,7 @@ export class FinalizeTaskRunService extends BaseService {
 
     //enqueue alert
     if (isFailedRunStatus(run.status)) {
-      await PerformTaskRunAlertsService.enqueue(run.id, this._prisma);
+      await PerformTaskRunAlertsService.enqueue(run.id);
     }
 
     if (isFatalRunStatus(run.status)) {
