@@ -94,14 +94,17 @@ type RunItemData = {
  */
 export class BatchTriggerV3Service extends BaseService {
   private _batchProcessingStrategy: BatchProcessingStrategy;
+  private _asyncBatchProcessSizeThreshold: number;
 
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
+    asyncBatchProcessSizeThreshold: number = ASYNC_BATCH_PROCESS_SIZE_THRESHOLD,
     protected readonly _prisma: PrismaClientOrTransaction = prisma
   ) {
     super(_prisma);
 
     this._batchProcessingStrategy = batchProcessingStrategy ?? "parallel";
+    this._asyncBatchProcessSizeThreshold = asyncBatchProcessSizeThreshold;
   }
 
   public async call(
@@ -403,7 +406,7 @@ export class BatchTriggerV3Service extends BaseService {
     options: BatchTriggerTaskServiceOptions = {},
     dependentAttempt?: TaskRunAttempt
   ) {
-    if (runs.length <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
+    if (runs.length <= this._asyncBatchProcessSizeThreshold) {
       const batch = await this._prisma.batchTaskRun.create({
         data: {
           friendlyId: batchId,
