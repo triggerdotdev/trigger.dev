@@ -435,7 +435,7 @@ export class RunEngine {
             const concurrencyLimit =
               typeof queue.concurrencyLimit === "number"
                 ? Math.max(Math.min(queue.concurrencyLimit, environment.maximumConcurrencyLimit), 0)
-                : null;
+                : queue.concurrencyLimit;
 
             let taskQueue = await prisma.taskQueue.findFirst({
               where: {
@@ -444,34 +444,8 @@ export class RunEngine {
               },
             });
 
-            const existingConcurrencyLimit =
-              typeof taskQueue?.concurrencyLimit === "number"
-                ? taskQueue.concurrencyLimit
-                : undefined;
-
-            if (taskQueue) {
-              if (existingConcurrencyLimit !== concurrencyLimit) {
-                taskQueue = await prisma.taskQueue.update({
-                  where: {
-                    id: taskQueue.id,
-                  },
-                  data: {
-                    concurrencyLimit:
-                      typeof concurrencyLimit === "number" ? concurrencyLimit : null,
-                  },
-                });
-
-                if (typeof taskQueue.concurrencyLimit === "number") {
-                  await this.runQueue.updateQueueConcurrencyLimits(
-                    environment,
-                    taskQueue.name,
-                    taskQueue.concurrencyLimit
-                  );
-                } else {
-                  await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
-                }
-              }
-            } else {
+            if (!taskQueue) {
+              // handle conflicts with existing queues
               taskQueue = await prisma.taskQueue.create({
                 data: {
                   ...QueueId.generate(),
@@ -482,14 +456,35 @@ export class RunEngine {
                   type: "NAMED",
                 },
               });
+            }
 
-              if (typeof taskQueue.concurrencyLimit === "number") {
-                await this.runQueue.updateQueueConcurrencyLimits(
-                  environment,
-                  taskQueue.name,
-                  taskQueue.concurrencyLimit
-                );
-              }
+            if (typeof concurrencyLimit === "number") {
+              this.logger.debug("TriggerTaskService: updating concurrency limit", {
+                runId: taskRun.id,
+                friendlyId: taskRun.friendlyId,
+                taskQueue,
+                orgId: environment.organization.id,
+                projectId: environment.project.id,
+                concurrencyLimit,
+                queueOptions: queue,
+              });
+
+              await this.runQueue.updateQueueConcurrencyLimits(
+                environment,
+                taskQueue.name,
+                concurrencyLimit
+              );
+            } else if (concurrencyLimit === null) {
+              this.logger.debug("TriggerTaskService: removing concurrency limit", {
+                runId: taskRun.id,
+                friendlyId: taskRun.friendlyId,
+                taskQueue,
+                orgId: environment.organization.id,
+                projectId: environment.project.id,
+                queueOptions: queue,
+              });
+
+              await this.runQueue.removeQueueConcurrencyLimits(environment, taskQueue.name);
             }
           }
 
