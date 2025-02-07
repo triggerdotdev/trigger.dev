@@ -252,7 +252,7 @@ export function projectTriggersPath(organization: OrgForPath, project: ProjectFo
   return `${projectPath(organization, project)}/triggers`;
 }
 
-export function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
+function projectEventsPath(organization: OrgForPath, project: ProjectForPath) {
   return `${projectPath(organization, project)}/events`;
 }
 
