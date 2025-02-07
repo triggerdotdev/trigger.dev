@@ -126,12 +126,24 @@ export const allV2TestTask = task({
   retry: {
     maxAttempts: 1,
   },
-  run: async ({ triggerSequentially }: { triggerSequentially?: boolean }) => {
+  run: async ({ triggerSequentially }: { triggerSequentially?: boolean }, { ctx }) => {
     const response1 = await batch.trigger<typeof allV2ChildTask1 | typeof allV2ChildTask2>(
       [
-        { id: "all-v2-test-child-1", payload: { child1: "foo" } },
-        { id: "all-v2-test-child-2", payload: { child2: "bar" } },
-        { id: "all-v2-test-child-1", payload: { child1: "baz" } },
+        {
+          id: "all-v2-test-child-1",
+          payload: { child1: "foo" },
+          options: { idempotencyKey: randomUUID() },
+        },
+        {
+          id: "all-v2-test-child-2",
+          payload: { child2: "bar" },
+          options: { idempotencyKey: randomUUID() },
+        },
+        {
+          id: "all-v2-test-child-1",
+          payload: { child1: "baz" },
+          options: { idempotencyKey: randomUUID() },
+        },
       ],
       {
         triggerSequentially,

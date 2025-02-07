@@ -329,24 +329,40 @@ export class BatchTriggerV3Service extends BaseService {
       }));
     }
 
-    const idempotencyKeys = body.items.map((i) => i.options?.idempotencyKey).filter(Boolean);
+    // Group items by taskIdentifier
+    const itemsByTask = body.items.reduce((acc, item) => {
+      if (!item.options?.idempotencyKey) return acc;
 
-    const cachedRuns =
-      idempotencyKeys.length > 0
-        ? await this._prisma.taskRun.findMany({
-            where: {
-              runtimeEnvironmentId: environment.id,
-              idempotencyKey: {
-                in: body.items.map((i) => i.options?.idempotencyKey).filter(Boolean),
-              },
+      if (!acc[item.task]) {
+        acc[item.task] = [];
+      }
+      acc[item.task].push(item);
+      return acc;
+    }, {} as Record<string, typeof body.items>);
+
+    logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
+      itemsByTask,
+    });
+
+    // Fetch cached runs for each task identifier separately to make use of the index
+    const cachedRuns = await Promise.all(
+      Object.entries(itemsByTask).map(([taskIdentifier, items]) =>
+        this._prisma.taskRun.findMany({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            taskIdentifier,
+            idempotencyKey: {
+              in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
             },
-            select: {
-              friendlyId: true,
-              idempotencyKey: true,
-              idempotencyKeyExpiresAt: true,
-            },
-          })
-        : [];
+          },
+          select: {
+            friendlyId: true,
+            idempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+          },
+        })
+      )
+    ).then((results) => results.flat());
 
     // Now we need to create an array of all the run IDs, in order
     // If we have a cached run, that isn't expired, we should use that run ID
