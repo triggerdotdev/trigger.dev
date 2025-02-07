@@ -1,10 +1,10 @@
 import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { RunEngineVersion, TaskRun } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { determineEngineVersion } from "../engineVersion.server";
 import { WithRunEngine } from "./baseService.server";
-import { RunEngineVersion, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 import { TriggerTaskServiceV2 } from "./triggerTaskV2.server";
-import { determineEngineVersion } from "../engineVersion.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -27,6 +27,13 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
+export type TriggerTaskServiceResult = {
+  run: TaskRun;
+  isCached: boolean;
+};
+
+export const MAX_ATTEMPTS = 2;
+
 export class TriggerTaskService extends WithRunEngine {
   public async call(
     taskId: string,
@@ -34,7 +41,7 @@ export class TriggerTaskService extends WithRunEngine {
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {},
     version?: RunEngineVersion
-  ) {
+  ): Promise<TriggerTaskServiceResult | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
 
@@ -66,7 +73,7 @@ export class TriggerTaskService extends WithRunEngine {
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
-  ) {
+  ): Promise<TriggerTaskServiceResult | undefined> {
     const service = new TriggerTaskServiceV1(this._prisma);
     return await service.call(taskId, environment, body, options);
   }
@@ -76,7 +83,7 @@ export class TriggerTaskService extends WithRunEngine {
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
     options: TriggerTaskServiceOptions = {}
-  ) {
+  ): Promise<TriggerTaskServiceResult | undefined> {
     const service = new TriggerTaskServiceV2({
       prisma: this._prisma,
       engine: this._engine,
