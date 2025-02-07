@@ -24,7 +24,6 @@ import {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
-import { debounce } from "@trigger.dev/core/debounce";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -56,6 +55,7 @@ class DevSupervisor implements WorkerRuntime {
 
   /** Receive notifications when runs change state */
   private socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+  private socketIsReconnecting = false;
 
   /** Workers are versions of the code */
   private workers: Map<string, BackgroundWorker> = new Map();
@@ -64,8 +64,6 @@ class DevSupervisor implements WorkerRuntime {
   private runControllers: Map<string, DevRunController> = new Map();
 
   private socketConnections = new Set<string>();
-
-  private cancelAfterDelay = debounce(this.#cancelAllRunsIfDisconnected, 5_000);
 
   constructor(public readonly options: WorkerRuntimeOptions) {}
 
@@ -192,7 +190,7 @@ class DevSupervisor implements WorkerRuntime {
       });
 
       if (!result.success) {
-        logger.error(`[DevSupervisor] dequeueRuns. Failed to dequeue runs`, {
+        logger.debug(`[DevSupervisor] dequeueRuns. Failed to dequeue runs`, {
           error: result.error,
         });
         setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
@@ -218,7 +216,7 @@ class DevSupervisor implements WorkerRuntime {
         const worker = this.workers.get(message.backgroundWorker.friendlyId);
 
         if (!worker) {
-          logger.error(
+          logger.debug(
             `[DevSupervisor] dequeueRuns. Dequeued a run but there's no BackgroundWorker so we can't execute it`,
             {
               run: message.run.friendlyId,
@@ -232,7 +230,7 @@ class DevSupervisor implements WorkerRuntime {
 
         let runController = this.runControllers.get(message.run.friendlyId);
         if (runController) {
-          logger.error(
+          logger.debug(
             `[DevSupervisor] dequeueRuns. Dequeuing a run that already has a runController`,
             {
               runController: message.run.friendlyId,
@@ -297,7 +295,7 @@ class DevSupervisor implements WorkerRuntime {
 
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithRun);
     } catch (error) {
-      logger.error(`[DevSupervisor] dequeueRuns. Error thrown`, { error });
+      logger.debug(`[DevSupervisor] dequeueRuns. Error thrown`, { error });
       //dequeue again
       setTimeout(() => this.#dequeueRuns(), this.config.dequeueIntervalWithoutRun);
     }
@@ -314,12 +312,12 @@ class DevSupervisor implements WorkerRuntime {
 
       // Connection was lost and successfully reconnected
       eventSource.addEventListener("reconnect", (event: any) => {
-        logger.info("[DevSupervisor] Presence connection restored");
+        logger.debug("[DevSupervisor] Presence connection restored");
       });
 
       // Handle messages that might have been missed during disconnection
       eventSource.addEventListener("missed_events", (event: any) => {
-        logger.warn("[DevSupervisor] Missed some presence events during disconnection");
+        logger.debug("[DevSupervisor] Missed some presence events during disconnection");
       });
 
       // If you need to close it manually
@@ -409,6 +407,13 @@ class DevSupervisor implements WorkerRuntime {
     this.socket.on("connect", () => {
       logger.debug("[DevSupervisor] Connected to supervisor");
 
+      if (this.socket.recovered || this.socketIsReconnecting) {
+        logger.debug("[DevSupervisor] Socket recovered");
+        eventBus.emit("socketConnectionReconnected", `Connection was recovered`);
+      }
+
+      this.socketIsReconnecting = false;
+
       for (const controller of this.runControllers.values()) {
         controller.resubscribeToRunNotifications();
       }
@@ -427,7 +432,8 @@ class DevSupervisor implements WorkerRuntime {
         // the disconnection was initiated by the server, you need to manually reconnect
         this.socket.connect();
       } else {
-        // the disconnection was a network error
+        this.socketIsReconnecting = true;
+        eventBus.emit("socketConnectionDisconnected", reason);
       }
     });
 
@@ -529,13 +535,6 @@ class DevSupervisor implements WorkerRuntime {
 
     worker.stop();
     this.workers.delete(friendlyId);
-  }
-
-  /** Debounce cancelling all runs because the socket has been disconnected for a while */
-  async #cancelAllRunsIfDisconnected() {
-    const runFriendlyIds = this.runControllers.keys();
-
-    //todo actually cancel them
   }
 }
 

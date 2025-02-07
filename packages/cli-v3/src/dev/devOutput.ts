@@ -23,6 +23,7 @@ import {
 } from "../utilities/cliOutput.js";
 import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
+import { Socket } from "socket.io-client";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -173,6 +174,14 @@ export function startDevOutput(options: DevOutputOptions) {
     );
   };
 
+  const socketConnectionDisconnected = (reason: Socket.DisconnectReason) => {
+    logger.log(chalkGrey(`○ Connection was lost: ${reason}`));
+  };
+
+  const socketConnectionReconnected = (reason: string) => {
+    logger.log(chalkGrey(`○ Connection was restored`));
+  };
+
   eventBus.on("rebuildStarted", rebuildStarted);
   eventBus.on("buildStarted", buildStarted);
   eventBus.on("workerSkipped", workerSkipped);
@@ -180,6 +189,8 @@ export function startDevOutput(options: DevOutputOptions) {
   eventBus.on("runStarted", runStarted);
   eventBus.on("runCompleted", runCompleted);
   eventBus.on("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
+  eventBus.on("socketConnectionDisconnected", socketConnectionDisconnected);
+  eventBus.on("socketConnectionReconnected", socketConnectionReconnected);
 
   return () => {
     eventBus.off("rebuildStarted", rebuildStarted);
@@ -189,6 +200,8 @@ export function startDevOutput(options: DevOutputOptions) {
     eventBus.off("runStarted", runStarted);
     eventBus.off("runCompleted", runCompleted);
     eventBus.off("backgroundWorkerIndexingError", backgroundWorkerIndexingError);
+    eventBus.off("socketConnectionDisconnected", socketConnectionDisconnected);
+    eventBus.off("socketConnectionReconnected", socketConnectionReconnected);
   };
 }
 
