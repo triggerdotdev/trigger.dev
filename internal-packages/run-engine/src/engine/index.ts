@@ -3558,7 +3558,7 @@ export class RunEngine {
 
     if (!error) {
       //set heartbeat (if relevant)
-      await this.#setExecutionSnapshotHeartbeat({
+      await this.#setHeartbeatDeadline({
         status: newSnapshot.executionStatus,
         runId: run.id,
         snapshotId: newSnapshot.id,
@@ -3581,22 +3581,6 @@ export class RunEngine {
       friendlyId: SnapshotId.toFriendlyId(newSnapshot.id),
       runFriendlyId: RunId.toFriendlyId(newSnapshot.runId),
     };
-  }
-
-  async #setExecutionSnapshotHeartbeat({
-    status,
-    runId,
-    snapshotId,
-  }: {
-    status: TaskRunExecutionStatus;
-    runId: string;
-    snapshotId: string;
-  }) {
-    await this.#setHeartbeatDeadline({
-      runId,
-      snapshotId,
-      status,
-    });
   }
 
   #getHeartbeatIntervalMs(status: TaskRunExecutionStatus): number | null {
@@ -3675,6 +3659,23 @@ export class RunEngine {
         runId,
         snapshot: latestSnapshot,
       });
+
+      // For dev, we just cancel runs that are stuck
+      if (latestSnapshot.environmentType === "DEVELOPMENT") {
+        this.logger.log("RunEngine.#handleStalledSnapshot() cancelling DEV run", {
+          runId,
+          snapshot: latestSnapshot,
+        });
+
+        await this.cancelRun({
+          runId: latestSnapshot.runId,
+          finalizeRun: true,
+          reason:
+            "Run was disconnected, check you're running the CLI dev command and your network connection is healthy.",
+          tx,
+        });
+        return;
+      }
 
       switch (latestSnapshot.executionStatus) {
         case "RUN_CREATED": {

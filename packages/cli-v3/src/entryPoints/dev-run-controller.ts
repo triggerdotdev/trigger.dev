@@ -72,7 +72,7 @@ export class DevRunController {
     });
 
     this.worker = opts.worker;
-    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 30;
+    this.heartbeatIntervalSeconds = opts.heartbeatIntervalSeconds || 20;
     this.snapshotPollIntervalSeconds = 5;
 
     this.httpClient = opts.httpClient;
