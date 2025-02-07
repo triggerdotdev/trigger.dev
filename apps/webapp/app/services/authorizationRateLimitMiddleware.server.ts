@@ -9,6 +9,7 @@ import { env } from "~/env.server";
 import { logger } from "./logger.server";
 import { createRedisRateLimitClient, Duration, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { RedisWithClusterOptions } from "~/redis.server";
 
 const DurationSchema = z.custom<Duration>((value) => {
   if (typeof value !== "string") {
@@ -54,7 +55,7 @@ export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
 type LimitConfigOverrideFunction = (authorizationValue: string) => Promise<unknown>;
 
 type Options = {
-  redis?: RedisOptions;
+  redis?: RedisWithClusterOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
@@ -163,12 +164,12 @@ export function authorizationRateLimitMiddleware({
 
   const redisClient = createRedisRateLimitClient(
     redis ?? {
-      port: env.REDIS_PORT,
-      host: env.REDIS_HOST,
-      username: env.REDIS_USERNAME,
-      password: env.REDIS_PASSWORD,
-      enableAutoPipelining: true,
-      ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      port: env.RATE_LIMIT_REDIS_PORT,
+      host: env.RATE_LIMIT_REDIS_HOST,
+      username: env.RATE_LIMIT_REDIS_USERNAME,
+      password: env.RATE_LIMIT_REDIS_PASSWORD,
+      tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
     }
   );
 

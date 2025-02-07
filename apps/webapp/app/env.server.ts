@@ -13,6 +13,7 @@ const EnvironmentSchema = z.object({
     ),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
   DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
+  DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
   DIRECT_URL: z
     .string()
     .refine(
@@ -118,6 +119,96 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_PASSWORD ?? null),
   VALKEY_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+  RATE_LIMIT_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RATE_LIMIT_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RATE_LIMIT_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RATE_LIMIT_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RATE_LIMIT_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RATE_LIMIT_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RATE_LIMIT_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  CACHE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  CACHE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  CACHE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  CACHE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  CACHE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  CACHE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  PUBSUB_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  PUBSUB_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  PUBSUB_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  PUBSUB_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  PUBSUB_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  PUBSUB_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
   DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
   DEFAULT_DEV_ENV_EXECUTION_ATTEMPTS: z.coerce.number().int().positive().default(1),
@@ -174,7 +265,10 @@ const EnvironmentSchema = z.object({
   CONTAINER_REGISTRY_ORIGIN: z.string().optional(),
   CONTAINER_REGISTRY_USERNAME: z.string().optional(),
   CONTAINER_REGISTRY_PASSWORD: z.string().optional(),
+  ENABLE_REGISTRY_PROXY: z.string().optional(),
   DEPLOY_REGISTRY_HOST: z.string().optional(),
+  DEPLOY_REGISTRY_USERNAME: z.string().optional(),
+  DEPLOY_REGISTRY_PASSWORD: z.string().optional(),
   DEPLOY_REGISTRY_NAMESPACE: z.string().default("trigger"),
   DEPLOY_TIMEOUT_MS: z.coerce
     .number()
@@ -189,6 +283,9 @@ const EnvironmentSchema = z.object({
   SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
   SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
   SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
+  SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().default(1000),
+  SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE: z.coerce.number().int().default(25),
+
   MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
 
   // Development OTEL environment variables
@@ -225,6 +322,8 @@ const EnvironmentSchema = z.object({
   INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
   INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
 
+  INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
+
   ORG_SLACK_INTEGRATION_CLIENT_ID: z.string().optional(),
   ORG_SLACK_INTEGRATION_CLIENT_SECRET: z.string().optional(),
 
@@ -247,6 +346,15 @@ const EnvironmentSchema = z.object({
     .number()
     .int()
     .default(60 * 1000 * 15),
+  MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
+  MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
+  MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
+  MARQS_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
+  MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
+  MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
+  MARQS_MAXIMUM_ORG_COUNT: z.coerce.number().int().optional(),
+
   PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
   VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
@@ -284,6 +392,7 @@ const EnvironmentSchema = z.object({
   MAXIMUM_DEV_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAXIMUM_DEPLOYED_QUEUE_SIZE: z.coerce.number().int().optional(),
   MAX_BATCH_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
+  MAX_BATCH_AND_WAIT_V2_TRIGGER_ITEMS: z.coerce.number().int().default(500),
 
   REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
   BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
@@ -310,6 +419,82 @@ const EnvironmentSchema = z.object({
   DEV_DEQUEUE_INTERVAL_WITHOUT_RUN: z.coerce.number().int().default(1_000),
   /** The max number of runs per API call that we'll dequeue in DEV */
   DEV_DEQUEUE_MAX_RUNS_PER_PULL: z.coerce.number().int().default(10),
+
+  LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
+  LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+
+  LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+  COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+  COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+  COMMON_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+  COMMON_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+  COMMON_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
+
+  COMMON_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  COMMON_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  COMMON_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  COMMON_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  COMMON_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  COMMON_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

@@ -15,7 +15,7 @@ export class EnvironmentVariablesPresenter {
   }
 
   public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
-    const project = await this.#prismaClient.project.findUnique({
+    const project = await this.#prismaClient.project.findFirst({
       select: {
         id: true,
       },

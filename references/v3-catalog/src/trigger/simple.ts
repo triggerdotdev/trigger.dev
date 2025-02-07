@@ -106,15 +106,33 @@ export const immediateReturn = task({
     console.info("some");
     console.warn("random");
     console.error("logs");
+
+    await new Promise((resolve) => setTimeout(resolve, 20000));
+  },
+});
+
+export const simulateErrorTester = task({
+  id: "simulateErrorTester",
+  run: async (payload: { message: string }) => {
+    await simulateError.batchTrigger([
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+      { payload: { message: payload.message }, options: { maxAttempts: 1 } },
+    ]);
   },
 });
 
 export const simulateError = task({
   id: "simulateError",
+  retry: {
+    maxAttempts: 1,
+  },
   run: async (payload: { message: string }) => {
-    // Sleep for 1 second
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     thisFunctionWillThrow();
   },
 });

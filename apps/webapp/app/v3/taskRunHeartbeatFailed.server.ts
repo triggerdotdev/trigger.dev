@@ -9,9 +9,9 @@ import { workerQueue } from "~/services/worker.server";
 import { socketIo } from "./handleSocketIo.server";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
-export class RequeueTaskRunService extends BaseService {
+export class TaskRunHeartbeatFailedService extends BaseService {
   public async call(runId: string) {
-    const taskRun = await this._prisma.taskRun.findUnique({
+    const taskRun = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },
@@ -19,6 +19,7 @@ export class RequeueTaskRunService extends BaseService {
         id: true,
         friendlyId: true,
         status: true,
+        lockedAt: true,
         runtimeEnvironment: {
           select: {
             type: true,
@@ -42,9 +43,29 @@ export class RequeueTaskRunService extends BaseService {
 
     switch (taskRun.status) {
       case "PENDING": {
-        logger.debug("[RequeueTaskRunService] Requeueing task run", { taskRun });
+        if (taskRun.lockedAt) {
+          logger.debug(
+            "[RequeueTaskRunService] Failing task run because the heartbeat failed and it's PENDING but locked",
+            { taskRun }
+          );
 
-        await marqs?.nackMessage(taskRun.id);
+          const service = new FailedTaskRunService();
+
+          await service.call(taskRun.friendlyId, {
+            ok: false,
+            id: taskRun.friendlyId,
+            retry: undefined,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: TaskRunErrorCodes.TASK_RUN_HEARTBEAT_TIMEOUT,
+              message: "Did not receive a heartbeat from the worker in time",
+            },
+          });
+        } else {
+          logger.debug("[RequeueTaskRunService] Nacking task run", { taskRun });
+
+          await marqs?.nackMessage(taskRun.id);
+        }
 
         break;
       }

@@ -80,7 +80,7 @@ const { action, loader } = createActionApiRoute(
 
       const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
 
-      const run = await service.call(
+      const result = await service.call(
         params.taskId,
         authentication.environment,
         body,
@@ -95,20 +95,20 @@ const { action, loader } = createActionApiRoute(
         engineVersion ?? undefined
       );
 
-      if (!run) {
+      if (!result) {
         return json({ error: "Task not found" }, { status: 404 });
       }
 
       const $responseHeaders = await responseHeaders(
-        run,
+        result.run,
         authentication.environment,
         triggerClient
       );
 
       return json(
         {
-          id: run.friendlyId,
-          isCached: run.isCached,
+          id: result.run.friendlyId,
+          isCached: result.isCached,
         },
         {
           headers: $responseHeaders,

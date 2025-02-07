@@ -13,18 +13,15 @@ import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
-import {
-  SEMINTATTRS_FORCE_RECORDING,
-  attributesFromAuthenticatedEnv,
-  tracer,
-} from "../tracer.server";
-import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
 import { getMaxDuration } from "@trigger.dev/core/v3/apps";
+import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -84,7 +81,7 @@ export class DevQueueConsumer {
   }
 
   public async registerBackgroundWorker(id: string, inProgressRuns: string[] = []) {
-    const backgroundWorker = await prisma.backgroundWorker.findUnique({
+    const backgroundWorker = await prisma.backgroundWorker.findFirst({
       where: { friendlyId: id, runtimeEnvironmentId: this.env.id },
       include: {
         tasks: true,
@@ -173,7 +170,7 @@ export class DevQueueConsumer {
   public async taskHeartbeat(workerId: string, id: string) {
     logger.debug("[DevQueueConsumer] taskHeartbeat()", { id });
 
-    const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
+    const taskRunAttempt = await prisma.taskRunAttempt.findFirst({
       where: { friendlyId: id },
     });
 
@@ -436,14 +433,12 @@ export class DevQueueConsumer {
       return;
     }
 
-    const queue = await prisma.taskQueue.findUnique({
-      where: {
-        runtimeEnvironmentId_name: {
-          runtimeEnvironmentId: this.env.id,
-          name: sanitizeQueueName(lockedTaskRun.queue),
-        },
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      lockedTaskRun.queue,
+      this.env.id,
+      backgroundTask.id,
+      backgroundTask
+    );
 
     if (!queue) {
       logger.debug("[DevQueueConsumer] Failed to find queue", {

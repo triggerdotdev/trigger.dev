@@ -51,12 +51,10 @@ export class CreateAlertChannelService extends BaseService {
         : options.environmentTypes;
 
     const existingAlertChannel = options.deduplicationKey
-      ? await this._prisma.projectAlertChannel.findUnique({
+      ? await this._prisma.projectAlertChannel.findFirst({
           where: {
-            projectId_deduplicationKey: {
-              projectId: project.id,
-              deduplicationKey: options.deduplicationKey,
-            },
+            projectId: project.id,
+            deduplicationKey: options.deduplicationKey,
           },
         })
       : undefined;

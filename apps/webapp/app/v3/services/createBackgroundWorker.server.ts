@@ -7,7 +7,7 @@ import type { BackgroundWorker } from "@trigger.dev/database";
 import { Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService } from "./baseService.server";
@@ -22,6 +22,7 @@ import {
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { BackgroundWorkerId } from "@trigger.dev/core/v3/apps";
+import { sanitizeQueueName } from "~/models/taskQueue.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
@@ -32,7 +33,7 @@ export class CreateBackgroundWorkerService extends BaseService {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("projectRef", projectRef);
 
-      const project = await this._prisma.project.findUniqueOrThrow({
+      const project = await this._prisma.project.findFirstOrThrow({
         where: {
           externalRef: projectRef,
           environments: {
@@ -198,29 +199,29 @@ export async function createBackgroundTasks(
               ),
               0
             )
-          : null;
+          : task.queue?.concurrencyLimit;
 
-      const taskQueue = await prisma.taskQueue.upsert({
+      let taskQueue = await prisma.taskQueue.findFirst({
         where: {
-          runtimeEnvironmentId_name: {
-            runtimeEnvironmentId: worker.runtimeEnvironmentId,
-            name: queueName,
-          },
-        },
-        update: {
-          concurrencyLimit,
-        },
-        create: {
-          friendlyId: generateFriendlyId("queue"),
-          name: queueName,
-          concurrencyLimit,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
-          projectId: worker.projectId,
-          type: task.queue?.name ? "NAMED" : "VIRTUAL",
+          name: queueName,
         },
       });
 
-      if (typeof taskQueue.concurrencyLimit === "number") {
+      if (!taskQueue) {
+        taskQueue = await prisma.taskQueue.create({
+          data: {
+            friendlyId: generateFriendlyId("queue"),
+            name: queueName,
+            concurrencyLimit,
+            runtimeEnvironmentId: worker.runtimeEnvironmentId,
+            projectId: worker.projectId,
+            type: task.queue?.name ? "NAMED" : "VIRTUAL",
+          },
+        });
+      }
+
+      if (typeof concurrencyLimit === "number") {
         logger.debug("CreateBackgroundWorkerService: updating concurrency limit", {
           workerId: worker.id,
           taskQueue,
@@ -230,7 +231,7 @@ export async function createBackgroundTasks(
           concurrencyLimit,
           taskidentifier: task.id,
         });
-        await updateQueueConcurrencyLimits(environment, taskQueue.name, taskQueue.concurrencyLimit);
+        await updateQueueConcurrencyLimits(environment, taskQueue.name, concurrencyLimit);
       } else {
         logger.debug("CreateBackgroundWorkerService: removing concurrency limit", {
           workerId: worker.id,

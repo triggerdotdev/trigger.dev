@@ -1,6 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import Redis, { RedisOptions } from "ioredis";
+import { RedisOptions } from "ioredis";
 import { env } from "~/env.server";
+import { createRedisClient, RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
 
 type Options = {
@@ -28,12 +29,12 @@ export class RateLimiter {
         redisClient ??
         createRedisRateLimitClient(
           redis ?? {
-            port: env.REDIS_PORT,
-            host: env.REDIS_HOST,
-            username: env.REDIS_USERNAME,
-            password: env.REDIS_PASSWORD,
-            enableAutoPipelining: true,
-            ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+            port: env.RATE_LIMIT_REDIS_PORT,
+            host: env.RATE_LIMIT_REDIS_HOST,
+            username: env.RATE_LIMIT_REDIS_USERNAME,
+            password: env.RATE_LIMIT_REDIS_PASSWORD,
+            tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+            clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
           }
         ),
       limiter,
@@ -70,8 +71,10 @@ export class RateLimiter {
   }
 }
 
-export function createRedisRateLimitClient(redisOptions: RedisOptions): RateLimiterRedisClient {
-  const redis = new Redis(redisOptions);
+export function createRedisRateLimitClient(
+  redisOptions: RedisWithClusterOptions
+): RateLimiterRedisClient {
+  const redis = createRedisClient("trigger:rateLimiter", redisOptions);
 
   return {
     sadd: async <TData>(key: string, ...members: TData[]): Promise<number> => {

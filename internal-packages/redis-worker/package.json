@@ -11,6 +11,7 @@
     "ioredis": "^5.3.2",
     "lodash.omit": "^4.5.0",
     "nanoid": "^5.0.7",
+    "p-limit": "^6.2.0",
     "zod": "3.23.8"
   },
   "devDependencies": {
@@ -20,6 +21,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest --no-file-parallelism"
   }
 }

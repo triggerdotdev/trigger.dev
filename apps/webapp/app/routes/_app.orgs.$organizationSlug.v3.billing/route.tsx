@@ -1,10 +1,14 @@
+import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { PlanDefinition } from "@trigger.dev/platform/v3";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   OrganizationParamsSchema,
@@ -12,10 +16,15 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-import { PlanDefinition } from "@trigger.dev/platform/v3";
-import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
-import { DateTime } from "~/components/primitives/DateTime";
-import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
+import { MetaFunction } from "@remix-run/react";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Billing | Trigger.dev`,
+    },
+  ];
+};
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   await requireUserId(request);

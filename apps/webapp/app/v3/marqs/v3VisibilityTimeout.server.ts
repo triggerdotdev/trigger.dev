@@ -1,12 +1,28 @@
-import { RequeueTaskRunService } from "../requeueTaskRun.server";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
+import { TaskRunHeartbeatFailedService } from "../taskRunHeartbeatFailed.server";
 import { VisibilityTimeoutStrategy } from "./types";
 
-export class V3VisibilityTimeout implements VisibilityTimeoutStrategy {
+export class V3GraphileVisibilityTimeout implements VisibilityTimeoutStrategy {
   async heartbeat(messageId: string, timeoutInMs: number): Promise<void> {
-    await RequeueTaskRunService.enqueue(messageId, new Date(Date.now() + timeoutInMs));
+    await TaskRunHeartbeatFailedService.enqueue(messageId, new Date(Date.now() + timeoutInMs));
   }
 
   async cancelHeartbeat(messageId: string): Promise<void> {
-    await RequeueTaskRunService.dequeue(messageId);
+    await TaskRunHeartbeatFailedService.dequeue(messageId);
+  }
+}
+
+export class V3LegacyRunEngineWorkerVisibilityTimeout implements VisibilityTimeoutStrategy {
+  async heartbeat(messageId: string, timeoutInMs: number): Promise<void> {
+    await legacyRunEngineWorker.enqueue({
+      id: `heartbeat:${messageId}`,
+      job: "runHeartbeat",
+      payload: { runId: messageId },
+      availableAt: new Date(Date.now() + timeoutInMs),
+    });
+  }
+
+  async cancelHeartbeat(messageId: string): Promise<void> {
+    await legacyRunEngineWorker.ack(`heartbeat:${messageId}`);
   }
 }

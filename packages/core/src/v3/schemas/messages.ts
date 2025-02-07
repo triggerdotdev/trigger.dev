@@ -19,7 +19,7 @@ import {
 } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
 
-const ackCallbackResult = z.discriminatedUnion("success", [
+export const AckCallbackResult = z.discriminatedUnion("success", [
   z.object({
     success: z.literal(false),
     error: z.object({
@@ -33,6 +33,8 @@ const ackCallbackResult = z.discriminatedUnion("success", [
     success: z.literal(true),
   }),
 ]);
+
+export type AckCallbackResult = z.infer<typeof AckCallbackResult>;
 
 export const BackgroundWorkerServerMessages = z.discriminatedUnion("type", [
   z.object({
@@ -314,7 +316,7 @@ export const PlatformToProviderMessages = {
       projectId: z.string(),
       deploymentId: z.string(),
     }),
-    callback: ackCallbackResult,
+    callback: AckCallbackResult,
   },
   RESTORE: {
     message: z.object({
@@ -557,7 +559,7 @@ export const PlatformToCoordinatorMessages = {
       completions: TaskRunExecutionResult.array(),
       executions: TaskRunExecution.array(),
     }),
-    callback: ackCallbackResult,
+    callback: AckCallbackResult,
   },
   RESUME_AFTER_DURATION: {
     message: z.object({

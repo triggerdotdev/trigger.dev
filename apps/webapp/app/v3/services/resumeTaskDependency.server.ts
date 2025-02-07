@@ -6,7 +6,7 @@ import { logger } from "~/services/logger.server";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
-    const dependency = await this._prisma.taskRunDependency.findUnique({
+    const dependency = await this._prisma.taskRunDependency.findFirst({
       where: { id: dependencyId },
       include: {
         taskRun: {

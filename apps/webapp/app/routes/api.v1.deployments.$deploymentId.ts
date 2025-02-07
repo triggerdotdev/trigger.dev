@@ -27,7 +27,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { deploymentId } = parsedParams.data;
 
-  const deployment = await prisma.workerDeployment.findUnique({
+  const deployment = await prisma.workerDeployment.findFirst({
     where: {
       friendlyId: deploymentId,
       environmentId: authenticatedEnv.id,

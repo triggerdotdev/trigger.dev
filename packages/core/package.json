@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "3.3.11",
+  "version": "3.3.13",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -202,6 +202,7 @@
     "@opentelemetry/sdk-trace-node": "1.25.1",
     "@opentelemetry/semantic-conventions": "1.25.1",
     "dequal": "^2.0.3",
+    "eventsource": "^3.0.5",
     "eventsource-parser": "^3.0.0",
     "execa": "^8.0.1",
     "humanize-duration": "^3.27.3",

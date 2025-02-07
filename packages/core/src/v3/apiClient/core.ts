@@ -4,7 +4,7 @@ import { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, Span, context, propagation } from "@opentelemetry/api";
+import { Attributes, context, propagation, Span } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
@@ -16,7 +16,7 @@ import {
   OffsetLimitPageParams,
   OffsetLimitPageResponse,
 } from "./pagination.js";
-import { TriggerJwtOptions } from "../types/tasks.js";
+import { EventSource } from "eventsource";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -26,14 +26,17 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
-export type ZodFetchOptions = {
+export type ZodFetchOptions<T = unknown> = {
   retry?: RetryOptions;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
   icon?: string;
   onResponseBody?: (body: unknown, span: Span) => void;
+  prepareData?: (data: T) => Promise<T> | T;
 };
+
+export type AnyZodFetchOptions = ZodFetchOptions<any>;
 
 export type ApiRequestOptions = Pick<ZodFetchOptions, "retry">;
 
@@ -67,7 +70,7 @@ export function zodfetch<TResponseBodySchema extends z.ZodTypeAny>(
   schema: TResponseBodySchema,
   url: string,
   requestInit?: RequestInit,
-  options?: ZodFetchOptions
+  options?: ZodFetchOptions<z.output<TResponseBodySchema>>
 ): ApiPromise<z.output<TResponseBodySchema>> {
   return new ApiPromise(_doZodFetch(schema, url, requestInit, options));
 }
@@ -195,6 +198,10 @@ async function _doZodFetch<TResponseBodySchema extends z.ZodTypeAny>(
 
     if (options?.onResponseBody && span) {
       options.onResponseBody(result.data, span);
+    }
+
+    if (options?.prepareData) {
+      result.data = await options.prepareData(result.data);
     }
 
     return result;
@@ -608,4 +615,80 @@ function injectPropagationHeadersIfInWorker(requestInit?: RequestInit): RequestI
     ...requestInit,
     headers: new Headers(headersObject),
   };
+}
+
+export type ZodFetchSSEMessageValueSchema<
+  TDiscriminatedUnion extends z.ZodDiscriminatedUnion<any, any>,
+> = z.ZodFirstPartySchemaTypes | TDiscriminatedUnion;
+
+export interface ZodFetchSSEMessageCatalogSchema {
+  [key: string]: ZodFetchSSEMessageValueSchema<any>;
+}
+
+export type ZodFetchSSEMessageHandlers<TCatalogSchema extends ZodFetchSSEMessageCatalogSchema> =
+  Partial<{
+    [K in keyof TCatalogSchema]: (payload: z.infer<TCatalogSchema[K]>) => Promise<void> | void;
+  }>;
+
+export type ZodFetchSSEOptions<TMessageCatalog extends ZodFetchSSEMessageCatalogSchema> = {
+  url: string;
+  request?: RequestInit;
+  messages: TMessageCatalog;
+  retry?: RetryOptions;
+};
+
+export class ZodFetchSSEResult<TMessageCatalog extends ZodFetchSSEMessageCatalogSchema> {
+  private _eventSource: EventSource;
+
+  constructor(private options: ZodFetchSSEOptions<TMessageCatalog>) {
+    this._eventSource = new EventSource(options.url, {
+      fetch: (input, init) => {
+        return fetch(input, {
+          ...init,
+          ...options.request,
+          headers: {
+            ...options.request?.headers,
+            Accept: "text/event-stream",
+          },
+        });
+      },
+    });
+  }
+
+  public onConnectionError(handler: (error: Event) => void) {
+    this._eventSource.onerror = handler;
+  }
+
+  public onMessage<T extends keyof TMessageCatalog>(
+    type: T,
+    handler: ZodFetchSSEMessageHandlers<TMessageCatalog>[T]
+  ) {
+    this._eventSource.addEventListener(type as string, (event) => {
+      const payload = safeJsonParse(event.data);
+
+      if (!payload) {
+        return;
+      }
+
+      const schema = this.options.messages[type];
+
+      const result = schema.safeParse(payload);
+
+      if (result.success) {
+        handler?.(result.data);
+      } else {
+        console.error(result.error);
+      }
+    });
+  }
+
+  public stop() {
+    this._eventSource.close();
+  }
+}
+
+export function zodfetchSSE<TMessageCatalog extends ZodFetchSSEMessageCatalogSchema>(
+  options: ZodFetchSSEOptions<TMessageCatalog>
+): ZodFetchSSEResult<TMessageCatalog> {
+  return new ZodFetchSSEResult(options);
 }

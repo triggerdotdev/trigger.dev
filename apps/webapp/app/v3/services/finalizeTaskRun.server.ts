@@ -1,8 +1,12 @@
 import { FlushedRunMetadata, sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
+import { findQueueInEnvironment } from "~/models/taskQueue.server";
+import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { marqs, sanitizeQueueName } from "~/v3/marqs/index.server";
+import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { socketIo } from "../handleSocketIo.server";
 import {
   FINAL_ATTEMPT_STATUSES,
   isFailedRunStatus,
@@ -11,12 +15,10 @@ import {
 } from "../taskStatus";
 import { PerformTaskRunAlertsService } from "./alerts/performTaskRunAlerts.server";
 import { BaseService } from "./baseService.server";
-import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import { socketIo } from "../handleSocketIo.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { ResumeDependentParentsService } from "./resumeDependentParents.server";
 
 type BaseInput = {
   id: string;
@@ -99,7 +101,7 @@ export class FinalizeTaskRunService extends BaseService {
     });
 
     if (run.ttl) {
-      await ExpireEnqueuedRunService.dequeue(run.id);
+      await ExpireEnqueuedRunService.ack(run.id);
     }
 
     if (attemptStatus || error) {
@@ -127,7 +129,7 @@ export class FinalizeTaskRunService extends BaseService {
 
     //enqueue alert
     if (isFailedRunStatus(run.status)) {
-      await PerformTaskRunAlertsService.enqueue(run.id, this._prisma);
+      await PerformTaskRunAlertsService.enqueue(run.id);
     }
 
     if (isFatalRunStatus(run.status)) {
@@ -195,6 +197,7 @@ export class FinalizeTaskRunService extends BaseService {
           select: {
             id: true,
             dependentTaskAttemptId: true,
+            batchVersion: true,
           },
         },
       },
@@ -215,23 +218,29 @@ export class FinalizeTaskRunService extends BaseService {
 
     for (const item of batchItems) {
       // Don't do anything if this is a batchTriggerAndWait in a deployed task
+      // As that is being handled in resumeDependentParents and resumeTaskRunDependencies
       if (environment.type !== "DEVELOPMENT" && item.batchTaskRun.dependentTaskAttemptId) {
         continue;
       }
 
-      // Update the item to complete
-      await this._prisma.batchTaskRunItem.update({
-        where: {
-          id: item.id,
-        },
-        data: {
-          status: "COMPLETED",
-        },
-      });
+      if (item.batchTaskRun.batchVersion === "v3") {
+        await completeBatchTaskRunItemV3(item.id, item.batchTaskRunId, this._prisma);
+      } else {
+        // THIS IS DEPRECATED and only happens with batchVersion != v3
+        // Update the item to complete
+        await this._prisma.batchTaskRunItem.update({
+          where: {
+            id: item.id,
+          },
+          data: {
+            status: "COMPLETED",
+          },
+        });
 
-      // This won't resume because this batch does not have a dependent task attempt ID
-      // or is in development, but this service will mark the batch as completed
-      await ResumeBatchRunService.enqueue(item.batchTaskRunId, this._prisma);
+        // This won't resume because this batch does not have a dependent task attempt ID
+        // or is in development, but this service will mark the batch as completed
+        await ResumeBatchRunService.enqueue(item.batchTaskRunId, false, this._prisma);
+      }
     }
   }
 
@@ -291,6 +300,7 @@ export class FinalizeTaskRunService extends BaseService {
         id: true,
         workerId: true,
         runtimeEnvironmentId: true,
+        queueConfig: true,
       },
       where: {
         id: run.lockedById,
@@ -302,14 +312,12 @@ export class FinalizeTaskRunService extends BaseService {
       return;
     }
 
-    const queue = await this._prisma.taskQueue.findUnique({
-      where: {
-        runtimeEnvironmentId_name: {
-          runtimeEnvironmentId: workerTask.runtimeEnvironmentId,
-          name: sanitizeQueueName(run.queue),
-        },
-      },
-    });
+    const queue = await findQueueInEnvironment(
+      run.queue,
+      workerTask.runtimeEnvironmentId,
+      workerTask.id,
+      workerTask
+    );
 
     if (!queue) {
       logger.error("FinalizeTaskRunService: No queue found", { runId: run.id });

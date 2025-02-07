@@ -1,5 +1,20 @@
 # @trigger.dev/sdk
 
+## 3.3.13
+
+### Patch Changes
+
+- Fixed issue with asResponse and withResponse not working on runs.retrieve ([#1648](https://github.com/triggerdotdev/trigger.dev/pull/1648))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.13`
+
+## 3.3.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.12`
+
 ## 3.3.11
 
 ### Patch Changes

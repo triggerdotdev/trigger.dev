@@ -137,8 +137,8 @@ export const QueueOptions = z.object({
   name: z.string().optional(),
   /** An optional property that specifies the maximum number of concurrent run executions.
    *
-   * If this property is omitted, the task can potentially use up the full concurrency of an environment. */
-  concurrencyLimit: z.number().int().min(0).max(1000).optional(),
+   * If this property is omitted, the task can potentially use up the full concurrency of an environment */
+  concurrencyLimit: z.number().int().min(0).max(1000).optional().nullable(),
 });
 
 export type QueueOptions = z.infer<typeof QueueOptions>;

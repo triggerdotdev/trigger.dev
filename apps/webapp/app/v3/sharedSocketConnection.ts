@@ -80,6 +80,14 @@ export class SharedSocketConnection {
           }
         });
       },
+      canSendMessage() {
+        // Return true if there is at least 1 connected socket on the namespace
+        if (opts.namespace.sockets.size === 0) {
+          return false;
+        }
+
+        return Array.from(opts.namespace.sockets.values()).some((socket) => socket.connected);
+      },
     });
 
     logger.debug("Starting SharedQueueConsumer pool", {

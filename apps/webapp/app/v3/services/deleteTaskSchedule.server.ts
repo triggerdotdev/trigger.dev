@@ -43,7 +43,7 @@ export class DeleteTaskScheduleService extends BaseService {
 
       await this._prisma.taskSchedule.delete({
         where: {
-          friendlyId,
+          id: schedule.id,
         },
       });
     } catch (e) {

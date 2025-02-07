@@ -113,3 +113,21 @@ export const maxDurationParentTask = task({
     return result;
   },
 });
+
+export const batchTask = task({
+  id: "batch",
+  run: async (payload: { count: number }, { ctx }) => {
+    logger.info("Starting batch task", { count: payload.count });
+
+    const items = Array.from({ length: payload.count }, (_, i) => ({
+      payload: { message: `Batch item ${i + 1}` },
+    }));
+
+    const results = await childTask.batchTriggerAndWait(items);
+
+    return {
+      batchCount: payload.count,
+      results,
+    };
+  },
+});

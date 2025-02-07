@@ -57,7 +57,7 @@ export class EnvironmentVariablesRepository implements Repository {
       }[];
     }
   ): Promise<CreateResult> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -136,7 +136,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       for (const variable of values) {
-        const result = await $transaction(this.prismaClient, async (tx) => {
+        const result = await $transaction(this.prismaClient, "create env var", async (tx) => {
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -227,7 +227,7 @@ export class EnvironmentVariablesRepository implements Repository {
       keepEmptyValues?: boolean;
     }
   ): Promise<Result> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -266,7 +266,7 @@ export class EnvironmentVariablesRepository implements Repository {
       }
     }
 
-    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
       select: {
         id: true,
         key: true,
@@ -280,7 +280,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
-      await $transaction(this.prismaClient, async (tx) => {
+      await $transaction(this.prismaClient, "edit env var", async (tx) => {
         const secretStore = getSecretStore("DATABASE", {
           prismaClient: tx,
         });
@@ -288,12 +288,10 @@ export class EnvironmentVariablesRepository implements Repository {
         //create the secret values and references
         for (const value of values) {
           const key = secretKey(projectId, value.environmentId, environmentVariable.key);
-          const existingValue = await tx.environmentVariableValue.findUnique({
+          const existingValue = await tx.environmentVariableValue.findFirst({
             where: {
-              variableId_environmentId: {
-                variableId: environmentVariable.id,
-                environmentId: value.environmentId,
-              },
+              variableId: environmentVariable.id,
+              environmentId: value.environmentId,
             },
           });
 
@@ -356,7 +354,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 
   async getProject(projectId: string): Promise<ProjectEnvironmentVariable[]> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -429,7 +427,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 
   async getEnvironment(projectId: string, environmentId: string): Promise<EnvironmentVariable[]> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -483,7 +481,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 
   async delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -501,7 +499,7 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
       select: {
         id: true,
         key: true,
@@ -526,7 +524,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
-      await $transaction(this.prismaClient, async (tx) => {
+      await $transaction(this.prismaClient, "delete env var", async (tx) => {
         await tx.environmentVariable.delete({
           where: {
             id: options.id,
@@ -564,7 +562,7 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 
   async deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result> {
-    const project = await this.prismaClient.project.findUnique({
+    const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
@@ -582,7 +580,7 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    const environmentVariable = await this.prismaClient.environmentVariable.findUnique({
+    const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
       select: {
         id: true,
         key: true,
@@ -619,7 +617,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     try {
-      await $transaction(this.prismaClient, async (tx) => {
+      await $transaction(this.prismaClient, "delete env var value", async (tx) => {
         const secretStore = getSecretStore("DATABASE", {
           prismaClient: tx,
         });
@@ -654,9 +652,26 @@ export class EnvironmentVariablesRepository implements Repository {
   }
 }
 
+export const RuntimeEnvironmentForEnvRepoPayload = {
+  select: {
+    id: true,
+    slug: true,
+    type: true,
+    projectId: true,
+    apiKey: true,
+    organizationId: true,
+  },
+} as const;
+
+export type RuntimeEnvironmentForEnvRepo = Prisma.RuntimeEnvironmentGetPayload<
+  typeof RuntimeEnvironmentForEnvRepoPayload
+>;
+
 export const environmentVariablesRepository = new EnvironmentVariablesRepository();
 
-export async function resolveVariablesForEnvironment(runtimeEnvironment: RuntimeEnvironment) {
+export async function resolveVariablesForEnvironment(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+) {
   const projectSecrets = await environmentVariablesRepository.getEnvironmentVariables(
     runtimeEnvironment.projectId,
     runtimeEnvironment.id
@@ -672,7 +687,9 @@ export async function resolveVariablesForEnvironment(runtimeEnvironment: Runtime
   return [...overridableTriggerVariables, ...projectSecrets, ...builtInVariables];
 }
 
-async function resolveOverridableTriggerVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveOverridableTriggerVariables(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_REALTIME_STREAM_VERSION",
@@ -683,7 +700,7 @@ async function resolveOverridableTriggerVariables(runtimeEnvironment: RuntimeEnv
   return result;
 }
 
-async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "OTEL_EXPORTER_OTLP_ENDPOINT",
@@ -745,7 +762,7 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
-async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironment) {
+async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_SECRET_KEY",
@@ -838,7 +855,7 @@ async function resolveBuiltInProdVariables(runtimeEnvironment: RuntimeEnvironmen
 }
 
 async function resolveCommonBuiltInVariables(
-  runtimeEnvironment: RuntimeEnvironment
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ): Promise<Array<EnvironmentVariable>> {
   return [];
 }

@@ -48,6 +48,7 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
             triggerSource: true;
             machineConfig: true;
             maxDurationInSeconds: true;
+            queueConfig: true;
           };
         };
       };

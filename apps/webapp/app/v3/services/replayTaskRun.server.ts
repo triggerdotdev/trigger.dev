@@ -87,7 +87,7 @@ export class ReplayTaskRunService extends BaseService {
       });
 
       const triggerTaskService = new TriggerTaskService();
-      return await triggerTaskService.call(
+      const result = await triggerTaskService.call(
         existingTaskRun.taskIdentifier,
         authenticatedEnvironment,
         {
@@ -96,7 +96,6 @@ export class ReplayTaskRunService extends BaseService {
             queue: taskQueue
               ? {
                   name: taskQueue.name,
-                  concurrencyLimit: taskQueue.concurrencyLimit ?? undefined,
                 }
               : undefined,
             concurrencyKey: existingTaskRun.concurrencyKey ?? undefined,
@@ -114,6 +113,8 @@ export class ReplayTaskRunService extends BaseService {
           },
         }
       );
+
+      return result?.run;
     } catch (error) {
       if (error instanceof OutOfEntitlementError) {
         return;

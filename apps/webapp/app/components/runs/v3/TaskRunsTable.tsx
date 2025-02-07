@@ -39,6 +39,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  TableVariant,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
 import { LiveTimer } from "./LiveTimer";
@@ -58,6 +59,7 @@ type RunsTableProps = {
   runs: RunListItem[];
   isLoading?: boolean;
   allowSelection?: boolean;
+  variant?: TableVariant;
 };
 
 export function TaskRunsTable({
@@ -67,6 +69,7 @@ export function TaskRunsTable({
   runs,
   isLoading = false,
   allowSelection = false,
+  variant = "dimmed",
 }: RunsTableProps) {
   const user = useUser();
   const organization = useOrganization();
@@ -104,7 +107,7 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table className="max-h-full overflow-y-auto">
+    <Table variant={variant} className="max-h-full overflow-y-auto">
       <TableHeader>
         <TableRow>
           {allowSelection && (
@@ -300,7 +303,7 @@ export function TaskRunsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell to={path} alignment="right">
+                <TableCell to={path} alignment="right" isTabbableCell>
                   {formatNumber(run.number)}
                 </TableCell>
                 <TableCell to={path}>

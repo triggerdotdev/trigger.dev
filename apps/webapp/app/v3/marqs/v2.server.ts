@@ -11,11 +11,10 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { MarQS } from "./index.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
 import { RequeueV2Message } from "./requeueV2Message.server";
-import {
-  NoopWeightedChoiceStrategy,
-  SimpleWeightedChoiceStrategy,
-} from "./simpleWeightedPriorityStrategy.server";
 import { VisibilityTimeoutStrategy } from "./types";
+import Redis from "ioredis";
+import { FairDequeuingStrategy, NoopFairDequeuingStrategy } from "./fairDequeuingStrategy.server";
+import { tracer } from "../tracer.server";
 
 const KEY_PREFIX = "marqsv2:";
 const SHARED_QUEUE_NAME = "sharedQueue";
@@ -67,22 +66,30 @@ function getMarQSClient() {
     ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   };
 
+  const redis = new Redis(redisOptions);
+
   return new MarQS({
     verbose: env.V2_MARQS_VERBOSE === "1",
     name: "marqsv2",
     tracer: trace.getTracer("marqsv2"),
     visibilityTimeoutStrategy: new V2VisibilityTimeout(),
     keysProducer: new MarQSV2KeyProducer(KEY_PREFIX),
-    queuePriorityStrategy: new SimpleWeightedChoiceStrategy({
-      queueSelectionCount: env.V2_MARQS_QUEUE_SELECTION_COUNT,
+    queuePriorityStrategy: new FairDequeuingStrategy({
+      tracer,
+      redis,
+      parentQueueLimit: 100,
+      keys: new MarQSV2KeyProducer(KEY_PREFIX),
+      defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY,
+      defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
     }),
-    envQueuePriorityStrategy: new NoopWeightedChoiceStrategy(), // We don't use this in v2, since all queues go through the shared queue
+    envQueuePriorityStrategy: new NoopFairDequeuingStrategy(), // We don't use this in v2, since all queues go through the shared queue
     workers: 0,
-    redis: redisOptions,
-    defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY, // this is so we aren't limited by the environment concurrency
-    defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
+    redis,
     visibilityTimeoutInMs: env.V2_MARQS_VISIBILITY_TIMEOUT_MS, // 15 minutes
+    maximumNackCount: 10,
     enableRebalancing: false,
+    defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY,
+    defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
   });
 }
 

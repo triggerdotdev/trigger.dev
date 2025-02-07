@@ -53,12 +53,10 @@ export class DeploymentPresenter {
       },
     });
 
-    const deployment = await this.#prismaClient.workerDeployment.findUniqueOrThrow({
+    const deployment = await this.#prismaClient.workerDeployment.findFirstOrThrow({
       where: {
-        projectId_shortCode: {
-          projectId: project.id,
-          shortCode: deploymentShortCode,
-        },
+        projectId: project.id,
+        shortCode: deploymentShortCode,
       },
       select: {
         id: true,

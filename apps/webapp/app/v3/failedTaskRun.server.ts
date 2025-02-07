@@ -14,20 +14,21 @@ import { CreateTaskRunAttemptService } from "./services/createTaskRunAttempt.ser
 import { sharedQueueTasks } from "./marqs/sharedQueueConsumer.server";
 import * as semver from "semver";
 
-const includeAttempts = {
-  attempts: {
-    orderBy: {
-      createdAt: "desc",
+const FailedTaskRunRetryGetPayload = {
+  select: {
+    id: true,
+    attempts: {
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 1,
     },
-    take: 1,
+    lockedById: true, // task
+    lockedToVersionId: true, // worker
   },
-  lockedBy: true, // task
-  lockedToVersion: true, // worker
-} satisfies Prisma.TaskRunInclude;
+} as const;
 
-type TaskRunWithAttempts = Prisma.TaskRunGetPayload<{
-  include: typeof includeAttempts;
-}>;
+type TaskRunWithAttempts = Prisma.TaskRunGetPayload<typeof FailedTaskRunRetryGetPayload>;
 
 export class FailedTaskRunService extends BaseService {
   public async call(anyRunId: string, completion: TaskRunFailedExecutionResult) {
@@ -92,7 +93,7 @@ export class FailedTaskRunRetryHelper extends BaseService {
       where: {
         id: runId,
       },
-      include: includeAttempts,
+      ...FailedTaskRunRetryGetPayload,
     });
 
     if (!taskRun) {

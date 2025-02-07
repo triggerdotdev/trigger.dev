@@ -7,11 +7,10 @@ import {
   EnvelopeIcon,
   GlobeAltIcon,
   LockClosedIcon,
-  LockOpenIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
@@ -24,7 +23,6 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { DetailCell } from "~/components/primitives/DetailCell";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -62,6 +60,14 @@ import {
   v3NewProjectAlertPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Alerts | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -216,7 +222,7 @@ export default function Page() {
                         />
                       ))}
                     </TableCell>
-                    <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
+                    <TableCell className={cn("py-1", alertChannel.enabled ? "" : "opacity-50")}>
                       <AlertChannelDetails alertChannel={alertChannel} />
                     </TableCell>
                     <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
@@ -460,6 +466,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           label={"Email"}
           description={alertChannel.properties.email}
           boxClassName="group-hover/table-row:bg-charcoal-800"
+          className="h-12"
         />
       );
     }

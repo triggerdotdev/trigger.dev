@@ -36,7 +36,9 @@
       "@internal/zod-worker": ["../../internal-packages/zod-worker/src/index"],
       "@internal/zod-worker/*": ["../../internal-packages/zod-worker/src/*"],
       "@internal/run-engine": ["../../internal-packages/run-engine/src/index"],
-      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"]
+      "@internal/run-engine/*": ["../../internal-packages/run-engine/src/*"],
+      "@internal/redis-worker": ["../../internal-packages/redis-worker/src/index"],
+      "@internal/redis-worker/*": ["../../internal-packages/redis-worker/src/*"]
     },
     "noEmit": true
   }

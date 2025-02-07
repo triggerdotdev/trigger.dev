@@ -103,20 +103,21 @@ export const TriggerTaskRequestBody = z.object({
        * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
        */
       lockToVersion: z.string().optional(),
+
       queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
-      test: z.boolean().optional(),
-      payloadType: z.string().optional(),
-      delay: z.string().or(z.coerce.date()).optional(),
-      ttl: z.string().or(z.number().nonnegative().int()).optional(),
-      tags: RunTags.optional(),
+      machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
+      maxDuration: z.number().optional(),
       metadata: z.any(),
       metadataType: z.string().optional(),
-      maxDuration: z.number().optional(),
-      machine: MachinePresetName.optional(),
+      payloadType: z.string().optional(),
+      tags: RunTags.optional(),
+      test: z.boolean().optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
     })
     .optional(),
 });
@@ -143,22 +144,22 @@ export const BatchTriggerTaskItem = z.object({
   context: z.any(),
   options: z
     .object({
-      lockToVersion: z.string().optional(),
-      queue: QueueOptions.optional(),
       concurrencyKey: z.string().optional(),
+      delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
-      test: z.boolean().optional(),
-      payloadType: z.string().optional(),
-      delay: z.string().or(z.coerce.date()).optional(),
-      ttl: z.string().or(z.number().nonnegative().int()).optional(),
-      tags: RunTags.optional(),
+      lockToVersion: z.string().optional(),
+      machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
+      maxDuration: z.number().optional(),
       metadata: z.any(),
       metadataType: z.string().optional(),
-      maxDuration: z.number().optional(),
       parentAttempt: z.string().optional(),
-      machine: MachinePresetName.optional(),
+      payloadType: z.string().optional(),
+      queue: QueueOptions.optional(),
+      tags: RunTags.optional(),
+      test: z.boolean().optional(),
+      ttl: z.string().or(z.number().nonnegative().int()).optional(),
     })
     .optional(),
 });
@@ -281,6 +282,7 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   imageReference: z.string(),
   selfHosted: z.boolean().optional(),
+  skipRegistryProxy: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;

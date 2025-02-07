@@ -12,6 +12,8 @@ module.exports = {
     "marked",
     "axios",
     "@internal/redis-worker",
+    "p-limit",
+    "yocto-queue",
     "@trigger.dev/core",
     "@trigger.dev/sdk",
     "@trigger.dev/platform",

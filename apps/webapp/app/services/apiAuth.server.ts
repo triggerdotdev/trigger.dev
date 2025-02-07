@@ -17,6 +17,7 @@ import {
   isPersonalAccessToken,
 } from "./personalAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+import { RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -410,7 +411,7 @@ const JWT_ALGORITHM = "HS256";
 const DEFAULT_JWT_EXPIRATION_IN_MS = 1000 * 60 * 60; // 1 hour
 
 export async function generateJWTTokenForEnvironment(
-  environment: RuntimeEnvironment,
+  environment: RuntimeEnvironmentForEnvRepo,
   payload: Record<string, string>
 ) {
   const jwt = await new SignJWT({

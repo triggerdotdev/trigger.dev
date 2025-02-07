@@ -436,6 +436,11 @@ function initializeProxy() {
     return;
   }
 
+  if (!env.ENABLE_REGISTRY_PROXY || env.ENABLE_REGISTRY_PROXY === "false") {
+    logger.info("Registry proxy is disabled");
+    return;
+  }
+
   return new RegistryProxy({
     origin: env.CONTAINER_REGISTRY_ORIGIN,
     auth: {

@@ -3,9 +3,11 @@ import { prepareDeploymentError } from "@trigger.dev/core/v3";
 import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
 import { Command, Option as CommandOption } from "commander";
 import { resolve } from "node:path";
+import { x } from "tinyexec";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
+import { resolveAlwaysExternal } from "../build/externals.js";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -31,8 +33,6 @@ import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { resolveAlwaysExternal } from "../build/externals.js";
-import { x } from "tinyexec";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -223,10 +223,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     forcedExternals,
     listener: {
       onBundleStart() {
-        $buildSpinner.start("Building project");
+        $buildSpinner.start("Building trigger code");
       },
       onBundleComplete(result) {
-        $buildSpinner.stop("Successfully built project");
+        $buildSpinner.stop("Successfully built code");
 
         logger.debug("Bundle result", result);
       },
@@ -330,9 +330,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const $spinner = spinner();
 
   if (isLinksSupported) {
-    $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+    $spinner.start(`Building version ${version} ${deploymentLink}`);
   } else {
-    $spinner.start(`Deploying version ${version}`);
+    $spinner.start(`Building version ${version}`);
   }
 
   const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
@@ -361,6 +361,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
     network: options.network,
+    onLog: (logMessage) => {
+      if (isLinksSupported) {
+        $spinner.message(`Building version ${version} ${deploymentLink}: ${logMessage}`);
+      } else {
+        $spinner.message(`Building version ${version}: ${logMessage}`);
+      }
+    },
   });
 
   logger.debug("Build result", buildResult);
@@ -426,12 +433,28 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     ? `${selfHostedRegistryHost ? `${selfHostedRegistryHost}/` : ""}${buildResult.image}${
         buildResult.digest ? `@${buildResult.digest}` : ""
       }`
-    : `${registryHost}/${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
+    : `${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
 
-  const finalizeResponse = await projectClient.client.finalizeDeployment(deployment.id, {
-    imageReference,
-    selfHosted: options.selfHosted,
-  });
+  if (isLinksSupported) {
+    $spinner.message(`Deploying version ${version} ${deploymentLink}`);
+  } else {
+    $spinner.message(`Deploying version ${version}`);
+  }
+
+  const finalizeResponse = await projectClient.client.finalizeDeployment(
+    deployment.id,
+    {
+      imageReference,
+      selfHosted: options.selfHosted,
+    },
+    (logMessage) => {
+      if (isLinksSupported) {
+        $spinner.message(`Deploying version ${version} ${deploymentLink}: ${logMessage}`);
+      } else {
+        $spinner.message(`Deploying version ${version}: ${logMessage}`);
+      }
+    }
+  );
 
   if (!finalizeResponse.success) {
     await failDeploy(

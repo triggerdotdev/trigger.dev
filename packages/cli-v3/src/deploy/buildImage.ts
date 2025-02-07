@@ -36,36 +36,40 @@ export interface BuildImageOptions {
   apiUrl: string;
   apiKey: string;
   buildEnvVars?: Record<string, string | undefined>;
+  onLog?: (log: string) => void;
 
   // Optional deployment spinner
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
 }
 
-export async function buildImage({
-  selfHosted,
-  buildPlatform,
-  noCache,
-  push,
-  registry,
-  loadImage,
-  registryHost,
-  authAccessToken,
-  imageTag,
-  deploymentId,
-  deploymentVersion,
-  contentHash,
-  externalBuildId,
-  externalBuildToken,
-  externalBuildProjectId,
-  compilationPath,
-  projectId,
-  projectRef,
-  extraCACerts,
-  apiUrl,
-  apiKey,
-  buildEnvVars,
-  network,
-}: BuildImageOptions) {
+export async function buildImage(options: BuildImageOptions) {
+  const {
+    selfHosted,
+    buildPlatform,
+    noCache,
+    push,
+    registry,
+    loadImage,
+    registryHost,
+    authAccessToken,
+    imageTag,
+    deploymentId,
+    deploymentVersion,
+    contentHash,
+    externalBuildId,
+    externalBuildToken,
+    externalBuildProjectId,
+    compilationPath,
+    projectId,
+    projectRef,
+    extraCACerts,
+    apiUrl,
+    apiKey,
+    buildEnvVars,
+    network,
+    onLog,
+  } = options;
+
   if (selfHosted) {
     return selfHostedBuildImage({
       registryHost,
@@ -85,6 +89,7 @@ export async function buildImage({
       apiKey,
       buildEnvVars,
       network,
+      onLog,
     });
   }
 
@@ -120,6 +125,7 @@ export async function buildImage({
     apiUrl,
     apiKey,
     buildEnvVars,
+    onLog,
   });
 }
 
@@ -143,6 +149,7 @@ export interface DepotBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  onLog?: (log: string) => void;
 }
 
 type BuildImageSuccess = {
@@ -199,10 +206,8 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
-    "-t",
-    `${options.registryHost}/${options.imageTag}`,
     ".",
-    "--push",
+    "--save",
     options.loadImage ? "--load" : undefined,
   ].filter(Boolean) as string[];
 
@@ -232,6 +237,10 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
         // Emitted data chunks can contain multiple lines. Remove empty lines.
         const lines = text.split("\n").filter(Boolean);
 
+        for (const line of lines) {
+          options.onLog?.(line);
+        }
+
         errors.push(...lines);
         logger.debug(text);
       });
@@ -254,7 +263,7 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
 
     return {
       ok: true as const,
-      image: options.imageTag,
+      image: `registry.depot.dev/${options.buildProjectId}:${options.buildId}`,
       logs,
       digest,
     };
@@ -285,6 +294,7 @@ interface SelfHostedBuildImageOptions {
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
+  onLog?: (log: string) => void;
 }
 
 async function selfHostedBuildImage(
@@ -343,6 +353,7 @@ async function selfHostedBuildImage(
     // line will be from stderr/stdout in the order you'd see it in a term
     errors.push(line);
     logger.debug(line);
+    options.onLog?.(line);
   }
 
   if (buildProcess.exitCode !== 0) {

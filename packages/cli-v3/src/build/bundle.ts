@@ -23,6 +23,8 @@ import {
   shims,
 } from "./packageModules.js";
 import { buildPlugins } from "./plugins.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { SkipLoggingError } from "../cli/common.js";
 
 export interface BundleOptions {
   target: BuildTarget;
@@ -75,6 +77,29 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
       }
     }
   );
+
+  if (entryPointManager.entryPoints.length === 0) {
+    const errorMessageBody = `
+      Dirs config:
+      ${resolvedConfig.dirs.join("\n- ")}
+
+      Search patterns:
+      ${entryPointManager.patterns.join("\n- ")}
+
+      Possible solutions:
+      1. Check if the directory paths in your config are correct
+      2. Verify that your files match the search patterns
+      3. Update the search patterns in your config
+    `.replace(/^ {6}/gm, "");
+
+    prettyError(
+      "No trigger files found",
+      errorMessageBody,
+      cliLink("View the config docs", "https://trigger.dev/docs/config/config-file")
+    );
+
+    throw new SkipLoggingError();
+  }
 
   let initialBuildResult: (result: esbuild.BuildResult) => void;
   const initialBuildResultPromise = new Promise<esbuild.BuildResult>(

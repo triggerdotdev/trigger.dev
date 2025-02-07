@@ -13,6 +13,25 @@ export type MessageCatalogValue<
   TKey extends MessageCatalogKey<TMessageCatalog>,
 > = z.infer<TMessageCatalog[TKey]>;
 
+export type AnyMessageCatalog = MessageCatalogSchema;
+export type QueueItem<TMessageCatalog extends MessageCatalogSchema> = {
+  id: string;
+  job: MessageCatalogKey<TMessageCatalog>;
+  item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+  visibilityTimeoutMs: number;
+  attempt: number;
+  timestamp: Date;
+};
+
+export type AnyQueueItem = {
+  id: string;
+  job: string;
+  item: any;
+  visibilityTimeoutMs: number;
+  attempt: number;
+  timestamp: Date;
+};
+
 export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
   name: string;
   private redis: Redis;
@@ -33,7 +52,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     this.name = name;
     this.redis = new Redis({
       ...redisOptions,
-      keyPrefix: `{queue:${name}:}`,
+      keyPrefix: `${redisOptions.keyPrefix ?? ""}{queue:${name}:}`,
       retryStrategy(times) {
         const delay = Math.min(times * 50, 1000);
         return delay;
@@ -107,15 +126,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       throw e;
     }
   }
-  async dequeue(count: number = 1): Promise<
-    Array<{
-      id: string;
-      job: MessageCatalogKey<TMessageCatalog>;
-      item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
-      visibilityTimeoutMs: number;
-      attempt: number;
-    }>
-  > {
+  async dequeue(count: number = 1): Promise<Array<QueueItem<TMessageCatalog>>> {
     const now = Date.now();
 
     try {
@@ -127,12 +138,14 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
 
       const dequeuedItems = [];
 
-      for (const [id, serializedItem] of results) {
+      for (const [id, serializedItem, score] of results) {
         const parsedItem = JSON.parse(serializedItem) as any;
         if (typeof parsedItem.job !== "string") {
           this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
           continue;
         }
+
+        const timestamp = new Date(Number(score));
 
         const schema = this.schema[parsedItem.job];
 
@@ -142,6 +155,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             id,
             item: parsedItem,
             job: parsedItem.job,
+            timestamp,
           });
           continue;
         }
@@ -155,6 +169,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             item: parsedItem,
             errors: validatedItem.error,
             attempt: parsedItem.attempt,
+            timestamp,
           });
           continue;
         }
@@ -170,6 +185,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           item: validatedItem.data,
           visibilityTimeoutMs,
           attempt: parsedItem.attempt ?? 0,
+          timestamp,
         });
       }
 
@@ -336,7 +352,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             local invisibleUntil = now + visibilityTimeoutMs
 
             redis.call('ZADD', queue, invisibleUntil, id)
-            table.insert(dequeued, {id, serializedItem})
+            table.insert(dequeued, {id, serializedItem, score})
           end
         end
 
@@ -376,10 +392,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local parsedItem = cjson.decode(item)
         parsedItem.errorMessage = errorMessage
 
+        local time = redis.call('TIME')
+        local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
         redis.call('ZREM', queue, id)
         redis.call('HDEL', items, id)
 
-        redis.call('ZADD', dlq, redis.call('TIME')[1], id)
+        redis.call('ZADD', dlq, now, id)
         redis.call('HSET', dlqItems, id, cjson.encode(parsedItem))
 
         return 1
@@ -403,10 +422,13 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local parsedItem = cjson.decode(item)
         parsedItem.errorMessage = nil
 
+        local time = redis.call('TIME')
+        local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
         redis.call('ZREM', dlq, id)
         redis.call('HDEL', dlqItems, id)
 
-        redis.call('ZADD', queue, redis.call('TIME')[1], id)
+        redis.call('ZADD', queue, now, id)
         redis.call('HSET', items, id, cjson.encode(parsedItem))
 
         return 1
@@ -435,8 +457,8 @@ declare module "ioredis" {
       //args
       now: number,
       count: number,
-      callback?: Callback<Array<[string, string]>>
-    ): Result<Array<[string, string]>, Context>;
+      callback?: Callback<Array<[string, string, string]>>
+    ): Result<Array<[string, string, string]>, Context>;
 
     ackItem(
       queue: string,

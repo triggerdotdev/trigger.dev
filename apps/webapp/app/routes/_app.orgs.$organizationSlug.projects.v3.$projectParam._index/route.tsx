@@ -8,7 +8,7 @@ import {
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
-import { json } from "@remix-run/node";
+import { json, type MetaFunction } from "@remix-run/node";
 import { Link, useRevalidator, useSubmit } from "@remix-run/react";
 import { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
@@ -88,6 +88,14 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Tasks | Trigger.dev`,
+    },
+  ];
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -229,7 +237,7 @@ export default function Page() {
                 <div className="flex min-w-0 max-w-full flex-col">
                   {!userHasTasks && <UserHasNoTasks />}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center p-2">
+                    <div className="flex items-center gap-1 p-2">
                       <Input
                         placeholder="Search tasks"
                         variant="tertiary"
@@ -287,7 +295,7 @@ export default function Page() {
 
                             return (
                               <TableRow key={task.slug} className="group">
-                                <TableCell to={path}>
+                                <TableCell to={path} isTabbableCell>
                                   <div className="flex items-center gap-2">
                                     <SimpleTooltip
                                       button={<TaskTriggerSourceIcon source={task.triggerSource} />}
@@ -296,13 +304,13 @@ export default function Page() {
                                     <span>{task.slug}</span>
                                   </div>
                                 </TableCell>
-                                <TableCell to={path} className="py-0" actionClassName="py-0">
+                                <TableCell to={path}>
                                   <TaskFunctionName
                                     functionName={task.exportName}
                                     variant="extra-extra-small"
                                   />
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense
                                     fallback={
                                       <>
@@ -318,7 +326,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={runningStats}>
                                       {(data) => {
@@ -328,7 +336,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0" actionClassName="py-0">
+                                <TableCell to={path} actionClassName="py-1.5">
                                   <Suspense fallback={<TaskActivityBlankState />}>
                                     <TypedAwait resolve={activity}>
                                       {(data) => {
@@ -348,7 +356,7 @@ export default function Page() {
                                     </TypedAwait>
                                   </Suspense>
                                 </TableCell>
-                                <TableCell to={path} className="p-0">
+                                <TableCell to={path}>
                                   <Suspense fallback={<></>}>
                                     <TypedAwait resolve={durations}>
                                       {(data) => {

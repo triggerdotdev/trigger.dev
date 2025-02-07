@@ -4,7 +4,7 @@ import {
   BookOpenIcon,
   ServerStackIcon,
 } from "@heroicons/react/20/solid";
-import { Outlet, useLocation, useParams } from "@remix-run/react";
+import { MetaFunction, Outlet, useLocation, useParams } from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -38,8 +38,8 @@ import {
 import { TextLink } from "~/components/primitives/TextLink";
 import {
   DeploymentStatus,
-  deploymentStatuses,
   deploymentStatusDescription,
+  deploymentStatuses,
 } from "~/components/runs/v3/DeploymentStatus";
 import { RetryDeploymentIndexingDialog } from "~/components/runs/v3/RetryDeploymentIndexingDialog";
 import { RollbackDeploymentDialog } from "~/components/runs/v3/RollbackDeploymentDialog";
@@ -51,7 +51,6 @@ import {
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import {
   ProjectParamSchema,
   docsPath,
@@ -60,6 +59,14 @@ import {
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { deploymentIndexingIsRetryable } from "~/v3/deploymentStatus";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Deployments | Trigger.dev`,
+    },
+  ];
+};
 
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
@@ -171,7 +178,7 @@ export default function Page() {
                         const isSelected = deploymentParam === deployment.shortCode;
                         return (
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
-                            <TableCell to={path} isSelected={isSelected}>
+                            <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
                                 <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (

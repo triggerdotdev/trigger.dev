@@ -1,5 +1,12 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { Link, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import {
+  Link,
+  MetaFunction,
+  Outlet,
+  useLocation,
+  useNavigation,
+  useParams,
+} from "@remix-run/react";
 import { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -46,6 +53,14 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, ProjectParamSchema, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+
+export const meta: MetaFunction = () => {
+  return [
+    {
+      title: `Test | Trigger.dev`,
+    },
+  ];
+};
 
 export const TestSearchParams = z.object({
   environment: z.string().optional(),
@@ -266,6 +281,7 @@ function TaskRow({ task, environmentSlug }: { task: TaskListItem; environmentSlu
       </TableCell>
       <TableCell
         to={path}
+        isTabbableCell
         actionClassName="pl-1 pr-2 py-1.5"
         className={cn((isActive || isPending) && "group-hover/table-row:bg-indigo-500/5")}
       >
