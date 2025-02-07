@@ -25,6 +25,7 @@ import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 import {
+  MAX_ATTEMPTS,
   OutOfEntitlementError,
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -38,14 +39,23 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
     environment,
     body,
     options = {},
+    attempt = 0,
   }: {
     taskId: string;
     environment: AuthenticatedEnvironment;
     body: TriggerTaskRequestBody;
     options?: TriggerTaskServiceOptions;
+    attempt?: number;
   }): Promise<TriggerTaskServiceResult | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
+      span.setAttribute("attempt", attempt);
+
+      if (attempt > MAX_ATTEMPTS) {
+        throw new ServiceValidationError(
+          `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
+        );
+      }
 
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
       const idempotencyKeyExpiresAt =
@@ -74,8 +84,6 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         : undefined;
 
       if (existingRun) {
-        span.setAttribute("runId", existingRun.friendlyId);
-
         if (
           existingRun.idempotencyKeyExpiresAt &&
           existingRun.idempotencyKeyExpiresAt < new Date()
@@ -91,6 +99,8 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             data: { idempotencyKey: null },
           });
         } else {
+          span.setAttribute("runId", existingRun.friendlyId);
+
           //We're using `andWait` so we need to block the parent run with a waitpoint
           if (
             existingRun.associatedWaitpoint &&
@@ -212,7 +222,6 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
             )
           : undefined;
 
-        //todo we will pass in the `parentRun` and `resumeParentOnCompletion`
         const parentRun = body.options?.parentRunId
           ? await this._prisma.taskRun.findFirst({
               where: { id: RunId.fromFriendlyId(body.options.parentRunId) },
@@ -258,13 +267,11 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                 `v3-run:${environment.id}:${taskId}`,
                 async (num, tx) => {
                   const lockedToBackgroundWorker = body.options?.lockToVersion
-                    ? await tx.backgroundWorker.findUnique({
+                    ? await tx.backgroundWorker.findFirst({
                         where: {
-                          projectId_runtimeEnvironmentId_version: {
-                            projectId: environment.projectId,
-                            runtimeEnvironmentId: environment.id,
-                            version: body.options?.lockToVersion,
-                          },
+                          projectId: environment.projectId,
+                          runtimeEnvironmentId: environment.id,
+                          version: body.options?.lockToVersion,
                         },
                       })
                     : undefined;
@@ -376,12 +383,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
                   return { ...taskRun, isCached: false };
                 },
                 async (_, tx) => {
-                  const counter = await tx.taskRunNumberCounter.findUnique({
+                  const counter = await tx.taskRunNumberCounter.findFirst({
                     where: {
-                      taskIdentifier_environmentId: {
-                        taskIdentifier: taskId,
-                        environmentId: environment.id,
-                      },
+                      taskIdentifier: taskId,
+                      environmentId: environment.id,
                     },
                     select: { lastNumber: true },
                   });
@@ -397,7 +402,7 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
         } catch (error) {
           if (error instanceof RunDuplicateIdempotencyKeyError) {
             //retry calling this function, because this time it will return the idempotent run
-            return await this.call({ taskId, environment, body, options });
+            return await this.call({ taskId, environment, body, options, attempt: attempt + 1 });
           }
 
           // Detect a prisma transaction Unique constraint violation
@@ -452,12 +457,10 @@ export class TriggerTaskServiceV2 extends WithRunEngine {
       return defaultQueueName;
     }
 
-    const task = await this._prisma.backgroundWorkerTask.findUnique({
+    const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
-        workerId_slug: {
-          workerId: worker.id,
-          slug: taskId,
-        },
+        workerId: worker.id,
+        slug: taskId,
       },
     });
 
