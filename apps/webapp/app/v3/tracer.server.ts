@@ -8,6 +8,7 @@ import {
   SpanKind,
   SpanOptions,
   SpanStatusCode,
+  Tracer,
   diag,
   trace,
 } from "@opentelemetry/api";

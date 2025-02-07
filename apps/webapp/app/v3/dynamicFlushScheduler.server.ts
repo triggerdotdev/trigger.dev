@@ -1,7 +1,9 @@
+import { nanoid } from "nanoid";
+
 export type DynamicFlushSchedulerConfig<T> = {
   batchSize: number;
   flushInterval: number;
-  callback: (batch: T[]) => Promise<void>;
+  callback: (flushId: string, batch: T[]) => Promise<void>;
 };
 
 export class DynamicFlushScheduler<T> {
@@ -10,7 +12,7 @@ export class DynamicFlushScheduler<T> {
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
   private flushTimer: NodeJS.Timeout | null;
-  private readonly callback: (batch: T[]) => Promise<void>;
+  private readonly callback: (flushId: string, batch: T[]) => Promise<void>;
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     this.batchQueue = [];
@@ -57,7 +59,7 @@ export class DynamicFlushScheduler<T> {
 
     const batchToFlush = this.batchQueue.shift();
     try {
-      await this.callback(batchToFlush!);
+      await this.callback(nanoid(), batchToFlush!);
       if (this.batchQueue.length > 0) {
         this.flushNextBatch();
       }
