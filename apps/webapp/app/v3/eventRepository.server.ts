@@ -1,4 +1,4 @@
-import { Attributes, Link, TraceFlags } from "@opentelemetry/api";
+import { Attributes, Link, trace, TraceFlags, Tracer } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import {
@@ -32,6 +32,8 @@ import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { startActiveSpan } from "./tracer.server";
 import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { startSpan } from "./tracing.server";
+import { nanoid } from "nanoid";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -99,6 +101,7 @@ export type EventRepoConfig = {
   batchInterval: number;
   redis: RedisWithClusterOptions;
   retentionInDays: number;
+  tracer?: Tracer;
 };
 
 export type QueryOptions = Prisma.TaskEventWhereInput;
@@ -202,6 +205,8 @@ export class EventRepository {
   private _randomIdGenerator = new RandomIdGenerator();
   private _redisPublishClient: RedisClient;
   private _subscriberCount = 0;
+  private _tracer: Tracer;
+  private _lastFlushedAt: Date | undefined;
 
   get subscriberCount() {
     return this._subscriberCount;
@@ -219,6 +224,7 @@ export class EventRepository {
     });
 
     this._redisPublishClient = createRedisClient("trigger:eventRepoPublisher", this._config.redis);
+    this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
   }
 
   async insert(event: CreatableEvent) {
@@ -226,7 +232,7 @@ export class EventRepository {
   }
 
   async insertImmediate(event: CreatableEvent) {
-    await this.#flushBatch([event]);
+    await this.#flushBatch(nanoid(), [event]);
   }
 
   async insertMany(events: CreatableEvent[]) {
@@ -234,7 +240,7 @@ export class EventRepository {
   }
 
   async insertManyImmediate(events: CreatableEvent[]) {
-    return await this.#flushBatch(events);
+    return await this.#flushBatch(nanoid(), events);
   }
 
   async completeEvent(spanId: string, options?: UpdateEventOptions) {
@@ -1019,82 +1025,120 @@ export class EventRepository {
     };
   }
 
-  async #flushBatch(batch: CreatableEvent[]) {
-    const events = excludePartialEventsWithCorrespondingFullEvent(batch);
+  async #flushBatch(flushId: string, batch: CreatableEvent[]) {
+    return await startSpan(this._tracer, "flushBatch", async (span) => {
+      const events = excludePartialEventsWithCorrespondingFullEvent(batch);
 
-    const flushedEvents = await this.#doFlushBatch(events);
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("event_count", events.length);
+      span.setAttribute("partial_event_count", batch.length - events.length);
+      span.setAttribute(
+        "last_flush_in_ms",
+        this._lastFlushedAt ? new Date().getTime() - this._lastFlushedAt.getTime() : 0
+      );
 
-    if (flushedEvents.length !== events.length) {
-      logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
-        attemptCount: events.length,
-        successCount: flushedEvents.length,
-      });
-    }
+      const flushedEvents = await this.#doFlushBatch(flushId, events);
 
-    this.#publishToRedis(flushedEvents);
-  }
+      this._lastFlushedAt = new Date();
 
-  async #doFlushBatch(events: CreatableEvent[], depth: number = 1): Promise<CreatableEvent[]> {
-    try {
-      await this.db.taskEvent.createMany({
-        data: events as Prisma.TaskEventCreateManyInput[],
-      });
-
-      return events;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-        logger.error("Failed to insert events, most likely because of null characters", {
-          error: {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-            clientVersion: error.clientVersion,
-          },
+      if (flushedEvents.length !== events.length) {
+        logger.debug("[EventRepository][flushBatch] Failed to insert all events", {
+          attemptCount: events.length,
+          successCount: flushedEvents.length,
         });
 
-        if (events.length === 1) {
-          logger.debug("Attempting to insert event individually and it failed", {
-            event: events[0],
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
-          });
-
-          return [];
-        }
-
-        if (depth > MAX_FLUSH_DEPTH) {
-          logger.error("Failed to insert events, reached maximum depth", {
-            error: {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-              clientVersion: error.clientVersion,
-            },
-            depth,
-            eventsCount: events.length,
-          });
-
-          return [];
-        }
-
-        // Split the events into two batches, and recursively try to insert them.
-        const middle = Math.floor(events.length / 2);
-        const [firstHalf, secondHalf] = [events.slice(0, middle), events.slice(middle)];
-
-        const [firstHalfEvents, secondHalfEvents] = await Promise.all([
-          this.#doFlushBatch(firstHalf, depth + 1),
-          this.#doFlushBatch(secondHalf, depth + 1),
-        ]);
-
-        return firstHalfEvents.concat(secondHalfEvents);
+        span.setAttribute("failed_event_count", events.length - flushedEvents.length);
       }
 
-      throw error;
-    }
+      this.#publishToRedis(flushedEvents);
+    });
+  }
+
+  async #doFlushBatch(
+    flushId: string,
+    events: CreatableEvent[],
+    depth: number = 1
+  ): Promise<CreatableEvent[]> {
+    return await startSpan(this._tracer, "doFlushBatch", async (span) => {
+      try {
+        span.setAttribute("event_count", events.length);
+        span.setAttribute("depth", depth);
+        span.setAttribute("flush_id", flushId);
+
+        await this.db.taskEvent.createMany({
+          data: events as Prisma.TaskEventCreateManyInput[],
+        });
+
+        span.setAttribute("inserted_event_count", events.length);
+
+        return events;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+          logger.error("Failed to insert events, most likely because of null characters", {
+            error: {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              clientVersion: error.clientVersion,
+            },
+          });
+
+          if (events.length === 1) {
+            logger.debug("Attempting to insert event individually and it failed", {
+              event: events[0],
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                clientVersion: error.clientVersion,
+              },
+            });
+
+            span.setAttribute("failed_event_count", 1);
+
+            return [];
+          }
+
+          if (depth > MAX_FLUSH_DEPTH) {
+            logger.error("Failed to insert events, reached maximum depth", {
+              error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                clientVersion: error.clientVersion,
+              },
+              depth,
+              eventsCount: events.length,
+            });
+
+            span.setAttribute("reached_max_flush_depth", true);
+            span.setAttribute("failed_event_count", events.length);
+
+            return [];
+          }
+
+          // Split the events into two batches, and recursively try to insert them.
+          const middle = Math.floor(events.length / 2);
+          const [firstHalf, secondHalf] = [events.slice(0, middle), events.slice(middle)];
+
+          return await startSpan(this._tracer, "bisectBatch", async (span) => {
+            span.setAttribute("first_half_count", firstHalf.length);
+            span.setAttribute("second_half_count", secondHalf.length);
+            span.setAttribute("depth", depth);
+            span.setAttribute("flush_id", flushId);
+
+            const [firstHalfEvents, secondHalfEvents] = await Promise.all([
+              this.#doFlushBatch(flushId, firstHalf, depth + 1),
+              this.#doFlushBatch(flushId, secondHalf, depth + 1),
+            ]);
+
+            return firstHalfEvents.concat(secondHalfEvents);
+          });
+        }
+
+        throw error;
+      }
+    });
   }
 
   async #publishToRedis(events: CreatableEvent[]) {
