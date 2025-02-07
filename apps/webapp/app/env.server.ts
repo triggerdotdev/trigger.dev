@@ -308,6 +308,39 @@ const EnvironmentSchema = z.object({
   ALERT_SMTP_SECURE: z.coerce.boolean().optional(),
   ALERT_SMTP_USER: z.string().optional(),
   ALERT_SMTP_PASSWORD: z.string().optional(),
+  ALERT_RATE_LIMITER_EMISSION_INTERVAL: z.coerce.number().int().default(2_500),
+  ALERT_RATE_LIMITER_BURST_TOLERANCE: z.coerce.number().int().default(10_000),
+  ALERT_RATE_LIMITER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  ALERT_RATE_LIMITER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  ALERT_RATE_LIMITER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  ALERT_RATE_LIMITER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  ALERT_RATE_LIMITER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  ALERT_RATE_LIMITER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  ALERT_RATE_LIMITER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+  ALERT_RATE_LIMITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   MAX_SEQUENTIAL_INDEX_FAILURE_COUNT: z.coerce.number().default(96),
 
