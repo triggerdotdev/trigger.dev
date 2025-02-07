@@ -9,7 +9,7 @@ import {
 import { TaskRunError, createJsonErrorObject } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
-import { Prisma, PrismaClientOrTransaction, prisma } from "~/db.server";
+import { Prisma, prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
   OrgIntegrationRepository,
@@ -25,10 +25,12 @@ import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server"
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
-import { workerQueue } from "~/services/worker.server";
-import { BaseService } from "../baseService.server";
-import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 import { commonWorker } from "~/v3/commonWorker.server";
+import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
+import { BaseService } from "../baseService.server";
+import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { ProjectAlertType } from "@trigger.dev/database";
+import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -1100,6 +1102,66 @@ export class DeliverAlertService extends BaseService {
       payload: { alertId },
       availableAt: runAt,
     });
+  }
+
+  static async createAndSendAlert(
+    {
+      channelId,
+      projectId,
+      environmentId,
+      alertType,
+      deploymentId,
+      taskRunId,
+    }: {
+      channelId: string;
+      projectId: string;
+      environmentId: string;
+      alertType: ProjectAlertType;
+      deploymentId?: string;
+      taskRunId?: string;
+    },
+    db: PrismaClientOrTransaction
+  ) {
+    if (taskRunId) {
+      try {
+        const result = await alertsRateLimiter.check(channelId);
+
+        if (!result.allowed) {
+          logger.warn("[DeliverAlert] Rate limited", {
+            taskRunId,
+            environmentId,
+            alertType,
+            channelId,
+            result,
+          });
+
+          return;
+        }
+      } catch (error) {
+        logger.error("[DeliverAlert] Rate limiter error", {
+          taskRunId,
+          environmentId,
+          alertType,
+          channelId,
+          error,
+        });
+      }
+    }
+
+    const alert = await db.projectAlert.create({
+      data: {
+        friendlyId: generateFriendlyId("alert"),
+        channelId,
+        projectId,
+        environmentId,
+        status: "PENDING",
+        type: alertType,
+        workerDeploymentId: deploymentId,
+        taskRunId,
+      },
+    });
+
+    await DeliverAlertService.enqueue(alert.id);
   }
 }
 
