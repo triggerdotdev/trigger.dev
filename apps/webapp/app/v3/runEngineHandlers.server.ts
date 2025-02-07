@@ -53,7 +53,7 @@ export function registerRunEngineEventBusHandlers() {
   // Handle alerts
   engine.eventBus.on("runFailed", async ({ time, run }) => {
     try {
-      await PerformTaskRunAlertsService.enqueue(run.id, prisma);
+      await PerformTaskRunAlertsService.enqueue(run.id);
     } catch (error) {
       logger.error("[runFailed] Failed to enqueue alerts", {
         error: error instanceof Error ? error.message : error,

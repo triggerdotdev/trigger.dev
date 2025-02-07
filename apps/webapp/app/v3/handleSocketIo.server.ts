@@ -1,4 +1,4 @@
-import { EventBusEventArgs } from "@internal/run-engine/engine/eventBus";
+import { EventBusEventArgs } from "@internal/run-engine";
 import { createAdapter } from "@socket.io/redis-adapter";
 import {
   ClientToSharedQueueMessages,

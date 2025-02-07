@@ -57,7 +57,8 @@
       "./v3/dev": "./src/v3/dev/index.ts",
       "./v3/prod": "./src/v3/prod/index.ts",
       "./v3/workers": "./src/v3/workers/index.ts",
-      "./v3/schemas": "./src/v3/schemas/index.ts"
+      "./v3/schemas": "./src/v3/schemas/index.ts",
+      "./v3/runEngineWorker": "./src/v3/runEngineWorker/index.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -172,6 +173,9 @@
       ],
       "v3/jwt": [
         "dist/commonjs/v3/jwt.d.ts"
+      ],
+      "v3/runEngineWorker": [
+        "dist/commonjs/v3/runEngineWorker/index.d.ts"
       ]
     }
   },
@@ -642,6 +646,17 @@
       "require": {
         "types": "./dist/commonjs/v3/schemas/index.d.ts",
         "default": "./dist/commonjs/v3/schemas/index.js"
+      }
+    },
+    "./v3/runEngineWorker": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/runEngineWorker/index.ts",
+        "types": "./dist/esm/v3/runEngineWorker/index.d.ts",
+        "default": "./dist/esm/v3/runEngineWorker/index.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/runEngineWorker/index.d.ts",
+        "default": "./dist/commonjs/v3/runEngineWorker/index.js"
       }
     }
   },

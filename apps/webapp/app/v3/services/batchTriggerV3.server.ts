@@ -58,12 +58,6 @@ export type BatchTriggerTaskServiceOptions = {
   oneTimeUseToken?: string;
 };
 
-<<<<<<<< HEAD:apps/webapp/app/v3/services/batchTriggerV2.server.ts
-/**
- * Larger batches, used in Run Engine v1
- */
-export class BatchTriggerV2Service extends BaseService {
-========
 type RunItemData = {
   id: string;
   isCached: boolean;
@@ -99,7 +93,6 @@ type RunItemData = {
  * The other main difference from v1 is that a single batch in v2 could trigger multiple different tasks, whereas in v1 a batch could only trigger a single task.
  */
 export class BatchTriggerV3Service extends BaseService {
->>>>>>>> origin/main:apps/webapp/app/v3/services/batchTriggerV3.server.ts
   private _batchProcessingStrategy: BatchProcessingStrategy;
   private _asyncBatchProcessSizeThreshold: number;
 
@@ -336,24 +329,40 @@ export class BatchTriggerV3Service extends BaseService {
       }));
     }
 
-    const idempotencyKeys = body.items.map((i) => i.options?.idempotencyKey).filter(Boolean);
+    // Group items by taskIdentifier
+    const itemsByTask = body.items.reduce((acc, item) => {
+      if (!item.options?.idempotencyKey) return acc;
 
-    const cachedRuns =
-      idempotencyKeys.length > 0
-        ? await this._prisma.taskRun.findMany({
-            where: {
-              runtimeEnvironmentId: environment.id,
-              idempotencyKey: {
-                in: body.items.map((i) => i.options?.idempotencyKey).filter(Boolean),
-              },
+      if (!acc[item.task]) {
+        acc[item.task] = [];
+      }
+      acc[item.task].push(item);
+      return acc;
+    }, {} as Record<string, typeof body.items>);
+
+    logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
+      itemsByTask,
+    });
+
+    // Fetch cached runs for each task identifier separately to make use of the index
+    const cachedRuns = await Promise.all(
+      Object.entries(itemsByTask).map(([taskIdentifier, items]) =>
+        this._prisma.taskRun.findMany({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            taskIdentifier,
+            idempotencyKey: {
+              in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
             },
-            select: {
-              friendlyId: true,
-              idempotencyKey: true,
-              idempotencyKeyExpiresAt: true,
-            },
-          })
-        : [];
+          },
+          select: {
+            friendlyId: true,
+            idempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+          },
+        })
+      )
+    ).then((results) => results.flat());
 
     // Now we need to create an array of all the run IDs, in order
     // If we have a cached run, that isn't expired, we should use that run ID
@@ -757,18 +766,18 @@ export class BatchTriggerV3Service extends BaseService {
     options?: BatchTriggerTaskServiceOptions
   ): Promise<{ workingIndex: number; error?: Error }> {
     // Grab the next PROCESSING_BATCH_SIZE runIds
-    const runFriendlyIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
+    const runIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
     logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch items", {
       batchId: batch.friendlyId,
       currentIndex,
-      runIds: runFriendlyIds,
+      runIds,
       runCount: batch.runCount,
     });
 
     // Combine the "window" between currentIndex and currentIndex + PROCESSING_BATCH_SIZE with the runId and the item in the payload which is an array
-    const itemsToProcess = runFriendlyIds.map((runFriendlyId, index) => ({
-      runFriendlyId,
+    const itemsToProcess = runIds.map((runId, index) => ({
+      runId,
       item: items[index + currentIndex],
     }));
 
@@ -821,13 +830,13 @@ export class BatchTriggerV3Service extends BaseService {
   async #processBatchTaskRunItem(
     batch: BatchTaskRun,
     environment: AuthenticatedEnvironment,
-    task: { runFriendlyId: string; item: BatchTriggerTaskV2RequestBody["items"][number] },
+    task: { runId: string; item: BatchTriggerTaskV2RequestBody["items"][number] },
     currentIndex: number,
     options?: BatchTriggerTaskServiceOptions
   ) {
     logger.debug("[BatchTriggerV2][processBatchTaskRunItem] Processing item", {
       batchId: batch.friendlyId,
-      runId: task.runFriendlyId,
+      runId: task.runId,
       currentIndex,
     });
 
@@ -850,18 +859,12 @@ export class BatchTriggerV3Service extends BaseService {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.friendlyId,
         skipChecks: true,
-        runFriendlyId: task.runFriendlyId,
-      },
-      "V1"
+        runFriendlyId: task.runId,
+      }
     );
 
-<<<<<<<< HEAD:apps/webapp/app/v3/services/batchTriggerV2.server.ts
-    if (!run) {
-      throw new Error(`Failed to trigger run ${task.runFriendlyId} for batch ${batch.friendlyId}`);
-========
     if (!result) {
       throw new Error(`Failed to trigger run ${task.runId} for batch ${batch.friendlyId}`);
->>>>>>>> origin/main:apps/webapp/app/v3/services/batchTriggerV3.server.ts
     }
 
     if (!result.isCached) {

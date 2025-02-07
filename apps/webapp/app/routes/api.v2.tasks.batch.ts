@@ -9,10 +9,8 @@ import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import {
-  BatchProcessingStrategy,
-  BatchTriggerV3Service,
-} from "~/v3/services/batchTriggerV3.server";
+import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
+import { BatchTriggerV4Service } from "~/v3/services/batchTriggerV4.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
@@ -76,7 +74,7 @@ const { action, loader } = createActionApiRoute(
         ? { traceparent, tracestate }
         : undefined;
 
-    const service = new BatchTriggerV3Service(batchProcessingStrategy ?? undefined);
+    const service = new BatchTriggerV4Service(batchProcessingStrategy ?? undefined);
 
     try {
       const batch = await service.call(authentication.environment, body, {
