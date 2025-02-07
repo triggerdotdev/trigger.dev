@@ -7,4 +7,3 @@ export * from "./searchParams.js";
 export * from "./eventFilterMatches.js";
 export * from "./requestFilterMatches.js";
 export * from "./versions.js";
-export * from "./throttle.js";

@@ -40,6 +40,7 @@ import {
   Prisma,
   PrismaClient,
   PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
   TaskRun,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
@@ -348,6 +349,8 @@ export class RunEngine {
                   executionStatus: "RUN_CREATED",
                   description: "Run was created",
                   runStatus: status,
+                  environmentId: environment.id,
+                  environmentType: environment.type,
                   workerId,
                   runnerId,
                 },
@@ -608,6 +611,8 @@ export class RunEngine {
                   description:
                     "Tried to dequeue a run that is not in a valid state to be dequeued.",
                 },
+                environmentId: snapshot.environmentId,
+                environmentType: snapshot.environmentType,
                 checkpointId: snapshot.checkpointId ?? undefined,
                 completedWaitpoints: snapshot.completedWaitpoints,
                 error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
@@ -893,6 +898,8 @@ export class RunEngine {
                 executionStatus: "PENDING_EXECUTING",
                 description: "Run was dequeued for execution",
               },
+              environmentId: snapshot.environmentId,
+              environmentType: snapshot.environmentType,
               checkpointId: snapshot.checkpointId ?? undefined,
               completedWaitpoints: snapshot.completedWaitpoints,
               workerId,
@@ -953,7 +960,12 @@ export class RunEngine {
             }
           );
 
-          const run = await prisma.taskRun.findFirst({ where: { id: runId } });
+          const run = await prisma.taskRun.findFirst({
+            where: { id: runId },
+            include: {
+              runtimeEnvironment: true,
+            },
+          });
 
           if (!run) {
             //this isn't ideal because we're not creating a snapshot… but we can't do much else
@@ -971,6 +983,7 @@ export class RunEngine {
           //this is an unknown error, we'll reattempt (with auto-backoff and eventually DLQ)
           const gotRequeued = await this.#tryNackAndRequeue({
             run,
+            environment: run.runtimeEnvironment,
             orgId,
             error: {
               type: "INTERNAL_ERROR",
@@ -1203,6 +1216,8 @@ export class RunEngine {
                   isWarmStart ? " (warm start)" : ""
                 }`,
               },
+              environmentId: latestSnapshot.environmentId,
+              environmentType: latestSnapshot.environmentType,
               workerId,
               runnerId,
             });
@@ -1567,6 +1582,8 @@ export class RunEngine {
               executionStatus: "PENDING_CANCEL",
               description: "Run was cancelled",
             },
+            environmentId: latestSnapshot.environmentId,
+            environmentType: latestSnapshot.environmentType,
             workerId,
             runnerId,
           });
@@ -1583,6 +1600,8 @@ export class RunEngine {
             executionStatus: "FINISHED",
             description: "Run was cancelled, not finished",
           },
+          environmentId: latestSnapshot.environmentId,
+          environmentType: latestSnapshot.environmentType,
           workerId,
           runnerId,
         });
@@ -1673,6 +1692,8 @@ export class RunEngine {
                 executionStatus: "RUN_CREATED",
                 description: "Delayed run was rescheduled to a future date",
                 runStatus: "EXPIRED",
+                environmentId: snapshot.environmentId,
+                environmentType: snapshot.environmentType,
               },
             },
           },
@@ -1958,6 +1979,8 @@ export class RunEngine {
             executionStatus: newStatus,
             description: "Run was blocked by a waitpoint.",
           },
+          environmentId: snapshot.environmentId,
+          environmentType: snapshot.environmentType,
           batchId: batch?.id ?? snapshot.batchId ?? undefined,
           workerId,
           runnerId,
@@ -2195,6 +2218,8 @@ export class RunEngine {
           executionStatus: "SUSPENDED",
           description: "Run was suspended after creating a checkpoint.",
         },
+        environmentId: snapshot.environmentId,
+        environmentType: snapshot.environmentType,
         checkpointId: taskRunCheckpoint.id,
         workerId,
         runnerId,
@@ -2263,6 +2288,8 @@ export class RunEngine {
           executionStatus: "EXECUTING",
           description: "Run was continued after being suspended",
         },
+        environmentId: snapshot.environmentId,
+        environmentType: snapshot.environmentType,
         completedWaitpoints: snapshot.completedWaitpoints,
         workerId,
         runnerId,
@@ -2500,6 +2527,8 @@ export class RunEngine {
               executionStatus: "FINISHED",
               description: "Run was expired because the TTL was reached",
               runStatus: "EXPIRED",
+              environmentId: snapshot.environmentId,
+              environmentType: snapshot.environmentType,
             },
           },
         },
@@ -2557,6 +2586,9 @@ export class RunEngine {
             id: true,
             status: true,
             attemptNumber: true,
+            runtimeEnvironment: {
+              select: { id: true, type: true },
+            },
           },
         });
 
@@ -2568,6 +2600,8 @@ export class RunEngine {
               reason ??
               "The run doesn't have a background worker, so we're going to ack it for now.",
           },
+          environmentId: run.runtimeEnvironment.id,
+          environmentType: run.runtimeEnvironment.type,
           workerId,
           runnerId,
         });
@@ -2619,6 +2653,8 @@ export class RunEngine {
                 description: "Task completed successfully",
                 runStatus: "COMPLETED_SUCCESSFULLY",
                 attemptNumber: latestSnapshot.attemptNumber,
+                environmentId: latestSnapshot.environmentId,
+                environmentType: latestSnapshot.environmentType,
                 workerId,
                 runnerId,
               },
@@ -2894,6 +2930,7 @@ export class RunEngine {
           //we nack the message, requeuing it for later
           const nackResult = await this.#tryNackAndRequeue({
             run,
+            environment: run.runtimeEnvironment,
             orgId: run.runtimeEnvironment.organizationId,
             timestamp: retryAt.getTime(),
             error: {
@@ -2921,6 +2958,8 @@ export class RunEngine {
             executionStatus: "PENDING_EXECUTING",
             description: "Attempt failed with a short delay, starting a new attempt",
           },
+          environmentId: latestSnapshot.environmentId,
+          environmentType: latestSnapshot.environmentType,
           workerId,
           runnerId,
         });
@@ -2979,6 +3018,8 @@ export class RunEngine {
           },
           runtimeEnvironment: {
             select: {
+              id: true,
+              type: true,
               organizationId: true,
             },
           },
@@ -2991,6 +3032,8 @@ export class RunEngine {
           executionStatus: "FINISHED",
           description: "Run failed",
         },
+        environmentId: run.runtimeEnvironment.id,
+        environmentType: run.runtimeEnvironment.type,
         workerId,
         runnerId,
       });
@@ -3067,6 +3110,8 @@ export class RunEngine {
           description: snapshot?.description ?? "Run was QUEUED",
         },
         batchId,
+        environmentId: env.id,
+        environmentType: env.type,
         checkpointId,
         completedWaitpoints,
         workerId,
@@ -3099,6 +3144,7 @@ export class RunEngine {
 
   async #tryNackAndRequeue({
     run,
+    environment,
     orgId,
     timestamp,
     error,
@@ -3107,6 +3153,10 @@ export class RunEngine {
     tx,
   }: {
     run: TaskRun;
+    environment: {
+      id: string;
+      type: RuntimeEnvironmentType;
+    };
     orgId: string;
     timestamp?: number;
     error: TaskRunInternalError;
@@ -3139,6 +3189,8 @@ export class RunEngine {
           executionStatus: "QUEUED",
           description: "Requeued the run after a failure",
         },
+        environmentId: environment.id,
+        environmentType: environment.type,
         workerId,
         runnerId,
       });
@@ -3217,6 +3269,8 @@ export class RunEngine {
             executionStatus: "EXECUTING",
             description: "Run was continued, whilst still executing.",
           },
+          environmentId: snapshot.environmentId,
+          environmentType: snapshot.environmentType,
           batchId: snapshot.batchId ?? undefined,
           completedWaitpoints: blockingWaitpoints.map((b) => ({
             id: b.waitpoint.id,
@@ -3447,6 +3501,8 @@ export class RunEngine {
       run,
       snapshot,
       batchId,
+      environmentId,
+      environmentType,
       checkpointId,
       workerId,
       runnerId,
@@ -3459,6 +3515,8 @@ export class RunEngine {
         description: string;
       };
       batchId?: string;
+      environmentId: string;
+      environmentType: RuntimeEnvironmentType;
       checkpointId?: string;
       workerId?: string;
       runnerId?: string;
@@ -3478,6 +3536,8 @@ export class RunEngine {
         runStatus: run.status,
         attemptNumber: run.attemptNumber ?? undefined,
         batchId,
+        environmentId,
+        environmentType,
         checkpointId,
         workerId,
         runnerId,
@@ -3651,6 +3711,10 @@ export class RunEngine {
           //it will automatically be requeued X times depending on the queue retry settings
           const gotRequeued = await this.#tryNackAndRequeue({
             run,
+            environment: {
+              id: latestSnapshot.environmentId,
+              type: latestSnapshot.environmentType,
+            },
             orgId: run.runtimeEnvironment.organizationId,
             error: {
               type: "INTERNAL_ERROR",

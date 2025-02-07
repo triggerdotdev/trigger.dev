@@ -424,6 +424,7 @@ model RuntimeEnvironment {
   taskRunCheckpoints   TaskRunCheckpoint[]
   waitpoints           Waitpoint[]
   workerInstances      WorkerInstance[]
+  executionSnapshots   TaskRunExecutionSnapshot[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -1948,11 +1949,17 @@ model TaskRunExecutionSnapshot {
   run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
 
+  // Batch
   batchId String?
   batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
 
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
+
+  /// Environment
+  environmentId   String
+  environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
+  environmentType RuntimeEnvironmentType
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
