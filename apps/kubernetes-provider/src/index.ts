@@ -38,6 +38,7 @@ const POD_EPHEMERAL_STORAGE_SIZE_LIMIT = process.env.POD_EPHEMERAL_STORAGE_SIZE_
 const POD_EPHEMERAL_STORAGE_SIZE_REQUEST = process.env.POD_EPHEMERAL_STORAGE_SIZE_REQUEST || "2Gi";
 
 const PRE_PULL_DISABLED = process.env.PRE_PULL_DISABLED === "true";
+const ADDITIONAL_PULL_SECRETS = process.env.ADDITIONAL_PULL_SECRETS;
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -403,17 +404,22 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
+    const pullSecrets = ["registry-trigger", "registry-trigger-failover"];
+
+    if (ADDITIONAL_PULL_SECRETS) {
+      pullSecrets.push(...ADDITIONAL_PULL_SECRETS.split(","));
+    }
+
+    const imagePullSecrets = pullSecrets.map(
+      (name) => ({ name }) satisfies k8s.V1LocalObjectReference
+    );
+
+    console.log("imagePullSecrets", imagePullSecrets);
+
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      imagePullSecrets: [
-        {
-          name: "registry-trigger",
-        },
-        {
-          name: "registry-trigger-failover",
-        },
-      ],
+      imagePullSecrets,
       nodeSelector: {
         nodetype: "worker",
       },
