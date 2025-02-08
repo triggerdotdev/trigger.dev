@@ -17,6 +17,7 @@ import {
 import { PodCleaner } from "./podCleaner";
 import { TaskMonitor } from "./taskMonitor";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
+import { assertExhaustive } from "@trigger.dev/core";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -42,6 +43,9 @@ const PRE_PULL_DISABLED = process.env.PRE_PULL_DISABLED === "true";
 const ADDITIONAL_PULL_SECRETS = process.env.ADDITIONAL_PULL_SECRETS;
 const PAUSE_IMAGE = process.env.PAUSE_IMAGE || "registry.k8s.io/pause:3.9";
 const BUSYBOX_IMAGE = process.env.BUSYBOX_IMAGE || "registry.digitalocean.com/trigger/busybox";
+const DEPLOYMENT_IMAGE_PREFIX = process.env.DEPLOYMENT_IMAGE_PREFIX;
+const RESTORE_IMAGE_PREFIX = process.env.RESTORE_IMAGE_PREFIX;
+const UTILITY_IMAGE_PREFIX = process.env.UTILITY_IMAGE_PREFIX;
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -107,7 +111,7 @@ class KubernetesTaskOperations implements TaskOperations {
               containers: [
                 {
                   name: this.#getIndexContainerName(opts.shortCode),
-                  image: opts.imageRef,
+                  image: getImageRef("deployment", opts.imageRef),
                   ports: [
                     {
                       containerPort: 8000,
@@ -174,7 +178,7 @@ class KubernetesTaskOperations implements TaskOperations {
           containers: [
             {
               name: containerName,
-              image: opts.image,
+              image: getImageRef("deployment", opts.image),
               ports: [
                 {
                   containerPort: 8000,
@@ -235,12 +239,12 @@ class KubernetesTaskOperations implements TaskOperations {
           initContainers: [
             {
               name: "pull-base-image",
-              image: opts.imageRef,
+              image: getImageRef("deployment", opts.imageRef),
               command: ["sleep", "0"],
             },
             {
               name: "populate-taskinfo",
-              image: BUSYBOX_IMAGE,
+              image: getImageRef("utility", BUSYBOX_IMAGE),
               imagePullPolicy: "IfNotPresent",
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
@@ -256,7 +260,7 @@ class KubernetesTaskOperations implements TaskOperations {
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
-              image: opts.checkpointRef,
+              image: getImageRef("restore", opts.checkpointRef),
               ports: [
                 {
                   containerPort: 8000,
@@ -362,7 +366,7 @@ class KubernetesTaskOperations implements TaskOperations {
               initContainers: [
                 {
                   name: "prepull",
-                  image: opts.imageRef,
+                  image: getImageRef("deployment", opts.imageRef),
                   command: ["/usr/bin/true"],
                   resources: {
                     limits: {
@@ -376,7 +380,7 @@ class KubernetesTaskOperations implements TaskOperations {
               containers: [
                 {
                   name: "pause",
-                  image: PAUSE_IMAGE,
+                  image: getImageRef("utility", PAUSE_IMAGE),
                   resources: {
                     limits: {
                       cpu: "1m",
@@ -680,6 +684,26 @@ class KubernetesTaskOperations implements TaskOperations {
       throw err;
     }
   }
+}
+
+type ImageType = "deployment" | "restore" | "utility";
+
+function getImagePrefix(type: ImageType) {
+  switch (type) {
+    case "deployment":
+      return DEPLOYMENT_IMAGE_PREFIX;
+    case "restore":
+      return RESTORE_IMAGE_PREFIX;
+    case "utility":
+      return UTILITY_IMAGE_PREFIX;
+    default:
+      assertExhaustive(type);
+  }
+}
+
+function getImageRef(type: ImageType, ref: string) {
+  const prefix = getImagePrefix(type);
+  return prefix ? `${prefix}/${ref}` : ref;
 }
 
 const provider = new ProviderShell({
