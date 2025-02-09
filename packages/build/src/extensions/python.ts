@@ -86,21 +86,18 @@ class PythonExtension implements BuildExtension {
   }
 }
 
-export const run = async (
-  args?: string,
-  options: Parameters<typeof $>[1] = {}
-) => {
-  const cmd = `${process.env.PYTHON_BIN_PATH || "python"} ${args}`;
+export const run = async (scriptArgs: string[] = [], options: Parameters<typeof $>[1] = {}) => {
+  const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
   logger.debug(
-    `Running python:\t${cmd} ${options.input ? `(with stdin)` : ""}`,
+    `Running ${pythonBin} \t${JSON.stringify(scriptArgs)} ${options.input ? `(with stdin)` : ""}`,
     options
   );
 
   const result = await $({
     shell: true,
     ...options,
-  })`${cmd}`;
+  })(pythonBin, ...scriptArgs);
 
   try {
     assert(!result.failed, `Command failed: ${result.stderr}`);
