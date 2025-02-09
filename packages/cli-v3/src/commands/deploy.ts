@@ -33,6 +33,7 @@ import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
+import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
@@ -49,6 +50,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string().optional(),
   saveLogs: z.boolean().default(false),
   skipUpdateCheck: z.boolean().default(false),
+  skipPromotion: z.boolean().default(false),
   noCache: z.boolean().default(false),
   envFile: z.string().optional(),
   network: z.enum(["default", "none", "host"]).optional(),
@@ -86,6 +88,10 @@ export function configureDeployCommand(program: Command) {
       .option(
         "--env-file <env file>",
         "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+      )
+      .option(
+        "--skip-promotion",
+        "Skip promoting the deployment to the current deployment for the environment."
       )
   )
     .addOption(
@@ -157,7 +163,7 @@ export async function deployCommand(dir: string, options: unknown) {
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
-  intro("Deploying project");
+  intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
 
   if (!options.skipUpdateCheck) {
     await updateTriggerPackages(dir, { ...options }, true, true);
@@ -444,6 +450,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     {
       imageReference,
       selfHosted: options.selfHosted,
+      skipPromotion: options.skipPromotion,
     },
     (logMessage) => {
       if (isLinksSupported) {
@@ -475,6 +482,28 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       isLinksSupported ? `| ${deploymentLink} | ${testLink}` : ""
     }`
   );
+
+  setGithubActionsOutputAndEnvVars({
+    envVars: {
+      TRIGGER_DEPLOYMENT_VERSION: version,
+      TRIGGER_WORKER_VERSION: version,
+      TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
+      TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
+      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${
+        resolvedConfig.project
+      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+    },
+    outputs: {
+      deploymentVersion: version,
+      workerVersion: version,
+      deploymentShortCode: deployment.shortCode,
+      deploymentUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
+      testUrl: `${authorization.dashboardUrl}/projects/v3/${
+        resolvedConfig.project
+      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+      needsPromotion: options.skipPromotion ? "false" : "true",
+    },
+  });
 }
 
 export async function syncEnvVarsWithServer(

@@ -771,9 +771,28 @@ export type TriggerOptions = {
    * The machine preset to use for this run. This will override the task's machine preset and any defaults.
    */
   machine?: MachinePresetName;
+
+  /**
+   * Specify the version of the deployed task to run. By default the "current" version is used at the time of execution,
+   * but you can specify a specific version to run here. You can also set the TRIGGER_WORKER_VERSION environment
+   * variables to run a specific version for all tasks.
+   *
+   * @example
+   *
+   * ```ts
+   * await myTask.trigger({ foo: "bar" }, { version: "20250208.1" });
+   * ```
+   *
+   * Note that this option is only available for `trigger` and NOT `triggerAndWait` (and their batch counterparts). The "wait" versions will always be locked
+   * to the same version as the parent task that is triggering the child tasks.
+   */
+  version?: string;
 };
 
-export type TriggerAndWaitOptions = Omit<TriggerOptions, "idempotencyKey" | "idempotencyKeyTTL">;
+export type TriggerAndWaitOptions = Omit<
+  TriggerOptions,
+  "idempotencyKey" | "idempotencyKeyTTL" | "version"
+>;
 
 export type BatchTriggerOptions = {
   idempotencyKey?: IdempotencyKey | string | string[];
