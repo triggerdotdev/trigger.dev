@@ -78,7 +78,7 @@ class PythonExtension implements BuildExtension {
           ARG REQUIREMENTS_CONTENT
           RUN echo "$REQUIREMENTS_CONTENT" > requirements.txt
 
-          # Install dependenciess
+          # Install dependencies
           RUN pip install --no-cache-dir -r requirements.txt
         `),
       },
