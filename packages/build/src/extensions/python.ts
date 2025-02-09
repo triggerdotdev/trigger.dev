@@ -1,6 +1,7 @@
 import fs from "node:fs";
-import { $ } from "execa";
+import { $, execa } from "execa";
 import { assert } from "@std/assert";
+import { additionalFiles } from "@trigger.dev/build/extensions/core";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import { logger } from "@trigger.dev/sdk/v3";
@@ -18,6 +19,13 @@ export type PythonOptions = {
    * Example: `/usr/bin/python3` or `C:\\Python39\\python.exe`
    */
   pythonBinaryPath?: string;
+  /**
+   * An array of glob patterns that specify which Python scripts are allowed to be executed.
+   *
+   * @remarks
+   * These scripts will be copied to the container during the build process.
+   */
+  scripts?: string[];
 };
 
 const splitAndCleanComments = (str: string) =>
@@ -47,6 +55,10 @@ class PythonExtension implements BuildExtension {
   }
 
   async onBuildComplete(context: BuildContext, manifest: BuildManifest) {
+    await additionalFiles({
+      files: this.options.scripts ?? [],
+    }).onBuildComplete!(context, manifest);
+
     if (context.target === "dev") {
       if (this.options.pythonBinaryPath) {
         process.env.PYTHON_BIN_PATH = this.options.pythonBinaryPath;
@@ -110,10 +122,11 @@ export const run = async (scriptArgs: string[] = [], options: Parameters<typeof 
     options
   );
 
-  const result = await $({
+  const result = await execa({
     shell: true,
+    verbose: (verboseLine, verboseObject) => logger.debug(verboseLine, verboseObject),
     ...options,
-  })(pythonBin, ...scriptArgs);
+  })(pythonBin, scriptArgs);
 
   try {
     assert(!result.failed, `Command failed: ${result.stderr}`);
@@ -126,9 +139,21 @@ export const run = async (scriptArgs: string[] = [], options: Parameters<typeof 
   return result;
 };
 
+export const runScript = (
+  scriptPath: string,
+  scriptArgs: string[] = [],
+  options: Parameters<typeof $>[1] = {}
+) => {
+  assert(scriptPath, "Script path is required");
+  assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
+
+  return run([scriptPath, ...scriptArgs], options);
+};
+
 export const runInline = (scriptContent: string, options: Parameters<typeof $>[1] = {}) => {
   assert(scriptContent, "Script content is required");
+
   return run([""], { input: scriptContent, ...options });
 };
 
-export default { run, runInline };
+export default { run, runScript, runInline };
