@@ -28,7 +28,7 @@ export class CreateCheckpointRestoreEventService extends BaseService {
       return;
     }
 
-    const checkpoint = await this._prisma.checkpoint.findUnique({
+    const checkpoint = await this._prisma.checkpoint.findFirst({
       where: {
         id: params.checkpointId,
       },
@@ -44,7 +44,7 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     let taskRunDependencyId: string | undefined;
 
     if (params.dependencyFriendlyRunId) {
-      const run = await this._prisma.taskRun.findUnique({
+      const run = await this._prisma.taskRun.findFirst({
         where: {
           friendlyId: params.dependencyFriendlyRunId,
         },

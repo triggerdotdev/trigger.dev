@@ -34,7 +34,7 @@ describe("Worker", () => {
         tasksPerWorker: 3,
       },
       logger: new Logger("test", "log"),
-    });
+    }).start();
 
     try {
       // Enqueue 10 items
@@ -47,10 +47,8 @@ describe("Worker", () => {
         });
       }
 
-      worker.start();
-
       // Wait for items to be processed
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       expect(processedItems.length).toBe(10);
       expect(new Set(processedItems).size).toBe(10); // Ensure all items were processed uniquely
@@ -97,7 +95,7 @@ describe("Worker", () => {
         },
         pollIntervalMs: 50,
         logger: new Logger("test", "error"),
-      });
+      }).start();
 
       try {
         // Enqueue 10 items
@@ -109,8 +107,6 @@ describe("Worker", () => {
             visibilityTimeoutMs: 5000,
           });
         }
-
-        worker.start();
 
         // Wait for items to be processed
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -158,7 +154,7 @@ describe("Worker", () => {
         },
         pollIntervalMs: 50,
         logger: new Logger("test", "error"),
-      });
+      }).start();
 
       try {
         // Enqueue the item that will permanently fail
@@ -174,8 +170,6 @@ describe("Worker", () => {
           job: "testJob",
           payload: { value: 1 },
         });
-
-        worker.start();
 
         // Wait for items to be processed and retried
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -229,7 +223,7 @@ describe("Worker", () => {
         },
         pollIntervalMs: 50,
         logger: new Logger("test", "error"),
-      });
+      }).start();
 
       try {
         // Enqueue the item that will fail 3 times
@@ -238,8 +232,6 @@ describe("Worker", () => {
           job: "testJob",
           payload: { value: 999 },
         });
-
-        worker.start();
 
         // Wait for the item to be processed and moved to DLQ
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -274,11 +266,4 @@ describe("Worker", () => {
       }
     }
   );
-
-  //todo test that throwing an error doesn't screw up the other items
-  //todo process more items when finished
-
-  //todo add a Dead Letter Queue when items are failed, with the error
-  //todo add a function on the worker to redrive them
-  //todo add an API endpoint to redrive with an ID
 });

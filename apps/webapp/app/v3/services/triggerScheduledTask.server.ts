@@ -12,7 +12,7 @@ export class TriggerScheduledTaskService extends BaseService {
   public async call(instanceId: string, finalAttempt: boolean) {
     const registerNextService = new RegisterNextTaskScheduleInstanceService();
 
-    const instance = await this._prisma.taskScheduleInstance.findUnique({
+    const instance = await this._prisma.taskScheduleInstance.findFirst({
       where: {
         id: instanceId,
       },
@@ -32,6 +32,16 @@ export class TriggerScheduledTaskService extends BaseService {
       return;
     }
 
+    if (instance.environment.organization.deletedAt) {
+      logger.debug("Organization is deleted, disabling schedule", {
+        instanceId,
+        scheduleId: instance.taskSchedule.friendlyId,
+        organizationId: instance.environment.organization.id,
+      });
+
+      return;
+    }
+
     try {
       let shouldTrigger = true;
 
@@ -40,23 +50,6 @@ export class TriggerScheduledTaskService extends BaseService {
       }
 
       if (!instance.taskSchedule.active) {
-        shouldTrigger = false;
-      } else if (instance.environment.organization.deletedAt) {
-        logger.debug("Organization is deleted, disabling schedule", {
-          instanceId,
-          scheduleId: instance.taskSchedule.friendlyId,
-          organizationId: instance.environment.organization.id,
-        });
-
-        await this._prisma.taskSchedule.update({
-          where: {
-            id: instance.taskSchedule.id,
-          },
-          data: {
-            active: false,
-          },
-        });
-
         shouldTrigger = false;
       }
 
@@ -131,14 +124,14 @@ export class TriggerScheduledTaskService extends BaseService {
           payloadPacket,
         });
 
-        const run = await triggerTask.call(
+        const result = await triggerTask.call(
           instance.taskSchedule.taskIdentifier,
           instance.environment,
           { payload: payloadPacket.data, options: { payloadType: payloadPacket.dataType } },
           { customIcon: "scheduled" }
         );
 
-        if (!run) {
+        if (!result) {
           logger.error("Failed to trigger task", {
             instanceId,
             scheduleId: instance.taskSchedule.friendlyId,
@@ -147,7 +140,7 @@ export class TriggerScheduledTaskService extends BaseService {
         } else {
           await this._prisma.taskRun.update({
             where: {
-              id: run.id,
+              id: result.run.id,
             },
             data: {
               scheduleId: instance.taskSchedule.id,

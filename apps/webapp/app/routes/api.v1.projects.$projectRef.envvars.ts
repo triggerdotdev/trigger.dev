@@ -26,7 +26,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { projectRef } = parsedParams.data;
 
-  const project = await prisma.project.findUnique({
+  const project = await prisma.project.findFirst({
     where: {
       externalRef: projectRef,
       environments: {

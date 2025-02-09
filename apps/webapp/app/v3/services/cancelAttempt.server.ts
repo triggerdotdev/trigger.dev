@@ -28,7 +28,7 @@ export class CancelAttemptService extends BaseService {
       span.setAttribute("taskRunId", taskRunId);
       span.setAttribute("attemptId", attemptId);
 
-      const taskRunAttempt = await this._prisma.taskRunAttempt.findUnique({
+      const taskRunAttempt = await this._prisma.taskRunAttempt.findFirst({
         where: {
           friendlyId: attemptId,
         },
@@ -49,7 +49,7 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      await $transaction(this._prisma, async (tx) => {
+      await $transaction(this._prisma, "cancel attempt", async (tx) => {
         await tx.taskRunAttempt.update({
           where: {
             friendlyId: attemptId,
@@ -93,7 +93,7 @@ async function getAuthenticatedEnvironmentFromAttempt(
   friendlyId: string,
   prismaClient?: PrismaClientOrTransaction
 ) {
-  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findUnique({
+  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findFirst({
     where: {
       friendlyId,
     },

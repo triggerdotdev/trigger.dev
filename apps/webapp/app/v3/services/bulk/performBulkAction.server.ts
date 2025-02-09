@@ -7,7 +7,7 @@ import { ReplayTaskRunService } from "../replayTaskRun.server";
 
 export class PerformBulkActionService extends BaseService {
   public async performBulkActionItem(bulkActionItemId: string) {
-    const item = await this._prisma.bulkActionItem.findUnique({
+    const item = await this._prisma.bulkActionItem.findFirst({
       where: { id: bulkActionItemId },
       include: {
         group: true,
@@ -93,7 +93,7 @@ export class PerformBulkActionService extends BaseService {
   }
 
   public async call(bulkActionGroupId: string) {
-    const actionGroup = await this._prisma.bulkActionGroup.findUnique({
+    const actionGroup = await this._prisma.bulkActionGroup.findFirst({
       include: {
         items: true,
       },

@@ -15,13 +15,19 @@ export class TestTaskService extends BaseService {
 
     switch (data.triggerSource) {
       case "STANDARD":
-        return await triggerTaskService.call(data.taskIdentifier, authenticatedEnvironment, {
-          payload: data.payload,
-          options: {
-            test: true,
-            metadata: data.metadata,
-          },
-        });
+        const result = await triggerTaskService.call(
+          data.taskIdentifier,
+          authenticatedEnvironment,
+          {
+            payload: data.payload,
+            options: {
+              test: true,
+              metadata: data.metadata,
+            },
+          }
+        );
+
+        return result?.run;
       case "SCHEDULED": {
         const payload = {
           scheduleId: "sched_1234",
@@ -34,7 +40,7 @@ export class TestTaskService extends BaseService {
         };
         const payloadPacket = await stringifyIO(payload);
 
-        return await triggerTaskService.call(
+        const result = await triggerTaskService.call(
           data.taskIdentifier,
           authenticatedEnvironment,
           {
@@ -43,6 +49,8 @@ export class TestTaskService extends BaseService {
           },
           { customIcon: "scheduled" }
         );
+
+        return result?.run;
       }
       default:
         throw new Error("Invalid trigger source");

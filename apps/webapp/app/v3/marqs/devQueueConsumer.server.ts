@@ -81,7 +81,7 @@ export class DevQueueConsumer {
   }
 
   public async registerBackgroundWorker(id: string, inProgressRuns: string[] = []) {
-    const backgroundWorker = await prisma.backgroundWorker.findUnique({
+    const backgroundWorker = await prisma.backgroundWorker.findFirst({
       where: { friendlyId: id, runtimeEnvironmentId: this.env.id },
       include: {
         tasks: true,
@@ -170,7 +170,7 @@ export class DevQueueConsumer {
   public async taskHeartbeat(workerId: string, id: string) {
     logger.debug("[DevQueueConsumer] taskHeartbeat()", { id });
 
-    const taskRunAttempt = await prisma.taskRunAttempt.findUnique({
+    const taskRunAttempt = await prisma.taskRunAttempt.findFirst({
       where: { friendlyId: id },
     });
 

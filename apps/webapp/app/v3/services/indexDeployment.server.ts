@@ -8,7 +8,7 @@ import { workerQueue } from "~/services/worker.server";
 
 export class IndexDeploymentService extends BaseService {
   public async call(id: string) {
-    const deployment = await this._prisma.workerDeployment.findUnique({
+    const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         id,
       },

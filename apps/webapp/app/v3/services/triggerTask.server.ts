@@ -26,8 +26,9 @@ import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, TaskRun } from "@trigger.dev/database";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
+import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -49,15 +50,30 @@ export class OutOfEntitlementError extends Error {
   }
 }
 
+export type TriggerTaskServiceResult = {
+  run: TaskRun;
+  isCached: boolean;
+};
+
+const MAX_ATTEMPTS = 2;
+
 export class TriggerTaskService extends BaseService {
   public async call(
     taskId: string,
     environment: AuthenticatedEnvironment,
     body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ) {
+    options: TriggerTaskServiceOptions = {},
+    attempt: number = 0
+  ): Promise<TriggerTaskServiceResult | undefined> {
     return await this.traceWithEnv("call()", environment, async (span) => {
       span.setAttribute("taskId", taskId);
+      span.setAttribute("attempt", attempt);
+
+      if (attempt > MAX_ATTEMPTS) {
+        throw new ServiceValidationError(
+          `Failed to trigger ${taskId} after ${MAX_ATTEMPTS} attempts.`
+        );
+      }
 
       // TODO: Add idempotency key expiring here
       const idempotencyKey = options.idempotencyKey ?? body.options?.idempotencyKey;
@@ -74,13 +90,11 @@ export class TriggerTaskService extends BaseService {
           : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
 
       const existingRun = idempotencyKey
-        ? await this._prisma.taskRun.findUnique({
+        ? await this._prisma.taskRun.findFirst({
             where: {
-              runtimeEnvironmentId_taskIdentifier_idempotencyKey: {
-                runtimeEnvironmentId: environment.id,
-                idempotencyKey,
-                taskIdentifier: taskId,
-              },
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey,
+              taskIdentifier: taskId,
             },
           })
         : undefined;
@@ -103,7 +117,7 @@ export class TriggerTaskService extends BaseService {
         } else {
           span.setAttribute("runId", existingRun.friendlyId);
 
-          return existingRun;
+          return { run: existingRun, isCached: true };
         }
       }
 
@@ -161,7 +175,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentAttempt = body.options?.dependentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.dependentAttempt },
             include: {
               taskRun: {
@@ -198,7 +212,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentAttempt = body.options?.parentAttempt
-        ? await this._prisma.taskRunAttempt.findUnique({
+        ? await this._prisma.taskRunAttempt.findFirst({
             where: { friendlyId: body.options.parentAttempt },
             include: {
               taskRun: {
@@ -215,7 +229,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       const dependentBatchRun = body.options?.dependentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.dependentBatch },
             include: {
               dependentTaskAttempt: {
@@ -259,7 +273,7 @@ export class TriggerTaskService extends BaseService {
       }
 
       const parentBatchRun = body.options?.parentBatch
-        ? await this._prisma.batchTaskRun.findUnique({
+        ? await this._prisma.batchTaskRun.findFirst({
             where: { friendlyId: body.options.parentBatch },
             include: {
               dependentTaskAttempt: {
@@ -307,13 +321,11 @@ export class TriggerTaskService extends BaseService {
               `v3-run:${environment.id}:${taskId}`,
               async (num, tx) => {
                 const lockedToBackgroundWorker = body.options?.lockToVersion
-                  ? await tx.backgroundWorker.findUnique({
+                  ? await tx.backgroundWorker.findFirst({
                       where: {
-                        projectId_runtimeEnvironmentId_version: {
-                          projectId: environment.projectId,
-                          runtimeEnvironmentId: environment.id,
-                          version: body.options?.lockToVersion,
-                        },
+                        projectId: environment.projectId,
+                        runtimeEnvironmentId: environment.id,
+                        version: body.options?.lockToVersion,
                       },
                     })
                   : undefined;
@@ -504,18 +516,14 @@ export class TriggerTaskService extends BaseService {
                 }
 
                 if (taskRun.delayUntil) {
-                  await workerQueue.enqueue(
-                    "v3.enqueueDelayedRun",
-                    { runId: taskRun.id },
-                    { tx, runAt: delayUntil, jobKey: `v3.enqueueDelayedRun.${taskRun.id}` }
-                  );
+                  await EnqueueDelayedRunService.enqueue(taskRun.id, taskRun.delayUntil);
                 }
 
                 if (!taskRun.delayUntil && taskRun.ttl) {
                   const expireAt = parseNaturalLanguageDuration(taskRun.ttl);
 
                   if (expireAt) {
-                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt, tx);
+                    await ExpireEnqueuedRunService.enqueue(taskRun.id, expireAt);
                   }
                 }
 
@@ -572,7 +580,7 @@ export class TriggerTaskService extends BaseService {
               );
             }
 
-            return run;
+            return { run, isCached: false };
           }
         );
       } catch (error) {
@@ -608,6 +616,23 @@ export class TriggerTaskService extends BaseService {
               throw new Error(
                 `Failed to trigger ${taskId} as the queue could not be created do to a unique constraint error, please try again.`
               );
+            } else if (
+              Array.isArray(target) &&
+              target.length == 3 &&
+              typeof target[0] === "string" &&
+              typeof target[1] === "string" &&
+              typeof target[2] === "string" &&
+              target[0] == "runtimeEnvironmentId" &&
+              target[1] == "taskIdentifier" &&
+              target[2] == "idempotencyKey"
+            ) {
+              logger.debug("TriggerTask: Idempotency key violation, retrying...", {
+                taskId,
+                environmentId: environment.id,
+                idempotencyKey,
+              });
+              // We need to retry the task run creation as the idempotency key has been used
+              return await this.call(taskId, environment, body, options, attempt + 1);
             } else {
               throw new ServiceValidationError(
                 `Cannot trigger ${taskId} as it has already been triggered with the same idempotency key.`
@@ -639,12 +664,10 @@ export class TriggerTaskService extends BaseService {
       return defaultQueueName;
     }
 
-    const task = await this._prisma.backgroundWorkerTask.findUnique({
+    const task = await this._prisma.backgroundWorkerTask.findFirst({
       where: {
-        workerId_slug: {
-          workerId: worker.id,
-          slug: taskId,
-        },
+        workerId: worker.id,
+        slug: taskId,
       },
     });
 

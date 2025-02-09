@@ -1,12 +1,14 @@
 import { BuildTarget } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import * as chokidar from "chokidar";
-import { glob } from "tinyglobby";
+import { glob, escapePath, isDynamicPattern } from "tinyglobby";
 import { logger } from "../utilities/logger.js";
 import { deployEntryPoints, devEntryPoints, telemetryEntryPoint } from "./packageModules.js";
 
 type EntryPointManager = {
   entryPoints: string[];
+  patterns: string[];
+  ignorePatterns: string[];
   watcher?: chokidar.FSWatcher;
   stop: () => Promise<void>;
 };
@@ -34,10 +36,22 @@ export async function createEntryPointManager(
   onEntryPointsChange?: (entryPoints: string[]) => Promise<void>
 ): Promise<EntryPointManager> {
   // Patterns to match files
-  const patterns = dirs.flatMap((dir) => [`${dir}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`]);
+  const patterns = dirs.flatMap((dir) => [
+    `${
+      isDynamicPattern(dir)
+        ? `${dir}/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`
+        : `${escapePath(dir)}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`
+    }`,
+  ]);
 
   // Patterns to ignore
-  const ignorePatterns = config.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS;
+  let ignorePatterns = config.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS;
+  ignorePatterns = ignorePatterns.concat([
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.trigger/**",
+    "**/.next/**",
+  ]);
 
   async function getEntryPoints() {
     // Get initial entry points
@@ -46,6 +60,10 @@ export async function createEntryPointManager(
       absolute: false,
       cwd: config.workingDir,
     });
+
+    if (entryPoints.length === 0) {
+      return [];
+    }
 
     // Add required entry points
     if (config.configFile) {
@@ -80,7 +98,12 @@ export async function createEntryPointManager(
   let watcher: chokidar.FSWatcher | undefined;
 
   if (watch && onEntryPointsChange) {
-    logger.debug("Watching entry points for changes", { dirs, cwd: config.workingDir });
+    logger.debug("Watching entry points for changes", {
+      dirs,
+      cwd: config.workingDir,
+      patterns,
+      ignorePatterns,
+    });
     // Watch the parent directories
     watcher = chokidar.watch(patterns, {
       ignored: ignorePatterns,
@@ -121,6 +144,8 @@ export async function createEntryPointManager(
   return {
     entryPoints: initialEntryPoints,
     watcher,
+    patterns,
+    ignorePatterns,
     stop: async () => {
       await watcher?.close();
     },

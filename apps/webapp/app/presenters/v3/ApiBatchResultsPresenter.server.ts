@@ -9,7 +9,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     env: AuthenticatedEnvironment
   ): Promise<BatchTaskRunExecutionResult | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const batchRun = await this._prisma.batchTaskRun.findUnique({
+      const batchRun = await this._prisma.batchTaskRun.findFirst({
         where: {
           friendlyId,
           runtimeEnvironmentId: env.id,

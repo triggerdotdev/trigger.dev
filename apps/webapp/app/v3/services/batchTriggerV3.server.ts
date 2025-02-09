@@ -5,7 +5,15 @@ import {
   packetRequiresOffloading,
   parsePacket,
 } from "@trigger.dev/core/v3";
-import { BatchTaskRun, Prisma, TaskRunAttempt } from "@trigger.dev/database";
+import {
+  BatchTaskRun,
+  isPrismaRaceConditionError,
+  isPrismaRetriableError,
+  isUniqueConstraintError,
+  Prisma,
+  TaskRunAttempt,
+} from "@trigger.dev/database";
+import { z } from "zod";
 import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
@@ -14,14 +22,15 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { workerQueue } from "~/services/worker.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
+import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
-import { z } from "zod";
 
 const PROCESSING_BATCH_SIZE = 50;
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
@@ -49,16 +58,53 @@ export type BatchTriggerTaskServiceOptions = {
   oneTimeUseToken?: string;
 };
 
-export class BatchTriggerV2Service extends BaseService {
+type RunItemData = {
+  id: string;
+  isCached: boolean;
+  idempotencyKey: string | undefined;
+  taskIdentifier: string;
+};
+
+/**
+ * ### V3
+ *
+ * BatchTrigger v3 doesn't have any changes from v2, other than a different system for tracking if the
+ * batch is completed.
+ *
+ * v3 BatchTaskRun's now must be "sealed" before they could be considered completed. Being "sealed" means
+ * that all the items in the batch have been processed and the batch is ready to be considered completed.
+ *
+ * We also now track the expected count of items in the batch, and then as each BatchTaskRunItem is set to COMPLETED,
+ * we increment the BatchTaskRun's completed count. Once the completed count is equal to the expected count, and the
+ * batch is sealed, we can consider the batch completed.
+ *
+ * So now when the v3 batch is considered completed, we will enqueue the ResumeBatchRunService to resume the dependent
+ * task attempt if there is one. This is in contrast to v2 batches where every time a task was completed, we would schedule
+ * the ResumeBatchRunService to check if the batch was completed and set it to completed if it was.
+ *
+ * We've also introduced a new column "resumedAt" that will be set when the batch is resumed. Previously in v2 batches, the status == "COMPLETED" was overloaded
+ * to mean that the batch was completed and resumed. Now we have a separate column to track when the batch was resumed (and to make sure it's only resumed once).
+ *
+ * ### V2
+ *
+ * Batch v2 added the ability to trigger more than 100 tasks in a single batch. This was done by offloading the payload to the object store and
+ * then processing the batch in chunks of 50 tasks at a time in the background.
+ *
+ * The other main difference from v1 is that a single batch in v2 could trigger multiple different tasks, whereas in v1 a batch could only trigger a single task.
+ */
+export class BatchTriggerV3Service extends BaseService {
   private _batchProcessingStrategy: BatchProcessingStrategy;
+  private _asyncBatchProcessSizeThreshold: number;
 
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
+    asyncBatchProcessSizeThreshold: number = ASYNC_BATCH_PROCESS_SIZE_THRESHOLD,
     protected readonly _prisma: PrismaClientOrTransaction = prisma
   ) {
     super(_prisma);
 
     this._batchProcessingStrategy = batchProcessingStrategy ?? "parallel";
+    this._asyncBatchProcessSizeThreshold = asyncBatchProcessSizeThreshold;
   }
 
   public async call(
@@ -71,13 +117,15 @@ export class BatchTriggerV2Service extends BaseService {
         "call()",
         environment,
         async (span) => {
+          if (!body.items || body.items.length === 0) {
+            throw new ServiceValidationError("A batch trigger must have at least one item");
+          }
+
           const existingBatch = options.idempotencyKey
-            ? await this._prisma.batchTaskRun.findUnique({
+            ? await this._prisma.batchTaskRun.findFirst({
                 where: {
-                  runtimeEnvironmentId_idempotencyKey: {
-                    runtimeEnvironmentId: environment.id,
-                    idempotencyKey: options.idempotencyKey,
-                  },
+                  runtimeEnvironmentId: environment.id,
+                  idempotencyKey: options.idempotencyKey,
                 },
               })
             : undefined;
@@ -117,7 +165,7 @@ export class BatchTriggerV2Service extends BaseService {
           span.setAttribute("batchId", batchId);
 
           const dependentAttempt = body?.dependentAttempt
-            ? await this._prisma.taskRunAttempt.findUnique({
+            ? await this._prisma.taskRunAttempt.findFirst({
                 where: { friendlyId: body.dependentAttempt },
                 include: {
                   taskRun: {
@@ -152,79 +200,10 @@ export class BatchTriggerV2Service extends BaseService {
             }
           }
 
-          const idempotencyKeys = body.items.map((i) => i.options?.idempotencyKey).filter(Boolean);
-
-          const cachedRuns =
-            idempotencyKeys.length > 0
-              ? await this._prisma.taskRun.findMany({
-                  where: {
-                    runtimeEnvironmentId: environment.id,
-                    idempotencyKey: {
-                      in: body.items.map((i) => i.options?.idempotencyKey).filter(Boolean),
-                    },
-                  },
-                  select: {
-                    friendlyId: true,
-                    idempotencyKey: true,
-                    idempotencyKeyExpiresAt: true,
-                  },
-                })
-              : [];
-
-          if (cachedRuns.length) {
-            logger.debug("[BatchTriggerV2][call] Found cached runs", {
-              cachedRuns,
-              batchId,
-            });
-          }
-
-          // Now we need to create an array of all the run IDs, in order
-          // If we have a cached run, that isn't expired, we should use that run ID
-          // If we have a cached run, that is expired, we should generate a new run ID and save that cached run ID to a set of expired run IDs
-          // If we don't have a cached run, we should generate a new run ID
-          const expiredRunIds = new Set<string>();
-          let cachedRunCount = 0;
-
-          const runs = body.items.map((item) => {
-            const cachedRun = cachedRuns.find(
-              (r) => r.idempotencyKey === item.options?.idempotencyKey
-            );
-
-            if (cachedRun) {
-              if (
-                cachedRun.idempotencyKeyExpiresAt &&
-                cachedRun.idempotencyKeyExpiresAt < new Date()
-              ) {
-                expiredRunIds.add(cachedRun.friendlyId);
-
-                return {
-                  id: generateFriendlyId("run"),
-                  isCached: false,
-                  idempotencyKey: item.options?.idempotencyKey ?? undefined,
-                  taskIdentifier: item.task,
-                };
-              }
-
-              cachedRunCount++;
-
-              return {
-                id: cachedRun.friendlyId,
-                isCached: true,
-                idempotencyKey: item.options?.idempotencyKey ?? undefined,
-                taskIdentifier: item.task,
-              };
-            }
-
-            return {
-              id: generateFriendlyId("run"),
-              isCached: false,
-              idempotencyKey: item.options?.idempotencyKey ?? undefined,
-              taskIdentifier: item.task,
-            };
-          });
+          const runs = await this.#prepareRunData(environment, body);
 
           // Calculate how many new runs we need to create
-          const newRunCount = body.items.length - cachedRunCount;
+          const newRunCount = runs.filter((r) => !r.isCached).length;
 
           if (newRunCount === 0) {
             logger.debug("[BatchTriggerV2][call] All runs are cached", {
@@ -241,7 +220,7 @@ export class BatchTriggerV2Service extends BaseService {
                 runCount: body.items.length,
                 runIds: runs.map((r) => r.id),
                 status: "COMPLETED",
-                batchVersion: "v2",
+                batchVersion: "v3",
                 oneTimeUseToken: options.oneTimeUseToken,
               },
             });
@@ -271,20 +250,6 @@ export class BatchTriggerV2Service extends BaseService {
             throw new ServiceValidationError(
               `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
             );
-          }
-
-          // Expire the cached runs that are no longer valid
-          if (expiredRunIds.size) {
-            logger.debug("Expiring cached runs", {
-              expiredRunIds: Array.from(expiredRunIds),
-              batchId,
-            });
-
-            // TODO: is there a limit to the number of items we can update in a single query?
-            await this._prisma.taskRun.updateMany({
-              where: { friendlyId: { in: Array.from(expiredRunIds) } },
-              data: { idempotencyKey: null },
-            });
           }
 
           // Upload to object store
@@ -350,14 +315,106 @@ export class BatchTriggerV2Service extends BaseService {
     }
   }
 
+  async #prepareRunData(
+    environment: AuthenticatedEnvironment,
+    body: BatchTriggerTaskV2RequestBody
+  ): Promise<Array<RunItemData>> {
+    // batchTriggerAndWait cannot have cached runs because that does not work in run engine v1 and is not available in the client
+    if (body?.dependentAttempt) {
+      return body.items.map((item) => ({
+        id: generateFriendlyId("run"),
+        isCached: false,
+        idempotencyKey: undefined,
+        taskIdentifier: item.task,
+      }));
+    }
+
+    // Group items by taskIdentifier
+    const itemsByTask = body.items.reduce((acc, item) => {
+      if (!item.options?.idempotencyKey) return acc;
+
+      if (!acc[item.task]) {
+        acc[item.task] = [];
+      }
+      acc[item.task].push(item);
+      return acc;
+    }, {} as Record<string, typeof body.items>);
+
+    logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
+      itemsByTask,
+    });
+
+    // Fetch cached runs for each task identifier separately to make use of the index
+    const cachedRuns = await Promise.all(
+      Object.entries(itemsByTask).map(([taskIdentifier, items]) =>
+        this._prisma.taskRun.findMany({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            taskIdentifier,
+            idempotencyKey: {
+              in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
+            },
+          },
+          select: {
+            friendlyId: true,
+            idempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+          },
+        })
+      )
+    ).then((results) => results.flat());
+
+    // Now we need to create an array of all the run IDs, in order
+    // If we have a cached run, that isn't expired, we should use that run ID
+    // If we have a cached run, that is expired, we should generate a new run ID and save that cached run ID to a set of expired run IDs
+    // If we don't have a cached run, we should generate a new run ID
+    const expiredRunIds = new Set<string>();
+
+    const runs = body.items.map((item) => {
+      const cachedRun = cachedRuns.find((r) => r.idempotencyKey === item.options?.idempotencyKey);
+
+      if (cachedRun) {
+        if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
+          expiredRunIds.add(cachedRun.friendlyId);
+
+          return {
+            id: generateFriendlyId("run"),
+            isCached: false,
+            idempotencyKey: item.options?.idempotencyKey ?? undefined,
+            taskIdentifier: item.task,
+          };
+        }
+
+        return {
+          id: cachedRun.friendlyId,
+          isCached: true,
+          idempotencyKey: item.options?.idempotencyKey ?? undefined,
+          taskIdentifier: item.task,
+        };
+      }
+
+      return {
+        id: generateFriendlyId("run"),
+        isCached: false,
+        idempotencyKey: item.options?.idempotencyKey ?? undefined,
+        taskIdentifier: item.task,
+      };
+    });
+
+    // Expire the cached runs that are no longer valid
+    if (expiredRunIds.size) {
+      await this._prisma.taskRun.updateMany({
+        where: { friendlyId: { in: Array.from(expiredRunIds) } },
+        data: { idempotencyKey: null },
+      });
+    }
+
+    return runs;
+  }
+
   async #createAndProcessBatchTaskRun(
     batchId: string,
-    runs: Array<{
-      id: string;
-      isCached: boolean;
-      idempotencyKey: string | undefined;
-      taskIdentifier: string;
-    }>,
+    runs: Array<RunItemData>,
     payloadPacket: IOPacket,
     newRunCount: number,
     environment: AuthenticatedEnvironment,
@@ -365,7 +422,7 @@ export class BatchTriggerV2Service extends BaseService {
     options: BatchTriggerTaskServiceOptions = {},
     dependentAttempt?: TaskRunAttempt
   ) {
-    if (newRunCount <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
+    if (runs.length <= this._asyncBatchProcessSizeThreshold) {
       const batch = await this._prisma.batchTaskRun.create({
         data: {
           friendlyId: batchId,
@@ -373,12 +430,12 @@ export class BatchTriggerV2Service extends BaseService {
           idempotencyKey: options.idempotencyKey,
           idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
           dependentTaskAttemptId: dependentAttempt?.id,
-          runCount: newRunCount,
+          runCount: runs.length,
           runIds: runs.map((r) => r.id),
           payload: payloadPacket.data,
           payloadType: payloadPacket.dataType,
           options,
-          batchVersion: "v2",
+          batchVersion: "v3",
           oneTimeUseToken: options.oneTimeUseToken,
         },
       });
@@ -392,58 +449,36 @@ export class BatchTriggerV2Service extends BaseService {
         options
       );
 
-      switch (result.status) {
-        case "COMPLETE": {
-          logger.debug("[BatchTriggerV2][call] Batch inline processing complete", {
-            batchId: batch.friendlyId,
-            currentIndex: 0,
-          });
+      if (result.error) {
+        logger.error("[BatchTriggerV2][call] Batch inline processing error", {
+          batchId: batch.friendlyId,
+          currentIndex: result.workingIndex,
+          error: result.error,
+        });
 
-          return batch;
-        }
-        case "INCOMPLETE": {
-          logger.debug("[BatchTriggerV2][call] Batch inline processing incomplete", {
-            batchId: batch.friendlyId,
-            currentIndex: result.workingIndex,
-          });
+        await this.#enqueueBatchTaskRun({
+          batchId: batch.id,
+          processingId: "0",
+          range: {
+            start: result.workingIndex,
+            count: PROCESSING_BATCH_SIZE,
+          },
+          attemptCount: 0,
+          strategy: "sequential",
+        });
 
-          // If processing inline does not finish for some reason, enqueue processing the rest of the batch
-          await this.#enqueueBatchTaskRun({
-            batchId: batch.id,
-            processingId: "0",
-            range: {
-              start: result.workingIndex,
-              count: PROCESSING_BATCH_SIZE,
-            },
-            attemptCount: 0,
-            strategy: "sequential",
-          });
-
-          return batch;
-        }
-        case "ERROR": {
-          logger.error("[BatchTriggerV2][call] Batch inline processing error", {
-            batchId: batch.friendlyId,
-            currentIndex: result.workingIndex,
-            error: result.error,
-          });
-
-          await this.#enqueueBatchTaskRun({
-            batchId: batch.id,
-            processingId: "0",
-            range: {
-              start: result.workingIndex,
-              count: PROCESSING_BATCH_SIZE,
-            },
-            attemptCount: 0,
-            strategy: "sequential",
-          });
-
-          return batch;
-        }
+        return batch;
       }
+
+      // Update the batch to be sealed
+      await this._prisma.batchTaskRun.update({
+        where: { id: batch.id },
+        data: { sealed: true, sealedAt: new Date() },
+      });
+
+      return batch;
     } else {
-      return await $transaction(this._prisma, async (tx) => {
+      return await $transaction(this._prisma, "create batch run", async (tx) => {
         const batch = await tx.batchTaskRun.create({
           data: {
             friendlyId: batchId,
@@ -456,20 +491,23 @@ export class BatchTriggerV2Service extends BaseService {
             payload: payloadPacket.data,
             payloadType: payloadPacket.dataType,
             options,
-            batchVersion: "v2",
+            batchVersion: "v3",
             oneTimeUseToken: options.oneTimeUseToken,
           },
         });
 
         switch (this._batchProcessingStrategy) {
           case "sequential": {
-            await this.#enqueueBatchTaskRun({
-              batchId: batch.id,
-              processingId: batchId,
-              range: { start: 0, count: PROCESSING_BATCH_SIZE },
-              attemptCount: 0,
-              strategy: this._batchProcessingStrategy,
-            });
+            await this.#enqueueBatchTaskRun(
+              {
+                batchId: batch.id,
+                processingId: batchId,
+                range: { start: 0, count: PROCESSING_BATCH_SIZE },
+                attemptCount: 0,
+                strategy: this._batchProcessingStrategy,
+              },
+              tx
+            );
 
             break;
           }
@@ -480,6 +518,13 @@ export class BatchTriggerV2Service extends BaseService {
               start: index * PROCESSING_BATCH_SIZE,
               count: PROCESSING_BATCH_SIZE,
             }));
+
+            await tx.batchTaskRun.update({
+              where: { id: batch.id },
+              data: {
+                processingJobsExpectedCount: ranges.length,
+              },
+            });
 
             await Promise.all(
               ranges.map((range, index) =>
@@ -620,26 +665,51 @@ export class BatchTriggerV2Service extends BaseService {
       $options
     );
 
-    switch (result.status) {
-      case "COMPLETE": {
-        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
-          options,
-          batchId: batch.friendlyId,
-          attemptCount: $attemptCount,
-        });
+    if (result.error) {
+      logger.error("[BatchTriggerV2][processBatchTaskRun] Batch processing error", {
+        batchId: batch.friendlyId,
+        currentIndex: result.workingIndex,
+        error: result.error,
+        attemptCount: $attemptCount,
+      });
 
-        return;
-      }
-      case "INCOMPLETE": {
-        logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing incomplete", {
-          batchId: batch.friendlyId,
-          currentIndex: result.workingIndex,
-          attemptCount: $attemptCount,
-        });
+      // if the strategy is sequential, we will requeue processing with a count of the PROCESSING_BATCH_SIZE
+      // if the strategy is parallel, we will requeue processing with a range starting at the workingIndex and a count that is the remainder of this "slice" of the batch
+      await this.#enqueueBatchTaskRun({
+        batchId: batch.id,
+        processingId: options.processingId,
+        range: {
+          start: result.workingIndex,
+          count:
+            options.strategy === "sequential"
+              ? options.range.count
+              : options.range.count - result.workingIndex - options.range.start,
+        },
+        attemptCount: $attemptCount,
+        strategy: options.strategy,
+      });
 
-        // Only enqueue the next batch task run if the strategy is sequential
-        // if the strategy is parallel, we will already have enqueued the next batch task run
-        if (options.strategy === "sequential") {
+      return;
+    }
+
+    switch (options.strategy) {
+      case "sequential": {
+        // We can tell if we are done by checking if the result.workingIndex is equal or greater than the runCount
+        if (result.workingIndex >= batch.runCount) {
+          // Update the batch to be sealed
+          await this._prisma.batchTaskRun.update({
+            where: { id: batch.id },
+            data: { sealed: true, sealedAt: new Date() },
+          });
+
+          logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
+            batchId: batch.friendlyId,
+            runCount: batch.runCount,
+            currentIndex: result.workingIndex,
+            attemptCount: $attemptCount,
+          });
+        } else {
+          // Requeue the next batch of processing
           await this.#enqueueBatchTaskRun({
             batchId: batch.id,
             processingId: options.processingId,
@@ -652,46 +722,37 @@ export class BatchTriggerV2Service extends BaseService {
           });
         }
 
-        return;
+        break;
       }
-      case "ERROR": {
-        logger.error("[BatchTriggerV2][processBatchTaskRun] Batch processing error", {
-          batchId: batch.friendlyId,
-          currentIndex: result.workingIndex,
-          error: result.error,
-          attemptCount: $attemptCount,
-        });
-
-        // if the strategy is sequential, we will requeue processing with a count of the PROCESSING_BATCH_SIZE
-        // if the strategy is parallel, we will requeue processing with a range starting at the workingIndex and a count that is the remainder of this "slice" of the batch
-        if (options.strategy === "sequential") {
-          await this.#enqueueBatchTaskRun({
-            batchId: batch.id,
-            processingId: options.processingId,
-            range: {
-              start: result.workingIndex,
-              count: options.range.count, // This will be the same as the original count
+      case "parallel": {
+        // We need to increment the processingJobsCount and check if we are done
+        const { processingJobsCount, processingJobsExpectedCount } =
+          await this._prisma.batchTaskRun.update({
+            where: { id: batch.id },
+            data: {
+              processingJobsCount: {
+                increment: 1,
+              },
             },
-            attemptCount: $attemptCount,
-            strategy: options.strategy,
+            select: {
+              processingJobsExpectedCount: true,
+              processingJobsCount: true,
+            },
           });
-        } else {
-          await this.#enqueueBatchTaskRun({
-            batchId: batch.id,
-            processingId: options.processingId,
-            range: {
-              start: result.workingIndex,
-              // This will be the remainder of the slice
-              // for example if the original range was 0-50 and the workingIndex is 25, the new range will be 25-25
-              // if the original range was 51-100 and the workingIndex is 75, the new range will be 75-25
-              count: options.range.count - result.workingIndex - options.range.start,
-            },
+
+        if (processingJobsCount >= processingJobsExpectedCount) {
+          // Update the batch to be sealed
+          await this._prisma.batchTaskRun.update({
+            where: { id: batch.id },
+            data: { sealed: true, sealedAt: new Date() },
+          });
+
+          logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
+            batchId: batch.friendlyId,
+            currentIndex: result.workingIndex,
             attemptCount: $attemptCount,
-            strategy: options.strategy,
           });
         }
-
-        return;
       }
     }
   }
@@ -703,11 +764,7 @@ export class BatchTriggerV2Service extends BaseService {
     batchSize: number,
     items: BatchTriggerTaskV2RequestBody["items"],
     options?: BatchTriggerTaskServiceOptions
-  ): Promise<
-    | { status: "COMPLETE" }
-    | { status: "INCOMPLETE"; workingIndex: number }
-    | { status: "ERROR"; error: string; workingIndex: number }
-  > {
+  ): Promise<{ workingIndex: number; error?: Error }> {
     // Grab the next PROCESSING_BATCH_SIZE runIds
     const runIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
@@ -725,10 +782,21 @@ export class BatchTriggerV2Service extends BaseService {
     }));
 
     let workingIndex = currentIndex;
+    let expectedCount = 0;
 
     for (const item of itemsToProcess) {
       try {
-        await this.#processBatchTaskRunItem(batch, environment, item, workingIndex, options);
+        const created = await this.#processBatchTaskRunItem(
+          batch,
+          environment,
+          item,
+          workingIndex,
+          options
+        );
+
+        if (created) {
+          expectedCount++;
+        }
 
         workingIndex++;
       } catch (error) {
@@ -739,19 +807,24 @@ export class BatchTriggerV2Service extends BaseService {
         });
 
         return {
-          status: "ERROR",
-          error: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? error : new Error(String(error)),
           workingIndex,
         };
       }
     }
 
-    // if there are more items to process, requeue the batch
-    if (workingIndex < batch.runCount) {
-      return { status: "INCOMPLETE", workingIndex };
+    if (expectedCount > 0) {
+      await this._prisma.batchTaskRun.update({
+        where: { id: batch.id },
+        data: {
+          expectedCount: {
+            increment: expectedCount,
+          },
+        },
+      });
     }
 
-    return { status: "COMPLETE" };
+    return { workingIndex };
   }
 
   async #processBatchTaskRunItem(
@@ -769,7 +842,7 @@ export class BatchTriggerV2Service extends BaseService {
 
     const triggerTaskService = new TriggerTaskService();
 
-    const run = await triggerTaskService.call(
+    const result = await triggerTaskService.call(
       task.item.task,
       environment,
       {
@@ -790,17 +863,41 @@ export class BatchTriggerV2Service extends BaseService {
       }
     );
 
-    if (!run) {
+    if (!result) {
       throw new Error(`Failed to trigger run ${task.runId} for batch ${batch.friendlyId}`);
     }
 
-    await this._prisma.batchTaskRunItem.create({
-      data: {
-        batchTaskRunId: batch.id,
-        taskRunId: run.id,
-        status: batchTaskRunItemStatusForRunStatus(run.status),
-      },
-    });
+    if (!result.isCached) {
+      try {
+        await this._prisma.batchTaskRunItem.create({
+          data: {
+            batchTaskRunId: batch.id,
+            taskRunId: result.run.id,
+            status: batchTaskRunItemStatusForRunStatus(result.run.status),
+          },
+        });
+
+        return true;
+      } catch (error) {
+        if (isUniqueConstraintError(error, ["batchTaskRunId", "taskRunId"])) {
+          // This means there is already a batchTaskRunItem for this batch and taskRun
+          logger.debug(
+            "[BatchTriggerV2][processBatchTaskRunItem] BatchTaskRunItem already exists",
+            {
+              batchId: batch.friendlyId,
+              runId: task.runId,
+              currentIndex,
+            }
+          );
+
+          return false;
+        }
+
+        throw error;
+      }
+    }
+
+    return false;
   }
 
   async #enqueueBatchTaskRun(options: BatchProcessingOptions, tx?: PrismaClientOrTransaction) {
@@ -840,5 +937,131 @@ export class BatchTriggerV2Service extends BaseService {
         dataType: "application/store",
       };
     });
+  }
+}
+
+export async function completeBatchTaskRunItemV3(
+  itemId: string,
+  batchTaskRunId: string,
+  tx: PrismaClientOrTransaction,
+  scheduleResumeOnComplete = false,
+  taskRunAttemptId?: string,
+  retryAttempt?: number
+) {
+  const isRetry = retryAttempt !== undefined;
+
+  if (isRetry) {
+    logger.debug("completeBatchTaskRunItemV3 retrying", {
+      itemId,
+      batchTaskRunId,
+      scheduleResumeOnComplete,
+      taskRunAttemptId,
+      retryAttempt,
+    });
+  }
+
+  try {
+    await $transaction(
+      tx,
+      "completeBatchTaskRunItemV3",
+      async (tx, span) => {
+        span?.setAttribute("batch_id", batchTaskRunId);
+
+        // Update the item to complete
+        const updated = await tx.batchTaskRunItem.updateMany({
+          where: {
+            id: itemId,
+            status: "PENDING",
+          },
+          data: {
+            status: "COMPLETED",
+            taskRunAttemptId,
+          },
+        });
+
+        if (updated.count === 0) {
+          return;
+        }
+
+        const updatedBatchRun = await tx.batchTaskRun.update({
+          where: {
+            id: batchTaskRunId,
+          },
+          data: {
+            completedCount: {
+              increment: 1,
+            },
+          },
+          select: {
+            sealed: true,
+            status: true,
+            completedCount: true,
+            expectedCount: true,
+            dependentTaskAttemptId: true,
+          },
+        });
+
+        if (
+          updatedBatchRun.status === "PENDING" &&
+          updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
+          updatedBatchRun.sealed
+        ) {
+          await tx.batchTaskRun.update({
+            where: {
+              id: batchTaskRunId,
+            },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          });
+
+          // We only need to resume the batch if it has a dependent task attempt ID
+          if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
+            await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
+          }
+        }
+      },
+      {
+        timeout: 10_000,
+        maxWait: 4_000,
+      }
+    );
+  } catch (error) {
+    if (isPrismaRetriableError(error) || isPrismaRaceConditionError(error)) {
+      logger.error("completeBatchTaskRunItemV3 failed with a Prisma Error, scheduling a retry", {
+        itemId,
+        batchTaskRunId,
+        error,
+        retryAttempt,
+        isRetry,
+      });
+
+      if (isRetry) {
+        //throwing this error will cause the Redis worker to retry the job
+        throw error;
+      } else {
+        //schedule a retry
+        await legacyRunEngineWorker.enqueue({
+          id: `completeBatchTaskRunItem:${itemId}`,
+          job: "completeBatchTaskRunItem",
+          payload: {
+            itemId,
+            batchTaskRunId,
+            scheduleResumeOnComplete,
+            taskRunAttemptId,
+          },
+          availableAt: new Date(Date.now() + 2_000),
+        });
+      }
+    } else {
+      logger.error("completeBatchTaskRunItemV3 failed with a non-retriable error", {
+        itemId,
+        batchTaskRunId,
+        error,
+        retryAttempt,
+        isRetry,
+      });
+    }
   }
 }

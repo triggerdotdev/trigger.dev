@@ -1,11 +1,5 @@
 import Redis, { RedisOptions } from "ioredis";
-import {
-  $transaction,
-  Prisma,
-  PrismaClientOrTransaction,
-  PrismaTransactionOptions,
-  prisma,
-} from "~/db.server";
+import { Prisma, PrismaClientOrTransaction, PrismaTransactionOptions, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 

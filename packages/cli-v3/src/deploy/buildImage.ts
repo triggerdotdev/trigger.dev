@@ -36,6 +36,7 @@ export interface BuildImageOptions {
   apiUrl: string;
   apiKey: string;
   buildEnvVars?: Record<string, string | undefined>;
+  onLog?: (log: string) => void;
 
   // Optional deployment spinner
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
@@ -65,6 +66,7 @@ export async function buildImage(options: BuildImageOptions) {
     apiUrl,
     apiKey,
     buildEnvVars,
+    onLog,
   } = options;
 
   if (selfHosted) {
@@ -86,6 +88,7 @@ export async function buildImage(options: BuildImageOptions) {
       apiKey,
       buildEnvVars,
       network: options.network,
+      onLog,
     });
   }
 
@@ -115,6 +118,7 @@ export async function buildImage(options: BuildImageOptions) {
     apiUrl,
     apiKey,
     buildEnvVars,
+    onLog,
   });
 }
 
@@ -138,6 +142,7 @@ export interface DepotBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  onLog?: (log: string) => void;
 }
 
 type BuildImageSuccess = {
@@ -225,6 +230,10 @@ async function depotBuildImage(options: DepotBuildImageOptions): Promise<BuildIm
         // Emitted data chunks can contain multiple lines. Remove empty lines.
         const lines = text.split("\n").filter(Boolean);
 
+        for (const line of lines) {
+          options.onLog?.(line);
+        }
+
         errors.push(...lines);
         logger.debug(text);
       });
@@ -278,6 +287,7 @@ interface SelfHostedBuildImageOptions {
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
+  onLog?: (log: string) => void;
 }
 
 async function selfHostedBuildImage(
@@ -336,6 +346,7 @@ async function selfHostedBuildImage(
     // line will be from stderr/stdout in the order you'd see it in a term
     errors.push(line);
     logger.debug(line);
+    options.onLog?.(line);
   }
 
   if (buildProcess.exitCode !== 0) {

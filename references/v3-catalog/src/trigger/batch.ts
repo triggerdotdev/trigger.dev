@@ -126,12 +126,24 @@ export const allV2TestTask = task({
   retry: {
     maxAttempts: 1,
   },
-  run: async ({ triggerSequentially }: { triggerSequentially?: boolean }) => {
+  run: async ({ triggerSequentially }: { triggerSequentially?: boolean }, { ctx }) => {
     const response1 = await batch.trigger<typeof allV2ChildTask1 | typeof allV2ChildTask2>(
       [
-        { id: "all-v2-test-child-1", payload: { child1: "foo" } },
-        { id: "all-v2-test-child-2", payload: { child2: "bar" } },
-        { id: "all-v2-test-child-1", payload: { child1: "baz" } },
+        {
+          id: "all-v2-test-child-1",
+          payload: { child1: "foo" },
+          options: { idempotencyKey: randomUUID() },
+        },
+        {
+          id: "all-v2-test-child-2",
+          payload: { child2: "bar" },
+          options: { idempotencyKey: randomUUID() },
+        },
+        {
+          id: "all-v2-test-child-1",
+          payload: { child1: "baz" },
+          options: { idempotencyKey: randomUUID() },
+        },
       ],
       {
         triggerSequentially,
@@ -300,7 +312,7 @@ export const batchV2TestTask = task({
   },
   run: async ({
     triggerSequentially,
-    largeBatchSize = 21,
+    largeBatchSize = 20,
   }: {
     triggerSequentially?: boolean;
     largeBatchSize?: number;
@@ -688,6 +700,42 @@ export const batchV2TestTask = task({
   },
 });
 
+export const batchTriggerSequentiallyTask = task({
+  id: "batch-trigger-sequentially",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async ({
+    count = 20,
+    wait = false,
+    triggerSequentially = true,
+  }: {
+    count: number;
+    wait: boolean;
+    triggerSequentially: boolean;
+  }) => {
+    if (wait) {
+      return await batchV2TestChild.batchTriggerAndWait(
+        Array.from({ length: count }, (_, i) => ({
+          payload: { foo: `bar${i}` },
+        })),
+        {
+          triggerSequentially,
+        }
+      );
+    } else {
+      return await batchV2TestChild.batchTrigger(
+        Array.from({ length: count }, (_, i) => ({
+          payload: { foo: `bar${i}` },
+        })),
+        {
+          triggerSequentially,
+        }
+      );
+    }
+  },
+});
+
 export const batchV2TestChild = task({
   id: "batch-v2-test-child",
   queue: {
@@ -754,5 +802,43 @@ export const batchAutoIdempotencyKeyChild = task({
   },
   run: async (payload: any) => {
     return payload;
+  },
+});
+
+export const batchTriggerIdempotencyKeyTest = task({
+  id: "batch-trigger-idempotency-key-test",
+  retry: {
+    maxAttempts: 1,
+  },
+  run: async () => {
+    // Trigger a batch of 2 items with the same idempotency key
+    await batchV2TestChild.batchTrigger(
+      [
+        { payload: { foo: "bar" }, options: { idempotencyKey: "test-idempotency-key" } },
+        { payload: { foo: "baz" }, options: { idempotencyKey: "test-idempotency-key" } },
+      ],
+      {
+        triggerSequentially: true,
+      }
+    );
+
+    // Now trigger a batch of 21 items, with just the last one having an idempotency key
+    await batchV2TestChild.batchTrigger(
+      Array.from({ length: 20 }, (_, i) => ({
+        payload: { foo: `bar${i}` },
+        options: {},
+      })).concat([
+        {
+          payload: { foo: "baz" },
+          options: { idempotencyKey: "test-idempotency-key-2" },
+        },
+      ]),
+      {
+        triggerSequentially: true,
+      }
+    );
+
+    // Now while that batch is being processed in the background, lets trigger the same task with that idempotency key
+    await batchV2TestChild.trigger({ foo: "baz" }, { idempotencyKey: "test-idempotency-key-2" });
   },
 });

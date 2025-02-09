@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { FinalizeDeploymentV2Service } from "~/v3/services/finalizeDeploymentV2";
+import { FinalizeDeploymentV2Service } from "~/v3/services/finalizeDeploymentV2.server";
 
 const ParamsSchema = z.object({
   deploymentId: z.string(),

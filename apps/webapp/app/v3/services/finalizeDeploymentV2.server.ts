@@ -13,7 +13,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
     authenticatedEnv: AuthenticatedEnvironment,
     id: string,
-    body: FinalizeDeploymentRequestBody
+    body: FinalizeDeploymentRequestBody,
+    writer?: WritableStreamDefaultWriter
   ) {
     // if it's self hosted, lets just use the v1 finalize deployment service
     if (body.selfHosted) {
@@ -27,11 +28,14 @@ export class FinalizeDeploymentV2Service extends BaseService {
         friendlyId: id,
         environmentId: authenticatedEnv.id,
       },
-      include: {
+      select: {
+        status: true,
+        id: true,
+        version: true,
+        externalBuildData: true,
         environment: true,
         worker: {
-          include: {
-            tasks: true,
+          select: {
             project: true,
           },
         },
@@ -83,38 +87,71 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing depot token");
     }
 
-    const pushResult = await executePushToRegistry({
-      depot: {
-        buildId: externalBuildData.data.buildId,
-        orgToken: env.DEPOT_TOKEN,
-        projectId: externalBuildData.data.projectId,
-      },
-      registry: {
-        host: env.DEPLOY_REGISTRY_HOST,
-        namespace: env.DEPLOY_REGISTRY_NAMESPACE,
-        username: env.DEPLOY_REGISTRY_USERNAME,
-        password: env.DEPLOY_REGISTRY_PASSWORD,
-      },
-      deployment: {
-        version: deployment.version,
-        environmentSlug: deployment.environment.slug,
-        projectExternalRef: deployment.worker.project.externalRef,
-      },
+    const digest = extractImageDigest(body.imageReference);
+
+    logger.debug("Pushing image to registry", {
+      id,
+      deployment,
+      digest,
     });
+
+    const pushResult = await executePushToRegistry(
+      {
+        depot: {
+          buildId: externalBuildData.data.buildId,
+          orgToken: env.DEPOT_TOKEN,
+          projectId: externalBuildData.data.projectId,
+        },
+        registry: {
+          host: env.DEPLOY_REGISTRY_HOST,
+          namespace: env.DEPLOY_REGISTRY_NAMESPACE,
+          username: env.DEPLOY_REGISTRY_USERNAME,
+          password: env.DEPLOY_REGISTRY_PASSWORD,
+        },
+        deployment: {
+          version: deployment.version,
+          environmentSlug: deployment.environment.slug,
+          projectExternalRef: deployment.worker.project.externalRef,
+        },
+      },
+      writer
+    );
 
     if (!pushResult.ok) {
       throw new ServiceValidationError(pushResult.error);
     }
 
+    const fullImage = digest ? `${pushResult.image}@${digest}` : pushResult.image;
+
+    logger.debug("Image pushed to registry", {
+      id,
+      deployment,
+      body,
+      fullImage,
+    });
+
     const finalizeService = new FinalizeDeploymentService();
 
     const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, {
-      imageReference: pushResult.image,
+      imageReference: fullImage,
       skipRegistryProxy: true,
     });
 
     return finalizedDeployment;
   }
+}
+
+// Extracts the sha256 digest from an image reference
+// For example the image ref "registry.depot.dev/gn57tl6chn:8qfjm8w83w@sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
+// would return "sha256:aa6fd2bdcbbd611556747e72d0b57797f03aa9b39dc910befc83eea2b08a5b85"
+function extractImageDigest(image: string) {
+  const digestIndex = image.lastIndexOf("@");
+
+  if (digestIndex === -1) {
+    return;
+  }
+
+  return image.substring(digestIndex + 1);
 }
 
 type ExecutePushToRegistryOptions = {
@@ -148,11 +185,10 @@ type ExecutePushResult =
       logs: string;
     };
 
-async function executePushToRegistry({
-  depot,
-  registry,
-  deployment,
-}: ExecutePushToRegistryOptions): Promise<ExecutePushResult> {
+async function executePushToRegistry(
+  { depot, registry, deployment }: ExecutePushToRegistryOptions,
+  writer?: WritableStreamDefaultWriter
+): Promise<ExecutePushResult> {
   // Step 1: We need to "login" to the digital ocean registry
   const configDir = await ensureLoggedIntoDockerRegistry(registry.host, {
     username: registry.username,
@@ -180,7 +216,7 @@ async function executePushToRegistry({
   try {
     const processCode = await new Promise<number | null>((res, rej) => {
       // For some reason everything is output on stderr, not stdout
-      childProcess.stderr?.on("data", (data: Buffer) => {
+      childProcess.stderr?.on("data", async (data: Buffer) => {
         const text = data.toString();
 
         // Emitted data chunks can contain multiple lines. Remove empty lines.
@@ -191,6 +227,13 @@ async function executePushToRegistry({
           imageTag,
           deployment,
         });
+
+        // Now we can write strings directly
+        if (writer) {
+          for (const line of lines) {
+            await writer.write(`event: log\ndata: ${JSON.stringify({ message: line })}\n\n`);
+          }
+        }
       });
 
       childProcess.on("error", (e) => rej(e));

@@ -27,7 +27,7 @@ export class CreateBackgroundWorkerService extends BaseService {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("projectRef", projectRef);
 
-      const project = await this._prisma.project.findUniqueOrThrow({
+      const project = await this._prisma.project.findFirstOrThrow({
         where: {
           externalRef: projectRef,
           environments: {

@@ -6,7 +6,6 @@ import {
   ChartBarIcon,
   ClockIcon,
   CreditCardIcon,
-  CursorArrowRaysIcon,
   IdentificationIcon,
   KeyIcon,
   RectangleStackIcon,
@@ -38,7 +37,6 @@ import {
   organizationTeamPath,
   personalAccessTokensPath,
   projectEnvironmentsPath,
-  projectEventsPath,
   projectHttpEndpointsPath,
   projectPath,
   projectRunsPath,
@@ -450,12 +448,6 @@ function V2ProjectSideMenu({
         activeIconColor="text-amber-500"
         to={projectTriggersPath(organization, project)}
         data-action="triggers"
-      />
-      <SideMenuItem
-        name="Events"
-        icon={CursorArrowRaysIcon}
-        activeIconColor="text-sky-500"
-        to={projectEventsPath(organization, project)}
       />
       <SideMenuItem
         name="HTTP endpoints"

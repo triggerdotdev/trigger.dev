@@ -1,25 +1,28 @@
-import { logger } from "~/services/logger.server";
-import { BaseService } from "./baseService.server";
-import { eventRepository } from "../eventRepository.server";
-import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { workerQueue } from "~/services/worker.server";
 import { PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "~/services/logger.server";
+import { commonWorker } from "../commonWorker.server";
+import { eventRepository } from "../eventRepository.server";
+import { BaseService } from "./baseService.server";
+import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
-  public static async dequeue(runId: string, tx?: PrismaClientOrTransaction) {
-    return await workerQueue.dequeue(`v3.expireRun:${runId}`, { tx });
+  public static async ack(runId: string, tx?: PrismaClientOrTransaction) {
+    // We don't "dequeue" from the workerQueue here because it would be redundant and if this service
+    // is called for a run that has already started, nothing happens
+    await commonWorker.ack(`v3.expireRun:${runId}`);
   }
 
-  public static async enqueue(runId: string, runAt?: Date, tx?: PrismaClientOrTransaction) {
-    return await workerQueue.enqueue(
-      "v3.expireRun",
-      { runId },
-      { runAt, jobKey: `v3.expireRun:${runId}`, tx }
-    );
+  public static async enqueue(runId: string, runAt?: Date) {
+    return await commonWorker.enqueue({
+      job: "v3.expireRun",
+      payload: { runId },
+      availableAt: runAt,
+      id: `v3.expireRun:${runId}`,
+    });
   }
 
   public async call(runId: string) {
-    const run = await this._prisma.taskRun.findUnique({
+    const run = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },

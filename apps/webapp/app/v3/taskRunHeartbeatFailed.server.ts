@@ -9,9 +9,9 @@ import { workerQueue } from "~/services/worker.server";
 import { socketIo } from "./handleSocketIo.server";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
-export class RequeueTaskRunService extends BaseService {
+export class TaskRunHeartbeatFailedService extends BaseService {
   public async call(runId: string) {
-    const taskRun = await this._prisma.taskRun.findUnique({
+    const taskRun = await this._prisma.taskRun.findFirst({
       where: {
         id: runId,
       },

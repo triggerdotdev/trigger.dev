@@ -29,7 +29,7 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     runFriendlyId: string;
   }) {
-    const project = await this._replica.project.findUnique({
+    const project = await this._replica.project.findFirst({
       where: {
         slug: projectSlug,
       },
@@ -102,14 +102,7 @@ export class SpanPresenter extends BasePresenter {
         queue: true,
         concurrencyKey: true,
         //schedule
-        schedule: {
-          select: {
-            friendlyId: true,
-            generatorExpression: true,
-            timezone: true,
-            generatorDescription: true,
-          },
-        },
+        scheduleId: true,
         //usage
         baseCostInCents: true,
         costInCents: true,
@@ -281,14 +274,7 @@ export class SpanPresenter extends BasePresenter {
       sdkVersion: run.lockedToVersion?.sdkVersion,
       isTest: run.isTest,
       environmentId: run.runtimeEnvironment.id,
-      schedule: run.schedule
-        ? {
-            friendlyId: run.schedule.friendlyId,
-            generatorExpression: run.schedule.generatorExpression,
-            description: run.schedule.generatorDescription,
-            timezone: run.schedule.timezone,
-          }
-        : undefined,
+      schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       queue: {
         name: run.queue,
         isCustomQueue: !run.queue.startsWith("task/"),
@@ -320,6 +306,35 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+    };
+  }
+
+  async resolveSchedule(scheduleId?: string) {
+    if (!scheduleId) {
+      return;
+    }
+
+    const schedule = await this._replica.taskSchedule.findFirst({
+      where: {
+        id: scheduleId,
+      },
+      select: {
+        friendlyId: true,
+        generatorExpression: true,
+        timezone: true,
+        generatorDescription: true,
+      },
+    });
+
+    if (!schedule) {
+      return;
+    }
+
+    return {
+      friendlyId: schedule.friendlyId,
+      generatorExpression: schedule.generatorExpression,
+      description: schedule.generatorDescription,
+      timezone: schedule.timezone,
     };
   }
 

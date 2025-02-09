@@ -1,14 +1,14 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { BatchTriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskRequestBody, BatchTriggerTaskV2RequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
+import { fromZodError } from "zod-validation-error";
 import { MAX_BATCH_TRIGGER_ITEMS } from "~/consts";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { BatchTriggerTaskService } from "~/v3/services/batchTriggerTask.server";
+import { BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
-import { env } from "~/env.server";
-import { fromZodError } from "zod-validation-error";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -85,15 +85,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const service = new BatchTriggerTaskService();
+  const service = new BatchTriggerV3Service();
 
   const traceContext =
     traceparent && isFromWorker // If the request is from a worker, we should pass the trace context
       ? { traceparent, tracestate }
       : undefined;
 
+  const v3Body = convertV1BodyToV2Body(body.data, taskId);
+
   try {
-    const result = await service.call(taskId, authenticationResult.environment, body.data, {
+    const result = await service.call(authenticationResult.environment, v3Body, {
       idempotencyKey: idempotencyKey ?? undefined,
       triggerVersion: triggerVersion ?? undefined,
       traceContext,
@@ -106,8 +108,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json(
       {
-        batchId: result.batch.friendlyId,
-        runs: result.runs,
+        batchId: result.id,
+        runs: result.runs.map((run) => run.id),
       },
       {
         headers: {
@@ -125,4 +127,30 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json({ error: "Something went wrong" }, { status: 500 });
   }
+}
+
+// Strip from options:
+// - dependentBatch
+// - dependentAttempt
+// - parentBatch
+function convertV1BodyToV2Body(
+  body: BatchTriggerTaskRequestBody,
+  taskIdentifier: string
+): BatchTriggerTaskV2RequestBody {
+  return {
+    items: body.items.map((item) => ({
+      task: taskIdentifier,
+      payload: item.payload,
+      context: item.context,
+      options: item.options
+        ? {
+            ...item.options,
+            dependentBatch: undefined,
+            parentBatch: undefined,
+            dependentAttempt: undefined,
+          }
+        : undefined,
+    })),
+    dependentAttempt: body.dependentAttempt,
+  };
 }

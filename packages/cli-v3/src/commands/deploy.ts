@@ -222,10 +222,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     forcedExternals,
     listener: {
       onBundleStart() {
-        $buildSpinner.start("Building project");
+        $buildSpinner.start("Building trigger code");
       },
       onBundleComplete(result) {
-        $buildSpinner.stop("Successfully built project");
+        $buildSpinner.stop("Successfully built code");
 
         logger.debug("Bundle result", result);
       },
@@ -328,9 +328,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const $spinner = spinner();
 
   if (isLinksSupported) {
-    $spinner.start(`Deploying version ${version} ${deploymentLink}`);
+    $spinner.start(`Building version ${version} ${deploymentLink}`);
   } else {
-    $spinner.start(`Deploying version ${version}`);
+    $spinner.start(`Building version ${version}`);
   }
 
   const selfHostedRegistryHost = deployment.registryHost ?? options.registry;
@@ -359,6 +359,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     compilationPath: destination.path,
     buildEnvVars: buildManifest.build.env,
     network: options.network,
+    onLog: (logMessage) => {
+      if (isLinksSupported) {
+        $spinner.message(`Building version ${version} ${deploymentLink}: ${logMessage}`);
+      } else {
+        $spinner.message(`Building version ${version}: ${logMessage}`);
+      }
+    },
   });
 
   logger.debug("Build result", buildResult);
@@ -426,10 +433,26 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       }`
     : `${buildResult.image}${buildResult.digest ? `@${buildResult.digest}` : ""}`;
 
-  const finalizeResponse = await projectClient.client.finalizeDeployment(deployment.id, {
-    imageReference,
-    selfHosted: options.selfHosted,
-  });
+  if (isLinksSupported) {
+    $spinner.message(`Deploying version ${version} ${deploymentLink}`);
+  } else {
+    $spinner.message(`Deploying version ${version}`);
+  }
+
+  const finalizeResponse = await projectClient.client.finalizeDeployment(
+    deployment.id,
+    {
+      imageReference,
+      selfHosted: options.selfHosted,
+    },
+    (logMessage) => {
+      if (isLinksSupported) {
+        $spinner.message(`Deploying version ${version} ${deploymentLink}: ${logMessage}`);
+      } else {
+        $spinner.message(`Deploying version ${version}: ${logMessage}`);
+      }
+    }
+  );
 
   if (!finalizeResponse.success) {
     await failDeploy(

@@ -13,6 +13,8 @@ import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
 import { $transaction as transac } from "@trigger.dev/database";
+import { startActiveSpan } from "./v3/tracer.server";
+import { Span } from "@opentelemetry/api";
 
 export type {
   PrismaTransactionClient,
@@ -23,23 +25,74 @@ export type {
 
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
+  name: string,
+  fn: (prisma: PrismaTransactionClient, span?: Span) => Promise<R>,
+  options?: PrismaTransactionOptions
+): Promise<R | undefined>;
+export async function $transaction<R>(
+  prisma: PrismaClientOrTransaction,
   fn: (prisma: PrismaTransactionClient) => Promise<R>,
   options?: PrismaTransactionOptions
+): Promise<R | undefined>;
+export async function $transaction<R>(
+  prisma: PrismaClientOrTransaction,
+  fnOrName: ((prisma: PrismaTransactionClient) => Promise<R>) | string,
+  fnOrOptions?: ((prisma: PrismaTransactionClient) => Promise<R>) | PrismaTransactionOptions,
+  options?: PrismaTransactionOptions
 ): Promise<R | undefined> {
-  return transac(
-    prisma,
-    fn,
-    (error) => {
-      logger.error("prisma.$transaction error", {
-        code: error.code,
-        meta: error.meta,
-        stack: error.stack,
-        message: error.message,
-        name: error.name,
-      });
-    },
-    options
-  );
+  if (typeof fnOrName === "string") {
+    return await startActiveSpan(fnOrName, async (span) => {
+      span.setAttribute("$transaction", true);
+
+      if (options?.isolationLevel) {
+        span.setAttribute("isolation_level", options.isolationLevel);
+      }
+
+      if (options?.timeout) {
+        span.setAttribute("timeout", options.timeout);
+      }
+
+      if (options?.maxWait) {
+        span.setAttribute("max_wait", options.maxWait);
+      }
+
+      if (options?.swallowPrismaErrors) {
+        span.setAttribute("swallow_prisma_errors", options.swallowPrismaErrors);
+      }
+
+      const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
+
+      return transac(
+        prisma,
+        (client) => fn(client, span),
+        (error) => {
+          logger.error("prisma.$transaction error", {
+            code: error.code,
+            meta: error.meta,
+            stack: error.stack,
+            message: error.message,
+            name: error.name,
+          });
+        },
+        options
+      );
+    });
+  } else {
+    return transac(
+      prisma,
+      fnOrName,
+      (error) => {
+        logger.error("prisma.$transaction error", {
+          code: error.code,
+          meta: error.meta,
+          stack: error.stack,
+          message: error.message,
+          name: error.name,
+        });
+      },
+      typeof fnOrOptions === "function" ? undefined : fnOrOptions
+    );
+  }
 }
 
 export { Prisma };
@@ -58,6 +111,7 @@ function getClient() {
   const databaseUrl = extendQueryParams(DATABASE_URL, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
   });
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
@@ -109,6 +163,7 @@ function getReplicaClient() {
   const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
   });
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);

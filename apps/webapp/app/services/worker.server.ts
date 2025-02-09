@@ -6,10 +6,8 @@ import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { MarqsConcurrencyMonitor } from "~/v3/marqs/concurrencyMonitor.server";
 import { RequeueV2Message } from "~/v3/marqs/requeueV2Message.server";
-import { RequeueTaskRunService } from "~/v3/requeueTaskRun.server";
 import { DeliverAlertService } from "~/v3/services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "~/v3/services/alerts/performDeploymentAlerts.server";
-import { PerformTaskAttemptAlertsService } from "~/v3/services/alerts/performTaskAttemptAlerts.server";
 import { PerformBulkActionService } from "~/v3/services/bulk/performBulkAction.server";
 import { CancelTaskAttemptDependenciesService } from "~/v3/services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
@@ -55,7 +53,7 @@ import {
   CancelDevSessionRunsServiceOptions,
 } from "~/v3/services/cancelDevSessionRuns.server";
 import { logger } from "./logger.server";
-import { BatchProcessingOptions, BatchTriggerV2Service } from "~/v3/services/batchTriggerV2.server";
+import { BatchProcessingOptions, BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 
 const workerCatalog = {
   indexEndpoint: z.object({
@@ -156,9 +154,6 @@ const workerCatalog = {
   }),
   "v3.performTaskRunAlerts": z.object({
     runId: z.string(),
-  }),
-  "v3.performTaskAttemptAlerts": z.object({
-    attemptId: z.string(),
   }),
   "v3.deliverAlert": z.object({
     alertId: z.string(),
@@ -610,15 +605,6 @@ function getWorkerQueue() {
           return await service.call(payload.runId);
         },
       },
-      "v3.performTaskAttemptAlerts": {
-        priority: 0,
-        maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new PerformTaskAttemptAlertsService();
-
-          return await service.call(payload.attemptId);
-        },
-      },
       "v3.deliverAlert": {
         priority: 0,
         maxAttempts: 8,
@@ -658,11 +644,7 @@ function getWorkerQueue() {
       "v3.requeueTaskRun": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
-          const service = new RequeueTaskRunService();
-
-          await service.call(payload.runId);
-        },
+        handler: async (payload, job) => {}, // This is now handled by redisWorker
       },
       "v3.retryAttempt": {
         priority: 0,
@@ -733,7 +715,7 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new BatchTriggerV2Service(payload.strategy);
+          const service = new BatchTriggerV3Service(payload.strategy);
 
           await service.processBatchTaskRun(payload);
         },

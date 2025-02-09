@@ -43,6 +43,12 @@ export class FinalizeDeploymentService extends BaseService {
       throw new ServiceValidationError("Worker deployment does not have a worker");
     }
 
+    if (deployment.status === "DEPLOYED") {
+      logger.debug("Worker deployment is already deployed", { id });
+
+      return deployment;
+    }
+
     if (deployment.status !== "DEPLOYING") {
       logger.error("Worker deployment is not in DEPLOYING status", { id });
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
@@ -62,7 +68,7 @@ export class FinalizeDeploymentService extends BaseService {
       data: {
         status: "DEPLOYED",
         deployedAt: new Date(),
-        imageReference: imageReference,
+        imageReference,
       },
     });
 
@@ -103,22 +109,22 @@ export class FinalizeDeploymentService extends BaseService {
       logger.error("Failed to publish WORKER_CREATED event", { err });
     }
 
-    if (deployment.imageReference) {
+    if (finalizedDeployment.imageReference) {
       socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
         version: "v1",
-        imageRef: deployment.imageReference,
-        shortCode: deployment.shortCode,
+        imageRef: finalizedDeployment.imageReference,
+        shortCode: finalizedDeployment.shortCode,
         // identifiers
-        deploymentId: deployment.id,
+        deploymentId: finalizedDeployment.id,
         envId: authenticatedEnv.id,
         envType: authenticatedEnv.type,
         orgId: authenticatedEnv.organizationId,
-        projectId: deployment.projectId,
+        projectId: finalizedDeployment.projectId,
       });
     }
 
     await ExecuteTasksWaitingForDeployService.enqueue(deployment.worker.id, this._prisma);
-    await PerformDeploymentAlertsService.enqueue(deployment.id, this._prisma);
+    await PerformDeploymentAlertsService.enqueue(deployment.id);
 
     return finalizedDeployment;
   }

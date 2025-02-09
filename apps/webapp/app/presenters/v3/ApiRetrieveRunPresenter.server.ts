@@ -39,6 +39,7 @@ const commonRunSelect = {
   idempotencyKey: true,
   isTest: true,
   depth: true,
+  scheduleId: true,
   lockedToVersion: {
     select: {
       version: true,
@@ -71,7 +72,6 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       include: {
         attempts: true,
         lockedToVersion: true,
-        schedule: true,
         tags: true,
         batch: {
           select: {
@@ -157,20 +157,7 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
         output: $output,
         outputPresignedUrl: $outputPresignedUrl,
         error: ApiRetrieveRunPresenter.apiErrorFromError(taskRun.error),
-        schedule: taskRun.schedule
-          ? {
-              id: taskRun.schedule.friendlyId,
-              externalId: taskRun.schedule.externalId ?? undefined,
-              deduplicationKey: taskRun.schedule.userProvidedDeduplicationKey
-                ? taskRun.schedule.deduplicationKey
-                : undefined,
-              generator: {
-                type: "CRON" as const,
-                expression: taskRun.schedule.generatorExpression,
-                description: taskRun.schedule.generatorDescription,
-              },
-            }
-          : undefined,
+        schedule: await resolveSchedule(taskRun),
         // We're removing attempts from the API
         attemptCount: taskRun.attempts.length,
         attempts: [],
@@ -318,6 +305,33 @@ export class ApiRetrieveRunPresenter extends BasePresenter {
       }
     }
   }
+}
+
+async function resolveSchedule(run: CommonRelatedRun) {
+  if (!run.scheduleId) {
+    return undefined;
+  }
+
+  const schedule = await prisma.taskSchedule.findFirst({
+    where: {
+      id: run.scheduleId,
+    },
+  });
+
+  if (!schedule) {
+    return undefined;
+  }
+
+  return {
+    id: schedule.friendlyId,
+    externalId: schedule.externalId ?? undefined,
+    deduplicationKey: schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : undefined,
+    generator: {
+      type: "CRON" as const,
+      expression: schedule.generatorExpression,
+      description: schedule.generatorDescription,
+    },
+  };
 }
 
 async function createCommonRunStructure(run: CommonRelatedRun) {

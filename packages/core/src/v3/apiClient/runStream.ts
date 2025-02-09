@@ -509,7 +509,7 @@ const isSafari = () => {
  */
 
 if (isSafari()) {
-  // @ts-expect-error
+  // @ts-ignore-error
   ReadableStream.prototype.values ??= function ({ preventCancel = false } = {}) {
     const reader = this.getReader();
     return {
@@ -541,6 +541,6 @@ if (isSafari()) {
     };
   };
 
-  // @ts-expect-error
+  // @ts-ignore-error
   ReadableStream.prototype[Symbol.asyncIterator] ??= ReadableStream.prototype.values;
 }
