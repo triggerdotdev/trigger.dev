@@ -1,10 +1,12 @@
 import fs from "node:fs";
-import { $, execa } from "execa";
+import { execa } from "execa";
 import { assert } from "@std/assert";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import { logger } from "@trigger.dev/sdk/v3";
+
+import type { VerboseObject } from "execa";
 
 export type PythonOptions = {
   requirements?: string[];
@@ -27,6 +29,8 @@ export type PythonOptions = {
    */
   scripts?: string[];
 };
+
+type ExecaOptions = Parameters<typeof execa>[1];
 
 const splitAndCleanComments = (str: string) =>
   str
@@ -114,17 +118,13 @@ class PythonExtension implements BuildExtension {
   }
 }
 
-export const run = async (scriptArgs: string[] = [], options: Parameters<typeof $>[1] = {}) => {
+export const run = async (scriptArgs: string[] = [], options: ExecaOptions = {}) => {
   const pythonBin = process.env.PYTHON_BIN_PATH || "python";
-
-  logger.debug(
-    `Running ${pythonBin} \t${JSON.stringify(scriptArgs)} ${options.input ? `(with stdin)` : ""}`,
-    options
-  );
 
   const result = await execa({
     shell: true,
-    verbose: (verboseLine, verboseObject) => logger.debug(verboseLine, verboseObject),
+    verbose: (verboseLine: string, verboseObject: VerboseObject) =>
+      logger.debug(verboseObject.message, verboseObject),
     ...options,
   })(pythonBin, scriptArgs);
 
@@ -142,7 +142,7 @@ export const run = async (scriptArgs: string[] = [], options: Parameters<typeof 
 export const runScript = (
   scriptPath: string,
   scriptArgs: string[] = [],
-  options: Parameters<typeof $>[1] = {}
+  options: ExecaOptions = {}
 ) => {
   assert(scriptPath, "Script path is required");
   assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
@@ -150,7 +150,7 @@ export const runScript = (
   return run([scriptPath, ...scriptArgs], options);
 };
 
-export const runInline = (scriptContent: string, options: Parameters<typeof $>[1] = {}) => {
+export const runInline = (scriptContent: string, options: ExecaOptions = {}) => {
   assert(scriptContent, "Script content is required");
 
   return run([""], { input: scriptContent, ...options });
