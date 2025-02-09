@@ -11,7 +11,7 @@ const AUDIOWAVEFORM_CHECKSUM =
   "sha256:00b41ea4d6e7a5b4affcfe4ac99951ec89da81a8cba40af19e9b98c3a8f9b4b8";
 
 export function audioWaveform(options: AudioWaveformOptions = {}): BuildExtension {
-  return new AudioWaveformExtension();
+  return new AudioWaveformExtension(options);
 }
 
 class AudioWaveformExtension implements BuildExtension {
