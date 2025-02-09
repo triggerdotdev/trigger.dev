@@ -58,12 +58,7 @@ class PythonExtension implements BuildExtension {
     context.logger.debug(`Adding ${this.name} to the build`);
 
     context.addLayer({
-      id: "python-extension",
-      build: {
-        env: {
-          REQUIREMENTS_CONTENT: this.options.requirements?.join("\n") || "",
-        },
-      },
+      id: "python-installation",
       image: {
         instructions: splitAndCleanComments(`
           # Install Python
@@ -74,7 +69,25 @@ class PythonExtension implements BuildExtension {
           # Set up Python environment
           RUN python3 -m venv /opt/venv
           ENV PATH="/opt/venv/bin:$PATH"
+        `),
+      },
+      deploy: {
+        env: {
+          PYTHON_BIN_PATH: `/opt/venv/bin/python`,
+        },
+        override: true,
+      },
+    });
 
+    context.addLayer({
+      id: "python-dependencies",
+      build: {
+        env: {
+          REQUIREMENTS_CONTENT: this.options.requirements?.join("\n") || "",
+        },
+      },
+      image: {
+        instructions: splitAndCleanComments(`
           ARG REQUIREMENTS_CONTENT
           RUN echo "$REQUIREMENTS_CONTENT" > requirements.txt
 
@@ -83,9 +96,6 @@ class PythonExtension implements BuildExtension {
         `),
       },
       deploy: {
-        env: {
-          PYTHON_BIN_PATH: `/opt/venv/bin/python`,
-        },
         override: true,
       },
     });
