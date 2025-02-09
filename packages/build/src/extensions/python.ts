@@ -116,4 +116,9 @@ export const run = async (scriptArgs: string[] = [], options: Parameters<typeof 
   return result;
 };
 
-export default run;
+export const runInline = (scriptContent: string, options: Parameters<typeof $>[1] = {}) => {
+  assert(scriptContent, "Script content is required");
+  return run([""], { input: scriptContent, ...options });
+};
+
+export default { run, runInline };
