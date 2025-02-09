@@ -20,6 +20,12 @@ export type PythonOptions = {
   pythonBinaryPath?: string;
 };
 
+const splitAndCleanComments = (str: string) =>
+  str
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+
 export function pythonExtension(options: PythonOptions = {}): BuildExtension {
   return new PythonExtension(options);
 }
@@ -34,9 +40,9 @@ class PythonExtension implements BuildExtension {
     );
 
     if (this.options.requirementsFile) {
-      this.options.requirements = fs
-        .readFileSync(this.options.requirementsFile, "utf-8")
-        .split("\n");
+      this.options.requirements = splitAndCleanComments(
+        fs.readFileSync(this.options.requirementsFile, "utf-8")
+      );
     }
   }
 
@@ -59,7 +65,7 @@ class PythonExtension implements BuildExtension {
         },
       },
       image: {
-        instructions: `
+        instructions: splitAndCleanComments(`
           # Install Python
           RUN apt-get update && apt-get install -y --no-install-recommends \
               python3 python3-pip python3-venv && \
@@ -74,7 +80,7 @@ class PythonExtension implements BuildExtension {
 
           # Install dependenciess
           RUN pip install --no-cache-dir -r requirements.txt
-        `.split("\n"),
+        `),
       },
       deploy: {
         env: {
