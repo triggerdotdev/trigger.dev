@@ -257,7 +257,12 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
         >
           {showChrome && <Chrome title={fileName} />}
           {rowTitle && <TitleRow title={rowTitle} />}
-          <div className="absolute right-3 top-2.5 z-50 flex gap-3">
+          <div
+            className={cn(
+              "absolute right-3 top-2.5 z-50 flex gap-3",
+              showChrome ? "right-1.5 top-1.5" : "top-2.5"
+            )}
+          >
             {showCopyButton && (
               <TooltipProvider>
                 <Tooltip open={copied || mouseOver} disableHoverableContent>
@@ -267,7 +272,6 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                     onMouseLeave={() => setMouseOver(false)}
                     className={cn(
                       "transition-colors duration-100 focus-custom hover:cursor-pointer",
-                      showChrome ? "top-10" : "top-2.5",
                       copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
                     )}
                   >
