@@ -133,10 +133,19 @@ export const run = async (scriptArgs: string[] = [], options: ExecaOptions = {})
   })(pythonBin, scriptArgs);
 
   try {
-    assert(!result.failed, `Command failed: ${result.stderr}`);
-    assert(result.exitCode === 0, `Non-zero exit code: ${result.exitCode}`);
+    assert(!result.failed, `Python command failed: ${result.stderr}\nCommand: ${result.command}`);
+    assert(
+      result.exitCode === 0,
+      `Python command exited with non-zero code ${result.exitCode}\nStdout: ${result.stdout}\nStderr: ${result.stderr}`
+    );
   } catch (e) {
-    logger.error(e.message, result);
+    logger.error("Python command execution failed", {
+      error: e.message,
+      command: result.command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    });
     throw e;
   }
 
@@ -160,7 +169,7 @@ export const runInline = async (scriptContent: string, options: ExecaOptions = {
   // Create a temporary file with restricted permissions
   const tmpFile = `/tmp/script_${Date.now()}.py`;
   await fs.promises.writeFile(tmpFile, scriptContent, { mode: 0o600 });
-  
+
   try {
     return await runScript(tmpFile, [], options);
   } finally {
