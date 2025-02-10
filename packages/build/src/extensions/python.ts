@@ -130,8 +130,7 @@ export const run = async (
 
   const result = await execa({
     shell: true,
-    verbose: (verboseLine: string, verboseObject: VerboseObject) =>
-      logger.debug(verboseObject.message, verboseObject),
+    verbose: (line: string, obj: VerboseObject) => logger.debug(obj.message, obj),
     ...options,
   })(pythonBin, scriptArgs);
 
@@ -141,15 +140,15 @@ export const run = async (
       result.exitCode === 0,
       `Python command exited with non-zero code ${result.exitCode}\nStdout: ${result.stdout}\nStderr: ${result.stderr}`
     );
-  } catch (e) {
+  } catch (error) {
     logger.error("Python command execution failed", {
-      error: e.message,
+      error: error instanceof Error ? error.message : error,
       command: result.command,
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
     });
-    throw e;
+    throw error;
   }
 
   return result;
