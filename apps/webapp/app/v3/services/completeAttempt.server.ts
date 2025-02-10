@@ -1,13 +1,16 @@
 import { Attributes } from "@opentelemetry/api";
 import {
   TaskRunContext,
+  TaskRunError,
   TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
+  exceptionEventEnhancer,
   flattenAttributes,
+  internalErrorFromUnexpectedExit,
   sanitizeError,
   shouldRetryError,
   taskRunErrorEnhancer,
@@ -233,7 +236,7 @@ export class CompleteAttemptService extends BaseService {
 
     if (!executionRetry && shouldInfer) {
       executionRetryInferred = true;
-      executionRetry = await FailedTaskRunRetryHelper.getExecutionRetry({
+      executionRetry = FailedTaskRunRetryHelper.getExecutionRetry({
         run: {
           ...taskRunAttempt.taskRun,
           lockedBy: taskRunAttempt.backgroundWorkerTask,
@@ -243,7 +246,47 @@ export class CompleteAttemptService extends BaseService {
       });
     }
 
-    const retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
+    let retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
+    let isOOMRetry = false;
+
+    //OOM errors should retry (if an OOM machine is specified)
+    if (isOOMError(completion.error)) {
+      const retryConfig = FailedTaskRunRetryHelper.getRetryConfig({
+        run: {
+          ...taskRunAttempt.taskRun,
+          lockedBy: taskRunAttempt.backgroundWorkerTask,
+          lockedToVersion: taskRunAttempt.backgroundWorker,
+        },
+        execution,
+      });
+
+      if (
+        retryConfig?.outOfMemory?.machine &&
+        retryConfig.outOfMemory.machine !== taskRunAttempt.taskRun.machinePreset
+      ) {
+        //we will retry
+        isOOMRetry = true;
+        retriableError = true;
+        executionRetry = FailedTaskRunRetryHelper.getExecutionRetry({
+          run: {
+            ...taskRunAttempt.taskRun,
+            lockedBy: taskRunAttempt.backgroundWorkerTask,
+            lockedToVersion: taskRunAttempt.backgroundWorker,
+          },
+          execution,
+        });
+
+        //update the machine on the run
+        await this._prisma.taskRun.update({
+          where: {
+            id: taskRunAttempt.taskRunId,
+          },
+          data: {
+            machinePreset: retryConfig.outOfMemory.machine,
+          },
+        });
+      }
+    }
 
     if (
       retriableError &&
@@ -257,6 +300,7 @@ export class CompleteAttemptService extends BaseService {
         taskRunAttempt,
         environment,
         checkpoint,
+        forceRequeue: isOOMRetry,
       });
     }
 
@@ -378,12 +422,14 @@ export class CompleteAttemptService extends BaseService {
     executionRetryInferred,
     checkpointEventId,
     supportsLazyAttempts,
+    forceRequeue = false,
   }: {
     run: TaskRun;
     executionRetry: TaskRunExecutionRetry;
     executionRetryInferred: boolean;
     checkpointEventId?: string;
     supportsLazyAttempts: boolean;
+    forceRequeue?: boolean;
   }) {
     const retryViaQueue = () => {
       logger.debug("[CompleteAttemptService] Enqueuing retry attempt", { runId: run.id });
@@ -434,6 +480,12 @@ export class CompleteAttemptService extends BaseService {
       return;
     }
 
+    if (forceRequeue) {
+      logger.debug("[CompleteAttemptService] Forcing retry via queue", { runId: run.id });
+      await retryViaQueue();
+      return;
+    }
+
     // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
     if (
       !this.opts.supportsRetryCheckpoints &&
@@ -466,6 +518,7 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt,
     environment,
     checkpoint,
+    forceRequeue = false,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
@@ -473,6 +526,7 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>;
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
+    forceRequeue?: boolean;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
@@ -533,6 +587,7 @@ export class CompleteAttemptService extends BaseService {
       executionRetry,
       supportsLazyAttempts: taskRunAttempt.backgroundWorker.supportsLazyAttempts,
       executionRetryInferred,
+      forceRequeue,
     });
 
     return "RETRIED";
@@ -633,4 +688,13 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
       },
     },
   });
+}
+
+function isOOMError(error: TaskRunError) {
+  if (error.type !== "INTERNAL_ERROR") return false;
+  if (error.code === "TASK_PROCESS_OOM_KILLED" || error.code === "TASK_PROCESS_MAYBE_OOM_KILLED") {
+    return true;
+  }
+
+  return false;
 }
