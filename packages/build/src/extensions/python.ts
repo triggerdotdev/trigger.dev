@@ -122,7 +122,10 @@ class PythonExtension implements BuildExtension {
   }
 }
 
-export const run = async (scriptArgs: string[] = [], options: ExecaOptions = {}) => {
+export const run = async (
+  scriptArgs: string[] = [],
+  options: ExecaOptions = {}
+): Promise<ReturnType<typeof execa>> => {
   const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
   const result = await execa({
