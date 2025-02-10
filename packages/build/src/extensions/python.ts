@@ -1,6 +1,6 @@
 import fs from "node:fs";
+import assert from "node:assert";
 import { execa } from "execa";
-import { assert } from "@std/assert";
 import { additionalFiles } from "@trigger.dev/build/extensions/core";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
