@@ -30,6 +30,11 @@ export class TaskRunHeartbeatFailedService extends BaseService {
             supportsLazyAttempts: true,
           },
         },
+        _count: {
+          select: {
+            attempts: true,
+          },
+        },
       },
     });
 
@@ -44,23 +49,32 @@ export class TaskRunHeartbeatFailedService extends BaseService {
     switch (taskRun.status) {
       case "PENDING": {
         if (taskRun.lockedAt) {
-          logger.debug(
-            "[RequeueTaskRunService] Failing task run because the heartbeat failed and it's PENDING but locked",
-            { taskRun }
-          );
+          if (taskRun._count.attempts === 0) {
+            //no attempts, so we can requeue
+            logger.debug("[RequeueTaskRunService] Requeueing task run, there were no attempts.", {
+              taskRun,
+            });
 
-          const service = new FailedTaskRunService();
+            await marqs?.nackMessage(taskRun.id);
+          } else {
+            logger.debug(
+              "[RequeueTaskRunService] Failing task run because the heartbeat failed, it's PENDING, locked, and has attempts",
+              { taskRun }
+            );
 
-          await service.call(taskRun.friendlyId, {
-            ok: false,
-            id: taskRun.friendlyId,
-            retry: undefined,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: TaskRunErrorCodes.TASK_RUN_HEARTBEAT_TIMEOUT,
-              message: "Did not receive a heartbeat from the worker in time",
-            },
-          });
+            const service = new FailedTaskRunService();
+
+            await service.call(taskRun.friendlyId, {
+              ok: false,
+              id: taskRun.friendlyId,
+              retry: undefined,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: TaskRunErrorCodes.TASK_RUN_HEARTBEAT_TIMEOUT,
+                message: "Did not receive a heartbeat from the worker in time",
+              },
+            });
+          }
         } else {
           logger.debug("[RequeueTaskRunService] Nacking task run", { taskRun });
 
