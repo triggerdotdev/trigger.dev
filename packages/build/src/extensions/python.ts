@@ -52,6 +52,10 @@ class PythonExtension implements BuildExtension {
     );
 
     if (this.options.requirementsFile) {
+      assert(
+        fs.existsSync(this.options.requirementsFile),
+        `Requirements file not found: ${this.options.requirementsFile}`
+      );
       this.options.requirements = splitAndCleanComments(
         fs.readFileSync(this.options.requirementsFile, "utf-8")
       );
