@@ -129,3 +129,110 @@ export const testReserveConcurrencyRecursiveWaits = task({
     };
   },
 });
+
+export const testChildTaskPriorityController = task({
+  id: "test-child-task-priority-controller",
+  run: async ({ delay = 5000 }: { delay: number }) => {
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testChildTaskPriorityParent = task({
+  id: "test-child-task-priority-parent",
+  run: async ({ delay = 5000 }: { delay: number }) => {
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    await testChildTaskPriorityChild.triggerAndWait({
+      delay,
+    });
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testChildTaskPriorityChildCreator = task({
+  id: "test-child-task-priority-child-creator",
+  run: async ({ delay = 5000 }: { delay: number }) => {
+    await testChildTaskPriorityChild.batchTrigger([
+      { payload: { delay, propagate: false } },
+      { payload: { delay, propagate: false } },
+      { payload: { delay, propagate: false } },
+      { payload: { delay, propagate: false } },
+    ]);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testChildTaskPriorityChild = task({
+  id: "test-child-task-priority-child",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async ({ delay = 5000, propagate }: { delay: number; propagate?: boolean }) => {
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    if (typeof propagate === "undefined" || propagate) {
+      await testChildTaskPriorityGrandChild.triggerAndWait({
+        delay,
+      });
+    }
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testChildTaskPriorityGrandChildCreator = task({
+  id: "test-child-task-priority-grand-child-creator",
+  run: async ({ delay = 5000 }: { delay: number }) => {
+    await testChildTaskPriorityGrandChild.batchTrigger([
+      { payload: { delay } },
+      { payload: { delay } },
+      { payload: { delay } },
+    ]);
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testChildTaskPriorityGrandChild = task({
+  id: "test-child-task-priority-grandchild",
+  queue: {
+    concurrencyLimit: 1,
+  },
+  run: async ({ delay = 5000 }: { delay: number }) => {
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});

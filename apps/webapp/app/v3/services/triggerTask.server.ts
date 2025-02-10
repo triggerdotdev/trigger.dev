@@ -185,6 +185,7 @@ export class TriggerTaskService extends BaseService {
                   taskIdentifier: true,
                   rootTaskRunId: true,
                   depth: true,
+                  queueTimestamp: true,
                 },
               },
             },
@@ -241,6 +242,7 @@ export class TriggerTaskService extends BaseService {
                       taskIdentifier: true,
                       rootTaskRunId: true,
                       depth: true,
+                      queueTimestamp: true,
                     },
                   },
                 },
@@ -366,6 +368,12 @@ export class TriggerTaskService extends BaseService {
                   ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
                   : 0;
 
+                const queueTimestamp =
+                  dependentAttempt?.taskRun.queueTimestamp ??
+                  dependentBatchRun?.dependentTaskAttempt?.taskRun.queueTimestamp ??
+                  delayUntil ??
+                  new Date();
+
                 const taskRun = await tx.taskRun.create({
                   data: {
                     status: delayUntil ? "DELAYED" : "PENDING",
@@ -393,6 +401,7 @@ export class TriggerTaskService extends BaseService {
                     isTest: body.options?.test ?? false,
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
+                    queueTimestamp,
                     maxAttempts: body.options?.maxAttempts,
                     ttl,
                     tags:
@@ -571,7 +580,8 @@ export class TriggerTaskService extends BaseService {
                   environmentId: environment.id,
                   environmentType: environment.type,
                 },
-                body.options?.concurrencyKey
+                body.options?.concurrencyKey,
+                run.queueTimestamp ?? undefined
               );
             }
 

@@ -1729,6 +1729,9 @@ model TaskRun {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
+  /// Specify the time at which the message should be enqueued
+  queueTimestamp DateTime?
+
   batchItems             BatchTaskRunItem[]
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]

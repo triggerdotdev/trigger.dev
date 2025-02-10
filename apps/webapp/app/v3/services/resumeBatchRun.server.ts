@@ -186,6 +186,7 @@ export class ResumeBatchRunService extends BaseService {
           dependentTaskAttemptId: dependentTaskAttempt.id,
         });
 
+        // TODO: use the new priority queue thingie
         await marqs?.enqueueMessage(
           environment,
           dependentRun.queue,

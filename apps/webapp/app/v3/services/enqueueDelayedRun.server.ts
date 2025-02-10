@@ -94,7 +94,8 @@ export class EnqueueDelayedRunService extends BaseService {
         environmentId: run.runtimeEnvironment.id,
         environmentType: run.runtimeEnvironment.type,
       },
-      run.concurrencyKey ?? undefined
+      run.concurrencyKey ?? undefined,
+      run.queueTimestamp ?? undefined
     );
   }
 }

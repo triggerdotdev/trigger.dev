@@ -174,7 +174,7 @@ export class MarQS {
     messageId: string,
     messageData: Record<string, unknown>,
     concurrencyKey?: string,
-    timestamp?: number
+    timestamp?: number | Date
   ) {
     return await this.#trace(
       "enqueueMessage",
@@ -190,7 +190,12 @@ export class MarQS {
           data: messageData,
           queue: messageQueue,
           concurrencyKey,
-          timestamp: timestamp ?? Date.now(),
+          timestamp:
+            typeof timestamp === "undefined"
+              ? Date.now()
+              : typeof timestamp === "number"
+              ? timestamp
+              : timestamp.getTime(),
           messageId,
           parentQueue,
         };
