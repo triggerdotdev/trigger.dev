@@ -25,50 +25,6 @@ export async function registerProjectMetrics(
     },
   });
 
-  const firstEnv = allEnvironments[0];
-
-  if (firstEnv) {
-    new Gauge({
-      name: sanitizeMetricName(`trigger_org_queue_concurrency`),
-      help: `The number of tasks currently being executed in the org environment queue`,
-      registers: [registry],
-      async collect() {
-        const length = await marqs?.currentConcurrencyOfOrg(firstEnv);
-
-        if (length) {
-          this.set(length);
-        }
-      },
-    });
-
-    new Gauge({
-      name: sanitizeMetricName(`trigger_org_queue_concurrency_limit`),
-      help: `The concurrency limit for the org queue`,
-      registers: [registry],
-      async collect() {
-        const length = await marqs?.getOrgConcurrencyLimit(firstEnv);
-
-        if (length) {
-          this.set(length);
-        }
-      },
-    });
-
-    new Gauge({
-      name: sanitizeMetricName(`trigger_org_queue_capacity`),
-      help: "The capacity of the org queue",
-      registers: [registry],
-      async collect() {
-        const concurrencyLimit = await marqs?.getOrgConcurrencyLimit(firstEnv);
-        const currentConcurrency = await marqs?.currentConcurrencyOfOrg(firstEnv);
-
-        if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
-          this.set(concurrencyLimit - currentConcurrency);
-        }
-      },
-    });
-  }
-
   for (const env of allEnvironments) {
     if (env.type === "DEVELOPMENT" && env.orgMember?.userId === userId) {
       await registerEnvironmentMetrics(env, registry);
