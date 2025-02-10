@@ -49,6 +49,8 @@ export class ResumeTaskDependencyService extends BaseService {
           runId: dependentRun.id,
         }
       );
+
+      // TODO: use the new priority queue thingie
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
