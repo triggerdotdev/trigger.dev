@@ -28,6 +28,7 @@
       "./extensions/prisma": "./src/extensions/prisma.ts",
       "./extensions/audioWaveform": "./src/extensions/audioWaveform.ts",
       "./extensions/typescript": "./src/extensions/typescript.ts",
+      "./extensions/python": "./src/extensions/python.ts",
       "./extensions/puppeteer": "./src/extensions/puppeteer.ts"
     },
     "sourceDialects": [
@@ -50,6 +51,9 @@
       ],
       "extensions/typescript": [
         "dist/commonjs/extensions/typescript.d.ts"
+      ],
+      "extensions/python": [
+        "dist/commonjs/extensions/python.d.ts"
       ],
       "extensions/puppeteer": [
         "dist/commonjs/extensions/puppeteer.d.ts"
@@ -150,6 +154,17 @@
       "require": {
         "types": "./dist/commonjs/extensions/typescript.d.ts",
         "default": "./dist/commonjs/extensions/typescript.js"
+      }
+    },
+    "./extensions/python": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/python.ts",
+        "types": "./dist/esm/extensions/python.d.ts",
+        "default": "./dist/esm/extensions/python.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/python.d.ts",
+        "default": "./dist/commonjs/extensions/python.js"
       }
     },
     "./extensions/puppeteer": {
