@@ -50,8 +50,6 @@ export class TaskRunHeartbeatFailedService extends BaseService {
 
     switch (taskRun.status) {
       case "PENDING":
-      case "EXECUTING":
-      case "RETRYING_AFTER_FAILURE":
       case "WAITING_TO_RESUME":
       case "PAUSED": {
         const backInQueue = await marqs?.nackMessage(taskRun.id);
@@ -82,9 +80,29 @@ export class TaskRunHeartbeatFailedService extends BaseService {
 
         break;
       }
+      case "EXECUTING":
+      case "RETRYING_AFTER_FAILURE": {
+        logger.debug(`[RequeueTaskRunService] ${taskRun.status} failing task run`, { taskRun });
+
+        await service.call(taskRun.friendlyId, {
+          ok: false,
+          id: taskRun.friendlyId,
+          retry: undefined,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: TaskRunErrorCodes.TASK_RUN_HEARTBEAT_TIMEOUT,
+            message: "Did not receive a heartbeat from the worker in time",
+          },
+        });
+
+        break;
+      }
       case "DELAYED":
       case "WAITING_FOR_DEPLOY": {
-        logger.debug("[TaskRunHeartbeatFailedService] Removing task run from queue", { taskRun });
+        logger.debug(
+          `[TaskRunHeartbeatFailedService] ${taskRun.status} Removing task run from queue`,
+          { taskRun }
+        );
 
         await marqs?.acknowledgeMessage(
           taskRun.id,
