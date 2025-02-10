@@ -18,6 +18,7 @@ import { PodCleaner } from "./podCleaner";
 import { TaskMonitor } from "./taskMonitor";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
 import { assertExhaustive } from "@trigger.dev/core";
+import { CustomLabelHelper } from "./labelHelper";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -72,6 +73,8 @@ class KubernetesTaskOperations implements TaskOperations {
     batch: k8s.BatchV1Api;
     apps: k8s.AppsV1Api;
   };
+
+  #labelHelper = new CustomLabelHelper();
 
   constructor(opts: { namespace?: string } = {}) {
     if (opts.namespace) {
@@ -165,6 +168,7 @@ class KubernetesTaskOperations implements TaskOperations {
           name: containerName,
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#labelHelper.getAdditionalLabels("create"),
             ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
@@ -226,6 +230,7 @@ class KubernetesTaskOperations implements TaskOperations {
           name: `${this.#getRunContainerName(opts.runId)}-${opts.checkpointId.slice(-8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#labelHelper.getAdditionalLabels("restore"),
             ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
