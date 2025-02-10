@@ -260,7 +260,11 @@ export class CompleteAttemptService extends BaseService {
         execution,
       });
 
-      if (retryConfig?.outOfMemory?.machine) {
+      if (
+        retryConfig?.outOfMemory?.machine &&
+        retryConfig.outOfMemory.machine !== taskRunAttempt.taskRun.machinePreset
+      ) {
+        //we will retry
         isOOMRetry = true;
         retriableError = true;
         executionRetry = FailedTaskRunRetryHelper.getExecutionRetry({
@@ -479,6 +483,7 @@ export class CompleteAttemptService extends BaseService {
     if (forceRequeue) {
       logger.debug("[CompleteAttemptService] Forcing retry via queue", { runId: run.id });
       await retryViaQueue();
+      return;
     }
 
     // Workers that never checkpoint between attempts will exit after completing their current attempt if the retry delay exceeds the threshold
