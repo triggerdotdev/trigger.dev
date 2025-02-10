@@ -150,10 +150,19 @@ export const runScript = (
   return run([scriptPath, ...scriptArgs], options);
 };
 
-export const runInline = (scriptContent: string, options: ExecaOptions = {}) => {
+export const runInline = async (scriptContent: string, options: ExecaOptions = {}) => {
   assert(scriptContent, "Script content is required");
 
-  return run([""], { input: scriptContent, ...options });
+  // Create a temporary file with restricted permissions
+  const tmpFile = `/tmp/script_${Date.now()}.py`;
+  await fs.promises.writeFile(tmpFile, scriptContent, { mode: 0o600 });
+  
+  try {
+    return await runScript(tmpFile, [], options);
+  } finally {
+    // Clean up temporary file
+    await fs.promises.unlink(tmpFile);
+  }
 };
 
 export default { run, runScript, runInline };
