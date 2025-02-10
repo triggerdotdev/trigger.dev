@@ -12,6 +12,8 @@ export interface MarQSKeyProducer {
   envCurrentConcurrencyKey(envId: string): string;
   envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
 
+  envReserveConcurrencyKey(envId: string): string;
+
   queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
 
@@ -29,6 +31,7 @@ export interface MarQSKeyProducer {
   ): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
+  envReserveConcurrencyKeyFromQueue(queue: string): string;
   envQueueKeyFromQueue(queue: string): string;
   messageKey(messageId: string): string;
   nackCounterKey(messageId: string): string;

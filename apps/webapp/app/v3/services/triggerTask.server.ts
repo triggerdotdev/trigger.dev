@@ -547,18 +547,13 @@ export class TriggerTaskService extends BaseService {
               this._prisma
             );
 
-            //release the concurrency for the env and org, if part of a (batch)triggerAndWait
+            // If this is a triggerAndWait or batchTriggerAndWait,
+            // we need to add the parent run to the reserve concurrency set
+            // to free up concurrency for the children to run
             if (dependentAttempt) {
-              const isSameTask = dependentAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(dependentAttempt.taskRun.id, isSameTask);
-            }
-            if (dependentBatchRun?.dependentTaskAttempt) {
-              const isSameTask =
-                dependentBatchRun.dependentTaskAttempt.taskRun.taskIdentifier === taskId;
-              await marqs?.releaseConcurrency(
-                dependentBatchRun.dependentTaskAttempt.taskRun.id,
-                isSameTask
-              );
+              await marqs?.reserveConcurrency(dependentAttempt.taskRun.id);
+            } else if (dependentBatchRun?.dependentTaskAttempt) {
+              await marqs?.reserveConcurrency(dependentBatchRun.dependentTaskAttempt.taskRun.id);
             }
 
             if (!run) {

@@ -49,6 +49,7 @@ export type FairDequeuingStrategyOptions = {
 type FairQueueConcurrency = {
   current: number;
   limit: number;
+  reserve: number;
 };
 
 type FairQueue = { id: string; age: number; org: string; env: string };
@@ -365,7 +366,7 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       );
 
       const envsAtFullConcurrency = envs.filter(
-        (env) => env.concurrency.current >= env.concurrency.limit
+        (env) => env.concurrency.current >= env.concurrency.limit + env.concurrency.reserve
       );
 
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
@@ -454,15 +455,17 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
     return await startSpan(this.options.tracer, "getEnvConcurrency", async (span) => {
       span.setAttribute("env_id", envId);
 
-      const [currentValue, limitValue] = await Promise.all([
+      const [currentValue, limitValue, reserveValue] = await Promise.all([
         this.#getEnvCurrentConcurrency(envId),
         this.#getEnvConcurrencyLimit(envId),
+        this.#getEnvReserveConcurrency(envId),
       ]);
 
       span.setAttribute("current_value", currentValue);
       span.setAttribute("limit_value", limitValue);
+      span.setAttribute("reserve_value", reserveValue);
 
-      return { current: currentValue, limit: limitValue };
+      return { current: currentValue, limit: limitValue, reserve: reserveValue };
     });
   }
 
@@ -527,6 +530,20 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       span.setAttribute("env_id", envId);
 
       const key = this.options.keys.envCurrentConcurrencyKey(envId);
+
+      const result = await this.options.redis.scard(key);
+
+      span.setAttribute("current_value", result);
+
+      return result;
+    });
+  }
+
+  async #getEnvReserveConcurrency(envId: string) {
+    return await startSpan(this.options.tracer, "getEnvReserveConcurrency", async (span) => {
+      span.setAttribute("env_id", envId);
+
+      const key = this.options.keys.envReserveConcurrencyKey(envId);
 
       const result = await this.options.redis.scard(key);
 
