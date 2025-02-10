@@ -316,8 +316,21 @@
     {
       "group": "Guides",
       "pages": [
-        "guides/frameworks/prisma",
+        {
+          "group": "AI Agents",
+          "icon": "microchip-ai",
+          "iconType": "regular",
+          "pages": [
+            "guides/ai-agents/overview",
+            "guides/ai-agents/generate-translate-copy",
+            "guides/ai-agents/route-question",
+            "guides/ai-agents/respond-and-check-content",
+            "guides/ai-agents/verify-news-article",
+            "guides/ai-agents/translate-and-refine"
+          ]
+        },
         "guides/frameworks/drizzle",
+        "guides/frameworks/prisma",
         "guides/frameworks/sequin",
         {
           "group": "Supabase",
