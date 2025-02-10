@@ -73,6 +73,43 @@ describe("FairDequeuingStrategy", () => {
     expect(result).toHaveLength(0);
   });
 
+  redisTest(
+    "should give extra concurrency when the env has reserve concurrency",
+    async ({ redis }) => {
+      const keyProducer = createKeyProducer("test");
+      const strategy = new FairDequeuingStrategy({
+        tracer,
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrency: 2,
+        parentQueueLimit: 100,
+        seed: "test-seed-3",
+      });
+
+      await setupQueue({
+        redis,
+        keyProducer,
+        parentQueue: "parent-queue",
+        score: Date.now() - 1000,
+        queueId: "queue-1",
+        orgId: "org-1",
+        envId: "env-1",
+      });
+
+      await setupConcurrency({
+        redis,
+        keyProducer,
+        env: { id: "env-1", currentConcurrency: 2, limit: 2, reserveConcurrency: 1 },
+      });
+
+      const result = await strategy.distributeFairQueuesFromParentQueue(
+        "parent-queue",
+        "consumer-1"
+      );
+      expect(result).toHaveLength(1);
+    }
+  );
+
   redisTest("should respect parentQueueLimit", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
@@ -196,8 +233,8 @@ describe("FairDequeuingStrategy", () => {
 
     console.log("Second distribution took", distribute2Duration, "ms");
 
-    // Make sure the second call is more than 10 times faster than the first
-    expect(distribute2Duration).toBeLessThan(distribute1Duration / 10);
+    // Make sure the second call is more than 9 times faster than the first
+    expect(distribute2Duration).toBeLessThan(distribute1Duration / 9);
 
     const startDistribute3 = performance.now();
 

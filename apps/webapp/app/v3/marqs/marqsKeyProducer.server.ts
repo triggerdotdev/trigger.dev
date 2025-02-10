@@ -11,6 +11,7 @@ const constants = {
   QUEUE_PART: "queue",
   CONCURRENCY_KEY_PART: "ck",
   MESSAGE_PART: "message",
+  RESERVE_CONCURRENCY_PART: "reserveConcurrency",
 } as const;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
@@ -118,6 +119,16 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const envId = this.normalizeQueue(queue).split(":")[3];
 
     return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  envReserveConcurrencyKeyFromQueue(queue: string) {
+    const envId = this.normalizeQueue(queue).split(":")[3];
+
+    return this.envReserveConcurrencyKey(envId);
+  }
+
+  envReserveConcurrencyKey(envId: string): string {
+    return `${constants.ENV_PART}:${envId}:${constants.RESERVE_CONCURRENCY_PART}`;
   }
 
   envCurrentConcurrencyKey(envId: string): string;

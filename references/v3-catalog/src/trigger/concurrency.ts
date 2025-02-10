@@ -17,21 +17,37 @@ export const oneAtATime = task({
 });
 
 export const testConcurrency = task({
-  id: "test-concurrency",
-  run: async ({ count = 10, delay = 5000 }: { count: number; delay: number }) => {
-    logger.info(`Running ${count} tasks`);
+  id: "test-concurrency-controller",
+  run: async ({
+    count = 10,
+    delay = 5000,
+    childDelay = 1000,
+  }: {
+    count: number;
+    delay: number;
+    childDelay: number;
+  }) => {
+    logger.info(`Running ${count} tasks baby`);
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    await testConcurrencyChild.batchTrigger(
+    await testConcurrencyParent.batchTrigger(
       Array.from({ length: count }).map((_, index) => ({
         payload: {
           delay,
+          childDelay,
         },
       }))
     );
 
     logger.info(`All ${count} tasks triggered`);
+
+    // wait for about 2 seconds
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Now trigger the parent task again
+    await testConcurrencyParent.trigger({
+      delay,
+      childDelay,
+    });
 
     return {
       finished: new Date().toISOString(),
@@ -39,10 +55,25 @@ export const testConcurrency = task({
   },
 });
 
+export const testConcurrencyParent = task({
+  id: "test-concurrency-parent",
+  run: async ({ delay = 5000, childDelay = 1000 }: { delay: number; childDelay: number }) => {
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    return await testConcurrencyChild.triggerAndWait({
+      delay: childDelay,
+    });
+  },
+});
+
 export const testConcurrencyChild = task({
   id: "test-concurrency-child",
   queue: {
-    concurrencyLimit: 1,
+    concurrencyLimit: 10,
   },
   run: async ({ delay = 5000 }: { delay: number }) => {
     logger.info(`Delaying for ${delay}ms`);
@@ -50,6 +81,48 @@ export const testConcurrencyChild = task({
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     logger.info(`Delay of ${delay}ms completed`);
+
+    return {
+      completedAt: new Date(),
+    };
+  },
+});
+
+export const testReserveConcurrencyRecursiveWaits = task({
+  id: "test-reserve-concurrency-recursive-waits",
+  queue: {
+    concurrencyLimit: 10,
+  },
+  run: async ({
+    delay = 5000,
+    depth = 2,
+    currentDepth = 0,
+  }: {
+    delay: number;
+    depth: number;
+    currentDepth?: number;
+  }) => {
+    logger.info(`Running task at depth ${currentDepth}`);
+
+    logger.info(`Delaying for ${delay}ms`);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    logger.info(`Delay of ${delay}ms completed`);
+
+    if (currentDepth < depth) {
+      logger.info(`Triggering child task at depth ${currentDepth + 1}`);
+
+      await testReserveConcurrencyRecursiveWaits.triggerAndWait({
+        delay,
+        depth,
+        currentDepth: currentDepth + 1,
+      });
+
+      logger.info(`Child task at depth ${currentDepth + 1} completed`);
+    }
+
+    logger.info(`Task at depth ${currentDepth} completed`);
 
     return {
       completedAt: new Date(),

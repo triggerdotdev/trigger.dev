@@ -48,7 +48,7 @@ export async function setupQueue({
 type SetupConcurrencyOptions = {
   redis: Redis;
   keyProducer: MarQSKeyProducer;
-  env: { id: string; currentConcurrency: number; limit?: number };
+  env: { id: string; currentConcurrency: number; limit?: number; reserveConcurrency?: number };
 };
 
 /**
@@ -71,6 +71,19 @@ export async function setupConcurrency({ redis, keyProducer, env }: SetupConcurr
     );
 
     await redis.sadd(envCurrentKey, ...dummyJobs);
+  }
+
+  if (env.reserveConcurrency && env.reserveConcurrency > 0) {
+    // Set reserved concurrency by adding dummy members to the set
+    const envReservedKey = keyProducer.envReserveConcurrencyKey(env.id);
+
+    // Add dummy reserved job IDs to simulate reserved concurrency
+    const dummyJobs = Array.from(
+      { length: env.reserveConcurrency },
+      (_, i) => `dummy-reserved-job-${i}-${Date.now()}`
+    );
+
+    await redis.sadd(envReservedKey, ...dummyJobs);
   }
 }
 
