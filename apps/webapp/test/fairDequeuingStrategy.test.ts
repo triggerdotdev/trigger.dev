@@ -14,13 +14,12 @@ const tracer = trace.getTracer("test");
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
 describe("FairDequeuingStrategy", () => {
-  redisTest("should distribute a single queue from a single org/env", async ({ redis }) => {
+  redisTest("should distribute a single queue from a single env", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
       tracer,
       redis,
       keys: keyProducer,
-      defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
       seed: "test-seed-1", // for deterministic shuffling
@@ -43,48 +42,12 @@ describe("FairDequeuingStrategy", () => {
     expect(result[0]).toBe("org:org-1:env:env-1:queue:queue-1");
   });
 
-  redisTest("should respect org concurrency limits", async ({ redis }) => {
-    const keyProducer = createKeyProducer("test");
-    const strategy = new FairDequeuingStrategy({
-      tracer,
-      redis,
-      keys: keyProducer,
-      defaultOrgConcurrency: 2,
-      defaultEnvConcurrency: 5,
-      parentQueueLimit: 100,
-      seed: "test-seed-2",
-    });
-
-    // Setup queue
-    await setupQueue({
-      redis,
-      keyProducer,
-      parentQueue: "parent-queue",
-      score: Date.now() - 1000,
-      queueId: "queue-1",
-      orgId: "org-1",
-      envId: "env-1",
-    });
-
-    // Set org-1 to be at its concurrency limit
-    await setupConcurrency({
-      redis,
-      keyProducer,
-      org: { id: "org-1", currentConcurrency: 2, limit: 2 },
-      env: { id: "env-1", currentConcurrency: 0 },
-    });
-
-    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
-    expect(result).toHaveLength(0);
-  });
-
   redisTest("should respect env concurrency limits", async ({ redis }) => {
     const keyProducer = createKeyProducer("test");
     const strategy = new FairDequeuingStrategy({
       tracer,
       redis,
       keys: keyProducer,
-      defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 2,
       parentQueueLimit: 100,
       seed: "test-seed-3",
@@ -103,7 +66,6 @@ describe("FairDequeuingStrategy", () => {
     await setupConcurrency({
       redis,
       keyProducer,
-      org: { id: "org-1", currentConcurrency: 0 },
       env: { id: "env-1", currentConcurrency: 2, limit: 2 },
     });
 
@@ -117,7 +79,6 @@ describe("FairDequeuingStrategy", () => {
       tracer,
       redis,
       keys: keyProducer,
-      defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 2, // Only take 2 queues
       seed: "test-seed-6",
@@ -171,7 +132,6 @@ describe("FairDequeuingStrategy", () => {
       tracer,
       redis,
       keys: keyProducer,
-      defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 10,
       seed: "test-seed-reuse-1",
@@ -260,7 +220,6 @@ describe("FairDequeuingStrategy", () => {
       tracer,
       redis,
       keys: keyProducer,
-      defaultOrgConcurrency: 10,
       defaultEnvConcurrency: 5,
       parentQueueLimit: 100,
       seed: "test-seed-5",
@@ -296,7 +255,6 @@ describe("FairDequeuingStrategy", () => {
         await setupConcurrency({
           redis,
           keyProducer,
-          org: { id: orgId, currentConcurrency: 2, limit: 10 },
           env: { id: envId, currentConcurrency: 1, limit: 5 },
         });
       }
@@ -417,7 +375,6 @@ describe("FairDequeuingStrategy", () => {
         tracer,
         redis,
         keys: keyProducer,
-        defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
         seed: "fixed-seed",
@@ -472,13 +429,11 @@ describe("FairDequeuingStrategy", () => {
       await setupConcurrency({
         redis,
         keyProducer,
-        org: { id: "org-1", currentConcurrency: 0, limit: 10 },
         env: { id: "env-1", currentConcurrency: 0, limit: 5 },
       });
       await setupConcurrency({
         redis,
         keyProducer,
-        org: { id: "org-1", currentConcurrency: 0, limit: 10 },
         env: { id: "env-2", currentConcurrency: 0, limit: 5 },
       });
 
@@ -546,7 +501,6 @@ describe("FairDequeuingStrategy", () => {
         await setupConcurrency({
           redis,
           keyProducer,
-          org: { id: "org-1", currentConcurrency: 0, limit: 200 },
           env: {
             id: setup.envId,
             currentConcurrency: setup.current,
@@ -576,7 +530,6 @@ describe("FairDequeuingStrategy", () => {
             tracer,
             redis,
             keys: keyProducer,
-            defaultOrgConcurrency: 10,
             defaultEnvConcurrency: 5,
             parentQueueLimit: 100,
             seed: `test-seed-${i}`,
@@ -660,7 +613,6 @@ describe("FairDequeuingStrategy", () => {
         tracer,
         redis,
         keys: keyProducer,
-        defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
         seed: "fixed-seed",
@@ -709,7 +661,6 @@ describe("FairDequeuingStrategy", () => {
     await setupConcurrency({
       redis,
       keyProducer,
-      org: { id: "org-1", currentConcurrency: 0, limit: 10 },
       env: { id: "env-1", currentConcurrency: 0, limit: 5 },
     });
 
@@ -738,46 +689,45 @@ describe("FairDequeuingStrategy", () => {
   });
 
   redisTest(
-    "should respect maximumOrgCount and select orgs based on queue ages",
+    "should respect maximumEnvCount and select envs based on queue ages",
     async ({ redis }) => {
       const keyProducer = createKeyProducer("test");
       const strategy = new FairDequeuingStrategy({
         tracer,
         redis,
         keys: keyProducer,
-        defaultOrgConcurrency: 10,
         defaultEnvConcurrency: 5,
         parentQueueLimit: 100,
         seed: "test-seed-max-orgs",
-        maximumOrgCount: 2, // Only select top 2 orgs
+        maximumEnvCount: 2, // Only select top 2 orgs
       });
 
       const now = Date.now();
 
-      // Setup 4 orgs with different queue age profiles
-      const orgSetups = [
+      // Setup 4 envs with different queue age profiles
+      const envSetups = [
         {
-          orgId: "org-1",
+          envId: "env-1",
           queues: [
             { age: 1000 }, // Average age: 1000
           ],
         },
         {
-          orgId: "org-2",
+          envId: "env-2",
           queues: [
             { age: 5000 }, // Average age: 5000
             { age: 5000 },
           ],
         },
         {
-          orgId: "org-3",
+          envId: "env-3",
           queues: [
             { age: 2000 }, // Average age: 2000
             { age: 2000 },
           ],
         },
         {
-          orgId: "org-4",
+          envId: "env-4",
           queues: [
             { age: 500 }, // Average age: 500
             { age: 500 },
@@ -786,12 +736,11 @@ describe("FairDequeuingStrategy", () => {
       ];
 
       // Setup queues and concurrency for each org
-      for (const setup of orgSetups) {
+      for (const setup of envSetups) {
         await setupConcurrency({
           redis,
           keyProducer,
-          org: { id: setup.orgId, currentConcurrency: 0, limit: 10 },
-          env: { id: "env-1", currentConcurrency: 0, limit: 5 },
+          env: { id: setup.envId, currentConcurrency: 0, limit: 5 },
         });
 
         for (let i = 0; i < setup.queues.length; i++) {
@@ -800,16 +749,16 @@ describe("FairDequeuingStrategy", () => {
             keyProducer,
             parentQueue: "parent-queue",
             score: now - setup.queues[i].age,
-            queueId: `queue-${setup.orgId}-${i}`,
-            orgId: setup.orgId,
-            envId: "env-1",
+            queueId: `queue-${setup.envId}-${i}`,
+            orgId: `org-${setup.envId}`,
+            envId: setup.envId,
           });
         }
       }
 
       // Run multiple iterations to verify consistent behavior
       const iterations = 100;
-      const selectedOrgCounts: Record<string, number> = {};
+      const selectedEnvCounts: Record<string, number> = {};
 
       for (let i = 0; i < iterations; i++) {
         const result = await strategy.distributeFairQueuesFromParentQueue(
@@ -818,38 +767,38 @@ describe("FairDequeuingStrategy", () => {
         );
 
         // Track which orgs were included in the result
-        const selectedOrgs = new Set(result.map((queueId) => keyProducer.orgIdFromQueue(queueId)));
+        const selectedEnvs = new Set(result.map((queueId) => keyProducer.envIdFromQueue(queueId)));
 
         // Verify we never get more than maximumOrgCount orgs
-        expect(selectedOrgs.size).toBeLessThanOrEqual(2);
+        expect(selectedEnvs.size).toBeLessThanOrEqual(2);
 
-        for (const orgId of selectedOrgs) {
-          selectedOrgCounts[orgId] = (selectedOrgCounts[orgId] || 0) + 1;
+        for (const envId of selectedEnvs) {
+          selectedEnvCounts[envId] = (selectedEnvCounts[envId] || 0) + 1;
         }
       }
 
-      console.log("Organization selection counts:", selectedOrgCounts);
+      console.log("Environment selection counts:", selectedEnvCounts);
 
       // org-2 should be selected most often (highest average age)
-      expect(selectedOrgCounts["org-2"]).toBeGreaterThan(selectedOrgCounts["org-4"] || 0);
+      expect(selectedEnvCounts["env-2"]).toBeGreaterThan(selectedEnvCounts["env-4"] || 0);
 
       // org-4 should be selected least often (lowest average age)
-      const org4Count = selectedOrgCounts["org-4"] || 0;
-      expect(org4Count).toBeLessThan(selectedOrgCounts["org-2"]);
+      const env4Count = selectedEnvCounts["env-4"] || 0;
+      expect(env4Count).toBeLessThan(selectedEnvCounts["env-2"]);
 
-      // Verify that orgs with higher average queue age are selected more frequently
-      const sortedOrgs = Object.entries(selectedOrgCounts).sort((a, b) => b[1] - a[1]);
-      console.log("Sorted organization frequencies:", sortedOrgs);
+      // Verify that envs with higher average queue age are selected more frequently
+      const sortedEnvs = Object.entries(selectedEnvCounts).sort((a, b) => b[1] - a[1]);
+      console.log("Sorted environment frequencies:", sortedEnvs);
 
-      // The top 2 most frequently selected orgs should be org-2 and org-3
+      // The top 2 most frequently selected orgs should be env-2 and env-3
       // as they have the highest average queue ages
-      const topTwoOrgs = new Set([sortedOrgs[0][0], sortedOrgs[1][0]]);
-      expect(topTwoOrgs).toContain("org-2"); // Highest average age
-      expect(topTwoOrgs).toContain("org-3"); // Second highest average age
+      const topTwoEnvs = new Set([sortedEnvs[0][0], sortedEnvs[1][0]]);
+      expect(topTwoEnvs).toContain("env-2"); // Highest average age
+      expect(topTwoEnvs).toContain("env-3"); // Second highest average age
 
       // Calculate selection percentages
-      const totalSelections = Object.values(selectedOrgCounts).reduce((a, b) => a + b, 0);
-      const selectionPercentages = Object.entries(selectedOrgCounts).reduce(
+      const totalSelections = Object.values(selectedEnvCounts).reduce((a, b) => a + b, 0);
+      const selectionPercentages = Object.entries(selectedEnvCounts).reduce(
         (acc, [orgId, count]) => {
           acc[orgId] = (count / totalSelections) * 100;
           return acc;
@@ -857,13 +806,13 @@ describe("FairDequeuingStrategy", () => {
         {} as Record<string, number>
       );
 
-      console.log("Organization selection percentages:", selectionPercentages);
+      console.log("Environment selection percentages:", selectionPercentages);
 
-      // Verify that org-2 (highest average age) gets selected in at least 40% of iterations
-      expect(selectionPercentages["org-2"]).toBeGreaterThan(40);
+      // Verify that env-2 (highest average age) gets selected in at least 40% of iterations
+      expect(selectionPercentages["env-2"]).toBeGreaterThan(40);
 
-      // Verify that org-4 (lowest average age) gets selected in less than 20% of iterations
-      expect(selectionPercentages["org-4"] || 0).toBeLessThan(20);
+      // Verify that env-4 (lowest average age) gets selected in less than 20% of iterations
+      expect(selectionPercentages["env-4"] || 0).toBeLessThan(20);
     }
   );
 });

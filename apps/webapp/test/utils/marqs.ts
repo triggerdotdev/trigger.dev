@@ -48,36 +48,13 @@ export async function setupQueue({
 type SetupConcurrencyOptions = {
   redis: Redis;
   keyProducer: MarQSKeyProducer;
-  org: { id: string; currentConcurrency: number; limit?: number; isDisabled?: boolean };
   env: { id: string; currentConcurrency: number; limit?: number };
 };
 
 /**
  * Sets up concurrency-related Redis keys for orgs and envs
  */
-export async function setupConcurrency({ redis, keyProducer, org, env }: SetupConcurrencyOptions) {
-  // Set org concurrency limit if provided
-  if (typeof org.limit === "number") {
-    await redis.set(keyProducer.orgConcurrencyLimitKey(org.id), org.limit.toString());
-  }
-
-  if (org.currentConcurrency > 0) {
-    // Set current concurrency by adding dummy members to the set
-    const orgCurrentKey = keyProducer.orgCurrentConcurrencyKey(org.id);
-
-    // Add dummy running job IDs to simulate current concurrency
-    const dummyJobs = Array.from(
-      { length: org.currentConcurrency },
-      (_, i) => `dummy-job-${i}-${Date.now()}`
-    );
-
-    await redis.sadd(orgCurrentKey, ...dummyJobs);
-  }
-
-  if (org.isDisabled) {
-    await redis.set(keyProducer.disabledConcurrencyLimitKey(org.id), "1");
-  }
-
+export async function setupConcurrency({ redis, keyProducer, env }: SetupConcurrencyOptions) {
   // Set env concurrency limit
   if (typeof env.limit === "number") {
     await redis.set(keyProducer.envConcurrencyLimitKey(env.id), env.limit.toString());

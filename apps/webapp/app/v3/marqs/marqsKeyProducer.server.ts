@@ -45,15 +45,6 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     ].join(":");
   }
 
-  orgConcurrencyLimitKey(orgId: string): string;
-  orgConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  orgConcurrencyLimitKey(envOrOrgId: AuthenticatedEnvironment | string) {
-    return [
-      this.orgKeySection(typeof envOrOrgId === "string" ? envOrOrgId : envOrOrgId.organizationId),
-      constants.CONCURRENCY_LIMIT_PART,
-    ].join(":");
-  }
-
   queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
   queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   queueKey(
@@ -117,28 +108,6 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     );
   }
 
-  disabledConcurrencyLimitKeyFromQueue(queue: string) {
-    const orgId = this.normalizeQueue(queue).split(":")[1];
-
-    return this.disabledConcurrencyLimitKey(orgId);
-  }
-
-  disabledConcurrencyLimitKey(orgId: string) {
-    return `${constants.ORG_PART}:${orgId}:${constants.DISABLED_CONCURRENCY_LIMIT_PART}`;
-  }
-
-  orgConcurrencyLimitKeyFromQueue(queue: string) {
-    const orgId = this.normalizeQueue(queue).split(":")[1];
-
-    return `${constants.ORG_PART}:${orgId}:${constants.CONCURRENCY_LIMIT_PART}`;
-  }
-
-  orgCurrentConcurrencyKeyFromQueue(queue: string) {
-    const orgId = this.normalizeQueue(queue).split(":")[1];
-
-    return `${constants.ORG_PART}:${orgId}:${constants.CURRENT_CONCURRENCY_PART}`;
-  }
-
   envConcurrencyLimitKeyFromQueue(queue: string) {
     const envId = this.normalizeQueue(queue).split(":")[3];
 
@@ -149,15 +118,6 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     const envId = this.normalizeQueue(queue).split(":")[3];
 
     return `${constants.ENV_PART}:${envId}:${constants.CURRENT_CONCURRENCY_PART}`;
-  }
-
-  orgCurrentConcurrencyKey(orgId: string): string;
-  orgCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
-  orgCurrentConcurrencyKey(envOrOrgId: AuthenticatedEnvironment | string): string {
-    return [
-      this.orgKeySection(typeof envOrOrgId === "string" ? envOrOrgId : envOrOrgId.organizationId),
-      constants.CURRENT_CONCURRENCY_PART,
-    ].join(":");
   }
 
   envCurrentConcurrencyKey(envId: string): string;
