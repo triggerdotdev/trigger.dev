@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.3.14
+
+### Patch Changes
+
+- Added the ability to retry runs that fail with an Out Of Memory (OOM) error on a larger machine. ([#1691](https://github.com/triggerdotdev/trigger.dev/pull/1691))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.14`
+
 ## 3.3.13
 
 ### Patch Changes
