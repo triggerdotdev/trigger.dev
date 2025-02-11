@@ -26,6 +26,16 @@ export const config: TriggerConfig = {
 };
 ```
 
+## Overriding the machine when triggering
+
+You can also override the task machine when you [trigger](/triggering) it:
+
+```ts
+await tasks.trigger<typeof heavyTask>("heavy-task", { message: "hello world" }, { machine: "large-2x" });
+```
+
+This is useful when you know that a certain payload will require more memory than the default machine. For example, you know it's a larger file or a customer that has a lot of data.
+
 ## Out Of Memory errors
 
 Sometimes you might see one of your runs fail with an "Out Of Memory" error.
