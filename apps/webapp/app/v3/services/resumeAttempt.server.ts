@@ -27,6 +27,8 @@ export class ResumeAttemptService extends BaseService {
       take: 1,
       select: {
         id: true,
+        number: true,
+        status: true,
       },
     } satisfies Prisma.TaskRunInclude["attempts"];
 
@@ -130,7 +132,20 @@ export class ResumeAttemptService extends BaseService {
             return;
           }
 
-          completedAttemptIds = dependentBatchItems.map((item) => item.taskRun.attempts[0]?.id);
+          //find the best attempt for each batch item
+          //it should be the most recent one in a final state
+          const finalAttempts = dependentBatchItems.map((item) => {
+            return item.taskRun.attempts
+              .filter((a) => FINAL_ATTEMPT_STATUSES.includes(a.status))
+              .sort((a, b) => b.number - a.number)[0];
+          });
+
+          completedAttemptIds = finalAttempts.map((a) => a.id);
+
+          if (completedAttemptIds.length !== dependentBatchItems.length) {
+            this._logger.error("[ResumeAttemptService] not all batch items have attempts");
+            return;
+          }
         } else {
           this._logger.error("No batch dependency");
           return;
