@@ -1,12 +1,10 @@
 import fs from "node:fs";
 import assert from "node:assert";
-import { execa } from "execa";
 import { additionalFiles } from "./core/additionalFiles.js";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import { logger } from "@trigger.dev/sdk/v3";
-
-import type { VerboseObject } from "execa";
+import { x, Options as XOptions, Result } from "tinyexec";
 
 export type PythonOptions = {
   requirements?: string[];
@@ -29,8 +27,6 @@ export type PythonOptions = {
    */
   scripts?: string[];
 };
-
-type ExecaOptions = Parameters<typeof execa>[1];
 
 const splitAndCleanComments = (str: string) =>
   str
@@ -124,18 +120,16 @@ class PythonExtension implements BuildExtension {
 
 export const run = async (
   scriptArgs: string[] = [],
-  options: ExecaOptions = {}
-): Promise<ReturnType<typeof execa>> => {
+  options: Partial<XOptions> = {}
+): Promise<Result> => {
   const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
-  const result = await execa({
-    shell: true,
-    verbose: (line: string, obj: VerboseObject) => logger.debug(obj.message, obj),
+  const result = await x(pythonBin, scriptArgs, {
     ...options,
-  })(pythonBin, scriptArgs);
+    throwOnError: false, // Ensure errors are handled manually
+  });
 
   try {
-    assert(!result.failed, `Python command failed: ${result.stderr}\nCommand: ${result.command}`);
     assert(
       result.exitCode === 0,
       `Python command exited with non-zero code ${result.exitCode}\nStdout: ${result.stdout}\nStderr: ${result.stderr}`
@@ -143,7 +137,7 @@ export const run = async (
   } catch (error) {
     logger.error("Python command execution failed", {
       error: error instanceof Error ? error.message : error,
-      command: result.command,
+      command: `${pythonBin} ${scriptArgs.join(" ")}`,
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
@@ -157,7 +151,7 @@ export const run = async (
 export const runScript = (
   scriptPath: string,
   scriptArgs: string[] = [],
-  options: ExecaOptions = {}
+  options: Partial<XOptions> = {}
 ) => {
   assert(scriptPath, "Script path is required");
   assert(fs.existsSync(scriptPath), `Script does not exist: ${scriptPath}`);
@@ -165,17 +159,15 @@ export const runScript = (
   return run([scriptPath, ...scriptArgs], options);
 };
 
-export const runInline = async (scriptContent: string, options: ExecaOptions = {}) => {
+export const runInline = async (scriptContent: string, options: Partial<XOptions> = {}) => {
   assert(scriptContent, "Script content is required");
 
-  // Create a temporary file with restricted permissions
   const tmpFile = `/tmp/script_${Date.now()}.py`;
   await fs.promises.writeFile(tmpFile, scriptContent, { mode: 0o600 });
 
   try {
     return await runScript(tmpFile, [], options);
   } finally {
-    // Clean up temporary file
     await fs.promises.unlink(tmpFile);
   }
 };
