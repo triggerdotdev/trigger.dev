@@ -442,6 +442,9 @@ const EnvironmentSchema = z.object({
     .default(process.env.REDIS_TLS_DISABLED ?? "false"),
   LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+  LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
+  LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
+
   COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
   COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
   COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
