@@ -696,5 +696,17 @@ function isOOMError(error: TaskRunError) {
     return true;
   }
 
+  // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
+  // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
+  // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
+  if (
+    error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
+    error.message &&
+    error.message.includes("SIGKILL") &&
+    error.message.includes("-1")
+  ) {
+    return true;
+  }
+
   return false;
 }

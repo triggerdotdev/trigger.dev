@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 3.3.14
+
+### Patch Changes
+
+- Missing construction option in `AudioWaveformExtension` ([#1684](https://github.com/triggerdotdev/trigger.dev/pull/1684))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.14`
+
 ## 3.3.13
 
 ### Patch Changes
