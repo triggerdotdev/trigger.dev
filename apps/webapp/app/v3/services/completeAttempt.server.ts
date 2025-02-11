@@ -285,23 +285,6 @@ export class CompleteAttemptService extends BaseService {
             machinePreset: retryConfig.outOfMemory.machine,
           },
         });
-
-        //complete the attempt span
-        await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-          endTime: failedAt,
-          attributes: {
-            isError: true,
-          },
-          events: [
-            {
-              name: "exception",
-              time: failedAt,
-              properties: {
-                exception: createExceptionPropertiesFromError(sanitizedError),
-              },
-            },
-          ],
-        });
       }
     }
 
