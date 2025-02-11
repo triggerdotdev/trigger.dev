@@ -1,12 +1,12 @@
 ---
 title: "Respond to customer inquiry and check for inappropriate content"
 sidebarTitle: "Respond & check content"
-description: "Create a AI agent workflow that responds to customer inquiries while checking if their text is inappropriate"
+description: "Create an AI agent workflow that responds to customer inquiries while checking if their text is inappropriate"
 ---
 
 ## Overview
 
-Parallelization is a workflow pattern where multiple tasks or processes run simultaneously instead of sequentially, allowing for more efficient use of resources and faster overall execution. It's particularly valuable when different parts of a task can be handled independently, such as running content analysis and response generation at the same time.
+**Parallelization** is a workflow pattern where multiple tasks or processes run simultaneously instead of sequentially, allowing for more efficient use of resources and faster overall execution. It's particularly valuable when different parts of a task can be handled independently, such as running content analysis and response generation at the same time.
 ![Parallelization](/guides/ai-agents/parallelization.png)
 
 ## Example task
@@ -16,8 +16,8 @@ In this example, we'll create a workflow that simultaneously checks content for 
 **This task:**
 
 - Uses `generateText` from [Vercel's AI SDK](https://sdk.vercel.ai/docs/introduction) to interact with OpenAI models
-- Uses `experimental_telemetry` in the source verification and historical analysis tasks to provide LLM logs
-- Uses `batch.triggerByTaskAndWait` to run customer response and content moderation tasks in parallel
+- Uses `experimental_telemetry` to provide LLM logs
+- Uses [`batch.triggerByTaskAndWait`](/triggering#batch-triggerbytaskandwait) to run customer response and content moderation tasks in parallel
 - Generates customer service responses using an AI model
 - Simultaneously checks for inappropriate content while generating responses
 
@@ -115,7 +115,7 @@ export const handleCustomerQuestion = task({
 
 ## Run a test
 
-On the Test page in the dashboard, select the `respond-and-check-content` task and include a payload like the following:
+On the Test page in the dashboard, select the `handle-customer-question` task and include a payload like the following:
 
 ``` json
 {

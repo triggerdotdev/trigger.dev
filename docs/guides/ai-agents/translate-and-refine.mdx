@@ -6,13 +6,13 @@ description: "This guide will show you how to create a task that translates text
 
 ## Overview
 
-This example is based on an "evaluator-optimizer" pattern, where one LLM generates a response while another provides evaluation and feedback in a loop. This is particularly effective for tasks with clear evaluation criteria where iterative refinement provides measurable value.
+This example is based on the **evaluator-optimizer** pattern, where one LLM generates a response while another provides evaluation and feedback in a loop. This is particularly effective for tasks with clear evaluation criteria where iterative refinement provides better results.
 
 ![Evaluator-optimizer](/guides/ai-agents/evaluator-optimizer.png)
 
 ## Example task
 
-Our example task is designed to translate text into a target language and refine the translation over a number of iterations based on feedback provided by the LLM.
+This example task translates text into a target language and refines the translation over a number of iterations based on feedback provided by the LLM.
 
 **This task:**
 
@@ -159,7 +159,7 @@ On the Test page in the dashboard, select the `translate-and-refine` task and in
 }
 ```
 
-This example payload translates the text into French and should be suitably difficult to require a few iterations, depending on the model used.
+This example payload translates the text into French and should be suitably difficult to require a few iterations, depending on the model used and the prompt criteria you set.
 
 <video 
   src="https://content.trigger.dev/agent-evaluator-optimizer.mp4"

@@ -1,27 +1,27 @@
 ---
 title: "Verify a news article"
 sidebarTitle: "Verify news article"
-description: "Create a AI agent workflow that verifies the facts in a news article"
+description: "Create an AI agent workflow that verifies the facts in a news article"
 ---
 
 ## Overview
 
-This example demonstrates the "orchestrator-workers" pattern, where a central AI agent dynamically breaks down complex tasks and delegates them to specialized worker agents. This pattern is particularly effective when tasks require multiple perspectives or parallel processing streams, with the orchestrator synthesizing the results into a cohesive output.
+This example demonstrates the **orchestrator-workers** pattern, where a central AI agent dynamically breaks down complex tasks and delegates them to specialized worker agents. This pattern is particularly effective when tasks require multiple perspectives or parallel processing streams, with the orchestrator synthesizing the results into a cohesive output.
 
 ![Orchestrator](/guides/ai-agents/orchestrator-workers.png)
 
 ## Example task
 
-Our example task uses multiple AI agents to extract claims from a news article and verify them in parallel, combining source verification and historical analysis to produce a comprehensive fact-checking report.
+Our example task uses multiple LLM calls to extract claims from a news article and analyze them in parallel, combining source verification and historical context to assess their credibility.
 
 **This task:**
 
 - Uses `generateText` from [Vercel's AI SDK](https://sdk.vercel.ai/docs/introduction) to interact with OpenAI models
-- Uses `experimental_telemetry` in the source verification and historical analysis tasks to provide LLM logs
-- Uses `batch.triggerByTaskAndWait` to orchestrate parallel processing of claims
-- Extracts factual claims from news articles using an AI model
-- Verifies claims against recent sources and analyzes historical context in parallel
-- Combines results into a comprehensive fact-checking report
+- Uses `experimental_telemetry` to provide LLM logs
+- Uses [`batch.triggerByTaskAndWait`](/triggering#batch-triggerbytaskandwait) to orchestrate parallel processing of claims
+- Extracts factual claims from news articles using the `o1-mini` model
+- Evaluates claims against recent sources and analyzes historical context in parallel
+- Combines results into a structured analysis report
 
 
 ```typescript

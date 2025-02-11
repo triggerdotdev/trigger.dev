@@ -6,7 +6,7 @@ description: "Create an AI agent workflow that routes a question to a different 
 
 ## Overview
 
-Routing is a workflow pattern that classifies an input and directs it to a specialized followup task. This pattern allows for separation of concerns and building more specialized prompts, which is particularly effective when there are distinct categories that are better handled separately. Without routing, optimizing for one kind of input can hurt performance on other inputs.
+**Routing** is a workflow pattern that classifies an input and directs it to a specialized followup task. This pattern allows for separation of concerns and building more specialized prompts, which is particularly effective when there are distinct categories that are better handled separately. Without routing, optimizing for one kind of input can hurt performance on other inputs.
 
 ![Routing](/guides/ai-agents/routing.png)
 
@@ -18,6 +18,9 @@ In this example, we'll create a workflow that routes a question to a different A
 
 - Uses `generateText` from [Vercel's AI SDK](https://sdk.vercel.ai/docs/introduction) to interact with OpenAI models
 - Uses `experimental_telemetry` in the source verification and historical analysis tasks to provide LLM logs
+- Routes questions using a lightweight model (`o1-mini`) to classify complexity
+- Directs simple questions to `gpt-4o` and complex ones to `gpt-o3-mini`
+- Returns both the answer and metadata about the routing decision
 
 ```typescript
 import { openai } from "@ai-sdk/openai";
@@ -101,8 +104,6 @@ Triggering our task with a simple question shows it routing to the gpt-4o model 
   "question": "How many planets are there in the solar system?"
 }
 ```
-
-This example payload routes the question to a different AI model depending on its complexity.
 
 <video 
   src="https://content.trigger.dev/agent-routing.mp4"

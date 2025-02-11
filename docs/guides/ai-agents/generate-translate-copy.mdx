@@ -17,7 +17,7 @@ In this example, we'll create a workflow that generates and translates copy. Thi
 **This task:**
 
 - Uses `generateText` from [Vercel's AI SDK](https://sdk.vercel.ai/docs/introduction) to interact with OpenAI models
-- Uses `experimental_telemetry` in the source verification and historical analysis tasks to provide LLM logs
+- Uses `experimental_telemetry` to provide LLM logs
 - Generates marketing copy based on subject and target word count
 - Validates the generated copy meets word count requirements (±10 words)
 - Translates the validated copy to the target language while preserving tone
