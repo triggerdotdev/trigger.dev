@@ -118,8 +118,6 @@ export class CustomLabelHelper {
       const labelName = this.getLabelNameFromEnvVarKey(type, key);
       const sampleRate = this.getSampleRateFromEnvVarKey(type, key);
 
-      console.log({ key, value, sampleRate, labelName });
-
       const label = {
         key: labelName,
         value: value || "",
@@ -128,11 +126,6 @@ export class CustomLabelHelper {
 
       customLabels.push(label);
     }
-
-    console.log({
-      type,
-      customLabels,
-    });
 
     return customLabels;
   }

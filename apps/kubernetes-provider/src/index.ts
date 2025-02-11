@@ -426,8 +426,6 @@ class KubernetesTaskOperations implements TaskOperations {
       (name) => ({ name }) satisfies k8s.V1LocalObjectReference
     );
 
-    console.log("imagePullSecrets", imagePullSecrets);
-
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
