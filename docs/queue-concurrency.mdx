@@ -180,7 +180,7 @@ export const subtask = task({
 
 ## Waits and concurrency
 
-With our (task checkpoint system)[/how-it-works#the-checkpoint-resume-system], a parent task can trigger and wait for a subtask to complete. The way this system interacts with the concurrency system is a little complicated but important to understand. There are two main scenarios that we handle slightly differently:
+With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), a parent task can trigger and wait for a subtask to complete. The way this system interacts with the concurrency system is a little complicated but important to understand. There are two main scenarios that we handle slightly differently:
 
 - When a parent task waits for a subtask on a different queue.
 - When a parent task waits for a subtask on the same queue.
@@ -288,3 +288,13 @@ export const subsubtask = task({
   },
 });
 ```
+
+Now this will result in a `RECURSIVE_WAIT_DEADLOCK` error because the parent task is waiting for the subtask, and the subtask is waiting for the subsubtask, but there is no more concurrency available in the queue. It will look a bit like this in the logs:
+
+![Recursive task deadlock](/images/recursive-task-deadlock-min.png)
+
+### Mitigating recursive wait deadlocks
+
+If you are recursively triggering and waiting for tasks on the same queue, you can mitigate the risk of a deadlock by increasing the concurrency limit of the queue. This will allow you to trigger and wait for more subtasks.
+
+You can also use different queues for the parent task and the subtask. This will allow you to trigger and wait for more subtasks without the risk of a deadlock.
