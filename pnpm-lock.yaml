@@ -1039,7 +1039,7 @@ importers:
         specifier: workspace:3.3.14
         version: link:../core
       '@trigger.dev/sdk':
-        specifier: workspace:3.3.13
+        specifier: workspace:3.3.14
         version: link:../trigger-sdk
       pkg-types:
         specifier: ^1.1.3
