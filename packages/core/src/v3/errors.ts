@@ -54,6 +54,28 @@ export class AbortTaskRunError extends Error {
   }
 }
 
+const MANUAL_OOM_KILL_ERROR_MESSAGE = "MANUAL_OOM_KILL_ERROR";
+
+/**
+ * This causes an Out Of Memory error on the run (if it's uncaught).
+ * This can be useful if you use a native package that detects it's run out of memory but doesn't kill Node.js
+ */
+export class OutOfMemoryError extends Error {
+  constructor() {
+    super(MANUAL_OOM_KILL_ERROR_MESSAGE);
+    this.name = "OutOfMemoryError";
+  }
+}
+
+export function isManualOutOfMemoryError(error: TaskRunError) {
+  if (error.type === "BUILT_IN_ERROR") {
+    if (error.message && error.message === MANUAL_OOM_KILL_ERROR_MESSAGE) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export class TaskPayloadParsedError extends Error {
   public readonly cause: unknown;
 
@@ -562,6 +584,13 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
           };
         }
       }
+
+      if (isManualOutOfMemoryError(error)) {
+        return {
+          ...getPrettyTaskRunError("TASK_PROCESS_OOM_KILLED"),
+        };
+      }
+
       break;
     }
     case "STRING_ERROR": {
