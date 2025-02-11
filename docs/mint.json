@@ -389,10 +389,6 @@
       ]
     },
     {
-      "group": "Dashboard",
-      "pages": ["guides/dashboard/creating-a-project"]
-    },
-    {
       "group": "Migrations",
       "pages": ["guides/use-cases/upgrading-from-v2"]
     }
