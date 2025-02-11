@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import assert from "node:assert";
 import { execa } from "execa";
-import { additionalFiles } from "@trigger.dev/build/extensions/core";
+import { additionalFiles } from "./core/additionalFiles.js";
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 import { logger } from "@trigger.dev/sdk/v3";
