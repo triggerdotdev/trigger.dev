@@ -202,17 +202,14 @@ type CommonTaskOptions<
    * ```
    */
   queue?: QueueOptions;
-  /** Configure the spec of the machine you want your task to run on.
+  /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
    *
    * ```ts
    * export const heavyTask = task({
       id: "heavy-task",
-      machine: {
-        cpu: 2,
-        memory: 4,
-      },
+      machine: "medium-1x",
       run: async ({ payload, ctx }) => {
         //...
       },

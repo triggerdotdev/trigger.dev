@@ -30,27 +30,42 @@ export class TaskRunHeartbeatFailedService extends BaseService {
             supportsLazyAttempts: true,
           },
         },
+        _count: {
+          select: {
+            attempts: true,
+          },
+        },
       },
     });
 
     if (!taskRun) {
-      logger.error("[RequeueTaskRunService] Task run not found", {
+      logger.error("[TaskRunHeartbeatFailedService] Task run not found", {
         runId,
       });
 
       return;
     }
 
+    const service = new FailedTaskRunService();
+
     switch (taskRun.status) {
-      case "PENDING": {
-        if (taskRun.lockedAt) {
+      case "PENDING":
+      case "WAITING_TO_RESUME":
+      case "PAUSED": {
+        const backInQueue = await marqs?.nackMessage(taskRun.id);
+
+        if (backInQueue) {
           logger.debug(
-            "[RequeueTaskRunService] Failing task run because the heartbeat failed and it's PENDING but locked",
+            `[TaskRunHeartbeatFailedService] ${taskRun.status} run is back in the queue run`,
+            {
+              taskRun,
+            }
+          );
+        } else {
+          logger.debug(
+            `[TaskRunHeartbeatFailedService] ${taskRun.status} run not back in the queue, failing`,
             { taskRun }
           );
-
-          const service = new FailedTaskRunService();
-
           await service.call(taskRun.friendlyId, {
             ok: false,
             id: taskRun.friendlyId,
@@ -61,19 +76,13 @@ export class TaskRunHeartbeatFailedService extends BaseService {
               message: "Did not receive a heartbeat from the worker in time",
             },
           });
-        } else {
-          logger.debug("[RequeueTaskRunService] Nacking task run", { taskRun });
-
-          await marqs?.nackMessage(taskRun.id);
         }
 
         break;
       }
       case "EXECUTING":
       case "RETRYING_AFTER_FAILURE": {
-        logger.debug("[RequeueTaskRunService] Failing task run", { taskRun });
-
-        const service = new FailedTaskRunService();
+        logger.debug(`[RequeueTaskRunService] ${taskRun.status} failing task run`, { taskRun });
 
         await service.call(taskRun.friendlyId, {
           ok: false,
@@ -90,20 +99,15 @@ export class TaskRunHeartbeatFailedService extends BaseService {
       }
       case "DELAYED":
       case "WAITING_FOR_DEPLOY": {
-        logger.debug("[RequeueTaskRunService] Removing task run from queue", { taskRun });
+        logger.debug(
+          `[TaskRunHeartbeatFailedService] ${taskRun.status} Removing task run from queue`,
+          { taskRun }
+        );
 
         await marqs?.acknowledgeMessage(
           taskRun.id,
-          "Run is either DELAYED or WAITING_FOR_DEPLOY so we cannot requeue it in RequeueTaskRunService"
+          "Run is either DELAYED or WAITING_FOR_DEPLOY so we cannot requeue it in TaskRunHeartbeatFailedService"
         );
-
-        break;
-      }
-      case "WAITING_TO_RESUME":
-      case "PAUSED": {
-        logger.debug("[RequeueTaskRunService] Requeueing task run", { taskRun });
-
-        await marqs?.nackMessage(taskRun.id);
 
         break;
       }
@@ -115,11 +119,11 @@ export class TaskRunHeartbeatFailedService extends BaseService {
       case "EXPIRED":
       case "TIMED_OUT":
       case "CANCELED": {
-        logger.debug("[RequeueTaskRunService] Task run is completed", { taskRun });
+        logger.debug("[TaskRunHeartbeatFailedService] Task run is completed", { taskRun });
 
         await marqs?.acknowledgeMessage(
           taskRun.id,
-          "Task run is already completed in RequeueTaskRunService"
+          "Task run is already completed in TaskRunHeartbeatFailedService"
         );
 
         try {
@@ -135,7 +139,7 @@ export class TaskRunHeartbeatFailedService extends BaseService {
             delayInMs: taskRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
           });
         } catch (error) {
-          logger.error("[RequeueTaskRunService] Error signaling run cancellation", {
+          logger.error("[TaskRunHeartbeatFailedService] Error signaling run cancellation", {
             runId: taskRun.id,
             error: error instanceof Error ? error.message : error,
           });
