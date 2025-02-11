@@ -38,6 +38,8 @@ export interface MarQSKeyProducer {
   stripKeyPrefix(key: string): string;
   orgIdFromQueue(queue: string): string;
   envIdFromQueue(queue: string): string;
+
+  queueReserveConcurrencyKeyFromQueue(queue: string): string;
 }
 
 export interface MarQSFairDequeueStrategy {
@@ -71,3 +73,8 @@ export interface VisibilityTimeoutStrategy {
   heartbeat(messageId: string, timeoutInMs: number): Promise<void>;
   cancelHeartbeat(messageId: string): Promise<void>;
 }
+
+export type EnqueueMessageReserveConcurrencyOptions = {
+  messageId: string;
+  recursiveQueue: boolean;
+};

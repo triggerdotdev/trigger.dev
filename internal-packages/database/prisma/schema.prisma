@@ -2208,6 +2208,7 @@ model BatchTaskRun {
 enum BatchTaskRunStatus {
   PENDING
   COMPLETED
+  ABORTED
 }
 
 model BatchTaskRunItem {
