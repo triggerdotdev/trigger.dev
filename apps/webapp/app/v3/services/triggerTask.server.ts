@@ -4,6 +4,8 @@ import {
   SemanticInternalAttributes,
   TriggerTaskRequestBody,
   packetRequiresOffloading,
+  taskRunErrorEnhancer,
+  taskRunErrorToString,
 } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -29,6 +31,7 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { Prisma, TaskRun } from "@trigger.dev/database";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
+import { enqueueRun } from "./enqueueRun.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -186,6 +189,7 @@ export class TriggerTaskService extends BaseService {
                   rootTaskRunId: true,
                   depth: true,
                   queueTimestamp: true,
+                  queue: true,
                 },
               },
             },
@@ -243,6 +247,7 @@ export class TriggerTaskService extends BaseService {
                       rootTaskRunId: true,
                       depth: true,
                       queueTimestamp: true,
+                      queue: true,
                     },
                   },
                 },
@@ -295,7 +300,7 @@ export class TriggerTaskService extends BaseService {
         : undefined;
 
       try {
-        return await eventRepository.traceEvent(
+        const result = await eventRepository.traceEvent(
           taskId,
           {
             context: options.traceContext,
@@ -554,40 +559,61 @@ export class TriggerTaskService extends BaseService {
               this._prisma
             );
 
-            // If this is a triggerAndWait or batchTriggerAndWait,
-            // we need to add the parent run to the reserve concurrency set
-            // to free up concurrency for the children to run
-            if (dependentAttempt) {
-              await marqs?.reserveConcurrency(dependentAttempt.taskRun.id);
-            } else if (dependentBatchRun?.dependentTaskAttempt) {
-              await marqs?.reserveConcurrency(dependentBatchRun.dependentTaskAttempt.taskRun.id);
-            }
-
             if (!run) {
               return;
             }
 
-            // We need to enqueue the task run into the appropriate queue. This is done after the tx completes to prevent a race condition where the task run hasn't been created yet by the time we dequeue.
+            // Now enqueue the run if it's not delayed
             if (run.status === "PENDING") {
-              await marqs?.enqueueMessage(
-                environment,
-                run.queue,
-                run.id,
-                {
-                  type: "EXECUTE",
-                  taskIdentifier: taskId,
-                  projectId: environment.projectId,
-                  environmentId: environment.id,
-                  environmentType: environment.type,
-                },
-                body.options?.concurrencyKey,
-                run.queueTimestamp ?? undefined
-              );
+              const enqueueResult = await enqueueRun({
+                env: environment,
+                run,
+                dependentRun:
+                  dependentAttempt?.taskRun ?? dependentBatchRun?.dependentTaskAttempt?.taskRun,
+              });
+
+              if (!enqueueResult.ok) {
+                // Now we need to fail the run with enqueueResult.error and make sure and
+                // set the traced event to failed as well
+                await this._prisma.taskRun.update({
+                  where: { id: run.id },
+                  data: {
+                    status: "SYSTEM_FAILURE",
+                    completedAt: new Date(),
+                    error: enqueueResult.error,
+                  },
+                });
+
+                event.failWithError(enqueueResult.error);
+
+                return {
+                  run,
+                  isCached: false,
+                  error: enqueueResult.error,
+                };
+              }
             }
 
             return { run, isCached: false };
           }
         );
+
+        if (result?.error) {
+          throw new ServiceValidationError(
+            taskRunErrorToString(taskRunErrorEnhancer(result.error))
+          );
+        }
+
+        const run = result?.run;
+
+        if (!run) {
+          return;
+        }
+
+        return {
+          run,
+          isCached: result?.isCached,
+        };
       } catch (error) {
         // Detect a prisma transaction Unique constraint violation
         if (error instanceof Prisma.PrismaClientKnownRequestError) {

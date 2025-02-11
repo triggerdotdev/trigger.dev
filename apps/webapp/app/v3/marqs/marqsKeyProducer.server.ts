@@ -99,6 +99,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
+  queueReserveConcurrencyKeyFromQueue(queue: string) {
+    return `${queue}:${constants.RESERVE_CONCURRENCY_PART}`;
+  }
+
   currentConcurrencyKey(
     env: AuthenticatedEnvironment,
     queue: string,

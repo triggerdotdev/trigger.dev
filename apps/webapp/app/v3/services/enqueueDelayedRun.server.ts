@@ -83,7 +83,7 @@ export class EnqueueDelayedRunService extends BaseService {
       }
     });
 
-    await marqs?.enqueueMessage(
+    await marqs.enqueueMessage(
       run.runtimeEnvironment,
       run.queue,
       run.id,

@@ -20,7 +20,7 @@ export default defineConfig({
   maxDuration: 3600,
   dirs: ["./src/trigger"],
   retries: {
-    enabledInDev: true,
+    enabledInDev: false,
     default: {
       maxAttempts: 10,
       minTimeoutInMs: 5_000,
