@@ -8,9 +8,7 @@ import {
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  exceptionEventEnhancer,
   flattenAttributes,
-  internalErrorFromUnexpectedExit,
   isManualOutOfMemoryError,
   sanitizeError,
   shouldRetryError,
@@ -32,7 +30,6 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
