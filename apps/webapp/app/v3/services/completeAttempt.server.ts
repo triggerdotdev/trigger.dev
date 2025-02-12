@@ -254,9 +254,11 @@ export class CompleteAttemptService extends BaseService {
 
     let retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
     let isOOMRetry = false;
+    let isOOMAttempt = isOOMError(completion.error);
+    let isOnMaxOOMMachine = false;
 
-    //OOM errors should retry (if an OOM machine is specified)
-    if (isOOMError(completion.error)) {
+    //OOM errors should retry (if an OOM machine is specified, and we're not already on it)
+    if (isOOMAttempt) {
       const retryConfig = FailedTaskRunRetryHelper.getRetryConfig({
         run: {
           ...taskRunAttempt.taskRun,
@@ -266,10 +268,10 @@ export class CompleteAttemptService extends BaseService {
         execution,
       });
 
-      if (
-        retryConfig?.outOfMemory?.machine &&
-        retryConfig.outOfMemory.machine !== taskRunAttempt.taskRun.machinePreset
-      ) {
+      isOnMaxOOMMachine =
+        retryConfig?.outOfMemory?.machine === taskRunAttempt.taskRun.machinePreset;
+
+      if (retryConfig?.outOfMemory?.machine && !isOnMaxOOMMachine) {
         //we will retry
         isOOMRetry = true;
         retriableError = true;
@@ -311,6 +313,11 @@ export class CompleteAttemptService extends BaseService {
     }
 
     // The attempt has failed and we won't retry
+
+    if (isOOMAttempt && isOnMaxOOMMachine) {
+      // The attempt failed due to an OOM error but we're already on the machine we should retry on
+      exitRun(taskRunAttempt.taskRunId);
+    }
 
     // Now we need to "complete" the task run event/span
     await eventRepository.completeEvent(
@@ -508,10 +515,7 @@ export class CompleteAttemptService extends BaseService {
 
       // The run won't know it should shut down as we make the decision to force requeue here
       // This also ensures that this change is backwards compatible with older workers
-      socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
-        version: "v1",
-        runId: run.id,
-      });
+      exitRun(run.id);
 
       await retryViaQueue();
       return;
@@ -758,4 +762,11 @@ function isOOMError(error: TaskRunError) {
   }
 
   return false;
+}
+
+function exitRun(runId: string) {
+  socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+    version: "v1",
+    runId,
+  });
 }
