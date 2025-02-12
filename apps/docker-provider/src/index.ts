@@ -115,6 +115,7 @@ class DockerTaskOperations implements TaskOperations {
     const runArgs = [
       "run",
       `--network=${DOCKER_NETWORK}`,
+      "--rm",
       "--detach",
       `--env=TRIGGER_ENV_ID=${opts.envId}`,
       `--env=TRIGGER_RUN_ID=${opts.runId}`,
