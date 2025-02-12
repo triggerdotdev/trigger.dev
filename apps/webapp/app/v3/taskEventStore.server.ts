@@ -72,14 +72,14 @@ export class TaskEventStore {
   async findMany<TSelect extends Prisma.TaskEventSelect>(
     table: TaskEventStoreTable,
     where: Prisma.TaskEventWhereInput,
-    startCreatedAt?: Date,
+    startCreatedAt: Date,
     endCreatedAt?: Date,
     select?: TSelect,
     orderBy?: Prisma.TaskEventOrderByWithRelationInput
   ): Promise<Prisma.TaskEventGetPayload<{ select: TSelect }>[]> {
     let finalWhere: Prisma.TaskEventWhereInput = where;
 
-    if (table === "taskEventPartitioned" && startCreatedAt) {
+    if (table === "taskEventPartitioned") {
       // Add 1 minute to endCreatedAt to make sure we include all events in the range.
       const end = endCreatedAt
         ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
