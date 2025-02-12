@@ -129,6 +129,10 @@ async function verifySignature(
   secret: string
 ): Promise<boolean> {
   try {
+    if (!secret) {
+      throw new WebhookError("Secret is required for signature verification");
+    }
+
     // Convert the payload and secret to buffers
     const hashPayload = Buffer.from(payload, "utf-8");
     const hmacSecret = Buffer.from(secret, "utf-8");
