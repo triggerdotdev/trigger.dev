@@ -11,6 +11,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
+import { FINAL_RUN_STATUSES } from "../taskStatus";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -91,9 +92,15 @@ export class CreateTaskRunAttemptService extends BaseService {
 
       span.setAttribute("taskRunId", taskRun.id);
       span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
+      span.setAttribute("taskRunStatus", taskRun.status);
 
       if (taskRun.status === "CANCELED") {
         throw new ServiceValidationError("Task run is cancelled", 400);
+      }
+
+      // If the run is finalized, it's pointless to create another attempt
+      if (FINAL_RUN_STATUSES.includes(taskRun.status)) {
+        throw new ServiceValidationError("Task run is already finished", 400);
       }
 
       const lockedBy = taskRun.lockedBy;
