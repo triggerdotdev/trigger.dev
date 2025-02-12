@@ -3,6 +3,7 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { PrismaClient, prisma } from "~/db.server";
 import { getUsername } from "~/utils/username";
 import { eventRepository } from "~/v3/eventRepository.server";
+import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
@@ -32,6 +33,8 @@ export class RunPresenter {
     const run = await this.#prismaClient.taskRun.findFirstOrThrow({
       select: {
         id: true,
+        createdAt: true,
+        taskEventStore: true,
         number: true,
         traceId: true,
         spanId: true,
@@ -105,7 +108,12 @@ export class RunPresenter {
     }
 
     // get the events
-    const traceSummary = await eventRepository.getTraceSummary(run.traceId);
+    const traceSummary = await eventRepository.getTraceSummary(
+      getTaskEventStoreTableForRun(run),
+      run.traceId,
+      run.createdAt,
+      run.completedAt ?? undefined
+    );
     if (!traceSummary) {
       return {
         run: runData,

@@ -44,7 +44,6 @@ import { RunTag } from "~/components/runs/v3/RunTag";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -57,16 +56,13 @@ import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3BatchPath,
-  v3BatchRunsPath,
   v3RunDownloadLogsPath,
   v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
   v3SpanParamsSchema,
-  v3TraceSpanPath,
 } from "~/utils/pathBuilder";
-import { SpanLink } from "~/v3/eventRepository.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -1151,28 +1147,4 @@ function classNameForState(state: TimelineState) {
       return "bg-error";
     }
   }
-}
-
-function SpanLinkElement({ link }: { link: SpanLink }) {
-  const organization = useOrganization();
-  const project = useProject();
-
-  switch (link.type) {
-    case "run": {
-      return (
-        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-          {link.title}
-        </TextLink>
-      );
-    }
-    case "span": {
-      return (
-        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
-          {link.title}
-        </TextLink>
-      );
-    }
-  }
-
-  return null;
 }
