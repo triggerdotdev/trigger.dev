@@ -396,15 +396,6 @@ export function v3RunSpanPath(
   return `${v3RunPath(organization, project, run)}?span=${span.spanId}`;
 }
 
-export function v3TraceSpanPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  traceId: string,
-  spanId: string
-) {
-  return `${v3ProjectPath(organization, project)}/traces/${traceId}/spans/${spanId}`;
-}
-
 export function v3RunStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -29,6 +29,7 @@ import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { Prisma, TaskRun } from "@trigger.dev/database";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
+import { getTaskEventStore } from "../taskEventStore.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -394,6 +395,7 @@ export class TriggerTaskService extends BaseService {
                     delayUntil,
                     queuedAt: delayUntil ? undefined : new Date(),
                     maxAttempts: body.options?.maxAttempts,
+                    taskEventStore: getTaskEventStore(),
                     ttl,
                     tags:
                       tagIds.length === 0

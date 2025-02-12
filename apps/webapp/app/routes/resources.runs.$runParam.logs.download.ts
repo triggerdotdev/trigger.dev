@@ -7,6 +7,7 @@ import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { getDateFromNanoseconds } from "~/utils/taskEvent";
+import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -31,7 +32,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const runEvents = await eventRepository.getRunEvents(run.friendlyId);
+  const runEvents = await eventRepository.getRunEvents(
+    getTaskEventStoreTableForRun(run),
+    run.friendlyId,
+    run.createdAt,
+    run.completedAt ?? undefined
+  );
 
   // Create a Readable stream from the runEvents array
   const readable = new Readable({

@@ -1,9 +1,11 @@
+import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -15,13 +17,10 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
-import { v3RunPath, v3RunsPath, v3TraceSpanPath } from "~/utils/pathBuilder";
+import { v3RunsPath } from "~/utils/pathBuilder";
 import { TraceSpan } from "~/utils/taskEvent";
-import { SpanLink } from "~/v3/eventRepository.server";
 import { RunTimelineEvent, RunTimelineLine } from "./InspectorTimeline";
-import { Spinner } from "~/components/primitives/Spinner";
 import { LiveTimer } from "./LiveTimer";
-import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3";
 
 export function SpanInspector({
   span,
@@ -150,18 +149,6 @@ export function SpanInspector({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
               </Property.Table>
             </div>
           ) : (
@@ -203,18 +190,6 @@ export function SpanInspector({
                   <Property.Label>Message</Property.Label>
                   <Property.Value>{span.message}</Property.Value>
                 </Property.Item>
-                {span.links && span.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
               </Property.Table>
 
               {span.events !== undefined && <SpanEvents spanEvents={span.events} />}
@@ -286,28 +261,4 @@ export function SpanTimeline({ startTime, duration, inProgress, isError }: Timel
       </div>
     </>
   );
-}
-
-function SpanLinkElement({ link }: { link: SpanLink }) {
-  const organization = useOrganization();
-  const project = useProject();
-
-  switch (link.type) {
-    case "run": {
-      return (
-        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-          {link.title}
-        </TextLink>
-      );
-    }
-    case "span": {
-      return (
-        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
-          {link.title}
-        </TextLink>
-      );
-    }
-  }
-
-  return null;
 }
