@@ -134,11 +134,14 @@ export class ResumeAttemptService extends BaseService {
 
           //find the best attempt for each batch item
           //it should be the most recent one in a final state
-          const finalAttempts = dependentBatchItems.map((item) => {
-            return item.taskRun.attempts
-              .filter((a) => FINAL_ATTEMPT_STATUSES.includes(a.status))
-              .sort((a, b) => b.number - a.number)[0];
-          });
+          const finalAttempts = dependentBatchItems
+            .map((item) => {
+              return item.taskRun.attempts
+                .filter((a) => FINAL_ATTEMPT_STATUSES.includes(a.status))
+                .sort((a, b) => b.number - a.number)
+                .at(0);
+            })
+            .filter(Boolean);
 
           completedAttemptIds = finalAttempts.map((a) => a.id);
 
