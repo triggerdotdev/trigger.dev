@@ -135,6 +135,7 @@ export class SpanPresenter extends BasePresenter {
             taskIdentifier: true,
             friendlyId: true,
             spanId: true,
+            createdAt: true,
           },
         },
         parentTaskRun: {
@@ -211,7 +212,7 @@ export class SpanPresenter extends BasePresenter {
       getTaskEventStoreTableForRun(run),
       spanId,
       run.traceId,
-      run.createdAt,
+      run.rootTaskRun?.createdAt ?? run.createdAt,
       run.completedAt ?? undefined
     );
 
