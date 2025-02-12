@@ -483,6 +483,7 @@ const EnvironmentSchema = z.object({
   COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
   TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
+  TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;

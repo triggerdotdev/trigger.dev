@@ -81,7 +81,9 @@ export class TaskEventStore {
 
     if (table === "taskEventPartitioned" && startCreatedAt) {
       // Add 1 minute to endCreatedAt to make sure we include all events in the range.
-      const end = endCreatedAt ? new Date(endCreatedAt.getTime() + 60_000) : new Date();
+      const end = endCreatedAt
+        ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
+        : new Date();
 
       finalWhere = {
         AND: [
@@ -140,7 +142,7 @@ export class TaskEventStore {
           "traceId" = ${traceId} 
           AND "createdAt" >= ${startCreatedAt.toISOString()}::timestamp 
           AND "createdAt" < ${(endCreatedAt
-            ? new Date(endCreatedAt.getTime() + 60_000)
+            ? new Date(endCreatedAt.getTime() + env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000)
             : new Date()
           ).toISOString()}::timestamp
         ORDER BY "startTime" ASC
