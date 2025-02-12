@@ -1,3 +1,4 @@
+import { OutOfMemoryError } from "@trigger.dev/sdk/v3";
 import { logger, task } from "@trigger.dev/sdk/v3";
 import { setTimeout } from "timers/promises";
 
@@ -9,7 +10,14 @@ export const oomTask = task({
       machine: "small-1x",
     },
   },
-  run: async ({ succeedOnLargerMachine }: { succeedOnLargerMachine: boolean }, { ctx }) => {
+  run: async (
+    {
+      succeedOnLargerMachine = false,
+      ffmpeg = false,
+      manual = false,
+    }: { succeedOnLargerMachine?: boolean; ffmpeg?: boolean; manual?: boolean },
+    { ctx }
+  ) => {
     logger.info("running out of memory below this line");
 
     logger.info(`Running on ${ctx.machine?.name}`);
@@ -21,6 +29,14 @@ export const oomTask = task({
       return {
         success: true,
       };
+    }
+
+    if (manual) {
+      throw new OutOfMemoryError();
+    }
+
+    if (ffmpeg) {
+      throw new Error("ffmpeg was killed with signal SIGKILL");
     }
 
     let a = "a";

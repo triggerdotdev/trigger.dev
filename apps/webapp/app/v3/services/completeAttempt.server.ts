@@ -11,6 +11,7 @@ import {
   exceptionEventEnhancer,
   flattenAttributes,
   internalErrorFromUnexpectedExit,
+  isManualOutOfMemoryError,
   sanitizeError,
   shouldRetryError,
   taskRunErrorEnhancer,
@@ -32,6 +33,7 @@ import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -164,19 +166,25 @@ export class CompleteAttemptService extends BaseService {
     });
 
     // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-      endTime: new Date(),
-      attributes: {
-        isError: false,
-        output:
-          completion.outputType === "application/store" || completion.outputType === "text/plain"
-            ? completion.output
-            : completion.output
-            ? (safeJsonParse(completion.output) as Attributes)
-            : undefined,
-        outputType: completion.outputType,
-      },
-    });
+    await eventRepository.completeEvent(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      taskRunAttempt.taskRun.spanId,
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined,
+      {
+        endTime: new Date(),
+        attributes: {
+          isError: false,
+          output:
+            completion.outputType === "application/store" || completion.outputType === "text/plain"
+              ? completion.output
+              : completion.output
+              ? (safeJsonParse(completion.output) as Attributes)
+              : undefined,
+          outputType: completion.outputType,
+        },
+      }
+    );
 
     return "COMPLETED";
   }
@@ -307,21 +315,27 @@ export class CompleteAttemptService extends BaseService {
     // The attempt has failed and we won't retry
 
     // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-      endTime: failedAt,
-      attributes: {
-        isError: true,
-      },
-      events: [
-        {
-          name: "exception",
-          time: failedAt,
-          properties: {
-            exception: createExceptionPropertiesFromError(sanitizedError),
-          },
+    await eventRepository.completeEvent(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      taskRunAttempt.taskRun.spanId,
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined,
+      {
+        endTime: failedAt,
+        attributes: {
+          isError: true,
         },
-      ],
-    });
+        events: [
+          {
+            name: "exception",
+            time: failedAt,
+            properties: {
+              exception: createExceptionPropertiesFromError(sanitizedError),
+            },
+          },
+        ],
+      }
+    );
 
     await this._prisma.taskRun.update({
       where: {
@@ -363,9 +377,14 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents({
-      runId: taskRunAttempt.taskRun.friendlyId,
-    });
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      {
+        runId: taskRunAttempt.taskRun.friendlyId,
+      },
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined
+    );
 
     // Handle in-progress events
     switch (status) {
@@ -393,21 +412,27 @@ export class CompleteAttemptService extends BaseService {
 
         await Promise.all(
           inProgressEvents.map((event) => {
-            return eventRepository.completeEvent(event.spanId, {
-              endTime: failedAt,
-              attributes: {
-                isError: true,
-              },
-              events: [
-                {
-                  name: "exception",
-                  time: failedAt,
-                  properties: {
-                    exception: createExceptionPropertiesFromError(sanitizedError),
-                  },
+            return eventRepository.completeEvent(
+              getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+              event.spanId,
+              taskRunAttempt.taskRun.createdAt,
+              taskRunAttempt.taskRun.completedAt ?? undefined,
+              {
+                endTime: failedAt,
+                attributes: {
+                  isError: true,
                 },
-              ],
-            });
+                events: [
+                  {
+                    name: "exception",
+                    time: failedAt,
+                    properties: {
+                      exception: createExceptionPropertiesFromError(sanitizedError),
+                    },
+                  },
+                ],
+              }
+            );
           })
         );
       }
@@ -691,20 +716,38 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
 }
 
 function isOOMError(error: TaskRunError) {
-  if (error.type !== "INTERNAL_ERROR") return false;
-  if (error.code === "TASK_PROCESS_OOM_KILLED" || error.code === "TASK_PROCESS_MAYBE_OOM_KILLED") {
-    return true;
+  if (error.type === "INTERNAL_ERROR") {
+    if (
+      error.code === "TASK_PROCESS_OOM_KILLED" ||
+      error.code === "TASK_PROCESS_MAYBE_OOM_KILLED"
+    ) {
+      return true;
+    }
+
+    // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
+    // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
+    // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
+    if (
+      error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
+      error.message &&
+      error.message.includes("SIGKILL") &&
+      error.message.includes("-1")
+    ) {
+      return true;
+    }
   }
 
-  // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
-  // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
-  // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
-  if (
-    error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
-    error.message &&
-    error.message.includes("SIGKILL") &&
-    error.message.includes("-1")
-  ) {
+  if (error.type === "BUILT_IN_ERROR") {
+    // ffmpeg also does weird stuff
+    // { "name": "Error", "type": "BUILT_IN_ERROR", "message": "ffmpeg was killed with signal SIGKILL" }
+    if (error.message && error.message.includes("ffmpeg was killed with signal SIGKILL")) {
+      return true;
+    }
+  }
+
+  // Special `OutOfMemoryError` for doing a manual OOM kill.
+  // Useful if a native library does an OOM but doesn't actually crash the run and you want to manually
+  if (isManualOutOfMemoryError(error)) {
     return true;
   }
 

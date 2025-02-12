@@ -31,6 +31,7 @@ export {
   RateLimitError,
   UnprocessableEntityError,
   AbortTaskRunError,
+  OutOfMemoryError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";

@@ -1,5 +1,13 @@
 # @trigger.dev/sdk
 
+## 3.3.15
+
+### Patch Changes
+
+- Detect ffmpeg OOM errors, added manual OutOfMemoryError ([#1694](https://github.com/triggerdotdev/trigger.dev/pull/1694))
+- Updated dependencies:
+  - `@trigger.dev/core@3.3.15`
+
 ## 3.3.14
 
 ### Patch Changes
