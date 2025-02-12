@@ -13,7 +13,7 @@
     "dropdowns": [
       {
         "dropdown": "Documentation",
-        "description": "Learn how to use Trigger.dev",
+        "description": "Resources for Trigger.dev",
         "icon": "book-open",
         "groups": [
           {
@@ -199,7 +199,7 @@
       },
       {
         "dropdown": "Guides & examples",
-        "description": "The quickest way to get started",
+        "description": "A great way to get started",
         "icon": "book",
         "groups": [
           {
