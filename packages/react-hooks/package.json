@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react-hooks",
-  "version": "3.3.13",
+  "version": "3.3.15",
   "description": "trigger.dev react hooks",
   "license": "MIT",
   "publishConfig": {
@@ -37,7 +37,7 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^3.3.13",
+    "@trigger.dev/core": "workspace:^3.3.15",
     "swr": "^2.2.5"
   },
   "devDependencies": {

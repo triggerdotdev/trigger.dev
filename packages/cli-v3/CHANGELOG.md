@@ -1,5 +1,22 @@
 # trigger.dev
 
+## 3.3.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.15`
+  - `@trigger.dev/core@3.3.15`
+
+## 3.3.14
+
+### Patch Changes
+
+- Auto-fix /trigger or /src/trigger config.dirs to relative paths to prevent misconfiguration from preventing dev CLI from working ([#1665](https://github.com/triggerdotdev/trigger.dev/pull/1665))
+- Updated dependencies:
+  - `@trigger.dev/build@3.3.14`
+  - `@trigger.dev/core@3.3.14`
+
 ## 3.3.13
 
 ### Patch Changes

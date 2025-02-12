@@ -638,7 +638,8 @@ export class MarQS {
   }
 
   /**
-   * Negative acknowledge a message, which will requeue the message
+   * Negative acknowledge a message, which will requeue the message.
+   * Returns whether it went back into the queue or not.
    */
   public async nackMessage(
     messageId: string,
@@ -657,7 +658,7 @@ export class MarQS {
             updates,
             service: this.name,
           });
-          return;
+          return false;
         }
 
         const nackCount = await this.#getNackCount(messageId);
@@ -676,7 +677,7 @@ export class MarQS {
 
           // If we have reached the maximum nack count, we will ack the message
           await this.acknowledgeMessage(messageId, "maximum nack count reached");
-          return;
+          return false;
         }
 
         span.setAttributes({
@@ -705,6 +706,8 @@ export class MarQS {
         });
 
         await this.options.subscriber?.messageNacked(message);
+
+        return true;
       },
       {
         kind: SpanKind.CONSUMER,
