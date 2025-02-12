@@ -39,9 +39,9 @@ export class ResumeAttemptService extends BaseService {
       include: {
         taskRun: true,
         dependencies: {
-          include: {
+          select: {
             taskRun: {
-              include: {
+              select: {
                 attempts: latestAttemptSelect,
               },
             },
@@ -52,11 +52,11 @@ export class ResumeAttemptService extends BaseService {
           take: 1,
         },
         batchDependencies: {
-          include: {
+          select: {
             items: {
-              include: {
+              select: {
                 taskRun: {
-                  include: {
+                  select: {
                     attempts: latestAttemptSelect,
                   },
                 },
@@ -143,7 +143,13 @@ export class ResumeAttemptService extends BaseService {
           completedAttemptIds = finalAttempts.map((a) => a.id);
 
           if (completedAttemptIds.length !== dependentBatchItems.length) {
-            this._logger.error("[ResumeAttemptService] not all batch items have attempts");
+            this._logger.error("[ResumeAttemptService] not all batch items have attempts", {
+              runId: attempt.taskRunId,
+              completedAttemptIds,
+              finalAttempts,
+              dependentBatchItems,
+            });
+
             return;
           }
         } else {
