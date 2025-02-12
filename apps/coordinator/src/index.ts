@@ -653,11 +653,11 @@ class TaskCoordinator {
 
             log.error("READY_FOR_LAZY_ATTEMPT error", { error });
 
-            await crashRun({
-              name: "ReadyForLazyAttemptError",
-              message:
-                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
-            });
+            // await crashRun({
+            //   name: "ReadyForLazyAttemptError",
+            //   message:
+            //     error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            // });
 
             return;
           }
