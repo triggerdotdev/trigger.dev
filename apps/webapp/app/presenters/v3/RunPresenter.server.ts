@@ -47,6 +47,7 @@ export class RunPresenter {
             friendlyId: true,
             taskIdentifier: true,
             spanId: true,
+            createdAt: true,
           },
         },
         runtimeEnvironment: {
@@ -111,7 +112,7 @@ export class RunPresenter {
     const traceSummary = await eventRepository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
       run.traceId,
-      run.createdAt,
+      run.rootTaskRun?.createdAt ?? run.createdAt,
       run.completedAt ?? undefined
     );
     if (!traceSummary) {
