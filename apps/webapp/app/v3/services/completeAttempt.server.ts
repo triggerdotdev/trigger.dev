@@ -31,6 +31,7 @@ import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
 import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { socketIo } from "../handleSocketIo.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -504,6 +505,14 @@ export class CompleteAttemptService extends BaseService {
 
     if (forceRequeue) {
       logger.debug("[CompleteAttemptService] Forcing retry via queue", { runId: run.id });
+
+      // The run won't know it should shut down as we make the decision to force requeue here
+      // This also ensures that this change is backwards compatible with older workers
+      socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+        version: "v1",
+        runId: run.id,
+      });
+
       await retryViaQueue();
       return;
     }
