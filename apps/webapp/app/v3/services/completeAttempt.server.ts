@@ -1,5 +1,6 @@
 import { Attributes } from "@opentelemetry/api";
 import {
+  MachinePresetName,
   TaskRunContext,
   TaskRunError,
   TaskRunErrorCodes,
@@ -256,6 +257,7 @@ export class CompleteAttemptService extends BaseService {
     let isOOMRetry = false;
     let isOOMAttempt = isOOMError(completion.error);
     let isOnMaxOOMMachine = false;
+    let oomMachine: MachinePresetName | undefined;
 
     //OOM errors should retry (if an OOM machine is specified, and we're not already on it)
     if (isOOMAttempt) {
@@ -268,10 +270,10 @@ export class CompleteAttemptService extends BaseService {
         execution,
       });
 
-      isOnMaxOOMMachine =
-        retryConfig?.outOfMemory?.machine === taskRunAttempt.taskRun.machinePreset;
+      oomMachine = retryConfig?.outOfMemory?.machine;
+      isOnMaxOOMMachine = oomMachine === taskRunAttempt.taskRun.machinePreset;
 
-      if (retryConfig?.outOfMemory?.machine && !isOnMaxOOMMachine) {
+      if (oomMachine && !isOnMaxOOMMachine) {
         //we will retry
         isOOMRetry = true;
         retriableError = true;
@@ -290,7 +292,7 @@ export class CompleteAttemptService extends BaseService {
             id: taskRunAttempt.taskRunId,
           },
           data: {
-            machinePreset: retryConfig.outOfMemory.machine,
+            machinePreset: oomMachine,
           },
         });
       }
@@ -309,6 +311,7 @@ export class CompleteAttemptService extends BaseService {
         environment,
         checkpoint,
         forceRequeue: isOOMRetry,
+        oomMachine,
       });
     }
 
@@ -554,6 +557,7 @@ export class CompleteAttemptService extends BaseService {
     environment,
     checkpoint,
     forceRequeue = false,
+    oomMachine,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
@@ -562,29 +566,38 @@ export class CompleteAttemptService extends BaseService {
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
     forceRequeue?: boolean;
+    /** Setting this will also alter the retry span message */
+    oomMachine?: MachinePresetName;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
     // Retry the task run
-    await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
-      taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-      environment,
-      attributes: {
-        metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-        properties: {
-          retryAt: retryAt.toISOString(),
+    await eventRepository.recordEvent(
+      `Retry #${execution.attempt.number} delay${oomMachine ? " after OOM" : ""}`,
+      {
+        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+        environment,
+        attributes: {
+          metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+          properties: {
+            retryAt: retryAt.toISOString(),
+            previousMachine: oomMachine
+              ? taskRunAttempt.taskRun.machinePreset ?? undefined
+              : undefined,
+            nextMachine: oomMachine,
+          },
+          runId: taskRunAttempt.taskRun.friendlyId,
+          style: {
+            icon: "schedule-attempt",
+          },
+          queueId: taskRunAttempt.queueId,
+          queueName: taskRunAttempt.taskRun.queue,
         },
-        runId: taskRunAttempt.taskRun.friendlyId,
-        style: {
-          icon: "schedule-attempt",
-        },
-        queueId: taskRunAttempt.queueId,
-        queueName: taskRunAttempt.taskRun.queue,
-      },
-      context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-      spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-      endTime: retryAt,
-    });
+        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+        endTime: retryAt,
+      }
+    );
 
     logger.debug("[CompleteAttemptService] Retrying", {
       taskRun: taskRunAttempt.taskRun.friendlyId,
