@@ -481,6 +481,8 @@ const EnvironmentSchema = z.object({
     .transform((v) => v ?? process.env.REDIS_PASSWORD),
   COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
   COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+  TASK_EVENT_PARTITIONING_ENABLED: z.string().default("0"),
 });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
