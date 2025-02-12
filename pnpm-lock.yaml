@@ -1038,9 +1038,15 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:3.3.14
         version: link:../core
+      '@trigger.dev/sdk':
+        specifier: workspace:3.3.14
+        version: link:../trigger-sdk
       pkg-types:
         specifier: ^1.1.3
         version: 1.1.3
+      tinyexec:
+        specifier: ^0.3.2
+        version: 0.3.2
       tinyglobby:
         specifier: ^0.2.2
         version: 0.2.2
@@ -30453,6 +30459,10 @@ packages:
 
   /tinyexec@0.3.1:
     resolution: {integrity: sha512-WiCJLEECkO18gwqIp6+hJg0//p23HXp4S+gGtAKu3mI2F2/sXC4FvHvXvB0zJVVaTPhx1/tOwdbRsa1sOBIKqQ==}
+    dev: false
+
+  /tinyexec@0.3.2:
+    resolution: {integrity: sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA==}
     dev: false
 
   /tinyglobby@0.2.10:
