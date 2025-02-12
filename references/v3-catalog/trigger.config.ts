@@ -32,7 +32,16 @@ export default defineConfig({
   enableConsoleLogging: false,
   logLevel: "info",
   onStart: async (payload, { ctx }) => {
-    console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    try {
+      console.log(`Task ${ctx.task.id} started ${ctx.run.id}`);
+    } catch (error) {
+      console.log(
+       `Task ${ctx.task.id} failed ${ctx.run.id}: ${
+             error instanceof Error ? error.message : String(error)
+                }`
+             );
+        throw error; // Re-throw to fail the run
+    }
   },
   onFailure: async (payload, error, { ctx }) => {
     console.log(
