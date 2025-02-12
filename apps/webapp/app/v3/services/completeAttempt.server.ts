@@ -317,7 +317,7 @@ export class CompleteAttemptService extends BaseService {
 
     // The attempt has failed and we won't retry
 
-    if (isOOMAttempt && isOnMaxOOMMachine) {
+    if (isOOMAttempt && isOnMaxOOMMachine && environment.type !== "DEVELOPMENT") {
       // The attempt failed due to an OOM error but we're already on the machine we should retry on
       exitRun(taskRunAttempt.taskRunId);
     }
