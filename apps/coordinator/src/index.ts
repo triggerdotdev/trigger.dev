@@ -14,7 +14,7 @@ import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
 import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
-import { boolFromEnv, numFromEnv } from "./util";
+import { boolFromEnv, numFromEnv, safeJsonParse } from "./util";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
@@ -42,6 +42,8 @@ class CheckpointCancelError extends Error {}
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
+  #internalHttpServer: ReturnType<typeof createServer>;
+
   #checkpointer = new Checkpointer({
     dockerMode: !process.env.KUBERNETES_PORT,
     forceSimulate: boolFromEnv("FORCE_CHECKPOINT_SIMULATION", false),
@@ -79,6 +81,8 @@ class TaskCoordinator {
     private host = "0.0.0.0"
   ) {
     this.#httpServer = this.#createHttpServer();
+    this.#internalHttpServer = this.#createInternalHttpServer();
+
     this.#checkpointer.init();
     this.#platformSocket = this.#createPlatformSocket();
 
@@ -1368,14 +1372,6 @@ class TaskCoordinator {
         case "/metrics": {
           return reply.text(await register.metrics(), 200, register.contentType);
         }
-        case "/whoami": {
-          return reply.text(NODE_NAME);
-        }
-        case "/checkpoint": {
-          const body = await getTextBody(req);
-          // await this.#checkpointer.checkpointAndPush(body);
-          return reply.text(`sent restore request: ${body}`);
-        }
         default: {
           return reply.empty(404);
         }
@@ -1393,8 +1389,129 @@ class TaskCoordinator {
     return httpServer;
   }
 
+  #createInternalHttpServer() {
+    const httpServer = createServer(async (req, res) => {
+      logger.log(`[${req.method}]`, { url: req.url });
+
+      const reply = new HttpReply(res);
+
+      switch (req.url) {
+        case "/whoami": {
+          return reply.text(NODE_NAME);
+        }
+        case "/checkpoint/duration": {
+          try {
+            const body = await getTextBody(req);
+            const json = safeJsonParse(body);
+
+            if (typeof json !== "object" || !json) {
+              return reply.text("Invalid body", 400);
+            }
+
+            if (!("runId" in json) || typeof json.runId !== "string") {
+              return reply.text("Missing or invalid: runId", 400);
+            }
+
+            if (!("now" in json) || typeof json.now !== "number") {
+              return reply.text("Missing or invalid: now", 400);
+            }
+
+            if (!("ms" in json) || typeof json.ms !== "number") {
+              return reply.text("Missing or invalid: ms", 400);
+            }
+
+            let keepRunAlive = false;
+            if ("keepRunAlive" in json && typeof json.keepRunAlive === "boolean") {
+              keepRunAlive = json.keepRunAlive;
+            }
+
+            const { runId, now, ms } = json;
+
+            if (!runId) {
+              return reply.text("Missing runId", 400);
+            }
+
+            const runSocket = await this.#getRunSocket(runId);
+            if (!runSocket) {
+              return reply.text("Run socket not found", 404);
+            }
+
+            const { data } = runSocket;
+
+            console.log("Manual duration checkpoint", data);
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: data.runId,
+              projectRef: data.projectRef,
+              deploymentVersion: data.deploymentVersion,
+              attemptNumber: data.attemptNumber ? parseInt(data.attemptNumber) : undefined,
+            });
+
+            if (!checkpoint) {
+              return reply.text("Failed to checkpoint", 500);
+            }
+
+            if (!data.attemptFriendlyId) {
+              return reply.text("Socket data missing attemptFriendlyId", 500);
+            }
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId,
+              attemptFriendlyId: data.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "WAIT_FOR_DURATION",
+                ms,
+                now,
+              },
+            });
+
+            if (ack?.keepRunAlive || keepRunAlive) {
+              return reply.json({
+                message: `keeping run ${runId} alive after checkpoint`,
+                checkpoint,
+                requestJson: json,
+              });
+            }
+
+            runSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
+            return reply.json({
+              message: `checkpoint created for run ${runId}`,
+              checkpoint,
+              requestJson: json,
+            });
+          } catch (error) {
+            return reply.json({
+              message: `error`,
+              error,
+            });
+          }
+        }
+        default: {
+          return reply.empty(404);
+        }
+      }
+    });
+
+    httpServer.on("clientError", (err, socket) => {
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    });
+
+    httpServer.on("listening", () => {
+      logger.log("internal server listening on port", { port: HTTP_SERVER_PORT + 100 });
+    });
+
+    return httpServer;
+  }
+
   listen() {
     this.#httpServer.listen(this.port, this.host);
+    this.#internalHttpServer.listen(this.port + 100, "127.0.0.1");
   }
 }
 
