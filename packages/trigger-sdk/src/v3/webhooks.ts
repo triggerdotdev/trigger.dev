@@ -1,5 +1,5 @@
 import { Webhook } from "@trigger.dev/core/v3";
-import { subtle } from "crypto";
+import { subtle } from "../imports/uncrypto.js";
 
 /**
  * The type of error thrown when a webhook fails to parse or verify
