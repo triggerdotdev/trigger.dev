@@ -296,10 +296,6 @@
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
-          },
-          {
-            "group": "Migrations",
-            "pages": ["guides/use-cases/upgrading-from-v2"]
           }
         ]
       }
