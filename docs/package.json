@@ -8,8 +8,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "mintlify": "^4.0.382"
   }
 }
