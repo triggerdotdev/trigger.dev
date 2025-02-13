@@ -1425,6 +1425,11 @@ class TaskCoordinator {
               keepRunAlive = json.keepRunAlive;
             }
 
+            let async = false;
+            if ("async" in json && typeof json.async === "boolean") {
+              async = json.async;
+            }
+
             const { runId, now, ms } = json;
 
             if (!runId) {
@@ -1439,6 +1444,10 @@ class TaskCoordinator {
             const { data } = runSocket;
 
             console.log("Manual duration checkpoint", data);
+
+            if (async) {
+              return reply.text("Creating checkpoint in the background", 202);
+            }
 
             const checkpoint = await this.#checkpointer.checkpointAndPush({
               runId: data.runId,
@@ -1473,6 +1482,7 @@ class TaskCoordinator {
                 message: `keeping run ${runId} alive after checkpoint`,
                 checkpoint,
                 requestJson: json,
+                platformAck: ack,
               });
             }
 
@@ -1484,6 +1494,7 @@ class TaskCoordinator {
               message: `checkpoint created for run ${runId}`,
               checkpoint,
               requestJson: json,
+              platformAck: ack,
             });
           } catch (error) {
             return reply.json({
@@ -1515,6 +1526,11 @@ class TaskCoordinator {
               keepRunAlive = json.keepRunAlive;
             }
 
+            let async = false;
+            if ("async" in json && typeof json.async === "boolean") {
+              async = json.async;
+            }
+
             const { runId } = json;
 
             if (!runId) {
@@ -1529,6 +1545,10 @@ class TaskCoordinator {
             const { data } = runSocket;
 
             console.log("Manual checkpoint", data);
+
+            if (async) {
+              return reply.text("Creating checkpoint in the background", 202);
+            }
 
             const checkpoint = await this.#checkpointer.checkpointAndPush({
               runId: data.runId,
@@ -1562,6 +1582,7 @@ class TaskCoordinator {
                 message: `keeping run ${runId} alive after checkpoint`,
                 checkpoint,
                 requestJson: json,
+                platformAck: ack,
               });
             }
 
@@ -1573,6 +1594,7 @@ class TaskCoordinator {
               message: `checkpoint created for run ${runId}`,
               checkpoint,
               requestJson: json,
+              platformAck: ack,
             });
           } catch (error) {
             return reply.json({
