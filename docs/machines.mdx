@@ -6,7 +6,7 @@ description: "Configure the number of vCPUs and GBs of RAM you want the task to 
 The `machine` configuration is optional. Using higher spec machines will increase the cost of running the task but can also improve the performance of the task if it is CPU or memory bound.
 
 ```ts /trigger/heavy-task.ts
-import {  task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk/v3";
 
 export const heavyTask = task({
   id: "heavy-task",

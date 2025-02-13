@@ -17,7 +17,7 @@
         "icon": "book-open",
         "groups": [
           {
-            "group": "Getting Started",
+            "group": "Getting started",
             "pages": ["introduction", "quick-start", "video-walkthrough", "how-it-works", "limits"]
           },
           {
