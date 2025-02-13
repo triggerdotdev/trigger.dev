@@ -738,7 +738,7 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
   });
 }
 
-function isOOMError(error: TaskRunError) {
+export function isOOMError(error: TaskRunError) {
   if (error.type === "INTERNAL_ERROR") {
     if (
       error.code === "TASK_PROCESS_OOM_KILLED" ||

@@ -4,6 +4,7 @@ import { EncryptedSecretValueSchema } from "~/services/secrets/secretStore.serve
 export const ProjectAlertWebhookProperties = z.object({
   secret: EncryptedSecretValueSchema,
   url: z.string(),
+  version: z.string().optional().default("v1"),
 });
 
 export type ProjectAlertWebhookProperties = z.infer<typeof ProjectAlertWebhookProperties>;
