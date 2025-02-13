@@ -10,7 +10,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -146,7 +150,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -225,7 +233,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: {
+          host: redis.options.host,
+          port: redis.options.port,
+          tlsDisabled: true,
+        },
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {

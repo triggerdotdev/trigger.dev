@@ -3,6 +3,13 @@ title: "Alerts"
 description: "Get alerted when runs or deployments fail, or when deployments succeed."
 ---
 
+We support receiving alerts for the following events:
+- Run fails
+- Deployment fails
+- Deployment succeeds
+
+## How to setup alerts
+
 <Steps>
 
 <Step title="Create a new alert">
@@ -27,3 +34,63 @@ Click on the triple dot menu on the right side of the table row and select "Disa
 </Step>
 
 </Steps>
+
+
+## Alert webhooks
+
+For the alert webhooks you can use the SDK to parse them. Here is an example of how to parse the webhook payload in Remix:
+
+```ts
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { webhooks, WebhookError } from "@trigger.dev/sdk/v3";
+
+export async function action({ request }: ActionFunctionArgs) {
+  // Make sure this is a POST request
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  try {
+    // Construct and verify the webhook event
+    // This secret can be found on your Alerts page when you create a webhook alert
+    const event = await webhooks.constructEvent(request, process.env.ALERT_WEBHOOK_SECRET!);
+
+    // Process the event based on its type
+    switch (event.type) {
+      case "alert.run.failed": {
+        console.log("[Webhook Internal Test] Run failed alert webhook received", { event });
+        break;
+      }
+      case "alert.deployment.success": {
+        console.log("[Webhook Internal Test] Deployment success alert webhook received", { event });
+        break;
+      }
+      case "alert.deployment.failed": {
+        console.log("[Webhook Internal Test] Deployment failed alert webhook received", { event });
+        break;
+      }
+      default: {
+        console.log("[Webhook Internal Test] Unhandled webhook type", { event });
+      }
+    }
+
+    // Return a success response
+    return json({ received: true }, { status: 200 });
+  } catch (err) {
+    // Handle webhook errors
+    if (err instanceof WebhookError) {
+      console.error("Webhook error:", { message: err.message });
+      return json({ error: err.message }, { status: 400 });
+    }
+
+    if (err instanceof Error) {
+      console.error("Error processing webhook:", { message: err.message });
+      return json({ error: err.message }, { status: 400 });
+    }
+
+    // Handle other errors
+    console.error("Error processing webhook:", { err });
+    return json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+```
