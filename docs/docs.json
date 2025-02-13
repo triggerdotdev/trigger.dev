@@ -212,7 +212,8 @@
               "guides/frameworks/bun",
               "guides/frameworks/nextjs",
               "guides/frameworks/nodejs",
-              "guides/frameworks/remix"
+              "guides/frameworks/remix",
+              "guides/frameworks/sveltekit"
             ]
           },
           {
