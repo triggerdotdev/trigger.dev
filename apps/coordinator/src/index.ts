@@ -1492,6 +1492,95 @@ class TaskCoordinator {
             });
           }
         }
+        case "/checkpoint/manual": {
+          try {
+            const body = await getTextBody(req);
+            const json = safeJsonParse(body);
+
+            if (typeof json !== "object" || !json) {
+              return reply.text("Invalid body", 400);
+            }
+
+            if (!("runId" in json) || typeof json.runId !== "string") {
+              return reply.text("Missing or invalid: runId", 400);
+            }
+
+            let restoreAtUnixTimeMs: number | undefined;
+            if ("restoreAtUnixTimeMs" in json && typeof json.restoreAtUnixTimeMs === "number") {
+              restoreAtUnixTimeMs = json.restoreAtUnixTimeMs;
+            }
+
+            let keepRunAlive = false;
+            if ("keepRunAlive" in json && typeof json.keepRunAlive === "boolean") {
+              keepRunAlive = json.keepRunAlive;
+            }
+
+            const { runId } = json;
+
+            if (!runId) {
+              return reply.text("Missing runId", 400);
+            }
+
+            const runSocket = await this.#getRunSocket(runId);
+            if (!runSocket) {
+              return reply.text("Run socket not found", 404);
+            }
+
+            const { data } = runSocket;
+
+            console.log("Manual checkpoint", data);
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: data.runId,
+              projectRef: data.projectRef,
+              deploymentVersion: data.deploymentVersion,
+              attemptNumber: data.attemptNumber ? parseInt(data.attemptNumber) : undefined,
+            });
+
+            if (!checkpoint) {
+              return reply.text("Failed to checkpoint", 500);
+            }
+
+            if (!data.attemptFriendlyId) {
+              return reply.text("Socket data missing attemptFriendlyId", 500);
+            }
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId,
+              attemptFriendlyId: data.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "MANUAL",
+                restoreAtUnixTimeMs,
+              },
+            });
+
+            if (ack?.keepRunAlive || keepRunAlive) {
+              return reply.json({
+                message: `keeping run ${runId} alive after checkpoint`,
+                checkpoint,
+                requestJson: json,
+              });
+            }
+
+            runSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
+            return reply.json({
+              message: `checkpoint created for run ${runId}`,
+              checkpoint,
+              requestJson: json,
+            });
+          } catch (error) {
+            return reply.json({
+              message: `error`,
+              error,
+            });
+          }
+        }
         default: {
           return reply.empty(404);
         }

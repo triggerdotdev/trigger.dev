@@ -479,6 +479,11 @@ export const CoordinatorToPlatformMessages = {
           type: z.literal("RETRYING_AFTER_FAILURE"),
           attemptNumber: z.number(),
         }),
+        z.object({
+          type: z.literal("MANUAL"),
+          /** If unspecified it will be restored immediately, e.g. for live migration */
+          restoreAtUnixTimeMs: z.number().optional(),
+        }),
       ]),
     }),
     callback: z.object({
