@@ -49,6 +49,7 @@ export class PerformDeploymentAlertsService extends BaseService {
     await DeliverAlertService.createAndSendAlert(
       {
         channelId: alertChannel.id,
+        channelType: alertChannel.type,
         projectId: deployment.projectId,
         environmentId: deployment.environmentId,
         alertType,
