@@ -36,7 +36,7 @@ import { commonWorker } from "~/v3/commonWorker.server";
 import { FINAL_ATTEMPT_STATUSES } from "~/v3/taskStatus";
 import { BaseService } from "../baseService.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { ProjectAlertType } from "@trigger.dev/database";
+import { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { v3RunPath } from "~/utils/pathBuilder";
 import { isOOMError } from "../completeAttempt.server";
@@ -1068,6 +1068,7 @@ export class DeliverAlertService extends BaseService {
   static async createAndSendAlert(
     {
       channelId,
+      channelType,
       projectId,
       environmentId,
       alertType,
@@ -1075,6 +1076,7 @@ export class DeliverAlertService extends BaseService {
       taskRunId,
     }: {
       channelId: string;
+      channelType: ProjectAlertChannelType;
       projectId: string;
       environmentId: string;
       alertType: ProjectAlertType;
@@ -1083,7 +1085,7 @@ export class DeliverAlertService extends BaseService {
     },
     db: PrismaClientOrTransaction
   ) {
-    if (taskRunId) {
+    if (taskRunId && channelType !== "WEBHOOK") {
       try {
         const result = await alertsRateLimiter.check(channelId);
 
