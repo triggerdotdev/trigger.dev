@@ -1,5 +1,6 @@
 import { Attributes } from "@opentelemetry/api";
 import {
+  MachinePresetName,
   TaskRunContext,
   TaskRunError,
   TaskRunErrorCodes,
@@ -8,9 +9,8 @@ import {
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  exceptionEventEnhancer,
   flattenAttributes,
-  internalErrorFromUnexpectedExit,
+  isManualOutOfMemoryError,
   sanitizeError,
   shouldRetryError,
   taskRunErrorEnhancer,
@@ -31,7 +31,8 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { updateMetadataService } from "~/services/metadata/updateMetadata.server";
+import { getTaskEventStoreTableForRun } from "../taskEventStore.server";
+import { socketIo } from "../handleSocketIo.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -164,19 +165,25 @@ export class CompleteAttemptService extends BaseService {
     });
 
     // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-      endTime: new Date(),
-      attributes: {
-        isError: false,
-        output:
-          completion.outputType === "application/store" || completion.outputType === "text/plain"
-            ? completion.output
-            : completion.output
-            ? (safeJsonParse(completion.output) as Attributes)
-            : undefined,
-        outputType: completion.outputType,
-      },
-    });
+    await eventRepository.completeEvent(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      taskRunAttempt.taskRun.spanId,
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined,
+      {
+        endTime: new Date(),
+        attributes: {
+          isError: false,
+          output:
+            completion.outputType === "application/store" || completion.outputType === "text/plain"
+              ? completion.output
+              : completion.output
+              ? (safeJsonParse(completion.output) as Attributes)
+              : undefined,
+          outputType: completion.outputType,
+        },
+      }
+    );
 
     return "COMPLETED";
   }
@@ -248,9 +255,12 @@ export class CompleteAttemptService extends BaseService {
 
     let retriableError = shouldRetryError(taskRunErrorEnhancer(completion.error));
     let isOOMRetry = false;
+    let isOOMAttempt = isOOMError(completion.error);
+    let isOnMaxOOMMachine = false;
+    let oomMachine: MachinePresetName | undefined;
 
-    //OOM errors should retry (if an OOM machine is specified)
-    if (isOOMError(completion.error)) {
+    //OOM errors should retry (if an OOM machine is specified, and we're not already on it)
+    if (isOOMAttempt) {
       const retryConfig = FailedTaskRunRetryHelper.getRetryConfig({
         run: {
           ...taskRunAttempt.taskRun,
@@ -260,10 +270,10 @@ export class CompleteAttemptService extends BaseService {
         execution,
       });
 
-      if (
-        retryConfig?.outOfMemory?.machine &&
-        retryConfig.outOfMemory.machine !== taskRunAttempt.taskRun.machinePreset
-      ) {
+      oomMachine = retryConfig?.outOfMemory?.machine;
+      isOnMaxOOMMachine = oomMachine === taskRunAttempt.taskRun.machinePreset;
+
+      if (oomMachine && !isOnMaxOOMMachine) {
         //we will retry
         isOOMRetry = true;
         retriableError = true;
@@ -282,7 +292,7 @@ export class CompleteAttemptService extends BaseService {
             id: taskRunAttempt.taskRunId,
           },
           data: {
-            machinePreset: retryConfig.outOfMemory.machine,
+            machinePreset: oomMachine,
           },
         });
       }
@@ -301,27 +311,39 @@ export class CompleteAttemptService extends BaseService {
         environment,
         checkpoint,
         forceRequeue: isOOMRetry,
+        oomMachine,
       });
     }
 
     // The attempt has failed and we won't retry
 
+    if (isOOMAttempt && isOnMaxOOMMachine && environment.type !== "DEVELOPMENT") {
+      // The attempt failed due to an OOM error but we're already on the machine we should retry on
+      exitRun(taskRunAttempt.taskRunId);
+    }
+
     // Now we need to "complete" the task run event/span
-    await eventRepository.completeEvent(taskRunAttempt.taskRun.spanId, {
-      endTime: failedAt,
-      attributes: {
-        isError: true,
-      },
-      events: [
-        {
-          name: "exception",
-          time: failedAt,
-          properties: {
-            exception: createExceptionPropertiesFromError(sanitizedError),
-          },
+    await eventRepository.completeEvent(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      taskRunAttempt.taskRun.spanId,
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined,
+      {
+        endTime: failedAt,
+        attributes: {
+          isError: true,
         },
-      ],
-    });
+        events: [
+          {
+            name: "exception",
+            time: failedAt,
+            properties: {
+              exception: createExceptionPropertiesFromError(sanitizedError),
+            },
+          },
+        ],
+      }
+    );
 
     await this._prisma.taskRun.update({
       where: {
@@ -363,9 +385,14 @@ export class CompleteAttemptService extends BaseService {
       return "COMPLETED";
     }
 
-    const inProgressEvents = await eventRepository.queryIncompleteEvents({
-      runId: taskRunAttempt.taskRun.friendlyId,
-    });
+    const inProgressEvents = await eventRepository.queryIncompleteEvents(
+      getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+      {
+        runId: taskRunAttempt.taskRun.friendlyId,
+      },
+      taskRunAttempt.taskRun.createdAt,
+      taskRunAttempt.taskRun.completedAt ?? undefined
+    );
 
     // Handle in-progress events
     switch (status) {
@@ -393,21 +420,27 @@ export class CompleteAttemptService extends BaseService {
 
         await Promise.all(
           inProgressEvents.map((event) => {
-            return eventRepository.completeEvent(event.spanId, {
-              endTime: failedAt,
-              attributes: {
-                isError: true,
-              },
-              events: [
-                {
-                  name: "exception",
-                  time: failedAt,
-                  properties: {
-                    exception: createExceptionPropertiesFromError(sanitizedError),
-                  },
+            return eventRepository.completeEvent(
+              getTaskEventStoreTableForRun(taskRunAttempt.taskRun),
+              event.spanId,
+              taskRunAttempt.taskRun.createdAt,
+              taskRunAttempt.taskRun.completedAt ?? undefined,
+              {
+                endTime: failedAt,
+                attributes: {
+                  isError: true,
                 },
-              ],
-            });
+                events: [
+                  {
+                    name: "exception",
+                    time: failedAt,
+                    properties: {
+                      exception: createExceptionPropertiesFromError(sanitizedError),
+                    },
+                  },
+                ],
+              }
+            );
           })
         );
       }
@@ -482,6 +515,11 @@ export class CompleteAttemptService extends BaseService {
 
     if (forceRequeue) {
       logger.debug("[CompleteAttemptService] Forcing retry via queue", { runId: run.id });
+
+      // The run won't know it should shut down as we make the decision to force requeue here
+      // This also ensures that this change is backwards compatible with older workers
+      exitRun(run.id);
+
       await retryViaQueue();
       return;
     }
@@ -519,6 +557,7 @@ export class CompleteAttemptService extends BaseService {
     environment,
     checkpoint,
     forceRequeue = false,
+    oomMachine,
   }: {
     execution: TaskRunExecution;
     executionRetry: TaskRunExecutionRetry;
@@ -527,29 +566,38 @@ export class CompleteAttemptService extends BaseService {
     environment: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
     forceRequeue?: boolean;
+    /** Setting this will also alter the retry span message */
+    oomMachine?: MachinePresetName;
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
     // Retry the task run
-    await eventRepository.recordEvent(`Retry #${execution.attempt.number} delay`, {
-      taskSlug: taskRunAttempt.taskRun.taskIdentifier,
-      environment,
-      attributes: {
-        metadata: this.#generateMetadataAttributesForNextAttempt(execution),
-        properties: {
-          retryAt: retryAt.toISOString(),
+    await eventRepository.recordEvent(
+      `Retry #${execution.attempt.number} delay${oomMachine ? " after OOM" : ""}`,
+      {
+        taskSlug: taskRunAttempt.taskRun.taskIdentifier,
+        environment,
+        attributes: {
+          metadata: this.#generateMetadataAttributesForNextAttempt(execution),
+          properties: {
+            retryAt: retryAt.toISOString(),
+            previousMachine: oomMachine
+              ? taskRunAttempt.taskRun.machinePreset ?? undefined
+              : undefined,
+            nextMachine: oomMachine,
+          },
+          runId: taskRunAttempt.taskRun.friendlyId,
+          style: {
+            icon: "schedule-attempt",
+          },
+          queueId: taskRunAttempt.queueId,
+          queueName: taskRunAttempt.taskRun.queue,
         },
-        runId: taskRunAttempt.taskRun.friendlyId,
-        style: {
-          icon: "schedule-attempt",
-        },
-        queueId: taskRunAttempt.queueId,
-        queueName: taskRunAttempt.taskRun.queue,
-      },
-      context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
-      spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
-      endTime: retryAt,
-    });
+        context: taskRunAttempt.taskRun.traceContext as Record<string, string | undefined>,
+        spanIdSeed: `retry-${taskRunAttempt.number + 1}`,
+        endTime: retryAt,
+      }
+    );
 
     logger.debug("[CompleteAttemptService] Retrying", {
       taskRun: taskRunAttempt.taskRun.friendlyId,
@@ -690,23 +738,48 @@ async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: 
   });
 }
 
-function isOOMError(error: TaskRunError) {
-  if (error.type !== "INTERNAL_ERROR") return false;
-  if (error.code === "TASK_PROCESS_OOM_KILLED" || error.code === "TASK_PROCESS_MAYBE_OOM_KILLED") {
-    return true;
+export function isOOMError(error: TaskRunError) {
+  if (error.type === "INTERNAL_ERROR") {
+    if (
+      error.code === "TASK_PROCESS_OOM_KILLED" ||
+      error.code === "TASK_PROCESS_MAYBE_OOM_KILLED"
+    ) {
+      return true;
+    }
+
+    // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
+    // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
+    // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
+    if (
+      error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
+      error.message &&
+      error.message.includes("SIGKILL") &&
+      error.message.includes("-1")
+    ) {
+      return true;
+    }
   }
 
-  // For the purposes of retrying on a larger machine, we're going to treat this is an OOM error.
-  // This is what they look like if we're executing using k8s. They then get corrected later, but it's too late.
-  // {"code": "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "type": "INTERNAL_ERROR", "message": "Process exited with code -1 after signal SIGKILL."}
-  if (
-    error.code === "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE" &&
-    error.message &&
-    error.message.includes("SIGKILL") &&
-    error.message.includes("-1")
-  ) {
+  if (error.type === "BUILT_IN_ERROR") {
+    // ffmpeg also does weird stuff
+    // { "name": "Error", "type": "BUILT_IN_ERROR", "message": "ffmpeg was killed with signal SIGKILL" }
+    if (error.message && error.message.includes("ffmpeg was killed with signal SIGKILL")) {
+      return true;
+    }
+  }
+
+  // Special `OutOfMemoryError` for doing a manual OOM kill.
+  // Useful if a native library does an OOM but doesn't actually crash the run and you want to manually
+  if (isManualOutOfMemoryError(error)) {
     return true;
   }
 
   return false;
+}
+
+function exitRun(runId: string) {
+  socketIo.coordinatorNamespace.emit("REQUEST_RUN_CANCELLATION", {
+    version: "v1",
+    runId,
+  });
 }

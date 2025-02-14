@@ -17,6 +17,8 @@ import {
 import { PodCleaner } from "./podCleaner";
 import { TaskMonitor } from "./taskMonitor";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";
+import { assertExhaustive } from "@trigger.dev/core";
+import { CustomLabelHelper } from "./labelHelper";
 
 const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 const NODE_NAME = process.env.NODE_NAME || "local";
@@ -37,7 +39,14 @@ const UPTIME_MAX_PENDING_ERRORS = Number(process.env.UPTIME_MAX_PENDING_ERRORS |
 const POD_EPHEMERAL_STORAGE_SIZE_LIMIT = process.env.POD_EPHEMERAL_STORAGE_SIZE_LIMIT || "10Gi";
 const POD_EPHEMERAL_STORAGE_SIZE_REQUEST = process.env.POD_EPHEMERAL_STORAGE_SIZE_REQUEST || "2Gi";
 
+// Image config
 const PRE_PULL_DISABLED = process.env.PRE_PULL_DISABLED === "true";
+const ADDITIONAL_PULL_SECRETS = process.env.ADDITIONAL_PULL_SECRETS;
+const PAUSE_IMAGE = process.env.PAUSE_IMAGE || "registry.k8s.io/pause:3.9";
+const BUSYBOX_IMAGE = process.env.BUSYBOX_IMAGE || "registry.digitalocean.com/trigger/busybox";
+const DEPLOYMENT_IMAGE_PREFIX = process.env.DEPLOYMENT_IMAGE_PREFIX;
+const RESTORE_IMAGE_PREFIX = process.env.RESTORE_IMAGE_PREFIX;
+const UTILITY_IMAGE_PREFIX = process.env.UTILITY_IMAGE_PREFIX;
 
 const logger = new SimpleLogger(`[${NODE_NAME}]`);
 logger.log(`running in ${RUNTIME_ENV} mode`);
@@ -64,6 +73,8 @@ class KubernetesTaskOperations implements TaskOperations {
     batch: k8s.BatchV1Api;
     apps: k8s.AppsV1Api;
   };
+
+  #labelHelper = new CustomLabelHelper();
 
   constructor(opts: { namespace?: string } = {}) {
     if (opts.namespace) {
@@ -103,7 +114,7 @@ class KubernetesTaskOperations implements TaskOperations {
               containers: [
                 {
                   name: this.#getIndexContainerName(opts.shortCode),
-                  image: opts.imageRef,
+                  image: getImageRef("deployment", opts.imageRef),
                   ports: [
                     {
                       containerPort: 8000,
@@ -157,6 +168,7 @@ class KubernetesTaskOperations implements TaskOperations {
           name: containerName,
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#labelHelper.getAdditionalLabels("create"),
             ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
@@ -170,7 +182,7 @@ class KubernetesTaskOperations implements TaskOperations {
           containers: [
             {
               name: containerName,
-              image: opts.image,
+              image: getImageRef("deployment", opts.image),
               ports: [
                 {
                   containerPort: 8000,
@@ -218,6 +230,7 @@ class KubernetesTaskOperations implements TaskOperations {
           name: `${this.#getRunContainerName(opts.runId)}-${opts.checkpointId.slice(-8)}`,
           namespace: this.#namespace.metadata.name,
           labels: {
+            ...this.#labelHelper.getAdditionalLabels("restore"),
             ...this.#getSharedLabels(opts),
             app: "task-run",
             "app.kubernetes.io/part-of": "trigger-worker",
@@ -231,12 +244,12 @@ class KubernetesTaskOperations implements TaskOperations {
           initContainers: [
             {
               name: "pull-base-image",
-              image: opts.imageRef,
+              image: getImageRef("deployment", opts.imageRef),
               command: ["sleep", "0"],
             },
             {
               name: "populate-taskinfo",
-              image: "registry.digitalocean.com/trigger/busybox",
+              image: getImageRef("utility", BUSYBOX_IMAGE),
               imagePullPolicy: "IfNotPresent",
               command: ["/bin/sh", "-c"],
               args: ["printenv COORDINATOR_HOST | tee /etc/taskinfo/coordinator-host"],
@@ -252,7 +265,7 @@ class KubernetesTaskOperations implements TaskOperations {
           containers: [
             {
               name: this.#getRunContainerName(opts.runId),
-              image: opts.checkpointRef,
+              image: getImageRef("restore", opts.checkpointRef),
               ports: [
                 {
                   containerPort: 8000,
@@ -358,7 +371,7 @@ class KubernetesTaskOperations implements TaskOperations {
               initContainers: [
                 {
                   name: "prepull",
-                  image: opts.imageRef,
+                  image: getImageRef("deployment", opts.imageRef),
                   command: ["/usr/bin/true"],
                   resources: {
                     limits: {
@@ -372,7 +385,7 @@ class KubernetesTaskOperations implements TaskOperations {
               containers: [
                 {
                   name: "pause",
-                  image: "registry.k8s.io/pause:3.9",
+                  image: getImageRef("utility", PAUSE_IMAGE),
                   resources: {
                     limits: {
                       cpu: "1m",
@@ -403,17 +416,20 @@ class KubernetesTaskOperations implements TaskOperations {
   }
 
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
+    const pullSecrets = ["registry-trigger", "registry-trigger-failover"];
+
+    if (ADDITIONAL_PULL_SECRETS) {
+      pullSecrets.push(...ADDITIONAL_PULL_SECRETS.split(","));
+    }
+
+    const imagePullSecrets = pullSecrets.map(
+      (name) => ({ name }) satisfies k8s.V1LocalObjectReference
+    );
+
     return {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      imagePullSecrets: [
-        {
-          name: "registry-trigger",
-        },
-        {
-          name: "registry-trigger-failover",
-        },
-      ],
+      imagePullSecrets,
       nodeSelector: {
         nodetype: "worker",
       },
@@ -671,6 +687,26 @@ class KubernetesTaskOperations implements TaskOperations {
       throw err;
     }
   }
+}
+
+type ImageType = "deployment" | "restore" | "utility";
+
+function getImagePrefix(type: ImageType) {
+  switch (type) {
+    case "deployment":
+      return DEPLOYMENT_IMAGE_PREFIX;
+    case "restore":
+      return RESTORE_IMAGE_PREFIX;
+    case "utility":
+      return UTILITY_IMAGE_PREFIX;
+    default:
+      assertExhaustive(type);
+  }
+}
+
+function getImageRef(type: ImageType, ref: string) {
+  const prefix = getImagePrefix(type);
+  return prefix ? `${prefix}/${ref}` : ref;
 }
 
 const provider = new ProviderShell({
