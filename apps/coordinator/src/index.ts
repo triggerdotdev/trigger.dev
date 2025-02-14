@@ -1446,7 +1446,7 @@ class TaskCoordinator {
             console.log("Manual duration checkpoint", data);
 
             if (async) {
-              return reply.text("Creating checkpoint in the background", 202);
+              reply.text("Creating checkpoint in the background", 202);
             }
 
             const checkpoint = await this.#checkpointer.checkpointAndPush({
@@ -1547,7 +1547,7 @@ class TaskCoordinator {
             console.log("Manual checkpoint", data);
 
             if (async) {
-              return reply.text("Creating checkpoint in the background", 202);
+              reply.text("Creating checkpoint in the background", 202);
             }
 
             const checkpoint = await this.#checkpointer.checkpointAndPush({
