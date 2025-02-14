@@ -783,7 +783,12 @@ class TaskCoordinator {
                       delay,
                       elapsedMs,
                     });
-                    return await sendCompletionWithAck();
+
+                    const success = await sendCompletionWithAck();
+
+                    if (!success) {
+                      throw new Error("Failed to send completion with ack");
+                    }
                   }
                 );
 
