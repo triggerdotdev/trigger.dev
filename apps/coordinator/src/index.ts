@@ -33,7 +33,7 @@ const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?
 const TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS =
   parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS || "") || 30_000;
 const TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES =
-  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 5;
+  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 7;
 
 const logger = new SimpleStructuredLogger("coordinator", undefined, { nodeName: NODE_NAME });
 const chaosMonkey = new ChaosMonkey(
@@ -783,12 +783,7 @@ class TaskCoordinator {
                       delay,
                       elapsedMs,
                     });
-
-                    const success = await sendCompletionWithAck();
-
-                    if (!success) {
-                      throw new Error("Failed to send completion with ack");
-                    }
+                    return await sendCompletionWithAck();
                   }
                 );
 
