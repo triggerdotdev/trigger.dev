@@ -415,6 +415,14 @@ export class Checkpointer {
     const buildah = new Buildah({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
     const crictl = new Crictl({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
 
+    const removeCurrentAbortController = () => {
+      // Ensure only the current controller is removed
+      if (this.#abortControllers.get(runId) === controller) {
+        this.#abortControllers.delete(runId);
+      }
+      controller.signal.removeEventListener("abort", onAbort);
+    };
+
     const cleanup = async () => {
       const metadata = {
         runId,
@@ -424,6 +432,7 @@ export class Checkpointer {
 
       if (this.#dockerMode) {
         this.#logger.debug("Skipping cleanup in docker mode", metadata);
+        removeCurrentAbortController();
         return;
       }
 
@@ -436,11 +445,7 @@ export class Checkpointer {
         this.#logger.error("Error during cleanup", { ...metadata, error });
       }
 
-      // Ensure only the current controller is removed
-      if (this.#abortControllers.get(runId) === controller) {
-        this.#abortControllers.delete(runId);
-      }
-      controller.signal.removeEventListener("abort", onAbort);
+      removeCurrentAbortController();
     };
 
     try {
