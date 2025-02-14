@@ -435,6 +435,20 @@ export const CoordinatorToPlatformMessages = {
         .optional(),
     }),
   },
+  TASK_RUN_COMPLETED_WITH_ACK: {
+    message: z.object({
+      version: z.enum(["v1", "v2"]).default("v2"),
+      execution: ProdTaskRunExecution,
+      completion: TaskRunExecutionResult,
+      checkpoint: z
+        .object({
+          docker: z.boolean(),
+          location: z.string(),
+        })
+        .optional(),
+    }),
+    callback: AckCallbackResult,
+  },
   TASK_RUN_FAILED_TO_RUN: {
     message: z.object({
       version: z.literal("v1").default("v1"),
