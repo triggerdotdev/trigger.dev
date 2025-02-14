@@ -11,7 +11,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
+import { ExponentialBackoff, HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
 import { boolFromEnv, numFromEnv, safeJsonParse } from "./util";
@@ -29,6 +29,11 @@ const PLATFORM_HOST = process.env.PLATFORM_HOST || "127.0.0.1";
 const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
+
+const TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS =
+  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS || "") || 30_000;
+const TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES =
+  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 5;
 
 const logger = new SimpleStructuredLogger("coordinator", undefined, { nodeName: NODE_NAME });
 const chaosMonkey = new ChaosMonkey(
@@ -720,19 +725,79 @@ class TaskCoordinator {
 
             await chaosMonkey.call({ throwErrors: false });
 
-            const completeWithoutCheckpoint = (shouldExit: boolean) => {
+            const sendCompletionWithAck = async (): Promise<boolean> => {
+              try {
+                const response = await this.#platformSocket?.sendWithAck(
+                  "TASK_RUN_COMPLETED_WITH_ACK",
+                  {
+                    version: "v2",
+                    execution,
+                    completion,
+                  },
+                  TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS
+                );
+
+                if (!response) {
+                  log.error("TASK_RUN_COMPLETED_WITH_ACK: no response");
+                  return false;
+                }
+
+                if (!response.success) {
+                  log.error("TASK_RUN_COMPLETED_WITH_ACK: error response", {
+                    error: response.error,
+                  });
+                  return false;
+                }
+
+                log.log("TASK_RUN_COMPLETED_WITH_ACK: successful response");
+                return true;
+              } catch (error) {
+                log.error("TASK_RUN_COMPLETED_WITH_ACK: threw error", { error });
+                return false;
+              }
+            };
+
+            const completeWithoutCheckpoint = async (shouldExit: boolean) => {
               const supportsRetryCheckpoints = message.version === "v1";
 
-              this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-                version: supportsRetryCheckpoints ? "v1" : "v2",
-                execution,
-                completion,
-              });
               callback({ willCheckpointAndRestore: false, shouldExit });
+
+              if (supportsRetryCheckpoints) {
+                // This is only here for backwards compat
+                this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+                  version: "v1",
+                  execution,
+                  completion,
+                });
+              } else {
+                // 99.99% of runs should end up here
+
+                const completedWithAckBackoff = new ExponentialBackoff("FullJitter").maxRetries(
+                  TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES
+                );
+
+                const result = await completedWithAckBackoff.execute(
+                  async ({ retry, delay, elapsedMs }) => {
+                    logger.log("TASK_RUN_COMPLETED_WITH_ACK: sending with backoff", {
+                      retry,
+                      delay,
+                      elapsedMs,
+                    });
+                    return await sendCompletionWithAck();
+                  }
+                );
+
+                if (!result.success) {
+                  logger.error("TASK_RUN_COMPLETED_WITH_ACK: failed to send with backoff", result);
+                  return;
+                }
+
+                logger.log("TASK_RUN_COMPLETED_WITH_ACK: sent with backoff", result);
+              }
             };
 
             if (completion.ok) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
@@ -740,17 +805,17 @@ class TaskCoordinator {
               completion.error.type === "INTERNAL_ERROR" &&
               completion.error.code === "TASK_RUN_CANCELLED"
             ) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
             if (completion.retry === undefined) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
             if (completion.retry.delay < this.#delayThresholdInMs) {
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
 
               // Prevents runs that fail fast from never sending a heartbeat
               this.#sendRunHeartbeat(socket.data.runId);
@@ -759,7 +824,7 @@ class TaskCoordinator {
             }
 
             if (message.version === "v2") {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
@@ -768,7 +833,7 @@ class TaskCoordinator {
             const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
             if (!willCheckpointAndRestore) {
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
               return;
             }
 
@@ -792,7 +857,7 @@ class TaskCoordinator {
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
               return;
             }
 
