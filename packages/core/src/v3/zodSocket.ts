@@ -293,7 +293,8 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
 
   public async sendWithAck<K extends GetSocketMessagesWithCallback<TMessageCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
+    payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>,
+    timeout?: number
   ): Promise<z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>> {
     const schema = this.#schema[type]?.["message"];
 
@@ -307,8 +308,10 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
       throw new Error(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
     }
 
+    const socket = timeout ? this.#socket.timeout(timeout) : this.#socket;
+
     // @ts-expect-error
-    const callbackResult = await this.#socket.emitWithAck(type, { payload, version: "v1" });
+    const callbackResult = await socket.emitWithAck(type, { payload, version: "v1" });
 
     return callbackResult;
   }
