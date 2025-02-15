@@ -8,6 +8,7 @@ import {
   setupQueue,
 } from "./utils/marqs.js";
 import { trace } from "@opentelemetry/api";
+import { EnvQueues } from "~/v3/marqs/types.js";
 
 const tracer = trace.getTracer("test");
 
@@ -25,7 +26,6 @@ describe("FairDequeuingStrategy", () => {
       seed: "test-seed-1", // for deterministic shuffling
     });
 
-    // Setup a single queue
     await setupQueue({
       redis,
       keyProducer,
@@ -39,7 +39,10 @@ describe("FairDequeuingStrategy", () => {
     const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toBe("org:org-1:env:env-1:queue:queue-1");
+    expect(result[0]).toEqual({
+      envId: "env-1",
+      queues: ["org:org-1:env:env-1:queue:queue-1"],
+    });
   });
 
   redisTest("should respect env concurrency limits", async ({ redis }) => {
@@ -107,6 +110,10 @@ describe("FairDequeuingStrategy", () => {
         "consumer-1"
       );
       expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        envId: "env-1",
+        queues: ["org:org-1:env:env-1:queue:queue-1"],
+      });
     }
   );
 
@@ -156,11 +163,13 @@ describe("FairDequeuingStrategy", () => {
 
     const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
 
-    expect(result).toHaveLength(2);
-    // Should only get the two oldest queues
+    expect(result).toHaveLength(1);
     const queue1 = keyProducer.queueKey("org-1", "env-1", "queue-1");
     const queue2 = keyProducer.queueKey("org-1", "env-1", "queue-2");
-    expect(result).toEqual([queue1, queue2]);
+    expect(result[0]).toEqual({
+      envId: "env-1",
+      queues: [queue1, queue2],
+    });
   });
 
   redisTest("should reuse snapshots across calls for the same consumer", async ({ redis }) => {
@@ -209,7 +218,11 @@ describe("FairDequeuingStrategy", () => {
 
     const startDistribute1 = performance.now();
 
-    const result = await strategy.distributeFairQueuesFromParentQueue("parent-queue", "consumer-1");
+    const envResult = await strategy.distributeFairQueuesFromParentQueue(
+      "parent-queue",
+      "consumer-1"
+    );
+    const result = flattenResults(envResult);
 
     const distribute1Duration = performance.now() - startDistribute1;
 
@@ -318,10 +331,11 @@ describe("FairDequeuingStrategy", () => {
 
     // Run multiple iterations
     for (let i = 0; i < iterations; i++) {
-      const result = await strategy.distributeFairQueuesFromParentQueue(
+      const envResult = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         `consumer-${i % 3}` // Simulate 3 different consumers
       );
+      const result = flattenResults(envResult);
 
       // Track positions of queues
       result.forEach((queueId, position) => {
@@ -474,10 +488,11 @@ describe("FairDequeuingStrategy", () => {
         env: { id: "env-2", currentConcurrency: 0, limit: 5 },
       });
 
-      const result = await strategy.distributeFairQueuesFromParentQueue(
+      const envResult = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
+      const result = flattenResults(envResult);
 
       // Group queues by environment
       const queuesByEnv = result.reduce((acc, queueId) => {
@@ -586,10 +601,11 @@ describe("FairDequeuingStrategy", () => {
         const firstPositionCounts: Record<string, number> = {};
 
         for (let i = 0; i < iterationsPerStrategy; i++) {
-          const result = await strategy.distributeFairQueuesFromParentQueue(
+          const envResult = await strategy.distributeFairQueuesFromParentQueue(
             "parent-queue",
             `consumer-${i % 3}`
           );
+          const result = flattenResults(envResult);
 
           expect(result.length).toBeGreaterThan(0);
 
@@ -668,10 +684,11 @@ describe("FairDequeuingStrategy", () => {
 
       const iterations = 1000;
       for (let i = 0; i < iterations; i++) {
-        const result = await strategy.distributeFairQueuesFromParentQueue(
+        const envResult = await strategy.distributeFairQueuesFromParentQueue(
           "parent-queue",
           "consumer-1"
         );
+        const result = flattenResults(envResult);
 
         result.forEach((queueId, position) => {
           const baseQueueId = queueId.split(":").pop()!;
@@ -798,10 +815,11 @@ describe("FairDequeuingStrategy", () => {
       const selectedEnvCounts: Record<string, number> = {};
 
       for (let i = 0; i < iterations; i++) {
-        const result = await strategy.distributeFairQueuesFromParentQueue(
+        const envResult = await strategy.distributeFairQueuesFromParentQueue(
           "parent-queue",
           `consumer-${i}`
         );
+        const result = flattenResults(envResult);
 
         // Track which orgs were included in the result
         const selectedEnvs = new Set(result.map((queueId) => keyProducer.envIdFromQueue(queueId)));
@@ -853,3 +871,8 @@ describe("FairDequeuingStrategy", () => {
     }
   );
 });
+
+// Helper function to flatten results for counting
+function flattenResults(results: Array<EnvQueues>): string[] {
+  return results.flatMap((envQueue) => envQueue.queues);
+}

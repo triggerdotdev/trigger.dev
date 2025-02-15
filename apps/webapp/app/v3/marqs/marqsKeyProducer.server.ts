@@ -1,5 +1,4 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { MarQSKeyProducer } from "./types";
+import { MarQSKeyProducer, MarQSKeyProducerEnv, QueueDescriptor } from "./types";
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",
@@ -12,7 +11,14 @@ const constants = {
   CONCURRENCY_KEY_PART: "ck",
   MESSAGE_PART: "message",
   RESERVE_CONCURRENCY_PART: "reserveConcurrency",
+  PRIORITY_PART: "priority",
 } as const;
+
+const ORG_REGEX = /org:(\w+):/;
+const ENV_REGEX = /env:(\w+):/;
+const QUEUE_REGEX = /queue:([^:]+)(?::|$)/;
+const CONCURRENCY_KEY_REGEX = /ck:([^:]+)(?::|$)/;
+const PRIORITY_REGEX = /priority:(\d+)(?::|$)/;
 
 export class MarQSShortKeyProducer implements MarQSKeyProducer {
   constructor(private _prefix: string) {}
@@ -33,26 +39,38 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return key;
   }
 
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string) {
+  queueConcurrencyLimitKey(env: MarQSKeyProducerEnv, queue: string) {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
 
   envConcurrencyLimitKey(envId: string): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
-  envConcurrencyLimitKey(envOrId: AuthenticatedEnvironment | string): string {
+  envConcurrencyLimitKey(env: MarQSKeyProducerEnv): string;
+  envConcurrencyLimitKey(envOrId: MarQSKeyProducerEnv | string): string {
     return [
       this.envKeySection(typeof envOrId === "string" ? envOrId : envOrId.id),
       constants.CONCURRENCY_LIMIT_PART,
     ].join(":");
   }
 
-  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
   queueKey(
-    envOrOrgId: AuthenticatedEnvironment | string,
+    orgId: string,
+    envId: string,
+    queue: string,
+    concurrencyKey?: string,
+    priority?: number
+  ): string;
+  queueKey(
+    env: MarQSKeyProducerEnv,
+    queue: string,
+    concurrencyKey?: string,
+    priority?: number
+  ): string;
+  queueKey(
+    envOrOrgId: MarQSKeyProducerEnv | string,
     queueOrEnvId: string,
     queueOrConcurrencyKey: string,
-    concurrencyKey?: string
+    concurrencyKeyOrPriority?: string | number,
+    priority?: number
   ): string {
     if (typeof envOrOrgId === "string") {
       return [
@@ -60,7 +78,12 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
         this.envKeySection(queueOrEnvId),
         this.queueSection(queueOrConcurrencyKey),
       ]
-        .concat(concurrencyKey ? this.concurrencyKeySection(concurrencyKey) : [])
+        .concat(
+          typeof concurrencyKeyOrPriority === "string"
+            ? this.concurrencyKeySection(concurrencyKeyOrPriority)
+            : []
+        )
+        .concat(typeof priority === "number" && priority ? this.prioritySection(priority) : [])
         .join(":");
     } else {
       return [
@@ -69,11 +92,16 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
         this.queueSection(queueOrEnvId),
       ]
         .concat(queueOrConcurrencyKey ? this.concurrencyKeySection(queueOrConcurrencyKey) : [])
+        .concat(
+          typeof concurrencyKeyOrPriority === "number" && concurrencyKeyOrPriority
+            ? this.prioritySection(concurrencyKeyOrPriority)
+            : []
+        )
         .join(":");
     }
   }
 
-  envSharedQueueKey(env: AuthenticatedEnvironment) {
+  envSharedQueueKey(env: MarQSKeyProducerEnv) {
     if (env.type === "DEVELOPMENT") {
       return [
         this.orgKeySection(env.organizationId),
@@ -95,19 +123,19 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${concurrencyQueueName}:${constants.CONCURRENCY_LIMIT_PART}`;
   }
 
+  // TODO: if the queue passed in has a priority, we need to strip that out
+  // before adding the currentConcurrency part
   currentConcurrencyKeyFromQueue(queue: string) {
     return `${queue}:${constants.CURRENT_CONCURRENCY_PART}`;
   }
 
+  // TODO: if the queue passed in has a priority, we need to strip that out
+  // before adding the currentConcurrency part
   queueReserveConcurrencyKeyFromQueue(queue: string) {
     return `${queue}:${constants.RESERVE_CONCURRENCY_PART}`;
   }
 
-  currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
-    queue: string,
-    concurrencyKey?: string
-  ): string {
+  currentConcurrencyKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string {
     return [this.queueKey(env, queue, concurrencyKey), constants.CURRENT_CONCURRENCY_PART].join(
       ":"
     );
@@ -136,8 +164,8 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
   }
 
   envCurrentConcurrencyKey(envId: string): string;
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
-  envCurrentConcurrencyKey(envOrId: AuthenticatedEnvironment | string): string {
+  envCurrentConcurrencyKey(env: MarQSKeyProducerEnv): string;
+  envCurrentConcurrencyKey(envOrId: MarQSKeyProducerEnv | string): string {
     return [
       this.envKeySection(typeof envOrId === "string" ? envOrId : envOrId.id),
       constants.CURRENT_CONCURRENCY_PART,
@@ -150,7 +178,7 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return `${constants.ENV_PART}:${envId}:${constants.QUEUE_PART}`;
   }
 
-  envQueueKey(env: AuthenticatedEnvironment): string {
+  envQueueKey(env: MarQSKeyProducerEnv): string {
     return [constants.ENV_PART, this.shortId(env.id), constants.QUEUE_PART].join(":");
   }
 
@@ -168,6 +196,48 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
   envIdFromQueue(queue: string) {
     return this.normalizeQueue(queue).split(":")[3];
+  }
+
+  queueDescriptorFromQueue(queue: string): QueueDescriptor {
+    const match = queue.match(QUEUE_REGEX);
+
+    if (!match) {
+      throw new Error(`Invalid queue: ${queue}`);
+    }
+
+    const [, queueName] = match;
+
+    const envMatch = queue.match(ENV_REGEX);
+
+    if (!envMatch) {
+      throw new Error(`Invalid queue: ${queue}`);
+    }
+
+    const [, envId] = envMatch;
+
+    const orgMatch = queue.match(ORG_REGEX);
+
+    if (!orgMatch) {
+      throw new Error(`Invalid queue: ${queue}`);
+    }
+
+    const [, orgId] = orgMatch;
+
+    const concurrencyKeyMatch = queue.match(CONCURRENCY_KEY_REGEX);
+
+    const concurrencyKey = concurrencyKeyMatch ? concurrencyKeyMatch[1] : undefined;
+
+    const priorityMatch = queue.match(PRIORITY_REGEX);
+
+    const priority = priorityMatch ? parseInt(priorityMatch[1], 10) : undefined;
+
+    return {
+      name: queueName,
+      environment: envId,
+      organization: orgId,
+      concurrencyKey,
+      priority,
+    };
   }
 
   private shortId(id: string) {
@@ -189,6 +259,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
 
   private concurrencyKeySection(concurrencyKey: string) {
     return `${constants.CONCURRENCY_KEY_PART}:${concurrencyKey}`;
+  }
+
+  private prioritySection(priority: number) {
+    return `${constants.PRIORITY_PART}:${priority}`;
   }
 
   // This removes the leading prefix from the queue name if it exists

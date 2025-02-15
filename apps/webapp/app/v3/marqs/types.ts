@@ -1,34 +1,55 @@
+import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 export type QueueRange = { offset: number; count: number };
 
+export type QueueDescriptor = {
+  organization: string;
+  environment: string;
+  name: string;
+  concurrencyKey?: string;
+  priority?: number;
+};
+
+export type MarQSKeyProducerEnv = {
+  id: string;
+  organizationId: string;
+  type: RuntimeEnvironmentType;
+};
+
 export interface MarQSKeyProducer {
-  queueConcurrencyLimitKey(env: AuthenticatedEnvironment, queue: string): string;
+  queueConcurrencyLimitKey(env: MarQSKeyProducerEnv, queue: string): string;
 
   envConcurrencyLimitKey(envId: string): string;
-  envConcurrencyLimitKey(env: AuthenticatedEnvironment): string;
+  envConcurrencyLimitKey(env: MarQSKeyProducerEnv): string;
 
   envCurrentConcurrencyKey(envId: string): string;
-  envCurrentConcurrencyKey(env: AuthenticatedEnvironment): string;
+  envCurrentConcurrencyKey(env: MarQSKeyProducerEnv): string;
 
   envReserveConcurrencyKey(envId: string): string;
 
-  queueKey(orgId: string, envId: string, queue: string, concurrencyKey?: string): string;
-  queueKey(env: AuthenticatedEnvironment, queue: string, concurrencyKey?: string): string;
+  queueKey(
+    orgId: string,
+    envId: string,
+    queue: string,
+    concurrencyKey?: string,
+    priority?: number
+  ): string;
+  queueKey(
+    env: MarQSKeyProducerEnv,
+    queue: string,
+    concurrencyKey?: string,
+    priority?: number
+  ): string;
 
-  envQueueKey(env: AuthenticatedEnvironment): string;
-  envSharedQueueKey(env: AuthenticatedEnvironment): string;
+  envQueueKey(env: MarQSKeyProducerEnv): string;
+  envSharedQueueKey(env: MarQSKeyProducerEnv): string;
   sharedQueueKey(): string;
   sharedQueueScanPattern(): string;
   queueCurrentConcurrencyScanPattern(): string;
   concurrencyLimitKeyFromQueue(queue: string): string;
   currentConcurrencyKeyFromQueue(queue: string): string;
-  currentConcurrencyKey(
-    env: AuthenticatedEnvironment,
-    queue: string,
-    concurrencyKey?: string
-  ): string;
+  currentConcurrencyKey(env: MarQSKeyProducerEnv, queue: string, concurrencyKey?: string): string;
   envConcurrencyLimitKeyFromQueue(queue: string): string;
   envCurrentConcurrencyKeyFromQueue(queue: string): string;
   envReserveConcurrencyKeyFromQueue(queue: string): string;
@@ -40,13 +61,19 @@ export interface MarQSKeyProducer {
   envIdFromQueue(queue: string): string;
 
   queueReserveConcurrencyKeyFromQueue(queue: string): string;
+  queueDescriptorFromQueue(queue: string): QueueDescriptor;
 }
+
+export type EnvQueues = {
+  envId: string;
+  queues: string[];
+};
 
 export interface MarQSFairDequeueStrategy {
   distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string
-  ): Promise<Array<string>>;
+  ): Promise<Array<EnvQueues>>;
 }
 
 export const MessagePayload = z.object({

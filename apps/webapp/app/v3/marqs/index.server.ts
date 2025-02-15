@@ -32,6 +32,8 @@ import {
   VisibilityTimeoutStrategy,
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
+import { flattenAttributes } from "@trigger.dev/core/v3";
+import { EnvPriorityDequeuingStrategy } from "./envPriorityDequeuingStrategy.server";
 
 const KEY_PREFIX = "marqs:";
 
@@ -176,12 +178,13 @@ export class MarQS {
     messageData: Record<string, unknown>,
     concurrencyKey?: string,
     timestamp?: number | Date,
-    reserve?: EnqueueMessageReserveConcurrencyOptions
+    reserve?: EnqueueMessageReserveConcurrencyOptions,
+    priority?: number
   ) {
     return await this.#trace(
       "enqueueMessage",
       async (span) => {
-        const messageQueue = this.keys.queueKey(env, queue, concurrencyKey);
+        const messageQueue = this.keys.queueKey(env, queue, concurrencyKey, priority);
 
         const parentQueue = this.keys.envSharedQueueKey(env);
 
@@ -234,6 +237,72 @@ export class MarQS {
     );
   }
 
+  public async replaceMessage(
+    messageId: string,
+    messageData: Record<string, unknown>,
+    timestamp?: number,
+    inplace?: boolean
+  ) {
+    return this.#trace(
+      "replaceMessage",
+      async (span) => {
+        const oldMessage = await this.readMessage(messageId);
+
+        if (!oldMessage) {
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: oldMessage.queue,
+          [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
+        });
+
+        const traceContext = {
+          traceparent: oldMessage.data.traceparent,
+          tracestate: oldMessage.data.tracestate,
+        };
+
+        const newMessage: MessagePayload = {
+          version: "1",
+          // preserve original trace context
+          data: { ...oldMessage.data, ...messageData, ...traceContext },
+          queue: oldMessage.queue,
+          concurrencyKey: oldMessage.concurrencyKey,
+          timestamp: timestamp ?? Date.now(),
+          messageId,
+          parentQueue: oldMessage.parentQueue,
+        };
+
+        if (inplace) {
+          await this.#callReplaceMessage(newMessage);
+          return;
+        }
+
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+
+        await this.#callAcknowledgeMessage({
+          parentQueue: oldMessage.parentQueue,
+          messageQueue: oldMessage.queue,
+          messageId,
+        });
+
+        await this.#callEnqueueMessage(newMessage);
+
+        await this.options.subscriber?.messageReplaced(newMessage);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "replace",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
   public async dequeueMessageInEnv(env: AuthenticatedEnvironment) {
     return this.#trace(
       "dequeueMessageInEnv",
@@ -244,12 +313,15 @@ export class MarQS {
         span.setAttribute(SemanticAttributes.CONSUMER_ID, env.id);
 
         // Get prioritized list of queues to try
-        const queues =
+        const environments =
           await this.options.envQueuePriorityStrategy.distributeFairQueuesFromParentQueue(
             parentQueue,
             env.id
           );
 
+        const queues = environments.flatMap((e) => e.queues);
+
+        span.setAttribute("env_count", environments.length);
         span.setAttribute("queue_count", queues.length);
 
         for (const messageQueue of queues) {
@@ -328,64 +400,78 @@ export class MarQS {
         span.setAttribute(SemanticAttributes.PARENT_QUEUE, parentQueue);
 
         // Get prioritized list of queues to try
-        const queues = await this.options.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
-          parentQueue,
-          consumerId
-        );
+        const envQueues =
+          await this.options.queuePriorityStrategy.distributeFairQueuesFromParentQueue(
+            parentQueue,
+            consumerId
+          );
 
-        span.setAttribute("queue_count", queues.length);
+        span.setAttribute("environment_count", envQueues.length);
 
-        if (queues.length === 0) {
+        if (envQueues.length === 0) {
           return;
         }
 
+        let attemptedEnvs = 0;
+        let attemptedQueues = 0;
+
         // Try each queue in order until we successfully dequeue a message
-        for (const messageQueue of queues) {
-          try {
-            const messageData = await this.#callDequeueMessage({
-              messageQueue,
-              parentQueue,
-            });
+        for (const env of envQueues) {
+          attemptedEnvs++;
 
-            if (!messageData) {
-              continue; // Try next queue if no message was dequeued
-            }
+          for (const messageQueue of env.queues) {
+            attemptedQueues++;
 
-            const message = await this.readMessage(messageData.messageId);
-
-            if (message) {
-              const ageOfMessageInMs = Date.now() - message.timestamp;
-
-              span.setAttributes({
-                [SEMATTRS_MESSAGE_ID]: message.messageId,
-                [SemanticAttributes.QUEUE]: message.queue,
-                [SemanticAttributes.MESSAGE_ID]: message.messageId,
-                [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
-                [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
-                age_in_seconds: ageOfMessageInMs / 1000,
-                attempted_queues: queues.indexOf(messageQueue) + 1, // How many queues we tried before success
-                message_timestamp: message.timestamp,
-                message_age: Date.now() - message.timestamp,
+            try {
+              const messageData = await this.#callDequeueMessage({
+                messageQueue,
+                parentQueue,
               });
 
-              await this.options.subscriber?.messageDequeued(message);
+              if (!messageData) {
+                continue; // Try next queue if no message was dequeued
+              }
 
-              await this.options.visibilityTimeoutStrategy.heartbeat(
-                messageData.messageId,
-                this.visibilityTimeoutInMs
-              );
+              const message = await this.readMessage(messageData.messageId);
 
-              return message;
+              if (message) {
+                const ageOfMessageInMs = Date.now() - message.timestamp;
+
+                span.setAttributes({
+                  [SEMATTRS_MESSAGE_ID]: message.messageId,
+                  [SemanticAttributes.QUEUE]: message.queue,
+                  [SemanticAttributes.MESSAGE_ID]: message.messageId,
+                  [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
+                  [SemanticAttributes.PARENT_QUEUE]: message.parentQueue,
+                  age_in_seconds: ageOfMessageInMs / 1000,
+                  attempted_queues: attemptedQueues, // How many queues we tried before success
+                  attempted_envs: attemptedEnvs, // How many environments we tried before success
+                  message_timestamp: message.timestamp,
+                  message_age: Date.now() - message.timestamp,
+                  ...flattenAttributes(message.data, "message"),
+                });
+
+                await this.options.subscriber?.messageDequeued(message);
+
+                await this.options.visibilityTimeoutStrategy.heartbeat(
+                  messageData.messageId,
+                  this.visibilityTimeoutInMs
+                );
+
+                return message;
+              }
+            } catch (error) {
+              // Log error but continue trying other queues
+              logger.warn(`[${this.name}] Failed to dequeue from queue ${messageQueue}`, { error });
+              continue;
             }
-          } catch (error) {
-            // Log error but continue trying other queues
-            logger.warn(`[${this.name}] Failed to dequeue from queue ${messageQueue}`, { error });
-            continue;
           }
         }
 
         // If we get here, we tried all queues but couldn't dequeue a message
-        span.setAttribute("attempted_queues", queues.length);
+        span.setAttribute("attempted_queues", attemptedQueues);
+        span.setAttribute("attempted_envs", attemptedEnvs);
+
         return;
       },
       {
@@ -438,129 +524,6 @@ export class MarQS {
           [SEMATTRS_MESSAGE_ID]: messageId,
           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
         },
-      }
-    );
-  }
-
-  public async replaceMessage(
-    messageId: string,
-    messageData: Record<string, unknown>,
-    timestamp?: number,
-    inplace?: boolean
-  ) {
-    return this.#trace(
-      "replaceMessage",
-      async (span) => {
-        const oldMessage = await this.readMessage(messageId);
-
-        if (!oldMessage) {
-          return;
-        }
-
-        span.setAttributes({
-          [SemanticAttributes.QUEUE]: oldMessage.queue,
-          [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
-          [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
-          [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
-        });
-
-        const traceContext = {
-          traceparent: oldMessage.data.traceparent,
-          tracestate: oldMessage.data.tracestate,
-        };
-
-        const newMessage: MessagePayload = {
-          version: "1",
-          // preserve original trace context
-          data: { ...oldMessage.data, ...messageData, ...traceContext },
-          queue: oldMessage.queue,
-          concurrencyKey: oldMessage.concurrencyKey,
-          timestamp: timestamp ?? Date.now(),
-          messageId,
-          parentQueue: oldMessage.parentQueue,
-        };
-
-        if (inplace) {
-          await this.#callReplaceMessage(newMessage);
-          return;
-        }
-
-        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
-
-        await this.#callAcknowledgeMessage({
-          parentQueue: oldMessage.parentQueue,
-          messageQueue: oldMessage.queue,
-          messageId,
-        });
-
-        await this.#callEnqueueMessage(newMessage);
-
-        await this.options.subscriber?.messageReplaced(newMessage);
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "replace",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
-        },
-      }
-    );
-  }
-
-  public async cancelHeartbeat(messageId: string) {
-    return this.#trace(
-      "cancelHeartbeat",
-      async (span) => {
-        span.setAttributes({
-          [SemanticAttributes.MESSAGE_ID]: messageId,
-        });
-
-        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
-      },
-      {
-        kind: SpanKind.CONSUMER,
-        attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "cancelHeartbeat",
-          [SEMATTRS_MESSAGE_ID]: messageId,
-          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
-        },
-      }
-    );
-  }
-
-  async #trace<T>(
-    name: string,
-    fn: (span: Span) => Promise<T>,
-    options?: SpanOptions & { sampleRate?: number }
-  ): Promise<T> {
-    return this.tracer.startActiveSpan(
-      name,
-      {
-        ...options,
-        attributes: {
-          ...options?.attributes,
-        },
-      },
-      async (span) => {
-        try {
-          return await fn(span);
-        } catch (e) {
-          if (e instanceof Error) {
-            span.recordException(e);
-          } else {
-            span.recordException(new Error(String(e)));
-          }
-
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: e instanceof Error ? e.message : "Unknown error",
-          });
-
-          throw e;
-        } finally {
-          span.end();
-        }
       }
     );
   }
@@ -643,6 +606,63 @@ export class MarQS {
           [SEMATTRS_MESSAGE_ID]: messageId,
           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
         },
+      }
+    );
+  }
+
+  public async cancelHeartbeat(messageId: string) {
+    return this.#trace(
+      "cancelHeartbeat",
+      async (span) => {
+        span.setAttributes({
+          [SemanticAttributes.MESSAGE_ID]: messageId,
+        });
+
+        await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "cancelHeartbeat",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  async #trace<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    options?: SpanOptions & { sampleRate?: number }
+  ): Promise<T> {
+    return this.tracer.startActiveSpan(
+      name,
+      {
+        ...options,
+        attributes: {
+          ...options?.attributes,
+        },
+      },
+      async (span) => {
+        try {
+          return await fn(span);
+        } catch (e) {
+          if (e instanceof Error) {
+            span.recordException(e);
+          } else {
+            span.recordException(new Error(String(e)));
+          }
+
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: e instanceof Error ? e.message : "Unknown error",
+          });
+
+          throw e;
+        } finally {
+          span.end();
+        }
       }
     );
   }
@@ -1068,6 +1088,7 @@ export class MarQS {
     const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
     const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(messageQueue);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
 
     const result = await this.redis.dequeueMessage(
       messageQueue,
@@ -1078,7 +1099,7 @@ export class MarQS {
       queueReserveConcurrencyKey,
       envCurrentConcurrencyKey,
       envReserveConcurrencyKey,
-      this.keys.envQueueKeyFromQueue(messageQueue),
+      envQueueKey,
       messageQueue,
       String(Date.now()),
       String(this.options.defaultEnvConcurrency)
@@ -1129,6 +1150,7 @@ export class MarQS {
     const envConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(messageQueue);
     const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(messageQueue);
     const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(messageQueue);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
 
     logger.debug("Calling acknowledgeMessage", {
       messageKey,
@@ -1137,6 +1159,7 @@ export class MarQS {
       envConcurrencyKey,
       messageId,
       parentQueue,
+      envQueueKey,
       service: this.name,
     });
 
@@ -1148,7 +1171,7 @@ export class MarQS {
       queueReserveConcurrencyKey,
       envConcurrencyKey,
       envReserveConcurrencyKey,
-      this.keys.envQueueKeyFromQueue(messageQueue),
+      envQueueKey,
       messageId,
       messageQueue
     );
@@ -1789,19 +1812,22 @@ function getMarQSClient() {
     tracer: trace.getTracer("marqs"),
     keysProducer,
     visibilityTimeoutStrategy: new V3LegacyRunEngineWorkerVisibilityTimeout(),
-    queuePriorityStrategy: new FairDequeuingStrategy({
-      tracer: tracer,
-      redis,
-      parentQueueLimit: env.MARQS_SHARED_QUEUE_LIMIT,
+    queuePriorityStrategy: new EnvPriorityDequeuingStrategy({
       keys: keysProducer,
-      defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
-      biases: {
-        concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
-        availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
-        queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
-      },
-      reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
-      maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
+      delegate: new FairDequeuingStrategy({
+        tracer: tracer,
+        redis,
+        parentQueueLimit: env.MARQS_SHARED_QUEUE_LIMIT,
+        keys: keysProducer,
+        defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
+        biases: {
+          concurrencyLimitBias: env.MARQS_CONCURRENCY_LIMIT_BIAS,
+          availableCapacityBias: env.MARQS_AVAILABLE_CAPACITY_BIAS,
+          queueAgeRandomization: env.MARQS_QUEUE_AGE_RANDOMIZATION_BIAS,
+        },
+        reuseSnapshotCount: env.MARQS_REUSE_SNAPSHOT_COUNT,
+        maximumEnvCount: env.MARQS_MAXIMUM_ENV_COUNT,
+      }),
     }),
     envQueuePriorityStrategy: new FairDequeuingStrategy({
       tracer: tracer,

@@ -3,7 +3,7 @@ import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } f
 import { MemoryStore } from "@unkey/cache/stores";
 import { randomUUID } from "crypto";
 import { Redis } from "ioredis";
-import { MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
+import { EnvQueues, MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
 import seedrandom from "seedrandom";
 import { Tracer } from "@opentelemetry/api";
 import { startSpan } from "../tracing.server";
@@ -111,7 +111,7 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   async distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string
-  ): Promise<Array<string>> {
+  ): Promise<Array<EnvQueues>> {
     return await startSpan(
       this.options.tracer,
       "distributeFairQueuesFromParentQueue",
@@ -132,21 +132,27 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
           return [];
         }
 
-        const shuffledQueues = this.#shuffleQueuesByEnv(snapshot);
+        const envQueues = this.#shuffleQueuesByEnv(snapshot);
 
-        span.setAttribute("shuffled_queue_count", shuffledQueues.length);
+        span.setAttribute(
+          "shuffled_queue_count",
+          envQueues.reduce((sum, env) => sum + env.queues.length, 0)
+        );
 
-        if (shuffledQueues[0]) {
-          span.setAttribute("winning_env", this.options.keys.envIdFromQueue(shuffledQueues[0]));
-          span.setAttribute("winning_org", this.options.keys.orgIdFromQueue(shuffledQueues[0]));
+        if (envQueues[0]?.queues[0]) {
+          span.setAttribute("winning_env", envQueues[0].envId);
+          span.setAttribute(
+            "winning_org",
+            this.options.keys.orgIdFromQueue(envQueues[0].queues[0])
+          );
         }
 
-        return shuffledQueues;
+        return envQueues;
       }
     );
   }
 
-  #shuffleQueuesByEnv(snapshot: FairQueueSnapshot): Array<string> {
+  #shuffleQueuesByEnv(snapshot: FairQueueSnapshot): Array<EnvQueues> {
     const envs = Object.keys(snapshot.envs);
     const biases = this.options.biases ?? defaultBiases;
 
@@ -212,7 +218,8 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   }
 
   // Helper method to maintain DRY principle
-  #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<string> {
+  // Update return type
+  #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<EnvQueues> {
     const queuesByEnv = snapshot.queues.reduce((acc, queue) => {
       if (!acc[queue.env]) {
         acc[queue.env] = [];
@@ -221,15 +228,20 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
       return acc;
     }, {} as Record<string, Array<FairQueue>>);
 
-    const queues = envs.reduce((acc, envId) => {
+    return envs.reduce((acc, envId) => {
       if (queuesByEnv[envId]) {
-        // Instead of sorting by age, use weighted random selection
-        acc.push(...this.#weightedRandomQueueOrder(queuesByEnv[envId]));
+        // Get ordered queues for this env
+        const orderedQueues = this.#weightedRandomQueueOrder(queuesByEnv[envId]);
+        // Only add the env if it has queues
+        if (orderedQueues.length > 0) {
+          acc.push({
+            envId,
+            queues: orderedQueues.map((queue) => queue.id),
+          });
+        }
       }
       return acc;
-    }, [] as Array<FairQueue>);
-
-    return queues.map((queue) => queue.id);
+    }, [] as Array<EnvQueues>);
   }
 
   #weightedRandomQueueOrder(queues: FairQueue[]): FairQueue[] {
@@ -558,7 +570,7 @@ export class NoopFairDequeuingStrategy implements MarQSFairDequeueStrategy {
   async distributeFairQueuesFromParentQueue(
     parentQueue: string,
     consumerId: string
-  ): Promise<Array<string>> {
+  ): Promise<Array<EnvQueues>> {
     return [];
   }
 }
