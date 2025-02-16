@@ -124,28 +124,25 @@ export const run = async (
 ): Promise<Result> => {
   const pythonBin = process.env.PYTHON_BIN_PATH || "python";
 
-  const result = await x(pythonBin, scriptArgs, {
-    ...options,
-    throwOnError: false, // Ensure errors are handled manually
-  });
-
-  try {
-    assert(
-      result.exitCode === 0,
-      `Python command exited with non-zero code ${result.exitCode}\nStdout: ${result.stdout}\nStderr: ${result.stderr}`
-    );
-  } catch (error) {
-    logger.error("Python command execution failed", {
-      error: error instanceof Error ? error.message : error,
+  return await logger.trace("Python call", async (span) => {
+    span.addEvent("Properties", {
       command: `${pythonBin} ${scriptArgs.join(" ")}`,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: result.exitCode,
     });
-    throw error;
-  }
 
-  return result;
+    const result = await x(pythonBin, scriptArgs, {
+      ...options,
+      throwOnError: false, // Ensure errors are handled manually
+    });
+
+    span.addEvent("Output", { ...result });
+
+    if (result.exitCode !== 0) {
+      logger.error(result.stderr, { ...result });
+      throw new Error(`Python command exited with non-zero code ${result.exitCode}`);
+    }
+
+    return result;
+  });
 };
 
 export const runScript = (
