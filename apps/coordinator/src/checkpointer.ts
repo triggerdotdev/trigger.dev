@@ -89,7 +89,7 @@ export class Checkpointer {
   #logger = new SimpleStructuredLogger("checkpointer");
   #abortControllers = new Map<string, AbortController>();
   #failedCheckpoints = new Map<string, unknown>();
-  #waitingForRetry = new Set<string>();
+  #waitingToCheckpoint = new Set<string>();
 
   private registryHost: string;
   private registryNamespace: string;
@@ -189,7 +189,10 @@ export class Checkpointer {
     }
   }
 
-  async checkpointAndPush(opts: CheckpointAndPushOptions): Promise<CheckpointData | undefined> {
+  async checkpointAndPush(
+    opts: CheckpointAndPushOptions,
+    delayMs?: number
+  ): Promise<CheckpointData | undefined> {
     const start = performance.now();
     this.#logger.log(`checkpointAndPush() start`, { start, opts });
 
@@ -203,7 +206,7 @@ export class Checkpointer {
     }
 
     try {
-      const result = await this.#checkpointAndPushWithBackoff(opts);
+      const result = await this.#checkpointAndPushWithBackoff(opts, delayMs);
 
       const end = performance.now();
       this.#logger.log(`checkpointAndPush() end`, {
@@ -226,8 +229,8 @@ export class Checkpointer {
     }
   }
 
-  isCheckpointing(runId: string) {
-    return this.#abortControllers.has(runId) || this.#waitingForRetry.has(runId);
+  #isCheckpointing(runId: string) {
+    return this.#abortControllers.has(runId) || this.#waitingToCheckpoint.has(runId);
   }
 
   cancelCheckpoint(runId: string): boolean {
@@ -238,8 +241,8 @@ export class Checkpointer {
       return true;
     }
 
-    if (this.#waitingForRetry.has(runId)) {
-      this.#waitingForRetry.delete(runId);
+    if (this.#waitingToCheckpoint.has(runId)) {
+      this.#waitingToCheckpoint.delete(runId);
       return true;
     }
 
@@ -261,13 +264,30 @@ export class Checkpointer {
     return true;
   }
 
-  async #checkpointAndPushWithBackoff({
-    runId,
-    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
-    projectRef,
-    deploymentVersion,
-    attemptNumber,
-  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
+  async #checkpointAndPushWithBackoff(
+    {
+      runId,
+      leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+      projectRef,
+      deploymentVersion,
+      attemptNumber,
+    }: CheckpointAndPushOptions,
+    delayMs?: number
+  ): Promise<CheckpointAndPushResult> {
+    if (delayMs && delayMs > 0) {
+      this.#logger.log("Delaying checkpoint", { runId, delayMs });
+
+      this.#waitingToCheckpoint.add(runId);
+      await setTimeout(delayMs);
+
+      if (!this.#waitingToCheckpoint.has(runId)) {
+        this.#logger.log("Checkpoint canceled during initial delay", { runId });
+        return { success: false, reason: "CANCELED" };
+      } else {
+        this.#waitingToCheckpoint.delete(runId);
+      }
+    }
+
     this.#logger.log("Checkpointing with backoff", {
       runId,
       leaveRunning,
@@ -290,14 +310,14 @@ export class Checkpointer {
             delay,
           });
 
-          this.#waitingForRetry.add(runId);
+          this.#waitingToCheckpoint.add(runId);
           await setTimeout(delay.milliseconds);
 
-          if (!this.#waitingForRetry.has(runId)) {
+          if (!this.#waitingToCheckpoint.has(runId)) {
             this.#logger.log("Checkpoint canceled while waiting for retry", { runId });
             return { success: false, reason: "CANCELED" };
           } else {
-            this.#waitingForRetry.delete(runId);
+            this.#waitingToCheckpoint.delete(runId);
           }
         }
 
@@ -386,7 +406,7 @@ export class Checkpointer {
       return { success: false, reason: "NO_SUPPORT" };
     }
 
-    if (this.isCheckpointing(runId)) {
+    if (this.#isCheckpointing(runId)) {
       this.#logger.error("Checkpoint procedure already in progress", { options });
       return { success: false, reason: "IN_PROGRESS" };
     }
