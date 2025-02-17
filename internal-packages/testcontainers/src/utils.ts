@@ -40,8 +40,11 @@ export async function createPostgresContainer(network: StartedNetwork) {
   return { url: container.getConnectionUri(), container, network };
 }
 
-export async function createRedisContainer() {
-  const container = await new RedisContainer().start();
+export async function createRedisContainer({ port }: { port?: number }) {
+  const container = await new RedisContainer()
+    .withExposedPorts(port ?? 6379)
+    .withStartupTimeout(120_000) // 2 minutes
+    .start();
 
   return {
     container,

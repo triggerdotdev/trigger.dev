@@ -71,8 +71,17 @@ const prisma = async (
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
+let redisPortCounter = 6379;
+
+const getUniqueRedisPort = () => {
+  return redisPortCounter++;
+};
+
 const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
-  const { container } = await createRedisContainer();
+  const uniquePort = getUniqueRedisPort();
+  const { container } = await createRedisContainer({
+    port: uniquePort,
+  });
   try {
     await use(container);
   } finally {
@@ -88,7 +97,31 @@ const redis = async (
     host: redisContainer.getHost(),
     port: redisContainer.getPort(),
     password: redisContainer.getPassword(),
+    maxRetriesPerRequest: 3, // Lower the retry attempts
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+    connectTimeout: 10000, // 10 seconds
+    // Add more robust connection options
+    enableOfflineQueue: false,
+    reconnectOnError: (err) => {
+      const targetError = "READONLY";
+      if (err.message.includes(targetError)) {
+        return true;
+      }
+      return false;
+    },
   });
+
+  // Add connection error handling
+  redis.on("error", (error) => {
+    console.error("Redis connection error:", error);
+  });
+
+  // Wait for ready state
+  await new Promise((resolve) => redis.once("ready", resolve));
+
   try {
     await use(redis);
   } finally {
