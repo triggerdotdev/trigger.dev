@@ -35,6 +35,11 @@ const TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS =
 const TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES =
   parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 7;
 
+const WAIT_FOR_TASK_CHECKPOINT_DELAY_MS =
+  parseInt(process.env.WAIT_FOR_TASK_CHECKPOINT_DELAY_MS || "") || 0;
+const WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS =
+  parseInt(process.env.WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS || "") || 0;
+
 const logger = new SimpleStructuredLogger("coordinator", undefined, { nodeName: NODE_NAME });
 const chaosMonkey = new ChaosMonkey(
   !!process.env.CHAOS_MONKEY_ENABLED,
@@ -143,6 +148,7 @@ class TaskCoordinator {
       authToken: PLATFORM_SECRET,
       logHandlerPayloads: false,
       handlers: {
+        // This is used by resumeAttempt
         RESUME_AFTER_DEPENDENCY: async (message) => {
           const log = platformLogger.child({
             eventName: "RESUME_AFTER_DEPENDENCY",
@@ -168,11 +174,12 @@ class TaskCoordinator {
 
           await chaosMonkey.call();
 
-          // In case the task resumed faster than we could checkpoint
+          // In case the task resumes before the checkpoint is created
           this.#cancelCheckpoint(message.runId);
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
+        // This is used by sharedQueueConsumer
         RESUME_AFTER_DEPENDENCY_WITH_ACK: async (message) => {
           const log = platformLogger.child({
             eventName: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
@@ -218,7 +225,7 @@ class TaskCoordinator {
 
           await chaosMonkey.call();
 
-          // In case the task resumed faster than we could checkpoint
+          // In case the task resumes before the checkpoint is created
           this.#cancelCheckpoint(message.runId);
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
@@ -1096,12 +1103,15 @@ class TaskCoordinator {
               }
             }
 
-            const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
-              projectRef: socket.data.projectRef,
-              deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
-            });
+            const checkpoint = await this.#checkpointer.checkpointAndPush(
+              {
+                runId: socket.data.runId,
+                projectRef: socket.data.projectRef,
+                deploymentVersion: socket.data.deploymentVersion,
+                attemptNumber: getAttemptNumber(),
+              },
+              WAIT_FOR_TASK_CHECKPOINT_DELAY_MS
+            );
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
@@ -1189,12 +1199,15 @@ class TaskCoordinator {
               }
             }
 
-            const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
-              projectRef: socket.data.projectRef,
-              deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
-            });
+            const checkpoint = await this.#checkpointer.checkpointAndPush(
+              {
+                runId: socket.data.runId,
+                projectRef: socket.data.projectRef,
+                deploymentVersion: socket.data.deploymentVersion,
+                attemptNumber: getAttemptNumber(),
+              },
+              WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS
+            );
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
