@@ -155,6 +155,7 @@ export class RunEngine {
       catalog: workerCatalog,
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
+      immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
       logger: new Logger("RunEngineWorker", "debug"),
       jobs: {
         finishWaitpoint: async ({ payload }) => {
@@ -193,7 +194,7 @@ export class RunEngine {
           });
         },
       },
-    });
+    }).start();
 
     this.tracer = options.tracer;
 

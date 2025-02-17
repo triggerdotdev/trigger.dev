@@ -10,6 +10,7 @@ export type RunEngineOptions = {
   prisma: PrismaClient;
   worker: WorkerConcurrencyOptions & {
     pollIntervalMs?: number;
+    immediatePollIntervalMs?: number;
   };
   machines: {
     defaultMachine: MachinePresetName;
