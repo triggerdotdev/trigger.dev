@@ -3,7 +3,7 @@ import {
   generateFriendlyId,
   sanitizeQueueName,
 } from "@trigger.dev/core/v3/apps";
-import { MachineConfig } from "@trigger.dev/core/v3/schemas";
+import { MachineConfig, RetryOptions } from "@trigger.dev/core/v3/schemas";
 import {
   BackgroundWorkerTask,
   Prisma,
@@ -86,6 +86,13 @@ export async function setupBackgroundWorker(
   const tasks: BackgroundWorkerTask[] = [];
 
   for (const identifier of taskIdentifiers) {
+    const retryConfig: RetryOptions = {
+      maxAttempts: 3,
+      factor: 1,
+      minTimeoutInMs: 100,
+      maxTimeoutInMs: 100,
+      randomize: false,
+    };
     const task = await prisma.backgroundWorkerTask.create({
       data: {
         friendlyId: generateFriendlyId("task"),
@@ -96,6 +103,7 @@ export async function setupBackgroundWorker(
         runtimeEnvironmentId: environment.id,
         projectId: environment.project.id,
         machineConfig,
+        retryConfig,
       },
     });
 
