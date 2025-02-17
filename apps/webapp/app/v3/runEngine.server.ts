@@ -14,6 +14,7 @@ function createRunEngine() {
   const engine = new RunEngine({
     prisma,
     redis: {
+      keyPrefix: "engine:",
       port: env.VALKEY_PORT ?? undefined,
       host: env.VALKEY_HOST ?? undefined,
       username: env.VALKEY_USERNAME ?? undefined,
