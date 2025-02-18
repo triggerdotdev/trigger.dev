@@ -3,6 +3,7 @@ import { workerQueue } from "~/services/worker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
+import { TaskRunDependency } from "@trigger.dev/database";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
@@ -49,6 +50,21 @@ export class ResumeTaskDependencyService extends BaseService {
           runId: dependentRun.id,
         }
       );
+
+      const wasUpdated = await this.#setDependencyToResumedOnce(dependency);
+
+      if (!wasUpdated) {
+        logger.debug("Task dependency resume: Attempt with checkpoint was already resumed", {
+          attemptId: dependency.id,
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        });
+        return;
+      }
+
+
       await marqs?.enqueueMessage(
         dependency.taskRun.runtimeEnvironment,
         dependentRun.queue,
@@ -85,6 +101,19 @@ export class ResumeTaskDependencyService extends BaseService {
         return;
       }
 
+      const wasUpdated = await this.#setDependencyToResumedOnce(dependency);
+
+      if (!wasUpdated) {
+        logger.debug("Task dependency resume: Attempt without checkpoint was already resumed", {
+          attemptId: dependency.id,
+          dependentAttempt: dependency.dependentAttempt,
+          checkpointEventId: dependency.checkpointEventId,
+          hasCheckpointEvent: !!dependency.checkpointEventId,
+          runId: dependentRun.id,
+        });
+        return;
+      }
+
       await marqs?.replaceMessage(
         dependentRun.id,
         {
@@ -99,6 +128,26 @@ export class ResumeTaskDependencyService extends BaseService {
         },
         dependentRun.createdAt.getTime()
       );
+    }
+  }
+
+  async #setDependencyToResumedOnce(dependency: TaskRunDependency) {
+    const result = await this._prisma.taskRunDependency.updateMany({
+      where: {
+        id: dependency.id,
+        resumedAt: null,
+      },
+      data: {
+        resumedAt: new Date(),
+      },
+    });
+
+    // Check if any records were updated
+    if (result.count > 0) {
+      // The status was changed, so we return true
+      return true;
+    } else {
+      return false;
     }
   }
 

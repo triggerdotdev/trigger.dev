@@ -97,26 +97,43 @@ export class CreateCheckpointService extends BaseService {
 
     // Check if we should accept this checkpoint
     switch (reason.type) {
-      case "MANUAL":
+      case "MANUAL": {
         // Always accept manual checkpoints
         break;
-      case "WAIT_FOR_DURATION":
+      }
+      case "WAIT_FOR_DURATION": {
         // Always accept duration checkpoints
         break;
-      case "WAIT_FOR_TASK": {
-        // TODO
-        break;
       }
-      case "WAIT_FOR_BATCH": {
-        const batchRun = await this._prisma.batchTaskRun.findFirst({
+      case "WAIT_FOR_TASK": {
+        const childRun = await this._prisma.taskRun.findFirst({
           where: {
-            friendlyId: reason.batchFriendlyId,
+            friendlyId: reason.friendlyId,
+          },
+          select: {
+            dependency: {
+              select: {
+                resumedAt: true,
+              },
+            },
           },
         });
 
-        if (!batchRun) {
-          logger.error("CreateCheckpointService: Batch not found", {
-            batchFriendlyId: reason.batchFriendlyId,
+        if (!childRun) {
+          logger.error("CreateCheckpointService: Pre-check - WAIT_FOR_TASK child run not found", {
+            friendlyId: reason.friendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (childRun.dependency?.resumedAt) {
+          logger.error("CreateCheckpointService: Child run already resumed", {
+            childRun,
             params,
           });
 
@@ -126,7 +143,31 @@ export class CreateCheckpointService extends BaseService {
           };
         }
 
-        if (batchRun.batchVersion === "v3" && batchRun.resumedAt) {
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        const batchRun = await this._prisma.batchTaskRun.findFirst({
+          where: {
+            friendlyId: reason.batchFriendlyId,
+          },
+          select: {
+            resumedAt: true,
+          },
+        });
+
+        if (!batchRun) {
+          logger.error("CreateCheckpointService: Pre-check - Batch not found", {
+            batchFriendlyId: reason.batchFriendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: false,
+          };
+        }
+
+        if (batchRun.resumedAt) {
           logger.error("CreateCheckpointService: Batch already resumed", {
             batchRun,
             params,
@@ -138,6 +179,9 @@ export class CreateCheckpointService extends BaseService {
           };
         }
 
+        break;
+      }
+      default: {
         break;
       }
     }
