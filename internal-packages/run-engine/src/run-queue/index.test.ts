@@ -527,8 +527,10 @@ describe("RunQueue", () => {
       const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
       expect(messages2.length).toBe(0);
     } finally {
-      await queue.quit();
-      await redis.quit();
+      try {
+        await queue.quit();
+        await redis.quit();
+      } catch (e) {}
     }
   });
 
@@ -667,8 +669,10 @@ describe("RunQueue", () => {
       const messages2 = await queue.dequeueMessageFromMasterQueue("test_12345", "main2", 10);
       expect(messages2[0].messageId).toBe(messageProd.runId);
     } finally {
-      await queue.quit();
-      await redis.quit();
+      try {
+        await queue.quit();
+        await redis.quit();
+      } catch (e) {}
     }
   });
 
@@ -778,8 +782,10 @@ describe("RunQueue", () => {
           await queue.currentConcurrencyOfTask(authenticatedEnvProd, messageProd.taskIdentifier)
         ).toBe(1);
       } finally {
-        await queue.quit();
-        await redis.quit();
+        try {
+          await queue.quit();
+          await redis.quit();
+        } catch (e) {}
       }
     }
   );
@@ -876,8 +882,10 @@ describe("RunQueue", () => {
       const messages3 = await queue.dequeueMessageFromMasterQueue("test_12345", "main", 10);
       expect(messages3[0].messageId).toBe(messageProd.runId);
     } finally {
-      await queue.quit();
-      await redis.quit();
+      try {
+        await queue.quit();
+        await redis.quit();
+      } catch (e) {}
     }
   });
 });
