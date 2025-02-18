@@ -10,17 +10,14 @@ import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 
 describe("RunEngine delays", () => {
-  containerTest("Run start delayed", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Run start delayed", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
       redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
+        ...redisOptions,
       },
       worker: {
         workers: 1,
@@ -94,17 +91,14 @@ describe("RunEngine delays", () => {
   containerTest(
     "Rescheduling a delayed run",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
         redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
+          ...redisOptions,
         },
         worker: {
           workers: 1,

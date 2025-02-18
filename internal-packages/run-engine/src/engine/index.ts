@@ -3289,7 +3289,7 @@ export class RunEngine {
 
         await this.#sendNotificationToWorker({ runId, snapshot: newSnapshot });
       } else {
-        if (!snapshot.checkpointId) {
+        if (snapshot.executionStatus !== "RUN_CREATED" && !snapshot.checkpointId) {
           // TODO: We're screwed, should probably fail the run immediately
           throw new Error(`#continueRunIfUnblocked: run has no checkpoint: ${run.id}`);
         }
