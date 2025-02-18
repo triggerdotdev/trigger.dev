@@ -123,7 +123,7 @@ const workerCatalog = {
 type EngineWorker = Worker<typeof workerCatalog>;
 
 export class RunEngine {
-  private redis: Redis;
+  private runLockRedis: Redis;
   private prisma: PrismaClient;
   private runLock: RunLocker;
   runQueue: RunQueue;
@@ -135,8 +135,11 @@ export class RunEngine {
 
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
-    this.redis = new Redis(options.redis);
-    this.runLock = new RunLocker({ redis: this.redis });
+    this.runLockRedis = new Redis({
+      ...options.redis,
+      keyPrefix: `${options.redis.keyPrefix}runlock:`,
+    });
+    this.runLock = new RunLocker({ redis: this.runLockRedis });
 
     this.runQueue = new RunQueue({
       name: "rq",
@@ -145,13 +148,13 @@ export class RunEngine {
       envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       logger: new Logger("RunQueue", "warn"),
-      redis: options.redis,
+      redis: { ...options.redis, keyPrefix: `${options.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
     });
 
     this.worker = new Worker({
-      name: "runengineworker",
-      redisOptions: options.redis,
+      name: "worker",
+      redisOptions: { ...options.redis, keyPrefix: `${options.redis.keyPrefix}worker:` },
       catalog: workerCatalog,
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
@@ -2422,7 +2425,7 @@ export class RunEngine {
 
     try {
       // This is just a failsafe
-      await this.redis.quit();
+      await this.runLockRedis.quit();
     } catch (error) {
       // And should always throw
     }
