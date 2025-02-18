@@ -6,11 +6,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should only track concurrency for live requests",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: redisOptions,
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -142,11 +142,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should support subscribing to a run tag",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: redisOptions,
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {
@@ -221,11 +221,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
   containerWithElectricAndRedisTest(
     "Should adapt for older client versions",
     { timeout: 30_000 },
-    async ({ redis, electricOrigin, prisma }) => {
+    async ({ redisOptions, electricOrigin, prisma }) => {
       const client = new RealtimeClient({
         electricOrigin,
         keyPrefix: "test:realtime",
-        redis: redis.options,
+        redis: redisOptions,
         expiryTimeInSeconds: 5,
         cachedLimitProvider: {
           async getCachedLimit() {

@@ -1,7 +1,7 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import { Redis } from "ioredis";
+import { Redis, RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { test } from "vitest";
 import { createElectricContainer, createPostgresContainer, createRedisContainer } from "./utils";
@@ -17,7 +17,7 @@ type PostgresContext = NetworkContext & {
   prisma: PrismaClient;
 };
 
-type RedisContext = { redisContainer: StartedRedisContainer; redis: Redis };
+type RedisContext = { redisContainer: StartedRedisContainer; redisOptions: RedisOptions };
 
 type ElectricContext = {
   electricOrigin: string;
@@ -89,11 +89,11 @@ const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
   }
 };
 
-const redis = async (
+const redisOptions = async (
   { redisContainer }: { redisContainer: StartedRedisContainer },
-  use: Use<Redis>
+  use: Use<RedisOptions>
 ) => {
-  const redis = new Redis({
+  const options: RedisOptions = {
     host: redisContainer.getHost(),
     port: redisContainer.getPort(),
     password: redisContainer.getPassword(),
@@ -112,24 +112,12 @@ const redis = async (
       }
       return false;
     },
-  });
+  };
 
-  // Add connection error handling
-  redis.on("error", (error) => {
-    console.error("Redis connection error:", error);
-  });
-
-  // Wait for ready state
-  await new Promise((resolve) => redis.once("ready", resolve));
-
-  try {
-    await use(redis);
-  } finally {
-    await redis.quit();
-  }
+  await use(options);
 };
 
-export const redisTest = test.extend<RedisContext>({ redisContainer, redis });
+export const redisTest = test.extend<RedisContext>({ redisContainer, redisOptions });
 
 const electricOrigin = async (
   {
@@ -151,7 +139,7 @@ export const containerTest = test.extend<ContainerContext>({
   postgresContainer,
   prisma,
   redisContainer,
-  redis,
+  redisOptions,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
@@ -166,6 +154,6 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
   postgresContainer,
   prisma,
   redisContainer,
-  redis,
+  redisOptions,
   electricOrigin,
 });

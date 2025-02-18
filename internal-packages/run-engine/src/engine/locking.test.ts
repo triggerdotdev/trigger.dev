@@ -1,9 +1,11 @@
 import { redisTest } from "@internal/testcontainers";
 import { expect } from "vitest";
 import { RunLocker } from "./locking.js";
+import Redis from "ioredis";
 
 describe("RunLocker", () => {
-  redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redis }) => {
+  redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
     const runLock = new RunLocker({ redis });
 
     expect(runLock.isInsideLock()).toBe(false);
@@ -16,7 +18,8 @@ describe("RunLocker", () => {
     expect(runLock.isInsideLock()).toBe(false);
   });
 
-  redisTest("Test double locking works", { timeout: 15_000 }, async ({ redis }) => {
+  redisTest("Test double locking works", { timeout: 15_000 }, async ({ redisOptions }) => {
+    const redis = new Redis(redisOptions);
     const runLock = new RunLocker({ redis });
 
     expect(runLock.isInsideLock()).toBe(false);
