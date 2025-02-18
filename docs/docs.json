@@ -201,6 +201,7 @@
         "dropdown": "Guides & examples",
         "description": "A great way to get started",
         "icon": "book",
+
         "groups": [
           {
             "group": "Introduction",
@@ -213,7 +214,7 @@
               "guides/frameworks/nextjs",
               "guides/frameworks/nodejs",
               "guides/frameworks/remix",
-              "guides/frameworks/sveltekit"
+              "guides/community/sveltekit"
             ]
           },
           {
@@ -298,8 +299,13 @@
             ]
           },
           {
-            "group": "Migrations",
-            "pages": ["guides/use-cases/upgrading-from-v2"]
+            "group": "Community packages",
+            "pages": [
+              "guides/community/dotenvx",
+              "guides/community/fatima",
+              "guides/community/rate-limiter",
+              "guides/community/sveltekit"
+            ]
           }
         ]
       }
