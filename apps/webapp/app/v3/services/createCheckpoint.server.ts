@@ -1,4 +1,4 @@
-import { CoordinatorToPlatformMessages } from "@trigger.dev/core/v3";
+import { CoordinatorToPlatformMessages, ManualCheckpointMetadata } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
@@ -101,6 +101,19 @@ export class CreateCheckpointService extends BaseService {
     //   setTimeout(resolve, waitSeconds * 1000);
     // });
 
+    let metadata: string;
+
+    if (params.reason.type === "MANUAL") {
+      metadata = JSON.stringify({
+        ...params.reason,
+        attemptId: attempt.id,
+        previousAttemptStatus: attempt.status,
+        previousRunStatus: attempt.taskRun.status,
+      } satisfies ManualCheckpointMetadata);
+    } else {
+      metadata = JSON.stringify(params.reason);
+    }
+
     const checkpoint = await this._prisma.checkpoint.create({
       data: {
         friendlyId: generateFriendlyId("checkpoint"),
@@ -112,7 +125,7 @@ export class CreateCheckpointService extends BaseService {
         location: params.location,
         type: params.docker ? "DOCKER" : "KUBERNETES",
         reason: params.reason.type,
-        metadata: JSON.stringify(params.reason),
+        metadata,
         imageRef,
       },
     });
@@ -138,7 +151,17 @@ export class CreateCheckpointService extends BaseService {
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 
     switch (reason.type) {
+      case "MANUAL":
       case "WAIT_FOR_DURATION": {
+        let restoreAtUnixTimeMs: number;
+
+        if (reason.type === "MANUAL") {
+          // Restore immediately if not specified, useful for live migration
+          restoreAtUnixTimeMs = reason.restoreAtUnixTimeMs ?? Date.now();
+        } else {
+          restoreAtUnixTimeMs = reason.now + reason.ms;
+        }
+
         checkpointEvent = await eventService.checkpoint({
           checkpointId: checkpoint.id,
         });
@@ -151,7 +174,7 @@ export class CreateCheckpointService extends BaseService {
               resumableAttemptId: attempt.id,
               checkpointEventId: checkpointEvent.id,
             },
-            reason.now + reason.ms
+            restoreAtUnixTimeMs
           );
 
           return {

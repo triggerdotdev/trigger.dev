@@ -32,14 +32,11 @@ import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   v3RunDownloadLogsPath,
-  v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
-  v3TraceSpanPath,
 } from "~/utils/pathBuilder";
 import { TraceSpan } from "~/utils/taskEvent";
-import { SpanLink } from "~/v3/eventRepository.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { RunTimelineEvent, RunTimelineLine } from "./InspectorTimeline";
 import { RunTag } from "./RunTag";
@@ -317,18 +314,6 @@ export function RunInspector({
                     )}
                   </Property.Value>
                 </Property.Item>
-                {span?.links && span.links.length > 0 && (
-                  <Property.Item>
-                    <Property.Label>Links</Property.Label>
-                    <Property.Value>
-                      <div className="space-y-1">
-                        {span.links.map((link, index) => (
-                          <SpanLinkElement key={index} link={link} />
-                        ))}
-                      </div>
-                    </Property.Value>
-                  </Property.Item>
-                )}
                 <Property.Item>
                   <Property.Label>Max duration</Property.Label>
                   <Property.Value>
@@ -646,28 +631,4 @@ function PacketDisplay({
       );
     }
   }
-}
-
-function SpanLinkElement({ link }: { link: SpanLink }) {
-  const organization = useOrganization();
-  const project = useProject();
-
-  switch (link.type) {
-    case "run": {
-      return (
-        <TextLink to={v3RunPath(organization, project, { friendlyId: link.runId })}>
-          {link.title}
-        </TextLink>
-      );
-    }
-    case "span": {
-      return (
-        <TextLink to={v3TraceSpanPath(organization, project, link.traceId, link.spanId)}>
-          {link.title}
-        </TextLink>
-      );
-    }
-  }
-
-  return null;
 }

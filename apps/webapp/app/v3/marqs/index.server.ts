@@ -638,7 +638,8 @@ export class MarQS {
   }
 
   /**
-   * Negative acknowledge a message, which will requeue the message
+   * Negative acknowledge a message, which will requeue the message.
+   * Returns whether it went back into the queue or not.
    */
   public async nackMessage(
     messageId: string,
@@ -657,7 +658,7 @@ export class MarQS {
             updates,
             service: this.name,
           });
-          return;
+          return false;
         }
 
         const nackCount = await this.#getNackCount(messageId);
@@ -676,7 +677,7 @@ export class MarQS {
 
           // If we have reached the maximum nack count, we will ack the message
           await this.acknowledgeMessage(messageId, "maximum nack count reached");
-          return;
+          return false;
         }
 
         span.setAttributes({
@@ -705,6 +706,8 @@ export class MarQS {
         });
 
         await this.options.subscriber?.messageNacked(message);
+
+        return true;
       },
       {
         kind: SpanKind.CONSUMER,
@@ -1264,7 +1267,7 @@ end
 
 -- Check current queue concurrency against the limit
 local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
-local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or '1000000')
+local concurrencyLimit = tonumber(redis.call('GET', concurrencyLimitKey) or envConcurrencyLimit)
 
 -- Check condition only if concurrencyLimit exists
 if currentConcurrency >= concurrencyLimit then
@@ -1434,7 +1437,7 @@ local currentEnvConcurrency = tonumber(redis.call('SCARD', currentEnvConcurrency
 
 local currentConcurrency = tonumber(redis.call('SCARD', currentConcurrencyKey) or '0')
 
-return { currentOrgConcurrency, currentEnvConcurrency, currentConcurrency } 
+return { currentOrgConcurrency, currentEnvConcurrency, currentConcurrency }
       `,
     });
 

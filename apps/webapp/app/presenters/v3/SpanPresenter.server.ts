@@ -10,6 +10,7 @@ import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { FINAL_ATTEMPT_STATUSES, isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { getMaxDuration } from "~/v3/utils/maxDuration";
+import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -71,6 +72,7 @@ export class SpanPresenter extends BasePresenter {
         friendlyId: true,
         isTest: true,
         maxDurationInSeconds: true,
+        taskEventStore: true,
         tags: {
           select: {
             name: true,
@@ -133,6 +135,7 @@ export class SpanPresenter extends BasePresenter {
             taskIdentifier: true,
             friendlyId: true,
             spanId: true,
+            createdAt: true,
           },
         },
         parentTaskRun: {
@@ -205,7 +208,13 @@ export class SpanPresenter extends BasePresenter {
       }
     }
 
-    const span = await eventRepository.getSpan(spanId, run.traceId);
+    const span = await eventRepository.getSpan(
+      getTaskEventStoreTableForRun(run),
+      spanId,
+      run.traceId,
+      run.rootTaskRun?.createdAt ?? run.createdAt,
+      run.completedAt ?? undefined
+    );
 
     const metadata = run.metadata
       ? await prettyPrintPacket(run.metadata, run.metadataType, {
@@ -342,6 +351,9 @@ export class SpanPresenter extends BasePresenter {
     const run = await this._prisma.taskRun.findFirst({
       select: {
         traceId: true,
+        createdAt: true,
+        completedAt: true,
+        taskEventStore: true,
       },
       where: {
         friendlyId: runFriendlyId,
@@ -352,7 +364,13 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const span = await eventRepository.getSpan(spanId, run.traceId);
+    const span = await eventRepository.getSpan(
+      getTaskEventStoreTableForRun(run),
+      spanId,
+      run.traceId,
+      run.createdAt,
+      run.completedAt ?? undefined
+    );
 
     if (!span) {
       return;

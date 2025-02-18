@@ -1,6 +1,13 @@
-import type { CheckpointRestoreEvent, CheckpointRestoreEventType } from "@trigger.dev/database";
+import type {
+  Checkpoint,
+  CheckpointRestoreEvent,
+  CheckpointRestoreEventType,
+} from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
+import { ManualCheckpointMetadata } from "@trigger.dev/core/v3";
+import { isTaskRunAttemptStatus, isTaskRunStatus, TaskRunAttemptStatus } from "~/database-types";
+import { safeJsonParse } from "~/utils/json";
 
 interface CheckpointRestoreEventCallParams {
   checkpointId: string;
@@ -37,6 +44,13 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     if (!checkpoint) {
       logger.error("Checkpoint not found", { id: params.checkpointId });
       return;
+    }
+
+    if (params.type === "RESTORE" && checkpoint.reason === "MANUAL") {
+      const manualRestoreSuccess = await this.#handleManualCheckpointRestore(checkpoint);
+      if (!manualRestoreSuccess) {
+        return;
+      }
     }
 
     logger.debug(`Creating checkpoint/restore event`, { params });
@@ -98,5 +112,82 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     });
 
     return checkpointEvent;
+  }
+
+  async #handleManualCheckpointRestore(checkpoint: Checkpoint): Promise<boolean> {
+    const json = checkpoint.metadata ? safeJsonParse(checkpoint.metadata) : undefined;
+
+    // We need to restore the previous run and attempt status as saved in the metadata
+    const metadata = ManualCheckpointMetadata.safeParse(json);
+
+    if (!metadata.success) {
+      logger.error("Invalid metadata", { metadata });
+      return false;
+    }
+
+    const { attemptId, previousAttemptStatus, previousRunStatus } = metadata.data;
+
+    if (!isTaskRunAttemptStatus(previousAttemptStatus)) {
+      logger.error("Invalid previous attempt status", { previousAttemptStatus });
+      return false;
+    }
+
+    if (!isTaskRunStatus(previousRunStatus)) {
+      logger.error("Invalid previous run status", { previousRunStatus });
+      return false;
+    }
+
+    try {
+      const updatedAttempt = await this._prisma.taskRunAttempt.update({
+        where: {
+          id: attemptId,
+        },
+        data: {
+          status: previousAttemptStatus,
+          taskRun: {
+            update: {
+              data: {
+                status: previousRunStatus,
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+          taskRun: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      logger.debug("Set post resume statuses after manual checkpoint", {
+        run: {
+          id: updatedAttempt.taskRun.id,
+          status: updatedAttempt.taskRun.status,
+        },
+        attempt: {
+          id: updatedAttempt.id,
+          status: updatedAttempt.status,
+        },
+      });
+
+      return true;
+    } catch (error) {
+      logger.error("Failed to set post resume statuses", {
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : error,
+      });
+      return false;
+    }
   }
 }

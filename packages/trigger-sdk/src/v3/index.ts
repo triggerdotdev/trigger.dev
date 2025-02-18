@@ -11,7 +11,7 @@ export * from "./idempotencyKeys.js";
 export * from "./tags.js";
 export * from "./metadata.js";
 export * from "./timeout.js";
-export * from "./waitUntil.js";
+export * from "./webhooks.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
@@ -31,6 +31,7 @@ export {
   RateLimitError,
   UnprocessableEntityError,
   AbortTaskRunError,
+  OutOfMemoryError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";
