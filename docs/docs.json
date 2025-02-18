@@ -201,6 +201,7 @@
         "dropdown": "Guides & examples",
         "description": "A great way to get started",
         "icon": "book",
+
         "groups": [
           {
             "group": "Introduction",
@@ -213,7 +214,7 @@
               "guides/frameworks/nextjs",
               "guides/frameworks/nodejs",
               "guides/frameworks/remix",
-              "guides/frameworks/sveltekit"
+              "guides/community/sveltekit"
             ]
           },
           {
@@ -295,6 +296,15 @@
               "guides/examples/resend-email-sequence",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
+            ]
+          },
+          {
+            "group": "Community packages",
+            "pages": [
+              "guides/community/dotenvx",
+              "guides/community/fatima",
+              "guides/community/rate-limiter",
+              "guides/community/sveltekit"
             ]
           }
         ]
