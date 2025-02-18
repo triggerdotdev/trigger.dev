@@ -14,22 +14,19 @@ describe("RunEngine batchTriggerAndWait", () => {
   containerTest(
     "batchTriggerAndWait (no idempotency)",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
         redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
+          ...redisOptions,
         },
         worker: {
           workers: 1,
           tasksPerWorker: 10,
-          pollIntervalMs: 100,
+          pollIntervalMs: 20,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -207,14 +204,17 @@ describe("RunEngine batchTriggerAndWait", () => {
           masterQueue: child1.masterQueue,
           maxRunCount: 1,
         });
+
+        expect(dequeuedChild.length).toBe(1);
+
         const childAttempt1 = await engine.startRunAttempt({
-          runId: child1.id,
+          runId: dequeuedChild[0].run.id,
           snapshotId: dequeuedChild[0].snapshot.id,
         });
 
         // complete the 1st child
         await engine.completeRunAttempt({
-          runId: child1.id,
+          runId: childAttempt1.run.id,
           snapshotId: childAttempt1.snapshot.id,
           completion: {
             id: child1.id,
@@ -225,7 +225,9 @@ describe("RunEngine batchTriggerAndWait", () => {
         });
 
         //child snapshot
-        const childExecutionDataAfter = await engine.getRunExecutionData({ runId: child1.id });
+        const childExecutionDataAfter = await engine.getRunExecutionData({
+          runId: childAttempt1.run.id,
+        });
         assertNonNullable(childExecutionDataAfter);
         expect(childExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
@@ -261,12 +263,17 @@ describe("RunEngine batchTriggerAndWait", () => {
         expect(parentExecutionDataAfterFirstChildComplete.batch?.id).toBe(batch.id);
         expect(parentExecutionDataAfterFirstChildComplete.completedWaitpoints.length).toBe(0);
 
+        expect(await engine.runQueue.lengthOfEnvQueue(authenticatedEnvironment)).toBe(1);
+
         //dequeue and start the 2nd child
         const dequeuedChild2 = await engine.dequeueFromMasterQueue({
           consumerId: "test_12345",
           masterQueue: child2.masterQueue,
           maxRunCount: 1,
         });
+
+        expect(dequeuedChild2.length).toBe(1);
+
         const childAttempt2 = await engine.startRunAttempt({
           runId: child2.id,
           snapshotId: dequeuedChild2[0].snapshot.id,
