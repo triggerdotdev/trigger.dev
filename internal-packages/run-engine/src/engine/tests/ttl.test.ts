@@ -11,22 +11,19 @@ import { setTimeout } from "timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
 
 describe("RunEngine ttl", () => {
-  containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Run expiring (ttl)", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
       redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
+        ...redisOptions,
       },
       worker: {
         workers: 1,
         tasksPerWorker: 10,
-        pollIntervalMs: 100,
+        pollIntervalMs: 20,
       },
       machines: {
         defaultMachine: "small-1x",
@@ -85,7 +82,7 @@ describe("RunEngine ttl", () => {
       });
 
       //wait for 1 seconds
-      await setTimeout(1_000);
+      await setTimeout(1_500);
 
       assertNonNullable(expiredEventData);
       const assertedExpiredEventData = expiredEventData as EventBusEventArgs<"runExpired">[0];
