@@ -1,7 +1,7 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer } from "@testcontainers/redis";
 import path from "path";
-import { GenericContainer, StartedNetwork } from "testcontainers";
+import { GenericContainer, StartedNetwork, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import { expect } from "vitest";
 
@@ -44,6 +44,13 @@ export async function createRedisContainer({ port }: { port?: number }) {
   const container = await new RedisContainer()
     .withExposedPorts(port ?? 6379)
     .withStartupTimeout(120_000) // 2 minutes
+    .withHealthCheck({
+      test: ["CMD", "redis-cli", "ping"],
+      interval: 1000,
+      timeout: 3000,
+      retries: 5,
+    })
+    .withWaitStrategy(Wait.forHealthCheck())
     .start();
 
   return {

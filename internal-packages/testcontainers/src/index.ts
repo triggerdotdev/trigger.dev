@@ -71,16 +71,9 @@ const prisma = async (
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
-let redisPortCounter = 6379;
-
-const getUniqueRedisPort = () => {
-  return redisPortCounter++;
-};
-
 const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
-  const uniquePort = getUniqueRedisPort();
   const { container } = await createRedisContainer({
-    port: uniquePort,
+    port: 6379,
   });
   try {
     await use(container);

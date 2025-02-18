@@ -2418,12 +2418,12 @@ export class RunEngine {
   }
 
   async quit() {
-    //stop the run queue
-    await this.runQueue.quit();
-    await this.worker.stop();
-    await this.runLock.quit();
-
     try {
+      //stop the run queue
+      await this.runQueue.quit();
+      await this.worker.stop();
+      await this.runLock.quit();
+
       // This is just a failsafe
       await this.runLockRedis.quit();
     } catch (error) {
