@@ -461,7 +461,8 @@ export class RunQueue {
               taskConcurrencyKey,
               "dlq",
               messageId,
-              JSON.stringify(message.masterQueues)
+              JSON.stringify(message.masterQueues),
+              this.options.redis.keyPrefix ?? ""
             );
             return false;
           }
@@ -498,7 +499,8 @@ export class RunQueue {
           messageId,
           JSON.stringify(message),
           String(messageScore),
-          JSON.stringify(message.masterQueues)
+          JSON.stringify(message.masterQueues),
+          this.options.redis.keyPrefix ?? ""
         );
         return true;
       },
@@ -1353,6 +1355,7 @@ local messageId = ARGV[1]
 local messageData = ARGV[2]
 local messageScore = tonumber(ARGV[3])
 local parentQueues = cjson.decode(ARGV[4])
+local keyPrefix = ARGV[5]
 
 -- Update the message data
 redis.call('SET', messageKey, messageData)
@@ -1368,12 +1371,13 @@ redis.call('ZADD', messageQueueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
 -- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
-    local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+    local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', parentQueue, messageQueueKey)
+        redis.call('ZREM', prefixedParentQueue, messageQueueKey)
     else
-        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueueKey)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueueKey)
     end
 end
 `,
@@ -1395,18 +1399,20 @@ local deadLetterQueueKey = KEYS[8]
 -- Args:
 local messageId = ARGV[1]
 local parentQueues = cjson.decode(ARGV[2])
+local keyPrefix = ARGV[3]
 
 -- Remove the message from the queue
 redis.call('ZREM', messageQueue, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 
 -- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
-    local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+    local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', parentQueue, messageQueue)
+        redis.call('ZREM', prefixedParentQueue, messageQueue)
     else
-        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueue)
     end
 end
 
@@ -1603,6 +1609,7 @@ declare module "ioredis" {
       messageData: string,
       messageScore: string,
       masterQueues: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1617,6 +1624,7 @@ declare module "ioredis" {
       deadLetterQueueKey: string,
       messageId: string,
       masterQueues: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
