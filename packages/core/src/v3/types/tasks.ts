@@ -707,9 +707,26 @@ export type TriggerOptions = {
    * Specify a duration string like "1h", "10s", "30m", etc.
    */
   idempotencyKeyTTL?: string;
+
+  /**
+   * The maximum number of retry attempts for the task if it fails.
+   * If not specified, it will use the task or the default retry policy from your trigger.config file.
+   */
   maxAttempts?: number;
+
+  /**
+   * You can override the queue for the task. If a queue doesn't exist for the given name, it will be created.
+   * Setting the `concurrencyLimit` here will modify the limit for this queue everywhere it's used.
+   */
   queue?: TaskRunConcurrencyOptions;
+
+  /**
+   * The `concurrencyKey` creates a copy of the queue for every unique value of the key.
+   * For example, if the queue (set when triggering or on the task) has a concurrency limit of 10,
+   * and you set the concurrency key to `userId`, then each user will have their own queue with a concurrency limit of 10.
+   */
   concurrencyKey?: string;
+
   /**
    * The delay before the task is executed. This can be a string like "1h" or a Date object.
    *
@@ -738,6 +755,26 @@ export type TriggerOptions = {
    * **Note:** Runs in development have a default `ttl` of 10 minutes. You can override this by setting the `ttl` option.
    */
   ttl?: string | number;
+
+  /**
+   * If triggered at the same time, a higher priority run will be executed first.
+   *
+   The value is a time offset in seconds that determines the order of dequeuing.
+   * If you trigger two runs 9 seconds apart but the second one has `priority: 10`, it will be executed before the first one.
+   *
+   * @example
+   * ```ts
+   // no priority = 0
+   await myTask.trigger({ foo: "bar" });
+
+   //... imagine 9s pass by
+
+   // this run will start before the run above that was triggered 9s ago (with no priority)
+   await myTask.trigger({ foo: "bar" }, { priority: 10 });
+   ```
+   *
+   */
+  priority?: number;
 
   /**
    * Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.
@@ -777,6 +814,10 @@ export type TriggerOptions = {
 export type TriggerAndWaitOptions = TriggerOptions;
 
 export type BatchTriggerOptions = {
+  /**
+   * If no idempotencyKey is set on an individual item in the batch, it will use this key on each item + the array index.
+   * This is useful to prevent work being done again if the task has to retry.
+   */
   idempotencyKey?: IdempotencyKey | string | string[];
   idempotencyKeyTTL?: string;
 

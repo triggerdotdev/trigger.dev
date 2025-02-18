@@ -118,6 +118,7 @@ export const TriggerTaskRequestBody = z.object({
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      priority: z.number().optional(),
     })
     .optional(),
 });
@@ -160,6 +161,7 @@ export const BatchTriggerTaskItem = z.object({
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
+      priority: z.number().optional(),
     })
     .optional(),
 });

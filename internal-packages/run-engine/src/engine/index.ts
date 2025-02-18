@@ -1305,6 +1305,7 @@ export class RunEngine {
             /** @deprecated */
             baseCostInCents: run.baseCostInCents,
             traceContext: run.traceContext as Record<string, string | undefined>,
+            priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
           },
           queue: {
             id: queue.friendlyId,

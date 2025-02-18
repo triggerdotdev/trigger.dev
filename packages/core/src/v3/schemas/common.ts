@@ -229,6 +229,8 @@ export const TaskRun = z.object({
    * @link https://trigger.dev/docs/run-usage
    */
   baseCostInCents: z.number().default(0),
+  /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
+  priority: z.number().optional(),
 });
 
 export type TaskRun = z.infer<typeof TaskRun>;
