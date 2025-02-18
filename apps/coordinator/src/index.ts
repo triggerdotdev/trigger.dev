@@ -11,10 +11,10 @@ import {
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
-import { HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
+import { ExponentialBackoff, HttpReply, getTextBody } from "@trigger.dev/core/v3/apps";
 import { ChaosMonkey } from "./chaosMonkey";
 import { Checkpointer } from "./checkpointer";
-import { boolFromEnv, numFromEnv } from "./util";
+import { boolFromEnv, numFromEnv, safeJsonParse } from "./util";
 
 import { collectDefaultMetrics, register, Gauge } from "prom-client";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
@@ -30,6 +30,11 @@ const PLATFORM_WS_PORT = process.env.PLATFORM_WS_PORT || 3030;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "coordinator-secret";
 const SECURE_CONNECTION = ["1", "true"].includes(process.env.SECURE_CONNECTION ?? "false");
 
+const TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS =
+  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS || "") || 30_000;
+const TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES =
+  parseInt(process.env.TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES || "") || 7;
+
 const logger = new SimpleStructuredLogger("coordinator", undefined, { nodeName: NODE_NAME });
 const chaosMonkey = new ChaosMonkey(
   !!process.env.CHAOS_MONKEY_ENABLED,
@@ -42,6 +47,8 @@ class CheckpointCancelError extends Error {}
 
 class TaskCoordinator {
   #httpServer: ReturnType<typeof createServer>;
+  #internalHttpServer: ReturnType<typeof createServer>;
+
   #checkpointer = new Checkpointer({
     dockerMode: !process.env.KUBERNETES_PORT,
     forceSimulate: boolFromEnv("FORCE_CHECKPOINT_SIMULATION", false),
@@ -79,6 +86,8 @@ class TaskCoordinator {
     private host = "0.0.0.0"
   ) {
     this.#httpServer = this.#createHttpServer();
+    this.#internalHttpServer = this.#createInternalHttpServer();
+
     this.#checkpointer.init();
     this.#platformSocket = this.#createPlatformSocket();
 
@@ -653,11 +662,11 @@ class TaskCoordinator {
 
             log.error("READY_FOR_LAZY_ATTEMPT error", { error });
 
-            await crashRun({
-              name: "ReadyForLazyAttemptError",
-              message:
-                error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
-            });
+            // await crashRun({
+            //   name: "ReadyForLazyAttemptError",
+            //   message:
+            //     error instanceof Error ? `Unexpected error: ${error.message}` : "Unexpected error",
+            // });
 
             return;
           }
@@ -716,19 +725,84 @@ class TaskCoordinator {
 
             await chaosMonkey.call({ throwErrors: false });
 
-            const completeWithoutCheckpoint = (shouldExit: boolean) => {
+            const sendCompletionWithAck = async (): Promise<boolean> => {
+              try {
+                const response = await this.#platformSocket?.sendWithAck(
+                  "TASK_RUN_COMPLETED_WITH_ACK",
+                  {
+                    version: "v2",
+                    execution,
+                    completion,
+                  },
+                  TASK_RUN_COMPLETED_WITH_ACK_TIMEOUT_MS
+                );
+
+                if (!response) {
+                  log.error("TASK_RUN_COMPLETED_WITH_ACK: no response");
+                  return false;
+                }
+
+                if (!response.success) {
+                  log.error("TASK_RUN_COMPLETED_WITH_ACK: error response", {
+                    error: response.error,
+                  });
+                  return false;
+                }
+
+                log.log("TASK_RUN_COMPLETED_WITH_ACK: successful response");
+                return true;
+              } catch (error) {
+                log.error("TASK_RUN_COMPLETED_WITH_ACK: threw error", { error });
+                return false;
+              }
+            };
+
+            const completeWithoutCheckpoint = async (shouldExit: boolean) => {
               const supportsRetryCheckpoints = message.version === "v1";
 
-              this.#platformSocket?.send("TASK_RUN_COMPLETED", {
-                version: supportsRetryCheckpoints ? "v1" : "v2",
-                execution,
-                completion,
-              });
               callback({ willCheckpointAndRestore: false, shouldExit });
+
+              if (supportsRetryCheckpoints) {
+                // This is only here for backwards compat
+                this.#platformSocket?.send("TASK_RUN_COMPLETED", {
+                  version: "v1",
+                  execution,
+                  completion,
+                });
+              } else {
+                // 99.99% of runs should end up here
+
+                const completedWithAckBackoff = new ExponentialBackoff("FullJitter").maxRetries(
+                  TASK_RUN_COMPLETED_WITH_ACK_MAX_RETRIES
+                );
+
+                const result = await completedWithAckBackoff.execute(
+                  async ({ retry, delay, elapsedMs }) => {
+                    logger.log("TASK_RUN_COMPLETED_WITH_ACK: sending with backoff", {
+                      retry,
+                      delay,
+                      elapsedMs,
+                    });
+
+                    const success = await sendCompletionWithAck();
+
+                    if (!success) {
+                      throw new Error("Failed to send completion with ack");
+                    }
+                  }
+                );
+
+                if (!result.success) {
+                  logger.error("TASK_RUN_COMPLETED_WITH_ACK: failed to send with backoff", result);
+                  return;
+                }
+
+                logger.log("TASK_RUN_COMPLETED_WITH_ACK: sent with backoff", result);
+              }
             };
 
             if (completion.ok) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
@@ -736,17 +810,17 @@ class TaskCoordinator {
               completion.error.type === "INTERNAL_ERROR" &&
               completion.error.code === "TASK_RUN_CANCELLED"
             ) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
             if (completion.retry === undefined) {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
             if (completion.retry.delay < this.#delayThresholdInMs) {
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
 
               // Prevents runs that fail fast from never sending a heartbeat
               this.#sendRunHeartbeat(socket.data.runId);
@@ -755,7 +829,7 @@ class TaskCoordinator {
             }
 
             if (message.version === "v2") {
-              completeWithoutCheckpoint(true);
+              await completeWithoutCheckpoint(true);
               return;
             }
 
@@ -764,7 +838,7 @@ class TaskCoordinator {
             const willCheckpointAndRestore = canCheckpoint || willSimulate;
 
             if (!willCheckpointAndRestore) {
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
               return;
             }
 
@@ -788,7 +862,7 @@ class TaskCoordinator {
 
             if (!checkpoint) {
               log.error("Failed to checkpoint");
-              completeWithoutCheckpoint(false);
+              await completeWithoutCheckpoint(false);
               return;
             }
 
@@ -1368,14 +1442,6 @@ class TaskCoordinator {
         case "/metrics": {
           return reply.text(await register.metrics(), 200, register.contentType);
         }
-        case "/whoami": {
-          return reply.text(NODE_NAME);
-        }
-        case "/checkpoint": {
-          const body = await getTextBody(req);
-          // await this.#checkpointer.checkpointAndPush(body);
-          return reply.text(`sent restore request: ${body}`);
-        }
         default: {
           return reply.empty(404);
         }
@@ -1393,8 +1459,240 @@ class TaskCoordinator {
     return httpServer;
   }
 
+  #createInternalHttpServer() {
+    const httpServer = createServer(async (req, res) => {
+      logger.log(`[${req.method}]`, { url: req.url });
+
+      const reply = new HttpReply(res);
+
+      switch (req.url) {
+        case "/whoami": {
+          return reply.text(NODE_NAME);
+        }
+        case "/checkpoint/duration": {
+          try {
+            const body = await getTextBody(req);
+            const json = safeJsonParse(body);
+
+            if (typeof json !== "object" || !json) {
+              return reply.text("Invalid body", 400);
+            }
+
+            if (!("runId" in json) || typeof json.runId !== "string") {
+              return reply.text("Missing or invalid: runId", 400);
+            }
+
+            if (!("now" in json) || typeof json.now !== "number") {
+              return reply.text("Missing or invalid: now", 400);
+            }
+
+            if (!("ms" in json) || typeof json.ms !== "number") {
+              return reply.text("Missing or invalid: ms", 400);
+            }
+
+            let keepRunAlive = false;
+            if ("keepRunAlive" in json && typeof json.keepRunAlive === "boolean") {
+              keepRunAlive = json.keepRunAlive;
+            }
+
+            let async = false;
+            if ("async" in json && typeof json.async === "boolean") {
+              async = json.async;
+            }
+
+            const { runId, now, ms } = json;
+
+            if (!runId) {
+              return reply.text("Missing runId", 400);
+            }
+
+            const runSocket = await this.#getRunSocket(runId);
+            if (!runSocket) {
+              return reply.text("Run socket not found", 404);
+            }
+
+            const { data } = runSocket;
+
+            console.log("Manual duration checkpoint", data);
+
+            if (async) {
+              reply.text("Creating checkpoint in the background", 202);
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: data.runId,
+              projectRef: data.projectRef,
+              deploymentVersion: data.deploymentVersion,
+              attemptNumber: data.attemptNumber ? parseInt(data.attemptNumber) : undefined,
+            });
+
+            if (!checkpoint) {
+              return reply.text("Failed to checkpoint", 500);
+            }
+
+            if (!data.attemptFriendlyId) {
+              return reply.text("Socket data missing attemptFriendlyId", 500);
+            }
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId,
+              attemptFriendlyId: data.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "WAIT_FOR_DURATION",
+                ms,
+                now,
+              },
+            });
+
+            if (ack?.keepRunAlive || keepRunAlive) {
+              return reply.json({
+                message: `keeping run ${runId} alive after checkpoint`,
+                checkpoint,
+                requestJson: json,
+                platformAck: ack,
+              });
+            }
+
+            runSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
+            return reply.json({
+              message: `checkpoint created for run ${runId}`,
+              checkpoint,
+              requestJson: json,
+              platformAck: ack,
+            });
+          } catch (error) {
+            return reply.json({
+              message: `error`,
+              error,
+            });
+          }
+        }
+        case "/checkpoint/manual": {
+          try {
+            const body = await getTextBody(req);
+            const json = safeJsonParse(body);
+
+            if (typeof json !== "object" || !json) {
+              return reply.text("Invalid body", 400);
+            }
+
+            if (!("runId" in json) || typeof json.runId !== "string") {
+              return reply.text("Missing or invalid: runId", 400);
+            }
+
+            let restoreAtUnixTimeMs: number | undefined;
+            if ("restoreAtUnixTimeMs" in json && typeof json.restoreAtUnixTimeMs === "number") {
+              restoreAtUnixTimeMs = json.restoreAtUnixTimeMs;
+            }
+
+            let keepRunAlive = false;
+            if ("keepRunAlive" in json && typeof json.keepRunAlive === "boolean") {
+              keepRunAlive = json.keepRunAlive;
+            }
+
+            let async = false;
+            if ("async" in json && typeof json.async === "boolean") {
+              async = json.async;
+            }
+
+            const { runId } = json;
+
+            if (!runId) {
+              return reply.text("Missing runId", 400);
+            }
+
+            const runSocket = await this.#getRunSocket(runId);
+            if (!runSocket) {
+              return reply.text("Run socket not found", 404);
+            }
+
+            const { data } = runSocket;
+
+            console.log("Manual checkpoint", data);
+
+            if (async) {
+              reply.text("Creating checkpoint in the background", 202);
+            }
+
+            const checkpoint = await this.#checkpointer.checkpointAndPush({
+              runId: data.runId,
+              projectRef: data.projectRef,
+              deploymentVersion: data.deploymentVersion,
+              attemptNumber: data.attemptNumber ? parseInt(data.attemptNumber) : undefined,
+            });
+
+            if (!checkpoint) {
+              return reply.text("Failed to checkpoint", 500);
+            }
+
+            if (!data.attemptFriendlyId) {
+              return reply.text("Socket data missing attemptFriendlyId", 500);
+            }
+
+            const ack = await this.#platformSocket?.sendWithAck("CHECKPOINT_CREATED", {
+              version: "v1",
+              runId,
+              attemptFriendlyId: data.attemptFriendlyId,
+              docker: checkpoint.docker,
+              location: checkpoint.location,
+              reason: {
+                type: "MANUAL",
+                restoreAtUnixTimeMs,
+              },
+            });
+
+            if (ack?.keepRunAlive || keepRunAlive) {
+              return reply.json({
+                message: `keeping run ${runId} alive after checkpoint`,
+                checkpoint,
+                requestJson: json,
+                platformAck: ack,
+              });
+            }
+
+            runSocket.emit("REQUEST_EXIT", {
+              version: "v1",
+            });
+
+            return reply.json({
+              message: `checkpoint created for run ${runId}`,
+              checkpoint,
+              requestJson: json,
+              platformAck: ack,
+            });
+          } catch (error) {
+            return reply.json({
+              message: `error`,
+              error,
+            });
+          }
+        }
+        default: {
+          return reply.empty(404);
+        }
+      }
+    });
+
+    httpServer.on("clientError", (err, socket) => {
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    });
+
+    httpServer.on("listening", () => {
+      logger.log("internal server listening on port", { port: HTTP_SERVER_PORT + 100 });
+    });
+
+    return httpServer;
+  }
+
   listen() {
     this.#httpServer.listen(this.port, this.host);
+    this.#internalHttpServer.listen(this.port + 100, "127.0.0.1");
   }
 }
 

@@ -69,3 +69,11 @@ export const RuntimeEnvironmentType = {
   DEVELOPMENT: "DEVELOPMENT",
   PREVIEW: "PREVIEW",
 } as const satisfies Record<RuntimeEnvironmentTypeType, RuntimeEnvironmentTypeType>;
+
+export function isTaskRunAttemptStatus(value: string): value is keyof typeof TaskRunAttemptStatus {
+  return Object.values(TaskRunAttemptStatus).includes(value as keyof typeof TaskRunAttemptStatus);
+}
+
+export function isTaskRunStatus(value: string): value is keyof typeof TaskRunStatus {
+  return Object.values(TaskRunStatus).includes(value as keyof typeof TaskRunStatus);
+}
