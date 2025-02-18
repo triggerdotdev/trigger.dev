@@ -976,7 +976,8 @@ export class RunQueue {
       message.runId,
       JSON.stringify(message),
       String(message.timestamp),
-      JSON.stringify(masterQueues)
+      JSON.stringify(masterQueues),
+      this.options.redis.keyPrefix ?? ""
     );
   }
 
@@ -1015,7 +1016,8 @@ export class RunQueue {
       //args
       messageQueue,
       String(Date.now()),
-      String(this.options.defaultEnvConcurrency)
+      String(this.options.defaultEnvConcurrency),
+      this.options.redis.keyPrefix ?? ""
     );
 
     if (!result) {
@@ -1101,7 +1103,8 @@ export class RunQueue {
       envQueueKey,
       taskConcurrencyKey,
       messageId,
-      JSON.stringify(masterQueues)
+      JSON.stringify(masterQueues),
+      this.options.redis.keyPrefix ?? ""
     );
   }
 
@@ -1179,6 +1182,7 @@ local messageId = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = ARGV[4]
 local parentQueues = cjson.decode(ARGV[5])
+local keyPrefix = ARGV[6]
 
 -- Write the message to the message key
 redis.call('SET', messageKey, messageData)
@@ -1190,12 +1194,14 @@ redis.call('ZADD', queue, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
 -- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', queue, 0, 0, 'WITHSCORES')
+
 for _, parentQueue in ipairs(parentQueues) do
-    local earliestMessage = redis.call('ZRANGE', queue, 0, 0, 'WITHSCORES')
+    local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', parentQueue, queueName)
+        redis.call('ZREM', prefixedParentQueue, queueName)
     else
-        redis.call('ZADD', parentQueue, earliestMessage[2], queueName)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], queueName)
     end
 end
 
@@ -1223,6 +1229,7 @@ local taskCurrentConcurrentKeyPrefix = KEYS[9]
 local childQueueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
 local defaultEnvConcurrencyLimit = ARGV[3]
+local keyPrefix = ARGV[4]
 
 -- Check current env concurrency against the limit
 local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
@@ -1270,13 +1277,15 @@ redis.call('SADD', envCurrentConcurrencyKey, messageId)
 redis.call('SADD', projectConcurrencyKey, messageId)
 redis.call('SADD', taskConcurrencyKey, messageId)
 
+local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
+
 -- Rebalance the parent queues
 for _, parentQueue in ipairs(decodedPayload.masterQueues) do
-    local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
+    local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', parentQueue, childQueue)
+        redis.call('ZREM', prefixedParentQueue, childQueue)
     else
-        redis.call('ZADD', parentQueue, earliestMessage[2], childQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], childQueue)
     end
 end
 
@@ -1299,6 +1308,7 @@ local taskCurrentConcurrencyKey = KEYS[7]
 -- Args:
 local messageId = ARGV[1]
 local parentQueues = cjson.decode(ARGV[2])
+local keyPrefix = ARGV[3]
 
 -- Remove the message from the message key
 redis.call('DEL', messageKey)
@@ -1308,12 +1318,13 @@ redis.call('ZREM', messageQueue, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 
 -- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(parentQueues) do
-    local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+  local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then
-        redis.call('ZREM', parentQueue, messageQueue)
+        redis.call('ZREM', prefixedParentQueue, messageQueue)
     else
-        redis.call('ZADD', parentQueue, earliestMessage[2], messageQueue)
+        redis.call('ZADD', prefixedParentQueue, earliestMessage[2], messageQueue)
     end
 end
 
@@ -1543,6 +1554,7 @@ declare module "ioredis" {
       messageData: string,
       messageScore: string,
       parentQueues: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -1561,6 +1573,7 @@ declare module "ioredis" {
       childQueueName: string,
       currentTime: string,
       defaultEnvConcurrencyLimit: string,
+      keyPrefix: string,
       callback?: Callback<[string, string]>
     ): Result<[string, string, string] | null, Context>;
 
@@ -1574,6 +1587,7 @@ declare module "ioredis" {
       taskConcurrencyKey: string,
       messageId: string,
       masterQueues: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
