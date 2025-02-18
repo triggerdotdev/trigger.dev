@@ -93,6 +93,55 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
+    const { reason } = params;
+
+    // Check if we should accept this checkpoint
+    switch (reason.type) {
+      case "MANUAL":
+        // Always accept manual checkpoints
+        break;
+      case "WAIT_FOR_DURATION":
+        // Always accept duration checkpoints
+        break;
+      case "WAIT_FOR_TASK": {
+        // TODO
+        break;
+      }
+      case "WAIT_FOR_BATCH": {
+        const batchRun = await this._prisma.batchTaskRun.findFirst({
+          where: {
+            friendlyId: reason.batchFriendlyId,
+          },
+        });
+
+        if (!batchRun) {
+          logger.error("CreateCheckpointService: Batch not found", {
+            batchFriendlyId: reason.batchFriendlyId,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        if (batchRun.batchVersion === "v3" && batchRun.resumedAt) {
+          logger.error("CreateCheckpointService: Batch already resumed", {
+            batchRun,
+            params,
+          });
+
+          return {
+            success: false,
+            keepRunAlive: true,
+          };
+        }
+
+        break;
+      }
+    }
+
     //sleep to test slow checkpoints
     // Sleep a random value between 4 and 30 seconds
     // await new Promise((resolve) => {
@@ -145,8 +194,6 @@ export class CreateCheckpointService extends BaseService {
         },
       },
     });
-
-    const { reason } = params;
 
     let checkpointEvent: CheckpointRestoreEvent | undefined;
 
