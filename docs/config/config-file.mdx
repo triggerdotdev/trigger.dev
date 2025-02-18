@@ -397,10 +397,12 @@ This is usually required if you are using certain ORMs, like TypeORM, that requi
 
 If you are using Prisma, you should use the prisma build extension.
 
-- Automatically handles copying prisma files to the build directory.
-- Generates the prisma client during the deploy process
+- Automatically handles copying Prisma files to the build directory
+- Generates the Prisma client during the deploy process
 - Optionally will migrate the database during the deploy process
-- Support for TypedSQL and multiple schema files.
+- Support for TypedSQL and multiple schema files
+- You can use `prismaSchemaFolder` to specify just the directory containing your schema file, instead of the full path
+- You can add the extension twice if you have multiple separate schemas in the same project (example below)
 
 You can use it for a simple Prisma setup like this:
 
@@ -521,6 +523,21 @@ export default defineConfig({
 These environment variables are only used during the build process and are not embedded in the final container image.
 
 </Note>
+
+If you have multiple separate schemas in the same project you can add the extension multiple times:
+
+```ts
+prismaExtension({
+  schema: 'prisma/schema/main.prisma',
+  version: '6.2.0',
+  migrate: false,
+}),
+prismaExtension({
+  schema: 'prisma/schema/secondary.prisma',
+  version: '6.2.0',
+  migrate: false,
+}),
+```
 
 #### syncEnvVars
 
