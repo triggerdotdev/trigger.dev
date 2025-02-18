@@ -1015,11 +1015,14 @@ class TaskCoordinator {
               return;
             }
 
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
             const checkpoint = await this.#checkpointer.checkpointAndPush({
-              runId: socket.data.runId,
+              runId,
               projectRef: socket.data.projectRef,
               deploymentVersion: socket.data.deploymentVersion,
-              attemptNumber: getAttemptNumber(),
+              attemptNumber,
             });
 
             if (!checkpoint) {
@@ -1045,6 +1048,13 @@ class TaskCoordinator {
 
             if (ack?.keepRunAlive) {
               log.log("keeping run alive after duration checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after duration checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 
@@ -1103,12 +1113,15 @@ class TaskCoordinator {
               }
             }
 
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
             const checkpoint = await this.#checkpointer.checkpointAndPush(
               {
-                runId: socket.data.runId,
+                runId,
                 projectRef: socket.data.projectRef,
                 deploymentVersion: socket.data.deploymentVersion,
-                attemptNumber: getAttemptNumber(),
+                attemptNumber,
               },
               WAIT_FOR_TASK_CHECKPOINT_DELAY_MS
             );
@@ -1141,6 +1154,13 @@ class TaskCoordinator {
             if (ack?.keepRunAlive) {
               socket.data.requiresCheckpointResumeWithMessage = undefined;
               log.log("keeping run alive after task checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after duration checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 
@@ -1199,12 +1219,15 @@ class TaskCoordinator {
               }
             }
 
+            const runId = socket.data.runId;
+            const attemptNumber = getAttemptNumber();
+
             const checkpoint = await this.#checkpointer.checkpointAndPush(
               {
-                runId: socket.data.runId,
+                runId,
                 projectRef: socket.data.projectRef,
                 deploymentVersion: socket.data.deploymentVersion,
-                attemptNumber: getAttemptNumber(),
+                attemptNumber,
               },
               WAIT_FOR_BATCH_CHECKPOINT_DELAY_MS
             );
@@ -1238,6 +1261,13 @@ class TaskCoordinator {
             if (ack?.keepRunAlive) {
               socket.data.requiresCheckpointResumeWithMessage = undefined;
               log.log("keeping run alive after batch checkpoint");
+
+              if (checkpoint.docker && willSimulate) {
+                // The container is still paused so we need to unpause it
+                log.log("unpausing container after batch checkpoint");
+                this.#checkpointer.unpause(runId, attemptNumber);
+              }
+
               return;
             }
 

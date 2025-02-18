@@ -601,6 +601,16 @@ export class Checkpointer {
     }
   }
 
+  async unpause(runId: string, attemptNumber?: number): Promise<void> {
+    try {
+      const containterNameWithAttempt = this.#getRunContainerName(runId, attemptNumber);
+      const exec = new Exec({ logger: this.#logger });
+      await exec.x("docker", ["unpause", containterNameWithAttempt]);
+    } catch (error) {
+      this.#logger.error("[Docker] Error during unpause", { runId, attemptNumber, error });
+    }
+  }
+
   async #createDockerCheckpoint(
     abortSignal: AbortSignal,
     runId: string,
