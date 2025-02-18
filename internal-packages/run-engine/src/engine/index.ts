@@ -2540,8 +2540,15 @@ export class RunEngine {
               id: true,
             },
           },
+          runtimeEnvironment: {
+            select: {
+              organizationId: true,
+            },
+          },
         },
       });
+
+      await this.runQueue.acknowledgeMessage(updatedRun.runtimeEnvironment.organizationId, runId);
 
       if (!updatedRun.associatedWaitpoint) {
         throw new ServiceValidationError("No associated waitpoint found", 400);
