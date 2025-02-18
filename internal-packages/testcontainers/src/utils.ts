@@ -1,5 +1,6 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { RedisContainer } from "@testcontainers/redis";
+import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
+import Redis from "ioredis";
 import path from "path";
 import { GenericContainer, StartedNetwork, Wait } from "testcontainers";
 import { x } from "tinyexec";
@@ -40,22 +41,57 @@ export async function createPostgresContainer(network: StartedNetwork) {
   return { url: container.getConnectionUri(), container, network };
 }
 
-export async function createRedisContainer({ port }: { port?: number }) {
-  const container = await new RedisContainer()
-    .withExposedPorts(port ?? 6379)
-    .withStartupTimeout(120_000) // 2 minutes
+export async function createRedisContainer({
+  port,
+  network,
+}: {
+  port?: number;
+  network?: StartedNetwork;
+}) {
+  let container = new RedisContainer().withExposedPorts(port ?? 6379).withStartupTimeout(120_000); // 2 minutes
+
+  if (network) {
+    container = container.withNetwork(network).withNetworkAliases("redis");
+  }
+
+  const startedContainer = await container
     .withHealthCheck({
       test: ["CMD", "redis-cli", "ping"],
       interval: 1000,
       timeout: 3000,
       retries: 5,
     })
-    .withWaitStrategy(Wait.forHealthCheck())
+    .withWaitStrategy(
+      Wait.forAll([Wait.forHealthCheck(), Wait.forLogMessage("Ready to accept connections")])
+    )
     .start();
 
+  // Add a verification step
+  await verifyRedisConnection(startedContainer);
+
   return {
-    container,
+    container: startedContainer,
   };
+}
+
+async function verifyRedisConnection(container: StartedRedisContainer) {
+  const redis = new Redis({
+    host: container.getHost(),
+    port: container.getPort(),
+    password: container.getPassword(),
+    maxRetriesPerRequest: 3,
+    connectTimeout: 10000,
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+  });
+
+  try {
+    await redis.ping();
+  } finally {
+    await redis.quit();
+  }
 }
 
 export async function createElectricContainer(

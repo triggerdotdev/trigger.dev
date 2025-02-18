@@ -17,7 +17,10 @@ type PostgresContext = NetworkContext & {
   prisma: PrismaClient;
 };
 
-type RedisContext = { redisContainer: StartedRedisContainer; redisOptions: RedisOptions };
+type RedisContext = NetworkContext & {
+  redisContainer: StartedRedisContainer;
+  redisOptions: RedisOptions;
+};
 
 type ElectricContext = {
   electricOrigin: string;
@@ -71,9 +74,13 @@ const prisma = async (
 
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
-const redisContainer = async ({}, use: Use<StartedRedisContainer>) => {
+const redisContainer = async (
+  { network }: { network: StartedNetwork },
+  use: Use<StartedRedisContainer>
+) => {
   const { container } = await createRedisContainer({
     port: 6379,
+    network,
   });
   try {
     await use(container);
@@ -97,7 +104,7 @@ const redisOptions = async (
     },
     connectTimeout: 10000, // 10 seconds
     // Add more robust connection options
-    enableOfflineQueue: false,
+    enableOfflineQueue: true,
     reconnectOnError: (err) => {
       const targetError = "READONLY";
       if (err.message.includes(targetError)) {
@@ -105,12 +112,17 @@ const redisOptions = async (
       }
       return false;
     },
+    enableAutoPipelining: true,
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: true,
+    lazyConnect: false,
+    showFriendlyErrorStack: true,
   };
 
   await use(options);
 };
 
-export const redisTest = test.extend<RedisContext>({ redisContainer, redisOptions });
+export const redisTest = test.extend<RedisContext>({ network, redisContainer, redisOptions });
 
 const electricOrigin = async (
   {
