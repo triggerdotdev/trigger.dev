@@ -10,22 +10,23 @@ import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 
 describe("RunEngine not deployed", () => {
-  containerTest("Not yet deployed", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Not yet deployed", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
-      redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
-      },
       worker: {
+        redis: redisOptions,
         workers: 1,
         tasksPerWorker: 10,
         pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
       },
       machines: {
         defaultMachine: "small-1x",

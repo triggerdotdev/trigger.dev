@@ -7,12 +7,12 @@ import { logger } from "~/services/logger.server";
 import { createSSELoader } from "~/utils/sse";
 
 const redis = new Redis({
-  port: env.VALKEY_PORT ?? undefined,
-  host: env.VALKEY_HOST ?? undefined,
-  username: env.VALKEY_USERNAME ?? undefined,
-  password: env.VALKEY_PASSWORD ?? undefined,
+  port: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PORT ?? undefined,
+  host: env.RUN_ENGINE_DEV_PRESENCE_REDIS_HOST ?? undefined,
+  username: env.RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME ?? undefined,
+  password: env.RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD ?? undefined,
   enableAutoPipelining: true,
-  ...(env.VALKEY_TLS_DISABLED === "true" ? {} : { tls: {} }),
+  ...(env.RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
 });
 
 export const loader = createSSELoader({
@@ -44,11 +44,7 @@ export const loader = createSSELoader({
         //won't need multi
 
         // Set initial presence with more context
-        await redis.setex(
-                  presenceKey,
-                  env.DEV_PRESENCE_TTL_MS / 1000,
-                  Date.now().toString()
-                );
+        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, Date.now().toString());
 
         // Publish presence update
         await redis.publish(
@@ -63,11 +59,7 @@ export const loader = createSSELoader({
         send({ event: "start", data: `Started ${id}` });
       },
       iterator: async ({ send, date }) => {
-        await redis.setex(
-                  presenceKey,
-                  env.DEV_PRESENCE_TTL_MS / 1000,
-                  date.toISOString()
-                );
+        await redis.setex(presenceKey, env.DEV_PRESENCE_TTL_MS / 1000, date.toISOString());
 
         send({ event: "time", data: new Date().toISOString() });
       },

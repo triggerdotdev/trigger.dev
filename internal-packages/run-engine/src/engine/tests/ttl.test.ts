@@ -17,13 +17,17 @@ describe("RunEngine ttl", () => {
 
     const engine = new RunEngine({
       prisma,
-      redis: {
-        ...redisOptions,
-      },
       worker: {
+        redis: redisOptions,
         workers: 1,
         tasksPerWorker: 10,
-        pollIntervalMs: 20,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
       },
       machines: {
         defaultMachine: "small-1x",

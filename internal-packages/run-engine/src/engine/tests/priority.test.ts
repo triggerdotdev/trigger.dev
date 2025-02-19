@@ -15,22 +15,23 @@ describe("RunEngine priority", () => {
   containerTest(
     "Two runs execute in the correct order",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",

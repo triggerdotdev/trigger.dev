@@ -11,22 +11,23 @@ import { setTimeout } from "timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
 
 describe("RunEngine Waitpoints", () => {
-  containerTest("waitForDuration", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("waitForDuration", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
-      redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
-      },
       worker: {
+        redis: redisOptions,
         workers: 1,
         tasksPerWorker: 10,
         pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
       },
       machines: {
         defaultMachine: "small-1x",
@@ -121,22 +122,23 @@ describe("RunEngine Waitpoints", () => {
   containerTest(
     "Waitpoints cleared if attempt fails",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -257,22 +259,23 @@ describe("RunEngine Waitpoints", () => {
   containerTest(
     "Create, block, and complete a Manual waitpoint",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -397,22 +400,23 @@ describe("RunEngine Waitpoints", () => {
   containerTest(
     "Manual waitpoint timeout",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -515,22 +519,23 @@ describe("RunEngine Waitpoints", () => {
   containerTest(
     "Race condition with multiple waitpoints completing simultaneously",
     { timeout: 60_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",

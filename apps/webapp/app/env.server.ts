@@ -92,33 +92,6 @@ const EnvironmentSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_TLS_DISABLED: z.string().optional(),
 
-  // Valkey options (used in Run Engine 2.0+)
-  VALKEY_HOST: z
-    .string()
-    .nullish()
-    .default(process.env.REDIS_HOST ?? null),
-  VALKEY_READER_HOST: z
-    .string()
-    .nullish()
-    .default(process.env.REDIS_READER_HOST ?? null),
-  VALKEY_READER_PORT: z.coerce
-    .number()
-    .nullish()
-    .default(process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : null),
-  VALKEY_PORT: z.coerce
-    .number()
-    .nullish()
-    .default(process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : null),
-  VALKEY_USERNAME: z
-    .string()
-    .nullish()
-    .default(process.env.REDIS_USERNAME ?? null),
-  VALKEY_PASSWORD: z
-    .string()
-    .nullish()
-    .default(process.env.REDIS_PASSWORD ?? null),
-  VALKEY_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
-
   RATE_LIMIT_REDIS_HOST: z
     .string()
     .optional()
@@ -408,6 +381,130 @@ const EnvironmentSchema = z.object({
   RUN_ENGINE_TIMEOUT_EXECUTING: z.coerce.number().int().default(60_000),
   RUN_ENGINE_TIMEOUT_EXECUTING_WITH_WAITPOINTS: z.coerce.number().int().default(60_000),
   RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS: z.coerce.boolean().default(false),
+
+  RUN_ENGINE_WORKER_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_WORKER_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_WORKER_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_WORKER_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_RUN_QUEUE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_RUN_QUEUE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_RUN_QUEUE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_RUN_QUEUE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_RUN_QUEUE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_RUN_QUEUE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_RUN_LOCK_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_RUN_LOCK_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_RUN_LOCK_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_RUN_LOCK_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_RUN_LOCK_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_RUN_LOCK_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+  RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_HOST),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_READER_HOST: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_READER_HOST),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_READER_PORT: z.coerce
+    .number()
+    .optional()
+    .transform(
+      (v) =>
+        v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+    ),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_PORT: z.coerce
+    .number()
+    .optional()
+    .transform((v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_USERNAME: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_USERNAME),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => v ?? process.env.REDIS_PASSWORD),
+  RUN_ENGINE_DEV_PRESENCE_REDIS_TLS_DISABLED: z
+    .string()
+    .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
   /** How long should the presence ttl last */
   DEV_PRESENCE_TTL_MS: z.coerce.number().int().default(30_000),

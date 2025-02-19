@@ -12,21 +12,22 @@ import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
 
 describe("RunEngine dequeuing", () => {
-  containerTest("Dequeues 5 runs", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Dequeues 5 runs", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
-      redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
-      },
       worker: {
+        redis: redisOptions,
         workers: 1,
         tasksPerWorker: 10,
         pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
       },
       machines: {
         defaultMachine: "small-1x",
@@ -79,21 +80,22 @@ describe("RunEngine dequeuing", () => {
   containerTest(
     "Dequeues runs within machine constraints",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",

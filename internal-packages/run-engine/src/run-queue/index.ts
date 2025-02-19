@@ -1279,9 +1279,8 @@ redis.call('SADD', envCurrentConcurrencyKey, messageId)
 redis.call('SADD', projectConcurrencyKey, messageId)
 redis.call('SADD', taskConcurrencyKey, messageId)
 
-local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
-
 -- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', childQueue, 0, 0, 'WITHSCORES')
 for _, parentQueue in ipairs(decodedPayload.masterQueues) do
     local prefixedParentQueue = keyPrefix .. parentQueue
     if #earliestMessage == 0 then

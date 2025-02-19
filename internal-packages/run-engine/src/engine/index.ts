@@ -136,8 +136,8 @@ export class RunEngine {
   constructor(private readonly options: RunEngineOptions) {
     this.prisma = options.prisma;
     this.runLockRedis = new Redis({
-      ...options.redis,
-      keyPrefix: `${options.redis.keyPrefix}runlock:`,
+      ...options.runLock.redis,
+      keyPrefix: `${options.runLock.redis.keyPrefix}runlock:`,
     });
     this.runLock = new RunLocker({ redis: this.runLockRedis });
 
@@ -147,14 +147,17 @@ export class RunEngine {
       queuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 36 }),
       envQueuePriorityStrategy: new SimpleWeightedChoiceStrategy({ queueSelectionCount: 12 }),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
-      logger: new Logger("RunQueue", "warn"),
-      redis: { ...options.redis, keyPrefix: `${options.redis.keyPrefix}runqueue:` },
+      logger: new Logger("RunQueue", "debug"),
+      redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
     });
 
     this.worker = new Worker({
       name: "worker",
-      redisOptions: { ...options.redis, keyPrefix: `${options.redis.keyPrefix}worker:` },
+      redisOptions: {
+        ...options.worker.redis,
+        keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
+      },
       catalog: workerCatalog,
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
@@ -1639,8 +1642,6 @@ export class RunEngine {
           }
         }
 
-        await this.#finalizeRun(run);
-
         return executionResultFromSnapshot(newSnapshot);
       });
     });
@@ -2336,7 +2337,7 @@ export class RunEngine {
         runnerId,
       });
 
-      await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+      await this.worker.ack(`heartbeatSnapshot.${runId}`);
       return executionResultFromSnapshot(latestSnapshot);
     }
 
@@ -3629,7 +3630,7 @@ export class RunEngine {
     }
 
     await this.worker.enqueue({
-      id: `heartbeatSnapshot.${snapshotId}`,
+      id: `heartbeatSnapshot.${runId}`,
       job: "heartbeatSnapshot",
       payload: { snapshotId, runId },
       availableAt: new Date(Date.now() + intervalMs),
@@ -3658,7 +3659,7 @@ export class RunEngine {
           }
         );
 
-        await this.worker.ack(`heartbeatSnapshot.${snapshotId}`);
+        await this.worker.ack(`heartbeatSnapshot.${runId}`);
         return;
       }
 
@@ -3823,6 +3824,9 @@ export class RunEngine {
     if (batchId) {
       await this.tryCompleteBatch({ batchId });
     }
+
+    //cancel the heartbeats
+    await this.worker.ack(`heartbeatSnapshot.${id}`);
   }
 
   /**

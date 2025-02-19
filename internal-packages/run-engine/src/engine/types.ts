@@ -6,9 +6,9 @@ import { type RedisOptions } from "ioredis";
 import { MinimalAuthenticatedEnvironment } from "../shared";
 
 export type RunEngineOptions = {
-  redis: RedisOptions;
   prisma: PrismaClient;
   worker: WorkerConcurrencyOptions & {
+    redis: RedisOptions;
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
   };
@@ -17,9 +17,13 @@ export type RunEngineOptions = {
     machines: Record<string, MachinePreset>;
     baseCostInCents: number;
   };
-  queue?: {
+  queue: {
+    redis: RedisOptions;
     retryOptions?: RetryOptions;
     defaultEnvConcurrency?: number;
+  };
+  runLock: {
+    redis: RedisOptions;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

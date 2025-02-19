@@ -13,7 +13,7 @@ describe("RunEngine heartbeats", () => {
   containerTest(
     "Attempt timeout then successfully attempted",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -21,16 +21,20 @@ describe("RunEngine heartbeats", () => {
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          retryOptions: {
+            maxTimeoutInMs: 50,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -46,11 +50,6 @@ describe("RunEngine heartbeats", () => {
         },
         heartbeatTimeoutsMs: {
           PENDING_EXECUTING: pendingExecutingTimeout,
-        },
-        queue: {
-          retryOptions: {
-            maxTimeoutInMs: 50,
-          },
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
@@ -132,23 +131,30 @@ describe("RunEngine heartbeats", () => {
   containerTest(
     "All start attempts timeout",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const pendingExecutingTimeout = 100;
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          retryOptions: {
+            //intentionally set the attempts to 2 and quick
+            maxAttempts: 2,
+            minTimeoutInMs: 50,
+            maxTimeoutInMs: 50,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -165,14 +171,7 @@ describe("RunEngine heartbeats", () => {
         heartbeatTimeoutsMs: {
           PENDING_EXECUTING: pendingExecutingTimeout,
         },
-        queue: {
-          retryOptions: {
-            //intentionally set the attempts to 2 and quick
-            maxAttempts: 2,
-            minTimeoutInMs: 50,
-            maxTimeoutInMs: 50,
-          },
-        },
+
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -255,23 +254,30 @@ describe("RunEngine heartbeats", () => {
   containerTest(
     "Execution timeout (worker doesn't heartbeat)",
     { timeout: 15_000 },
-    async ({ prisma, redisContainer }) => {
+    async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const executingTimeout = 100;
 
       const engine = new RunEngine({
         prisma,
-        redis: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-          enableAutoPipelining: true,
-        },
         worker: {
+          redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
           pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          retryOptions: {
+            //intentionally set the attempts to 2 and quick
+            maxAttempts: 2,
+            minTimeoutInMs: 50,
+            maxTimeoutInMs: 50,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
         },
         machines: {
           defaultMachine: "small-1x",
@@ -287,14 +293,6 @@ describe("RunEngine heartbeats", () => {
         },
         heartbeatTimeoutsMs: {
           EXECUTING: executingTimeout,
-        },
-        queue: {
-          retryOptions: {
-            //intentionally set the attempts to 2 and quick
-            maxAttempts: 2,
-            minTimeoutInMs: 50,
-            maxTimeoutInMs: 50,
-          },
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
@@ -391,23 +389,24 @@ describe("RunEngine heartbeats", () => {
     }
   );
 
-  containerTest("Pending cancel", { timeout: 15_000 }, async ({ prisma, redisContainer }) => {
+  containerTest("Pending cancel", { timeout: 15_000 }, async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const heartbeatTimeout = 100;
 
     const engine = new RunEngine({
       prisma,
-      redis: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        enableAutoPipelining: true,
-      },
       worker: {
+        redis: redisOptions,
         workers: 1,
         tasksPerWorker: 10,
         pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
       },
       machines: {
         defaultMachine: "small-1x",
