@@ -22,9 +22,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     app = express();
   });
 
-  redisTest("should allow requests within the rate limit", async ({ redis }) => {
+  redisTest("should allow requests within the rate limit", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redis.options,
+      redis: redisOptions,
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -53,9 +53,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     expect(response.headers["x-ratelimit-reset"]).toBeDefined();
   });
 
-  redisTest("should reject requests without an Authorization header", async ({ redis }) => {
+  redisTest("should reject requests without an Authorization header", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redis.options,
+      redis: redisOptions,
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -77,9 +77,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     expect(response.body).toHaveProperty("title", "Unauthorized");
   });
 
-  redisTest("should reject requests that exceed the rate limit", async ({ redis }) => {
+  redisTest("should reject requests that exceed the rate limit", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redis.options,
+      redis: redisOptions,
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -105,9 +105,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     expect(response.body).toHaveProperty("title", "Rate Limit Exceeded");
   });
 
-  redisTest("should not apply rate limiting to whitelisted paths", async ({ redis }) => {
+  redisTest("should not apply rate limiting to whitelisted paths", async ({ redisOptions }) => {
     const rateLimitMiddleware = authorizationRateLimitMiddleware({
-      redis: redis.options,
+      redis: redisOptions,
       keyPrefix: "test",
       defaultLimiter: {
         type: "tokenBucket",
@@ -135,9 +135,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   redisTest(
     "should apply different rate limits based on limiterConfigOverride",
-    async ({ redis }) => {
+    async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test",
         defaultLimiter: {
           type: "tokenBucket",
@@ -185,9 +185,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
 
   describe("Advanced Cases", () => {
     // 1. Test different rate limit configurations
-    redisTest("should enforce fixed window rate limiting", async ({ redis }) => {
+    redisTest("should enforce fixed window rate limiting", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test-fixed",
         defaultLimiter: {
           type: "fixedWindow",
@@ -221,9 +221,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       expect(newResponse.status).toBe(200);
     });
 
-    redisTest("should enforce sliding window rate limiting", async ({ redis }) => {
+    redisTest("should enforce sliding window rate limiting", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test-sliding",
         defaultLimiter: {
           type: "slidingWindow",
@@ -265,9 +265,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     // 2. Test edge cases around rate limit calculations
-    redisTest("should handle token refill correctly", async ({ redis }) => {
+    redisTest("should handle token refill correctly", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test-refill",
         defaultLimiter: {
           type: "tokenBucket",
@@ -306,9 +306,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       expect(limitedAgainResponse.status).toBe(429);
     });
 
-    redisTest("should handle near-zero remaining tokens correctly", async ({ redis }) => {
+    redisTest("should handle near-zero remaining tokens correctly", async ({ redisOptions }) => {
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test-near-zero",
         defaultLimiter: {
           type: "tokenBucket",
@@ -353,10 +353,10 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     // 3. Test the limiterCache functionality
-    redisTest("should use cached limiter configurations", async ({ redis }) => {
+    redisTest("should use cached limiter configurations", async ({ redisOptions }) => {
       let configOverrideCalls = 0;
       const rateLimitMiddleware = authorizationRateLimitMiddleware({
-        redis: redis.options,
+        redis: redisOptions,
         keyPrefix: "test-cache",
         defaultLimiter: {
           type: "tokenBucket",
