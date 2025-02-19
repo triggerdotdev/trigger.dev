@@ -252,7 +252,7 @@ export class ResumeBatchRunService extends BaseService {
           hasCheckpointEvent: !!batchRun.checkpointEventId,
         });
 
-        await marqs?.replaceMessage(
+        await marqs?.requeueMessage(
           dependentRun.id,
           {
             type: "RESUME",

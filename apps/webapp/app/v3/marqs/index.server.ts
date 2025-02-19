@@ -260,12 +260,61 @@ export class MarQS {
   public async replaceMessage(
     messageId: string,
     messageData: Record<string, unknown>,
-    timestamp?: number,
-    priority?: number,
-    inplace?: boolean
+    timestamp?: number
   ) {
     return this.#trace(
       "replaceMessage",
+      async (span) => {
+        const oldMessage = await this.readMessage(messageId);
+
+        if (!oldMessage) {
+          return;
+        }
+
+        span.setAttributes({
+          [SemanticAttributes.QUEUE]: oldMessage.queue,
+          [SemanticAttributes.MESSAGE_ID]: oldMessage.messageId,
+          [SemanticAttributes.CONCURRENCY_KEY]: oldMessage.concurrencyKey,
+          [SemanticAttributes.PARENT_QUEUE]: oldMessage.parentQueue,
+        });
+
+        const traceContext = {
+          traceparent: oldMessage.data.traceparent,
+          tracestate: oldMessage.data.tracestate,
+        };
+
+        const newMessage: MessagePayload = {
+          version: "1",
+          // preserve original trace context
+          data: { ...oldMessage.data, ...messageData, ...traceContext, queue: oldMessage.queue },
+          queue: oldMessage.queue,
+          concurrencyKey: oldMessage.concurrencyKey,
+          timestamp: timestamp ?? Date.now(),
+          messageId,
+          parentQueue: oldMessage.parentQueue,
+        };
+
+        await this.#callReplaceMessage(newMessage);
+      },
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          [SEMATTRS_MESSAGING_OPERATION]: "replace",
+          [SEMATTRS_MESSAGE_ID]: messageId,
+          [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
+        },
+      }
+    );
+  }
+
+  public async requeueMessage(
+    messageId: string,
+    messageData: Record<string, unknown>,
+    timestamp?: number,
+    priority?: number
+  ) {
+    return this.#trace(
+      "requeueMessage",
       async (span) => {
         const oldMessage = await this.readMessage(messageId);
 
@@ -298,27 +347,16 @@ export class MarQS {
           parentQueue: oldMessage.parentQueue,
         };
 
-        if (inplace) {
-          await this.#callReplaceMessage(newMessage);
-          return;
-        }
-
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
 
-        await this.#callAcknowledgeMessage({
-          parentQueue: oldMessage.parentQueue,
-          messageQueue: oldMessage.queue,
-          messageId,
-        });
+        await this.#callRequeueMessage(oldMessage.queue, newMessage);
 
-        await this.#callEnqueueMessage(newMessage);
-
-        await this.options.subscriber?.messageReplaced(newMessage);
+        await this.options.subscriber?.messageRequeued(oldMessage.queue, newMessage);
       },
       {
         kind: SpanKind.CONSUMER,
         attributes: {
-          [SEMATTRS_MESSAGING_OPERATION]: "replace",
+          [SEMATTRS_MESSAGING_OPERATION]: "requeue",
           [SEMATTRS_MESSAGE_ID]: messageId,
           [SEMATTRS_MESSAGING_SYSTEM]: "marqs",
         },
@@ -602,7 +640,7 @@ export class MarQS {
         });
 
         if (updates) {
-          await this.replaceMessage(messageId, updates, retryAt, undefined, true);
+          await this.replaceMessage(messageId, updates, retryAt);
         }
 
         await this.options.visibilityTimeoutStrategy.cancelHeartbeat(messageId);
@@ -1163,6 +1201,78 @@ export class MarQS {
     );
   }
 
+  async #callRequeueMessage(oldQueue: string, message: MessagePayload) {
+    const queueKey = message.queue;
+    const oldQueueKey = oldQueue;
+    const parentQueueKey = message.parentQueue;
+    const messageKey = this.keys.messageKey(message.messageId);
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
+    const queueReserveConcurrencyKey = this.keys.queueReserveConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const envReserveConcurrencyKey = this.keys.envReserveConcurrencyKeyFromQueue(message.queue);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+
+    const queueName = message.queue;
+    const oldQueueName = oldQueue;
+    const messageId = message.messageId;
+    const messageData = JSON.stringify(message);
+    const messageScore = String(message.timestamp);
+
+    logger.debug("Calling requeueMessage", {
+      service: this.name,
+      queueKey,
+      oldQueueKey,
+      parentQueueKey,
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      envQueueKey,
+      queueName,
+      oldQueueName,
+      messageId,
+      messageData,
+      messageScore,
+    });
+
+    const result = await this.redis.requeueMessage(
+      queueKey,
+      oldQueueKey,
+      parentQueueKey,
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      envQueueKey,
+      queueName,
+      oldQueueName,
+      messageId,
+      messageData,
+      messageScore
+    );
+
+    logger.debug("requeueMessage result", {
+      service: this.name,
+      queueKey,
+      parentQueueKey,
+      messageKey,
+      queueCurrentConcurrencyKey,
+      queueReserveConcurrencyKey,
+      envCurrentConcurrencyKey,
+      envReserveConcurrencyKey,
+      envQueueKey,
+      queueName,
+      messageId,
+      messageData,
+      messageScore,
+      result,
+    });
+
+    return true;
+  }
+
   async #callAcknowledgeMessage({
     parentQueue,
     messageQueue,
@@ -1587,6 +1697,61 @@ redis.call('DEL', messageKey)
 `,
     });
 
+    this.redis.defineCommand("requeueMessage", {
+      numberOfKeys: 9,
+      lua: `
+local queueKey = KEYS[1]
+local oldQueueKey = KEYS[2]
+local parentQueueKey = KEYS[3]
+local messageKey = KEYS[4]
+local queueCurrentConcurrencyKey = KEYS[5]
+local queueReserveConcurrencyKey = KEYS[6]
+local envCurrentConcurrencyKey = KEYS[7]
+local envReserveConcurrencyKey = KEYS[8]
+local envQueueKey = KEYS[9]
+
+local queueName = ARGV[1]
+local oldQueueName = ARGV[2]
+local messageId = ARGV[3]
+local messageData = ARGV[4]
+local messageScore = ARGV[5]
+
+-- First remove the message from the old queue
+redis.call('ZREM', oldQueueKey, messageId)
+
+-- Write the new message data
+redis.call('SET', messageKey, messageData)
+
+-- Add the message to the new queue with a new score
+redis.call('ZADD', queueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Rebalance the parent queue (for the new queue)
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+    redis.call('ZREM', parentQueueKey, queueName)
+else
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], queueName)
+end
+
+-- Rebalance the parent queue (for the old queue)
+local earliestMessage = redis.call('ZRANGE', oldQueueKey, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+    redis.call('ZREM', parentQueueKey, oldQueueName)
+else
+    redis.call('ZADD', parentQueueKey, earliestMessage[2], oldQueueName)
+end
+
+-- Clear all concurrency sets (combined from both scripts)
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueReserveConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', envReserveConcurrencyKey, messageId)
+
+return true
+`,
+    });
+
     this.redis.defineCommand("nackMessage", {
       numberOfKeys: 7,
       lua: `
@@ -1748,6 +1913,24 @@ declare module "ioredis" {
       messageData: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    requeueMessage(
+      queueKey: string,
+      oldQueueKey: string,
+      parentQueueKey: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      queueReserveConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      envReserveConcurrencyKey: string,
+      envQueueKey: string,
+      queueName: string,
+      oldQueueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      callback?: Callback<string>
+    ): Result<string, Context>;
 
     acknowledgeMessage(
       parentQueue: string,
