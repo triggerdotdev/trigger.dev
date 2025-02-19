@@ -1716,14 +1716,13 @@ local messageId = ARGV[3]
 local messageData = ARGV[4]
 local messageScore = ARGV[5]
 
--- First remove the old message from the sorted sets
+-- First remove the message from the old queue
 redis.call('ZREM', oldQueueKey, messageId)
-redis.call('ZREM', envQueueKey, messageId)
 
 -- Write the new message data
 redis.call('SET', messageKey, messageData)
 
--- Add the message to the queues with new score
+-- Add the message to the new queue with a new score
 redis.call('ZADD', queueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
