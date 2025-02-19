@@ -94,3 +94,292 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 ```
+
+### Common properties
+
+When you create a webhook alert, you'll receive different payloads depending on the type of alert. All webhooks share some common properties:
+
+<ParamField path="id" type="string">
+  A unique identifier for this webhook event
+</ParamField>
+
+<ParamField path="created" type="datetime">
+  When this webhook event was created
+</ParamField>
+
+<ParamField path="webhookVersion" type="string">
+  The version of the webhook payload format
+</ParamField>
+
+<ParamField path="type" type="string">
+  The type of alert webhook. One of: `alert.run.failed`, `alert.deployment.success`, or `alert.deployment.failed`
+</ParamField>
+
+### Run Failed Alert
+
+This webhook is sent when a run fails. The payload is available on the `object` property:
+
+<ParamField path="object.task.id" type="string">
+  Unique identifier for the task
+</ParamField>
+
+<ParamField path="object.task.filePath" type="string">
+  File path where the task is defined
+</ParamField>
+
+<ParamField path="object.task.exportName" type="string">
+  Name of the exported task function
+</ParamField>
+
+<ParamField path="object.task.version" type="string">
+  Version of the task
+</ParamField>
+
+<ParamField path="object.task.sdkVersion" type="string">
+  Version of the SDK used
+</ParamField>
+
+<ParamField path="object.task.cliVersion" type="string">
+  Version of the CLI used
+</ParamField>
+
+<ParamField path="object.run.id" type="string">
+  Unique identifier for the run
+</ParamField>
+
+<ParamField path="object.run.number" type="number">
+  Run number
+</ParamField>
+
+<ParamField path="object.run.status" type="string">
+  Current status of the run
+</ParamField>
+
+<ParamField path="object.run.createdAt" type="datetime">
+  When the run was created
+</ParamField>
+
+<ParamField path="object.run.startedAt" type="datetime">
+  When the run started executing
+</ParamField>
+
+<ParamField path="object.run.completedAt" type="datetime">
+  When the run finished executing
+</ParamField>
+
+<ParamField path="object.run.isTest" type="boolean">
+  Whether this is a test run
+</ParamField>
+
+<ParamField path="object.run.idempotencyKey" type="string">
+  Idempotency key for the run
+</ParamField>
+
+<ParamField path="object.run.tags" type="string[]">
+  Associated tags
+</ParamField>
+
+<ParamField path="object.run.error" type="object">
+  Error information
+</ParamField>
+
+<ParamField path="object.run.isOutOfMemoryError" type="boolean">
+  Whether the run was an out-of-memory error
+</ParamField>
+
+<ParamField path="object.run.machine" type="string">
+  Machine preset used for the run
+</ParamField>
+
+<ParamField path="object.run.dashboardUrl" type="string">
+  URL to view the run in the dashboard
+</ParamField>
+
+<ParamField path="object.environment.id" type="string">
+  Environment ID
+</ParamField>
+
+<ParamField path="object.environment.type" type="string">
+  Environment type (STAGING or PRODUCTION)
+</ParamField>
+
+<ParamField path="object.environment.slug" type="string">
+  Environment slug
+</ParamField>
+
+<ParamField path="object.organization.id" type="string">
+  Organization ID
+</ParamField>
+
+<ParamField path="object.organization.slug" type="string">
+  Organization slug
+</ParamField>
+
+<ParamField path="object.organization.name" type="string">
+  Organization name
+</ParamField>
+
+<ParamField path="object.project.id" type="string">
+  Project ID
+</ParamField>
+
+<ParamField path="object.project.ref" type="string">
+  Project reference
+</ParamField>
+
+<ParamField path="object.project.slug" type="string">
+  Project slug
+</ParamField>
+
+<ParamField path="object.project.name" type="string">
+  Project name
+</ParamField>
+
+### Deployment Success Alert
+
+This webhook is sent when a deployment succeeds. The payload is available on the `object` property:
+
+<ParamField path="object.deployment.id" type="string">
+  Deployment ID
+</ParamField>
+
+<ParamField path="object.deployment.status" type="string">
+  Deployment status
+</ParamField>
+
+<ParamField path="object.deployment.version" type="string">
+  Deployment version
+</ParamField>
+
+<ParamField path="object.deployment.shortCode" type="string">
+  Short code identifier
+</ParamField>
+
+<ParamField path="object.deployment.deployedAt" type="datetime">
+  When the deployment completed
+</ParamField>
+
+<ParamField path="object.tasks" type="array">
+  Array of deployed tasks with properties: id, filePath, exportName, and triggerSource
+</ParamField>
+
+<ParamField path="object.environment.id" type="string">
+  Environment ID
+</ParamField>
+
+<ParamField path="object.environment.type" type="string">
+  Environment type (STAGING or PRODUCTION)
+</ParamField>
+
+<ParamField path="object.environment.slug" type="string">
+  Environment slug
+</ParamField>
+
+<ParamField path="object.organization.id" type="string">
+  Organization ID
+</ParamField>
+
+<ParamField path="object.organization.slug" type="string">
+  Organization slug
+</ParamField>
+
+<ParamField path="object.organization.name" type="string">
+  Organization name
+</ParamField>
+
+<ParamField path="object.project.id" type="string">
+  Project ID
+</ParamField>
+
+<ParamField path="object.project.ref" type="string">
+  Project reference
+</ParamField>
+
+<ParamField path="object.project.slug" type="string">
+  Project slug
+</ParamField>
+
+<ParamField path="object.project.name" type="string">
+  Project name
+</ParamField>
+
+### Deployment Failed Alert
+
+This webhook is sent when a deployment fails. The payload is available on the `object` property:
+
+<ParamField path="object.deployment.id" type="string">
+  Deployment ID
+</ParamField>
+
+<ParamField path="object.deployment.status" type="string">
+  Deployment status
+</ParamField>
+
+<ParamField path="object.deployment.version" type="string">
+  Deployment version
+</ParamField>
+
+<ParamField path="object.deployment.shortCode" type="string">
+  Short code identifier
+</ParamField>
+
+<ParamField path="object.deployment.failedAt" type="datetime">
+  When the deployment failed
+</ParamField>
+
+<ParamField path="object.error.name" type="string">
+  Error name
+</ParamField>
+
+<ParamField path="object.error.message" type="string">
+  Error message
+</ParamField>
+
+<ParamField path="object.error.stack" type="string">
+  Error stack trace (optional)
+</ParamField>
+
+<ParamField path="object.error.stderr" type="string">
+  Standard error output (optional)
+</ParamField>
+
+<ParamField path="object.environment.id" type="string">
+  Environment ID
+</ParamField>
+
+<ParamField path="object.environment.type" type="string">
+  Environment type (STAGING or PRODUCTION)
+</ParamField>
+
+<ParamField path="object.environment.slug" type="string">
+  Environment slug
+</ParamField>
+
+<ParamField path="object.organization.id" type="string">
+  Organization ID
+</ParamField>
+
+<ParamField path="object.organization.slug" type="string">
+  Organization slug
+</ParamField>
+
+<ParamField path="object.organization.name" type="string">
+  Organization name
+</ParamField>
+
+<ParamField path="object.project.id" type="string">
+  Project ID
+</ParamField>
+
+<ParamField path="object.project.ref" type="string">
+  Project reference
+</ParamField>
+
+<ParamField path="object.project.slug" type="string">
+  Project slug
+</ParamField>
+
+<ParamField path="object.project.name" type="string">
+  Project name
+</ParamField>
+
