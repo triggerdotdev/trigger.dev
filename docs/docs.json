@@ -183,6 +183,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
               "upgrading-beta",
               "troubleshooting-alerts",

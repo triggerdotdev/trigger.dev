@@ -47,7 +47,11 @@ You can view the Trigger.dev cloud pricing for these machines [here](https://tri
 You can also override the task machine when you [trigger](/triggering) it:
 
 ```ts
-await tasks.trigger<typeof heavyTask>("heavy-task", { message: "hello world" }, { machine: "large-2x" });
+await tasks.trigger<typeof heavyTask>(
+  "heavy-task",
+  { message: "hello world" },
+  { machine: "large-2x" }
+);
 ```
 
 This is useful when you know that a certain payload will require more memory than the default machine. For example, you know it's a larger file or a customer that has a lot of data.
