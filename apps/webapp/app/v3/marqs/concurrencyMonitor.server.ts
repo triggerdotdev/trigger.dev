@@ -103,18 +103,16 @@ export class MarqsConcurrencyMonitor {
 
   async #processKey(key: string, redis: Redis) {
     key = this.keys.stripKeyPrefix(key);
-    const orgKey = this.keys.orgCurrentConcurrencyKeyFromQueue(key);
     const envKey = this.keys.envCurrentConcurrencyKeyFromQueue(key);
 
     let runIds: string[] = [];
 
     try {
       // Next, we need to get all the items from the key, and any parent keys (org, env, queue) using sunion.
-      runIds = await redis.sunion(orgKey, envKey, key);
+      runIds = await redis.sunion(envKey, key);
     } catch (e) {
       this._logger.error("[MarqsConcurrencyMonitor] error during sunion", {
         key,
-        orgKey,
         envKey,
         runIds,
         error: e,
@@ -136,7 +134,6 @@ export class MarqsConcurrencyMonitor {
     if (completedRunIds.length === 0) {
       this._logger.debug("[MarqsConcurrencyMonitor] no completed runs found", {
         key,
-        orgKey,
         envKey,
         runIds,
         durationMs,
@@ -147,7 +144,6 @@ export class MarqsConcurrencyMonitor {
 
     this._logger.debug("[MarqsConcurrencyMonitor] removing completed runs from queue", {
       key,
-      orgKey,
       envKey,
       completedRunIds,
       durationMs,
@@ -160,7 +156,6 @@ export class MarqsConcurrencyMonitor {
     const pipeline = redis.pipeline();
 
     pipeline.srem(key, ...completedRunIds);
-    pipeline.srem(orgKey, ...completedRunIds);
     pipeline.srem(envKey, ...completedRunIds);
 
     try {
@@ -168,7 +163,6 @@ export class MarqsConcurrencyMonitor {
     } catch (e) {
       this._logger.error("[MarqsConcurrencyMonitor] error removing completed runs from queue", {
         key,
-        orgKey,
         envKey,
         completedRunIds,
         error: e,

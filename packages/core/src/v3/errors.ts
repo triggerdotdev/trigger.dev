@@ -235,6 +235,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_RUN_HEARTBEAT_TIMEOUT":
         case "OUTDATED_SDK_VERSION":
         case "TASK_DID_CONCURRENT_WAIT":
+        case "RECURSIVE_WAIT_DEADLOCK":
           return false;
 
         case "GRACEFUL_EXIT_TIMEOUT":
@@ -512,6 +513,14 @@ const prettyInternalErrors: Partial<
       href: links.docs.troubleshooting.concurrentWaits,
     },
   },
+  RECURSIVE_WAIT_DEADLOCK: {
+    message:
+      "This run will never execute because it was triggered recursively and the task has no remaining concurrency available.",
+    link: {
+      name: "See docs for help",
+      href: links.docs.concurrency.recursiveDeadlock,
+    },
+  },
 };
 
 const getPrettyTaskRunError = (code: TaskRunInternalError["code"]): TaskRunInternalError => {
@@ -672,6 +681,11 @@ export function exceptionEventEnhancer(
           default:
             return exception;
         }
+      } else if (exception.message?.includes(TaskRunErrorCodes.RECURSIVE_WAIT_DEADLOCK)) {
+        return {
+          ...exception,
+          ...prettyInternalErrors.RECURSIVE_WAIT_DEADLOCK,
+        };
       }
       break;
     }
@@ -896,5 +910,22 @@ function tryJsonParse(data: string | undefined): any {
     return JSON.parse(data);
   } catch {
     return;
+  }
+}
+
+export function taskRunErrorToString(error: TaskRunError): string {
+  switch (error.type) {
+    case "INTERNAL_ERROR": {
+      return `Internal error [${error.code}]${error.message ? `: ${error.message}` : ""}`;
+    }
+    case "BUILT_IN_ERROR": {
+      return `${error.name}: ${error.message}`;
+    }
+    case "STRING_ERROR": {
+      return error.raw;
+    }
+    case "CUSTOM_ERROR": {
+      return error.raw;
+    }
   }
 }

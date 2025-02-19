@@ -2,7 +2,7 @@ import { CoordinatorToPlatformMessages, ManualCheckpointMetadata } from "@trigge
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
-import { marqs } from "~/v3/marqs/index.server";
+import { marqs, MarQSPriorityLevel } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
@@ -258,14 +258,15 @@ export class CreateCheckpointService extends BaseService {
         });
 
         if (checkpointEvent) {
-          await marqs?.replaceMessage(
+          await marqs.requeueMessage(
             attempt.taskRunId,
             {
               type: "RESUME_AFTER_DURATION",
               resumableAttemptId: attempt.id,
               checkpointEventId: checkpointEvent.id,
             },
-            restoreAtUnixTimeMs
+            restoreAtUnixTimeMs,
+            MarQSPriorityLevel.resume
           );
 
           return {
@@ -387,14 +388,9 @@ export class CreateCheckpointService extends BaseService {
           }
 
           //if there's a message in the queue, we make sure the checkpoint event is on it
-          await marqs?.replaceMessage(
-            attempt.taskRun.id,
-            {
-              checkpointEventId: checkpointEvent.id,
-            },
-            undefined,
-            true
-          );
+          await marqs.replaceMessage(attempt.taskRun.id, {
+            checkpointEventId: checkpointEvent.id,
+          });
 
           await ResumeBatchRunService.enqueue(
             batchRun.id,

@@ -9,7 +9,7 @@ import { PerformRunExecutionV3Service } from "~/services/runs/performRunExecutio
 import { singleton } from "~/utils/singleton";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { MarQS } from "./index.server";
-import { MarQSShortKeyProducer } from "./marqsKeyProducer.server";
+import { MarQSShortKeyProducer } from "./marqsKeyProducer";
 import { RequeueV2Message } from "./requeueV2Message.server";
 import { VisibilityTimeoutStrategy } from "./types";
 import Redis from "ioredis";
@@ -80,7 +80,6 @@ function getMarQSClient() {
       parentQueueLimit: 100,
       keys: new MarQSV2KeyProducer(KEY_PREFIX),
       defaultEnvConcurrency: env.V2_MARQS_DEFAULT_ENV_CONCURRENCY,
-      defaultOrgConcurrency: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
     }),
     envQueuePriorityStrategy: new NoopFairDequeuingStrategy(), // We don't use this in v2, since all queues go through the shared queue
     workers: 0,
