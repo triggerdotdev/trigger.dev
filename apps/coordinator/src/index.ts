@@ -175,7 +175,10 @@ class TaskCoordinator {
           await chaosMonkey.call();
 
           // In case the task resumes before the checkpoint is created
-          this.#cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId, {
+            event: "RESUME_AFTER_DEPENDENCY",
+            completions: message.completions.length,
+          });
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
         },
@@ -226,7 +229,10 @@ class TaskCoordinator {
           await chaosMonkey.call();
 
           // In case the task resumes before the checkpoint is created
-          this.#cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId, {
+            event: "RESUME_AFTER_DEPENDENCY_WITH_ACK",
+            completions: message.completions.length,
+          });
 
           taskSocket.emit("RESUME_AFTER_DEPENDENCY", message);
 
@@ -294,7 +300,7 @@ class TaskCoordinator {
           log.addFields({ socketId: taskSocket.id, socketData: taskSocket.data });
           log.log("Found task socket for REQUEST_RUN_CANCELLATION");
 
-          this.#cancelCheckpoint(message.runId);
+          this.#cancelCheckpoint(message.runId, { event: "REQUEST_RUN_CANCELLATION", ...message });
 
           if (message.delayInMs) {
             taskSocket.emit("REQUEST_EXIT", {
@@ -728,7 +734,10 @@ class TaskCoordinator {
             const { completion, execution } = message;
 
             // Cancel all in-progress checkpoints (if any)
-            this.#cancelCheckpoint(socket.data.runId);
+            this.#cancelCheckpoint(socket.data.runId, {
+              event: "TASK_RUN_COMPLETED",
+              attemptNumber: execution.attempt.number,
+            });
 
             await chaosMonkey.call({ throwErrors: false });
 
@@ -913,7 +922,10 @@ class TaskCoordinator {
 
           try {
             // Cancel all in-progress checkpoints (if any)
-            this.#cancelCheckpoint(socket.data.runId);
+            this.#cancelCheckpoint(socket.data.runId, {
+              event: "TASK_RUN_FAILED_TO_RUN",
+              errorType: completion.error.type,
+            });
 
             this.#platformSocket?.send("TASK_RUN_FAILED_TO_RUN", {
               version: "v1",
@@ -966,12 +978,15 @@ class TaskCoordinator {
 
           try {
             if (message.version === "v1") {
-              this.#cancelCheckpoint(socket.data.runId);
+              this.#cancelCheckpoint(socket.data.runId, { event: "CANCEL_CHECKPOINT", ...message });
               // v1 has no callback
               return;
             }
 
-            const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId);
+            const checkpointCanceled = this.#cancelCheckpoint(socket.data.runId, {
+              event: "CANCEL_CHECKPOINT",
+              ...message,
+            });
 
             callback({ version: "v2", checkpointCanceled });
           } catch (error) {
@@ -1455,7 +1470,9 @@ class TaskCoordinator {
     });
   }
 
-  #cancelCheckpoint(runId: string): boolean {
+  #cancelCheckpoint(runId: string, reason?: any): boolean {
+    logger.log("cancelCheckpoint: call", { runId, reason });
+
     const checkpointWait = this.#checkpointableTasks.get(runId);
 
     if (checkpointWait) {
@@ -1464,9 +1481,14 @@ class TaskCoordinator {
     }
 
     // Cancel checkpointing procedure
-    const checkpointCanceled = this.#checkpointer.cancelCheckpoint(runId);
+    const checkpointCanceled = this.#checkpointer.cancelAllCheckpointsForRun(runId);
 
-    logger.log("cancelCheckpoint()", { runId, checkpointCanceled });
+    logger.log("cancelCheckpoint: result", {
+      runId,
+      reason,
+      checkpointCanceled,
+      hadCheckpointWait: !!checkpointWait,
+    });
 
     return checkpointCanceled;
   }

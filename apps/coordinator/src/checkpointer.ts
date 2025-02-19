@@ -27,7 +27,7 @@ type CheckpointAndPushResult =
   | { success: true; checkpoint: CheckpointData }
   | {
       success: false;
-      reason?: "CANCELED" | "DISABLED" | "ERROR" | "IN_PROGRESS" | "NO_SUPPORT" | "SKIP_RETRYING";
+      reason?: "CANCELED" | "ERROR" | "SKIP_RETRYING";
     };
 
 type CheckpointData = {
@@ -87,9 +87,14 @@ export class Checkpointer {
   #dockerMode: boolean;
 
   #logger = new SimpleStructuredLogger("checkpointer");
-  #abortControllers = new Map<string, AbortController>();
+
   #failedCheckpoints = new Map<string, unknown>();
-  #waitingToCheckpoint = new Set<string>();
+
+  // Indexed by run ID
+  #runAbortControllers = new Map<
+    string,
+    { signal: AbortSignal; abort: AbortController["abort"] }
+  >();
 
   private registryHost: string;
   private registryNamespace: string;
@@ -196,25 +201,73 @@ export class Checkpointer {
     const start = performance.now();
     this.#logger.log(`checkpointAndPush() start`, { start, opts });
 
-    let interval: NodeJS.Timer | undefined;
+    const { runId } = opts;
 
+    let interval: NodeJS.Timer | undefined;
     if (opts.shouldHeartbeat) {
       interval = setInterval(() => {
-        this.#logger.log("Sending heartbeat", { runId: opts.runId });
-        this.opts.heartbeat(opts.runId);
+        this.#logger.log("Sending heartbeat", { runId });
+        this.opts.heartbeat(runId);
       }, 20_000);
     }
 
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const abort = controller.abort.bind(controller);
+
+    const onAbort = () => {
+      this.#logger.error("Checkpoint aborted", { runId, options: opts });
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    const removeCurrentAbortController = () => {
+      const controller = this.#runAbortControllers.get(runId);
+
+      // Ensure only the current controller is removed
+      if (controller && controller.signal === signal) {
+        this.#runAbortControllers.delete(runId);
+      }
+
+      // Remove the abort listener in case it hasn't fired
+      signal.removeEventListener("abort", onAbort);
+    };
+
+    if (!this.#dockerMode && !this.#canCheckpoint) {
+      this.#logger.error("No checkpoint support. Simulation requires docker.");
+      this.#failCheckpoint(runId, "NO_SUPPORT");
+      return;
+    }
+
+    if (this.#isRunCheckpointing(runId)) {
+      this.#logger.error("Checkpoint procedure already in progress", { options: opts });
+      this.#failCheckpoint(runId, "IN_PROGRESS");
+      return;
+    }
+
+    // This is a new checkpoint, clear any last failure for this run
+    this.#clearFailedCheckpoint(runId);
+
+    if (this.disableCheckpointSupport) {
+      this.#logger.error("Checkpoint support disabled", { options: opts });
+      this.#failCheckpoint(runId, "DISABLED");
+      return;
+    }
+
+    this.#runAbortControllers.set(runId, { signal, abort });
+
     try {
-      const result = await this.#checkpointAndPushWithBackoff(opts, delayMs);
+      const result = await this.#checkpointAndPushWithBackoff(opts, { delayMs, signal });
 
       const end = performance.now();
       this.#logger.log(`checkpointAndPush() end`, {
         start,
         end,
         diff: end - start,
+        diffWithoutDelay: end - start - (delayMs ?? 0),
         opts,
         success: result.success,
+        delayMs,
       });
 
       if (!result.success) {
@@ -226,40 +279,41 @@ export class Checkpointer {
       if (opts.shouldHeartbeat) {
         clearInterval(interval);
       }
+      removeCurrentAbortController();
     }
   }
 
-  #isCheckpointing(runId: string) {
-    return this.#abortControllers.has(runId) || this.#waitingToCheckpoint.has(runId);
+  #isRunCheckpointing(runId: string) {
+    return this.#runAbortControllers.has(runId);
   }
 
-  cancelCheckpoint(runId: string): boolean {
+  cancelAllCheckpointsForRun(runId: string): boolean {
+    this.#logger.log("cancelAllCheckpointsForRun: call", { runId });
+
     // If the last checkpoint failed, pretend we canceled it
     // This ensures tasks don't wait for external resume messages to continue
     if (this.#hasFailedCheckpoint(runId)) {
+      this.#logger.log("cancelAllCheckpointsForRun: hasFailedCheckpoint", { runId });
       this.#clearFailedCheckpoint(runId);
       return true;
     }
 
-    if (this.#waitingToCheckpoint.has(runId)) {
-      this.#waitingToCheckpoint.delete(runId);
-      return true;
-    }
-
-    const controller = this.#abortControllers.get(runId);
+    const controller = this.#runAbortControllers.get(runId);
 
     if (!controller) {
-      this.#logger.debug("Nothing to cancel", { runId });
+      this.#logger.debug("cancelAllCheckpointsForRun: no abort controller", { runId });
       return false;
     }
 
-    if (controller.signal.aborted) {
-      this.#logger.debug("Controller already aborted", { runId });
+    const { abort, signal } = controller;
+
+    if (signal.aborted) {
+      this.#logger.debug("cancelAllCheckpointsForRun: signal already aborted", { runId });
       return false;
     }
 
-    controller.abort("cancelCheckpoint()");
-    this.#abortControllers.delete(runId);
+    abort("cancelCheckpoint()");
+    this.#runAbortControllers.delete(runId);
 
     return true;
   }
@@ -272,19 +326,16 @@ export class Checkpointer {
       deploymentVersion,
       attemptNumber,
     }: CheckpointAndPushOptions,
-    delayMs?: number
+    { delayMs, signal }: { delayMs?: number; signal: AbortSignal }
   ): Promise<CheckpointAndPushResult> {
     if (delayMs && delayMs > 0) {
       this.#logger.log("Delaying checkpoint", { runId, delayMs });
 
-      this.#waitingToCheckpoint.add(runId);
-      await setTimeout(delayMs);
-
-      if (!this.#waitingToCheckpoint.has(runId)) {
+      try {
+        await setTimeout(delayMs, undefined, { signal });
+      } catch (error) {
         this.#logger.log("Checkpoint canceled during initial delay", { runId });
         return { success: false, reason: "CANCELED" };
-      } else {
-        this.#waitingToCheckpoint.delete(runId);
       }
     }
 
@@ -310,24 +361,24 @@ export class Checkpointer {
             delay,
           });
 
-          this.#waitingToCheckpoint.add(runId);
-          await setTimeout(delay.milliseconds);
-
-          if (!this.#waitingToCheckpoint.has(runId)) {
-            this.#logger.log("Checkpoint canceled while waiting for retry", { runId });
+          try {
+            await setTimeout(delay.milliseconds, undefined, { signal });
+          } catch (error) {
+            this.#logger.log("Checkpoint canceled during retry delay", { runId });
             return { success: false, reason: "CANCELED" };
-          } else {
-            this.#waitingToCheckpoint.delete(runId);
           }
         }
 
-        const result = await this.#checkpointAndPush({
-          runId,
-          leaveRunning,
-          projectRef,
-          deploymentVersion,
-          attemptNumber,
-        });
+        const result = await this.#checkpointAndPush(
+          {
+            runId,
+            leaveRunning,
+            projectRef,
+            deploymentVersion,
+            attemptNumber,
+          },
+          { signal }
+        );
 
         if (result.success) {
           return result;
@@ -336,24 +387,6 @@ export class Checkpointer {
         if (result.reason === "CANCELED") {
           this.#logger.log("Checkpoint canceled, won't retry", { runId });
           // Don't fail the checkpoint, as it was canceled
-          return result;
-        }
-
-        if (result.reason === "IN_PROGRESS") {
-          this.#logger.log("Checkpoint already in progress, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
-          return result;
-        }
-
-        if (result.reason === "NO_SUPPORT") {
-          this.#logger.log("No checkpoint support, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
-          return result;
-        }
-
-        if (result.reason === "DISABLED") {
-          this.#logger.log("Checkpoint support disabled, won't retry", { runId });
-          this.#failCheckpoint(runId, result.reason);
           return result;
         }
 
@@ -384,13 +417,16 @@ export class Checkpointer {
     return { success: false, reason: "ERROR" };
   }
 
-  async #checkpointAndPush({
-    runId,
-    leaveRunning = true, // This mirrors kubernetes behaviour more accurately
-    projectRef,
-    deploymentVersion,
-    attemptNumber,
-  }: CheckpointAndPushOptions): Promise<CheckpointAndPushResult> {
+  async #checkpointAndPush(
+    {
+      runId,
+      leaveRunning = true, // This mirrors kubernetes behaviour more accurately
+      projectRef,
+      deploymentVersion,
+      attemptNumber,
+    }: CheckpointAndPushOptions,
+    { signal }: { signal: AbortSignal }
+  ): Promise<CheckpointAndPushResult> {
     await this.init();
 
     const options = {
@@ -401,47 +437,12 @@ export class Checkpointer {
       attemptNumber,
     };
 
-    if (!this.#dockerMode && !this.#canCheckpoint) {
-      this.#logger.error("No checkpoint support. Simulation requires docker.");
-      return { success: false, reason: "NO_SUPPORT" };
-    }
-
-    if (this.#isCheckpointing(runId)) {
-      this.#logger.error("Checkpoint procedure already in progress", { options });
-      return { success: false, reason: "IN_PROGRESS" };
-    }
-
-    // This is a new checkpoint, clear any last failure for this run
-    this.#clearFailedCheckpoint(runId);
-
-    if (this.disableCheckpointSupport) {
-      this.#logger.error("Checkpoint support disabled", { options });
-      return { success: false, reason: "DISABLED" };
-    }
-
-    const controller = new AbortController();
-    this.#abortControllers.set(runId, controller);
-
-    const onAbort = () => {
-      this.#logger.error("Checkpoint aborted", { options });
-      controller.signal.removeEventListener("abort", onAbort);
-    };
-    controller.signal.addEventListener("abort", onAbort);
-
     const shortCode = nanoid(8);
     const imageRef = this.#getImageRef(projectRef, deploymentVersion, shortCode);
     const exportLocation = this.#getExportLocation(projectRef, deploymentVersion, shortCode);
 
-    const buildah = new Buildah({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
-    const crictl = new Crictl({ id: `${runId}-${shortCode}`, abortSignal: controller.signal });
-
-    const removeCurrentAbortController = () => {
-      // Ensure only the current controller is removed
-      if (this.#abortControllers.get(runId) === controller) {
-        this.#abortControllers.delete(runId);
-      }
-      controller.signal.removeEventListener("abort", onAbort);
-    };
+    const buildah = new Buildah({ id: `${runId}-${shortCode}`, abortSignal: signal });
+    const crictl = new Crictl({ id: `${runId}-${shortCode}`, abortSignal: signal });
 
     const cleanup = async () => {
       const metadata = {
@@ -452,7 +453,6 @@ export class Checkpointer {
 
       if (this.#dockerMode) {
         this.#logger.debug("Skipping cleanup in docker mode", metadata);
-        removeCurrentAbortController();
         return;
       }
 
@@ -464,28 +464,26 @@ export class Checkpointer {
       } catch (error) {
         this.#logger.error("Error during cleanup", { ...metadata, error });
       }
-
-      removeCurrentAbortController();
     };
 
     try {
       await this.chaosMonkey.call();
 
-      this.#logger.log("Checkpointing:", { options });
+      this.#logger.log("checkpointAndPush: checkpointing", { options });
 
       const containterName = this.#getRunContainerName(runId);
 
       // Create checkpoint (docker)
       if (this.#dockerMode) {
         await this.#createDockerCheckpoint(
-          controller.signal,
+          signal,
           runId,
           exportLocation,
           leaveRunning,
           attemptNumber
         );
 
-        this.#logger.log("checkpoint created:", {
+        this.#logger.log("checkpointAndPush: checkpoint created", {
           runId,
           location: exportLocation,
         });
@@ -586,13 +584,16 @@ export class Checkpointer {
         }
       }
 
-      this.#logger.error("Unhandled checkpoint error", { options, error });
+      this.#logger.error("Unhandled checkpoint error", {
+        options,
+        error: error instanceof Error ? error.message : error,
+      });
 
       return { success: false, reason: "ERROR" };
     } finally {
       await cleanup();
 
-      if (controller.signal.aborted) {
+      if (signal.aborted) {
         this.#logger.error("Checkpoint canceled: Cleanup", { options });
 
         // Overrides any prior return value
