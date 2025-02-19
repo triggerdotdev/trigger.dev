@@ -468,7 +468,7 @@ export class CompleteAttemptService extends BaseService {
       logger.debug("[CompleteAttemptService] Enqueuing retry attempt", { runId: run.id });
 
       // We have to replace a potential RESUME with EXECUTE to correctly retry the attempt
-      return marqs?.replaceMessage(
+      return marqs?.requeueMessage(
         run.id,
         {
           type: "EXECUTE",
@@ -615,7 +615,7 @@ export class CompleteAttemptService extends BaseService {
     });
 
     if (environment.type === "DEVELOPMENT") {
-      marqs.replaceMessage(
+      marqs.requeueMessage(
         taskRunAttempt.taskRunId,
         {},
         executionRetry.timestamp,

@@ -121,6 +121,32 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     });
   }
 
+  async messageRequeued(oldQueue: string, message: MessagePayload): Promise<void> {
+    logger.debug("TaskRunConcurrencyTracker.messageRequeued()", {
+      data: message.data,
+      messageId: message.messageId,
+      oldQueue,
+    });
+
+    const data = this.getMessageData(message);
+
+    if (!data) {
+      logger.info(
+        `TaskRunConcurrencyTracker.messageReplaced(): could not parse message data`,
+        message
+      );
+      return;
+    }
+
+    await this.executionFinished({
+      projectId: data.projectId,
+      taskId: data.taskIdentifier,
+      runId: message.messageId,
+      environmentId: data.environmentId,
+      deployed: data.environmentType !== "DEVELOPMENT",
+    });
+  }
+
   private getMessageData(message: MessagePayload) {
     const result = ConcurrentMessageData.safeParse(message.data);
     if (result.success) {

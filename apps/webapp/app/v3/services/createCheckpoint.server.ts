@@ -167,7 +167,7 @@ export class CreateCheckpointService extends BaseService {
         });
 
         if (checkpointEvent) {
-          await marqs?.replaceMessage(
+          await marqs.requeueMessage(
             attempt.taskRunId,
             {
               type: "RESUME_AFTER_DURATION",
@@ -297,15 +297,9 @@ export class CreateCheckpointService extends BaseService {
           }
 
           //if there's a message in the queue, we make sure the checkpoint event is on it
-          await marqs?.replaceMessage(
-            attempt.taskRun.id,
-            {
-              checkpointEventId: checkpointEvent.id,
-            },
-            undefined,
-            undefined,
-            true
-          );
+          await marqs.replaceMessage(attempt.taskRun.id, {
+            checkpointEventId: checkpointEvent.id,
+          });
 
           await ResumeBatchRunService.enqueue(
             batchRun.id,

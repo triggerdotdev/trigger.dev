@@ -89,7 +89,7 @@ export class ResumeTaskDependencyService extends BaseService {
         return;
       }
 
-      await marqs?.replaceMessage(
+      await marqs?.requeueMessage(
         dependentRun.id,
         {
           type: "RESUME",

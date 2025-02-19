@@ -100,6 +100,7 @@ export interface MessageQueueSubscriber {
   messageAcked(message: MessagePayload): Promise<void>;
   messageNacked(message: MessagePayload): Promise<void>;
   messageReplaced(message: MessagePayload): Promise<void>;
+  messageRequeued(oldQueue: string, message: MessagePayload): Promise<void>;
 }
 
 export interface VisibilityTimeoutStrategy {
